@@ -11,12 +11,12 @@ use super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::{filters, leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct ActivationChoicePrefix<'a> {
-    pub(crate) count: ChoiceCount,
-    pub(crate) rest: &'a [OwnedLexToken],
+pub struct ActivationChoicePrefix<'a> {
+    pub count: ChoiceCount,
+    pub rest: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_activation_choice_prefix_tokens(
+pub fn parse_activation_choice_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivationChoicePrefix<'_>> {
     if tokens.is_empty() {
@@ -33,7 +33,7 @@ pub(crate) fn parse_activation_choice_prefix_tokens(
     })
 }
 
-pub(crate) fn parse_activation_exile_filter_tokens(
+pub fn parse_activation_exile_filter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ObjectFilter, CardTextError> {
     let base_len = primitives::parse_all(

@@ -66,9 +66,9 @@ fn parses_dynamic_pt_and_lifecycle_reminders() {
         matches!(
             facts.dynamic_power_toughness,
             Some((
-                Value::CountersOnSource(crate::CounterType::Named("slime")),
-                Value::CountersOnSource(crate::CounterType::Named("slime")),
-            ))
+                Value::CountersOnSource(crate::CounterType::Named(power_counter)),
+                Value::CountersOnSource(crate::CounterType::Named(toughness_counter)),
+            )) if power_counter.as_str() == "slime" && toughness_counter.as_str() == "slime"
         ),
         "{facts:#?}"
     );

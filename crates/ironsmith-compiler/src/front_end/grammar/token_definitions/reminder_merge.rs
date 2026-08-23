@@ -53,7 +53,7 @@ fn merge_equipment_rules(
 /// incorrectly copy keywords from a nested token inside a quoted rule onto the
 /// outer token. This narrow entry point preserves the typed equip payload
 /// without reopening that broader scope leak.
-pub(crate) fn merge_token_equipment_reminder_definition(
+pub fn merge_token_equipment_reminder_definition(
     definition: &mut TokenDefinitionSpec,
     reminder: &TokenReminderFacts,
 ) -> bool {
@@ -124,7 +124,7 @@ fn merge_creature_rules(base: &mut CreatureTokenRulesShape, reminder: &CreatureT
     );
 }
 
-pub(crate) fn merge_token_reminder_definition(
+pub fn merge_token_reminder_definition(
     definition: &mut TokenDefinitionSpec,
     reminder: &TokenReminderFacts,
 ) -> bool {

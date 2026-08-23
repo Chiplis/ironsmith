@@ -14,29 +14,29 @@ use super::super::sequence_pairs::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CounterThenFightShape {
-    pub(crate) required_power: u32,
+pub struct CounterThenFightShape {
+    pub required_power: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct OpponentExileThenHandShape {
-    pub(crate) exile_filter: Range<usize>,
+pub struct OpponentExileThenHandShape {
+    pub exile_filter: Range<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SearchThenNameShape {
-    pub(crate) search: Range<usize>,
-    pub(crate) name: Range<usize>,
+pub struct SearchThenNameShape {
+    pub search: Range<usize>,
+    pub name: Range<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ChosenNameRevealShape {
-    pub(crate) view: Range<usize>,
+pub struct ChosenNameRevealShape {
+    pub view: Range<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LandOrNonlandConsultSequenceShape {
-    pub(crate) remainder_order: LibraryBottomOrderAst,
+pub struct LandOrNonlandConsultSequenceShape {
+    pub remainder_order: LibraryBottomOrderAst,
 }
 
 const CHOSEN_KIND_TO_HAND: &[&[&str]] = &[
@@ -75,7 +75,7 @@ fn counter_power(input: &mut LexStream<'_>) -> winnow::error::ModalResult<u32> {
     Ok(required_power)
 }
 
-pub(crate) fn parse_counter_then_fight_shape(
+pub fn parse_counter_then_fight_shape(
     counter: &[OwnedLexToken],
     fight: &[OwnedLexToken],
 ) -> Option<CounterThenFightShape> {
@@ -90,7 +90,7 @@ pub(crate) fn parse_counter_then_fight_shape(
     Some(CounterThenFightShape { required_power })
 }
 
-pub(crate) fn parse_land_or_nonland_consult_sequence_tokens(
+pub fn parse_land_or_nonland_consult_sequence_tokens(
     choice: &[OwnedLexToken],
     reveal: &[OwnedLexToken],
     move_match: &[OwnedLexToken],
@@ -113,7 +113,7 @@ pub(crate) fn parse_land_or_nonland_consult_sequence_tokens(
     })
 }
 
-pub(crate) fn is_milled_creature_exile_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_milled_creature_exile_shape(tokens: &[OwnedLexToken]) -> bool {
     starts_sequence(tokens, &[&["exile", "up", "to", "two"]])
         && contains_sequence_phrase(tokens, &[&["creature", "cards"]])
         && contains_sequence_phrase(tokens, MILLED_TO_GRAVEYARD)
@@ -125,7 +125,7 @@ const FROM_AMONG: &[&[&str]] = &[
     &["from", "among", "them"],
 ];
 
-pub(crate) fn parse_opponent_exile_then_hand_shape(
+pub fn parse_opponent_exile_then_hand_shape(
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],
 ) -> Option<OpponentExileThenHandShape> {
@@ -174,7 +174,7 @@ const SEARCH_CARD: &[&[&str]] = &[
     &["search", "that", "players", "library", "for", "card"],
 ];
 
-pub(crate) fn parse_search_then_name_shape(
+pub fn parse_search_then_name_shape(
     first: &[OwnedLexToken],
     conditional: &[OwnedLexToken],
     shuffle: &[OwnedLexToken],
@@ -244,7 +244,7 @@ const CHOSEN_NAME_HAND: &[&[&str]] = &[
     ],
 ];
 
-pub(crate) fn parse_chosen_name_reveal_shape(
+pub fn parse_chosen_name_reveal_shape(
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],
 ) -> Option<ChosenNameRevealShape> {
@@ -259,7 +259,7 @@ pub(crate) fn parse_chosen_name_reveal_shape(
     Some(ChosenNameRevealShape { view: 0..suffix_at })
 }
 
-pub(crate) fn is_search_two_disposition_then_shuffle_shape(
+pub fn is_search_two_disposition_then_shuffle_shape(
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],
 ) -> bool {
@@ -268,7 +268,7 @@ pub(crate) fn is_search_two_disposition_then_shuffle_shape(
         && matches_complete_content_sequence(third, SHUFFLE)
 }
 
-pub(crate) fn parse_consult_remainder_order_tokens(
+pub fn parse_consult_remainder_order_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LibraryBottomOrderAst> {
     if !contains_sequence_word(tokens, "bottom") || !contains_sequence_word(tokens, "library") {

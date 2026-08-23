@@ -5,22 +5,22 @@ use winnow::error::ModalResult as WResult;
 use winnow::token::{any, take_till};
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct EachPlayerCreaturesDamageShape {
-    pub(crate) amount: Value,
+pub struct EachPlayerCreaturesDamageShape {
+    pub amount: Value,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct CompoundBuffUnblockableShape<'a> {
-    pub(crate) buff_tokens: &'a [OwnedLexToken],
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) unblockable_tail_tokens: &'a [OwnedLexToken],
+pub struct CompoundBuffUnblockableShape<'a> {
+    pub buff_tokens: &'a [OwnedLexToken],
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub unblockable_tail_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CantBlockedBasePowerToughnessShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) power: Value,
-    pub(crate) toughness: Value,
+pub struct CantBlockedBasePowerToughnessShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub power: Value,
+    pub toughness: Value,
 }
 
 fn parse_each_player_creatures_damage_lexed<'a>(
@@ -49,7 +49,7 @@ fn parse_each_player_creatures_damage_lexed<'a>(
     Ok(EachPlayerCreaturesDamageShape { amount })
 }
 
-pub(crate) fn parse_each_player_creatures_damage_tokens(
+pub fn parse_each_player_creatures_damage_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EachPlayerCreaturesDamageShape> {
     primitives::parse_all(
@@ -98,7 +98,7 @@ fn parse_compound_buff_unblockable_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_compound_buff_unblockable_tokens(
+pub fn parse_compound_buff_unblockable_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CompoundBuffUnblockableShape<'_>> {
     primitives::parse_all(
@@ -160,7 +160,7 @@ fn parse_cant_blocked_base_power_toughness_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_cant_blocked_base_power_toughness_tokens(
+pub fn parse_cant_blocked_base_power_toughness_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CantBlockedBasePowerToughnessShape<'_>> {
     primitives::parse_all(

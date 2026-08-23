@@ -7,46 +7,44 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, TokenKind, trim_lexed
 use super::super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct GrantedAbilityCandidate {
-    pub(crate) has_token: usize,
+pub struct GrantedAbilityCandidate {
+    pub has_token: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct GrantedSubjectFacts {
-    pub(crate) rejected_action: bool,
-    pub(crate) has_may: bool,
-    pub(crate) attached_subject: bool,
-    pub(crate) unbound_pronoun: bool,
+pub struct GrantedSubjectFacts {
+    pub rejected_action: bool,
+    pub has_may: bool,
+    pub attached_subject: bool,
+    pub unbound_pronoun: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TypeAdditionSubjectSplit<'a> {
-    pub(crate) base_subject_tokens: &'a [OwnedLexToken],
-    pub(crate) addition_tokens: &'a [OwnedLexToken],
+pub struct TypeAdditionSubjectSplit<'a> {
+    pub base_subject_tokens: &'a [OwnedLexToken],
+    pub addition_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GrantedAbilityConditionKind {
+pub enum GrantedAbilityConditionKind {
     AsLongAs,
     If,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct GrantedAbilityConditionSplit<'a> {
-    pub(crate) ability_tokens: &'a [OwnedLexToken],
-    pub(crate) condition_tokens: &'a [OwnedLexToken],
+pub struct GrantedAbilityConditionSplit<'a> {
+    pub ability_tokens: &'a [OwnedLexToken],
+    pub condition_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SpecialGrantedKeyword {
+pub enum SpecialGrantedKeyword {
     Blitz,
     Emerge,
     Scavenge,
 }
 
-pub(crate) fn parse_granted_ability_candidates(
-    tokens: &[OwnedLexToken],
-) -> Vec<GrantedAbilityCandidate> {
+pub fn parse_granted_ability_candidates(tokens: &[OwnedLexToken]) -> Vec<GrantedAbilityCandidate> {
     let mut input = LexStream::new(tokens);
     let initial_len = input.len();
     let mut inside_quotes = false;
@@ -79,7 +77,7 @@ pub(crate) fn parse_granted_ability_candidates(
     candidates
 }
 
-pub(crate) fn parse_granted_subject_facts(tokens: &[OwnedLexToken]) -> GrantedSubjectFacts {
+pub fn parse_granted_subject_facts(tokens: &[OwnedLexToken]) -> GrantedSubjectFacts {
     let tokens = trim_lexed_commas(tokens);
     let words = tokens
         .iter()
@@ -93,7 +91,7 @@ pub(crate) fn parse_granted_subject_facts(tokens: &[OwnedLexToken]) -> GrantedSu
     }
 }
 
-pub(crate) fn split_type_addition_subject(
+pub fn split_type_addition_subject(
     tokens: &[OwnedLexToken],
 ) -> Option<TypeAdditionSubjectSplit<'_>> {
     let mut tokens = trim_lexed_commas(tokens);
@@ -116,7 +114,7 @@ pub(crate) fn split_type_addition_subject(
     })
 }
 
-pub(crate) fn split_granted_ability_condition(
+pub fn split_granted_ability_condition(
     tokens: &[OwnedLexToken],
     kind: GrantedAbilityConditionKind,
 ) -> Option<GrantedAbilityConditionSplit<'_>> {
@@ -145,9 +143,7 @@ pub(crate) fn split_granted_ability_condition(
     })
 }
 
-pub(crate) fn parse_special_granted_keyword(
-    tokens: &[OwnedLexToken],
-) -> Option<SpecialGrantedKeyword> {
+pub fn parse_special_granted_keyword(tokens: &[OwnedLexToken]) -> Option<SpecialGrantedKeyword> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
     if parse_complete_keyword(tokens, "emerge") {
         return Some(SpecialGrantedKeyword::Emerge);

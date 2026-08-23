@@ -23,13 +23,13 @@ mod capture_shapes;
 #[path = "predicate_phrases/surface.rs"]
 mod surface;
 
-pub(crate) use advanced::parse_predicate;
+pub use advanced::parse_predicate;
 
 #[cfg(test)]
 #[path = "predicate_phrases/tests.rs"]
 mod tests;
 
-pub(crate) use capture_shapes::{WinnowAtom, WinnowCaptureKind, WinnowCaptureRole, WinnowSequence};
+pub use capture_shapes::{WinnowAtom, WinnowCaptureKind, WinnowCaptureRole, WinnowSequence};
 
 const OUTLAW_SHORTHAND_FILTER_PHRASES: &[&[&str]] = &[
     &["outlaw"],
@@ -709,9 +709,7 @@ fn parse_filter_keyword_constraint_tokens(
     Some((constraint, consumed_tokens))
 }
 
-pub(crate) fn parse_source_keyword_condition_filter(
-    tokens: &[OwnedLexToken],
-) -> Option<ObjectFilter> {
+pub fn parse_source_keyword_condition_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let relation = parse_has_relation_clauses(tokens)?;
     let subject_words = relation.subject_clause.words().word_refs();
     let explicit_this_type = matches!(
@@ -2715,9 +2713,7 @@ fn split_triggering_spell_ordinal_categories(tokens: &[OwnedLexToken]) -> Vec<&[
     categories
 }
 
-pub(crate) fn parse_triggering_spell_ordinal_predicate(
-    tokens: &[OwnedLexToken],
-) -> Option<PredicateAst> {
+pub fn parse_triggering_spell_ordinal_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     const OPTIONAL_THE: &[WinnowAtom<'static>] = &[WinnowSequence::word("the")];
     const CAST_THIS_TURN_SUFFIXES: &[&[&str]] = &[
         &["you", "cast", "this", "turn"],

@@ -20,11 +20,11 @@ struct SequenceRuleDef {
 }
 
 #[derive(Debug)]
-pub(crate) struct SequenceRuleMatch {
-    pub(crate) name: &'static str,
-    pub(crate) feature_tag: Option<&'static str>,
-    pub(crate) consumed_sentences: usize,
-    pub(crate) effects: Vec<EffectAst>,
+pub struct SequenceRuleMatch {
+    pub name: &'static str,
+    pub feature_tag: Option<&'static str>,
+    pub consumed_sentences: usize,
+    pub effects: Vec<EffectAst>,
 }
 
 fn sentence_head(sentences: &[SentenceInput], sentence_idx: usize) -> Option<(&str, Option<&str>)> {
@@ -1471,7 +1471,7 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
     },
 ];
 
-pub(crate) fn try_parse_subject_verb_sequence_rule(
+pub fn try_parse_subject_verb_sequence_rule(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<SequenceRuleMatch>, CardTextError> {
@@ -1480,7 +1480,7 @@ pub(crate) fn try_parse_subject_verb_sequence_rule(
 }
 
 // BRIDGE-LEGACY-REGISTRY: PR-21 through PR-29 remove this finite recipe table.
-pub(crate) fn recognize_subject_verb_sequence_legacy_compatibility_registry(
+pub fn recognize_subject_verb_sequence_legacy_compatibility_registry(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> ParseOutcome<SequenceRuleMatch> {
@@ -1530,7 +1530,7 @@ pub(crate) fn recognize_subject_verb_sequence_legacy_compatibility_registry(
     }
 }
 
-pub(crate) fn subject_verb_sequence_route(name: &str) -> &'static str {
+pub fn subject_verb_sequence_route(name: &str) -> &'static str {
     match name {
         "prefix-then-consult-match-into-hand-exile-others" => {
             "subject-verb verb=Search subject=explicit recognizer=consult-library-procedure"

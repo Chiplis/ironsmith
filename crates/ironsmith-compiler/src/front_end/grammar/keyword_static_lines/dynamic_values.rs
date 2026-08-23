@@ -13,7 +13,7 @@ use super::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SpellCastDynamicKind {
+pub enum SpellCastDynamicKind {
     CardTypes,
     OtherThanFirst,
     MatchingTypes {
@@ -25,7 +25,7 @@ pub(crate) enum SpellCastDynamicKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DynamicThisWayMetric {
+pub enum DynamicThisWayMetric {
     Destroyed,
     Sacrificed,
     Discarded,
@@ -33,21 +33,21 @@ pub(crate) enum DynamicThisWayMetric {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CounterReferenceKind {
+pub enum CounterReferenceKind {
     Source,
     Tagged,
     Other,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CounterReferenceSpec<'a> {
-    pub(crate) counter_type: Option<CounterType>,
-    pub(crate) reference_tokens: &'a [OwnedLexToken],
-    pub(crate) reference_kind: CounterReferenceKind,
+pub struct CounterReferenceSpec<'a> {
+    pub counter_type: Option<CounterType>,
+    pub reference_tokens: &'a [OwnedLexToken],
+    pub reference_kind: CounterReferenceKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DynamicCostValueShape<'a> {
+pub enum DynamicCostValueShape<'a> {
     CardsDrawn(DynamicPlayerKind),
     LifeGained(DynamicPlayerKind),
     KickCount,
@@ -79,7 +79,7 @@ pub(crate) enum DynamicCostValueShape<'a> {
     },
 }
 
-pub(crate) fn parse_dynamic_cost_value_shape_tokens(
+pub fn parse_dynamic_cost_value_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DynamicCostValueShape<'_>> {
     if let Some(player) = parse_cards_drawn_this_turn_player_tokens(tokens) {
@@ -379,7 +379,7 @@ fn parse_counter_reference_type(tokens: &[OwnedLexToken]) -> Option<Option<Count
             .or_else(|| {
                 word.chars()
                     .all(|character| character.is_ascii_alphabetic())
-                    .then(|| CounterType::Named(filters::intern_counter_name(word)))
+                    .then(|| CounterType::Named(filters::intern_counter_name(word).into()))
             })
             .map(Some)
     } else if primitives::parse_word_sequence_complete(&words, &["first", "strike"]).is_some() {

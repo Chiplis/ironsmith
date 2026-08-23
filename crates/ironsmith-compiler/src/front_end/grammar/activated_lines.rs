@@ -14,35 +14,35 @@ use super::primitives::{self, TokenWordView, WordSliceInput};
 
 #[path = "activated_lines/x_and_loyalty_facts.rs"]
 mod x_and_loyalty_facts;
-pub(crate) use x_and_loyalty_facts::*;
+pub use x_and_loyalty_facts::*;
 
 #[path = "activated_lines/blocking_and_cycling.rs"]
 mod blocking_and_cycling;
-pub(crate) use blocking_and_cycling::*;
+pub use blocking_and_cycling::*;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct ActivatedLineSplit<'a> {
-    pub(crate) before_colon: &'a [OwnedLexToken],
-    pub(crate) after_colon: &'a [OwnedLexToken],
+pub struct ActivatedLineSplit<'a> {
+    pub before_colon: &'a [OwnedLexToken],
+    pub after_colon: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PrimaryManaClauseKind {
+pub enum PrimaryManaClauseKind {
     Standard,
     ColorsAmong,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct PrimaryManaClauseSpec<'a> {
-    pub(crate) kind: PrimaryManaClauseKind,
-    pub(crate) mana_tokens: &'a [OwnedLexToken],
-    pub(crate) subject_tokens: Option<&'a [OwnedLexToken]>,
-    pub(crate) has_for_each: bool,
-    pub(crate) requires_general_effect: bool,
+pub struct PrimaryManaClauseSpec<'a> {
+    pub kind: PrimaryManaClauseKind,
+    pub mana_tokens: &'a [OwnedLexToken],
+    pub subject_tokens: Option<&'a [OwnedLexToken]>,
+    pub has_for_each: bool,
+    pub requires_general_effect: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ActivatedDevotionParseError {
+pub enum ActivatedDevotionParseError {
     UnsupportedPlayer,
     MissingColorAfterDevotion,
     MissingColor,
@@ -50,7 +50,7 @@ pub(crate) enum ActivatedDevotionParseError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EntersTappedLineShape {
+pub enum EntersTappedLineShape {
     NoMatch,
     NegatedUntap,
     MixedNegatedUntap,
@@ -60,7 +60,7 @@ pub(crate) enum EntersTappedLineShape {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CostReductionLineHead<'a> {
+pub enum CostReductionLineHead<'a> {
     ThisCost {
         amount_tokens: &'a [OwnedLexToken],
         diagnostic_amount_word: &'a str,
@@ -79,20 +79,20 @@ pub(crate) enum CostReductionLineHead<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ThisCostReductionRemainder {
+pub enum ThisCostReductionRemainder {
     ForEach,
     Other,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActivatedAbilitiesReductionRemainder {
+pub enum ActivatedAbilitiesReductionRemainder {
     Unbounded,
     MinimumOneMana,
     MinimumOneManaAbilityActivationCost,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum ThisAbilityReductionRemainder<'a> {
+pub enum ThisAbilityReductionRemainder<'a> {
     Unconditional,
     Targets {
         count_and_filter_tokens: &'a [OwnedLexToken],
@@ -105,29 +105,29 @@ pub(crate) enum ThisAbilityReductionRemainder<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ThisSpellReductionRemainder {
+pub enum ThisSpellReductionRemainder {
     NotReduction,
     General,
     CardTypesInGraveyard,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct NextSpellCostReductionSpec {
-    pub(crate) spell_filter: ObjectFilter,
-    pub(crate) reduction: ManaCost,
+pub struct NextSpellCostReductionSpec {
+    pub spell_filter: ObjectFilter,
+    pub reduction: ManaCost,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum InlineActivatedSentenceKind {
+pub enum InlineActivatedSentenceKind {
     ThisAbilityCostReduction,
     NextSpellCostReduction,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ThisAbilityCostReference;
+pub struct ThisAbilityCostReference;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum OncePerTurnRestrictionNormalization {
+pub enum OncePerTurnRestrictionNormalization {
     Redundant,
     Residual(String),
 }
@@ -145,7 +145,7 @@ fn parse_activated_line_split<'a>(input: &mut LexStream<'a>) -> WResult<Activate
     })
 }
 
-pub(crate) fn parse_activated_line_split_tokens(
+pub fn parse_activated_line_split_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivatedLineSplit<'_>> {
     primitives::parse_all(tokens, parse_activated_line_split, "activated-line-split").ok()
@@ -221,7 +221,7 @@ fn mana_clause_needs_general_effect(words: &[&str]) -> bool {
         || uses_commander_identity
 }
 
-pub(crate) fn parse_primary_mana_clause_tokens(
+pub fn parse_primary_mana_clause_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PrimaryManaClauseSpec<'_>> {
     let view = TokenWordView::new(tokens);
@@ -283,7 +283,7 @@ fn parse_devotion_owner(words: &[&str]) -> Option<PlayerFilter> {
     )
 }
 
-pub(crate) fn parse_activated_devotion_value_tokens(
+pub fn parse_activated_devotion_value_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, ActivatedDevotionParseError> {
     let Some((devotion_token, _, _)) =
@@ -335,7 +335,7 @@ fn negated_untap_fact(words: &[&str]) -> bool {
     has_untap && has_negation
 }
 
-pub(crate) fn parse_enters_tapped_line_shape(tokens: &[OwnedLexToken]) -> EntersTappedLineShape {
+pub fn parse_enters_tapped_line_shape(tokens: &[OwnedLexToken]) -> EntersTappedLineShape {
     let words = parser_token_word_refs(tokens);
     if words.is_empty() {
         return EntersTappedLineShape::NoMatch;
@@ -405,7 +405,7 @@ fn parse_activated_abilities_cost_head<'a>(
     })
 }
 
-pub(crate) fn parse_cost_reduction_line_head_tokens(
+pub fn parse_cost_reduction_line_head_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CostReductionLineHead<'_>> {
     let words = crate::lexer::token_word_refs(tokens);
@@ -461,7 +461,7 @@ fn parsed_subject_is_empty(parsed: &CostReductionLineHead<'_>) -> bool {
     )
 }
 
-pub(crate) fn parse_this_cost_reduction_remainder_tokens(
+pub fn parse_this_cost_reduction_remainder_tokens(
     tokens: &[OwnedLexToken],
 ) -> ThisCostReductionRemainder {
     let words = parser_token_word_refs(tokens);
@@ -472,7 +472,7 @@ pub(crate) fn parse_this_cost_reduction_remainder_tokens(
     }
 }
 
-pub(crate) fn parse_activated_abilities_reduction_remainder_tokens(
+pub fn parse_activated_abilities_reduction_remainder_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivatedAbilitiesReductionRemainder> {
     let words = parser_token_word_refs(tokens);
@@ -518,7 +518,7 @@ pub(crate) fn parse_activated_abilities_reduction_remainder_tokens(
     })
 }
 
-pub(crate) fn parse_this_ability_reduction_remainder_tokens(
+pub fn parse_this_ability_reduction_remainder_tokens(
     tokens: &[OwnedLexToken],
 ) -> ThisAbilityReductionRemainder<'_> {
     let words = parser_token_word_refs(tokens);
@@ -558,7 +558,7 @@ pub(crate) fn parse_this_ability_reduction_remainder_tokens(
     ThisAbilityReductionRemainder::NotReduction
 }
 
-pub(crate) fn parse_this_spell_reduction_remainder_tokens(
+pub fn parse_this_spell_reduction_remainder_tokens(
     tokens: &[OwnedLexToken],
 ) -> ThisSpellReductionRemainder {
     let words = parser_token_word_refs(tokens);
@@ -602,7 +602,7 @@ fn parse_next_spell_cost_reduction<'a>(
     })
 }
 
-pub(crate) fn parse_next_spell_cost_reduction_tokens(
+pub fn parse_next_spell_cost_reduction_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<NextSpellCostReductionSpec> {
     primitives::parse_all(
@@ -620,14 +620,14 @@ fn parse_this_ability_cost_reference_prefix_lexed<'a>(
     Ok(ThisAbilityCostReference)
 }
 
-pub(crate) fn parse_this_ability_cost_reference_prefix_tokens(
+pub fn parse_this_ability_cost_reference_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ThisAbilityCostReference> {
     primitives::parse_prefix(tokens, parse_this_ability_cost_reference_prefix_lexed)
         .map(|(parsed, _)| parsed)
 }
 
-pub(crate) fn parse_inline_activated_sentence_kind_tokens(
+pub fn parse_inline_activated_sentence_kind_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<InlineActivatedSentenceKind> {
     let words = parser_token_word_refs(tokens);
@@ -652,7 +652,7 @@ pub(crate) fn parse_inline_activated_sentence_kind_tokens(
     None
 }
 
-pub(crate) fn parse_exhaust_once_restriction_tokens(tokens: &[OwnedLexToken]) -> Option<()> {
+pub fn parse_exhaust_once_restriction_tokens(tokens: &[OwnedLexToken]) -> Option<()> {
     let words = parser_token_word_refs(tokens);
     primitives::parse_full_word_slice(
         &words,
@@ -679,7 +679,7 @@ fn remove_once_per_turn_tail(words: &mut Vec<String>) {
     }
 }
 
-pub(crate) fn parse_once_per_turn_restriction_normalization_tokens(
+pub fn parse_once_per_turn_restriction_normalization_tokens(
     tokens: &[OwnedLexToken],
 ) -> OncePerTurnRestrictionNormalization {
     let mut words = crate::lexer::token_word_refs(tokens)

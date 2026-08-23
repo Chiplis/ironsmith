@@ -111,7 +111,7 @@ fn parse_emblem_description_ast(
     EmblemDescriptionAst { text, abilities }
 }
 
-pub(crate) fn parse_emblem_action(
+pub fn parse_emblem_action(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Option<EffectAst> {
@@ -133,7 +133,7 @@ pub(crate) fn parse_emblem_action(
 /// Keeping this boundary at the whole-sentence level prevents commas and
 /// sentence punctuation inside the quoted ability from being treated as
 /// outer effect separators.
-pub(crate) fn parse_quoted_emblem_then_action(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+pub fn parse_quoted_emblem_then_action(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let open_quote = tokens
         .iter()
         .position(|token| token.kind == TokenKind::Quote)?;
@@ -166,7 +166,7 @@ pub(crate) fn parse_quoted_emblem_then_action(tokens: &[OwnedLexToken]) -> Optio
 /// ability text, so retain a narrow fallback for the resulting `an emblem
 /// with ...` shape. The whole-sentence parser remains authoritative whenever
 /// the quotes are still present.
-pub(crate) fn parse_unquoted_emblem_action(
+pub fn parse_unquoted_emblem_action(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Option<EffectAst> {

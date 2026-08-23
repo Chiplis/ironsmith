@@ -10,43 +10,43 @@ use super::common::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LibraryPlacementShape {
+pub enum LibraryPlacementShape {
     Top,
     Bottom,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LibraryPlacementOrderShape {
+pub enum LibraryPlacementOrderShape {
     Random,
     ChooserChooses,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct LibraryChoiceDestinationShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct LibraryChoiceDestinationShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct LibraryPlacementDestinationShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) destination_tokens: &'a [OwnedLexToken],
-    pub(crate) placement: LibraryPlacementShape,
-    pub(crate) order: Option<LibraryPlacementOrderShape>,
+pub struct LibraryPlacementDestinationShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
+    pub destination_tokens: &'a [OwnedLexToken],
+    pub placement: LibraryPlacementShape,
+    pub order: Option<LibraryPlacementOrderShape>,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct IntoDestinationShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) destination_tokens: &'a [OwnedLexToken],
-    pub(crate) zone: Option<Zone>,
+pub struct IntoDestinationShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
+    pub destination_tokens: &'a [OwnedLexToken],
+    pub zone: Option<Zone>,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SourceExiledOwnerLibraryBottomShape<'a> {
-    pub(crate) source_tokens: &'a [OwnedLexToken],
+pub struct SourceExiledOwnerLibraryBottomShape<'a> {
+    pub source_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_source_exiled_owner_library_bottom_shape(
+pub fn parse_source_exiled_owner_library_bottom_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SourceExiledOwnerLibraryBottomShape<'_>> {
     let tokens = trim_lexed_commas(tokens);
@@ -69,7 +69,7 @@ pub(crate) fn parse_source_exiled_owner_library_bottom_shape(
     (!source_tokens.is_empty()).then_some(SourceExiledOwnerLibraryBottomShape { source_tokens })
 }
 
-pub(crate) fn contains_source_exiled_owner_library_bottom_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn contains_source_exiled_owner_library_bottom_shape(tokens: &[OwnedLexToken]) -> bool {
     permission_shapes::contains_tokens(tokens, &["owner", "of", "each", "card", "exiled", "with"])
         && permission_shapes::contains_tokens(
             tokens,
@@ -80,7 +80,7 @@ pub(crate) fn contains_source_exiled_owner_library_bottom_shape(tokens: &[OwnedL
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum DestinationFirstTargetShape<'a> {
+pub enum DestinationFirstTargetShape<'a> {
     Objects(&'a [OwnedLexToken]),
     Attached {
         attachment_target_tokens: &'a [OwnedLexToken],
@@ -89,29 +89,29 @@ pub(crate) enum DestinationFirstTargetShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct DestinationFirstBattlefieldShape<'a> {
-    pub(crate) tapped: bool,
-    pub(crate) face_down: bool,
-    pub(crate) controller: Option<BattlefieldControllerShape>,
-    pub(crate) target: DestinationFirstTargetShape<'a>,
+pub struct DestinationFirstBattlefieldShape<'a> {
+    pub tapped: bool,
+    pub face_down: bool,
+    pub controller: Option<BattlefieldControllerShape>,
+    pub target: DestinationFirstTargetShape<'a>,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct OntoClauseShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) destination_tokens: &'a [OwnedLexToken],
+pub struct OntoClauseShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
+    pub destination_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct OntoBattlefieldDestinationShape {
-    pub(crate) tapped: bool,
-    pub(crate) attacking: bool,
-    pub(crate) face_down: bool,
-    pub(crate) source_from_command: bool,
-    pub(crate) attached_to_tokens: Option<Vec<OwnedLexToken>>,
-    pub(crate) rest_graveyard_target: Option<Vec<OwnedLexToken>>,
-    pub(crate) controller: Option<BattlefieldControllerShape>,
-    pub(crate) supported_tail: bool,
+pub struct OntoBattlefieldDestinationShape {
+    pub tapped: bool,
+    pub attacking: bool,
+    pub face_down: bool,
+    pub source_from_command: bool,
+    pub attached_to_tokens: Option<Vec<OwnedLexToken>>,
+    pub rest_graveyard_target: Option<Vec<OwnedLexToken>>,
+    pub controller: Option<BattlefieldControllerShape>,
+    pub supported_tail: bool,
 }
 
 fn article(input: &mut crate::lexer::LexStream<'_>) -> winnow::error::ModalResult<()> {
@@ -183,7 +183,7 @@ fn choice_destination(tokens: &[OwnedLexToken]) -> bool {
         || primitives::contains_word(library_tail, "libraries")
 }
 
-pub(crate) fn parse_library_choice_destination_shape(
+pub fn parse_library_choice_destination_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LibraryChoiceDestinationShape<'_>> {
     let (on_index, _, destination) = primitives::find_prefix(tokens, || primitives::kw("on"))?;
@@ -215,7 +215,7 @@ fn placement_start(
     }
 }
 
-pub(crate) fn parse_library_placement_destination_shape(
+pub fn parse_library_placement_destination_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LibraryPlacementDestinationShape<'_>> {
     let (index, placement, destination) = placement_start(tokens)?;
@@ -244,7 +244,7 @@ pub(crate) fn parse_library_placement_destination_shape(
     })
 }
 
-pub(crate) fn is_exhaustive_hand_collection(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_exhaustive_hand_collection(tokens: &[OwnedLexToken]) -> bool {
     let tokens = trim_lexed_commas(tokens);
     let plural_collection = permission_shapes::prefix_tokens(tokens, &["the", "cards", "in"])
         || permission_shapes::prefix_tokens(tokens, &["cards", "in"]);
@@ -252,9 +252,7 @@ pub(crate) fn is_exhaustive_hand_collection(tokens: &[OwnedLexToken]) -> bool {
         && (primitives::contains_word(tokens, "hand") || primitives::contains_word(tokens, "hands"))
 }
 
-pub(crate) fn parse_into_destination_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<IntoDestinationShape<'_>> {
+pub fn parse_into_destination_shape(tokens: &[OwnedLexToken]) -> Option<IntoDestinationShape<'_>> {
     let (index, _, destination_tokens) =
         primitives::find_prefix(tokens, || primitives::kw("into"))?;
     let target_tokens = trim_lexed_commas(tokens.get(..index)?);
@@ -298,7 +296,7 @@ fn attachment_target_prefix(
     Some((tokens.get(..used)?, trim_lexed_commas(rest)))
 }
 
-pub(crate) fn parse_destination_first_battlefield_shape(
+pub fn parse_destination_first_battlefield_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DestinationFirstBattlefieldShape<'_>> {
     let tokens = trim_lexed_commas(tokens);
@@ -358,7 +356,7 @@ pub(crate) fn parse_destination_first_battlefield_shape(
     })
 }
 
-pub(crate) fn parse_onto_clause_shape(tokens: &[OwnedLexToken]) -> Option<OntoClauseShape<'_>> {
+pub fn parse_onto_clause_shape(tokens: &[OwnedLexToken]) -> Option<OntoClauseShape<'_>> {
     let (index, _, destination_tokens) =
         primitives::find_prefix(tokens, || primitives::kw("onto"))?;
     let target_tokens = trim_lexed_commas(tokens.get(..index)?);
@@ -382,7 +380,7 @@ pub(crate) fn parse_onto_clause_shape(tokens: &[OwnedLexToken]) -> Option<OntoCl
     })
 }
 
-pub(crate) fn target_names_unowned_shared_zone(tokens: &[OwnedLexToken]) -> bool {
+pub fn target_names_unowned_shared_zone(tokens: &[OwnedLexToken]) -> bool {
     [
         &["from", "a", "graveyard"][..],
         &["from", "any", "graveyard"][..],
@@ -423,7 +421,7 @@ fn word_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     words
 }
 
-pub(crate) fn parse_onto_battlefield_destination_shape(
+pub fn parse_onto_battlefield_destination_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<OntoBattlefieldDestinationShape> {
     let source_from_command =

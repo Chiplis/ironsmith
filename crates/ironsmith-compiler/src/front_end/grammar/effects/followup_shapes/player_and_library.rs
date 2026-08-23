@@ -1,13 +1,13 @@
 use super::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LibraryShuffleFollowupShape {
+pub enum LibraryShuffleFollowupShape {
     IfSearchedThisWay,
     ThatPlayer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DamagedPlayerFollowupShape {
+pub enum DamagedPlayerFollowupShape {
     CantCastNoncreatureSpellsThisTurn,
     CantGainLifeRestOfGame,
 }
@@ -32,7 +32,7 @@ fn library_shuffle_followup<'a>(input: &mut LexStream<'a>) -> WResult<LibraryShu
     .parse_next(input)
 }
 
-pub(crate) fn parse_library_shuffle_followup_shape(
+pub fn parse_library_shuffle_followup_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LibraryShuffleFollowupShape> {
     primitives::parse_all(tokens, library_shuffle_followup, "library shuffle followup").ok()
@@ -74,13 +74,13 @@ fn damaged_player_followup<'a>(input: &mut LexStream<'a>) -> WResult<DamagedPlay
     .parse_next(input)
 }
 
-pub(crate) fn parse_damaged_player_followup_shape(
+pub fn parse_damaged_player_followup_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DamagedPlayerFollowupShape> {
     primitives::parse_all(tokens, damaged_player_followup, "damaged player followup").ok()
 }
 
-pub(crate) fn is_tap_damaged_creatures_followup(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_tap_damaged_creatures_followup(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,
         (
@@ -96,7 +96,7 @@ pub(crate) fn is_tap_damaged_creatures_followup(tokens: &[OwnedLexToken]) -> boo
     .is_ok()
 }
 
-pub(crate) fn is_still_land_followup(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_still_land_followup(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,
         (
@@ -118,7 +118,7 @@ pub(crate) fn is_still_land_followup(tokens: &[OwnedLexToken]) -> bool {
     .is_ok()
 }
 
-pub(crate) fn is_destroy_those_creatures_followup(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_destroy_those_creatures_followup(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,
         (

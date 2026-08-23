@@ -3,38 +3,36 @@ use super::super::grammar::effects::chain_splitting as chain_grammar;
 use super::super::lexer::OwnedLexToken;
 use super::chain_carry::Verb;
 
-pub(crate) fn strip_leading_instead_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
+pub fn strip_leading_instead_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
     chain_grammar::strip_leading_instead_tokens(tokens).map(<[_]>::to_vec)
 }
 
-pub(crate) fn strip_leading_instead_prefix_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<&[OwnedLexToken]> {
+pub fn strip_leading_instead_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     chain_grammar::strip_leading_instead_tokens(tokens)
 }
 
-pub(crate) fn starts_with_inline_token_rules_tail(tokens: &[OwnedLexToken]) -> bool {
+pub fn starts_with_inline_token_rules_tail(tokens: &[OwnedLexToken]) -> bool {
     chain_grammar::starts_with_inline_token_rules_tail_tokens(tokens)
 }
 
-pub(crate) fn is_token_creation_context(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_token_creation_context(tokens: &[OwnedLexToken]) -> bool {
     chain_grammar::is_token_creation_context_tokens(tokens)
 }
 
-pub(crate) fn find_verb_lexed(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)> {
+pub fn find_verb_lexed(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)> {
     let found = chain_grammar::find_chain_verb_tokens(tokens)?;
     Some((lower_chain_verb(found.kind), found.word_index))
 }
 
-pub(crate) fn split_effect_chain_on_and_lexed(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
+pub fn split_effect_chain_on_and_lexed(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
     chain_grammar::split_effect_chain_on_and_tokens(tokens, true)
 }
 
-pub(crate) fn has_effect_head_without_verb_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn has_effect_head_without_verb_lexed(tokens: &[OwnedLexToken]) -> bool {
     chain_grammar::has_extended_effect_head_tokens(tokens)
 }
 
-pub(crate) fn segment_has_effect_head_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn segment_has_effect_head_lexed(tokens: &[OwnedLexToken]) -> bool {
     find_verb_lexed(tokens).is_some()
         || has_effect_head_without_verb_lexed(tokens)
         || super::super::grammar::effects::chain_carry::parse_carry_duration_prefix_tokens(tokens)
@@ -51,7 +49,7 @@ pub(crate) fn segment_has_effect_head_lexed(tokens: &[OwnedLexToken]) -> bool {
         .is_some_and(|shape| shape.copy_word == 0)
 }
 
-pub(crate) fn split_segments_on_comma_then_lexed(
+pub fn split_segments_on_comma_then_lexed(
     segments: Vec<&[OwnedLexToken]>,
 ) -> Vec<&[OwnedLexToken]> {
     chain_grammar::split_segments_on_comma_then_tokens(segments, |tokens| {
@@ -59,17 +57,17 @@ pub(crate) fn split_segments_on_comma_then_lexed(
     })
 }
 
-pub(crate) fn has_explicit_comma_then_boundary_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn has_explicit_comma_then_boundary_lexed(tokens: &[OwnedLexToken]) -> bool {
     chain_grammar::has_explicit_comma_then_boundary_tokens(tokens, |tokens| {
         parse_ability_line_lexed(tokens).is_some()
     })
 }
 
-pub(crate) fn has_authored_comma_then_surface_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn has_authored_comma_then_surface_lexed(tokens: &[OwnedLexToken]) -> bool {
     chain_grammar::has_authored_comma_then_surface_tokens(tokens)
 }
 
-pub(crate) fn split_segments_on_comma_effect_head_lexed(
+pub fn split_segments_on_comma_effect_head_lexed(
     segments: Vec<&[OwnedLexToken]>,
 ) -> Vec<&[OwnedLexToken]> {
     chain_grammar::split_segments_on_comma_effect_head_tokens(segments)

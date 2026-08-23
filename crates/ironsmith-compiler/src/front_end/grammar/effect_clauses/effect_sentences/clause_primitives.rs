@@ -33,17 +33,16 @@ use crate::registry::{
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::zone::Zone;
 
-pub(crate) type ClausePrimitiveParser =
-    fn(&[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError>;
+pub type ClausePrimitiveParser = fn(&[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError>;
 
-pub(crate) struct ClausePrimitive {
-    pub(crate) metadata: RegistryRuleMetadata,
-    pub(crate) phase: ClausePrimitivePhase,
-    pub(crate) parser: ClausePrimitiveParser,
+pub struct ClausePrimitive {
+    pub metadata: RegistryRuleMetadata,
+    pub phase: ClausePrimitivePhase,
+    pub parser: ClausePrimitiveParser,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ClausePrimitivePhase {
+pub enum ClausePrimitivePhase {
     Specific,
     GenericFallback,
 }
@@ -78,9 +77,7 @@ impl ClausePrimitive {
 
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
 
-pub(crate) fn parse_retarget_clause(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
+pub fn parse_retarget_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     if let Some(effect) = parse_choose_new_targets_clause(tokens)? {
         return Ok(Some(effect));
     }
@@ -90,7 +87,7 @@ pub(crate) fn parse_retarget_clause(
     Ok(None)
 }
 
-pub(crate) fn parse_copy_targets_clause(
+pub fn parse_copy_targets_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = clause_shapes::parse_copy_targets_shape(tokens) else {
@@ -116,7 +113,7 @@ pub(crate) fn parse_copy_targets_clause(
     )))
 }
 
-pub(crate) fn parse_choose_new_targets_clause(
+pub fn parse_choose_new_targets_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(split) = split_choose_new_targets_clause_lexed(tokens) else {
@@ -182,7 +179,7 @@ pub(crate) fn parse_choose_new_targets_clause(
     ))
 }
 
-pub(crate) fn parse_change_target_clause(
+pub fn parse_change_target_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
@@ -206,7 +203,7 @@ pub(crate) fn parse_change_target_clause(
     parse_change_target_clause_inner(tokens)
 }
 
-pub(crate) fn parse_change_target_clause_inner(
+pub fn parse_change_target_clause_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(split) = split_change_target_clause_lexed(tokens) else {
@@ -264,7 +261,7 @@ fn apply_retarget_constraint(
     }
 }
 
-pub(crate) fn parse_unless_pays_clause(
+pub fn parse_unless_pays_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<(PlayerAst, crate::cost::TotalCost), CardTextError> {
     let shape = parse_unless_pays_shape_tokens(tokens).ok_or_else(|| {
@@ -290,7 +287,7 @@ pub(crate) fn parse_unless_pays_clause(
     Ok((player, cost))
 }
 
-pub(crate) fn parse_stack_retarget_filter(
+pub fn parse_stack_retarget_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<ObjectFilter, CardTextError> {
     let Some(shape) = clause_shapes::parse_stack_retarget_filter_shape(tokens) else {
@@ -315,9 +312,7 @@ pub(crate) fn parse_stack_retarget_filter(
     Ok(filter)
 }
 
-pub(crate) fn run_clause_primitives(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
+pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     const PRIMITIVES: &[ClausePrimitive] = &[
         ClausePrimitive::specific(
             "choose-card-name-clause",
@@ -557,7 +552,7 @@ pub(crate) fn run_clause_primitives(
         .into_legacy_result_option()
 }
 
-pub(crate) fn parse_choose_card_name_clause(
+pub fn parse_choose_card_name_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = clause_shapes::parse_choose_card_name_shape(tokens) else {
@@ -582,7 +577,7 @@ pub(crate) fn parse_choose_card_name_clause(
     )))
 }
 
-pub(crate) fn parse_repeat_this_process_clause(
+pub fn parse_repeat_this_process_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     Ok(
@@ -594,7 +589,7 @@ pub(crate) fn parse_repeat_this_process_clause(
     )
 }
 
-pub(crate) fn parse_dont_lose_this_mana_as_steps_and_phases_end_clause(
+pub fn parse_dont_lose_this_mana_as_steps_and_phases_end_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     if clause_shapes::is_dont_lose_mana_between_steps_shape(tokens) {
@@ -605,7 +600,7 @@ pub(crate) fn parse_dont_lose_this_mana_as_steps_and_phases_end_clause(
     Ok(None)
 }
 
-pub(crate) fn parse_each_player_exiles_hand_face_down_and_draws_clause(
+pub fn parse_each_player_exiles_hand_face_down_and_draws_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     if !clause_shapes::is_each_player_exiles_hand_face_down_and_draws_shape(tokens) {
@@ -630,7 +625,7 @@ pub(crate) fn parse_each_player_exiles_hand_face_down_and_draws_clause(
     }))
 }
 
-pub(crate) fn parse_each_player_return_with_additional_counter_clause(
+pub fn parse_each_player_return_with_additional_counter_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(mut effects) = parse_sentence_each_player_return_with_additional_counter(
@@ -647,7 +642,7 @@ pub(crate) fn parse_each_player_return_with_additional_counter_clause(
     }))
 }
 
-pub(crate) fn parse_attack_or_block_this_turn_if_able_clause(
+pub fn parse_attack_or_block_this_turn_if_able_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     use crate::effect::Until;
@@ -709,7 +704,7 @@ pub(crate) fn parse_attack_or_block_this_turn_if_able_clause(
     )))
 }
 
-pub(crate) fn parse_attack_this_turn_if_able_clause(
+pub fn parse_attack_this_turn_if_able_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     use crate::effect::Until;
@@ -800,7 +795,7 @@ fn parse_dealt_damage_this_way_subject_filter(
     Ok(Some(filter))
 }
 
-pub(crate) fn parse_must_be_blocked_if_able_clause(
+pub fn parse_must_be_blocked_if_able_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     use crate::effect::Until;
@@ -888,7 +883,7 @@ fn forced_block_effect(
     }
 }
 
-pub(crate) fn parse_must_block_if_able_clause(
+pub fn parse_must_block_if_able_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     use crate::effect::Until;
@@ -1059,7 +1054,7 @@ pub(crate) fn parse_must_block_if_able_clause(
     }
 }
 
-pub(crate) fn parse_until_duration_triggered_clause(
+pub fn parse_until_duration_triggered_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
@@ -1119,14 +1114,14 @@ pub(crate) fn parse_until_duration_triggered_clause(
     }))
 }
 
-pub(crate) fn is_damage_source_target(target: &TargetAst) -> bool {
+pub fn is_damage_source_target(target: &TargetAst) -> bool {
     matches!(
         target,
         TargetAst::Source(_) | TargetAst::Object(_, _, _) | TargetAst::Tagged(_, _)
     )
 }
 
-pub(crate) fn parse_anaphoric_object_deals_damage_clause(
+pub fn parse_anaphoric_object_deals_damage_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let word_view = TokenWordView::new(tokens);
@@ -1243,7 +1238,7 @@ pub(crate) fn parse_anaphoric_object_deals_damage_clause(
     }
 }
 
-pub(crate) fn parse_deal_damage_equal_to_power_clause(
+pub fn parse_deal_damage_equal_to_power_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = clause_shapes::parse_power_damage_shape(tokens)? else {
@@ -1391,9 +1386,7 @@ fn bind_iterated_source_possessive_characteristic(value: Value) -> Value {
     }
 }
 
-pub(crate) fn parse_fight_clause(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
+pub fn parse_fight_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = clause_shapes::parse_fight_shape(tokens) else {
         return Ok(None);
     };
@@ -1452,9 +1445,7 @@ pub(crate) fn parse_fight_clause(
     Ok(Some(EffectAst::subject_verb_fight(creature1, creature2)))
 }
 
-pub(crate) fn parse_clash_clause(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
+pub fn parse_clash_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     Ok(clause_shapes::parse_clash_shape(tokens).map(EffectAst::subject_verb_clash))
 }
 

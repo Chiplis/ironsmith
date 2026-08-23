@@ -7,37 +7,37 @@ use winnow::combinator::{alt, opt};
 use winnow::error::ModalResult as WResult;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct MonstrosityShape {
-    pub(crate) amount: Value,
+pub struct MonstrosityShape {
+    pub amount: Value,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CounterRemovedPumpShape {
-    pub(crate) power: i32,
-    pub(crate) toughness: i32,
-    pub(crate) includes_this_way: bool,
+pub struct CounterRemovedPumpShape {
+    pub power: i32,
+    pub toughness: i32,
+    pub includes_this_way: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TokenEndCombatActionShape {
+pub enum TokenEndCombatActionShape {
     Exile,
     Sacrifice,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ExtraTurnShape {
-    pub(crate) player: PlayerAst,
-    pub(crate) anchor: ExtraTurnAnchorAst,
+pub struct ExtraTurnShape {
+    pub player: PlayerAst,
+    pub anchor: ExtraTurnAnchorAst,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AdditionalPhasesShape {
-    pub(crate) phases: Vec<AdditionalPhase>,
+pub struct AdditionalPhasesShape {
+    pub phases: Vec<AdditionalPhase>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct VotedWithYouScryShape {
-    pub(crate) count: Value,
+pub struct VotedWithYouScryShape {
+    pub count: Value,
 }
 
 fn monstrosity<'a>(input: &mut LexStream<'a>) -> WResult<Value> {
@@ -50,7 +50,7 @@ fn monstrosity<'a>(input: &mut LexStream<'a>) -> WResult<Value> {
     Ok(amount)
 }
 
-pub(crate) fn parse_monstrosity_shape(tokens: &[OwnedLexToken]) -> Option<MonstrosityShape> {
+pub fn parse_monstrosity_shape(tokens: &[OwnedLexToken]) -> Option<MonstrosityShape> {
     primitives::parse_all(tokens, monstrosity, "monstrosity shape")
         .ok()
         .map(|amount| MonstrosityShape { amount })
@@ -65,7 +65,7 @@ fn fixed_modifier(token: &OwnedLexToken) -> Option<(i32, i32)> {
     }
 }
 
-pub(crate) fn parse_counter_removed_pump_shape(
+pub fn parse_counter_removed_pump_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<CounterRemovedPumpShape> {
     let (includes_this_way, body) = if let Some((_, body)) = primitives::parse_prefix(
@@ -119,7 +119,7 @@ fn token_end_combat<'a>(input: &mut LexStream<'a>) -> WResult<TokenEndCombatActi
     Ok(action)
 }
 
-pub(crate) fn parse_token_end_combat_action_shape(
+pub fn parse_token_end_combat_action_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenEndCombatActionShape> {
     primitives::parse_all(tokens, token_end_combat, "token end-of-combat action").ok()
@@ -161,7 +161,7 @@ fn extra_turn<'a>(input: &mut LexStream<'a>) -> WResult<ExtraTurnShape> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_extra_turn_shape(tokens: &[OwnedLexToken]) -> Option<ExtraTurnShape> {
+pub fn parse_extra_turn_shape(tokens: &[OwnedLexToken]) -> Option<ExtraTurnShape> {
     primitives::parse_all(tokens, extra_turn, "extra turn shape").ok()
 }
 
@@ -293,9 +293,7 @@ fn additional_phases<'a>(input: &mut LexStream<'a>) -> WResult<AdditionalPhasesS
     Ok(AdditionalPhasesShape { phases })
 }
 
-pub(crate) fn parse_additional_phases_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<AdditionalPhasesShape> {
+pub fn parse_additional_phases_shape(tokens: &[OwnedLexToken]) -> Option<AdditionalPhasesShape> {
     primitives::parse_all(tokens, additional_phases, "additional phases shape").ok()
 }
 
@@ -315,9 +313,7 @@ fn voted_with_you_scry<'a>(input: &mut LexStream<'a>) -> WResult<Value> {
     Ok(count)
 }
 
-pub(crate) fn parse_voted_with_you_scry_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<VotedWithYouScryShape> {
+pub fn parse_voted_with_you_scry_shape(tokens: &[OwnedLexToken]) -> Option<VotedWithYouScryShape> {
     primitives::parse_all(tokens, voted_with_you_scry, "voted-with-you scry")
         .ok()
         .map(|count| VotedWithYouScryShape { count })

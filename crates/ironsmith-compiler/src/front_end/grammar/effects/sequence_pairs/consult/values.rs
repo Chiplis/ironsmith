@@ -6,9 +6,9 @@ use crate::lexer::{OwnedLexToken, TokenWordView};
 use super::super::sequence_any_phrase;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ConsultManaValueConditionShape {
-    pub(crate) operator: ValueComparisonOperator,
-    pub(crate) right: Value,
+pub struct ConsultManaValueConditionShape {
+    pub operator: ValueComparisonOperator,
+    pub right: Value,
 }
 
 const MANA_VALUE_CONDITION_PREFIXES: &[&[&str]] = &[
@@ -31,7 +31,7 @@ const MANA_VALUE_CONDITION_PREFIXES: &[&[&str]] = &[
     &["if", "its", "mana", "value"],
 ];
 
-pub(crate) fn parse_consult_condition_value_shape(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_consult_condition_value_shape(tokens: &[OwnedLexToken]) -> Option<Value> {
     if permission_shapes::exact_tokens_any(tokens, &[&["thiss", "power"], &["this", "power"]]) {
         return Some(Value::SourcePower);
     }
@@ -53,7 +53,7 @@ pub(crate) fn parse_consult_condition_value_shape(tokens: &[OwnedLexToken]) -> O
     Some(Value::Count(filter))
 }
 
-pub(crate) fn parse_consult_mana_value_condition_shape(
+pub fn parse_consult_mana_value_condition_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ConsultManaValueConditionShape> {
     let (_, comparison_tokens) =

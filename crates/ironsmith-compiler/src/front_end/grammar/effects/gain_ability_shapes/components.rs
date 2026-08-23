@@ -8,21 +8,21 @@ use crate::lexer::{OwnedLexToken, TokenWordView, trim_lexed_commas};
 use super::durations::parse_simple_ability_duration_shape;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum GrantedAbilitySurface {
+pub enum GrantedAbilitySurface {
     CantBeBlockedExceptByHaste,
     HexproofFrom { filter_start_token: usize },
     Other,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct AbilityChoiceShape<'a> {
-    pub(crate) options: Vec<&'a [OwnedLexToken]>,
+pub struct AbilityChoiceShape<'a> {
+    pub options: Vec<&'a [OwnedLexToken]>,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct SourceGainAbilityShape<'a> {
-    pub(crate) ability_tokens: &'a [OwnedLexToken],
-    pub(crate) duration: Until,
+pub struct SourceGainAbilityShape<'a> {
+    pub ability_tokens: &'a [OwnedLexToken],
+    pub duration: Until,
 }
 
 fn cant_be_blocked_except_haste<'a>(
@@ -41,7 +41,7 @@ fn cant_be_blocked_except_haste<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn classify_granted_ability_surface(tokens: &[OwnedLexToken]) -> GrantedAbilitySurface {
+pub fn classify_granted_ability_surface(tokens: &[OwnedLexToken]) -> GrantedAbilitySurface {
     if primitives::parse_prefix(tokens, cant_be_blocked_except_haste).is_some() {
         return GrantedAbilitySurface::CantBeBlockedExceptByHaste;
     }
@@ -56,9 +56,7 @@ pub(crate) fn classify_granted_ability_surface(tokens: &[OwnedLexToken]) -> Gran
     GrantedAbilitySurface::Other
 }
 
-pub(crate) fn parse_ability_choice_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<AbilityChoiceShape<'_>> {
+pub fn parse_ability_choice_shape(tokens: &[OwnedLexToken]) -> Option<AbilityChoiceShape<'_>> {
     let tokens = trim_lexed_commas(tokens);
     let explicit_choice_prefix = primitives::parse_prefix(
         tokens,
@@ -109,7 +107,7 @@ fn gain_verb<'a>(input: &mut crate::lexer::LexStream<'a>) -> winnow::error::Moda
         .parse_next(input)
 }
 
-pub(crate) fn parse_source_gain_ability_shape(
+pub fn parse_source_gain_ability_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SourceGainAbilityShape<'_>> {
     let (gain_token_idx, _, _) = primitives::find_prefix(tokens, || gain_verb)?;

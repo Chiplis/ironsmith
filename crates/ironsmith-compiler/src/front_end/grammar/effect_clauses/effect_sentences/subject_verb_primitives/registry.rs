@@ -15,7 +15,7 @@ pub(super) const MECHANIC_MARKER_PREFIXES: &[&[&str]] = &[
     &["venture", "into", "the", "dungeon"],
     &["it", "doesnt", "untap", "during"],
 ];
-pub(crate) type SubjectVerbPrimitiveParser =
+pub type SubjectVerbPrimitiveParser =
     for<'a> fn(SubjectVerbPrimitiveClause<'a>) -> Result<Option<Vec<EffectAst>>, CardTextError>;
 pub(super) type SubjectVerbPrimitiveNormalizedWords<'a> = TokenWordView<'a>;
 
@@ -66,12 +66,12 @@ fn registry_token_is_life(token: &OwnedLexToken) -> bool {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SubjectVerbPrimitiveClause<'a> {
+pub struct SubjectVerbPrimitiveClause<'a> {
     tokens: &'a [OwnedLexToken],
 }
 
 impl<'a> SubjectVerbPrimitiveClause<'a> {
-    pub(crate) fn new(tokens: &'a [OwnedLexToken]) -> Self {
+    pub fn new(tokens: &'a [OwnedLexToken]) -> Self {
         Self { tokens }
     }
 
@@ -79,78 +79,78 @@ impl<'a> SubjectVerbPrimitiveClause<'a> {
         LexedClause::new(self.tokens)
     }
 
-    pub(crate) fn tokens(self) -> &'a [OwnedLexToken] {
+    pub fn tokens(self) -> &'a [OwnedLexToken] {
         self.tokens
     }
 
-    pub(crate) fn len(self) -> usize {
+    pub fn len(self) -> usize {
         self.lexed().len()
     }
 
-    pub(crate) fn is_empty(self) -> bool {
+    pub fn is_empty(self) -> bool {
         self.lexed().is_empty()
     }
 
-    pub(crate) fn token(self, idx: usize) -> Option<&'a OwnedLexToken> {
+    pub fn token(self, idx: usize) -> Option<&'a OwnedLexToken> {
         self.lexed().token(idx)
     }
 
-    pub(crate) fn before(self, idx: usize) -> Self {
+    pub fn before(self, idx: usize) -> Self {
         Self::new(self.lexed().before(idx).tokens())
     }
 
-    pub(crate) fn from(self, idx: usize) -> Self {
+    pub fn from(self, idx: usize) -> Self {
         Self::new(self.lexed().from(idx).tokens())
     }
 
-    pub(crate) fn between(self, start: usize, end: usize) -> Self {
+    pub fn between(self, start: usize, end: usize) -> Self {
         Self::new(self.lexed().between(start, end).tokens())
     }
 
-    pub(crate) fn words(self) -> SubjectVerbPrimitiveNormalizedWords<'a> {
+    pub fn words(self) -> SubjectVerbPrimitiveNormalizedWords<'a> {
         self.lexed().words()
     }
 
-    pub(crate) fn word_refs(self) -> Vec<&'a str> {
+    pub fn word_refs(self) -> Vec<&'a str> {
         self.lexed().word_refs()
     }
 
-    pub(crate) fn text(self) -> String {
+    pub fn text(self) -> String {
         self.lexed().text()
     }
 
-    pub(crate) fn span(self) -> Option<TextSpan> {
+    pub fn span(self) -> Option<TextSpan> {
         span_from_tokens(self.tokens)
     }
 
-    pub(crate) fn first_word(self) -> Option<&'a str> {
+    pub fn first_word(self) -> Option<&'a str> {
         self.lexed().first_word()
     }
 
-    pub(crate) fn token_index_after_words(self, word_count: usize) -> Option<usize> {
+    pub fn token_index_after_words(self, word_count: usize) -> Option<usize> {
         self.lexed().token_index_after_words(word_count)
     }
 
-    pub(crate) fn before_word(self, word_idx: usize) -> Option<Self> {
+    pub fn before_word(self, word_idx: usize) -> Option<Self> {
         registry_shapes::split_registry_clause_at_word(self.tokens, word_idx)
             .map(|split| Self::new(split.before))
     }
 
-    pub(crate) fn from_word(self, word_idx: usize) -> Option<Self> {
+    pub fn from_word(self, word_idx: usize) -> Option<Self> {
         registry_shapes::split_registry_clause_at_word(self.tokens, word_idx)
             .map(|split| Self::new(split.after))
     }
 
-    pub(crate) fn after_words(self, word_count: usize) -> Option<Self> {
+    pub fn after_words(self, word_count: usize) -> Option<Self> {
         let token_idx = self.token_index_after_words(word_count)?;
         Some(self.from(token_idx))
     }
 
-    pub(crate) fn find_token_word(self, expected: &str) -> Option<usize> {
+    pub fn find_token_word(self, expected: &str) -> Option<usize> {
         self.lexed().find_token_word(expected)
     }
 
-    pub(crate) fn find_token_word_where(
+    pub fn find_token_word_where(
         self,
         expected: &str,
         mut predicate: impl FnMut(usize, Self) -> bool,
@@ -160,47 +160,47 @@ impl<'a> SubjectVerbPrimitiveClause<'a> {
         })
     }
 
-    pub(crate) fn find_unquoted_token_word(self, expected: &str) -> Option<usize> {
+    pub fn find_unquoted_token_word(self, expected: &str) -> Option<usize> {
         self.lexed().find_unquoted_token_word(expected)
     }
 
-    pub(crate) fn split_once_on_word(self, expected: &str) -> Option<(Self, Self)> {
+    pub fn split_once_on_word(self, expected: &str) -> Option<(Self, Self)> {
         self.lexed()
             .split_once_on_word(expected)
             .map(|(head, tail)| (Self::new(head.tokens()), Self::new(tail.tokens())))
     }
 
-    pub(crate) fn split_once_on_word_trimmed(self, expected: &str) -> Option<(Self, Self)> {
+    pub fn split_once_on_word_trimmed(self, expected: &str) -> Option<(Self, Self)> {
         self.lexed()
             .split_once_on_word_trimmed(expected)
             .map(|(head, tail)| (Self::new(head.tokens()), Self::new(tail.tokens())))
     }
 
-    pub(crate) fn split_once_on_word_any(self, expected: &[&str]) -> Option<(Self, Self)> {
+    pub fn split_once_on_word_any(self, expected: &[&str]) -> Option<(Self, Self)> {
         self.lexed()
             .split_once_on_word_any(expected)
             .map(|(head, tail)| (Self::new(head.tokens()), Self::new(tail.tokens())))
     }
 
-    pub(crate) fn split_once_on_comma(self) -> Option<(Self, Self)> {
+    pub fn split_once_on_comma(self) -> Option<(Self, Self)> {
         self.lexed()
             .split_once_on_comma()
             .map(|(head, tail)| (Self::new(head.tokens()), Self::new(tail.tokens())))
     }
 
-    pub(crate) fn trim(self) -> Vec<OwnedLexToken> {
+    pub fn trim(self) -> Vec<OwnedLexToken> {
         self.lexed().trim()
     }
 
-    pub(crate) fn trimmed(self) -> Self {
+    pub fn trimmed(self) -> Self {
         Self::new(self.lexed().trimmed().tokens())
     }
 
-    pub(crate) fn trimmed_word_refs(self) -> Vec<&'a str> {
+    pub fn trimmed_word_refs(self) -> Vec<&'a str> {
         self.lexed().trimmed_word_refs()
     }
 
-    pub(crate) fn trimmed_and_comma_segments(self) -> Vec<Self> {
+    pub fn trimmed_and_comma_segments(self) -> Vec<Self> {
         self.lexed()
             .trimmed_and_comma_segments()
             .into_iter()
@@ -208,7 +208,7 @@ impl<'a> SubjectVerbPrimitiveClause<'a> {
             .collect()
     }
 
-    pub(crate) fn trimmed_period_segments(self) -> Vec<Self> {
+    pub fn trimmed_period_segments(self) -> Vec<Self> {
         self.lexed()
             .trimmed_period_segments()
             .into_iter()
@@ -216,27 +216,27 @@ impl<'a> SubjectVerbPrimitiveClause<'a> {
             .collect()
     }
 
-    pub(crate) fn split_once_on_then_trimmed(self) -> Option<(Self, Self)> {
+    pub fn split_once_on_then_trimmed(self) -> Option<(Self, Self)> {
         self.lexed()
             .split_once_on_then_trimmed()
             .map(|(head, tail)| (Self::new(head.tokens()), Self::new(tail.tokens())))
     }
 
-    pub(crate) fn parse_with_lexed(
+    pub fn parse_with_lexed(
         self,
         parser: fn(&[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError>,
     ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
         parser(self.tokens)
     }
 
-    pub(crate) fn parse_one_with_lexed(
+    pub fn parse_one_with_lexed(
         self,
         parser: fn(&[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError>,
     ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
         Ok(parser(self.tokens)?.map(|effect| vec![effect]))
     }
 
-    pub(crate) fn parse_value_with_lexed<T>(
+    pub fn parse_value_with_lexed<T>(
         self,
         parser: fn(&[OwnedLexToken]) -> Result<Option<T>, CardTextError>,
     ) -> Result<Option<T>, CardTextError> {
@@ -253,65 +253,65 @@ impl<'a> std::ops::Deref for SubjectVerbPrimitiveClause<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct SubjectVerbPrimitiveOwnedClause {
+pub struct SubjectVerbPrimitiveOwnedClause {
     tokens: Vec<OwnedLexToken>,
 }
 
 impl SubjectVerbPrimitiveOwnedClause {
-    pub(crate) fn new(tokens: Vec<OwnedLexToken>) -> Self {
+    pub fn new(tokens: Vec<OwnedLexToken>) -> Self {
         Self { tokens }
     }
 
-    pub(crate) fn from_clause(clause: SubjectVerbPrimitiveClause<'_>) -> Self {
+    pub fn from_clause(clause: SubjectVerbPrimitiveClause<'_>) -> Self {
         Self::new(clause.tokens().to_vec())
     }
 
-    pub(crate) fn from_comma_trimmed_clause(clause: SubjectVerbPrimitiveClause<'_>) -> Self {
+    pub fn from_comma_trimmed_clause(clause: SubjectVerbPrimitiveClause<'_>) -> Self {
         Self::new(clause.trim())
     }
 
-    pub(crate) fn as_clause(&self) -> SubjectVerbPrimitiveClause<'_> {
+    pub fn as_clause(&self) -> SubjectVerbPrimitiveClause<'_> {
         SubjectVerbPrimitiveClause::new(&self.tokens)
     }
 
-    pub(crate) fn tokens(&self) -> &[OwnedLexToken] {
+    pub fn tokens(&self) -> &[OwnedLexToken] {
         &self.tokens
     }
 
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.tokens.len()
     }
 
-    pub(crate) fn first_word(&self) -> Option<&str> {
+    pub fn first_word(&self) -> Option<&str> {
         self.as_clause().first_word()
     }
 
-    pub(crate) fn from_tokens(&self, idx: usize) -> &[OwnedLexToken] {
+    pub fn from_tokens(&self, idx: usize) -> &[OwnedLexToken] {
         &self.tokens[idx.min(self.tokens.len())..]
     }
 
-    pub(crate) fn append_comma_then(&mut self, clause: SubjectVerbPrimitiveClause<'_>) {
+    pub fn append_comma_then(&mut self, clause: SubjectVerbPrimitiveClause<'_>) {
         self.tokens
             .push(OwnedLexToken::comma(TextSpan::synthetic()));
         self.tokens.extend_from_slice(clause.tokens());
     }
 
-    pub(crate) fn append_clause(&mut self, clause: SubjectVerbPrimitiveClause<'_>) {
+    pub fn append_clause(&mut self, clause: SubjectVerbPrimitiveClause<'_>) {
         self.tokens.extend_from_slice(clause.tokens());
     }
 
-    pub(crate) fn extend_from_slice(&mut self, tokens: &[OwnedLexToken]) {
+    pub fn extend_from_slice(&mut self, tokens: &[OwnedLexToken]) {
         self.tokens.extend_from_slice(tokens);
     }
 
-    pub(crate) fn insert_leading_word(&mut self, word: &str) {
+    pub fn insert_leading_word(&mut self, word: &str) {
         self.tokens.insert(
             0,
             OwnedLexToken::word(word.to_string(), TextSpan::synthetic()),
         );
     }
 
-    pub(crate) fn replace_leading_word(&mut self, word: &str) -> bool {
+    pub fn replace_leading_word(&mut self, word: &str) -> bool {
         if let Some(token) = self.tokens.first_mut()
             && token.as_word().is_some()
         {
@@ -324,22 +324,22 @@ impl SubjectVerbPrimitiveOwnedClause {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SubjectVerbPrimitiveStage {
+pub enum SubjectVerbPrimitiveStage {
     PreDiagnostic,
     PostDiagnostic,
 }
 
-pub(crate) struct SubjectVerbPrimitive {
-    pub(crate) id: &'static str,
-    pub(crate) metadata: RegistryRuleMetadata,
-    pub(crate) stage: SubjectVerbPrimitiveStage,
-    pub(crate) head_hints: &'static [LexRuleHeadHint],
-    pub(crate) shape_mask: u32,
-    pub(crate) parser: SubjectVerbPrimitiveParser,
+pub struct SubjectVerbPrimitive {
+    pub id: &'static str,
+    pub metadata: RegistryRuleMetadata,
+    pub stage: SubjectVerbPrimitiveStage,
+    pub head_hints: &'static [LexRuleHeadHint],
+    pub shape_mask: u32,
+    pub parser: SubjectVerbPrimitiveParser,
 }
 
 impl SubjectVerbPrimitive {
-    pub(crate) const fn new(
+    pub const fn new(
         id: &'static str,
         stage: SubjectVerbPrimitiveStage,
         head_hints: &'static [LexRuleHeadHint],
@@ -531,7 +531,7 @@ fn recognize_subject_verb_primitives_lexed(
     )
 }
 
-pub(crate) fn run_subject_verb_primitives_lexed(
+pub fn run_subject_verb_primitives_lexed(
     tokens: &[OwnedLexToken],
     primitives: &'static [SubjectVerbPrimitive],
     index: &LexRuleHintIndex,
@@ -588,51 +588,51 @@ pub(super) fn parse_postconditional_subject_verb_primitives_rule_lexed(
     ParseOutcome::matched(effects, matched.span)
 }
 
-pub(crate) const SUBJECT_VERB_PRIMITIVE_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>;
-    1] = [LexRuleDef {
-    metadata: RegistryRuleMetadata::distinct(
-        RuleId::new("preconditional-subject-verb-primitives"),
-        HeadDiscriminator::words(&[]),
-    ),
-    shape_mask: 0,
-    run: LexRuleHandler::Structured(parse_preconditional_subject_verb_primitives_rule_lexed),
-}];
+pub const SUBJECT_VERB_PRIMITIVE_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 1] =
+    [LexRuleDef {
+        metadata: RegistryRuleMetadata::distinct(
+            RuleId::new("preconditional-subject-verb-primitives"),
+            HeadDiscriminator::words(&[]),
+        ),
+        shape_mask: 0,
+        run: LexRuleHandler::Structured(parse_preconditional_subject_verb_primitives_rule_lexed),
+    }];
 
-pub(crate) const SUBJECT_VERB_PRIMITIVE_POST_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>;
-    1] = [LexRuleDef {
-    metadata: RegistryRuleMetadata::distinct(
-        RuleId::new("postconditional-subject-verb-primitives"),
-        HeadDiscriminator::words(&[]),
-    ),
-    shape_mask: 0,
-    run: LexRuleHandler::Structured(parse_postconditional_subject_verb_primitives_rule_lexed),
-}];
+pub const SUBJECT_VERB_PRIMITIVE_POST_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 1] =
+    [LexRuleDef {
+        metadata: RegistryRuleMetadata::distinct(
+            RuleId::new("postconditional-subject-verb-primitives"),
+            HeadDiscriminator::words(&[]),
+        ),
+        shape_mask: 0,
+        run: LexRuleHandler::Structured(parse_postconditional_subject_verb_primitives_rule_lexed),
+    }];
 
-pub(crate) const SUBJECT_VERB_PRIMITIVE_PRE_DIAGNOSTIC_INDEX_LEXED: LexRuleIndex<Vec<EffectAst>> =
+pub const SUBJECT_VERB_PRIMITIVE_PRE_DIAGNOSTIC_INDEX_LEXED: LexRuleIndex<Vec<EffectAst>> =
     LexRuleIndex::new(&SUBJECT_VERB_PRIMITIVE_PRE_DIAGNOSTIC_RULES_LEXED);
 
-pub(crate) const SUBJECT_VERB_PRIMITIVE_POST_DIAGNOSTIC_INDEX_LEXED: LexRuleIndex<Vec<EffectAst>> =
+pub const SUBJECT_VERB_PRIMITIVE_POST_DIAGNOSTIC_INDEX_LEXED: LexRuleIndex<Vec<EffectAst>> =
     LexRuleIndex::new(&SUBJECT_VERB_PRIMITIVE_POST_DIAGNOSTIC_RULES_LEXED);
 
-pub(crate) fn parse_sentence_return_with_counters_on_it_lexed(
+pub fn parse_sentence_return_with_counters_on_it_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_sentence_return_with_counters_on_it(SubjectVerbPrimitiveClause::new(tokens))
 }
 
-pub(crate) fn parse_sentence_put_onto_battlefield_with_counters_on_it_lexed(
+pub fn parse_sentence_put_onto_battlefield_with_counters_on_it_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_sentence_put_onto_battlefield_with_counters_on_it(SubjectVerbPrimitiveClause::new(tokens))
 }
 
-pub(crate) fn parse_sentence_exile_source_with_counters_lexed(
+pub fn parse_sentence_exile_source_with_counters_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_sentence_exile_source_with_counters(SubjectVerbPrimitiveClause::new(tokens))
 }
 
-pub(crate) fn parse_you_and_target_player_each_draw_sentence(
+pub fn parse_you_and_target_player_each_draw_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = registry_shapes::parse_joint_draw_shape(clause.tokens()) else {
@@ -707,7 +707,7 @@ pub(crate) fn parse_you_and_target_player_each_draw_sentence(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_sentence_you_and_target_player_each_draw(
+pub fn parse_sentence_you_and_target_player_each_draw(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_you_and_target_player_each_draw_sentence(clause)
@@ -716,7 +716,7 @@ pub(crate) fn parse_sentence_you_and_target_player_each_draw(
 /// "You and that player each sacrifice a creature." Each actor makes an
 /// independent choice from the permanents they control, so lower two typed
 /// sacrifice actions inside one coordinated sentence boundary.
-pub(crate) fn parse_you_and_player_each_sacrifice_sentence(
+pub fn parse_you_and_player_each_sacrifice_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = registry_shapes::parse_joint_sacrifice_shape(clause.tokens()) else {
@@ -739,7 +739,7 @@ pub(crate) fn parse_you_and_player_each_sacrifice_sentence(
     }]))
 }
 
-pub(crate) fn parse_sentence_you_and_player_each_sacrifice(
+pub fn parse_sentence_you_and_player_each_sacrifice(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_you_and_player_each_sacrifice_sentence(clause)
@@ -747,7 +747,7 @@ pub(crate) fn parse_sentence_you_and_player_each_sacrifice(
 
 /// "You and that player each gain that much life." / "You and target opponent
 /// each lose 2 life." — the joint-subject analog of the shared draw sentence.
-pub(crate) fn parse_you_and_player_each_gain_or_lose_life_sentence(
+pub fn parse_you_and_player_each_gain_or_lose_life_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = registry_shapes::parse_joint_life_shape(clause.tokens()) else {
@@ -787,7 +787,7 @@ pub(crate) fn parse_you_and_player_each_gain_or_lose_life_sentence(
     ]))
 }
 
-pub(crate) fn parse_sentence_you_and_player_each_gain_or_lose_life(
+pub fn parse_sentence_you_and_player_each_gain_or_lose_life(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_you_and_player_each_gain_or_lose_life_sentence(clause)
@@ -796,7 +796,7 @@ pub(crate) fn parse_sentence_you_and_player_each_gain_or_lose_life(
 /// "You and that player each create three 1/1 white Spirit creature tokens
 /// with flying." — joint-subject token creation: parse the verb phrase once
 /// and emit one copy per subject.
-pub(crate) fn parse_you_and_player_each_create_sentence(
+pub fn parse_you_and_player_each_create_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = registry_shapes::parse_joint_create_shape(clause.tokens()) else {
@@ -830,13 +830,13 @@ pub(crate) fn parse_you_and_player_each_create_sentence(
     ]))
 }
 
-pub(crate) fn parse_sentence_you_and_player_each_create(
+pub fn parse_sentence_you_and_player_each_create(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_you_and_player_each_create_sentence(clause)
 }
 
-pub(crate) fn parse_sentence_choose_player_to_effect(
+pub fn parse_sentence_choose_player_to_effect(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = registry_shapes::parse_choose_player_to_effect_shape(clause.tokens()) else {
@@ -862,7 +862,7 @@ pub(crate) fn parse_sentence_choose_player_to_effect(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_sentence_return_half_the_creatures_they_control_to_their_owners_hand(
+pub fn parse_sentence_return_half_the_creatures_they_control_to_their_owners_hand(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = registry_shapes::parse_return_half_controlled_shape(clause.tokens()) else {
@@ -889,7 +889,7 @@ pub(crate) fn parse_sentence_return_half_the_creatures_they_control_to_their_own
     ]))
 }
 
-pub(crate) fn parse_sentence_damage_to_that_player_half_damage_of_those_spells(
+pub fn parse_sentence_damage_to_that_player_half_damage_of_those_spells(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = registry_shapes::parse_historical_half_damage_shape(clause.tokens()) else {
@@ -917,7 +917,7 @@ pub(crate) fn parse_sentence_damage_to_that_player_half_damage_of_those_spells(
     ]))
 }
 
-pub(crate) fn parse_draw_for_each_card_exiled_from_hand_this_way_sentence(
+pub fn parse_draw_for_each_card_exiled_from_hand_this_way_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = registry_shapes::parse_draw_for_exiled_hand_shape(clause.tokens()) else {
@@ -985,13 +985,13 @@ fn draw_exiled_hand_this_way_actor(
     None
 }
 
-pub(crate) fn parse_sentence_draw_for_each_card_exiled_from_hand_this_way(
+pub fn parse_sentence_draw_for_each_card_exiled_from_hand_this_way(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_draw_for_each_card_exiled_from_hand_this_way_sentence(clause)
 }
 
-pub(crate) fn parse_sentence_you_and_attacking_player_each_draw_and_lose(
+pub fn parse_sentence_you_and_attacking_player_each_draw_and_lose(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = registry_shapes::parse_attacking_player_draw_lose_shape(clause.tokens())
@@ -1077,7 +1077,7 @@ pub(crate) fn parse_sentence_you_and_attacking_player_each_draw_and_lose(
     ]))
 }
 
-pub(crate) fn parse_sentence_sacrifice_it_next_end_step(
+pub fn parse_sentence_sacrifice_it_next_end_step(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = registry_shapes::parse_registry_next_end_step_shape(clause.tokens()) else {
@@ -1118,7 +1118,7 @@ pub(crate) fn parse_sentence_sacrifice_it_next_end_step(
     }]))
 }
 
-pub(crate) fn parse_sentence_exile_it_next_end_step(
+pub fn parse_sentence_exile_it_next_end_step(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = registry_shapes::parse_registry_next_end_step_shape(clause.tokens()) else {
@@ -1177,7 +1177,7 @@ pub(crate) fn parse_sentence_exile_it_next_end_step(
     }]))
 }
 
-pub(crate) fn parse_sentence_if_tagged_cards_remain_exiled(
+pub fn parse_sentence_if_tagged_cards_remain_exiled(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if registry_shapes::parse_remain_exiled_tail(clause.tokens()).is_none() {

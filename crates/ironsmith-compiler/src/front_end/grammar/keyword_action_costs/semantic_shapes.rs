@@ -11,12 +11,12 @@ use crate::mana::ManaCost;
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct KeywordNormalizedWords {
-    pub(crate) words: Vec<String>,
+pub struct KeywordNormalizedWords {
+    pub words: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum KeywordCumulativeUpkeepCostSurface {
+pub enum KeywordCumulativeUpkeepCostSurface {
     Empty,
     AddMana(ManaCost),
     Mana(ManaCost),
@@ -25,33 +25,33 @@ pub(crate) enum KeywordCumulativeUpkeepCostSurface {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum KeywordGraveyardBottomPaymentScope {
+pub enum KeywordGraveyardBottomPaymentScope {
     SingleOwner,
     Yours,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct KeywordSingleGraveyardBottomPayment {
-    pub(crate) count: u32,
-    pub(crate) scope: KeywordGraveyardBottomPaymentScope,
+pub struct KeywordSingleGraveyardBottomPayment {
+    pub count: u32,
+    pub scope: KeywordGraveyardBottomPaymentScope,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct KeywordCostActionSurface {
-    pub(crate) mana_cost: Option<ManaCost>,
-    pub(crate) has_payload: bool,
+pub struct KeywordCostActionSurface {
+    pub mana_cost: Option<ManaCost>,
+    pub has_payload: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum KeywordDamageSubjectKind {
+pub enum KeywordDamageSubjectKind {
     It,
     SourceCandidate { word_count: usize },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct KeywordDamageSubjectSplit {
-    pub(crate) action_first: usize,
-    pub(crate) subject: KeywordDamageSubjectKind,
+pub struct KeywordDamageSubjectSplit {
+    pub action_first: usize,
+    pub subject: KeywordDamageSubjectKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,9 +89,7 @@ fn parse_normalized_word_atom<'a>(
     .parse_next(input)
 }
 
-pub(crate) fn parse_normalized_keyword_words_tokens(
-    tokens: &[OwnedLexToken],
-) -> KeywordNormalizedWords {
+pub fn parse_normalized_keyword_words_tokens(tokens: &[OwnedLexToken]) -> KeywordNormalizedWords {
     let view = TokenWordView::new(tokens);
     let word_refs = view.word_refs();
     let mut input: primitives::WordSliceInput<'_> = &word_refs;
@@ -144,7 +142,7 @@ fn parse_cumulative_mana<'a>(
     Ok(KeywordCumulativeUpkeepCostSurface::Mana(cost))
 }
 
-pub(crate) fn parse_cumulative_upkeep_cost_surface_tokens(
+pub fn parse_cumulative_upkeep_cost_surface_tokens(
     tokens: &[OwnedLexToken],
 ) -> KeywordCumulativeUpkeepCostSurface {
     if tokens.is_empty() {
@@ -181,9 +179,7 @@ fn parse_dynamic_life_tail<'a>(input: &mut LexStream<'a>) -> WResult<Range<usize
     Ok(value_start..value_end)
 }
 
-pub(crate) fn parse_keyword_dynamic_life_tail_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<Range<usize>> {
+pub fn parse_keyword_dynamic_life_tail_tokens(tokens: &[OwnedLexToken]) -> Option<Range<usize>> {
     primitives::parse_all(tokens, parse_dynamic_life_tail, "keyword-dynamic-life-tail").ok()
 }
 
@@ -243,7 +239,7 @@ fn parse_single_graveyard_bottom_payment<'a>(
     Ok(KeywordSingleGraveyardBottomPayment { count, scope })
 }
 
-pub(crate) fn parse_single_graveyard_bottom_payment_tokens(
+pub fn parse_single_graveyard_bottom_payment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<KeywordSingleGraveyardBottomPayment> {
     primitives::parse_all(
@@ -269,7 +265,7 @@ fn parse_dynamic_word<'a>(
     }
 }
 
-pub(crate) fn parse_keyword_cost_action_surface_tokens(
+pub fn parse_keyword_cost_action_surface_tokens(
     tokens: &[OwnedLexToken],
     keyword: &'static str,
 ) -> Option<KeywordCostActionSurface> {
@@ -308,7 +304,7 @@ fn parse_damage_verb(input: &mut primitives::WordSliceInput<'_>) -> WResult<()> 
     .parse_next(input)
 }
 
-pub(crate) fn parse_keyword_damage_subject_split_tokens(
+pub fn parse_keyword_damage_subject_split_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<KeywordDamageSubjectSplit> {
     let view = TokenWordView::new(tokens);

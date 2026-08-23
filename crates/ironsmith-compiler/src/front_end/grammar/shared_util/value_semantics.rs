@@ -21,7 +21,7 @@ use super::super::super::lexer::{OwnedLexToken, trim_lexed_commas};
 use super::super::leaf;
 use super::super::primitives::{self, TokenWordView, WordSliceInput};
 use super::super::values::parse_value_comparison_words;
-pub(crate) use super::super::values::{parse_number_prefix_lexed, parse_value_prefix_lexed};
+pub use super::super::values::{parse_number_prefix_lexed, parse_value_prefix_lexed};
 use super::value_expr;
 use super::value_helper_shapes;
 use super::value_shapes::{self, AggregateValueMetric};
@@ -44,7 +44,7 @@ const EQUAL_TO_PHRASE: &[&str] = &["equal", "to"];
 /// This must stay lexed: mana groups intentionally do not appear in
 /// `TokenWordView`, so a word-only value parser cannot preserve which symbol
 /// the count refers to.
-pub(crate) fn parse_mana_symbol_spent_to_cast_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_mana_symbol_spent_to_cast_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let tokens = trim_edge_punctuation_tokens(tokens);
     let mut mana_indices = tokens
         .iter()
@@ -197,7 +197,7 @@ const COMMANDER_ITERATED_PLAYER_OWNS_BATTLEFIELD_OR_COMMAND_ZONE_PHRASES: &[&[&s
         "zone",
     ],
 ];
-pub(crate) fn parse_aggregate_scope_value_lexed(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_aggregate_scope_value_lexed(tokens: &[OwnedLexToken]) -> Option<Value> {
     let tokens = trim_edge_punctuation_tokens(tokens);
     let word_view = TokenWordView::new(tokens);
     let words = word_view.to_word_refs();
@@ -270,7 +270,7 @@ fn pending_aggregate_metric_value(
     Some(Value::PendingEffectMetric { source, metric })
 }
 
-pub(crate) fn parse_prior_effect_aggregate_metric_value(
+pub fn parse_prior_effect_aggregate_metric_value(
     metric: EffectMetric,
     object_words: &[&str],
 ) -> Option<Value> {
@@ -447,9 +447,7 @@ fn parse_spell_cast_history_count(
 /// at the cast event which caused the current trigger. That event boundary is
 /// important: spells cast while the trigger is waiting on the stack must not
 /// change whether the triggering spell was first, second, and so on.
-pub(crate) fn parse_triggering_spell_history_count_value(
-    tokens: &[OwnedLexToken],
-) -> Option<Value> {
+pub fn parse_triggering_spell_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let tokens = trim_edge_punctuation(tokens);
     let word_view = TokenWordView::new(&tokens);
     let words = word_view.to_word_refs();
@@ -472,7 +470,7 @@ pub(crate) fn parse_triggering_spell_history_count_value(
 
 /// Parse noun phrases whose numeric meaning comes from retained turn events.
 /// Callers may pass either the bare noun phrase or a leading "for each".
-pub(crate) fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let mut tokens = trim_edge_punctuation(tokens);
     let leading = TokenWordView::new(&tokens);
     let leading_words = leading.to_word_refs();
@@ -983,7 +981,7 @@ pub(crate) fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option
 /// history. This deliberately runs before generic object-count parsing: words
 /// such as `graveyard`, `hand`, and `battlefield` describe event provenance in
 /// these clauses, not the current zones of objects to count.
-pub(crate) fn parse_turn_history_value_binding(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_turn_history_value_binding(tokens: &[OwnedLexToken]) -> Option<Value> {
     let tokens = trim_edge_punctuation(tokens);
     let word_view = TokenWordView::new(&tokens);
     let words = word_view.to_word_refs();
@@ -1079,12 +1077,12 @@ fn parse_cards_discarded_this_turn_count_value(tokens: &[OwnedLexToken]) -> Opti
         .map(Value::CardsDiscardedThisTurn)
 }
 
-pub(crate) fn parse_commander_cast_count_player(tokens: &[OwnedLexToken]) -> Option<PlayerFilter> {
+pub fn parse_commander_cast_count_player(tokens: &[OwnedLexToken]) -> Option<PlayerFilter> {
     let words = TokenWordView::new(tokens).to_word_refs();
     value_helper_shapes::parse_commander_cast_count_player(&words)
 }
 
-pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let word_view = TokenWordView::new(tokens);
     let words_all = word_view.to_word_refs();
     // Callers that have already split an `equal to` clause pass only the
@@ -1190,7 +1188,7 @@ pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) ->
     Some(Value::Count(filter).with_surface_hint(ValueSurfaceHint::EqualTo))
 }
 
-pub(crate) fn parse_players_with_cards_in_hand_at_least(
+pub fn parse_players_with_cards_in_hand_at_least(
     tokens: &[OwnedLexToken],
 ) -> Option<(PlayerFilter, u32)> {
     let word_view = TokenWordView::new(tokens);
@@ -1221,7 +1219,7 @@ pub(crate) fn parse_players_with_cards_in_hand_at_least(
     .then_some((players, minimum))
 }
 
-pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
+pub fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     let word_view = TokenWordView::new(tokens);
@@ -1272,7 +1270,7 @@ pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
     )
 }
 
-pub(crate) fn parse_equal_to_number_of_opponents_you_have_value(
+pub fn parse_equal_to_number_of_opponents_you_have_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     let clause_words = TokenWordView::new(tokens);
@@ -1286,7 +1284,7 @@ pub(crate) fn parse_equal_to_number_of_opponents_you_have_value(
     None
 }
 
-pub(crate) fn parse_equal_to_number_of_counters_on_reference_value(
+pub fn parse_equal_to_number_of_counters_on_reference_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     let words = TokenWordView::new(tokens).to_word_refs();
@@ -1294,7 +1292,7 @@ pub(crate) fn parse_equal_to_number_of_counters_on_reference_value(
     Some(counter_reference_shape_value(shape).with_surface_hint(ValueSurfaceHint::EqualTo))
 }
 
-pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let clause_words = TokenWordView::new(tokens);
     let clause_refs = clause_words.to_word_refs();
     let prefix_start = parse_equal_to_start(&clause_refs)?.after;
@@ -1360,7 +1358,7 @@ pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) ->
     )
 }
 
-pub(crate) fn parse_where_x_greatest_commander_mana_value(
+pub fn parse_where_x_greatest_commander_mana_value(
     tokens: &[OwnedLexToken],
     commander_start_word_idx: usize,
 ) -> Option<Value> {
@@ -1401,7 +1399,7 @@ fn commander_owner_from_battlefield_or_command_zone_words(words: &[&str]) -> Opt
     None
 }
 
-pub(crate) fn parse_spells_cast_this_turn_matching_count_value_lexed(
+pub fn parse_spells_cast_this_turn_matching_count_value_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     let filter_words = TokenWordView::new(tokens);
@@ -1417,7 +1415,7 @@ pub(crate) fn parse_spells_cast_this_turn_matching_count_value_lexed(
     })
 }
 
-pub(crate) fn starts_explicit_ordered_comparison(
+pub fn starts_explicit_ordered_comparison(
     tokens: &[&str],
     operator: ValueComparisonOperator,
 ) -> bool {
@@ -1436,7 +1434,7 @@ pub(crate) fn starts_explicit_ordered_comparison(
     }
 }
 
-pub(crate) fn parse_filter_comparison_tokens(
+pub fn parse_filter_comparison_tokens(
     axis: &str,
     tokens: &[&str],
     clause_words: &[&str],

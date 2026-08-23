@@ -1,7 +1,9 @@
 import initWasm, { WasmGame } from "../../../wasm_demo/pkg/ironsmith.js";
-import wasmUrl from "../../../wasm_demo/pkg/ironsmith_bg.wasm?url";
+import engineWasmUrl from "../../../wasm_demo/pkg/engine_bg.wasm?url";
+import compilerWasmUrl from "../../../wasm_demo/pkg/compiler_bg.wasm?url";
+import verifierWasmUrl from "../../../wasm_demo/pkg/verifier_bg.wasm?url";
 
-const WASM_ESTIMATED_SIZE = 12_500_000; // ~12MB fallback estimate
+const WASM_ESTIMATED_SIZE = 40_000_000;
 const DEMO_CARD_NAMES = [
   "Plains",
   "Island",
@@ -688,13 +690,17 @@ async function handleInit(msg = {}) {
     postProgress("download", 0);
     const bust = `v=${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
     const { wasmResponse, downloadDone } = await fetchWasmWithProgress(
-      `${wasmUrl}?${bust}`,
+      `${engineWasmUrl}?${bust}`,
       (p) => postProgress("download", p)
     );
 
     await downloadDone;
     postProgress("init", 1);
-    await initWasm(wasmResponse);
+    await initWasm({
+      engine: wasmResponse,
+      compiler: `${compilerWasmUrl}?${bust}`,
+      verifier: `${verifierWasmUrl}?${bust}`,
+    });
     game = new WasmGame();
     const status = readRegistryStatus();
     if (status) {

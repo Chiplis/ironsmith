@@ -15,46 +15,46 @@ use super::super::lexer::{LexStream, OwnedLexToken};
 
 #[path = "activation_costs/simple_segments.rs"]
 mod simple_segments;
-pub(crate) use simple_segments::*;
+pub use simple_segments::*;
 
 #[path = "activation_costs/cant_shapes.rs"]
-pub(crate) mod cant_shapes;
+pub mod cant_shapes;
 
 #[path = "activation_costs/selectors.rs"]
 mod selectors;
-pub(crate) use selectors::*;
+pub use selectors::*;
 
 #[path = "activation_costs/counter_segments.rs"]
 mod counter_segments;
-pub(crate) use counter_segments::*;
+pub use counter_segments::*;
 
 #[path = "activation_costs/zone_segments.rs"]
 mod zone_segments;
-pub(crate) use zone_segments::*;
+pub use zone_segments::*;
 
 #[path = "activation_costs/object_segments.rs"]
 mod object_segments;
-pub(crate) use object_segments::*;
+pub use object_segments::*;
 
 #[path = "activation_costs/exile_segments.rs"]
 mod exile_segments;
-pub(crate) use exile_segments::*;
+pub use exile_segments::*;
 
 #[path = "activation_costs/program.rs"]
 mod program;
-pub(crate) use program::*;
+pub use program::*;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ActivationCostCst {
-    pub(crate) raw: String,
-    pub(crate) segments: Vec<ActivationCostSegmentCst>,
-    pub(crate) alternative_branches: Vec<ActivationCostCst>,
-    pub(crate) is_loyalty_shorthand: bool,
-    pub(crate) waterbend_generic: Option<u32>,
+pub struct ActivationCostCst {
+    pub raw: String,
+    pub segments: Vec<ActivationCostSegmentCst>,
+    pub alternative_branches: Vec<ActivationCostCst>,
+    pub is_loyalty_shorthand: bool,
+    pub waterbend_generic: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ActivationCostSegmentCst {
+pub enum ActivationCostSegmentCst {
     Mana(ManaCost),
     Tap,
     TapChosen {
@@ -176,7 +176,7 @@ pub(crate) enum ActivationCostSegmentCst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActivationCostSegmentKind {
+pub enum ActivationCostSegmentKind {
     Pay,
     Discard,
     Mill,
@@ -194,7 +194,7 @@ pub(crate) enum ActivationCostSegmentKind {
     BareSymbol,
 }
 
-pub(crate) fn parse_activation_cost_segment_kind_tokens(
+pub fn parse_activation_cost_segment_kind_tokens(
     tokens: &[OwnedLexToken],
 ) -> ActivationCostSegmentKind {
     let mut input = LexStream::new(tokens);
@@ -203,7 +203,7 @@ pub(crate) fn parse_activation_cost_segment_kind_tokens(
         .unwrap_or(ActivationCostSegmentKind::BareSymbol)
 }
 
-pub(crate) fn parse_activation_cost_segment_kind_lexed<'a>(
+pub fn parse_activation_cost_segment_kind_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<ActivationCostSegmentKind> {
     let tokens: Vec<&OwnedLexToken> = repeat(0.., any).parse_next(input)?;

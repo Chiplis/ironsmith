@@ -185,7 +185,7 @@ pub enum KeywordAction {
     MarkerText(String),
 }
 
-pub(crate) fn describe_soulshift_value(value: &Value) -> String {
+pub fn describe_soulshift_value(value: &Value) -> String {
     if let Value::Count(filter) = value
         && filter.zone == Some(crate::zone::Zone::Battlefield)
         && filter.controller == Some(crate::target::PlayerFilter::You)

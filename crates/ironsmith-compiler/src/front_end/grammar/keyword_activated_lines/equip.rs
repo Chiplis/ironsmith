@@ -10,13 +10,13 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, TokenKind, trim_lexed
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct EquipQualifierSpec<'a> {
-    pub(crate) tokens: &'a [OwnedLexToken],
-    pub(crate) subtypes: Vec<Subtype>,
+pub struct EquipQualifierSpec<'a> {
+    pub tokens: &'a [OwnedLexToken],
+    pub subtypes: Vec<Subtype>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum EquipLineSpec<'a> {
+pub enum EquipLineSpec<'a> {
     MissingCost,
     Mana {
         cost: ManaCost,
@@ -32,7 +32,7 @@ pub(crate) enum EquipLineSpec<'a> {
     },
 }
 
-pub(crate) fn parse_equip_line_spec_tokens(tokens: &[OwnedLexToken]) -> Option<EquipLineSpec<'_>> {
+pub fn parse_equip_line_spec_tokens(tokens: &[OwnedLexToken]) -> Option<EquipLineSpec<'_>> {
     primitives::parse_prefix(tokens, parse_equip_line_spec_lexed).map(|(spec, _)| spec)
 }
 

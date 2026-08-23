@@ -20,14 +20,14 @@ enum ExileOwnerSurface {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct ParsedExileOwnerPrefix {
-    pub(crate) player: PlayerAst,
-    pub(crate) consumed_words: usize,
+pub struct ParsedExileOwnerPrefix {
+    pub player: PlayerAst,
+    pub consumed_words: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct ExileOnePerCardTypeFromGraveyardShape {
-    pub(crate) owner: PlayerAst,
+pub struct ExileOnePerCardTypeFromGraveyardShape {
+    pub owner: PlayerAst,
 }
 
 fn player_owner_surface(input: &mut LexStream<'_>) -> WResult<ExileOwnerSurface> {
@@ -101,7 +101,7 @@ fn direct_owner(surface: ExileOwnerSurface) -> Option<PlayerAst> {
     }
 }
 
-pub(crate) fn parse_exile_one_per_card_type_from_graveyard_shape(
+pub fn parse_exile_one_per_card_type_from_graveyard_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ExileOnePerCardTypeFromGraveyardShape> {
     let ((), rest) = primitives::parse_prefix(
@@ -120,7 +120,7 @@ pub(crate) fn parse_exile_one_per_card_type_from_graveyard_shape(
     })
 }
 
-pub(crate) fn parse_exile_graveyard_owner_shape(
+pub fn parse_exile_graveyard_owner_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ParsedExileOwnerPrefix> {
     let ((surface, ()), rest) =
@@ -131,7 +131,7 @@ pub(crate) fn parse_exile_graveyard_owner_shape(
     })
 }
 
-pub(crate) fn parse_exile_library_owner_shape(
+pub fn parse_exile_library_owner_shape(
     tokens: &[OwnedLexToken],
     default_player: PlayerAst,
 ) -> Option<ParsedExileOwnerPrefix> {
@@ -154,7 +154,7 @@ pub(crate) fn parse_exile_library_owner_shape(
     })
 }
 
-pub(crate) fn is_each_opponent_library_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_each_opponent_library_shape(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(
         tokens,
         (primitives::phrase(&["each", "opponent"]), library_word),
@@ -172,7 +172,7 @@ pub(crate) fn is_each_opponent_library_shape(tokens: &[OwnedLexToken]) -> bool {
         .is_some()
 }
 
-pub(crate) fn is_each_player_library_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_each_player_library_shape(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(
         tokens,
         (primitives::phrase(&["each", "player"]), library_word),

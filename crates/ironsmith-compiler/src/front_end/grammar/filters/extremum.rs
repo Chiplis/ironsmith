@@ -142,7 +142,7 @@ fn inherit_scope_boundaries(selected: &mut ObjectFilter, scope: &ObjectFilter) {
     }
 }
 
-pub(crate) fn parse_extremum_object_filter_words(
+pub fn parse_extremum_object_filter_words(
     words: &[&str],
     other: bool,
 ) -> Result<Option<ObjectFilter>, CardTextError> {
@@ -199,7 +199,7 @@ pub(crate) fn parse_extremum_object_filter_words(
     Ok(Some(selected))
 }
 
-pub(crate) fn parse_extremum_object_filter_lexed(
+pub fn parse_extremum_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<Option<ObjectFilter>, CardTextError> {

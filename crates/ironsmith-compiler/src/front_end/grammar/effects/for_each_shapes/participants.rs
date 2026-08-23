@@ -12,7 +12,7 @@ use crate::util::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ForEachParticipantScope {
+pub enum ForEachParticipantScope {
     Opponent,
     OpponentExceptDefending,
     Player,
@@ -23,38 +23,38 @@ pub(crate) enum ForEachParticipantScope {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ForEachParticipantClauseShape<'a> {
-    pub(crate) scope: ForEachParticipantScope,
+pub struct ForEachParticipantClauseShape<'a> {
+    pub scope: ForEachParticipantScope,
     /// `Each player/opponent <verbs>` names the iterated participant as the
     /// actor. `For each player/opponent, <imperative>` keeps the ability's
     /// controller as the implicit actor.
-    pub(crate) participant_is_actor: bool,
-    pub(crate) inner_tokens: &'a [OwnedLexToken],
+    pub participant_is_actor: bool,
+    pub inner_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct RelativeControlClauseShape<'a> {
-    pub(crate) controls_most: bool,
-    pub(crate) count_comparison: Option<crate::effect::Comparison>,
-    pub(crate) fewer_than_most_filter_tokens: Option<&'a [OwnedLexToken]>,
-    pub(crate) fewer_than_you: bool,
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct RelativeControlClauseShape<'a> {
+    pub controls_most: bool,
+    pub count_comparison: Option<crate::effect::Comparison>,
+    pub fewer_than_most_filter_tokens: Option<&'a [OwnedLexToken]>,
+    pub fewer_than_you: bool,
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SourceAttackedPlayerClauseShape<'a> {
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct SourceAttackedPlayerClauseShape<'a> {
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct CombatDamageHistoryPlayerClauseShape<'a> {
-    pub(crate) source_tokens: &'a [OwnedLexToken],
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct CombatDamageHistoryPlayerClauseShape<'a> {
+    pub source_tokens: &'a [OwnedLexToken],
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum WhoClauseShape<'a> {
+pub enum WhoClauseShape<'a> {
     TappedLandForMana {
         effect_tokens: &'a [OwnedLexToken],
     },
@@ -73,7 +73,7 @@ pub(crate) enum WhoClauseShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum OpponentSpecialShape<'a> {
+pub enum OpponentSpecialShape<'a> {
     IgnoreScryOrSurveil,
     ChooseReturnUnlessDraw {
         target_tokens: &'a [OwnedLexToken],
@@ -181,7 +181,7 @@ fn trim(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     trim_edge_punctuation_tokens(tokens)
 }
 
-pub(crate) fn parse_participant_clause_shape(
+pub fn parse_participant_clause_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ForEachParticipantClauseShape<'_>> {
     let tokens = trim(tokens);
@@ -253,7 +253,7 @@ pub(crate) fn parse_participant_clause_shape(
 
 /// Parse the source-relative participant qualifier in clauses such as
 /// "each player this creature attacked this turn loses the game."
-pub(crate) fn parse_source_attacked_player_clause_shape(
+pub fn parse_source_attacked_player_clause_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SourceAttackedPlayerClauseShape<'_>> {
     let (_, effect_tokens) = primitives::parse_prefix(
@@ -275,7 +275,7 @@ pub(crate) fn parse_source_attacked_player_clause_shape(
 /// Parse a full-game combat-damage participant qualifier, retaining the
 /// damage source as an LKI object filter rather than discarding the relative
 /// clause before the participant's action.
-pub(crate) fn parse_combat_damage_history_player_clause_shape(
+pub fn parse_combat_damage_history_player_clause_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<CombatDamageHistoryPlayerClauseShape<'_>> {
     let (_, tail) = primitives::parse_prefix(
@@ -322,7 +322,7 @@ fn effect_start(tokens: &[OwnedLexToken]) -> Option<usize> {
     None
 }
 
-pub(crate) fn parse_relative_control_clause_shape(
+pub fn parse_relative_control_clause_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<RelativeControlClauseShape<'_>> {
     let (_, tail) = primitives::parse_prefix(
@@ -451,7 +451,7 @@ fn tagged_filter_after_negation(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexTo
     (!filter.is_empty()).then_some(filter)
 }
 
-pub(crate) fn parse_who_tagged_filter_shape(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn parse_who_tagged_filter_shape(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     tagged_filter_after_action(tokens)
 }
 
@@ -523,7 +523,7 @@ fn did_action_shape(tokens: &[OwnedLexToken]) -> Option<WhoClauseShape<'_>> {
     })
 }
 
-pub(crate) fn parse_who_clause_shape(tokens: &[OwnedLexToken]) -> Option<WhoClauseShape<'_>> {
+pub fn parse_who_clause_shape(tokens: &[OwnedLexToken]) -> Option<WhoClauseShape<'_>> {
     tapped_land_shape(tokens)
         .or_else(|| negated_shape(tokens))
         .or_else(|| did_this_way_shape(tokens))
@@ -608,7 +608,7 @@ fn poison_counters(
     Ok(Some((count, trim(rest))))
 }
 
-pub(crate) fn parse_opponent_special_shape(
+pub fn parse_opponent_special_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<OpponentSpecialShape<'_>>, CardTextError> {
     if ignore_scry_or_surveil(tokens) {

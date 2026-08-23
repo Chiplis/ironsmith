@@ -9,25 +9,25 @@ use super::super::primitives;
 use super::common::{finish_text_parse, phrase};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LeafArticle {
+pub enum LeafArticle {
     A,
     An,
     The,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct LeafLeadingTokenWords<'a> {
-    pub(crate) rest: &'a [OwnedLexToken],
+pub struct LeafLeadingTokenWords<'a> {
+    pub rest: &'a [OwnedLexToken],
     #[cfg(test)]
-    pub(crate) consumed_words: usize,
+    pub consumed_words: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct LeafLeadingWordRefs<'slice, 'word> {
-    pub(crate) rest: &'slice [&'word str],
+pub struct LeafLeadingWordRefs<'slice, 'word> {
+    pub rest: &'slice [&'word str],
 }
 
-pub(crate) fn parse_leaf_article(input: &mut &str) -> WResult<LeafArticle> {
+pub fn parse_leaf_article(input: &mut &str) -> WResult<LeafArticle> {
     alt((
         phrase("an").value(LeafArticle::An),
         phrase("a").value(LeafArticle::A),
@@ -36,13 +36,11 @@ pub(crate) fn parse_leaf_article(input: &mut &str) -> WResult<LeafArticle> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_article_complete(raw: &str) -> Result<LeafArticle, CardTextError> {
+pub fn parse_leaf_article_complete(raw: &str) -> Result<LeafArticle, CardTextError> {
     finish_text_parse(raw, parse_leaf_article, "leaf-article")
 }
 
-pub(crate) fn parse_leaf_leading_articles_tokens(
-    tokens: &[OwnedLexToken],
-) -> LeafLeadingTokenWords<'_> {
+pub fn parse_leaf_leading_articles_tokens(tokens: &[OwnedLexToken]) -> LeafLeadingTokenWords<'_> {
     let parsed =
         primitives::parse_prefix(tokens, parse_leading_articles_lexed).unwrap_or((0, tokens));
     LeafLeadingTokenWords {
@@ -52,7 +50,7 @@ pub(crate) fn parse_leaf_leading_articles_tokens(
     }
 }
 
-pub(crate) fn parse_leaf_leading_indefinite_article_tokens(
+pub fn parse_leaf_leading_indefinite_article_tokens(
     tokens: &[OwnedLexToken],
 ) -> LeafLeadingTokenWords<'_> {
     let (_, rest) = primitives::parse_prefix(tokens, parse_indefinite_article_lexed)
@@ -64,7 +62,7 @@ pub(crate) fn parse_leaf_leading_indefinite_article_tokens(
     }
 }
 
-pub(crate) fn parse_leaf_leading_selected_tokens<'a>(
+pub fn parse_leaf_leading_selected_tokens<'a>(
     tokens: &'a [OwnedLexToken],
     accepted: &[&str],
 ) -> LeafLeadingTokenWords<'a> {
@@ -91,7 +89,7 @@ pub(crate) fn parse_leaf_leading_selected_tokens<'a>(
     }
 }
 
-pub(crate) fn parse_leaf_leading_articles_words<'slice, 'word>(
+pub fn parse_leaf_leading_articles_words<'slice, 'word>(
     words: &'slice [&'word str],
 ) -> LeafLeadingWordRefs<'slice, 'word> {
     let mut input = words;

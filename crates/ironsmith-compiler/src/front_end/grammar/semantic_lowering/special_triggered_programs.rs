@@ -7,7 +7,7 @@ use super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SpecialTriggeredProgram {
+pub enum SpecialTriggeredProgram {
     PreviousTurnCreatureEntryDraw,
     SecondSpellSuspend,
     DifferentNamesLibraryDivvy,
@@ -18,7 +18,7 @@ pub(crate) enum SpecialTriggeredProgram {
     OpponentCombatAttackPile,
 }
 
-pub(crate) fn parse_special_triggered_program_tokens(
+pub fn parse_special_triggered_program_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SpecialTriggeredProgram> {
     primitives::parse_prefix(tokens, parse_special_triggered_program).map(|(program, _)| program)

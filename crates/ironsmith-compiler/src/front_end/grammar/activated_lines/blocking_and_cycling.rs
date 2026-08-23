@@ -6,36 +6,34 @@ use winnow::token::literal;
 use super::{word_present, words_are_exact};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActivatedBlockRequirement {
+pub enum ActivatedBlockRequirement {
     AllCreaturesBlockSource,
     SourceMustBeBlocked,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActivatedKeywordGrantContext {
+pub enum ActivatedKeywordGrantContext {
     Granted,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActivatedCyclingContext {
+pub enum ActivatedCyclingContext {
     Standalone,
     Granted,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActivatedCyclingMarker {
+pub enum ActivatedCyclingMarker {
     Cycling,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ActivatedCyclingHead {
-    pub(crate) keyword_word_index: usize,
-    pub(crate) context: ActivatedCyclingContext,
+pub struct ActivatedCyclingHead {
+    pub keyword_word_index: usize,
+    pub context: ActivatedCyclingContext,
 }
 
-pub(crate) fn parse_keyword_grant_context_words(
-    words: &[&str],
-) -> Option<ActivatedKeywordGrantContext> {
+pub fn parse_keyword_grant_context_words(words: &[&str]) -> Option<ActivatedKeywordGrantContext> {
     (word_present(words, "has") || word_present(words, "have"))
         .then_some(ActivatedKeywordGrantContext::Granted)
 }
@@ -60,7 +58,7 @@ fn parse_cycling_marker_surface(input: &mut &str) -> WResult<()> {
     Ok(())
 }
 
-pub(crate) fn parse_cycling_marker_word(word: &str) -> Option<ActivatedCyclingMarker> {
+pub fn parse_cycling_marker_word(word: &str) -> Option<ActivatedCyclingMarker> {
     let mut input = word;
     parse_cycling_marker_surface
         .parse_next(&mut input)
@@ -68,7 +66,7 @@ pub(crate) fn parse_cycling_marker_word(word: &str) -> Option<ActivatedCyclingMa
         .map(|()| ActivatedCyclingMarker::Cycling)
 }
 
-pub(crate) fn parse_cycling_keyword_head_words(words: &[&str]) -> Option<ActivatedCyclingHead> {
+pub fn parse_cycling_keyword_head_words(words: &[&str]) -> Option<ActivatedCyclingHead> {
     for (keyword_word_index, word) in words.iter().enumerate() {
         if parse_cycling_marker_word(word).is_some() {
             let context =
@@ -86,7 +84,7 @@ pub(crate) fn parse_cycling_keyword_head_words(words: &[&str]) -> Option<Activat
     None
 }
 
-pub(crate) fn parse_activated_block_requirement_words(
+pub fn parse_activated_block_requirement_words(
     words: &[&str],
 ) -> Option<ActivatedBlockRequirement> {
     if words_are_exact(

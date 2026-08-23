@@ -12,7 +12,7 @@ use super::super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BlockingCantSubject {
+pub enum BlockingCantSubject {
     Bare,
     This,
     ThisCreature,
@@ -26,7 +26,7 @@ pub(crate) enum BlockingCantSubject {
 /// inverted here, so callers do not need to rediscover which relation was
 /// written.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum BlockingCantFact {
+pub enum BlockingCantFact {
     MaximumBlockers {
         subject: BlockingCantSubject,
         maximum_blockers: usize,
@@ -45,9 +45,7 @@ pub(crate) enum BlockingCantFact {
     },
 }
 
-pub(crate) fn parse_blocking_cant_fact_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<BlockingCantFact> {
+pub fn parse_blocking_cant_fact_tokens(tokens: &[OwnedLexToken]) -> Option<BlockingCantFact> {
     primitives::parse_all(tokens, parse_blocking_cant_fact_lexed, "blocking cant fact").ok()
 }
 

@@ -9,47 +9,47 @@ use super::super::lexer::{LexStream, OwnedLexToken};
 use super::primitives;
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct OtherwiseAbilityClause<'a> {
-    pub(crate) ability_tokens: &'a [OwnedLexToken],
+pub struct OtherwiseAbilityClause<'a> {
+    pub ability_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct LeadingIfClause<'a> {
-    pub(crate) condition_tokens: &'a [OwnedLexToken],
-    pub(crate) remainder_tokens: &'a [OwnedLexToken],
+pub struct LeadingIfClause<'a> {
+    pub condition_tokens: &'a [OwnedLexToken],
+    pub remainder_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TokenDelimiterSpan {
-    pub(crate) delimiter: Range<usize>,
+pub struct TokenDelimiterSpan {
+    pub delimiter: Range<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CounterKeyword {
-    pub(crate) index: usize,
+pub struct CounterKeyword {
+    pub index: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CounterTailPrefix {
+pub enum CounterTailPrefix {
     ForEach,
     EqualTo,
     Other,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CounterTailFacts {
-    pub(crate) has_words: bool,
-    pub(crate) prefix: CounterTailPrefix,
+pub struct CounterTailFacts {
+    pub has_words: bool,
+    pub prefix: CounterTailPrefix,
 }
 
-pub(crate) fn parse_otherwise_ability_clause(
+pub fn parse_otherwise_ability_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<OtherwiseAbilityClause<'_>> {
     let ((), ability_tokens) = primitives::parse_prefix(tokens, parse_otherwise_prefix_lexed)?;
     Some(OtherwiseAbilityClause { ability_tokens })
 }
 
-pub(crate) fn parse_leading_if_clause(tokens: &[OwnedLexToken]) -> Option<LeadingIfClause<'_>> {
+pub fn parse_leading_if_clause(tokens: &[OwnedLexToken]) -> Option<LeadingIfClause<'_>> {
     let ((condition_start, condition_end, remainder_start), _) =
         primitives::parse_prefix(tokens, parse_leading_if_boundaries_lexed)?;
     Some(LeadingIfClause {
@@ -58,17 +58,17 @@ pub(crate) fn parse_leading_if_clause(tokens: &[OwnedLexToken]) -> Option<Leadin
     })
 }
 
-pub(crate) fn parse_and_with_delimiter(tokens: &[OwnedLexToken]) -> Option<TokenDelimiterSpan> {
+pub fn parse_and_with_delimiter(tokens: &[OwnedLexToken]) -> Option<TokenDelimiterSpan> {
     let (delimiter, _) = primitives::parse_prefix(tokens, parse_and_with_delimiter_lexed)?;
     Some(TokenDelimiterSpan { delimiter })
 }
 
-pub(crate) fn parse_counter_keyword(tokens: &[OwnedLexToken]) -> Option<CounterKeyword> {
+pub fn parse_counter_keyword(tokens: &[OwnedLexToken]) -> Option<CounterKeyword> {
     let (index, _) = primitives::parse_prefix(tokens, parse_counter_keyword_lexed)?;
     Some(CounterKeyword { index })
 }
 
-pub(crate) fn parse_counter_tail_facts(tokens: &[OwnedLexToken]) -> CounterTailFacts {
+pub fn parse_counter_tail_facts(tokens: &[OwnedLexToken]) -> CounterTailFacts {
     let prefix = if primitives::parse_prefix(tokens, primitives::phrase(&["for", "each"])).is_some()
     {
         CounterTailPrefix::ForEach

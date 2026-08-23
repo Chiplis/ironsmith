@@ -16,7 +16,7 @@ mod condition_shapes;
 use condition_shapes::parse_enters_with_counter_condition_shape_lexed;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EtbTriggerIntro {
+pub enum EtbTriggerIntro {
     If,
     When,
     Whenever,
@@ -25,61 +25,61 @@ pub(crate) enum EtbTriggerIntro {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EtbSourceReference {
+pub enum EtbSourceReference {
     It,
     Its,
     This,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EntersTappedWithCountersClause<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) action_tokens: &'a [OwnedLexToken],
-    pub(crate) entry_modifier_tokens: &'a [OwnedLexToken],
-    pub(crate) with_tokens: &'a [OwnedLexToken],
-    pub(crate) counter_clause_tokens: &'a [OwnedLexToken],
+pub struct EntersTappedWithCountersClause<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub action_tokens: &'a [OwnedLexToken],
+    pub entry_modifier_tokens: &'a [OwnedLexToken],
+    pub with_tokens: &'a [OwnedLexToken],
+    pub counter_clause_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EntersWithCountersClause<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) action_tokens: &'a [OwnedLexToken],
-    pub(crate) counter_clause_tokens: &'a [OwnedLexToken],
-    pub(crate) escaped: bool,
+pub struct EntersWithCountersClause<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub action_tokens: &'a [OwnedLexToken],
+    pub counter_clause_tokens: &'a [OwnedLexToken],
+    pub escaped: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EntersWithCounterConditionTailKind {
+pub enum EntersWithCounterConditionTailKind {
     If,
     Unless,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EntersWithCounterConditionTail<'a> {
-    pub(crate) kind: EntersWithCounterConditionTailKind,
-    pub(crate) condition_tokens: &'a [OwnedLexToken],
+pub struct EntersWithCounterConditionTail<'a> {
+    pub kind: EntersWithCounterConditionTailKind,
+    pub condition_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct EntersWithCounterChoice {
-    pub(crate) counter_types: Vec<CounterType>,
-    pub(crate) count: Value,
+pub struct EntersWithCounterChoice {
+    pub counter_types: Vec<CounterType>,
+    pub count: Value,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct EntersWithDualForEachCounterShape {
-    pub(crate) counter_type: CounterType,
-    pub(crate) count: Value,
+pub struct EntersWithDualForEachCounterShape {
+    pub counter_type: CounterType,
+    pub count: Value,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EntersWithAddedAbilitiesTail<'a> {
+pub enum EntersWithAddedAbilitiesTail<'a> {
     CanAttackAsThoughNoDefender,
     AbilityTokens(&'a [OwnedLexToken]),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EntersWithCounterKnownForEachKind {
+pub enum EntersWithCounterKnownForEachKind {
     CreaturesDiedThisTurn,
     ColorsOfManaSpent,
     ControlledCreaturesDiedThisTurn,
@@ -89,13 +89,13 @@ pub(crate) enum EntersWithCounterKnownForEachKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EntersWithCounterPlusTail<'a> {
+pub enum EntersWithCounterPlusTail<'a> {
     Unsupported,
     ForEach(&'a [OwnedLexToken]),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EntersWithCounterConditionShape<'a> {
+pub enum EntersWithCounterConditionShape<'a> {
     AttackedThisTurn,
     SourceWasCast,
     ThisSpellWasKicked,
@@ -109,15 +109,11 @@ pub(crate) enum EntersWithCounterConditionShape<'a> {
     ColorsOfManaSpent(&'a [OwnedLexToken]),
 }
 
-pub(crate) fn parse_etb_trigger_intro_prefix_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<EtbTriggerIntro> {
+pub fn parse_etb_trigger_intro_prefix_tokens(tokens: &[OwnedLexToken]) -> Option<EtbTriggerIntro> {
     primitives::parse_prefix(tokens, parse_etb_trigger_intro_lexed).map(|(intro, _)| intro)
 }
 
-pub(crate) fn parse_etb_source_reference_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<EtbSourceReference> {
+pub fn parse_etb_source_reference_tokens(tokens: &[OwnedLexToken]) -> Option<EtbSourceReference> {
     primitives::parse_all(
         tokens,
         parse_etb_source_reference_lexed,
@@ -126,7 +122,7 @@ pub(crate) fn parse_etb_source_reference_tokens(
     .ok()
 }
 
-pub(crate) fn parse_enters_with_counter_condition_tail_tokens(
+pub fn parse_enters_with_counter_condition_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EntersWithCounterConditionTail<'_>> {
     primitives::parse_all(
@@ -137,7 +133,7 @@ pub(crate) fn parse_enters_with_counter_condition_tail_tokens(
     .ok()
 }
 
-pub(crate) fn parse_enters_with_counters_clause_tokens(
+pub fn parse_enters_with_counters_clause_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EntersWithCountersClause<'_>> {
     primitives::parse_all(
@@ -148,7 +144,7 @@ pub(crate) fn parse_enters_with_counters_clause_tokens(
     .ok()
 }
 
-pub(crate) fn parse_enters_tapped_with_counters_clause_tokens(
+pub fn parse_enters_tapped_with_counters_clause_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EntersTappedWithCountersClause<'_>> {
     primitives::parse_all(
@@ -159,7 +155,7 @@ pub(crate) fn parse_enters_tapped_with_counters_clause_tokens(
     .ok()
 }
 
-pub(crate) fn parse_enters_with_counter_choice_tokens(
+pub fn parse_enters_with_counter_choice_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EntersWithCounterChoice> {
     primitives::parse_all(
@@ -170,7 +166,7 @@ pub(crate) fn parse_enters_with_counter_choice_tokens(
     .ok()
 }
 
-pub(crate) fn parse_enters_with_dual_for_each_counter_tokens(
+pub fn parse_enters_with_dual_for_each_counter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EntersWithDualForEachCounterShape> {
     primitives::parse_all(
@@ -274,7 +270,7 @@ fn parse_enters_with_dual_for_each_counter(
     })
 }
 
-pub(crate) fn parse_enters_with_added_abilities_tail_tokens(
+pub fn parse_enters_with_added_abilities_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EntersWithAddedAbilitiesTail<'_>> {
     primitives::parse_all(
@@ -285,7 +281,7 @@ pub(crate) fn parse_enters_with_added_abilities_tail_tokens(
     .ok()
 }
 
-pub(crate) fn parse_enters_with_counter_known_for_each_tail_tokens(
+pub fn parse_enters_with_counter_known_for_each_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EntersWithCounterKnownForEachKind> {
     primitives::parse_all(
@@ -296,7 +292,7 @@ pub(crate) fn parse_enters_with_counter_known_for_each_tail_tokens(
     .ok()
 }
 
-pub(crate) fn parse_enters_with_counter_for_each_payload_tokens(
+pub fn parse_enters_with_counter_for_each_payload_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     primitives::parse_all(
@@ -307,7 +303,7 @@ pub(crate) fn parse_enters_with_counter_for_each_payload_tokens(
     .ok()
 }
 
-pub(crate) fn parse_enters_with_counter_equal_to_body_tokens(
+pub fn parse_enters_with_counter_equal_to_body_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     primitives::parse_all(
@@ -318,7 +314,7 @@ pub(crate) fn parse_enters_with_counter_equal_to_body_tokens(
     .ok()
 }
 
-pub(crate) fn parse_enters_with_counter_plus_tail_tokens(
+pub fn parse_enters_with_counter_plus_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EntersWithCounterPlusTail<'_>> {
     primitives::parse_all(
@@ -329,7 +325,7 @@ pub(crate) fn parse_enters_with_counter_plus_tail_tokens(
     .ok()
 }
 
-pub(crate) fn parse_enters_with_counter_condition_shape_tokens(
+pub fn parse_enters_with_counter_condition_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EntersWithCounterConditionShape<'_>> {
     primitives::parse_all(

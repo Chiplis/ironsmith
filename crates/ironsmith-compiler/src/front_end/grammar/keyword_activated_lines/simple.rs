@@ -7,22 +7,20 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, TokenKind, trim_lexed
 use super::super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct ChannelLineSpec<'a> {
-    pub(crate) body_tokens: &'a [OwnedLexToken],
+pub struct ChannelLineSpec<'a> {
+    pub body_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct ReconfigureLineSpec<'a> {
-    pub(crate) cost_tokens: &'a [OwnedLexToken],
+pub struct ReconfigureLineSpec<'a> {
+    pub cost_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_channel_line_spec_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<ChannelLineSpec<'_>> {
+pub fn parse_channel_line_spec_tokens(tokens: &[OwnedLexToken]) -> Option<ChannelLineSpec<'_>> {
     primitives::parse_prefix(tokens, parse_channel_line_spec_lexed).map(|(spec, _)| spec)
 }
 
-pub(crate) fn parse_reconfigure_line_spec_tokens(
+pub fn parse_reconfigure_line_spec_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ReconfigureLineSpec<'_>> {
     primitives::parse_prefix(tokens, parse_reconfigure_line_spec_lexed).map(|(spec, _)| spec)

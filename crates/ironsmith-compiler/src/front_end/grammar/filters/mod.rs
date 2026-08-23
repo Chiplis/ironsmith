@@ -47,7 +47,7 @@ mod color_and_sticker_facts;
 mod counter_constraints;
 mod decorations;
 mod domain_unions;
-pub(crate) use domain_unions::{
+pub use domain_unions::{
     parse_branch_scoped_object_filter_union_lexed, parse_domain_union_object_filter_lexed,
     parse_elided_shared_domain_union, parse_repeated_selector_domain_union_lexed,
     parse_subtype_color_shared_card_union_lexed,
@@ -57,52 +57,52 @@ mod meld_and_special_subjects;
 mod naming_and_reference;
 mod player_relations;
 mod predicate_phrases;
-pub(crate) mod reference_tag_stage;
+pub mod reference_tag_stage;
 mod reference_tag_word_facts;
 mod simple;
-pub(crate) mod spell_filters;
+pub mod spell_filters;
 
 pub(super) use chosen_type_references::*;
 use color_and_sticker_facts::*;
-pub(crate) use extremum::{parse_extremum_object_filter_lexed, parse_extremum_object_filter_words};
+pub use extremum::{parse_extremum_object_filter_lexed, parse_extremum_object_filter_words};
 pub(super) use meld_and_special_subjects::*;
 use naming_and_reference::*;
 use player_relations::*;
 pub(super) use predicate_phrases::*;
-pub(crate) use predicate_phrases::{
+pub use predicate_phrases::{
     WinnowAtom as PermissionAtom, WinnowCaptureKind as PermissionCaptureKind,
     WinnowCaptureRole as PermissionCaptureRole, WinnowSequence as PermissionSequence,
     parse_source_keyword_condition_filter as parse_source_keyword_condition_filter_lexed,
 };
 
-pub(crate) fn parse_condition_predicate_lexed(
+pub fn parse_condition_predicate_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<PredicateAst, CardTextError> {
     predicate_phrases::parse_predicate(tokens)
 }
 pub(super) use reference_tag_stage::*;
 
-pub(crate) use counter_constraints::{
+pub use counter_constraints::{
     intern_counter_name, parse_counter_type_from_tokens, parse_counter_type_word,
     parse_counter_type_words, parse_filter_counter_constraint_words,
     preserve_filter_counter_constraint_surface_tokens,
     preserve_filter_counter_constraint_surface_words,
 };
-pub(crate) use decorations::{
+pub use decorations::{
     apply_filter_tail_decoration, apply_parity_filter_phrases, parse_filter_distinct_names_tokens,
     parse_filter_lexed_envelope, parse_filter_tail_decoration_split_words,
     parse_filter_tail_decoration_tokens, parse_filter_word_envelope,
     strip_not_on_battlefield_phrase, trim_vote_winner_suffix,
 };
-pub(crate) use meld_and_special_subjects::parse_same_color_mana_spent_to_cast_predicate;
-pub(crate) use reference_tag_stage::{
+pub use meld_and_special_subjects::parse_same_color_mana_spent_to_cast_predicate;
+pub use reference_tag_stage::{
     apply_supertype_or_mana_capability_union, parse_object_filter_with_grammar_entrypoint_lexed,
 };
-pub(crate) use simple::{
+pub use simple::{
     parse_filter_face_state_words, parse_simple_object_filter_lexed,
     parse_simple_object_filter_words, preserve_branch_scoped_card_type_union,
 };
-pub(crate) use spell_filters::{
+pub use spell_filters::{
     parse_object_filter_with_grammar_entrypoint, parse_spell_filter_with_grammar_entrypoint,
     parse_spell_filter_with_grammar_entrypoint_lexed,
 };

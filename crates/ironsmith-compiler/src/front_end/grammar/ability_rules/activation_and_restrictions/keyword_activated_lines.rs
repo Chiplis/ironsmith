@@ -6,13 +6,13 @@ use crate::grammar::keyword_activated_lines::{
     EquipLineSpec,
 };
 
-pub(crate) fn parse_cycling_line(
+pub fn parse_cycling_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     parse_cycling_line_lexed(tokens)
 }
 
-pub(crate) fn parse_cycling_line_lexed(
+pub fn parse_cycling_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     let word_refs = crate::lexer::token_word_refs(tokens);
@@ -122,7 +122,7 @@ pub(crate) fn parse_cycling_line_lexed(
     }))
 }
 
-pub(crate) fn parse_channel_line_lexed(
+pub fn parse_channel_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     let Some(spec) = keyword_activated_grammar::parse_channel_line_spec_tokens(tokens) else {
@@ -133,7 +133,7 @@ pub(crate) fn parse_channel_line_lexed(
     parse_hand_keyword_activated_body_lexed(spec.body_tokens, "channel", "Channel", &clause_text)
 }
 
-pub(crate) fn parse_craft_line_lexed(
+pub fn parse_craft_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     let Some(spec) = keyword_activated_grammar::parse_craft_line_spec_tokens(tokens) else {
@@ -276,7 +276,7 @@ fn push_unique<T: PartialEq>(items: &mut Vec<T>, item: T) {
     crate::slice_primitives::push_unique(items, item);
 }
 
-pub(crate) fn merge_cycling_search_filters(base: &mut ObjectFilter, extra: &ObjectFilter) {
+pub fn merge_cycling_search_filters(base: &mut ObjectFilter, extra: &ObjectFilter) {
     for supertype in &extra.supertypes {
         push_unique(&mut base.supertypes, *supertype);
     }
@@ -322,7 +322,7 @@ fn parse_cycling_keyword_group_text(groups: &[CyclingKeywordCostGroup]) -> Optio
     }
 }
 
-pub(crate) fn parse_cycling_search_filter(
+pub fn parse_cycling_search_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     match keyword_activated_grammar::parse_cycling_search_spec_tokens(tokens) {
@@ -352,9 +352,7 @@ pub(crate) fn parse_cycling_search_filter(
     }
 }
 
-pub(crate) fn parse_equip_line(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<ParsedAbility>, CardTextError> {
+pub fn parse_equip_line(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility>, CardTextError> {
     let Some(spec) = keyword_activated_grammar::parse_equip_line_spec_tokens(tokens) else {
         return Ok(None);
     };
@@ -467,13 +465,13 @@ fn build_equip_ability(
     }
 }
 
-pub(crate) fn parse_equip_line_lexed(
+pub fn parse_equip_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     parse_equip_line(tokens)
 }
 
-pub(crate) fn parse_reconfigure_line_lexed(
+pub fn parse_reconfigure_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     let Some(spec) = keyword_activated_grammar::parse_reconfigure_line_spec_tokens(tokens) else {

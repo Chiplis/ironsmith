@@ -9,35 +9,35 @@ use crate::types::CardType;
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TokenSpan {
-    pub(crate) start: usize,
-    pub(crate) end: usize,
+pub struct TokenSpan {
+    pub start: usize,
+    pub end: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LibraryBottomOrderShape {
+pub enum LibraryBottomOrderShape {
     Chosen,
     Random,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DrawRevealMatchingRestBottomShape<'a> {
-    pub(crate) count: u32,
-    pub(crate) card_type_word: &'a str,
-    pub(crate) order: LibraryBottomOrderShape,
+pub struct DrawRevealMatchingRestBottomShape<'a> {
+    pub count: u32,
+    pub card_type_word: &'a str,
+    pub order: LibraryBottomOrderShape,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DiscardOrRedirectReplacementShape {
-    pub(crate) discard_type: CardType,
-    pub(crate) redirect_zone: Zone,
+pub struct DiscardOrRedirectReplacementShape {
+    pub discard_type: CardType,
+    pub redirect_zone: Zone,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SacrificeOrRedirectReplacementShape<'a> {
-    pub(crate) count: u32,
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) redirect_zone: Zone,
+pub struct SacrificeOrRedirectReplacementShape<'a> {
+    pub count: u32,
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub redirect_zone: Zone,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,7 +47,7 @@ struct DrawRevealMatchingRestBottomWordShape {
     order: LibraryBottomOrderShape,
 }
 
-pub(crate) fn parse_draw_reveal_matching_rest_bottom(
+pub fn parse_draw_reveal_matching_rest_bottom(
     tokens: &[OwnedLexToken],
 ) -> Option<DrawRevealMatchingRestBottomShape<'_>> {
     let words = TokenWordView::new(tokens).word_refs();
@@ -63,7 +63,7 @@ pub(crate) fn parse_draw_reveal_matching_rest_bottom(
     })
 }
 
-pub(crate) fn parse_discard_or_redirect_replacement(
+pub fn parse_discard_or_redirect_replacement(
     tokens: &[OwnedLexToken],
 ) -> Option<DiscardOrRedirectReplacementShape> {
     primitives::parse_all(
@@ -74,7 +74,7 @@ pub(crate) fn parse_discard_or_redirect_replacement(
     .ok()
 }
 
-pub(crate) fn parse_sacrifice_or_redirect_replacement(
+pub fn parse_sacrifice_or_redirect_replacement(
     tokens: &[OwnedLexToken],
 ) -> Option<SacrificeOrRedirectReplacementShape<'_>> {
     let (_, after_sacrifice) = primitives::parse_prefix(tokens, sacrifice_replacement_intro)?;
@@ -181,7 +181,7 @@ fn discard_or_redirect_replacement<'a>(
     })
 }
 
-pub(crate) fn parse_combat_prevention_prefix(tokens: &[OwnedLexToken]) -> Option<TokenSpan> {
+pub fn parse_combat_prevention_prefix(tokens: &[OwnedLexToken]) -> Option<TokenSpan> {
     phrase_span(
         tokens,
         &[
@@ -190,7 +190,7 @@ pub(crate) fn parse_combat_prevention_prefix(tokens: &[OwnedLexToken]) -> Option
     )
 }
 
-pub(crate) fn parse_noncombat_prevention_prefix(tokens: &[OwnedLexToken]) -> Option<TokenSpan> {
+pub fn parse_noncombat_prevention_prefix(tokens: &[OwnedLexToken]) -> Option<TokenSpan> {
     phrase_span(
         tokens,
         &[

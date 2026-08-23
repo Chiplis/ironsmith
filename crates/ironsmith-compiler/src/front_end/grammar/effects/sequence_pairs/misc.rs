@@ -15,35 +15,35 @@ use super::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct DirectionalAdjacentPlayerControlShape {
-    pub(crate) choice_object: Range<usize>,
-    pub(crate) gained_object: Range<usize>,
+pub struct DirectionalAdjacentPlayerControlShape {
+    pub choice_object: Range<usize>,
+    pub gained_object: Range<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SameControllerSacrificeShape {
-    pub(crate) target: Range<usize>,
+pub struct SameControllerSacrificeShape {
+    pub target: Range<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct GraveyardCastReplacementShape {
-    pub(crate) until_end_of_turn: bool,
-    pub(crate) without_paying_mana_cost: bool,
-    pub(crate) includes_artifact: bool,
-    pub(crate) artifact_first: bool,
-    pub(crate) mana_value_limit: Option<i32>,
-    pub(crate) additional_mana_cost: Option<crate::mana::ManaCost>,
-    pub(crate) mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
+pub struct GraveyardCastReplacementShape {
+    pub until_end_of_turn: bool,
+    pub without_paying_mana_cost: bool,
+    pub includes_artifact: bool,
+    pub artifact_first: bool,
+    pub mana_value_limit: Option<i32>,
+    pub additional_mana_cost: Option<crate::mana::ManaCost>,
+    pub mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ConditionalSelfAnimateTail {
-    pub(crate) effect: Range<usize>,
+pub struct ConditionalSelfAnimateTail {
+    pub effect: Range<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ReturnTaggedBattlefieldShape {
-    pub(crate) tapped: bool,
+pub struct ReturnTaggedBattlefieldShape {
+    pub tapped: bool,
 }
 
 const EXILE_RESOLVING_CARD_INSTEAD: &[&str] = &[
@@ -80,7 +80,7 @@ const IF_YOU_DO_RETURN_TO_HAND_NEXT_END_STEP: &[&str] = &[
     "step",
 ];
 
-pub(crate) fn is_resolving_card_exile_then_return_next_end_step_shape(
+pub fn is_resolving_card_exile_then_return_next_end_step_shape(
     replacement: &[OwnedLexToken],
     delayed_return: &[OwnedLexToken],
 ) -> bool {
@@ -130,7 +130,7 @@ fn parse_between<'a>(
     Ok(start..end)
 }
 
-pub(crate) fn parse_directional_adjacent_player_control_shape(
+pub fn parse_directional_adjacent_player_control_shape(
     choice: &[OwnedLexToken],
     gain: &[OwnedLexToken],
 ) -> Option<DirectionalAdjacentPlayerControlShape> {
@@ -188,7 +188,7 @@ const SKIP_PHASES: &[&[&str]] = &[
     ],
 ];
 
-pub(crate) fn parse_choose_then_skip_phase_shape(
+pub fn parse_choose_then_skip_phase_shape(
     choose: &[OwnedLexToken],
     skip: &[OwnedLexToken],
 ) -> bool {
@@ -277,7 +277,7 @@ fn parse_same_controller_target<'a>(input: &mut LexStream<'a>) -> WResult<Range<
     Ok(start..end)
 }
 
-pub(crate) fn parse_same_controller_sacrifice_shape(
+pub fn parse_same_controller_sacrifice_shape(
     choose: &[OwnedLexToken],
     sacrifice: &[OwnedLexToken],
 ) -> Option<SameControllerSacrificeShape> {
@@ -293,7 +293,7 @@ pub(crate) fn parse_same_controller_sacrifice_shape(
     Some(SameControllerSacrificeShape { target })
 }
 
-pub(crate) fn is_return_other_to_owner_hand_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_return_other_to_owner_hand_shape(tokens: &[OwnedLexToken]) -> bool {
     matches_complete_content_sequence(tokens, RETURN_OTHER)
 }
 
@@ -437,7 +437,7 @@ const AT_NEXT_END_STEP_RETURN_LINKED: &[&str] = &[
     "control",
 ];
 
-pub(crate) fn is_filtered_future_exile_return_next_end_step_shape(
+pub fn is_filtered_future_exile_return_next_end_step_shape(
     replacement: &[OwnedLexToken],
     delayed_return: &[OwnedLexToken],
 ) -> bool {
@@ -516,7 +516,7 @@ fn additional_cast_mana_cost(
         .map_err(|_| ())
 }
 
-pub(crate) fn parse_graveyard_cast_replacement_shape(
+pub fn parse_graveyard_cast_replacement_shape(
     cast: &[OwnedLexToken],
     replacement: &[OwnedLexToken],
 ) -> Option<GraveyardCastReplacementShape> {
@@ -582,7 +582,7 @@ pub(crate) fn parse_graveyard_cast_replacement_shape(
     })
 }
 
-pub(crate) fn has_life_gain_surface(tokens: &[OwnedLexToken]) -> bool {
+pub fn has_life_gain_surface(tokens: &[OwnedLexToken]) -> bool {
     contains_sequence_word(tokens, "life")
         && (contains_sequence_word(tokens, "gain") || contains_sequence_word(tokens, "gains"))
 }
@@ -622,7 +622,7 @@ fn parse_conditional_self_animate<'a>(
     })
 }
 
-pub(crate) fn parse_conditional_self_animate_tail(
+pub fn parse_conditional_self_animate_tail(
     tokens: &[OwnedLexToken],
 ) -> Option<ConditionalSelfAnimateTail> {
     primitives::parse_prefix(tokens, parse_conditional_self_animate).map(|(shape, _)| shape)
@@ -661,7 +661,7 @@ fn filtered_return_phrase(
     Some(tapped)
 }
 
-pub(crate) fn parse_return_tagged_battlefield_shape(
+pub fn parse_return_tagged_battlefield_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ReturnTaggedBattlefieldShape> {
     let tapped = filtered_return_phrase(tokens, &["return", "those", "cards", "to", "battlefield"])
@@ -679,10 +679,7 @@ const PLAY_NEXT_TURN: &[&[&str]] = &[&[
     "until", "end", "of", "your", "next", "turn", "you", "may", "play", "that", "card",
 ]];
 
-pub(crate) fn is_delayed_dies_exile_play_shape(
-    first: &[OwnedLexToken],
-    second: &[OwnedLexToken],
-) -> bool {
+pub fn is_delayed_dies_exile_play_shape(first: &[OwnedLexToken], second: &[OwnedLexToken]) -> bool {
     if !starts_sequence(first, DELAYED_DIES) {
         return false;
     }

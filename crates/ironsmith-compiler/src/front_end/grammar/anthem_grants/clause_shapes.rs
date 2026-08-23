@@ -7,35 +7,35 @@ use super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AnthemPrefixConditionKind {
+pub enum AnthemPrefixConditionKind {
     DuringTurnsOtherThanYours,
     DuringYourTurn,
     AsLongAs,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AnthemPrefixConditionShape {
-    pub(crate) kind: AnthemPrefixConditionKind,
-    pub(crate) prefix_end: usize,
-    pub(crate) comma_subject_start: Option<usize>,
+pub struct AnthemPrefixConditionShape {
+    pub kind: AnthemPrefixConditionKind,
+    pub prefix_end: usize,
+    pub comma_subject_start: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct FixedAnthemPrefixConditionShape<'a> {
-    pub(crate) kind: AnthemPrefixConditionKind,
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
+pub struct FixedAnthemPrefixConditionShape<'a> {
+    pub kind: AnthemPrefixConditionKind,
+    pub subject_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AnthemModifierShape<'a> {
-    pub(crate) modifier_word: &'a str,
-    pub(crate) modifier_token: usize,
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
-    pub(crate) additional_surface: bool,
+pub struct AnthemModifierShape<'a> {
+    pub modifier_word: &'a str,
+    pub modifier_token: usize,
+    pub tail_tokens: &'a [OwnedLexToken],
+    pub additional_surface: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AnthemTailShape<'a> {
+pub enum AnthemTailShape<'a> {
     ForEach(&'a [OwnedLexToken]),
     WhereX(&'a [OwnedLexToken]),
     AsLongAs {
@@ -43,7 +43,7 @@ pub(crate) enum AnthemTailShape<'a> {
     },
 }
 
-pub(crate) fn parse_prefix_condition_shape(
+pub fn parse_prefix_condition_shape(
     tokens: &[OwnedLexToken],
     action_token: usize,
 ) -> Option<AnthemPrefixConditionShape> {
@@ -57,7 +57,7 @@ pub(crate) fn parse_prefix_condition_shape(
     })
 }
 
-pub(crate) fn parse_fixed_prefix_condition_shape(
+pub fn parse_fixed_prefix_condition_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<FixedAnthemPrefixConditionShape<'_>> {
     let shape = parse_prefix_condition_shape(tokens, tokens.len())?;
@@ -72,7 +72,7 @@ pub(crate) fn parse_fixed_prefix_condition_shape(
     })
 }
 
-pub(crate) fn parse_modifier_shape(
+pub fn parse_modifier_shape(
     tokens: &[OwnedLexToken],
     action_token: usize,
     tail_end: usize,
@@ -105,7 +105,7 @@ pub(crate) fn parse_modifier_shape(
     })
 }
 
-pub(crate) fn parse_tail_shape(tokens: &[OwnedLexToken]) -> Option<AnthemTailShape<'_>> {
+pub fn parse_tail_shape(tokens: &[OwnedLexToken]) -> Option<AnthemTailShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
     if primitives::parse_prefix(tokens, primitives::phrase(&["for", "each"])).is_some() {
         return Some(AnthemTailShape::ForEach(tokens));
@@ -118,7 +118,7 @@ pub(crate) fn parse_tail_shape(tokens: &[OwnedLexToken]) -> Option<AnthemTailSha
     Some(AnthemTailShape::AsLongAs { condition_tokens })
 }
 
-pub(crate) fn split_trailing_modifier_maximum(
+pub fn split_trailing_modifier_maximum(
     tokens: &[OwnedLexToken],
 ) -> (&[OwnedLexToken], Option<i32>) {
     let tokens = super::trim_anthem_clause_tokens(tokens);
@@ -139,7 +139,7 @@ fn parse_modifier_maximum(input: &mut LexStream<'_>) -> WResult<u32> {
     leaf::parse_leaf_number_prefix_lexed(input)
 }
 
-pub(crate) fn parse_word_token_candidates(
+pub fn parse_word_token_candidates(
     tokens: &[OwnedLexToken],
     start: usize,
     end: usize,

@@ -1,0 +1,21 @@
+[package]
+name = "ironsmith-artifact-effect-decoder"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ironsmith-runtime-effect-zone-library = { path = "../ironsmith-artifact-effect-decoder-shard-00", default-features = false }
+ironsmith-runtime-effect-player = { path = "../ironsmith-artifact-effect-decoder-shard-01", default-features = false }
+ironsmith-runtime-effect-resources = { path = "../ironsmith-artifact-effect-decoder-shard-02", default-features = false }
+ironsmith-runtime-effect-permanent = { path = "../ironsmith-artifact-effect-decoder-shard-03", default-features = false }
+ironsmith-runtime-effect-combat = { path = "../ironsmith-artifact-effect-decoder-shard-04", default-features = false }
+ironsmith-runtime-effect-stack-event = { path = "../ironsmith-artifact-effect-decoder-shard-05", default-features = false }
+ironsmith-runtime-effect-composition-a-l = { path = "../ironsmith-artifact-effect-decoder-shard-06", default-features = false }
+ironsmith-runtime-effect-composition-m-z = { path = "../ironsmith-artifact-effect-decoder-shard-07", default-features = false }
+serde_json = "1.0.149"
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []

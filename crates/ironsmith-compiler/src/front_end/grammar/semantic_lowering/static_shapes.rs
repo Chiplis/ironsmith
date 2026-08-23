@@ -9,7 +9,7 @@ use super::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StaticSpecialLineShape {
+pub enum StaticSpecialLineShape {
     BlackManaMayBePaidWithLife,
     BoastTwice,
     EquipAtInstantSpeed,
@@ -24,21 +24,21 @@ pub(crate) enum StaticSpecialLineShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CombinedSpellAndActivationTax;
+pub struct CombinedSpellAndActivationTax;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SourceKeywordTail<'a> {
-    pub(crate) ability_tokens: &'a [OwnedLexToken],
+pub struct SourceKeywordTail<'a> {
+    pub ability_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SkipKeywordActionProbe;
+pub struct SkipKeywordActionProbe;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AbilityWordMarker;
+pub struct AbilityWordMarker;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LevelUpIntro;
+pub struct LevelUpIntro;
 
 fn is_black_mana_life_payment(words: &[&str]) -> bool {
     phrase_is_exact(
@@ -139,7 +139,7 @@ fn is_first_equip_alternative(words: &[&str]) -> bool {
             || phrase_is_suffix(words, &["during", "each", "of", "your", "turns"]))
 }
 
-pub(crate) fn parse_static_special_line_tokens(
+pub fn parse_static_special_line_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<StaticSpecialLineShape> {
     let words = parser_token_word_refs(tokens);
@@ -171,7 +171,7 @@ pub(crate) fn parse_static_special_line_tokens(
     }
 }
 
-pub(crate) fn parse_combined_spell_and_activation_tax_tokens(
+pub fn parse_combined_spell_and_activation_tax_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CombinedSpellAndActivationTax> {
     let words = parser_token_word_refs(tokens);
@@ -186,9 +186,7 @@ pub(crate) fn parse_combined_spell_and_activation_tax_tokens(
     .then_some(CombinedSpellAndActivationTax)
 }
 
-pub(crate) fn parse_source_keyword_tail_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<SourceKeywordTail<'_>> {
+pub fn parse_source_keyword_tail_tokens(tokens: &[OwnedLexToken]) -> Option<SourceKeywordTail<'_>> {
     let words = parser_token_word_refs(tokens);
     let has_word =
         phrase_location(&words, &["has"]).or_else(|| phrase_location(&words, &["have"]))?;
@@ -207,7 +205,7 @@ pub(crate) fn parse_source_keyword_tail_tokens(
     (!ability_tokens.is_empty()).then_some(SourceKeywordTail { ability_tokens })
 }
 
-pub(crate) fn parse_skip_keyword_action_probe_tokens(
+pub fn parse_skip_keyword_action_probe_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SkipKeywordActionProbe> {
     let words = parser_token_word_refs(tokens);
@@ -217,7 +215,7 @@ pub(crate) fn parse_skip_keyword_action_probe_tokens(
     .then_some(SkipKeywordActionProbe)
 }
 
-pub(crate) fn parse_additional_land_play_count_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
+pub fn parse_additional_land_play_count_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
     let words = parser_token_word_refs(tokens);
     if !phrase_is_prefix(&words, &["you", "may", "play"]) {
         return None;
@@ -237,9 +235,7 @@ pub(crate) fn parse_additional_land_play_count_tokens(tokens: &[OwnedLexToken]) 
     }
 }
 
-pub(crate) fn parse_ability_word_marker_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<AbilityWordMarker> {
+pub fn parse_ability_word_marker_tokens(tokens: &[OwnedLexToken]) -> Option<AbilityWordMarker> {
     if tokens.iter().any(|token| {
         matches!(
             token.kind,
@@ -257,7 +253,7 @@ pub(crate) fn parse_ability_word_marker_tokens(
     (word_count > 0 && word_count <= 4).then_some(AbilityWordMarker)
 }
 
-pub(crate) fn parse_level_up_intro_tokens(tokens: &[OwnedLexToken]) -> Option<LevelUpIntro> {
+pub fn parse_level_up_intro_tokens(tokens: &[OwnedLexToken]) -> Option<LevelUpIntro> {
     phrase_is_prefix(&parser_token_word_refs(tokens), &["level", "up"]).then_some(LevelUpIntro)
 }
 

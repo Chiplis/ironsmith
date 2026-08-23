@@ -29,7 +29,7 @@ use super::super::util::{
 };
 use super::clause_pattern_helpers::extract_subject_player;
 use super::conditionals::parse_mana_symbol_group;
-pub(crate) use super::zone_counter_helpers::{
+pub use super::zone_counter_helpers::{
     apply_exile_subject_hand_owner_context, apply_exile_subject_owner_context,
     parse_half_starting_life_total_value, split_until_opponent_becomes_monarch_tail,
     split_until_source_leaves_tail, split_until_target_leaves_tail,
@@ -62,14 +62,14 @@ mod sacrifice_discard;
 #[path = "tap_actions.rs"]
 mod tap_actions;
 
-pub(crate) use emblem_actions::*;
-pub(crate) use exile_actions::*;
-pub(crate) use mana_actions::*;
-pub(crate) use misc_actions::*;
-pub(crate) use remove_destroy::*;
-pub(crate) use return_exchange::*;
-pub(crate) use sacrifice_discard::*;
-pub(crate) use tap_actions::*;
+pub use emblem_actions::*;
+pub use exile_actions::*;
+pub use mana_actions::*;
+pub use misc_actions::*;
+pub use remove_destroy::*;
+pub use return_exchange::*;
+pub use sacrifice_discard::*;
+pub use tap_actions::*;
 
 #[cfg(test)]
 #[path = "zone_handlers_tests.rs"]

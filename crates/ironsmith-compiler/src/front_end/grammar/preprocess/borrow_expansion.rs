@@ -9,13 +9,13 @@ use super::super::primitives;
 use crate::lexer::{LexStream, OwnedLexToken, lex_line, render_token_slice};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SameIsTrueSurface {
-    pub(crate) targets: Vec<String>,
+pub struct SameIsTrueSurface {
+    pub targets: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct BorrowPhraseOccurrencesSurface {
-    pub(crate) ranges: Vec<Range<usize>>,
+pub struct BorrowPhraseOccurrencesSurface {
+    pub ranges: Vec<Range<usize>>,
 }
 
 fn same_is_true_separator(input: &mut LexStream<'_>) -> WResult<()> {
@@ -65,7 +65,7 @@ fn parse_same_is_true_surface_lexed(input: &mut LexStream<'_>) -> WResult<SameIs
     Ok(SameIsTrueSurface { targets })
 }
 
-pub(crate) fn parse_same_is_true_surface(sentence: &str) -> Option<SameIsTrueSurface> {
+pub fn parse_same_is_true_surface(sentence: &str) -> Option<SameIsTrueSurface> {
     let tokens = lex_line(sentence.trim(), 0).ok()?;
     primitives::parse_all(
         &tokens,
@@ -97,7 +97,7 @@ fn exact_token_phrase_parser<'a, 'p>(
     }
 }
 
-pub(crate) fn parse_borrow_phrase_occurrences(
+pub fn parse_borrow_phrase_occurrences(
     sentence: &str,
     phrase: &str,
 ) -> Option<BorrowPhraseOccurrencesSurface> {

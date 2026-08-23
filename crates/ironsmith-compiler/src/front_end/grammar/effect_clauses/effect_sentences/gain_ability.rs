@@ -721,7 +721,7 @@ fn split_quoted_granted_ability_list(tokens: &[OwnedLexToken]) -> Option<Vec<&[O
     Some(vec![prefix, quoted])
 }
 
-pub(crate) fn parse_granted_abilities_for_gain_clause(
+pub fn parse_granted_abilities_for_gain_clause(
     ability_tokens: &[OwnedLexToken],
     clause_words: &[&str],
     allow_choice: bool,
@@ -928,7 +928,7 @@ fn token_rule_is_already_lowered_by_specialized_shape(
 /// Parses rules text that belongs to a token under the token's own source
 /// identity. The outer card's source-reference context must not leak into a
 /// nested token ability (for example, `this creature` must mean the token).
-pub(crate) fn parse_granted_abilities_for_token_definition(
+pub fn parse_granted_abilities_for_token_definition(
     definition: &TokenDefinitionSpec,
     ability_tokens: &[OwnedLexToken],
 ) -> Result<Vec<GrantedAbilityAst>, CardTextError> {
@@ -1010,9 +1010,7 @@ pub(crate) fn parse_granted_abilities_for_token_definition(
     })
 }
 
-pub(crate) fn parse_simple_ability_duration(
-    words_after_verb: &[&str],
-) -> Option<(usize, usize, Until)> {
+pub fn parse_simple_ability_duration(words_after_verb: &[&str]) -> Option<(usize, usize, Until)> {
     gain_shapes::parse_simple_ability_duration_shape(words_after_verb)
         .map(|shape| (shape.start, shape.len, shape.duration))
 }
@@ -1216,13 +1214,13 @@ fn parse_leading_simple_ability_duration(tokens: &[OwnedLexToken]) -> Option<(us
         .map(|shape| (shape.consumed_words, shape.duration))
 }
 
-pub(crate) fn parse_simple_gain_ability_clause_lexed(
+pub fn parse_simple_gain_ability_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     parse_simple_ability_modifier_clause_lexed(tokens, false)
 }
 
-pub(crate) fn parse_simple_lose_ability_clause_lexed(
+pub fn parse_simple_lose_ability_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     parse_simple_ability_modifier_clause_lexed(tokens, true)
@@ -1577,29 +1575,29 @@ fn parse_simple_ability_modifier_clause_lexed(
     }))
 }
 
-pub(crate) fn parse_simple_gain_ability_clause(
+pub fn parse_simple_gain_ability_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     parse_simple_ability_modifier_clause(tokens, false)
 }
 
-pub(crate) fn parse_simple_lose_ability_clause(
+pub fn parse_simple_lose_ability_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     parse_simple_ability_modifier_clause(tokens, true)
 }
 
-pub(crate) fn parse_simple_ability_modifier_clause(
+pub fn parse_simple_ability_modifier_clause(
     tokens: &[OwnedLexToken],
     losing: bool,
 ) -> Result<Option<EffectAst>, CardTextError> {
     parse_simple_ability_modifier_clause_lexed(tokens, losing)
 }
 
-pub(crate) fn parse_gain_ability_sentence(
+pub fn parse_gain_ability_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+    crate::stack::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
         parse_gain_ability_sentence_inner(tokens)
     })
 }
@@ -1627,7 +1625,7 @@ fn parse_gain_ability_sentence_inner(
         .map(|effects| coordinated_gain_surface(tokens, effects)))
 }
 
-pub(crate) fn parse_gain_ability_sentence_with_typed_subject(
+pub fn parse_gain_ability_sentence_with_typed_subject(
     tokens: &[OwnedLexToken],
     subject_tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -2713,7 +2711,7 @@ fn parse_granted_trigger_with_nested_token_rule(
     )))
 }
 
-pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(
+pub fn parse_granted_activated_or_triggered_ability_for_gain(
     ability_tokens: &[OwnedLexToken],
     clause_words: &[&str],
 ) -> Result<Option<GrantedAbilityAst>, CardTextError> {
@@ -2908,7 +2906,7 @@ fn parse_single_effect_sentence_for_granted_otherwise(
     }
 }
 
-pub(crate) fn append_gain_ability_trailing_effects(
+pub fn append_gain_ability_trailing_effects(
     mut effects: Vec<EffectAst>,
     trailing_tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
@@ -2945,7 +2943,7 @@ pub(crate) fn append_gain_ability_trailing_effects(
     Ok(effects)
 }
 
-pub(crate) fn parse_choice_of_abilities(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
+pub fn parse_choice_of_abilities(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     let shape = gain_shapes::parse_ability_choice_shape(tokens)?;
     let mut actions = Vec::new();
     for segment in shape.options {
@@ -2959,7 +2957,7 @@ pub(crate) fn parse_choice_of_abilities(tokens: &[OwnedLexToken]) -> Option<Vec<
     Some(actions)
 }
 
-pub(crate) fn parse_gain_ability_to_source_sentence(
+pub fn parse_gain_ability_to_source_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = gain_shapes::parse_source_gain_ability_shape(tokens) else {

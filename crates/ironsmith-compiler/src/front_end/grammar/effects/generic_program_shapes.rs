@@ -3,7 +3,7 @@ use crate::target::PlayerFilter;
 
 use super::super::super::lexer::{LexStream, LexedClause, OwnedLexToken};
 use super::super::permission_shapes;
-pub(crate) use super::super::permission_shapes::{
+pub use super::super::permission_shapes::{
     PermissionAtom as EffectAtom, PermissionCaptureKind as EffectCaptureKind,
     PermissionCaptureRole as EffectCaptureRole, PermissionSequence as EffectSequence,
 };
@@ -18,7 +18,7 @@ use winnow::token::any;
 
 #[path = "generic_program_shapes/voting.rs"]
 mod voting;
-pub(crate) use voting::*;
+pub use voting::*;
 
 #[path = "generic_program_shapes/choice_complements.rs"]
 mod choice_complements;
@@ -27,18 +27,18 @@ mod semantic_sequences;
 #[path = "generic_program_shapes/triggering_spell_damage.rs"]
 mod triggering_spell_damage;
 
-pub(crate) use choice_complements::*;
-pub(crate) use semantic_sequences::*;
-pub(crate) use triggering_spell_damage::*;
+pub use choice_complements::*;
+pub use semantic_sequences::*;
+pub use triggering_spell_damage::*;
 
 #[derive(Debug, Clone)]
-pub(crate) struct AnyPlayerSourceDamageShape<'a> {
-    pub(crate) player: PlayerAst,
-    pub(crate) player_filter: PlayerFilter,
-    pub(crate) damage_tokens: &'a [OwnedLexToken],
+pub struct AnyPlayerSourceDamageShape<'a> {
+    pub player: PlayerAst,
+    pub player_filter: PlayerFilter,
+    pub damage_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_any_player_source_damage(
+pub fn parse_any_player_source_damage(
     tokens: &[OwnedLexToken],
 ) -> Option<AnyPlayerSourceDamageShape<'_>> {
     let atoms = [
@@ -85,11 +85,11 @@ pub(crate) fn parse_any_player_source_damage(
 /// A source-subject damage clause whose recipient is the player currently
 /// making a surrounding choice: `<source> deal N damage to them`.
 #[derive(Debug, Clone)]
-pub(crate) struct SourceDamageToDeciderShape<'a> {
-    pub(crate) damage_tokens: &'a [OwnedLexToken],
+pub struct SourceDamageToDeciderShape<'a> {
+    pub damage_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_source_damage_to_decider(
+pub fn parse_source_damage_to_decider(
     tokens: &[OwnedLexToken],
 ) -> Option<SourceDamageToDeciderShape<'_>> {
     let atoms = [
@@ -118,7 +118,7 @@ pub(crate) fn parse_source_damage_to_decider(
     })
 }
 
-pub(crate) fn parse_choice_complement_clause(tokens: &[OwnedLexToken]) -> Option<LexedClause<'_>> {
+pub fn parse_choice_complement_clause(tokens: &[OwnedLexToken]) -> Option<LexedClause<'_>> {
     let then_atoms = [
         PermissionSequence::phrase(&["each", "player"]),
         PermissionSequence::action(
@@ -167,17 +167,17 @@ pub(crate) fn parse_choice_complement_clause(tokens: &[OwnedLexToken]) -> Option
         .map(LexedClause::trimmed)
 }
 
-pub(crate) fn exact_any_words(words: &[&str], alternatives: &[&[&str]]) -> bool {
+pub fn exact_any_words(words: &[&str], alternatives: &[&[&str]]) -> bool {
     alternatives
         .iter()
         .any(|expected| permission_shapes::exact_words(words, expected))
 }
 
-pub(crate) fn prefix_words(words: &[&str], expected: &[&str]) -> bool {
+pub fn prefix_words(words: &[&str], expected: &[&str]) -> bool {
     permission_shapes::prefix_words(words, expected)
 }
 
-pub(crate) fn exact_any_tokens(tokens: &[OwnedLexToken], alternatives: &[&[&str]]) -> bool {
+pub fn exact_any_tokens(tokens: &[OwnedLexToken], alternatives: &[&[&str]]) -> bool {
     permission_shapes::exact_tokens_any(tokens, alternatives)
 }
 

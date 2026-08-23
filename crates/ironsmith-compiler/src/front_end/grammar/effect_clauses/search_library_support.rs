@@ -16,14 +16,14 @@ use crate::target::ObjectFilter;
 use crate::types::{CardType, Subtype};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum SearchLibraryManaConstraint {
+pub enum SearchLibraryManaConstraint {
     Equal(u32),
     LessThanOrEqual(u32),
     GreaterThanOrEqual(u32),
     OneOf(Vec<u32>),
 }
 
-pub(crate) fn word_slice_mentions_nth_from_top(words: &[&str]) -> bool {
+pub fn word_slice_mentions_nth_from_top(words: &[&str]) -> bool {
     find_window_by(words, 4, |window| {
         window[1] == "from" && window[2] == "the" && window[3] == "top"
     })
@@ -39,7 +39,7 @@ fn card_type_set_includes(card_types: &[CardType], expected: CardType) -> bool {
     false
 }
 
-pub(crate) fn parse_search_library_disjunction_filter(
+pub fn parse_search_library_disjunction_filter(
     filter_tokens: &[OwnedLexToken],
 ) -> Option<ObjectFilter> {
     let uses_and_or = filter_tokens.iter().any(|token| token.is_word("and/or"));
@@ -88,7 +88,7 @@ pub(crate) fn parse_search_library_disjunction_filter(
     Some(filter)
 }
 
-pub(crate) fn parse_restriction_duration_lexed(
+pub fn parse_restriction_duration_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(crate::effect::Until, Vec<OwnedLexToken>)>, CardTextError> {
     use crate::effect::Until;
@@ -156,7 +156,7 @@ pub(crate) fn parse_restriction_duration_lexed(
     Ok(None)
 }
 
-pub(crate) fn extract_search_library_mana_constraint(
+pub fn extract_search_library_mana_constraint(
     filter_tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, SearchLibraryManaConstraint)> {
     let (clause_token_start, clause_token_end) =
@@ -205,7 +205,7 @@ pub(crate) fn extract_search_library_mana_constraint(
     Some((base_filter_tokens, constraint))
 }
 
-pub(crate) fn apply_search_library_mana_constraint(
+pub fn apply_search_library_mana_constraint(
     filter: &mut ObjectFilter,
     constraint: SearchLibraryManaConstraint,
 ) {
@@ -251,7 +251,7 @@ pub(crate) fn apply_search_library_mana_constraint(
     }
 }
 
-pub(crate) fn split_search_same_name_reference_filter(
+pub fn split_search_same_name_reference_filter(
     tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
     let (start_token_idx, end_token_idx) =
@@ -262,7 +262,7 @@ pub(crate) fn split_search_same_name_reference_filter(
     Some((base_filter_tokens, reference_tokens))
 }
 
-pub(crate) fn split_search_different_name_reference_filter(
+pub fn split_search_different_name_reference_filter(
     tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
     const PATTERNS: &[&[&str]] = &[
@@ -289,7 +289,7 @@ pub(crate) fn split_search_different_name_reference_filter(
     None
 }
 
-pub(crate) fn normalize_search_library_filter(filter: &mut ObjectFilter) {
+pub fn normalize_search_library_filter(filter: &mut ObjectFilter) {
     filter.zone = None;
     if filter.subtypes.iter().any(|subtype| {
         matches!(
@@ -311,7 +311,7 @@ pub(crate) fn normalize_search_library_filter(filter: &mut ObjectFilter) {
     }
 }
 
-pub(crate) fn split_search_library_count_value_clause_lexed(
+pub fn split_search_library_count_value_clause_lexed(
     filter_tokens: &[OwnedLexToken],
 ) -> Result<Option<(Vec<OwnedLexToken>, Value)>, CardTextError> {
     let Some((where_idx, _, _)) =

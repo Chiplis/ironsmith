@@ -6,7 +6,7 @@ use super::super::primitives;
 use super::UnspentManaRetentionTail;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum GlobalCantRestrictionFact {
+pub enum GlobalCantRestrictionFact {
     PlayersLoseOrWin,
     OpponentsBlockManaValueParity(ParityRequirement),
     GainLife(PlayerFilter),
@@ -21,10 +21,10 @@ pub(crate) enum GlobalCantRestrictionFact {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct OrWinGameTail;
+pub struct OrWinGameTail;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PlayerRestrictionTailKind {
+pub enum PlayerRestrictionTailKind {
     GainLife,
     SearchLibraries,
     LoseGame,
@@ -38,14 +38,14 @@ pub(crate) enum PlayerRestrictionTailKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DamageLifeLossSubject {
+pub enum DamageLifeLossSubject {
     You,
     AnyPlayer,
     IteratedPlayer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SimpleObjectRestrictionKind {
+pub enum SimpleObjectRestrictionKind {
     Attack,
     AttackAlone,
     AttackOrBlock,
@@ -64,7 +64,7 @@ pub(crate) enum SimpleObjectRestrictionKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RestrictionSubjectSurface {
+pub enum RestrictionSubjectSurface {
     Damage,
     Source,
     TaggedObjectPronoun,
@@ -72,43 +72,41 @@ pub(crate) enum RestrictionSubjectSurface {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PowerOrToughnessSubject;
+pub struct PowerOrToughnessSubject;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DealtDamageThisWay;
+pub struct DealtDamageThisWay;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DealtDamageBySourceSubject {
-    pub(crate) base_word_count: usize,
-    pub(crate) damager: ironsmith_core::DamagedBySource,
+pub struct DealtDamageBySourceSubject {
+    pub base_word_count: usize,
+    pub damager: ironsmith_core::DamagedBySource,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ManaRetentionTailKind {
+pub enum ManaRetentionTailKind {
     Unspent(UnspentManaRetentionTail),
     ThisMana,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ManaRetentionNegatedClause {
-    pub(crate) tail: ManaRetentionTailKind,
+pub struct ManaRetentionNegatedClause {
+    pub tail: ManaRetentionTailKind,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CantCastSubject {
-    pub(crate) player: PlayerFilter,
-    pub(crate) consumed: usize,
+pub struct CantCastSubject {
+    pub player: PlayerFilter,
+    pub consumed: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EffectActionRestrictionTail;
+pub struct EffectActionRestrictionTail;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LeadingIfRestrictionSubject;
+pub struct LeadingIfRestrictionSubject;
 
-pub(crate) fn parse_global_cant_restriction_words(
-    words: &[&str],
-) -> Option<GlobalCantRestrictionFact> {
+pub fn parse_global_cant_restriction_words(words: &[&str]) -> Option<GlobalCantRestrictionFact> {
     if prefix(
         words,
         &[
@@ -214,13 +212,13 @@ pub(crate) fn parse_global_cant_restriction_words(
     Some(fact)
 }
 
-pub(crate) fn parse_or_win_game_tail_words(words: &[&str]) -> Option<OrWinGameTail> {
+pub fn parse_or_win_game_tail_words(words: &[&str]) -> Option<OrWinGameTail> {
     (contains(words, &["or", "win", "the", "game"])
         || contains(words, &["or", "win", "the", "game", "this"]))
     .then_some(OrWinGameTail)
 }
 
-pub(crate) fn parse_player_negated_subject_words(words: &[&str]) -> Option<PlayerFilter> {
+pub fn parse_player_negated_subject_words(words: &[&str]) -> Option<PlayerFilter> {
     if exact(words, &["you"]) {
         Some(PlayerFilter::You)
     } else if exact_any(words, &[&["your", "opponents"], &["opponents"]]) {
@@ -234,7 +232,7 @@ pub(crate) fn parse_player_negated_subject_words(words: &[&str]) -> Option<Playe
     }
 }
 
-pub(crate) fn parse_player_restriction_subject_words(words: &[&str]) -> Option<PlayerFilter> {
+pub fn parse_player_restriction_subject_words(words: &[&str]) -> Option<PlayerFilter> {
     if exact(words, &["you"]) {
         Some(PlayerFilter::You)
     } else if exact_any(words, &[&["that", "player"], &["they"]]) {
@@ -269,7 +267,7 @@ pub(crate) fn parse_player_restriction_subject_words(words: &[&str]) -> Option<P
     }
 }
 
-pub(crate) fn parse_cant_cast_subject_words(words: &[&str]) -> Option<CantCastSubject> {
+pub fn parse_cant_cast_subject_words(words: &[&str]) -> Option<CantCastSubject> {
     let (player, consumed) = if prefix(words, &["players", "dealt", "damage", "this", "way"]) {
         (PlayerFilter::TaggedPlayer(TagKey::from("damaged_0")), 5)
     } else if prefix(words, &["that", "player"]) {
@@ -298,9 +296,7 @@ pub(crate) fn parse_cant_cast_subject_words(words: &[&str]) -> Option<CantCastSu
     Some(CantCastSubject { player, consumed })
 }
 
-pub(crate) fn parse_player_restriction_tail_words(
-    words: &[&str],
-) -> Option<PlayerRestrictionTailKind> {
+pub fn parse_player_restriction_tail_words(words: &[&str]) -> Option<PlayerRestrictionTailKind> {
     let kind = if prefix(words, &["gain", "life"]) {
         PlayerRestrictionTailKind::GainLife
     } else if prefix(words, &["search", "libraries"]) {
@@ -339,7 +335,7 @@ pub(crate) fn parse_player_restriction_tail_words(
     Some(kind)
 }
 
-pub(crate) fn parse_damage_life_loss_tail_words(words: &[&str]) -> Option<DamageLifeLossSubject> {
+pub fn parse_damage_life_loss_tail_words(words: &[&str]) -> Option<DamageLifeLossSubject> {
     if prefix(words, &["cause", "you", "to", "lose", "life"]) {
         Some(DamageLifeLossSubject::You)
     } else if prefix_any(
@@ -357,7 +353,7 @@ pub(crate) fn parse_damage_life_loss_tail_words(words: &[&str]) -> Option<Damage
     }
 }
 
-pub(crate) fn parse_simple_object_restriction_words(
+pub fn parse_simple_object_restriction_words(
     words: &[&str],
 ) -> Option<SimpleObjectRestrictionKind> {
     let kind = if exact_any(words, &[&["attack"], &["attack", "this", "turn"]]) {
@@ -437,7 +433,7 @@ pub(crate) fn parse_simple_object_restriction_words(
     Some(kind)
 }
 
-pub(crate) fn parse_restriction_subject_surface_words(
+pub fn parse_restriction_subject_surface_words(
     words: &[&str],
 ) -> Option<RestrictionSubjectSurface> {
     if exact_any(
@@ -469,19 +465,17 @@ pub(crate) fn parse_restriction_subject_surface_words(
     }
 }
 
-pub(crate) fn parse_power_or_toughness_subject_words(
-    words: &[&str],
-) -> Option<PowerOrToughnessSubject> {
+pub fn parse_power_or_toughness_subject_words(words: &[&str]) -> Option<PowerOrToughnessSubject> {
     (contains(words, &["power", "or", "toughness"])
         || contains(words, &["toughness", "or", "power"]))
     .then_some(PowerOrToughnessSubject)
 }
 
-pub(crate) fn parse_dealt_damage_this_way_words(words: &[&str]) -> Option<DealtDamageThisWay> {
+pub fn parse_dealt_damage_this_way_words(words: &[&str]) -> Option<DealtDamageThisWay> {
     contains(words, &["dealt", "damage", "this", "way"]).then_some(DealtDamageThisWay)
 }
 
-pub(crate) fn parse_dealt_damage_by_source_subject_words(
+pub fn parse_dealt_damage_by_source_subject_words(
     words: &[&str],
 ) -> Option<DealtDamageBySourceSubject> {
     use ironsmith_core::DamagedBySource;
@@ -572,7 +566,7 @@ pub(crate) fn parse_dealt_damage_by_source_subject_words(
     })
 }
 
-pub(crate) fn parse_mana_retention_tail_words(words: &[&str]) -> Option<ManaRetentionTailKind> {
+pub fn parse_mana_retention_tail_words(words: &[&str]) -> Option<ManaRetentionTailKind> {
     if let Some(unspent) = super::parse_unspent_mana_retention_tail_words(words) {
         return Some(ManaRetentionTailKind::Unspent(unspent));
     }
@@ -588,7 +582,7 @@ pub(crate) fn parse_mana_retention_tail_words(words: &[&str]) -> Option<ManaRete
     .then_some(ManaRetentionTailKind::ThisMana)
 }
 
-pub(crate) fn parse_mana_retention_negated_clause_words(
+pub fn parse_mana_retention_negated_clause_words(
     words: &[&str],
 ) -> Option<ManaRetentionNegatedClause> {
     let tail = prefix_remainder(words, &["you", "dont"])
@@ -599,7 +593,7 @@ pub(crate) fn parse_mana_retention_negated_clause_words(
     })
 }
 
-pub(crate) fn parse_effect_action_restriction_tail_words(
+pub fn parse_effect_action_restriction_tail_words(
     words: &[&str],
 ) -> Option<EffectActionRestrictionTail> {
     matches!(
@@ -622,7 +616,7 @@ pub(crate) fn parse_effect_action_restriction_tail_words(
     .then_some(EffectActionRestrictionTail)
 }
 
-pub(crate) fn parse_leading_if_restriction_subject_words(
+pub fn parse_leading_if_restriction_subject_words(
     words: &[&str],
 ) -> Option<LeadingIfRestrictionSubject> {
     prefix(words, &["if"]).then_some(LeadingIfRestrictionSubject)

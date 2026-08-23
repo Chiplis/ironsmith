@@ -4,7 +4,7 @@ use crate::cards::builders::CardTextError;
 use crate::model::compiler_semantic::ParsedCardItem;
 use crate::model::symbols::SymbolTable;
 
-pub(crate) fn migrate_semantic_domains(
+pub fn migrate_semantic_domains(
     _items: &mut [ParsedCardItem],
     _symbols: &mut SymbolTable,
 ) -> Result<(), CardTextError> {

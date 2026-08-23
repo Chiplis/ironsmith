@@ -3,16 +3,16 @@ use crate::effect::Until;
 use crate::grammar::leaf::LeafDurationPhrase;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ReciprocalCreatureControlSequence {
-    pub(crate) your_creatures: ObjectFilter,
-    pub(crate) target_player_creatures: ObjectFilter,
-    pub(crate) duration: Until,
-    pub(crate) untap: bool,
-    pub(crate) untap_before_control: bool,
-    pub(crate) grant_haste: bool,
+pub struct ReciprocalCreatureControlSequence {
+    pub your_creatures: ObjectFilter,
+    pub target_player_creatures: ObjectFilter,
+    pub duration: Until,
+    pub untap: bool,
+    pub untap_before_control: bool,
+    pub grant_haste: bool,
 }
 
-pub(crate) fn parse_reciprocal_creature_control_sequence_tokens(
+pub fn parse_reciprocal_creature_control_sequence_tokens(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],

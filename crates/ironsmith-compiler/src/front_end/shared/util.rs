@@ -33,7 +33,7 @@ use super::grammar::abilities::{
     FlashbackCostClause, parse_flashback_cost_clause_tokens,
     parse_flashback_keyword_line_spec_lexed,
 };
-pub(crate) use super::grammar::filters::{
+pub use super::grammar::filters::{
     intern_counter_name, parse_counter_type_from_tokens, parse_counter_type_word,
     parse_filter_counter_constraint_words,
 };
@@ -47,9 +47,7 @@ use super::grammar::shared_util::header_shapes;
 use super::grammar::shared_util::keyword_cost_lines;
 use super::grammar::shared_util::keyword_line_facts::{self, MadnessCostFact, NamedCostKeyword};
 use super::grammar::shared_util::reference_shapes;
-pub(crate) use super::grammar::shared_util::reference_shapes::{
-    FilterKeywordConstraint, SubjectAst,
-};
+pub use super::grammar::shared_util::reference_shapes::{FilterKeywordConstraint, SubjectAst};
 use super::grammar::shared_util::target_semantics;
 use super::grammar::shared_util::token_facts;
 use super::grammar::shared_util::value_expr;
@@ -77,11 +75,11 @@ type SourceReferenceAlias = leaf::LeafSourceReferenceAlias;
 /// granting card, while a typed `this ...` reference denotes the object that
 /// receives the ability. The attached-grant parser uses this name-only context
 /// to preserve that authored distinction.
-pub(crate) fn with_source_reference_context<T>(_card_name: &str, f: impl FnOnce() -> T) -> T {
+pub fn with_source_reference_context<T>(_card_name: &str, f: impl FnOnce() -> T) -> T {
     f()
 }
 
-pub(crate) fn with_card_source_reference_context<T>(
+pub fn with_card_source_reference_context<T>(
     _card_name: &str,
     _card_types: &[CardType],
     _subtypes: &[Subtype],
@@ -90,7 +88,7 @@ pub(crate) fn with_card_source_reference_context<T>(
     f()
 }
 
-pub(crate) fn with_token_source_reference_context<T>(
+pub fn with_token_source_reference_context<T>(
     _token_name: &str,
     _card_types: &[CardType],
     _subtypes: &[Subtype],
@@ -99,33 +97,27 @@ pub(crate) fn with_token_source_reference_context<T>(
     f()
 }
 
-pub(crate) fn current_source_reference_name() -> Option<String> {
+pub fn current_source_reference_name() -> Option<String> {
     None
 }
 
-pub(crate) fn preferred_source_reference_self_surface() -> Option<SourceReferenceSurface> {
+pub fn preferred_source_reference_self_surface() -> Option<SourceReferenceSurface> {
     None
 }
 
-pub(crate) fn source_reference_surface_for_span(
+pub fn source_reference_surface_for_span(
     _span: Option<TextSpan>,
 ) -> Option<SourceReferenceSurface> {
     None
 }
 
-pub(crate) fn record_source_reference_surface(
-    _span: Option<TextSpan>,
-    _surface: SourceReferenceSurface,
-) {
-}
+pub fn record_source_reference_surface(_span: Option<TextSpan>, _surface: SourceReferenceSurface) {}
 
-pub(crate) fn sacrificed_object_kind_for_span(
-    _span: Option<TextSpan>,
-) -> Option<SacrificedObjectKind> {
+pub fn sacrificed_object_kind_for_span(_span: Option<TextSpan>) -> Option<SacrificedObjectKind> {
     None
 }
 
-pub(crate) fn record_sacrificed_object_kind(_span: Option<TextSpan>, _kind: SacrificedObjectKind) {}
+pub fn record_sacrificed_object_kind(_span: Option<TextSpan>, _kind: SacrificedObjectKind) {}
 
 #[cfg(test)]
 fn source_reference_aliases_for_name(name: &str) -> Vec<SourceReferenceAlias> {
@@ -155,26 +147,26 @@ fn canonical_source_reference_surface(
         .unwrap_or(surface)
 }
 
-pub(crate) fn source_reference_surface_for_words(words: &[&str]) -> Option<SourceReferenceSurface> {
+pub fn source_reference_surface_for_words(words: &[&str]) -> Option<SourceReferenceSurface> {
     leaf::parse_leaf_this_source_reference_words(words)
 }
 
-pub(crate) fn source_reference_surface_for_possessive_words(
+pub fn source_reference_surface_for_possessive_words(
     words: &[&str],
 ) -> Option<SourceReferenceSurface> {
     leaf::parse_leaf_this_source_reference_words(words)
 }
 
-pub(crate) fn source_choose_spec_for_surface(surface: SourceReferenceSurface) -> ChooseSpec {
+pub fn source_choose_spec_for_surface(surface: SourceReferenceSurface) -> ChooseSpec {
     ChooseSpec::Source.with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface))
 }
 
-pub(crate) fn this_source_surface_for_words(words: &[&str]) -> Option<SourceReferenceSurface> {
+pub fn this_source_surface_for_words(words: &[&str]) -> Option<SourceReferenceSurface> {
     leaf::parse_leaf_this_source_reference_words(words)
 }
 
 #[cfg(test)]
-pub(crate) fn tokenize_line(line: &str, line_index: usize) -> Vec<OwnedLexToken> {
+pub fn tokenize_line(line: &str, line_index: usize) -> Vec<OwnedLexToken> {
     let mut tokens = lex_line(line, line_index).expect("test tokenization helper should lex input");
     for token in &mut tokens {
         token.lowercase_word();
@@ -182,17 +174,17 @@ pub(crate) fn tokenize_line(line: &str, line_index: usize) -> Vec<OwnedLexToken>
     tokens
 }
 
-pub(crate) use super::lexer::parser_token_word_refs as words;
+pub use super::lexer::parser_token_word_refs as words;
 
-pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)> {
+pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)> {
     count_shapes::parse_for_each_count_value_words(words)
 }
 
-pub(crate) fn is_article(word: &str) -> bool {
+pub fn is_article(word: &str) -> bool {
     leaf::parse_leaf_article_complete(word).is_ok()
 }
 
-pub(crate) fn strip_leading_word_refs_any<'slice, 'word>(
+pub fn strip_leading_word_refs_any<'slice, 'word>(
     words: &'slice [&'word str],
     leading_words: &[&str],
 ) -> &'slice [&'word str] {
@@ -200,32 +192,32 @@ pub(crate) fn strip_leading_word_refs_any<'slice, 'word>(
     &words[fact.consumed_words..]
 }
 
-pub(crate) fn strip_leading_article_word_refs<'slice, 'word>(
+pub fn strip_leading_article_word_refs<'slice, 'word>(
     words: &'slice [&'word str],
 ) -> &'slice [&'word str] {
     leaf::parse_leaf_leading_articles_words(words).rest
 }
 
-pub(crate) fn strip_leading_article_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+pub fn strip_leading_article_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     leaf::parse_leaf_leading_articles_tokens(tokens).rest
 }
 
-pub(crate) fn strip_leading_token_words_any<'a>(
+pub fn strip_leading_token_words_any<'a>(
     tokens: &'a [OwnedLexToken],
     leading_words: &[&str],
 ) -> &'a [OwnedLexToken] {
     leaf::parse_leaf_leading_selected_tokens(tokens, leading_words).rest
 }
 
-pub(crate) fn strip_leading_articles(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+pub fn strip_leading_articles(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     strip_leading_article_tokens(tokens).to_vec()
 }
 
-pub(crate) fn non_article_word_refs<'a>(words: &[&'a str]) -> Vec<&'a str> {
+pub fn non_article_word_refs<'a>(words: &[&'a str]) -> Vec<&'a str> {
     token_facts::non_article_word_refs(words)
 }
 
-pub(crate) fn word_refs_except<'a>(words: &[&'a str], excluded: &[&str]) -> Vec<&'a str> {
+pub fn word_refs_except<'a>(words: &[&'a str], excluded: &[&str]) -> Vec<&'a str> {
     words
         .iter()
         .copied()
@@ -233,23 +225,20 @@ pub(crate) fn word_refs_except<'a>(words: &[&'a str], excluded: &[&str]) -> Vec<
         .collect()
 }
 
-pub(crate) fn non_article_word_refs_except<'a>(
-    words: &[&'a str],
-    excluded: &[&str],
-) -> Vec<&'a str> {
+pub fn non_article_word_refs_except<'a>(words: &[&'a str], excluded: &[&str]) -> Vec<&'a str> {
     let words = non_article_word_refs(words);
     word_refs_except(&words, excluded)
 }
 
-pub(crate) fn non_article_token_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
+pub fn non_article_token_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
     token_facts::non_article_token_word_refs(tokens)
 }
 
-pub(crate) fn strip_possessive_suffix(word: &str) -> &str {
+pub fn strip_possessive_suffix(word: &str) -> &str {
     leaf::strip_leaf_source_possessive_suffix(word)
 }
 
-pub(crate) fn possessive_normalized_word_refs<'a>(words: &[&'a str]) -> Vec<&'a str> {
+pub fn possessive_normalized_word_refs<'a>(words: &[&'a str]) -> Vec<&'a str> {
     words
         .iter()
         .filter_map(|word| match *word {
@@ -261,7 +250,7 @@ pub(crate) fn possessive_normalized_word_refs<'a>(words: &[&'a str]) -> Vec<&'a 
 }
 
 const SENTENCE_HELPER_TAG_PREFIX: &str = "__sentence_helper_";
-pub(crate) fn helper_tag_for_tokens(tokens: &[OwnedLexToken], prefix: &str) -> TagKey {
+pub fn helper_tag_for_tokens(tokens: &[OwnedLexToken], prefix: &str) -> TagKey {
     let span = span_from_tokens(tokens).unwrap_or(TextSpan {
         line: 0,
         start: 0,
@@ -274,7 +263,7 @@ pub(crate) fn helper_tag_for_tokens(tokens: &[OwnedLexToken], prefix: &str) -> T
     ))
 }
 
-pub(crate) fn is_sentence_helper_tag(tag: &str, prefix: &str) -> bool {
+pub fn is_sentence_helper_tag(tag: &str, prefix: &str) -> bool {
     let Some(rest) = tag.strip_prefix(SENTENCE_HELPER_TAG_PREFIX) else {
         return false;
     };
@@ -304,7 +293,7 @@ pub(crate) fn is_sentence_helper_tag(tag: &str, prefix: &str) -> bool {
         && end.parse::<usize>().is_ok()
 }
 
-pub(crate) fn classify_instead_followup_tokens(
+pub fn classify_instead_followup_tokens(
     tokens: &[OwnedLexToken],
 ) -> crate::cards::builders::InsteadSemantics {
     super::grammar::effects::classify_instead_followup_semantics_tokens(tokens)
@@ -400,7 +389,7 @@ fn activation_cost_object_reference(cost: &TotalCost) -> Option<ActivationCostOb
 /// object mentioned by the effect must use the snapshot captured while paying
 /// the cost. Source costs use the stack entry's source LKI instead of inventing
 /// a global `it` binding.
-pub(crate) fn activation_cost_reference_imports(cost: &TotalCost) -> ReferenceImports {
+pub fn activation_cost_reference_imports(cost: &TotalCost) -> ReferenceImports {
     match activation_cost_object_reference(cost) {
         Some(ActivationCostObjectReference::Tagged(tag)) => {
             let mut imports = ReferenceImports::with_last_object_tag(tag.clone());
@@ -424,7 +413,7 @@ fn tag_has_prefix(tag: &TagKey, prefix: &str) -> bool {
     tag.as_str().get(..prefix.len()) == Some(prefix)
 }
 
-pub(crate) fn value_contains_unbound_x(value: &Value) -> bool {
+pub fn value_contains_unbound_x(value: &Value) -> bool {
     match value {
         Value::X | Value::XTimes(_) => true,
         Value::SurfaceHinted { value, .. }
@@ -438,7 +427,7 @@ pub(crate) fn value_contains_unbound_x(value: &Value) -> bool {
     }
 }
 
-pub(crate) fn replace_unbound_x_with_value(
+pub fn replace_unbound_x_with_value(
     value: Value,
     replacement: &Value,
     clause: &str,
@@ -482,16 +471,16 @@ pub(crate) fn replace_unbound_x_with_value(
     }
 }
 
-pub(crate) fn starts_with_activation_cost(tokens: &[OwnedLexToken]) -> bool {
+pub fn starts_with_activation_cost(tokens: &[OwnedLexToken]) -> bool {
     token_facts::parse_activation_cost_start_tokens(tokens)
         .is_some_and(|fact| fact.token_index == 0)
 }
 
-pub(crate) fn find_activation_cost_start(tokens: &[OwnedLexToken]) -> Option<usize> {
+pub fn find_activation_cost_start(tokens: &[OwnedLexToken]) -> Option<usize> {
     token_facts::parse_activation_cost_start_tokens(tokens).map(|fact| fact.token_index)
 }
 
-pub(crate) fn join_sentences_with_period(sentences: &[Vec<OwnedLexToken>]) -> Vec<OwnedLexToken> {
+pub fn join_sentences_with_period(sentences: &[Vec<OwnedLexToken>]) -> Vec<OwnedLexToken> {
     let mut joined = Vec::new();
     for (idx, sentence) in sentences.iter().enumerate() {
         if idx > 0 {
@@ -502,9 +491,7 @@ pub(crate) fn join_sentences_with_period(sentences: &[Vec<OwnedLexToken>]) -> Ve
     joined
 }
 
-pub(crate) fn parse_next_end_step_token_delay_flags(
-    tail_words: &[&str],
-) -> (bool, bool, PlayerFilter) {
+pub fn parse_next_end_step_token_delay_flags(tail_words: &[&str]) -> (bool, bool, PlayerFilter) {
     let Some(facts) = super::grammar::effects::parse_next_end_step_delay_words(tail_words) else {
         return (false, false, PlayerFilter::Any);
     };
@@ -515,7 +502,7 @@ pub(crate) fn parse_next_end_step_token_delay_flags(
     )
 }
 
-pub(crate) fn remove_first_may_word(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+pub fn remove_first_may_word(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let Some(fact) = token_facts::parse_first_may_word_token(tokens) else {
         return tokens.to_vec();
     };
@@ -526,14 +513,14 @@ pub(crate) fn remove_first_may_word(tokens: &[OwnedLexToken]) -> Vec<OwnedLexTok
         .collect()
 }
 
-pub(crate) fn remove_through_first_may_word(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+pub fn remove_through_first_may_word(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let Some(fact) = token_facts::parse_first_may_word_token(tokens) else {
         return Vec::new();
     };
     tokens[fact.token_index + 1..].to_vec()
 }
 
-pub(crate) fn trim_commas(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+pub fn trim_commas(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let mut start = 0usize;
     let mut end = tokens.len();
     while start < end && tokens[start].is_comma() {
@@ -545,7 +532,7 @@ pub(crate) fn trim_commas(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     tokens[start..end].to_vec()
 }
 
-pub(crate) fn trim_edge_punctuation_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+pub fn trim_edge_punctuation_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     let mut start = 0usize;
     let mut end = tokens.len();
     while start < end
@@ -567,23 +554,23 @@ pub(crate) fn trim_edge_punctuation_tokens(tokens: &[OwnedLexToken]) -> &[OwnedL
     &tokens[start..end]
 }
 
-pub(crate) fn trim_edge_punctuation(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+pub fn trim_edge_punctuation(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     trim_edge_punctuation_tokens(tokens).to_vec()
 }
 
-pub(crate) fn parser_stacktrace_enabled() -> bool {
+pub fn parser_stacktrace_enabled() -> bool {
     std::env::var("IRONSMITH_PARSER_STACKTRACE")
         .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
         .unwrap_or(false)
 }
 
-pub(crate) fn parser_trace_enabled() -> bool {
+pub fn parser_trace_enabled() -> bool {
     std::env::var("IRONSMITH_PARSER_TRACE")
         .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
         .unwrap_or(false)
 }
 
-pub(crate) fn parser_trace(stage: &str, tokens: &[OwnedLexToken]) {
+pub fn parser_trace(stage: &str, tokens: &[OwnedLexToken]) {
     if !parser_trace_enabled() {
         return;
     }
@@ -593,7 +580,7 @@ pub(crate) fn parser_trace(stage: &str, tokens: &[OwnedLexToken]) {
     );
 }
 
-pub(crate) fn parser_trace_stack(stage: &str, tokens: &[OwnedLexToken]) {
+pub fn parser_trace_stack(stage: &str, tokens: &[OwnedLexToken]) {
     if !parser_stacktrace_enabled() {
         return;
     }
@@ -604,7 +591,7 @@ pub(crate) fn parser_trace_stack(stage: &str, tokens: &[OwnedLexToken]) {
     eprintln!("{}", std::backtrace::Backtrace::force_capture());
 }
 
-pub(crate) fn map_span_to_original(
+pub fn map_span_to_original(
     span: TextSpan,
     normalized_line: &str,
     original_line: &str,
@@ -644,47 +631,47 @@ pub(crate) fn map_span_to_original(
     }
 }
 
-pub(crate) fn parse_card_type(word: &str) -> Option<CardType> {
+pub fn parse_card_type(word: &str) -> Option<CardType> {
     leaf::parse_leaf_card_type_complete(word).ok()
 }
 
-pub(crate) fn parse_supertype_word(word: &str) -> Option<Supertype> {
+pub fn parse_supertype_word(word: &str) -> Option<Supertype> {
     leaf::parse_leaf_supertype_complete(word).ok()
 }
 
-pub(crate) fn parse_subtype_word(word: &str) -> Option<Subtype> {
+pub fn parse_subtype_word(word: &str) -> Option<Subtype> {
     leaf::parse_leaf_subtype_complete(word).ok()
 }
 
-pub(crate) fn parse_mana_symbol_word_flexible(word: &str) -> Option<ManaSymbol> {
+pub fn parse_mana_symbol_word_flexible(word: &str) -> Option<ManaSymbol> {
     leaf::parse_leaf_spelled_mana_word_complete(word).ok()
 }
 
-pub(crate) fn parse_color(word: &str) -> Option<crate::color::ColorSet> {
+pub fn parse_color(word: &str) -> Option<crate::color::ColorSet> {
     leaf::parse_leaf_color_complete(word).ok()
 }
 
-pub(crate) fn parse_non_type(word: &str) -> Option<CardType> {
+pub fn parse_non_type(word: &str) -> Option<CardType> {
     leaf::parse_leaf_non_card_type_complete(word).ok()
 }
 
-pub(crate) fn parse_non_supertype(word: &str) -> Option<Supertype> {
+pub fn parse_non_supertype(word: &str) -> Option<Supertype> {
     leaf::parse_leaf_non_supertype_complete(word).ok()
 }
 
-pub(crate) fn parse_non_color(word: &str) -> Option<crate::color::ColorSet> {
+pub fn parse_non_color(word: &str) -> Option<crate::color::ColorSet> {
     leaf::parse_leaf_non_color_complete(word).ok()
 }
 
-pub(crate) fn parse_non_subtype(word: &str) -> Option<Subtype> {
+pub fn parse_non_subtype(word: &str) -> Option<Subtype> {
     leaf::parse_leaf_non_subtype_complete(word).ok()
 }
 
-pub(crate) fn parse_subtype_flexible(word: &str) -> Option<Subtype> {
+pub fn parse_subtype_flexible(word: &str) -> Option<Subtype> {
     leaf::parse_leaf_subtype_flexible_complete(word).ok()
 }
 
-pub(crate) fn is_source_reference_words(words: &[&str]) -> bool {
+pub fn is_source_reference_words(words: &[&str]) -> bool {
     is_this_source_reference_words(words) || source_reference_surface_for_words(words).is_some()
 }
 
@@ -692,19 +679,19 @@ fn is_this_source_reference_words(words: &[&str]) -> bool {
     leaf::parse_leaf_this_source_reference_words(words).is_some()
 }
 
-pub(crate) fn is_demonstrative_object_head(word: &str) -> bool {
+pub fn is_demonstrative_object_head(word: &str) -> bool {
     leaf::parse_leaf_demonstrative_object_head_complete(word).is_ok()
 }
 
-pub(crate) fn is_outlaw_word(word: &str) -> bool {
+pub fn is_outlaw_word(word: &str) -> bool {
     token_facts::parse_outlaw_word(word) == Some(token_facts::OutlawWord::Outlaw)
 }
 
-pub(crate) fn is_non_outlaw_word(word: &str) -> bool {
+pub fn is_non_outlaw_word(word: &str) -> bool {
     token_facts::parse_outlaw_word(word) == Some(token_facts::OutlawWord::NonOutlaw)
 }
 
-pub(crate) fn push_outlaw_subtypes(out: &mut Vec<Subtype>) {
+pub fn push_outlaw_subtypes(out: &mut Vec<Subtype>) {
     for subtype in [
         Subtype::Assassin,
         Subtype::Mercenary,
@@ -718,7 +705,7 @@ pub(crate) fn push_outlaw_subtypes(out: &mut Vec<Subtype>) {
     }
 }
 
-pub(crate) fn is_permanent_type(card_type: CardType) -> bool {
+pub fn is_permanent_type(card_type: CardType) -> bool {
     matches!(
         card_type,
         CardType::Artifact
@@ -730,28 +717,28 @@ pub(crate) fn is_permanent_type(card_type: CardType) -> bool {
     )
 }
 
-pub(crate) fn parse_zone_word(word: &str) -> Option<Zone> {
+pub fn parse_zone_word(word: &str) -> Option<Zone> {
     leaf::parse_leaf_zone_complete(word).ok()
 }
 
-pub(crate) fn parse_alternative_cast_words(words: &[&str]) -> Option<(AlternativeCastKind, usize)> {
+pub fn parse_alternative_cast_words(words: &[&str]) -> Option<(AlternativeCastKind, usize)> {
     let parsed = leaf::parse_leaf_alternative_cast_prefix_words(words)?;
     Some((parsed.kind, parsed.consumed))
 }
 
-pub(crate) fn parse_unsigned_pt_word(word: &str) -> Option<(i32, i32)> {
+pub fn parse_unsigned_pt_word(word: &str) -> Option<(i32, i32)> {
     leaf::parse_leaf_unsigned_pt_complete(word).ok()
 }
 
-pub(crate) fn parse_filter_keyword_constraint_words(
+pub fn parse_filter_keyword_constraint_words(
     words: &[&str],
 ) -> Option<(FilterKeywordConstraint, usize)> {
     reference_shapes::parse_filter_keyword_constraint_words(words)
 }
 
-pub(crate) use reference_shapes::FilterKeywordListConnective;
+pub use reference_shapes::FilterKeywordListConnective;
 
-pub(crate) fn parse_filter_keyword_constraint_list_words(
+pub fn parse_filter_keyword_constraint_list_words(
     words: &[&str],
 ) -> Option<(
     Vec<FilterKeywordConstraint>,
@@ -769,7 +756,7 @@ pub(crate) fn parse_filter_keyword_constraint_list_words(
 /// the left.  A final list arm begins with its connective, so one parsed
 /// keyword is sufficient in that case; otherwise require at least two parsed
 /// keywords to distinguish a serial list from an independent keyword action.
-pub(crate) fn starts_filter_keyword_list_continuation_words(words: &[&str]) -> bool {
+pub fn starts_filter_keyword_list_continuation_words(words: &[&str]) -> bool {
     let (has_leading_connective, keyword_words) = match words {
         ["and", "or", rest @ ..] => (true, rest),
         ["and" | "or" | "and/or", rest @ ..] => (true, rest),
@@ -783,7 +770,7 @@ pub(crate) fn starts_filter_keyword_list_continuation_words(words: &[&str]) -> b
     has_leading_connective || constraints.len() > 1
 }
 
-pub(crate) fn apply_filter_keyword_constraint(
+pub fn apply_filter_keyword_constraint(
     filter: &mut ObjectFilter,
     constraint: FilterKeywordConstraint,
     excluded: bool,
@@ -818,7 +805,7 @@ pub(crate) fn apply_filter_keyword_constraint(
     }
 }
 
-pub(crate) fn parse_flashback_keyword_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
+pub fn parse_flashback_keyword_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     let spec = parse_flashback_keyword_line_spec_lexed(tokens)?;
     let mut text = format!("Flashback {}", spec.cost.to_oracle());
     let tail = words(spec.tail_tokens);
@@ -835,47 +822,47 @@ pub(crate) fn parse_flashback_keyword_line(tokens: &[OwnedLexToken]) -> Option<V
     Some(vec![KeywordAction::MarkerText(text)])
 }
 
-pub(crate) fn parse_mana_symbol(part: &str) -> Result<ManaSymbol, CardTextError> {
+pub fn parse_mana_symbol(part: &str) -> Result<ManaSymbol, CardTextError> {
     shared_tokens::parse_mana_symbol(part)
 }
 
-pub(crate) fn parse_scryfall_mana_cost(raw: &str) -> Result<ManaCost, CardTextError> {
+pub fn parse_scryfall_mana_cost(raw: &str) -> Result<ManaCost, CardTextError> {
     shared_tokens::parse_scryfall_mana_cost(raw)
 }
 
-pub(crate) fn parse_number_word_i32(word: &str) -> Option<i32> {
+pub fn parse_number_word_i32(word: &str) -> Option<i32> {
     leaf::parse_number_i32_complete(word).ok()
 }
 
-pub(crate) fn parse_number_word_u32(word: &str) -> Option<u32> {
+pub fn parse_number_word_u32(word: &str) -> Option<u32> {
     parse_number_word_i32(word).and_then(|value| value.try_into().ok())
 }
 
-pub(crate) fn parse_value_expr_words(words: &[&str]) -> Option<(Value, usize)> {
+pub fn parse_value_expr_words(words: &[&str]) -> Option<(Value, usize)> {
     value_expr::parse_value_expr_words(words)
 }
 
-pub(crate) fn parse_value_expr(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
+pub fn parse_value_expr(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
     value_expr::parse_value_expr_tokens(tokens)
 }
 
-pub(crate) fn parse_value(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
+pub fn parse_value(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
     parse_value_expr(tokens)
 }
 
-pub(crate) fn parse_subject(tokens: &[OwnedLexToken]) -> SubjectAst {
+pub fn parse_subject(tokens: &[OwnedLexToken]) -> SubjectAst {
     reference_shapes::parse_subject_tokens(tokens)
 }
 
-pub(crate) fn span_from_tokens(tokens: &[OwnedLexToken]) -> Option<TextSpan> {
+pub fn span_from_tokens(tokens: &[OwnedLexToken]) -> Option<TextSpan> {
     token_slice_span(tokens)
 }
 
-pub(crate) fn parse_number(tokens: &[OwnedLexToken]) -> Option<(u32, usize)> {
+pub fn parse_number(tokens: &[OwnedLexToken]) -> Option<(u32, usize)> {
     leaf::parse_leaf_number_prefix_tokens(tokens)?.into_fixed()
 }
 
-pub(crate) fn parse_quantity_comparison_prefix(
+pub fn parse_quantity_comparison_prefix(
     tokens: &[OwnedLexToken],
     allow_default_one: bool,
     article_implies_min_one: bool,
@@ -890,7 +877,7 @@ pub(crate) fn parse_quantity_comparison_prefix(
     Ok((parsed.comparison, parsed.consumed_tokens))
 }
 
-pub(crate) fn parse_quantity_comparison_prefix_words(
+pub fn parse_quantity_comparison_prefix_words(
     words: &[&str],
     allow_default_one: bool,
     article_implies_min_one: bool,
@@ -905,9 +892,7 @@ pub(crate) fn parse_quantity_comparison_prefix_words(
     Ok((parsed.comparison, parsed.consumed_words))
 }
 
-pub(crate) fn comparison_to_at_least_threshold(
-    comparison: &crate::effect::Comparison,
-) -> Option<u32> {
+pub fn comparison_to_at_least_threshold(comparison: &crate::effect::Comparison) -> Option<u32> {
     match comparison {
         crate::effect::Comparison::GreaterThanOrEqual(value) if *value >= 0 => Some(*value as u32),
         crate::effect::Comparison::GreaterThan(value) if *value >= -1 => Some((*value + 1) as u32),
@@ -916,7 +901,7 @@ pub(crate) fn comparison_to_at_least_threshold(
     }
 }
 
-pub(crate) fn comparison_to_strict_at_least_threshold(
+pub fn comparison_to_strict_at_least_threshold(
     comparison: &crate::effect::Comparison,
 ) -> Option<u32> {
     match comparison {
@@ -926,7 +911,7 @@ pub(crate) fn comparison_to_strict_at_least_threshold(
     }
 }
 
-pub(crate) fn comparison_to_strict_at_most_threshold(
+pub fn comparison_to_strict_at_most_threshold(
     comparison: &crate::effect::Comparison,
 ) -> Option<u32> {
     match comparison {
@@ -936,7 +921,7 @@ pub(crate) fn comparison_to_strict_at_most_threshold(
     }
 }
 
-pub(crate) fn comparison_to_value_comparison_operator(
+pub fn comparison_to_value_comparison_operator(
     comparison: crate::effect::Comparison,
 ) -> Option<(crate::effect::ValueComparisonOperator, i32)> {
     match comparison {
@@ -966,7 +951,7 @@ pub(crate) fn comparison_to_value_comparison_operator(
     }
 }
 
-pub(crate) fn parse_greater_than_or_equal_quantity_prefix(
+pub fn parse_greater_than_or_equal_quantity_prefix(
     tokens: &[OwnedLexToken],
     allow_default_one: bool,
     article_implies_min_one: bool,
@@ -981,7 +966,7 @@ pub(crate) fn parse_greater_than_or_equal_quantity_prefix(
     Ok(comparison_to_strict_at_least_threshold(&comparison).map(|count| (count, used)))
 }
 
-pub(crate) fn parse_less_than_or_equal_quantity_prefix(
+pub fn parse_less_than_or_equal_quantity_prefix(
     tokens: &[OwnedLexToken],
     allow_default_one: bool,
     article_implies_min_one: bool,
@@ -996,14 +981,14 @@ pub(crate) fn parse_less_than_or_equal_quantity_prefix(
     Ok(comparison_to_strict_at_most_threshold(&comparison).map(|count| (count, used)))
 }
 
-pub(crate) fn parse_choice_count_token_prefix_consumed(
+pub fn parse_choice_count_token_prefix_consumed(
     tokens: &[OwnedLexToken],
 ) -> Option<(ChoiceCount, usize)> {
     let parsed = leaf::parse_leaf_choice_count_prefix_tokens(tokens)?;
     Some((parsed.count, parsed.consumed))
 }
 
-pub(crate) fn parse_choice_count_before_target_prefix(
+pub fn parse_choice_count_before_target_prefix(
     tokens: &[OwnedLexToken],
 ) -> Option<(ChoiceCount, usize)> {
     let fact = token_facts::parse_choice_count_before_target_tokens(tokens)?;
@@ -1565,7 +1550,7 @@ mod tests {
     }
 }
 
-pub(crate) fn wrap_target_count(target: TargetAst, target_count: Option<ChoiceCount>) -> TargetAst {
+pub fn wrap_target_count(target: TargetAst, target_count: Option<ChoiceCount>) -> TargetAst {
     if let Some(count) = target_count {
         TargetAst::WithCount(Box::new(target), count)
     } else {
@@ -1645,7 +1630,7 @@ fn restore_distinct_combat_damage_controller_target(
     apply(target, &authored_filter);
 }
 
-pub(crate) fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
+pub fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
     // A plural historical graveyard target has an embedded `put` verb that
     // belongs to the object filter, not to the surrounding action chain.
     // Preserve this exact target envelope before the generic target-head
@@ -1749,21 +1734,21 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
     target_semantics::parse_target_phrase_inner(tokens)
 }
 
-pub(crate) fn parse_saga_chapter_prefix(line: &str) -> Option<(Vec<u32>, Option<String>, String)> {
+pub fn parse_saga_chapter_prefix(line: &str) -> Option<(Vec<u32>, Option<String>, String)> {
     let parsed = header_shapes::parse_saga_chapter_header(line)?;
     Some((parsed.chapters, parsed.presentation_label, parsed.body))
 }
 
-pub(crate) fn parse_level_header(line: &str) -> Option<(u32, Option<u32>)> {
+pub fn parse_level_header(line: &str) -> Option<(u32, Option<u32>)> {
     let parsed = header_shapes::parse_level_header(line)?;
     Some((parsed.minimum, parsed.maximum))
 }
 
-pub(crate) fn parse_power_toughness(raw: &str) -> Option<PowerToughness> {
+pub fn parse_power_toughness(raw: &str) -> Option<PowerToughness> {
     leaf::parse_leaf_power_toughness_complete(raw).ok()
 }
 
-pub(crate) fn parse_level_up_line(
+pub fn parse_level_up_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     let Some(fact) = keyword_line_facts::parse_level_up_line_tokens(tokens) else {
@@ -1800,46 +1785,46 @@ pub(crate) fn parse_level_up_line(
     }))
 }
 
-pub(crate) fn parse_level_up_line_lexed(
+pub fn parse_level_up_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     parse_level_up_line(tokens)
 }
 
-pub(crate) fn parse_self_free_cast_alternative_cost_line(
+pub fn parse_self_free_cast_alternative_cost_line(
     tokens: &[OwnedLexToken],
 ) -> Option<AlternativeCastingMethod> {
     alternative_cost_lines::parse_self_free_cast(tokens)
 }
 
-pub(crate) fn parse_self_free_cast_alternative_cost_line_lexed(
+pub fn parse_self_free_cast_alternative_cost_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<AlternativeCastingMethod> {
     parse_self_free_cast_alternative_cost_line(tokens)
 }
 
-pub(crate) fn parse_flash_with_additional_cost_line(
+pub fn parse_flash_with_additional_cost_line(
     tokens: &[OwnedLexToken],
 ) -> Option<AlternativeCastingMethod> {
     alternative_cost_lines::parse_flash_with_additional_cost(tokens)
 }
 
-pub(crate) fn parse_flash_with_additional_cost_line_lexed(
+pub fn parse_flash_with_additional_cost_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<AlternativeCastingMethod> {
     parse_flash_with_additional_cost_line(tokens)
 }
 
-pub(crate) fn mana_pips_from_token(token: &OwnedLexToken) -> Option<Vec<ManaSymbol>> {
+pub fn mana_pips_from_token(token: &OwnedLexToken) -> Option<Vec<ManaSymbol>> {
     leaf::parse_leaf_surface_mana_pip_token(token).map(leaf::LeafManaPipToken::into_pip)
 }
 
-pub(crate) fn leading_mana_cost_from_tokens(tokens: &[OwnedLexToken]) -> Option<(ManaCost, usize)> {
+pub fn leading_mana_cost_from_tokens(tokens: &[OwnedLexToken]) -> Option<(ManaCost, usize)> {
     let prefix = leaf::parse_leaf_mana_cost_prefix_tokens(tokens)?;
     Some((prefix.cost, prefix.consumed))
 }
 
-pub(crate) fn parse_madness_line(
+pub fn parse_madness_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     let Some(fact) = keyword_line_facts::parse_madness_line_tokens(tokens) else {
@@ -1865,27 +1850,23 @@ pub(crate) fn parse_madness_line(
     Ok(Some(AlternativeCastingMethod::Madness { cost: mana_cost }))
 }
 
-pub(crate) fn parse_madness_line_lexed(
+pub fn parse_madness_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     parse_madness_line(tokens)
 }
 
-pub(crate) fn parse_buyback_line(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<OptionalCost>, CardTextError> {
+pub fn parse_buyback_line(tokens: &[OwnedLexToken]) -> Result<Option<OptionalCost>, CardTextError> {
     keyword_cost_lines::parse_buyback(tokens)
 }
 
-pub(crate) fn parse_buyback_line_lexed(
+pub fn parse_buyback_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<OptionalCost>, CardTextError> {
     parse_buyback_line(tokens)
 }
 
-pub(crate) fn parse_bargain_line(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<OptionalCost>, CardTextError> {
+pub fn parse_bargain_line(tokens: &[OwnedLexToken]) -> Result<Option<OptionalCost>, CardTextError> {
     if keyword_line_facts::parse_bargain_line_tokens(tokens).is_none() {
         return Ok(None);
     }
@@ -1907,13 +1888,13 @@ pub(crate) fn parse_bargain_line(
     )))
 }
 
-pub(crate) fn parse_bargain_line_lexed(
+pub fn parse_bargain_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<OptionalCost>, CardTextError> {
     parse_bargain_line(tokens)
 }
 
-pub(crate) fn parse_optional_cost_keyword_line(
+pub fn parse_optional_cost_keyword_line(
     tokens: &[OwnedLexToken],
     keyword: &str,
     constructor: fn(TotalCost) -> OptionalCost,
@@ -1921,31 +1902,29 @@ pub(crate) fn parse_optional_cost_keyword_line(
     keyword_cost_lines::parse_optional_cost(tokens, keyword, constructor)
 }
 
-pub(crate) fn parse_kicker_line(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<OptionalCost>, CardTextError> {
+pub fn parse_kicker_line(tokens: &[OwnedLexToken]) -> Result<Option<OptionalCost>, CardTextError> {
     parse_optional_cost_keyword_line(tokens, "kicker", OptionalCost::kicker)
 }
 
-pub(crate) fn parse_kicker_line_lexed(
+pub fn parse_kicker_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<OptionalCost>, CardTextError> {
     parse_kicker_line(tokens)
 }
 
-pub(crate) fn parse_multikicker_line(
+pub fn parse_multikicker_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<OptionalCost>, CardTextError> {
     parse_optional_cost_keyword_line(tokens, "multikicker", OptionalCost::multikicker)
 }
 
-pub(crate) fn parse_multikicker_line_lexed(
+pub fn parse_multikicker_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<OptionalCost>, CardTextError> {
     parse_multikicker_line(tokens)
 }
 
-pub(crate) fn parse_replicate_line(
+pub fn parse_replicate_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<OptionalCost>, CardTextError> {
     let Some(fact) =
@@ -1963,49 +1942,45 @@ pub(crate) fn parse_replicate_line(
     Ok(Some(OptionalCost::replicate(total_cost)))
 }
 
-pub(crate) fn parse_replicate_line_lexed(
+pub fn parse_replicate_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<OptionalCost>, CardTextError> {
     parse_replicate_line(tokens)
 }
 
-pub(crate) fn parse_squad_line(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<OptionalCost>, CardTextError> {
+pub fn parse_squad_line(tokens: &[OwnedLexToken]) -> Result<Option<OptionalCost>, CardTextError> {
     parse_optional_cost_keyword_line(tokens, "squad", OptionalCost::squad)
 }
 
-pub(crate) fn parse_squad_line_lexed(
+pub fn parse_squad_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<OptionalCost>, CardTextError> {
     parse_squad_line(tokens)
 }
 
-pub(crate) fn parse_offspring_line(
+pub fn parse_offspring_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<OptionalCost>, CardTextError> {
     parse_optional_cost_keyword_line(tokens, "offspring", OptionalCost::offspring)
 }
 
-pub(crate) fn parse_offspring_line_lexed(
+pub fn parse_offspring_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<OptionalCost>, CardTextError> {
     parse_offspring_line(tokens)
 }
 
-pub(crate) fn parse_entwine_line(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<OptionalCost>, CardTextError> {
+pub fn parse_entwine_line(tokens: &[OwnedLexToken]) -> Result<Option<OptionalCost>, CardTextError> {
     parse_optional_cost_keyword_line(tokens, "entwine", OptionalCost::entwine)
 }
 
-pub(crate) fn parse_entwine_line_lexed(
+pub fn parse_entwine_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<OptionalCost>, CardTextError> {
     parse_entwine_line(tokens)
 }
 
-pub(crate) fn parse_escalate_line_lexed(
+pub fn parse_escalate_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(TotalCost, String)>, CardTextError> {
     let Some(fact) =
@@ -2021,7 +1996,7 @@ pub(crate) fn parse_escalate_line_lexed(
     Ok(Some((total_cost, display)))
 }
 
-pub(crate) fn parse_evoke_line_lexed(
+pub fn parse_evoke_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     let Some(fact) =
@@ -2034,14 +2009,14 @@ pub(crate) fn parse_evoke_line_lexed(
     }
     let total_cost = parse_activation_cost(fact.cost_tokens)?;
     Ok(Some(AlternativeCastingMethod::Composed {
-        name: "Evoke",
+        name: "Evoke".into(),
         total_cost,
         condition: None,
         prototype_power_toughness: None,
     }))
 }
 
-pub(crate) fn parse_prowl_line_lexed(
+pub fn parse_prowl_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     let Some(fact) =
@@ -2054,7 +2029,7 @@ pub(crate) fn parse_prowl_line_lexed(
     }
     let total_cost = parse_activation_cost(fact.cost_tokens)?;
     Ok(Some(AlternativeCastingMethod::Composed {
-        name: "Prowl",
+        name: "Prowl".into(),
         total_cost,
         condition: Some(
             crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(
@@ -2065,7 +2040,7 @@ pub(crate) fn parse_prowl_line_lexed(
     }))
 }
 
-pub(crate) fn parse_eternalize_line_lexed(
+pub fn parse_eternalize_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TotalCost>, CardTextError> {
     let Some(fact) =
@@ -2085,35 +2060,35 @@ pub(crate) fn parse_eternalize_line_lexed(
     Ok(Some(total_cost))
 }
 
-pub(crate) fn parse_epic_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_epic_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     keyword_line_facts::parse_epic_line_tokens(tokens).is_some()
 }
 
-pub(crate) fn parse_morph_keyword_line(
+pub fn parse_morph_keyword_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     keyword_cost_lines::parse_morph(tokens)
 }
 
-pub(crate) fn parse_morph_keyword_line_lexed(
+pub fn parse_morph_keyword_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     parse_morph_keyword_line(tokens)
 }
 
-pub(crate) fn parse_escape_line(
+pub fn parse_escape_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     keyword_cost_lines::parse_escape(tokens)
 }
 
-pub(crate) fn parse_escape_line_lexed(
+pub fn parse_escape_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     parse_escape_line(tokens)
 }
 
-pub(crate) fn parse_flashback_line(
+pub fn parse_flashback_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     let cost_tokens = match parse_flashback_cost_clause_tokens(tokens) {
@@ -2210,13 +2185,13 @@ mod mixed_flashback_cost_tests {
     }
 }
 
-pub(crate) fn parse_flashback_line_lexed(
+pub fn parse_flashback_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     parse_flashback_line(tokens)
 }
 
-pub(crate) fn parse_retrace_line(
+pub fn parse_retrace_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     if keyword_line_facts::parse_retrace_line_tokens(tokens).is_none() {
@@ -2228,25 +2203,25 @@ pub(crate) fn parse_retrace_line(
     }))
 }
 
-pub(crate) fn parse_retrace_line_lexed(
+pub fn parse_retrace_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     parse_retrace_line(tokens)
 }
 
-pub(crate) fn parse_jump_start_line(
+pub fn parse_jump_start_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     Ok(keyword_cost_lines::parse_jump_start(tokens))
 }
 
-pub(crate) fn parse_jump_start_line_lexed(
+pub fn parse_jump_start_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     parse_jump_start_line(tokens)
 }
 
-pub(crate) fn parse_harmonize_line(
+pub fn parse_harmonize_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     let Some(fact) = keyword_line_facts::parse_harmonize_line_tokens(tokens) else {
@@ -2268,13 +2243,13 @@ pub(crate) fn parse_harmonize_line(
     Ok(Some(AlternativeCastingMethod::Harmonize { total_cost }))
 }
 
-pub(crate) fn parse_harmonize_line_lexed(
+pub fn parse_harmonize_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     parse_harmonize_line(tokens)
 }
 
-pub(crate) fn parse_warp_line(
+pub fn parse_warp_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     let Some(fact) = keyword_line_facts::parse_warp_line_tokens(tokens) else {
@@ -2285,61 +2260,61 @@ pub(crate) fn parse_warp_line(
     Ok(Some(AlternativeCastingMethod::Warp { cost }))
 }
 
-pub(crate) fn parse_warp_line_lexed(
+pub fn parse_warp_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     parse_warp_line(tokens)
 }
 
-pub(crate) fn parse_bestow_line(
+pub fn parse_bestow_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     keyword_cost_lines::parse_bestow(tokens)
 }
 
-pub(crate) fn parse_bestow_line_lexed(
+pub fn parse_bestow_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     parse_bestow_line(tokens)
 }
 
-pub(crate) fn parse_blitz_line(
+pub fn parse_blitz_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     keyword_cost_lines::parse_blitz(tokens)
 }
 
-pub(crate) fn parse_blitz_line_lexed(
+pub fn parse_blitz_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     parse_blitz_line(tokens)
 }
 
-pub(crate) fn parse_transmute_line(
+pub fn parse_transmute_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     keyword_cost_lines::parse_transmute(tokens)
 }
 
-pub(crate) fn parse_transmute_line_lexed(
+pub fn parse_transmute_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     parse_transmute_line(tokens)
 }
 
-pub(crate) fn parse_transfigure_line(
+pub fn parse_transfigure_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     keyword_cost_lines::parse_transfigure(tokens)
 }
 
-pub(crate) fn parse_transfigure_line_lexed(
+pub fn parse_transfigure_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     parse_transfigure_line(tokens)
 }
 
-pub(crate) fn parse_reinforce_line(
+pub fn parse_reinforce_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     let Some(fact) = keyword_line_facts::parse_reinforce_line_tokens(tokens) else {
@@ -2413,60 +2388,60 @@ pub(crate) fn parse_reinforce_line(
     }))
 }
 
-pub(crate) fn parse_reinforce_line_lexed(
+pub fn parse_reinforce_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     parse_reinforce_line(tokens)
 }
 
-pub(crate) fn parse_cast_this_spell_only_line(
+pub fn parse_cast_this_spell_only_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     cast_restriction_lines::parse_cast_this_spell_only(tokens)
 }
 
-pub(crate) fn parse_cast_this_spell_only_line_lexed(
+pub fn parse_cast_this_spell_only_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     parse_cast_this_spell_only_line(tokens)
 }
 
-pub(crate) fn parse_you_may_rather_than_spell_cost_line(
+pub fn parse_you_may_rather_than_spell_cost_line(
     tokens: &[OwnedLexToken],
     line: &str,
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     alternative_cost_lines::parse_you_may_rather_than_spell_cost(tokens, line)
 }
 
-pub(crate) fn parse_you_may_rather_than_spell_cost_line_lexed(
+pub fn parse_you_may_rather_than_spell_cost_line_lexed(
     tokens: &[OwnedLexToken],
     line: &str,
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     parse_you_may_rather_than_spell_cost_line(tokens, line)
 }
 
-pub(crate) fn parse_additional_cost_choice_options(
+pub fn parse_additional_cost_choice_options(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<AdditionalCostChoiceOptionAst<crate::model::ast::EffectAst>>>, CardTextError>
 {
     additional_cost_choices::parse_additional_cost_choices(tokens)
 }
 
-pub(crate) fn parse_additional_cost_choice_options_lexed(
+pub fn parse_additional_cost_choice_options_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<AdditionalCostChoiceOptionAst<crate::model::ast::EffectAst>>>, CardTextError>
 {
     parse_additional_cost_choice_options(tokens)
 }
 
-pub(crate) fn parse_if_conditional_alternative_cost_line(
+pub fn parse_if_conditional_alternative_cost_line(
     tokens: &[OwnedLexToken],
     line: &str,
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     alternative_cost_lines::parse_if_conditional_alternative_cost(tokens, line)
 }
 
-pub(crate) fn parse_if_conditional_alternative_cost_line_lexed(
+pub fn parse_if_conditional_alternative_cost_line_lexed(
     tokens: &[OwnedLexToken],
     line: &str,
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {

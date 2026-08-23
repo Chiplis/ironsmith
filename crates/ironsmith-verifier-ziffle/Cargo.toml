@@ -1,0 +1,18 @@
+[package]
+name = "ironsmith-verifier-ziffle"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ark-serialize = "0.5.0"
+ark-std = { version = "0.5.0", features = ["std"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+sha2 = "0.11"
+ziffle = "0.1.0"
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []

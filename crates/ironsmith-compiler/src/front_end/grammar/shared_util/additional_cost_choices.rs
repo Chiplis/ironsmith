@@ -5,7 +5,7 @@ use crate::grammar::{permission_shapes, primitives};
 use crate::lexer::{OwnedLexToken, TokenKind, TokenWordView};
 use crate::model::ast::EffectAst;
 
-pub(crate) fn parse_additional_cost_choices(
+pub fn parse_additional_cost_choices(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<AdditionalCostChoiceOptionAst<EffectAst>>>, CardTextError> {
     let words = TokenWordView::new(tokens).word_refs();

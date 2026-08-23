@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) fn compile_choose_objects_with_subject(
+pub fn compile_choose_objects_with_subject(
     subject: LoweredSubject,
     filter: ObjectFilter,
     count: ChoiceCount,
@@ -16,7 +16,7 @@ pub(crate) fn compile_choose_objects_with_subject(
     (effects, subject.into_choices())
 }
 
-pub(crate) fn compile_choose_objects_across_zones_with_subject(
+pub fn compile_choose_objects_across_zones_with_subject(
     subject: LoweredSubject,
     filter: ObjectFilter,
     count: ChoiceCount,
@@ -45,7 +45,7 @@ pub(crate) fn compile_choose_objects_across_zones_with_subject(
     (effects, subject.into_choices())
 }
 
-pub(crate) fn compile_choose_player_with_subject(
+pub fn compile_choose_player_with_subject(
     subject: LoweredSubject,
     filter: PlayerFilter,
     tag: TagKey,

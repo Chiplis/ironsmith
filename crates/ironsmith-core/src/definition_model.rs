@@ -1,5 +1,6 @@
 use crate::{AuraAttachmentFilter, Card, CostComponent, ResolutionProgram, TotalCost};
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CardDefinition<A, E, C, AC, OC> {
     pub card: Card,

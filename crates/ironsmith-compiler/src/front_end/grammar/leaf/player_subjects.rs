@@ -6,7 +6,7 @@ use super::super::primitives;
 use super::references::LeafPlayerReference;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LeafPlayerReferenceMode {
+pub enum LeafPlayerReferenceMode {
     ControlSubject {
         allow_that_player: bool,
         allow_opponent_players: bool,
@@ -194,7 +194,7 @@ impl LeafPlayerReferenceMode {
     }
 }
 
-pub(crate) fn parse_leaf_player_reference_lexed<'a>(
+pub fn parse_leaf_player_reference_lexed<'a>(
     input: &mut LexStream<'a>,
     mode: LeafPlayerReferenceMode,
 ) -> WResult<LeafPlayerReference> {
@@ -211,7 +211,7 @@ pub(crate) fn parse_leaf_player_reference_lexed<'a>(
     }
 }
 
-pub(crate) fn parse_leaf_player_reference_tokens(
+pub fn parse_leaf_player_reference_tokens(
     tokens: &[OwnedLexToken],
     mode: LeafPlayerReferenceMode,
 ) -> Option<LeafPlayerReference> {
@@ -222,7 +222,7 @@ pub(crate) fn parse_leaf_player_reference_tokens(
     input.is_empty().then_some(reference)
 }
 
-pub(crate) fn parse_leaf_player_reference_words<'a>(
+pub fn parse_leaf_player_reference_words<'a>(
     words: &'a [&'a str],
     mode: LeafPlayerReferenceMode,
 ) -> Option<LeafPlayerReference> {

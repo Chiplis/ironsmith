@@ -11,9 +11,9 @@ mod name_shapes;
 #[path = "preprocess/vote_shapes.rs"]
 mod vote_shapes;
 
-pub(crate) use borrow_expansion::*;
-pub(crate) use borrow_shapes::*;
-pub(crate) use document_shapes::*;
-pub(crate) use line_shapes::*;
-pub(crate) use name_shapes::*;
-pub(crate) use vote_shapes::*;
+pub use borrow_expansion::*;
+pub use borrow_shapes::*;
+pub use document_shapes::*;
+pub use line_shapes::*;
+pub use name_shapes::*;
+pub use vote_shapes::*;

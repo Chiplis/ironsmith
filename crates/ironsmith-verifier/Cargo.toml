@@ -1,0 +1,21 @@
+[package]
+name = "ironsmith-verifier"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ironsmith-verifier-ziffle = { path = "../ironsmith-verifier-ziffle", default-features = false }
+ironsmith-verifier-shard-02-13 = { path = "../ironsmith-verifier-shard-02-13", default-features = false }
+ironsmith-verifier-shard-14-25 = { path = "../ironsmith-verifier-shard-14-25", default-features = false }
+ironsmith-verifier-shard-26-37 = { path = "../ironsmith-verifier-shard-26-37", default-features = false }
+ironsmith-verifier-shard-38-49 = { path = "../ironsmith-verifier-shard-38-49", default-features = false }
+ironsmith-verifier-shard-50-62 = { path = "../ironsmith-verifier-shard-50-62", default-features = false }
+ironsmith-verifier-shard-63-75 = { path = "../ironsmith-verifier-shard-63-75", default-features = false }
+ironsmith-verifier-shard-76-88 = { path = "../ironsmith-verifier-shard-76-88", default-features = false }
+ironsmith-verifier-shard-89-100 = { path = "../ironsmith-verifier-shard-89-100", default-features = false }
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []

@@ -1,0 +1,14 @@
+[package]
+name = "ironsmith-dynamic-compile"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ironsmith-registry = { path = "../ironsmith-registry", default-features = false }
+ironsmith-compiler = { path = "../ironsmith-compiler", default-features = false }
+
+[features]
+default = []
+
+[lib]
+path = "src/lib.rs"

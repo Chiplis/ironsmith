@@ -13,12 +13,12 @@ use super::super::sequence_pairs::{
 use super::{LookedRemainderShape, parse_looked_remainder_shape};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct KeywordChoiceSegmentsShape {
-    pub(crate) segments: Vec<Range<usize>>,
+pub struct KeywordChoiceSegmentsShape {
+    pub segments: Vec<Range<usize>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum CardTypeIterationShape {
+pub enum CardTypeIterationShape {
     AmongCastSpells { spell_filter: Range<usize> },
     All,
 }
@@ -67,7 +67,7 @@ fn push_comma_segments(tokens: &[OwnedLexToken], base: usize, output: &mut Vec<R
     push_trimmed(tokens, base, start, tokens.len(), output);
 }
 
-pub(crate) fn parse_keyword_choice_segments_shape(
+pub fn parse_keyword_choice_segments_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<KeywordChoiceSegmentsShape> {
     let mut input = LexStream::new(tokens);
@@ -89,7 +89,7 @@ pub(crate) fn parse_keyword_choice_segments_shape(
     (segments.len() >= 3).then_some(KeywordChoiceSegmentsShape { segments })
 }
 
-pub(crate) fn is_one_chosen_battlefield_others_hand_rest_graveyard_shape(
+pub fn is_one_chosen_battlefield_others_hand_rest_graveyard_shape(
     tokens: &[OwnedLexToken],
 ) -> bool {
     starts_sequence(
@@ -148,7 +148,7 @@ fn cast_tail_start(tokens: &[OwnedLexToken]) -> Option<usize> {
     best
 }
 
-pub(crate) fn parse_card_type_iteration_shape(
+pub fn parse_card_type_iteration_shape(
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],
 ) -> Option<CardTypeIterationShape> {
@@ -190,9 +190,7 @@ pub(crate) fn parse_card_type_iteration_shape(
     })
 }
 
-pub(crate) fn parse_card_type_iteration_order(
-    third: &[OwnedLexToken],
-) -> Option<LibraryBottomOrderAst> {
+pub fn parse_card_type_iteration_order(third: &[OwnedLexToken]) -> Option<LibraryBottomOrderAst> {
     match parse_looked_remainder_shape(third)? {
         LookedRemainderShape::LibraryBottom(order) => Some(order),
         LookedRemainderShape::Graveyard => None,
@@ -208,7 +206,7 @@ const ONE_HAND_BOTTOM_EXILE_BOTTOM: &[&[&str]] = &[
     ],
 ];
 
-pub(crate) fn is_hand_bottom_exile_split_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_hand_bottom_exile_split_shape(tokens: &[OwnedLexToken]) -> bool {
     starts_sequence(
         tokens,
         &[&["put", "one", "of", "them", "into", "your", "hand"]],
@@ -228,7 +226,7 @@ const OTHER_BOTTOM: &[&[&str]] = &[
     &["rest", "onto", "bottom"],
 ];
 
-pub(crate) fn is_nonhand_replacement_looked_split_shape(
+pub fn is_nonhand_replacement_looked_split_shape(
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],
 ) -> bool {

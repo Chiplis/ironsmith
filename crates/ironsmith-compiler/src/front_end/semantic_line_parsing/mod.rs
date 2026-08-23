@@ -31,16 +31,16 @@ mod lines;
 mod static_chunks;
 mod triggered_chunks;
 
-pub(crate) use chosen_options::{condition_for_chosen_option, wrap_chosen_option_static_chunk};
+pub use chosen_options::{condition_for_chosen_option, wrap_chosen_option_static_chunk};
 use effect_programs::*;
 use static_chunks::*;
-pub(crate) use triggered_chunks::{
+pub use triggered_chunks::{
     apply_chosen_option_to_triggered_chunk, apply_explicit_intervening_if_to_triggered_chunk,
     infer_triggered_ability_functional_zones_from_facts,
 };
 
-pub(crate) use activated::parse_activated_line;
-pub(crate) use lines::{
+pub use activated::parse_activated_line;
+pub use lines::{
     dynamic_zone_change_group_token_creation_from_authored_trigger,
     exact_graveyard_card_copy_cast_sequence, exact_looked_hand_optional_cast_bundle,
     exact_target_same_name_graveyard_may_cast_bundle,
@@ -53,7 +53,7 @@ pub(crate) use lines::{
     parse_statement_token_groups_to_chunks, parse_static_line, rewrite_modal_to_parsed_item,
 };
 #[cfg(test)]
-pub(crate) use lines::{
+pub use lines::{
     normalize_exert_followup_source_reference_tokens, parse_keyword_line_for_test,
     parse_keyword_line_with_full_tokens_for_test, parse_single_effect_lexed, parse_triggered_line,
     strip_lexed_suffix_phrase,
@@ -411,7 +411,7 @@ mod source_boundary_surface_tests {
         assert_eq!(
             filter.with_counter,
             Some(crate::filter::CounterConstraint::Typed(
-                crate::object::CounterType::Named("memory")
+                crate::object::CounterType::Named("memory".into())
             ))
         );
     }

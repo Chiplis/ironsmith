@@ -7,27 +7,27 @@ use super::provenance::ProvenanceStore;
 use super::symbols::SymbolTable;
 
 #[derive(Debug, Clone)]
-pub(crate) struct ParsedOverloadBranch {
-    pub(crate) items: Vec<ParsedCardItem>,
+pub struct ParsedOverloadBranch {
+    pub items: Vec<ParsedCardItem>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ParsedCleaveBranch {
-    pub(crate) items: Vec<ParsedCardItem>,
+pub struct ParsedCleaveBranch {
+    pub items: Vec<ParsedCardItem>,
 }
 
 /// The sole card-level front-end result. It owns compiler semantic nodes,
 /// diagnostics, provenance, and scoped symbols; runtime materialization is a
 /// separate operation in the lowering phase.
 #[derive(Debug, Clone)]
-pub(crate) struct ParsedCardAst {
-    pub(crate) builder: CardDefinitionBuilder,
-    pub(crate) annotations: ParseAnnotations,
-    pub(crate) provenance: ProvenanceStore,
-    pub(crate) symbols: SymbolTable,
-    pub(crate) reference_resolution: CanonicalReferenceResolutionAst,
-    pub(crate) items: Vec<ParsedCardItem>,
-    pub(crate) overload_branch: Option<ParsedOverloadBranch>,
-    pub(crate) cleave_branch: Option<ParsedCleaveBranch>,
-    pub(crate) allow_unsupported: bool,
+pub struct ParsedCardAst {
+    pub builder: CardDefinitionBuilder,
+    pub annotations: ParseAnnotations,
+    pub provenance: ProvenanceStore,
+    pub symbols: SymbolTable,
+    pub reference_resolution: CanonicalReferenceResolutionAst,
+    pub items: Vec<ParsedCardItem>,
+    pub overload_branch: Option<ParsedOverloadBranch>,
+    pub cleave_branch: Option<ParsedCleaveBranch>,
+    pub allow_unsupported: bool,
 }

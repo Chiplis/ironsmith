@@ -3,7 +3,7 @@ use crate::model::{
     CompilerTriggerLegalityAst,
 };
 
-pub(crate) trait LegalityMaterializer {
+pub trait LegalityMaterializer {
     type RuntimeLegality;
     type Error;
 

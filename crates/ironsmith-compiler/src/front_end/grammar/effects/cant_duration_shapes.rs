@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) fn cant_sentence_has_source_remains_tapped_duration(tokens: &[OwnedLexToken]) -> bool {
+pub fn cant_sentence_has_source_remains_tapped_duration(tokens: &[OwnedLexToken]) -> bool {
     let mut has_for_as_long_as = false;
     let mut has_remains = false;
     let mut has_tapped = false;

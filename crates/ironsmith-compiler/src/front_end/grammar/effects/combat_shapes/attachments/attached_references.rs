@@ -1,13 +1,13 @@
 use super::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AttachedObjectReferenceTag {
+pub enum AttachedObjectReferenceTag {
     Enchanted,
     Equipped,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AttachedObjectReferenceKind {
+pub enum AttachedObjectReferenceKind {
     Equipment,
     Artifact,
     Creature,
@@ -17,9 +17,9 @@ pub(crate) enum AttachedObjectReferenceKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AttachedObjectReferenceShape {
-    pub(crate) tag: AttachedObjectReferenceTag,
-    pub(crate) kind: AttachedObjectReferenceKind,
+pub struct AttachedObjectReferenceShape {
+    pub tag: AttachedObjectReferenceTag,
+    pub kind: AttachedObjectReferenceKind,
 }
 
 fn attached_object_reference<'a>(
@@ -59,7 +59,7 @@ fn attached_object_reference<'a>(
     Ok(AttachedObjectReferenceShape { tag, kind })
 }
 
-pub(crate) fn parse_attached_object_reference_tokens(
+pub fn parse_attached_object_reference_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedObjectReferenceShape> {
     primitives::parse_all(

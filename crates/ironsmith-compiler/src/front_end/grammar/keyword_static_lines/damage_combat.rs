@@ -7,63 +7,63 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DamageSourceControllerKind {
+pub enum DamageSourceControllerKind {
     None,
     You,
     Opponent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DamageSourceShape<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) controller: DamageSourceControllerKind,
+pub struct DamageSourceShape<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub controller: DamageSourceControllerKind,
     /// Qualifiers that follow the controller ("a source you control with an
     /// odd mana value would ...").
-    pub(crate) trailing_filter_tokens: &'a [OwnedLexToken],
+    pub trailing_filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DamageMultiplierSpec<'a> {
-    pub(crate) source: DamageSourceShape<'a>,
-    pub(crate) damaged_tokens: &'a [OwnedLexToken],
-    pub(crate) factor: u32,
-    pub(crate) combat_only: bool,
+pub struct DamageMultiplierSpec<'a> {
+    pub source: DamageSourceShape<'a>,
+    pub damaged_tokens: &'a [OwnedLexToken],
+    pub factor: u32,
+    pub combat_only: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AdditiveDamageAmountSpec<'a> {
-    pub(crate) source: DamageSourceShape<'a>,
-    pub(crate) damaged_tokens: &'a [OwnedLexToken],
-    pub(crate) repeated_target_tokens: Option<&'a [OwnedLexToken]>,
-    pub(crate) delta: i32,
-    pub(crate) noncombat_only: bool,
+pub struct AdditiveDamageAmountSpec<'a> {
+    pub source: DamageSourceShape<'a>,
+    pub damaged_tokens: &'a [OwnedLexToken],
+    pub repeated_target_tokens: Option<&'a [OwnedLexToken]>,
+    pub delta: i32,
+    pub noncombat_only: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PreventDamageToYouSpec<'a> {
-    pub(crate) source_tokens: &'a [OwnedLexToken],
-    pub(crate) amount: u32,
+pub struct PreventDamageToYouSpec<'a> {
+    pub source_tokens: &'a [OwnedLexToken],
+    pub amount: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DamageAmountTail<'a> {
+pub enum DamageAmountTail<'a> {
     Instead,
     ToThatTarget(&'a [OwnedLexToken]),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DamageRedirectControllerSpec<'a> {
-    pub(crate) source_tokens: &'a [OwnedLexToken],
+pub struct DamageRedirectControllerSpec<'a> {
+    pub source_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CombatMaximumKind {
+pub enum CombatMaximumKind {
     AttackYou,
     Attack,
     Block,
 }
 
-pub(crate) fn parse_damage_multiplier_tokens(
+pub fn parse_damage_multiplier_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DamageMultiplierSpec<'_>> {
     primitives::parse_all(
@@ -74,7 +74,7 @@ pub(crate) fn parse_damage_multiplier_tokens(
     .ok()
 }
 
-pub(crate) fn parse_additive_damage_amount_tokens(
+pub fn parse_additive_damage_amount_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AdditiveDamageAmountSpec<'_>> {
     primitives::parse_all(
@@ -85,7 +85,7 @@ pub(crate) fn parse_additive_damage_amount_tokens(
     .ok()
 }
 
-pub(crate) fn parse_minimum_red_noncombat_damage_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_minimum_red_noncombat_damage_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,
         parse_minimum_red_noncombat_damage_lexed,
@@ -94,7 +94,7 @@ pub(crate) fn parse_minimum_red_noncombat_damage_tokens(tokens: &[OwnedLexToken]
     .is_ok()
 }
 
-pub(crate) fn parse_prevent_damage_to_you_tokens(
+pub fn parse_prevent_damage_to_you_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PreventDamageToYouSpec<'_>> {
     primitives::parse_all(
@@ -105,7 +105,7 @@ pub(crate) fn parse_prevent_damage_to_you_tokens(
     .ok()
 }
 
-pub(crate) fn parse_damage_redirect_controller_tokens(
+pub fn parse_damage_redirect_controller_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DamageRedirectControllerSpec<'_>> {
     primitives::parse_all(
@@ -116,9 +116,7 @@ pub(crate) fn parse_damage_redirect_controller_tokens(
     .ok()
 }
 
-pub(crate) fn parse_combat_maximum_tail_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<CombatMaximumKind> {
+pub fn parse_combat_maximum_tail_tokens(tokens: &[OwnedLexToken]) -> Option<CombatMaximumKind> {
     primitives::parse_all(
         tokens,
         parse_combat_maximum_tail_lexed,

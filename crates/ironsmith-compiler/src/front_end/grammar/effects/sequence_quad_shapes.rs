@@ -8,61 +8,61 @@ use crate::grammar::{leaf, primitives};
 use crate::lexer::{LexStream, LexedClause, OwnedLexToken, TokenWordView};
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct NamedRevealedCardShape<'a> {
-    pub(crate) name_tokens: &'a [OwnedLexToken],
+pub struct NamedRevealedCardShape<'a> {
+    pub name_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CountedLookedCardExileShape {
-    pub(crate) count: ChoiceCount,
-    pub(crate) includes_remainder: bool,
+pub struct CountedLookedCardExileShape {
+    pub count: ChoiceCount,
+    pub includes_remainder: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ExiledCardCastFilterShape<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
+pub struct ExiledCardCastFilterShape<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct LookedCardFilterShape<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
+pub struct LookedCardFilterShape<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct LookedCardExileRemainderShape<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) count: ChoiceCount,
-    pub(crate) order: LibraryBottomOrderAst,
+pub struct LookedCardExileRemainderShape<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub count: ChoiceCount,
+    pub order: LibraryBottomOrderAst,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct LookedCardRevealShape<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) count: ChoiceCount,
-    pub(crate) x_value: Option<Value>,
+pub struct LookedCardRevealShape<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub count: ChoiceCount,
+    pub x_value: Option<Value>,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct LookExileSplitShape<'a> {
-    pub(crate) look_tokens: &'a [OwnedLexToken],
-    pub(crate) exile_tokens: &'a [OwnedLexToken],
+pub struct LookExileSplitShape<'a> {
+    pub look_tokens: &'a [OwnedLexToken],
+    pub exile_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct LookedCardAndOrChoiceShape<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) uses_and_or: bool,
+pub struct LookedCardAndOrChoiceShape<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub uses_and_or: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChosenCardsDispositionShape {
-    pub(crate) order: LibraryBottomOrderAst,
+pub struct ChosenCardsDispositionShape {
+    pub order: LibraryBottomOrderAst,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ChosenCardsDestinationReplacementShape<'a> {
-    pub(crate) predicate_tokens: &'a [OwnedLexToken],
-    pub(crate) order: LibraryBottomOrderAst,
+pub struct ChosenCardsDestinationReplacementShape<'a> {
+    pub predicate_tokens: &'a [OwnedLexToken],
+    pub order: LibraryBottomOrderAst,
 }
 
 fn trimmed(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -111,7 +111,7 @@ fn this_way<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_named_revealed_card_shape(
+pub fn parse_named_revealed_card_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<NamedRevealedCardShape<'_>> {
     let clause = trimmed(tokens);
@@ -133,7 +133,7 @@ fn put_looked_onto_battlefield<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_put_looked_onto_battlefield_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_put_looked_onto_battlefield_shape(tokens: &[OwnedLexToken]) -> bool {
     primitives::find_prefix(trimmed(tokens), || put_looked_onto_battlefield).is_some()
 }
 
@@ -146,7 +146,7 @@ fn put_looked_into_hand<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_put_looked_into_hand_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_put_looked_into_hand_shape(tokens: &[OwnedLexToken]) -> bool {
     let mut clause = trimmed(tokens);
     if let Some(((), rest)) = primitives::parse_prefix(clause, |input: &mut LexStream<'_>| {
         primitives::kw("otherwise").void().parse_next(input)
@@ -165,7 +165,7 @@ fn then_shuffle<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_then_shuffle_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_then_shuffle_shape(tokens: &[OwnedLexToken]) -> bool {
     exact_unit(tokens, then_shuffle)
 }
 
@@ -187,7 +187,7 @@ fn bottom_of_your_library<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_exile_one_and_bottom_remainder_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_exile_one_and_bottom_remainder_shape(tokens: &[OwnedLexToken]) -> bool {
     let normalized = without_articles(trimmed(tokens));
     primitives::parse_prefix(&normalized, exile_one_face_down).is_some()
         && primitives::find_prefix(&normalized, || put_rest).is_some()
@@ -205,7 +205,7 @@ fn counted_exile_tail<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_counted_looked_card_exile_shape(
+pub fn parse_counted_looked_card_exile_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<CountedLookedCardExileShape> {
     let clause = trimmed(tokens);
@@ -231,7 +231,7 @@ fn put_remainder_on_bottom<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_looked_remainder_bottom_shape(
+pub fn parse_looked_remainder_bottom_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LibraryBottomOrderAst> {
     let clause = trimmed(tokens);
@@ -262,7 +262,7 @@ fn exiled_reference<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_exiled_card_cast_filter_shape(
+pub fn parse_exiled_card_cast_filter_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ExiledCardCastFilterShape<'_>> {
     let clause = trimmed(tokens);
@@ -299,7 +299,7 @@ fn exiled_card_hand_followup<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_exiled_card_hand_followup_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_exiled_card_hand_followup_shape(tokens: &[OwnedLexToken]) -> bool {
     exact_unit(tokens, exiled_card_hand_followup)
 }
 
@@ -323,7 +323,7 @@ fn choose<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 /// preceding top-of-library instruction. Cardinality and the independent
 /// `and/or` branches are lowered by the sequence composer; this grammar only
 /// proves that the filter is scoped by the exact "from among them" suffix.
-pub(crate) fn parse_choose_looked_card_and_or_shape(
+pub fn parse_choose_looked_card_and_or_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LookedCardAndOrChoiceShape<'_>> {
     let clause = trimmed(tokens);
@@ -375,7 +375,7 @@ fn parse_chosen_cards_disposition_tail(
     Some(ChosenCardsDispositionShape { order })
 }
 
-pub(crate) fn parse_chosen_cards_hand_remainder_shape(
+pub fn parse_chosen_cards_hand_remainder_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ChosenCardsDispositionShape> {
     let ((), remainder) = primitives::parse_prefix(trimmed(tokens), put_chosen_cards_into_hand)?;
@@ -417,7 +417,7 @@ fn put_chosen_cards_battlefield_or_hand<'a>(input: &mut LexStream<'a>) -> WResul
 /// Captures a leading-if self-replacement whose replacement changes only the
 /// destination of the already chosen collection. Keeping the predicate tokens
 /// separate lets the ordinary typed predicate parser retain the threshold.
-pub(crate) fn parse_chosen_cards_destination_replacement_shape(
+pub fn parse_chosen_cards_destination_replacement_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ChosenCardsDestinationReplacementShape<'_>> {
     let clause = trimmed(tokens);
@@ -454,7 +454,7 @@ fn where_x_prefix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_may_reveal_looked_card_shape(
+pub fn parse_may_reveal_looked_card_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LookedCardRevealShape<'_>> {
     let clause = trimmed(tokens);
@@ -497,7 +497,7 @@ fn put_revealed_into_hand_then_shuffle<'a>(input: &mut LexStream<'a>) -> WResult
         .parse_next(input)
 }
 
-pub(crate) fn parse_put_revealed_into_hand_then_shuffle_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_put_revealed_into_hand_then_shuffle_shape(tokens: &[OwnedLexToken]) -> bool {
     exact_unit(tokens, put_revealed_into_hand_then_shuffle)
 }
 
@@ -521,7 +521,7 @@ fn put_revealed_onto_battlefield<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_bargained_revealed_battlefield_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_bargained_revealed_battlefield_shape(tokens: &[OwnedLexToken]) -> bool {
     let clause = trimmed(tokens);
     primitives::parse_prefix(clause, bargained).is_some()
         && primitives::find_prefix(clause, || put_revealed_onto_battlefield).is_some()
@@ -535,7 +535,7 @@ fn otherwise_revealed_into_hand<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_otherwise_revealed_hand_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_otherwise_revealed_hand_shape(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(trimmed(tokens), otherwise_revealed_into_hand).is_some()
 }
 
@@ -545,7 +545,7 @@ fn may_exile_looked<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_may_exile_looked_card_shape(
+pub fn parse_may_exile_looked_card_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LookedCardFilterShape<'_>> {
     let clause = trimmed(tokens);
@@ -559,7 +559,7 @@ pub(crate) fn parse_may_exile_looked_card_shape(
     (!filter_tokens.is_empty()).then_some(LookedCardFilterShape { filter_tokens })
 }
 
-pub(crate) fn parse_exile_looked_card_and_remainder_shape(
+pub fn parse_exile_looked_card_and_remainder_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LookedCardExileRemainderShape<'_>> {
     let clause = trimmed(tokens);
@@ -586,9 +586,7 @@ pub(crate) fn parse_exile_looked_card_and_remainder_shape(
     })
 }
 
-pub(crate) fn parse_look_exile_split_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<LookExileSplitShape<'_>> {
+pub fn parse_look_exile_split_shape(tokens: &[OwnedLexToken]) -> Option<LookExileSplitShape<'_>> {
     let clause = trimmed(tokens);
     let (exile_idx, (), _) = primitives::find_prefix(clause, || primitives::kw("exile").void())?;
     Some(LookExileSplitShape {

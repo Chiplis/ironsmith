@@ -1,7 +1,7 @@
 use super::*;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SubjectVerbRoleAst {
+pub enum SubjectVerbRoleAst {
     Actor,
     AffectedPlayer,
     Chooser,
@@ -9,26 +9,26 @@ pub(crate) enum SubjectVerbRoleAst {
 }
 
 #[derive(Clone, PartialEq)]
-pub(crate) struct SubjectVerbSubjectAst {
-    pub(crate) role: SubjectVerbRoleAst,
-    pub(crate) player: PlayerAst,
+pub struct SubjectVerbSubjectAst {
+    pub role: SubjectVerbRoleAst,
+    pub player: PlayerAst,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ReturnAsAuraAst {
-    pub(crate) attachment_filter: ObjectFilter,
-    pub(crate) remove_all_abilities: bool,
-    pub(crate) granted_abilities: Vec<GrantedAbilityAst>,
+pub struct ReturnAsAuraAst {
+    pub attachment_filter: ObjectFilter,
+    pub remove_all_abilities: bool,
+    pub granted_abilities: Vec<GrantedAbilityAst>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct EmblemDescriptionAst {
-    pub(crate) text: String,
-    pub(crate) abilities: Vec<EmblemAbilityAst>,
+pub struct EmblemDescriptionAst {
+    pub text: String,
+    pub abilities: Vec<EmblemAbilityAst>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum EmblemAbilityAst {
+pub enum EmblemAbilityAst {
     Static(Vec<StaticAbilityAst>),
     Activated(ParsedAbility),
     Triggered {
@@ -39,7 +39,7 @@ pub(crate) enum EmblemAbilityAst {
 }
 
 #[derive(Clone, PartialEq)]
-pub(crate) enum SubjectVerbActionAst {
+pub enum SubjectVerbActionAst {
     Draw {
         count: Value,
     },
@@ -1411,9 +1411,9 @@ pub(crate) enum SubjectVerbActionAst {
 }
 
 #[derive(Clone, PartialEq)]
-pub(crate) struct SubjectVerbEffectAst {
-    pub(crate) subject: SubjectVerbSubjectAst,
-    pub(crate) action: SubjectVerbActionAst,
+pub struct SubjectVerbEffectAst {
+    pub subject: SubjectVerbSubjectAst,
+    pub action: SubjectVerbActionAst,
 }
 
 impl std::fmt::Debug for SubjectVerbRoleAst {

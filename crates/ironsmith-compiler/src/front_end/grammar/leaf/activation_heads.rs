@@ -8,7 +8,7 @@ use super::super::primitives;
 use super::mana::parse_leaf_surface_mana_pip_lexed;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LeafActivationCostHead {
+pub enum LeafActivationCostHead {
     LoyaltyShorthand,
     Mana,
     Tap,
@@ -23,7 +23,7 @@ pub(crate) enum LeafActivationCostHead {
     Energy,
 }
 
-pub(crate) fn parse_leaf_activation_cost_head_lexed<'a>(
+pub fn parse_leaf_activation_cost_head_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<LeafActivationCostHead> {
     alt((
@@ -38,7 +38,7 @@ pub(crate) fn parse_leaf_activation_cost_head_lexed<'a>(
     .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_activation_cost_head_tokens(
+pub fn parse_leaf_activation_cost_head_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LeafActivationCostHead> {
     primitives::parse_prefix(tokens, parse_leaf_activation_cost_head_lexed).map(|(head, _)| head)

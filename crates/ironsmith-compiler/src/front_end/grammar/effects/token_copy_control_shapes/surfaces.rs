@@ -5,12 +5,12 @@ use winnow::error::ModalResult as WResult;
 use winnow::token::any;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct EachPlayerRevealPermanentsShape {
-    pub(crate) count: Value,
+pub struct EachPlayerRevealPermanentsShape {
+    pub count: Value,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CommaThenTailShape {
+pub enum CommaThenTailShape {
     ThatPlayer,
     ReturnSourceToHand,
     PutSourceOnLibrary,
@@ -18,10 +18,10 @@ pub(crate) enum CommaThenTailShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CommaThenSpecialShape<'a> {
-    pub(crate) head_tokens: &'a [OwnedLexToken],
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
-    pub(crate) tail: CommaThenTailShape,
+pub struct CommaThenSpecialShape<'a> {
+    pub head_tokens: &'a [OwnedLexToken],
+    pub tail_tokens: &'a [OwnedLexToken],
+    pub tail: CommaThenTailShape,
 }
 
 fn puts_revealed_permanents<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -54,7 +54,7 @@ fn strip_leading_connectors(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     .unwrap_or(tokens)
 }
 
-pub(crate) fn parse_each_player_reveal_permanents_shape(
+pub fn parse_each_player_reveal_permanents_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<EachPlayerRevealPermanentsShape> {
     let segments = primitives::split_lexed_slices_on_comma(tokens);
@@ -140,7 +140,7 @@ fn put_source_on_library<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     Ok(())
 }
 
-pub(crate) fn parse_comma_then_special_shape(
+pub fn parse_comma_then_special_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<CommaThenSpecialShape<'_>> {
     let (head_tokens, tail_tokens) = primitives::split_lexed_once_on_separator(tokens, || {

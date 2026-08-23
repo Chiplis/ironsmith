@@ -9,20 +9,20 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, TokenKind, trim_lexed
 use super::super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ZonePermissionLifetimeFact {
+pub enum ZonePermissionLifetimeFact {
     Static,
     ThisTurn,
     UntilEndOfTurn,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ManaValuePlacementFact {
+pub enum ManaValuePlacementFact {
     BeforeZone,
     AfterZone,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SpellNumberFact {
+pub enum SpellNumberFact {
     Singular,
     Plural,
     Mixed,
@@ -30,46 +30,44 @@ pub(crate) enum SpellNumberFact {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PlayFromZoneFact<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) zone: Zone,
+pub struct PlayFromZoneFact<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub zone: Zone,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LandsFromTopLibraryFact;
+pub struct LandsFromTopLibraryFact;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LandsAndCastFromTopLibraryFact<'a> {
-    pub(crate) spell_filter_tokens: &'a [OwnedLexToken],
+pub struct LandsAndCastFromTopLibraryFact<'a> {
+    pub spell_filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct FlashGrantFact<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) lifetime: ZonePermissionLifetimeFact,
+pub struct FlashGrantFact<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub lifetime: ZonePermissionLifetimeFact,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ManaValueComparisonTokens<'a> {
-    pub(crate) tokens: &'a [OwnedLexToken],
-    pub(crate) placement: ManaValuePlacementFact,
+pub struct ManaValueComparisonTokens<'a> {
+    pub tokens: &'a [OwnedLexToken],
+    pub placement: ManaValuePlacementFact,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct FreeCastFromZoneFact<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) zone: Zone,
-    pub(crate) mana_value: Option<ManaValueComparisonTokens<'a>>,
-    pub(crate) subject_number: SpellNumberFact,
+pub struct FreeCastFromZoneFact<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub zone: Zone,
+    pub mana_value: Option<ManaValueComparisonTokens<'a>>,
+    pub subject_number: SpellNumberFact,
 }
 
-pub(crate) fn parse_play_from_zone_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<PlayFromZoneFact<'_>> {
+pub fn parse_play_from_zone_tokens(tokens: &[OwnedLexToken]) -> Option<PlayFromZoneFact<'_>> {
     primitives::parse_all(tokens, parse_play_from_zone, "play-from-zone permission").ok()
 }
 
-pub(crate) fn parse_lands_from_top_library_tokens(
+pub fn parse_lands_from_top_library_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LandsFromTopLibraryFact> {
     primitives::parse_all(
@@ -80,7 +78,7 @@ pub(crate) fn parse_lands_from_top_library_tokens(
     .ok()
 }
 
-pub(crate) fn parse_lands_and_cast_from_top_library_tokens(
+pub fn parse_lands_and_cast_from_top_library_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LandsAndCastFromTopLibraryFact<'_>> {
     primitives::parse_all(
@@ -91,17 +89,17 @@ pub(crate) fn parse_lands_and_cast_from_top_library_tokens(
     .ok()
 }
 
-pub(crate) fn parse_flash_grant_tokens(tokens: &[OwnedLexToken]) -> Option<FlashGrantFact<'_>> {
+pub fn parse_flash_grant_tokens(tokens: &[OwnedLexToken]) -> Option<FlashGrantFact<'_>> {
     primitives::parse_all(tokens, parse_flash_grant, "flash grant permission").ok()
 }
 
-pub(crate) fn parse_free_cast_from_zone_tokens(
+pub fn parse_free_cast_from_zone_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<FreeCastFromZoneFact<'_>> {
     primitives::parse_all(tokens, parse_free_cast_from_zone, "free cast from zone").ok()
 }
 
-pub(crate) fn parse_mana_value_one_of_tokens(tokens: &[OwnedLexToken]) -> Option<Vec<i32>> {
+pub fn parse_mana_value_one_of_tokens(tokens: &[OwnedLexToken]) -> Option<Vec<i32>> {
     primitives::parse_all(tokens, parse_mana_value_one_of, "mana-value disjunction").ok()
 }
 

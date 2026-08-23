@@ -6,10 +6,10 @@ use super::super::lexer::{LexStream, OwnedLexToken};
 use super::primitives;
 
 mod special_forms;
-pub(crate) use special_forms::*;
+pub use special_forms::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum KeywordDispatchHint {
+pub enum KeywordDispatchHint {
     AdditionalCostFamily,
     AlternativeOrExertFamily,
     Bestow,
@@ -49,7 +49,7 @@ pub(crate) enum KeywordDispatchHint {
 }
 
 impl KeywordDispatchHint {
-    pub(crate) const fn head_words(self) -> &'static [&'static str] {
+    pub const fn head_words(self) -> &'static [&'static str] {
         match self {
             Self::AdditionalCostFamily => &["as"],
             Self::AlternativeOrExertFamily => &[
@@ -100,9 +100,7 @@ impl KeywordDispatchHint {
     }
 }
 
-pub(crate) fn parse_keyword_dispatch_hint_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<KeywordDispatchHint> {
+pub fn parse_keyword_dispatch_hint_tokens(tokens: &[OwnedLexToken]) -> Option<KeywordDispatchHint> {
     if let Some((hint, _)) = primitives::parse_prefix(tokens, parse_keyword_dispatch_hint_lexed) {
         return Some(hint);
     }

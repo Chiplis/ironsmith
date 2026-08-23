@@ -8,18 +8,18 @@ use super::super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ManaValueParityCantFact {
+pub enum ManaValueParityCantFact {
     OpponentsCantCastSpells(ParityRequirement),
     OpponentsCantBlockWithCreatures(ParityRequirement),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CantFallbackFact {
+pub enum CantFallbackFact {
     SourceCantAttackOrBlockUnlessEvenCounters,
     SourceDamageDoubledForManaValueParity(ParityRequirement),
 }
 
-pub(crate) fn parse_mana_value_parity_cant_fact_tokens(
+pub fn parse_mana_value_parity_cant_fact_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaValueParityCantFact> {
     primitives::parse_all(
@@ -30,9 +30,7 @@ pub(crate) fn parse_mana_value_parity_cant_fact_tokens(
     .ok()
 }
 
-pub(crate) fn parse_cant_fallback_fact_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<CantFallbackFact> {
+pub fn parse_cant_fallback_fact_tokens(tokens: &[OwnedLexToken]) -> Option<CantFallbackFact> {
     primitives::parse_all(tokens, parse_cant_fallback_fact_lexed, "cant fallback fact").ok()
 }
 

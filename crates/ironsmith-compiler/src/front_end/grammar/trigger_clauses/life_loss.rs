@@ -10,8 +10,8 @@ use super::super::primitives;
 /// A life-loss trigger whose multiplicity is evaluated across a group of
 /// players for each game event, rather than once for each individual player.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PlayersLoseLifeOneOrMoreClause {
-    pub(crate) player: PlayerFilter,
+pub struct PlayersLoseLifeOneOrMoreClause {
+    pub player: PlayerFilter,
 }
 
 fn parse_players_lose_life_one_or_more_lexed<'a>(
@@ -28,7 +28,7 @@ fn parse_players_lose_life_one_or_more_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_players_lose_life_one_or_more_clause(
+pub fn parse_players_lose_life_one_or_more_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayersLoseLifeOneOrMoreClause> {
     primitives::parse_all(

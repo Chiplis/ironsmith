@@ -2,7 +2,7 @@ use super::*;
 use crate::compile_support::compile_condition_from_predicate_ast;
 use crate::model::facts::EffectLoweringContext;
 
-pub(crate) fn try_merge_modal_into_remove_mode(
+pub fn try_merge_modal_into_remove_mode(
     effects: &mut crate::resolution::ResolutionProgram,
     modal_effect: crate::effect::Effect,
     predicate: crate::effect::EffectPredicate,
@@ -81,7 +81,7 @@ pub(crate) fn try_merge_modal_into_remove_mode(
     true
 }
 
-pub(crate) fn rewrite_lower_parsed_modal(
+pub fn rewrite_lower_parsed_modal(
     mut builder: CardDefinitionBuilder,
     pending_modal: NormalizedModalAst,
     allow_unsupported: bool,

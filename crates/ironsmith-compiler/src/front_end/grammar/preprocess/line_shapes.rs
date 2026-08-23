@@ -7,49 +7,49 @@ use super::super::{effects, permission_shapes, primitives, structure::MetadataLi
 use crate::lexer::{OwnedLexToken, TokenKind, TokenWordView, lex_line};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ParentheticalLineSurface {
+pub enum ParentheticalLineSurface {
     FullyWrapped,
     PreserveEnchantmentNotCreature,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LineVariantSplitKind {
+pub enum LineVariantSplitKind {
     AdditionalCost,
     ManaSpendFollowup,
     CostAdjustmentFollowup,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LineVariantSplitSurface {
-    pub(crate) kind: LineVariantSplitKind,
-    pub(crate) first_end: usize,
-    pub(crate) second_start: usize,
+pub struct LineVariantSplitSurface {
+    pub kind: LineVariantSplitKind,
+    pub first_end: usize,
+    pub second_start: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct MetadataSurface {
-    pub(crate) kind: MetadataLineKind,
-    pub(crate) value: String,
+pub struct MetadataSurface {
+    pub kind: MetadataLineKind,
+    pub value: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LabeledAbilityPrefixSurface {
-    pub(crate) remainder_start: usize,
+pub struct LabeledAbilityPrefixSurface {
+    pub remainder_start: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ResolutionTimingTailSurface {
-    pub(crate) tail_start: usize,
-    pub(crate) terminal_period: bool,
+pub struct ResolutionTimingTailSurface {
+    pub tail_start: usize,
+    pub terminal_period: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct WrappedActivationSurface {
-    pub(crate) inner: String,
-    pub(crate) inner_start: usize,
+pub struct WrappedActivationSurface {
+    pub inner: String,
+    pub inner_start: usize,
 }
 
-pub(crate) fn parse_parenthetical_line_surface(line: &str) -> Option<ParentheticalLineSurface> {
+pub fn parse_parenthetical_line_surface(line: &str) -> Option<ParentheticalLineSurface> {
     let tokens = lex_line(line.trim(), 0).ok()?;
     if tokens.first()?.kind == TokenKind::LParen && tokens.last()?.kind == TokenKind::RParen {
         return Some(ParentheticalLineSurface::FullyWrapped);
@@ -64,7 +64,7 @@ pub(crate) fn parse_parenthetical_line_surface(line: &str) -> Option<Parenthetic
         .then_some(ParentheticalLineSurface::PreserveEnchantmentNotCreature)
 }
 
-pub(crate) fn parse_line_variant_split(line: &str) -> Option<LineVariantSplitSurface> {
+pub fn parse_line_variant_split(line: &str) -> Option<LineVariantSplitSurface> {
     let tokens = lex_line(line.trim(), 0).ok()?;
     if permission_shapes::prefix_tokens(
         &tokens,
@@ -124,7 +124,7 @@ pub(crate) fn parse_line_variant_split(line: &str) -> Option<LineVariantSplitSur
     )
 }
 
-pub(crate) fn parse_metadata_surface(line: &str) -> Option<MetadataSurface> {
+pub fn parse_metadata_surface(line: &str) -> Option<MetadataSurface> {
     let trimmed = line.trim();
     let mut input = trimmed;
     let (label, value) = metadata_parts.parse_next(&mut input).ok()?;
@@ -148,7 +148,7 @@ fn metadata_parts<'a>(input: &mut &'a str) -> WResult<(&'a str, &'a str)> {
     Ok((label, value))
 }
 
-pub(crate) fn parse_labeled_ability_prefix(text: &str) -> Option<LabeledAbilityPrefixSurface> {
+pub fn parse_labeled_ability_prefix(text: &str) -> Option<LabeledAbilityPrefixSurface> {
     let tokens = lex_line(text, 0).ok()?;
     let (separator_index, separator, _) = primitives::find_prefix(&tokens, || {
         alt((
@@ -169,7 +169,7 @@ pub(crate) fn parse_labeled_ability_prefix(text: &str) -> Option<LabeledAbilityP
     Some(LabeledAbilityPrefixSurface { remainder_start })
 }
 
-pub(crate) fn parse_resolution_timing_tail(text: &str) -> Option<ResolutionTimingTailSurface> {
+pub fn parse_resolution_timing_tail(text: &str) -> Option<ResolutionTimingTailSurface> {
     let tokens = lex_line(text, 0).ok()?;
     let (tail_index, _, _) =
         primitives::find_prefix(&tokens, || primitives::phrase(&["as", "it", "resolves"]))?;
@@ -186,7 +186,7 @@ pub(crate) fn parse_resolution_timing_tail(text: &str) -> Option<ResolutionTimin
     })
 }
 
-pub(crate) fn parse_wrapped_activation_surface(text: &str) -> Option<WrappedActivationSurface> {
+pub fn parse_wrapped_activation_surface(text: &str) -> Option<WrappedActivationSurface> {
     let trimmed = text.trim();
     let tokens = lex_line(trimmed, 0).ok()?;
     let first = tokens.first()?;
@@ -204,14 +204,14 @@ pub(crate) fn parse_wrapped_activation_surface(text: &str) -> Option<WrappedActi
     })
 }
 
-pub(crate) fn parse_terminal_period(text: &str) -> bool {
+pub fn parse_terminal_period(text: &str) -> bool {
     lex_line(text.trim(), 0)
         .ok()
         .and_then(|tokens| tokens.last().map(OwnedLexToken::is_period))
         .unwrap_or(false)
 }
 
-pub(crate) fn parse_ignorable_parenthetical_line(text: &str) -> bool {
+pub fn parse_ignorable_parenthetical_line(text: &str) -> bool {
     matches!(
         parse_parenthetical_line_surface(text),
         Some(ParentheticalLineSurface::FullyWrapped)

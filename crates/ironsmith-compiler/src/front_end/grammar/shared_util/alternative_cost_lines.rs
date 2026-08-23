@@ -7,7 +7,7 @@ use crate::lexer::{OwnedLexToken, TokenWordView, lex_line, render_token_slice};
 use crate::mana::ManaCost;
 use crate::static_abilities::ThisSpellCostCondition;
 
-pub(crate) fn parse_self_free_cast(tokens: &[OwnedLexToken]) -> Option<AlternativeCastingMethod> {
+pub fn parse_self_free_cast(tokens: &[OwnedLexToken]) -> Option<AlternativeCastingMethod> {
     let words = TokenWordView::new(tokens).word_refs();
     if !exact_one_of(
         &words,
@@ -30,7 +30,7 @@ pub(crate) fn parse_self_free_cast(tokens: &[OwnedLexToken]) -> Option<Alternati
     ))
 }
 
-pub(crate) fn parse_flash_with_additional_cost(
+pub fn parse_flash_with_additional_cost(
     tokens: &[OwnedLexToken],
 ) -> Option<AlternativeCastingMethod> {
     let words = TokenWordView::new(tokens);
@@ -55,7 +55,7 @@ pub(crate) fn parse_flash_with_additional_cost(
     ))
 }
 
-pub(crate) fn parse_you_may_rather_than_spell_cost(
+pub fn parse_you_may_rather_than_spell_cost(
     tokens: &[OwnedLexToken],
     line: &str,
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
@@ -109,14 +109,14 @@ pub(crate) fn parse_you_may_rather_than_spell_cost(
         ))
     })?;
     Ok(Some(AlternativeCastingMethod::Composed {
-        name: "Parsed alternative cost",
+        name: "Parsed alternative cost".into(),
         total_cost,
         condition: None,
         prototype_power_toughness: None,
     }))
 }
 
-pub(crate) fn parse_if_conditional_alternative_cost(
+pub fn parse_if_conditional_alternative_cost(
     tokens: &[OwnedLexToken],
     line: &str,
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {

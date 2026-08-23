@@ -8,14 +8,14 @@ use super::super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PerAttackerCantTaxFact {
-    pub(crate) amount: u32,
+pub struct PerAttackerCantTaxFact {
+    pub amount: u32,
     /// Oracle's planeswalker-inclusive wording. It selects both the restriction
     /// surface and the shorter "for each of those creatures" payment phrasing.
-    pub(crate) covers_planeswalkers: bool,
+    pub covers_planeswalkers: bool,
 }
 
-pub(crate) fn parse_per_attacker_cant_tax_tokens(
+pub fn parse_per_attacker_cant_tax_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PerAttackerCantTaxFact> {
     primitives::parse_all(

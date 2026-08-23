@@ -165,7 +165,7 @@ fn has_leading_unless_resolution_surface(tokens: &[OwnedLexToken]) -> bool {
     tokens[unless_idx + 1..].iter().any(OwnedLexToken::is_comma)
 }
 
-pub(crate) fn parse_line_semantic_facts_tokens(tokens: &[OwnedLexToken]) -> LineSemanticFacts {
+pub fn parse_line_semantic_facts_tokens(tokens: &[OwnedLexToken]) -> LineSemanticFacts {
     let static_cost = lowering_surfaces::parse_this_spell_cost_surface_tokens(tokens);
     let trigger_zones = functional_zones::parse_trigger_functional_zone_facts_tokens(tokens);
     let trigger_frequency = trigger_surface::parse_trigger_frequency_tokens(tokens);

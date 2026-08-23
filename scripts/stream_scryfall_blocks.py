@@ -55,6 +55,33 @@ def iter_json_array(path):
                 buf = buf[idx:]
 
 
+def iter_jsonl(path):
+    with open_text_stream(path) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                yield json.loads(line)
+
+
+def dump_format(path):
+    """Return "array" for a JSON array dump, "jsonl" for one object per line."""
+    with open_text_stream(path) as f:
+        while True:
+            ch = f.read(1)
+            if not ch:
+                return "jsonl"
+            if not ch.isspace():
+                return "array" if ch == "[" else "jsonl"
+
+
+def iter_cards(path):
+    """Stream cards from a Scryfall bulk dump in either array or JSONL form."""
+    if dump_format(path) == "array":
+        yield from iter_json_array(path)
+    else:
+        yield from iter_jsonl(path)
+
+
 def pick_field(card, face, key):
     value = card.get(key)
     if value is not None:
@@ -204,6 +231,7 @@ def build_block(card):
     toughness = pick_field(card, face, "toughness")
     loyalty = pick_field(card, face, "loyalty")
     defense = pick_field(card, face, "defense")
+    attraction_lights = pick_field(card, face, "attraction_lights")
     first_printed_set_name = card.get("first_printed_set_name")
 
     if is_non_playable(card, type_line, oracle_text):
@@ -216,6 +244,11 @@ def build_block(card):
         lines.append(f"Type: {type_line}")
     if first_printed_set_name:
         lines.append(f"First printed set: {first_printed_set_name}")
+    if isinstance(attraction_lights, list) and attraction_lights:
+        lines.append(
+            "Attraction lights: "
+            + ", ".join(str(light) for light in attraction_lights)
+        )
     if power is not None and toughness is not None:
         lines.append(f"Power/Toughness: {power}/{toughness}")
     if loyalty is not None:

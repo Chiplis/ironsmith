@@ -754,6 +754,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
+name = "erased-serde"
+version = "0.4.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "89e8918065695684b2b0702da20382d5ae6065cf3327bc2d6436bd49a71ce9f3"
+dependencies = [
+ "serde",
+ "serde_core",
+ "typeid",
+]
+
+[[package]]
 name = "errno"
 version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1241,6 +1252,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "ironsmith-artifact-baker"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-compiled-artifact",
+ "ironsmith-compiler",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "ironsmith-artifact-effect-decoder"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-runtime-effect-combat",
+ "ironsmith-runtime-effect-composition-a-l",
+ "ironsmith-runtime-effect-composition-m-z",
+ "ironsmith-runtime-effect-permanent",
+ "ironsmith-runtime-effect-player",
+ "ironsmith-runtime-effect-resources",
+ "ironsmith-runtime-effect-stack-event",
+ "ironsmith-runtime-effect-zone-library",
+ "serde_json",
+]
+
+[[package]]
+name = "ironsmith-card-source"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "sha2 0.11.0",
+]
+
+[[package]]
 name = "ironsmith-cli"
 version = "0.1.0"
 dependencies = [
@@ -1253,27 +1297,181 @@ dependencies = [
 ]
 
 [[package]]
-name = "ironsmith-compiler"
+name = "ironsmith-compiled-artifact"
 version = "0.1.0"
 dependencies = [
  "ironsmith-core",
- "logos",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+]
+
+[[package]]
+name = "ironsmith-compiler"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-compiler-grammar",
+]
+
+[[package]]
+name = "ironsmith-compiler-api"
+version = "0.1.0"
+
+[[package]]
+name = "ironsmith-compiler-ast"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-compiler-api",
+ "ironsmith-core",
+]
+
+[[package]]
+name = "ironsmith-compiler-grammar"
+version = "0.1.0"
+dependencies = [
+ "erased-serde",
+ "ironsmith-compiler-api",
+ "ironsmith-compiler-ast",
+ "ironsmith-compiler-resolve",
+ "ironsmith-compiler-semantic",
+ "ironsmith-compiler-source",
+ "ironsmith-compiler-syntax",
+ "ironsmith-core",
+ "ironsmith-grammar-common",
+ "serde",
  "stacker",
  "winnow",
 ]
 
 [[package]]
+name = "ironsmith-compiler-resolve"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-compiler-semantic",
+ "ironsmith-core",
+]
+
+[[package]]
+name = "ironsmith-compiler-runtime"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-compiled-artifact",
+ "ironsmith-compiler",
+ "ironsmith-engine",
+ "ironsmith-runtime-catalog",
+ "serde_json",
+]
+
+[[package]]
+name = "ironsmith-compiler-semantic"
+version = "0.1.0"
+dependencies = [
+ "erased-serde",
+ "ironsmith-compiler-api",
+ "ironsmith-compiler-ast",
+ "ironsmith-compiler-source",
+ "ironsmith-compiler-syntax",
+ "ironsmith-core",
+ "serde",
+]
+
+[[package]]
+name = "ironsmith-compiler-source"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-compiler-api",
+ "ironsmith-compiler-ast",
+ "ironsmith-compiler-syntax",
+]
+
+[[package]]
+name = "ironsmith-compiler-syntax"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-compiler-api",
+ "logos",
+ "winnow",
+]
+
+[[package]]
+name = "ironsmith-compiler-wasm"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-compiled-artifact",
+ "ironsmith-compiler",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "ironsmith-core"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "ironsmith-dynamic-compile"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-compiler",
+ "ironsmith-registry",
+]
+
+[[package]]
+name = "ironsmith-engine"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "getrandom 0.4.2",
+ "im",
+ "ironsmith-core",
+ "ironsmith-semantic-compare",
+ "rand 0.10.1",
+ "rand_chacha 0.10.0",
+ "rustc-hash",
+ "serde",
+ "serde_json",
+ "stacker",
+]
+
+[[package]]
+name = "ironsmith-engine-wasm"
+version = "0.1.2"
+dependencies = [
+ "ironsmith-web-session",
+]
+
+[[package]]
+name = "ironsmith-grammar-common"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-compiler-api",
+ "ironsmith-compiler-semantic",
+ "ironsmith-compiler-syntax",
+ "ironsmith-core",
+ "winnow",
+]
 
 [[package]]
 name = "ironsmith-registry"
 version = "0.1.0"
 dependencies = [
  "ironsmith-compiler",
+ "ironsmith-compiler-runtime",
  "ironsmith-core",
- "ironsmith-runtime",
- "serde",
+ "ironsmith-engine",
+ "ironsmith-runtime-catalog",
+]
+
+[[package]]
+name = "ironsmith-registry-sync"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-card-source",
+ "ironsmith-status-db",
  "serde_json",
 ]
 
@@ -1281,24 +1479,119 @@ dependencies = [
 name = "ironsmith-runtime"
 version = "0.1.0"
 dependencies = [
- "console_error_panic_hook",
- "criterion",
- "getrandom 0.4.2",
- "im",
- "ironsmith-compiler",
+ "ironsmith-engine",
+ "ironsmith-runtime-catalog",
+ "ironsmith-text",
+]
+
+[[package]]
+name = "ironsmith-runtime-catalog"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-artifact-effect-decoder",
+ "ironsmith-compiled-artifact",
+ "ironsmith-engine",
+]
+
+[[package]]
+name = "ironsmith-runtime-effect-combat"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-compiled-artifact",
  "ironsmith-core",
- "js-sys",
- "logos",
- "rand 0.10.1",
- "rand_chacha 0.10.0",
- "rayon",
- "rustc-hash",
  "serde",
- "serde-wasm-bindgen",
  "serde_json",
+]
+
+[[package]]
+name = "ironsmith-runtime-effect-composition-a-l"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-compiled-artifact",
+ "ironsmith-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "ironsmith-runtime-effect-composition-m-z"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-compiled-artifact",
+ "ironsmith-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "ironsmith-runtime-effect-permanent"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-compiled-artifact",
+ "ironsmith-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "ironsmith-runtime-effect-player"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-compiled-artifact",
+ "ironsmith-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "ironsmith-runtime-effect-resources"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-compiled-artifact",
+ "ironsmith-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "ironsmith-runtime-effect-stack-event"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-compiled-artifact",
+ "ironsmith-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "ironsmith-runtime-effect-zone-library"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-compiled-artifact",
+ "ironsmith-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "ironsmith-semantic-compare"
+version = "0.1.0"
+
+[[package]]
+name = "ironsmith-status-db"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-card-source",
+ "rusqlite",
+]
+
+[[package]]
+name = "ironsmith-text"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-core",
+ "ironsmith-engine",
  "stacker",
- "wasm-bindgen",
- "winnow",
 ]
 
 [[package]]
@@ -1320,17 +1613,254 @@ dependencies = [
 ]
 
 [[package]]
-name = "ironsmith-wasm"
-version = "0.1.2"
+name = "ironsmith-verifier"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-shard-02-13",
+ "ironsmith-verifier-shard-14-25",
+ "ironsmith-verifier-shard-26-37",
+ "ironsmith-verifier-shard-38-49",
+ "ironsmith-verifier-shard-50-62",
+ "ironsmith-verifier-shard-63-75",
+ "ironsmith-verifier-shard-76-88",
+ "ironsmith-verifier-shard-89-100",
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-02-07"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-02-13"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-shard-02-07",
+ "ironsmith-verifier-shard-08-13",
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-08-13"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-14-19"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-14-25"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-shard-14-19",
+ "ironsmith-verifier-shard-20-25",
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-20-25"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-26-31"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-26-37"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-shard-26-31",
+ "ironsmith-verifier-shard-32-37",
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-32-37"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-38-43"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-38-49"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-shard-38-43",
+ "ironsmith-verifier-shard-44-49",
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-44-49"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-50-56"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-50-62"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-shard-50-56",
+ "ironsmith-verifier-shard-57-62",
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-57-62"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-63-69"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-63-75"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-shard-63-69",
+ "ironsmith-verifier-shard-70-75",
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-70-75"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-76-82"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-76-88"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-shard-76-82",
+ "ironsmith-verifier-shard-83-88",
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-83-88"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-89-100"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-shard-89-94",
+ "ironsmith-verifier-shard-95-100",
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-89-94"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-shard-95-100"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-ziffle",
+]
+
+[[package]]
+name = "ironsmith-verifier-wasm"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier",
+ "ironsmith-verifier-wasm-api",
+ "ironsmith-verifier-ziffle",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "ironsmith-verifier-wasm-api"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-verifier-ziffle",
+ "js-sys",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "ironsmith-verifier-ziffle"
+version = "0.1.0"
 dependencies = [
  "ark-serialize",
  "ark-std",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "ziffle",
+]
+
+[[package]]
+name = "ironsmith-wasm"
+version = "0.1.2"
+dependencies = [
+ "ironsmith-compiled-artifact",
+]
+
+[[package]]
+name = "ironsmith-web-session"
+version = "0.1.2"
+dependencies = [
  "console_error_panic_hook",
  "getrandom 0.4.2",
- "ironsmith-compiler",
+ "ironsmith-compiled-artifact",
  "ironsmith-core",
+ "ironsmith-dynamic-compile",
+ "ironsmith-engine",
  "ironsmith-registry",
- "ironsmith-runtime",
+ "ironsmith-runtime-catalog",
  "js-sys",
  "manabrew-protocol",
  "rand 0.10.1",
@@ -1341,7 +1871,6 @@ dependencies = [
  "sha2 0.11.0",
  "ts-rs",
  "wasm-bindgen",
- "ziffle",
 ]
 
 [[package]]
@@ -2106,7 +2635,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2696,6 +3225,12 @@ dependencies = [
  "syn",
  "termcolor",
 ]
+
+[[package]]
+name = "typeid"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc7d623258602320d5c55d1bc22793b57daff0ec7efc270ea7d55ce1d5f5471c"
 
 [[package]]
 name = "typenum"

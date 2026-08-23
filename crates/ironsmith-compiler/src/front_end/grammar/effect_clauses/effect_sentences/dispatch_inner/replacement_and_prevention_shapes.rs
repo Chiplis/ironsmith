@@ -1,5 +1,5 @@
 use crate::grammar::effects as replacement_grammar;
-pub(crate) fn parse_monstrosity_sentence(
+pub fn parse_monstrosity_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = replacement_grammar::parse_monstrosity_shape(tokens) else {
@@ -8,7 +8,7 @@ pub(crate) fn parse_monstrosity_sentence(
     Ok(Some(EffectAst::subject_verb_monstrosity(shape.amount)))
 }
 
-pub(crate) fn parse_for_each_counter_removed_sentence(
+pub fn parse_for_each_counter_removed_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = replacement_grammar::parse_counter_removed_pump_shape(tokens) else {
@@ -24,36 +24,36 @@ pub(crate) fn parse_for_each_counter_removed_sentence(
     )))
 }
 
-pub(crate) fn is_exile_that_token_at_end_of_combat(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_exile_that_token_at_end_of_combat(tokens: &[OwnedLexToken]) -> bool {
     replacement_grammar::parse_token_end_combat_action_shape(tokens)
         == Some(replacement_grammar::TokenEndCombatActionShape::Exile)
 }
 
-pub(crate) fn is_exile_that_token_at_end_of_combat_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_exile_that_token_at_end_of_combat_lexed(tokens: &[OwnedLexToken]) -> bool {
     is_exile_that_token_at_end_of_combat(tokens)
 }
 
-pub(crate) fn is_sacrifice_that_token_at_end_of_combat(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_sacrifice_that_token_at_end_of_combat(tokens: &[OwnedLexToken]) -> bool {
     replacement_grammar::parse_token_end_combat_action_shape(tokens)
         == Some(replacement_grammar::TokenEndCombatActionShape::Sacrifice)
 }
 
-pub(crate) fn is_sacrifice_that_token_at_end_of_combat_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_sacrifice_that_token_at_end_of_combat_lexed(tokens: &[OwnedLexToken]) -> bool {
     is_sacrifice_that_token_at_end_of_combat(tokens)
 }
 
-pub(crate) fn parse_take_extra_turn_sentence(
+pub fn parse_take_extra_turn_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     Ok(replacement_grammar::parse_extra_turn_shape(tokens)
         .map(|shape| EffectAst::subject_verb_extra_turn_after_turn(shape.player, shape.anchor)))
 }
 
-pub(crate) fn parse_additional_phase_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+pub fn parse_additional_phase_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     replacement_grammar::parse_additional_phases_shape(tokens)
         .map(|shape| EffectAst::subject_verb_additional_phases(shape.phases))
 }
-pub(crate) fn parse_destroy_or_exile_all_split_sentence(
+pub fn parse_destroy_or_exile_all_split_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = replacement_grammar::parse_split_all_shape(tokens) else {
@@ -139,7 +139,7 @@ pub(crate) fn parse_destroy_or_exile_all_split_sentence(
     Ok(None)
 }
 
-pub(crate) fn parse_exile_then_return_same_object_sentence(
+pub fn parse_exile_then_return_same_object_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     fn target_references_tag(target: &TargetAst, expected: &str) -> bool {
@@ -298,7 +298,7 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
     Ok(Some(first_effects))
 }
 
-pub(crate) fn parse_exile_up_to_one_each_target_type_sentence(
+pub fn parse_exile_up_to_one_each_target_type_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = replacement_grammar::parse_exile_each_target_type_shape(tokens) else {
@@ -345,7 +345,7 @@ pub(crate) fn parse_exile_up_to_one_each_target_type_sentence(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_look_at_hand_sentence(
+pub fn parse_look_at_hand_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = replacement_grammar::parse_look_hand_shape(tokens) else {
@@ -376,7 +376,7 @@ pub(crate) fn parse_look_at_hand_sentence(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_look_at_top_then_exile_one_sentence(
+pub fn parse_look_at_top_then_exile_one_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = replacement_grammar::parse_look_top_exile_one_shape(tokens) else {
@@ -405,7 +405,7 @@ pub(crate) fn parse_look_at_top_then_exile_one_sentence(
     ]))
 }
 
-pub(crate) fn parse_gain_life_equal_to_age_sentence(
+pub fn parse_gain_life_equal_to_age_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     // Legacy fallback previously returned a hardcoded 0-life effect for age-counter clauses.
@@ -414,7 +414,7 @@ pub(crate) fn parse_gain_life_equal_to_age_sentence(
     Ok(None)
 }
 
-pub(crate) fn parse_you_and_each_opponent_voted_with_you_sentence(
+pub fn parse_you_and_each_opponent_voted_with_you_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = replacement_grammar::parse_voted_with_you_scry_shape(tokens) else {

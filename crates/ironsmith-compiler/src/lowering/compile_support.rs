@@ -31,8 +31,8 @@ use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
 use super::effect_ast_traversal::{
-    TerminalResultProducer, assert_effect_ast_variant_coverage, for_each_nested_effects,
-    for_each_nested_effects_mut, terminal_result_producer,
+    TerminalResultProducer, for_each_nested_effects, for_each_nested_effects_mut,
+    terminal_result_producer,
 };
 use super::effect_pipeline::{
     EffectPreludeTag, PreparedEffectsForLowering, PreparedPredicateForLowering,
@@ -59,7 +59,6 @@ use super::reference_resolution::{
 use super::static_ability_helpers::{
     lower_granted_abilities_ast, lower_granted_abilities_ast_to_object_abilities,
 };
-use super::util::map_span_to_original;
 use crate::model::ast::{EmblemAbilityAst, EmblemDescriptionAst};
 use crate::model::reference_state::{
     AnnotatedEffect, AnnotatedEffectSequence, LoweredEffects, ReferenceEnv, ReferenceExports,
@@ -88,18 +87,17 @@ mod iterated_player_validation;
 mod player_effect_helpers;
 #[path = "compile_support/prepared_effects.rs"]
 mod prepared_effects;
-#[path = "compile_support/tag_support.rs"]
-mod tag_support;
+use ironsmith_compiler_resolve::tag_support;
 #[path = "compile_support/trigger_support.rs"]
 mod trigger_support;
 
 #[cfg(test)]
 use crate::cards::builders::ParseAnnotations;
-pub(crate) use choose_effect_helpers::{
+pub use choose_effect_helpers::{
     compile_choose_objects_across_zones_with_subject, compile_choose_objects_with_subject,
     compile_choose_player_with_subject,
 };
-pub(crate) use control_flow_handlers::{
+pub use control_flow_handlers::{
     collect_targeted_player_specs_from_filter, collect_targeted_player_specs_from_player_filter,
     compile_effects_in_iterated_object_context, compile_effects_in_iterated_player_context,
     compile_effects_preserving_last_effect, compile_if_do_with_opponent_did,
@@ -109,46 +107,42 @@ pub(crate) use control_flow_handlers::{
     force_implicit_vote_token_controller_you, target_context_prelude_for_filter,
     with_preserved_lowering_context,
 };
-pub(crate) use effect_dispatch::compile_effect;
-pub(crate) use effect_handlers::compile_delayed_trigger_spec;
-pub(crate) use iterated_player_validation::{
+pub use effect_dispatch::compile_effect;
+pub use effect_handlers::compile_delayed_trigger_spec;
+pub use iterated_player_validation::{
     choose_spec_mentions_iterated_player, condition_mentions_iterated_player,
     effect_mentions_iterated_player, effects_contain_pending_effect_metric,
     object_filter_mentions_iterated_player, value_mentions_iterated_player,
 };
-pub(crate) use player_effect_helpers::{
+pub use player_effect_helpers::{
     LoweredSubject, SubjectRole, compile_player_effect_from_resolved_filter,
     compile_player_role_effect,
 };
-pub(crate) use prepared_effects::{
+pub use prepared_effects::{
     compile_condition_from_predicate_ast_with_env,
     materialize_prepared_effects_with_trigger_context, materialize_prepared_statement_effects,
     materialize_prepared_triggered_effects,
     rebind_returned_attachment_history_to_triggering_object,
 };
 #[cfg(test)]
-pub(crate) use prepared_effects::{
-    compile_statement_effects, compile_statement_effects_with_imports,
-};
+pub use prepared_effects::{compile_statement_effects, compile_statement_effects_with_imports};
 #[cfg(test)]
-pub(crate) use tag_support::collect_tag_spans_from_effect;
-pub(crate) use tag_support::{
+pub use tag_support::collect_tag_spans_from_effect;
+pub use tag_support::{
     choose_spec_references_exiled_tag, collect_tag_spans_from_effects_with_context,
-    effect_references_event_derived_amount, effect_references_it_tag,
-    effect_references_its_controller, effect_references_tag, effects_have_cross_arm_tag_dependency,
-    effects_reference_it_tag, effects_reference_its_controller, effects_reference_tag,
-    effects_reference_tag_in_object_position, filter_references_tag, is_exile_cost_collection_tag,
-    is_revealed_collection_tag, is_searched_collection_tag, is_sentence_helper_consult_match_tag,
+    effect_references_it_tag, effect_references_its_controller, effect_references_tag,
+    effects_have_cross_arm_tag_dependency, effects_reference_it_tag,
+    effects_reference_its_controller, effects_reference_tag, filter_references_tag,
+    is_exile_cost_collection_tag, is_revealed_collection_tag, is_searched_collection_tag,
     is_sentence_helper_exiled_collection_tag, predicate_references_tag,
-    value_references_event_derived_amount,
 };
-pub(crate) use trigger_support::{
+pub use trigger_support::{
     compile_trigger_effects, compile_trigger_effects_with_imports, compile_trigger_spec,
     ensure_concrete_trigger_spec, inferred_trigger_player_filter,
     trigger_binds_player_reference_context, trigger_supports_event_value,
 };
 
-pub(crate) fn compile_condition_from_predicate_ast(
+pub fn compile_condition_from_predicate_ast(
     predicate: &PredicateAst,
     ctx: &mut EffectLoweringContext,
     saved_last_tag: &Option<String>,
@@ -604,24 +598,24 @@ pub(crate) fn compile_condition_from_predicate_ast(
         PredicateAst::PlayerWouldDrawCard { player } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::Custom(match player {
-                PlayerFilter::You => "you_would_draw_card",
-                PlayerFilter::Opponent => "opponent_would_draw_card",
-                _ => "player_would_draw_card",
+                PlayerFilter::You => "you_would_draw_card".into(),
+                PlayerFilter::Opponent => "opponent_would_draw_card".into(),
+                _ => "player_would_draw_card".into(),
             })
         }
         PredicateAst::PlayerWouldProliferate { player } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::Custom(match player {
-                PlayerFilter::You => "you_would_proliferate",
-                PlayerFilter::Opponent => "opponent_would_proliferate",
-                _ => "player_would_proliferate",
+                PlayerFilter::You => "you_would_proliferate".into(),
+                PlayerFilter::Opponent => "opponent_would_proliferate".into(),
+                _ => "player_would_proliferate".into(),
             })
         }
         PredicateAst::PlayerWouldBeginExtraTurn { player } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::Custom(match player {
-                PlayerFilter::Opponent => "opponent_would_begin_extra_turn",
-                _ => "player_would_begin_extra_turn",
+                PlayerFilter::Opponent => "opponent_would_begin_extra_turn".into(),
+                _ => "player_would_begin_extra_turn".into(),
             })
         }
         PredicateAst::YourTurn => Condition::YourTurn,
@@ -958,7 +952,7 @@ pub(crate) fn compile_condition_from_predicate_ast(
     })
 }
 
-pub(crate) fn compile_effects(
+pub fn compile_effects(
     effects: &[EffectAst],
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
@@ -979,7 +973,7 @@ pub(crate) fn compile_effects(
     compile_annotated_effects_with_context(&annotated, ctx)
 }
 
-pub(crate) fn compile_annotated_effects_with_context(
+pub fn compile_annotated_effects_with_context(
     annotated: &AnnotatedEffectSequence,
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
@@ -1168,7 +1162,7 @@ fn assign_effect_result_id(
     Ok(())
 }
 
-pub(crate) fn compile_effects_with_explicit_frame(
+pub fn compile_effects_with_explicit_frame(
     effects: &[EffectAst],
     id_gen: &mut IdGenContext,
     frame: LoweringFrame,
@@ -1664,7 +1658,7 @@ fn bind_relative_iterated_player_in_choose_spec_to_player_filter(
     }
 }
 
-pub(crate) fn resolve_player_scoped_value(
+pub fn resolve_player_scoped_value(
     value: &Value,
     player: PlayerAst,
     ctx: &mut EffectLoweringContext,
@@ -1702,7 +1696,7 @@ fn choose_followup_player_filter(
     }
 }
 
-pub(crate) fn hand_exile_filter_and_count(
+pub fn hand_exile_filter_and_count(
     target: &TargetAst,
     ctx: &EffectLoweringContext,
 ) -> Result<Option<(ObjectFilter, ChoiceCount, Vec<Zone>)>, CardTextError> {
@@ -1867,7 +1861,7 @@ fn strip_choice_zones_from_filter(filter: &mut ObjectFilter, zones: &[Zone]) {
     });
 }
 
-pub(crate) fn normalized_hand_or_graveyard_choice_filter(
+pub fn normalized_hand_or_graveyard_choice_filter(
     filter: &ObjectFilter,
 ) -> Option<(ObjectFilter, Vec<Zone>)> {
     let mut filter = filter.clone();
@@ -1877,7 +1871,7 @@ pub(crate) fn normalized_hand_or_graveyard_choice_filter(
     Some((filter, zones))
 }
 
-pub(crate) fn lower_hand_exile_target(
+pub fn lower_hand_exile_target(
     target: &TargetAst,
     face_down: bool,
     ctx: &mut EffectLoweringContext,
@@ -1922,7 +1916,7 @@ pub(crate) fn lower_hand_exile_target(
     Ok(Some((prelude, choices)))
 }
 
-pub(crate) fn lower_counted_non_target_exile_target(
+pub fn lower_counted_non_target_exile_target(
     target: &TargetAst,
     face_down: bool,
     ctx: &mut EffectLoweringContext,
@@ -1988,7 +1982,7 @@ pub(crate) fn lower_counted_non_target_exile_target(
     Ok(Some((prelude, choices)))
 }
 
-pub(crate) fn lower_single_non_target_exile_target(
+pub fn lower_single_non_target_exile_target(
     target: &TargetAst,
     face_down: bool,
     ctx: &mut EffectLoweringContext,
@@ -2051,7 +2045,7 @@ pub(crate) fn lower_single_non_target_exile_target(
     Ok(Some((prelude, choices)))
 }
 
-pub(crate) fn lower_may_imprint_from_hand_effect(
+pub fn lower_may_imprint_from_hand_effect(
     effects: &[EffectAst],
     ctx: &EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
@@ -2419,7 +2413,7 @@ fn granted_ability_mode_description(
     Ok(format!("This creature gains {display} until end of turn."))
 }
 
-pub(crate) fn tagged_alias_for_choice(effects: &[Effect], choice: &ChooseSpec) -> Option<String> {
+pub fn tagged_alias_for_choice(effects: &[Effect], choice: &ChooseSpec) -> Option<String> {
     for effect in effects {
         let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() else {
             continue;
@@ -2433,7 +2427,7 @@ pub(crate) fn tagged_alias_for_choice(effects: &[Effect], choice: &ChooseSpec) -
     None
 }
 
-pub(crate) fn tag_object_target_effect(
+pub fn tag_object_target_effect(
     effect: Effect,
     spec: &ChooseSpec,
     ctx: &mut EffectLoweringContext,
@@ -2469,10 +2463,7 @@ fn selected_object_filter(spec: &ChooseSpec) -> Option<&ObjectFilter> {
 /// "that player" reference. A broad lexical filter such as `Opponent` is only
 /// the legal set; once the object is selected, its tagged owner/controller is
 /// the concrete multiplayer antecedent.
-pub(crate) fn track_selected_object_player_provenance(
-    spec: &ChooseSpec,
-    ctx: &mut EffectLoweringContext,
-) {
+pub fn track_selected_object_player_provenance(spec: &ChooseSpec, ctx: &mut EffectLoweringContext) {
     let Some(filter) = selected_object_filter(spec) else {
         return;
     };
@@ -2491,7 +2482,7 @@ pub(crate) fn track_selected_object_player_provenance(
     }
 }
 
-pub(crate) fn eldrazi_spawn_or_scion_mana_ability() -> Ability {
+pub fn eldrazi_spawn_or_scion_mana_ability() -> Ability {
     Ability {
         kind: AbilityKind::Activated(ActivatedAbility::mana_with_costs(
             TotalCost::free(),
@@ -2502,7 +2493,7 @@ pub(crate) fn eldrazi_spawn_or_scion_mana_ability() -> Ability {
     }
 }
 
-pub(crate) fn eldrazi_spawn_token_definition() -> CardDefinition {
+pub fn eldrazi_spawn_token_definition() -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Eldrazi Spawn")
         .token()
         .card_types(vec![CardType::Creature])
@@ -2512,7 +2503,7 @@ pub(crate) fn eldrazi_spawn_token_definition() -> CardDefinition {
         .build()
 }
 
-pub(crate) fn eldrazi_scion_token_definition() -> CardDefinition {
+pub fn eldrazi_scion_token_definition() -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Eldrazi Scion")
         .token()
         .card_types(vec![CardType::Creature])
@@ -2536,7 +2527,7 @@ fn generic_mana_cost(amount: u32) -> Option<ManaCost> {
 /// player may pay the {N} generic with mana, or tap untapped artifacts/creatures
 /// they control (each paying {1}), so the cost expands into N+1 branches: pay
 /// all the mana (0 taps), down to fully paying by tapping N permanents.
-pub(crate) fn waterbend_optional_total_cost(generic: u32) -> TotalCost {
+pub fn waterbend_optional_total_cost(generic: u32) -> TotalCost {
     let tag = TagKey::from(format!("waterbend_cost_{generic}"));
     let mut branches = Vec::new();
     for taps in 0..=generic {
@@ -3047,7 +3038,7 @@ fn apply_embedded_token_rules(
     builder
 }
 
-pub(crate) fn token_dies_deals_damage_any_target_ability(amount: i32) -> Ability {
+pub fn token_dies_deals_damage_any_target_ability(amount: i32) -> Ability {
     let target = ChooseSpec::AnyTarget;
     Ability {
         kind: AbilityKind::Triggered(TriggeredAbility {
@@ -3064,7 +3055,7 @@ pub(crate) fn token_dies_deals_damage_any_target_ability(amount: i32) -> Ability
     }
 }
 
-pub(crate) fn token_leaves_deals_damage_any_target_ability(amount: i32) -> Ability {
+pub fn token_leaves_deals_damage_any_target_ability(amount: i32) -> Ability {
     let target = ChooseSpec::AnyTarget;
     Ability {
         kind: AbilityKind::Triggered(TriggeredAbility {
@@ -3081,7 +3072,7 @@ pub(crate) fn token_leaves_deals_damage_any_target_ability(amount: i32) -> Abili
     }
 }
 
-pub(crate) fn token_becomes_tapped_deals_damage_target_player_ability(amount: i32) -> Ability {
+pub fn token_becomes_tapped_deals_damage_target_player_ability(amount: i32) -> Ability {
     let target = ChooseSpec::target(ChooseSpec::Player(PlayerFilter::Any));
     Ability {
         kind: AbilityKind::Triggered(TriggeredAbility {
@@ -3098,7 +3089,7 @@ pub(crate) fn token_becomes_tapped_deals_damage_target_player_ability(amount: i3
     }
 }
 
-pub(crate) fn token_dies_target_creature_gets_minus_one_minus_one_ability() -> Ability {
+pub fn token_dies_target_creature_gets_minus_one_minus_one_ability() -> Ability {
     let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()));
     Ability {
         kind: AbilityKind::Triggered(TriggeredAbility {
@@ -3117,7 +3108,7 @@ pub(crate) fn token_dies_target_creature_gets_minus_one_minus_one_ability() -> A
     }
 }
 
-pub(crate) fn token_red_pump_ability() -> Ability {
+pub fn token_red_pump_ability() -> Ability {
     Ability {
         kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
             mana_cost: TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Red]])),
@@ -3140,7 +3131,7 @@ pub(crate) fn token_red_pump_ability() -> Ability {
     }
 }
 
-pub(crate) fn token_white_tap_target_creature_ability() -> Ability {
+pub fn token_white_tap_target_creature_ability() -> Ability {
     let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()));
     Ability {
         kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
@@ -3164,7 +3155,7 @@ pub(crate) fn token_white_tap_target_creature_ability() -> Ability {
     }
 }
 
-pub(crate) fn token_tap_mana_ability(shape: token_grammar::TokenTapManaAbilityShape) -> Ability {
+pub fn token_tap_mana_ability(shape: token_grammar::TokenTapManaAbilityShape) -> Ability {
     Ability {
         kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
             mana_cost: TotalCost::from_costs(vec![crate::costs::Cost::tap()]),
@@ -3182,7 +3173,7 @@ pub(crate) fn token_tap_mana_ability(shape: token_grammar::TokenTapManaAbilitySh
     }
 }
 
-pub(crate) fn token_damage_to_player_poison_counter_ability() -> Ability {
+pub fn token_damage_to_player_poison_counter_ability() -> Ability {
     Ability {
         kind: AbilityKind::Triggered(TriggeredAbility {
             trigger: Trigger::this_deals_combat_damage_to_player(PlayerFilter::Any),
@@ -3197,7 +3188,7 @@ pub(crate) fn token_damage_to_player_poison_counter_ability() -> Ability {
     }
 }
 
-pub(crate) fn token_noncreature_spell_each_opponent_damage_ability(amount: i32) -> Ability {
+pub fn token_noncreature_spell_each_opponent_damage_ability(amount: i32) -> Ability {
     Ability {
         kind: AbilityKind::Triggered(TriggeredAbility {
             trigger: Trigger::spell_cast(
@@ -3218,7 +3209,7 @@ pub(crate) fn token_noncreature_spell_each_opponent_damage_ability(amount: i32) 
     }
 }
 
-pub(crate) fn token_combat_damage_gain_control_target_artifact_ability() -> Ability {
+pub fn token_combat_damage_gain_control_target_artifact_ability() -> Ability {
     let target = ChooseSpec::target(ChooseSpec::Object(
         ObjectFilter::artifact().controlled_by(PlayerFilter::DamagedPlayer),
     ));
@@ -3240,7 +3231,7 @@ pub(crate) fn token_combat_damage_gain_control_target_artifact_ability() -> Abil
     }
 }
 
-pub(crate) fn token_leaves_return_named_from_graveyard_to_hand_ability(
+pub fn token_leaves_return_named_from_graveyard_to_hand_ability(
     card_name: &str,
     self_surface: Option<crate::target::SourceReferenceSurface>,
 ) -> Ability {
@@ -3301,7 +3292,7 @@ fn token_combat_restriction_ability(
     Ability::static_ability(ability)
 }
 
-pub(crate) fn token_sacrifice_return_named_from_graveyard_ability(
+pub fn token_sacrifice_return_named_from_graveyard_ability(
     card_name: &str,
     mana_symbols: Vec<ManaSymbol>,
     tap_cost: bool,
@@ -3352,7 +3343,7 @@ pub(crate) fn token_sacrifice_return_named_from_graveyard_ability(
     }
 }
 
-pub(crate) fn token_upkeep_sacrifice_return_named_from_graveyard_ability(
+pub fn token_upkeep_sacrifice_return_named_from_graveyard_ability(
     card_name: &str,
     grants_haste: bool,
 ) -> Ability {
@@ -3393,7 +3384,7 @@ pub(crate) fn token_upkeep_sacrifice_return_named_from_graveyard_ability(
     }
 }
 
-pub(crate) fn token_dies_create_dragon_with_firebreathing_ability() -> Ability {
+pub fn token_dies_create_dragon_with_firebreathing_ability() -> Ability {
     let dragon = CardDefinitionBuilder::new(CardId::new(), "Dragon")
         .token()
         .card_types(vec![CardType::Creature])
@@ -3516,7 +3507,7 @@ fn build_artifact_token_definition(
     Some(builder.build())
 }
 
-pub(crate) fn apply_standard_token_keyword(
+pub fn apply_standard_token_keyword(
     builder: CardDefinitionBuilder,
     keyword: token_grammar::TokenKeywordShape,
 ) -> CardDefinitionBuilder {
@@ -3943,12 +3934,12 @@ fn lower_token_definition_shape(shape: TokenDefinitionSpec) -> Option<CardDefini
 }
 
 #[cfg(test)]
-pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
+pub fn token_definition_for(name: &str) -> Option<CardDefinition> {
     let shape = token_grammar::parse_token_definition_shape_text(name)?;
     lower_token_definition_shape(shape)
 }
 
-pub(crate) fn target_mentions_graveyard(target: &TargetAst) -> bool {
+pub fn target_mentions_graveyard(target: &TargetAst) -> bool {
     match target {
         TargetAst::Object(filter, _, _) => filter.zone == Some(Zone::Graveyard),
         TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
@@ -3958,7 +3949,7 @@ pub(crate) fn target_mentions_graveyard(target: &TargetAst) -> bool {
     }
 }
 
-pub(crate) fn compile_effect_for_target<Builder>(
+pub fn compile_effect_for_target<Builder>(
     target: &TargetAst,
     ctx: &mut EffectLoweringContext,
     build: Builder,
@@ -3972,7 +3963,7 @@ where
     Ok((vec![effect], choices))
 }
 
-pub(crate) fn compile_tagged_effect_for_target<Builder>(
+pub fn compile_tagged_effect_for_target<Builder>(
     target: &TargetAst,
     ctx: &mut EffectLoweringContext,
     tag_prefix: &str,
@@ -3987,7 +3978,7 @@ where
     Ok((vec![effect], choices))
 }
 
-pub(crate) fn push_choice(choices: &mut Vec<ChooseSpec>, choice: ChooseSpec) {
+pub fn push_choice(choices: &mut Vec<ChooseSpec>, choice: ChooseSpec) {
     if !choices.iter().any(|existing| existing == &choice) {
         choices.push(choice);
     }

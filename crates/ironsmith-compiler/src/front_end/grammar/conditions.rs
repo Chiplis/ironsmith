@@ -39,7 +39,7 @@ mod status_shapes;
 #[path = "conditions/zone_change_shapes.rs"]
 mod zone_change_shapes;
 
-pub(crate) use counter_shapes::parse_player_counter_condition;
+pub use counter_shapes::parse_player_counter_condition;
 
 #[derive(Debug, Clone, PartialEq)]
 enum LifeRelationShape {
@@ -61,13 +61,13 @@ enum ControlConditionFilterSuffix {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ControlConditionOptions {
-    pub(crate) allow_that_player: bool,
-    pub(crate) allow_opponent_players: bool,
-    pub(crate) allow_defending_player: bool,
-    pub(crate) bind_filter_controller_to_subject: bool,
-    pub(crate) allow_different_powers_tail: bool,
-    pub(crate) default_filter_zone: Option<Zone>,
+pub struct ControlConditionOptions {
+    pub allow_that_player: bool,
+    pub allow_opponent_players: bool,
+    pub allow_defending_player: bool,
+    pub bind_filter_controller_to_subject: bool,
+    pub allow_different_powers_tail: bool,
+    pub default_filter_zone: Option<Zone>,
 }
 
 impl Default for ControlConditionOptions {
@@ -84,43 +84,43 @@ impl Default for ControlConditionOptions {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ControlConditionAst {
-    pub(crate) player: PlayerAst,
-    pub(crate) player_filter: Option<PlayerFilter>,
-    pub(crate) comparison: Comparison,
-    pub(crate) quantity_token_count: usize,
-    pub(crate) quantity_words: Vec<String>,
-    pub(crate) object_words: Vec<String>,
-    pub(crate) filter: ObjectFilter,
-    pub(crate) requires_different_powers: bool,
+pub struct ControlConditionAst {
+    pub player: PlayerAst,
+    pub player_filter: Option<PlayerFilter>,
+    pub comparison: Comparison,
+    pub quantity_token_count: usize,
+    pub quantity_words: Vec<String>,
+    pub object_words: Vec<String>,
+    pub filter: ObjectFilter,
+    pub requires_different_powers: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) struct OwnershipConditionOptions {
-    pub(crate) allow_opponent_players: bool,
-    pub(crate) bind_filter_owner_to_subject: bool,
-    pub(crate) default_filter_zone: Option<Zone>,
+pub struct OwnershipConditionOptions {
+    pub allow_opponent_players: bool,
+    pub bind_filter_owner_to_subject: bool,
+    pub default_filter_zone: Option<Zone>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct OwnershipConditionAst {
-    pub(crate) player: PlayerAst,
-    pub(crate) player_filter: Option<PlayerFilter>,
-    pub(crate) comparison: Comparison,
-    pub(crate) quantity_token_count: usize,
-    pub(crate) quantity_words: Vec<String>,
-    pub(crate) object_words: Vec<String>,
-    pub(crate) filter: ObjectFilter,
+pub struct OwnershipConditionAst {
+    pub player: PlayerAst,
+    pub player_filter: Option<PlayerFilter>,
+    pub comparison: Comparison,
+    pub quantity_token_count: usize,
+    pub quantity_words: Vec<String>,
+    pub object_words: Vec<String>,
+    pub filter: ObjectFilter,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StatusConditionSubjectAst {
+pub enum StatusConditionSubjectAst {
     Source,
     EquippedCreature,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StatusConditionStateAst {
+pub enum StatusConditionStateAst {
     Equipped,
     Enchanted,
     Tapped,
@@ -131,46 +131,46 @@ pub(crate) enum StatusConditionStateAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SubjectStatusConditionAst {
-    pub(crate) subject: StatusConditionSubjectAst,
-    pub(crate) state: StatusConditionStateAst,
+pub struct SubjectStatusConditionAst {
+    pub subject: StatusConditionSubjectAst,
+    pub state: StatusConditionStateAst,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ObjectDescriptorAst {
+pub enum ObjectDescriptorAst {
     Color(ColorSet),
     CardType(CardType),
     Subtype(Subtype),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SubjectDescriptorConditionSubjectAst {
+pub enum SubjectDescriptorConditionSubjectAst {
     EnchantedPermanent,
     AttachedObject,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SubjectDescriptorConditionAst {
-    pub(crate) subject: SubjectDescriptorConditionSubjectAst,
-    pub(crate) filter: ObjectFilter,
-    pub(crate) descriptor: ObjectDescriptorAst,
+pub struct SubjectDescriptorConditionAst {
+    pub subject: SubjectDescriptorConditionSubjectAst,
+    pub filter: ObjectFilter,
+    pub descriptor: ObjectDescriptorAst,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ObjectAttachedToObjectConditionAst {
-    pub(crate) attachment_filter: ObjectFilter,
-    pub(crate) attached_to_filter: ObjectFilter,
-    pub(crate) comparison: Comparison,
-    pub(crate) display: String,
+pub struct ObjectAttachedToObjectConditionAst {
+    pub attachment_filter: ObjectFilter,
+    pub attached_to_filter: ObjectFilter,
+    pub comparison: Comparison,
+    pub display: String,
 }
 
 /// A characteristic test against the public cards a player removed from a
 /// draft with a named card group.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct RemovedFromDraftConditionAst {
-    pub(crate) player: PlayerFilter,
-    pub(crate) filter: ObjectFilter,
-    pub(crate) with_cards_named: String,
+pub struct RemovedFromDraftConditionAst {
+    pub player: PlayerFilter,
+    pub filter: ObjectFilter,
+    pub with_cards_named: String,
 }
 
 /// Parse `you removed <card filter> from the draft with cards named <name>`.
@@ -178,7 +178,7 @@ pub(crate) struct RemovedFromDraftConditionAst {
 /// Keeping the removed card as an ordinary object filter lets conditional
 /// grants ask for any printed characteristic or ability without introducing a
 /// mechanic-specific flag for each one.
-pub(crate) fn parse_removed_from_draft_condition(
+pub fn parse_removed_from_draft_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<RemovedFromDraftConditionAst> {
     let tokens = trim_edge_punctuation_tokens(tokens);
@@ -225,20 +225,20 @@ pub(crate) fn parse_removed_from_draft_condition(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PlayerStatusAst {
+pub enum PlayerStatusAst {
     Monarch,
     Initiative,
     MaxSpeed,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PlayerStatusConditionAst {
-    pub(crate) player: PlayerFilter,
-    pub(crate) status: PlayerStatusAst,
+pub struct PlayerStatusConditionAst {
+    pub player: PlayerFilter,
+    pub status: PlayerStatusAst,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum PlayerAchievementAst {
+pub enum PlayerAchievementAst {
     CitysBlessing,
     CompletedDungeon { dungeon_name: Option<String> },
     FullParty,
@@ -246,45 +246,45 @@ pub(crate) enum PlayerAchievementAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PlayerAchievementConditionAst {
-    pub(crate) player: PlayerFilter,
-    pub(crate) achievement: PlayerAchievementAst,
-    pub(crate) negated: bool,
+pub struct PlayerAchievementConditionAst {
+    pub player: PlayerFilter,
+    pub achievement: PlayerAchievementAst,
+    pub negated: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PlayerCardsInHandConditionAst {
-    pub(crate) player: PlayerFilter,
-    pub(crate) comparison: Comparison,
+pub struct PlayerCardsInHandConditionAst {
+    pub player: PlayerFilter,
+    pub comparison: Comparison,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PlayerLifeTotalConditionAst {
-    pub(crate) player: PlayerFilter,
-    pub(crate) comparison: Comparison,
+pub struct PlayerLifeTotalConditionAst {
+    pub player: PlayerFilter,
+    pub comparison: Comparison,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PlayerLifeTieConditionAst {
-    pub(crate) minimum_players: u32,
-    pub(crate) tied_players: PlayerFilter,
+pub struct PlayerLifeTieConditionAst {
+    pub minimum_players: u32,
+    pub tied_players: PlayerFilter,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct PlayerLifeTieChoiceConditionAst<'a> {
-    pub(crate) minimum_players: u32,
-    pub(crate) tied_players: PlayerFilter,
-    pub(crate) consequence_tokens: &'a [OwnedLexToken],
+pub struct PlayerLifeTieChoiceConditionAst<'a> {
+    pub minimum_players: u32,
+    pub tied_players: PlayerFilter,
+    pub consequence_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PlayerHasQuantityObjectConditionAst {
-    pub(crate) player: PlayerFilter,
-    pub(crate) comparison: Comparison,
+pub struct PlayerHasQuantityObjectConditionAst {
+    pub player: PlayerFilter,
+    pub comparison: Comparison,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PlayerLifeRelationAst {
+pub enum PlayerLifeRelationAst {
     HasMoreLifeThanYou,
     HasLessLifeThanYou,
     HasNoOpponentWithMoreLifeThan,
@@ -292,64 +292,62 @@ pub(crate) enum PlayerLifeRelationAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PlayerLifeRelationConditionAst {
-    pub(crate) player: PlayerFilter,
-    pub(crate) relation: PlayerLifeRelationAst,
+pub struct PlayerLifeRelationConditionAst {
+    pub player: PlayerFilter,
+    pub relation: PlayerLifeRelationAst,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PlayerCardsInHandRelationAst {
+pub enum PlayerCardsInHandRelationAst {
     HasMoreCardsInHandThanYou,
     HasMoreCardsInHandThanEachOtherPlayer,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PlayerCardsInHandRelationConditionAst {
-    pub(crate) player: PlayerFilter,
-    pub(crate) relation: PlayerCardsInHandRelationAst,
+pub struct PlayerCardsInHandRelationConditionAst {
+    pub player: PlayerFilter,
+    pub relation: PlayerCardsInHandRelationAst,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TargetSetPredicateAst {
+pub enum TargetSetPredicateAst {
     DifferentColorSets,
 }
 
 /// Parse a predicate that relates the object targets selected by the enclosing
 /// spell or ability. These predicates intentionally carry no card identity or
 /// effect-specific behavior; they lower to reusable resolution conditions.
-pub(crate) fn parse_target_set_predicate(
-    tokens: &[OwnedLexToken],
-) -> Option<TargetSetPredicateAst> {
+pub fn parse_target_set_predicate(tokens: &[OwnedLexToken]) -> Option<TargetSetPredicateAst> {
     relation_shapes::parse_target_set_predicate(tokens)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PlayerTurnEventAst {
+pub enum PlayerTurnEventAst {
     CardsDrawn,
     LandsEnteredBattlefieldUnderControl,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PlayerTurnEventConditionAst {
-    pub(crate) player: PlayerFilter,
-    pub(crate) event: PlayerTurnEventAst,
-    pub(crate) comparison: Comparison,
+pub struct PlayerTurnEventConditionAst {
+    pub player: PlayerFilter,
+    pub event: PlayerTurnEventAst,
+    pub comparison: Comparison,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SpellContextReferenceAst {
+pub enum SpellContextReferenceAst {
     TargetSpell,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SpellContextConditionAst {
+pub enum SpellContextConditionAst {
     ControllerIsPoisoned { spell: SpellContextReferenceAst },
     NoManaSpentToCast { spell: SpellContextReferenceAst },
     YouControlMoreCreaturesThanController { spell: SpellContextReferenceAst },
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum PlayerSpellCastThisTurnConditionAst {
+pub enum PlayerSpellCastThisTurnConditionAst {
     MatchingFilters {
         player: PlayerFilter,
         filters: Vec<ObjectFilter>,
@@ -367,33 +365,33 @@ pub(crate) enum PlayerSpellCastThisTurnConditionAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PlayerLifeChangeDirectionAst {
+pub enum PlayerLifeChangeDirectionAst {
     Gained,
     Lost,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PlayerLifeChangeThisTurnConditionAst {
-    pub(crate) player: PlayerFilter,
-    pub(crate) direction: PlayerLifeChangeDirectionAst,
-    pub(crate) comparison: Comparison,
+pub struct PlayerLifeChangeThisTurnConditionAst {
+    pub player: PlayerFilter,
+    pub direction: PlayerLifeChangeDirectionAst,
+    pub comparison: Comparison,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PlayerWouldActionAst {
+pub enum PlayerWouldActionAst {
     DrawCard,
     Proliferate,
     BeginExtraTurn,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PlayerWouldActionConditionAst {
-    pub(crate) player: PlayerFilter,
-    pub(crate) action: PlayerWouldActionAst,
+pub struct PlayerWouldActionConditionAst {
+    pub player: PlayerFilter,
+    pub action: PlayerWouldActionAst,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum BattlefieldChangeThisTurnConditionAst {
+pub enum BattlefieldChangeThisTurnConditionAst {
     PermanentLeftBattlefield {
         negated: bool,
     },
@@ -407,28 +405,28 @@ pub(crate) enum BattlefieldChangeThisTurnConditionAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ObjectDeathThisTurnEventAst {
+pub enum ObjectDeathThisTurnEventAst {
     Died,
     PutIntoYourGraveyardFromAnywhere,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ObjectDeathThisTurnConditionAst {
-    pub(crate) event: ObjectDeathThisTurnEventAst,
-    pub(crate) filter: ObjectFilter,
-    pub(crate) comparison: Comparison,
-    pub(crate) under_controller: Option<PlayerFilter>,
-    pub(crate) damaged_by: Option<DamageBySpec>,
+pub struct ObjectDeathThisTurnConditionAst {
+    pub event: ObjectDeathThisTurnEventAst,
+    pub filter: ObjectFilter,
+    pub comparison: Comparison,
+    pub under_controller: Option<PlayerFilter>,
+    pub damaged_by: Option<DamageBySpec>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BattlefieldEntryTurnWindowAst {
+pub enum BattlefieldEntryTurnWindowAst {
     ThisTurn,
     LastTurn,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum BattlefieldEntryConditionAst {
+pub enum BattlefieldEntryConditionAst {
     ObjectEntered {
         filter: ObjectFilter,
         window: BattlefieldEntryTurnWindowAst,
@@ -440,36 +438,36 @@ pub(crate) enum BattlefieldEntryConditionAst {
 }
 
 impl ControlConditionAst {
-    pub(crate) fn has_explicit_quantity(&self) -> bool {
+    pub fn has_explicit_quantity(&self) -> bool {
         self.quantity_token_count > 0
     }
 
-    pub(crate) fn exact_count(&self) -> Option<u32> {
+    pub fn exact_count(&self) -> Option<u32> {
         match self.comparison {
             Comparison::Equal(count) if count >= 0 => Some(count as u32),
             _ => None,
         }
     }
 
-    pub(crate) fn at_least_count(&self) -> Option<u32> {
+    pub fn at_least_count(&self) -> Option<u32> {
         comparison_to_at_least_threshold(&self.comparison)
     }
 
-    pub(crate) fn strict_at_least_count(&self) -> Option<u32> {
+    pub fn strict_at_least_count(&self) -> Option<u32> {
         comparison_to_strict_at_least_threshold(&self.comparison)
     }
 
-    pub(crate) fn quantity_text(&self) -> String {
+    pub fn quantity_text(&self) -> String {
         self.quantity_words.join(" ")
     }
 
-    pub(crate) fn object_text(&self) -> String {
+    pub fn object_text(&self) -> String {
         self.object_words.join(" ")
     }
 }
 
 impl SubjectStatusConditionAst {
-    pub(crate) fn condition_expr(self) -> Option<crate::ConditionExpr> {
+    pub fn condition_expr(self) -> Option<crate::ConditionExpr> {
         match (self.subject, self.state) {
             (StatusConditionSubjectAst::Source, StatusConditionStateAst::Equipped) => {
                 Some(crate::ConditionExpr::SourceIsEquipped)
@@ -516,7 +514,7 @@ impl SubjectStatusConditionAst {
 }
 
 impl SubjectDescriptorConditionAst {
-    pub(crate) fn condition_expr(self, display: String) -> crate::ConditionExpr {
+    pub fn condition_expr(self, display: String) -> crate::ConditionExpr {
         if self.subject == SubjectDescriptorConditionSubjectAst::AttachedObject {
             let mut descriptor_filter = ObjectFilter::default();
             apply_object_descriptor_to_filter(&mut descriptor_filter, self.descriptor);
@@ -552,7 +550,7 @@ impl SubjectDescriptorConditionAst {
 }
 
 impl PlayerStatusConditionAst {
-    pub(crate) fn condition_expr(self) -> crate::ConditionExpr {
+    pub fn condition_expr(self) -> crate::ConditionExpr {
         match self.status {
             PlayerStatusAst::Monarch => crate::ConditionExpr::PlayerIsMonarch {
                 player: self.player,
@@ -570,7 +568,7 @@ impl PlayerStatusConditionAst {
 }
 
 impl PlayerAchievementConditionAst {
-    pub(crate) fn condition_expr(self) -> crate::ConditionExpr {
+    pub fn condition_expr(self) -> crate::ConditionExpr {
         let condition = match self.achievement {
             PlayerAchievementAst::CitysBlessing => crate::ConditionExpr::PlayerHasCitysBlessing {
                 player: self.player,
@@ -595,7 +593,7 @@ impl PlayerAchievementConditionAst {
 }
 
 impl PlayerCardsInHandConditionAst {
-    pub(crate) fn condition_expr(self) -> Option<crate::ConditionExpr> {
+    pub fn condition_expr(self) -> Option<crate::ConditionExpr> {
         if let Some(count) = comparison_to_strict_at_least_threshold(&self.comparison) {
             return Some(crate::ConditionExpr::PlayerCardsInHandOrMore {
                 player: self.player,
@@ -611,13 +609,13 @@ impl PlayerCardsInHandConditionAst {
         None
     }
 
-    pub(crate) fn is_no_cards_in_hand(&self) -> bool {
+    pub fn is_no_cards_in_hand(&self) -> bool {
         comparison_to_strict_at_most_threshold(&self.comparison) == Some(0)
     }
 }
 
 impl PlayerLifeTotalConditionAst {
-    pub(crate) fn condition_expr(self) -> Option<crate::ConditionExpr> {
+    pub fn condition_expr(self) -> Option<crate::ConditionExpr> {
         let (operator, right) = comparison_to_value_comparison_operator(self.comparison)?;
         Some(crate::ConditionExpr::ValueComparison {
             left: Value::LifeTotal(self.player),
@@ -627,14 +625,14 @@ impl PlayerLifeTotalConditionAst {
     }
 }
 
-pub(crate) fn parse_control_condition(
+pub fn parse_control_condition(
     tokens: &[OwnedLexToken],
     options: ControlConditionOptions,
 ) -> Option<ControlConditionAst> {
     parse_control_condition_shape(tokens, options)
 }
 
-pub(crate) fn parse_control_relation_tail_clause(
+pub fn parse_control_relation_tail_clause(
     tokens: &[OwnedLexToken],
     options: ControlConditionOptions,
 ) -> Option<LexedClause<'_>> {
@@ -643,7 +641,7 @@ pub(crate) fn parse_control_relation_tail_clause(
     Some(captured.tail_clause)
 }
 
-pub(crate) fn parse_control_condition_words(
+pub fn parse_control_condition_words(
     words: &[&str],
     options: ControlConditionOptions,
 ) -> Option<ControlConditionAst> {
@@ -668,34 +666,34 @@ struct PossessionRelationCapture<'a> {
     has_modifier: bool,
 }
 
-pub(crate) struct ControlRelationClauses<'a> {
-    pub(crate) subject_clause: LexedClause<'a>,
-    pub(crate) tail_clause: LexedClause<'a>,
+pub struct ControlRelationClauses<'a> {
+    pub subject_clause: LexedClause<'a>,
+    pub tail_clause: LexedClause<'a>,
 }
 
-pub(crate) struct NegatedControlRelationClauses<'a> {
-    pub(crate) subject_clause: LexedClause<'a>,
-    pub(crate) negation_clause: LexedClause<'a>,
-    pub(crate) tail_clause: LexedClause<'a>,
+pub struct NegatedControlRelationClauses<'a> {
+    pub subject_clause: LexedClause<'a>,
+    pub negation_clause: LexedClause<'a>,
+    pub tail_clause: LexedClause<'a>,
 }
 
-pub(crate) struct HasRelationClauses<'a> {
-    pub(crate) subject_clause: LexedClause<'a>,
-    pub(crate) tail_clause: LexedClause<'a>,
+pub struct HasRelationClauses<'a> {
+    pub subject_clause: LexedClause<'a>,
+    pub tail_clause: LexedClause<'a>,
 }
 
-pub(crate) struct CopulaRelationClauses<'a> {
-    pub(crate) subject_clause: LexedClause<'a>,
-    pub(crate) tail_clause: LexedClause<'a>,
+pub struct CopulaRelationClauses<'a> {
+    pub subject_clause: LexedClause<'a>,
+    pub tail_clause: LexedClause<'a>,
 }
 
-pub(crate) struct PrepositionalCopulaRelationClauses<'a> {
-    pub(crate) subject_clause: LexedClause<'a>,
-    pub(crate) preposition_clause: LexedClause<'a>,
-    pub(crate) tail_clause: LexedClause<'a>,
+pub struct PrepositionalCopulaRelationClauses<'a> {
+    pub subject_clause: LexedClause<'a>,
+    pub preposition_clause: LexedClause<'a>,
+    pub tail_clause: LexedClause<'a>,
 }
 
-pub(crate) fn parse_copula_relation_clauses(
+pub fn parse_copula_relation_clauses(
     tokens: &[OwnedLexToken],
 ) -> Option<CopulaRelationClauses<'_>> {
     let captured =
@@ -706,7 +704,7 @@ pub(crate) fn parse_copula_relation_clauses(
     })
 }
 
-pub(crate) fn parse_prepositional_copula_relation_clauses<'a>(
+pub fn parse_prepositional_copula_relation_clauses<'a>(
     tokens: &'a [OwnedLexToken],
     preposition_words: &[&str],
 ) -> Option<PrepositionalCopulaRelationClauses<'a>> {
@@ -718,15 +716,13 @@ pub(crate) fn parse_prepositional_copula_relation_clauses<'a>(
     })
 }
 
-pub(crate) fn parse_existential_object_clause(tokens: &[OwnedLexToken]) -> Option<LexedClause<'_>> {
+pub fn parse_existential_object_clause(tokens: &[OwnedLexToken]) -> Option<LexedClause<'_>> {
     relation_shapes::parse_existential_object(tokens)
         .map(LexedClause::new)
         .map(LexedClause::trimmed)
 }
 
-pub(crate) fn parse_has_relation_clauses(
-    tokens: &[OwnedLexToken],
-) -> Option<HasRelationClauses<'_>> {
+pub fn parse_has_relation_clauses(tokens: &[OwnedLexToken]) -> Option<HasRelationClauses<'_>> {
     let captured =
         match_possession_relation_shape(tokens, relation_shapes::PossessionAction::Has, false)?;
     Some(HasRelationClauses {
@@ -735,7 +731,7 @@ pub(crate) fn parse_has_relation_clauses(
     })
 }
 
-pub(crate) fn parse_control_relation_clauses(
+pub fn parse_control_relation_clauses(
     tokens: &[OwnedLexToken],
     allow_different_powers_tail: bool,
 ) -> Option<ControlRelationClauses<'_>> {
@@ -750,7 +746,7 @@ pub(crate) fn parse_control_relation_clauses(
     })
 }
 
-pub(crate) fn parse_control_or_controlled_relation_clauses(
+pub fn parse_control_or_controlled_relation_clauses(
     tokens: &[OwnedLexToken],
 ) -> Option<ControlRelationClauses<'_>> {
     let captured = match_possession_relation_shape(
@@ -764,7 +760,7 @@ pub(crate) fn parse_control_or_controlled_relation_clauses(
     })
 }
 
-pub(crate) fn parse_negated_control_relation_clauses(
+pub fn parse_negated_control_relation_clauses(
     tokens: &[OwnedLexToken],
 ) -> Option<NegatedControlRelationClauses<'_>> {
     let shape = relation_shapes::parse_negated_control(tokens)?;
@@ -993,7 +989,7 @@ fn finish_control_condition_words(
     })
 }
 
-pub(crate) fn parse_ownership_condition(
+pub fn parse_ownership_condition(
     tokens: &[OwnedLexToken],
     options: OwnershipConditionOptions,
 ) -> Option<OwnershipConditionAst> {
@@ -1075,7 +1071,7 @@ fn finish_ownership_condition(
     })
 }
 
-pub(crate) fn parse_subject_status_condition(
+pub fn parse_subject_status_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<SubjectStatusConditionAst> {
     parse_subject_status_shape(tokens)
@@ -1085,13 +1081,13 @@ fn parse_subject_status_shape(tokens: &[OwnedLexToken]) -> Option<SubjectStatusC
     status_shapes::parse_subject_status(tokens)
 }
 
-pub(crate) fn parse_subject_descriptor_condition(
+pub fn parse_subject_descriptor_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<SubjectDescriptorConditionAst> {
     parse_subject_descriptor_shape(tokens)
 }
 
-pub(crate) fn parse_object_attached_to_object_condition(
+pub fn parse_object_attached_to_object_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<ObjectAttachedToObjectConditionAst> {
     let relation = parse_copula_relation_clauses(tokens)?;
@@ -1157,9 +1153,7 @@ fn parse_object_descriptor_clause(clause: LexedClause<'_>) -> Option<ObjectDescr
     parse_object_descriptor_word(descriptor.as_word()?)
 }
 
-pub(crate) fn parse_player_status_condition(
-    tokens: &[OwnedLexToken],
-) -> Option<PlayerStatusConditionAst> {
+pub fn parse_player_status_condition(tokens: &[OwnedLexToken]) -> Option<PlayerStatusConditionAst> {
     parse_player_status_shape(tokens)
 }
 
@@ -1175,7 +1169,7 @@ fn parse_player_status_shape(tokens: &[OwnedLexToken]) -> Option<PlayerStatusCon
     })
 }
 
-pub(crate) fn parse_player_achievement_condition(
+pub fn parse_player_achievement_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerAchievementConditionAst> {
     parse_player_achievement_shape(tokens)
@@ -1187,7 +1181,7 @@ fn parse_player_achievement_shape(
     status_shapes::parse_player_achievement(tokens)
 }
 
-pub(crate) fn parse_player_cards_in_hand_condition(
+pub fn parse_player_cards_in_hand_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerCardsInHandConditionAst> {
     let cards_in_hand_phrases: &[&[&str]] = &[
@@ -1212,7 +1206,7 @@ pub(crate) fn parse_player_cards_in_hand_condition(
     }
 }
 
-pub(crate) fn parse_player_life_total_condition(
+pub fn parse_player_life_total_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerLifeTotalConditionAst> {
     let life_phrases: &[&[&str]] = &[&["life"]];
@@ -1228,7 +1222,7 @@ pub(crate) fn parse_player_life_total_condition(
     }
 }
 
-pub(crate) fn parse_player_life_tie_condition(
+pub fn parse_player_life_tie_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerLifeTieConditionAst> {
     let shape = life_tie_shapes::parse_player_life_tie_condition_tokens(tokens)?;
@@ -1238,7 +1232,7 @@ pub(crate) fn parse_player_life_tie_condition(
     })
 }
 
-pub(crate) fn parse_player_life_tie_choice_condition(
+pub fn parse_player_life_tie_choice_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerLifeTieChoiceConditionAst<'_>> {
     let shape = life_tie_shapes::parse_player_life_tie_choice_conditional_tokens(tokens)?;
@@ -1249,7 +1243,7 @@ pub(crate) fn parse_player_life_tie_choice_condition(
     })
 }
 
-pub(crate) fn parse_player_has_quantity_object_condition(
+pub fn parse_player_has_quantity_object_condition(
     tokens: &[OwnedLexToken],
     object_phrases: &[&[&str]],
     context: &str,
@@ -1264,7 +1258,7 @@ pub(crate) fn parse_player_has_quantity_object_condition(
         .then_some(PlayerHasQuantityObjectConditionAst { player, comparison })
 }
 
-pub(crate) fn parse_player_life_relation_condition(
+pub fn parse_player_life_relation_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerLifeRelationConditionAst> {
     parse_player_life_relation_shape(tokens)
@@ -1338,7 +1332,7 @@ fn parse_no_opponent_more_life_than_shape(
     })
 }
 
-pub(crate) fn parse_player_cards_in_hand_relation_condition(
+pub fn parse_player_cards_in_hand_relation_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerCardsInHandRelationConditionAst> {
     parse_player_cards_in_hand_relation_shape(tokens)
@@ -1371,7 +1365,7 @@ fn parse_cards_in_hand_relation_shape(
     event_shapes::parse_cards_in_hand_relation(relation_clause.tokens())
 }
 
-pub(crate) fn parse_player_turn_event_condition(
+pub fn parse_player_turn_event_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerTurnEventConditionAst> {
     parse_player_turn_event_shape(tokens)
@@ -1427,9 +1421,7 @@ fn parse_lands_entered_this_turn_shape(
     })
 }
 
-pub(crate) fn parse_spell_context_condition(
-    tokens: &[OwnedLexToken],
-) -> Option<SpellContextConditionAst> {
+pub fn parse_spell_context_condition(tokens: &[OwnedLexToken]) -> Option<SpellContextConditionAst> {
     parse_spell_context_condition_shape(tokens)
 }
 
@@ -1469,7 +1461,7 @@ fn parse_you_control_more_creatures_than_spell_controller_shape(
     Some(SpellContextConditionAst::YouControlMoreCreaturesThanController { spell })
 }
 
-pub(crate) fn parse_player_spell_cast_this_turn_condition(
+pub fn parse_player_spell_cast_this_turn_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerSpellCastThisTurnConditionAst> {
     parse_player_spell_cast_this_turn_shape(tokens)
@@ -1527,7 +1519,7 @@ fn parse_player_spell_cast_this_turn_shape(
     })
 }
 
-pub(crate) fn parse_player_life_change_this_turn_condition(
+pub fn parse_player_life_change_this_turn_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerLifeChangeThisTurnConditionAst> {
     parse_player_life_change_this_turn_shape(tokens)
@@ -1561,7 +1553,7 @@ fn parse_player_life_change_this_turn_shape(
     })
 }
 
-pub(crate) fn parse_player_would_action_condition(
+pub fn parse_player_would_action_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerWouldActionConditionAst> {
     parse_player_would_action_shape(tokens)
@@ -1578,7 +1570,7 @@ fn parse_player_would_action_shape(
     })
 }
 
-pub(crate) fn parse_battlefield_change_this_turn_condition(
+pub fn parse_battlefield_change_this_turn_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<BattlefieldChangeThisTurnConditionAst> {
     parse_battlefield_change_this_turn_shape(tokens)
@@ -1612,7 +1604,7 @@ fn parse_battlefield_change_this_turn_shape(
     }
 }
 
-pub(crate) fn parse_object_death_this_turn_condition(
+pub fn parse_object_death_this_turn_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<ObjectDeathThisTurnConditionAst> {
     parse_object_death_this_turn_shape(tokens)
@@ -1673,7 +1665,7 @@ fn parse_object_death_amount(tokens: &[OwnedLexToken]) -> Option<Comparison> {
     (used == tokens.len()).then_some(comparison)
 }
 
-pub(crate) fn parse_battlefield_entry_condition(
+pub fn parse_battlefield_entry_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<BattlefieldEntryConditionAst> {
     parse_battlefield_entry_shape(tokens)

@@ -8,115 +8,115 @@ use winnow::error::ModalResult as WResult;
 use winnow::token::any;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CounterDescriptorShape {
-    pub(crate) count: u32,
-    pub(crate) counter_type: CounterType,
-    pub(crate) additional: bool,
+pub struct CounterDescriptorShape {
+    pub count: u32,
+    pub counter_type: CounterType,
+    pub additional: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CounterMarkerTimingShape {
+pub enum CounterMarkerTimingShape {
     NextEndStep(PlayerFilter),
     NextUpkeep(PlayerAst),
     EndOfCombat,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CounterMarkerDestinationShape {
-    pub(crate) tapped: bool,
-    pub(crate) attacking: bool,
-    pub(crate) transformed: bool,
-    pub(crate) controller: ReturnControllerAst,
+pub struct CounterMarkerDestinationShape {
+    pub tapped: bool,
+    pub attacking: bool,
+    pub transformed: bool,
+    pub controller: ReturnControllerAst,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct MoveWithCountersShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) destination: CounterMarkerDestinationShape,
-    pub(crate) descriptors: Vec<CounterDescriptorShape>,
-    pub(crate) timing: Option<CounterMarkerTimingShape>,
+pub struct MoveWithCountersShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
+    pub destination: CounterMarkerDestinationShape,
+    pub descriptors: Vec<CounterDescriptorShape>,
+    pub timing: Option<CounterMarkerTimingShape>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SacrificeAtEndOfCombatShape<'a> {
-    pub(crate) object_tokens: &'a [OwnedLexToken],
-    pub(crate) tagged_object: bool,
+pub struct SacrificeAtEndOfCombatShape<'a> {
+    pub object_tokens: &'a [OwnedLexToken],
+    pub tagged_object: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ForEachCounterKindShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct ForEachCounterKindShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct GetsThenFightsShape<'a> {
-    pub(crate) pump_tokens: &'a [OwnedLexToken],
-    pub(crate) first_target_tokens: &'a [OwnedLexToken],
-    pub(crate) second_target_tokens: &'a [OwnedLexToken],
+pub struct GetsThenFightsShape<'a> {
+    pub pump_tokens: &'a [OwnedLexToken],
+    pub first_target_tokens: &'a [OwnedLexToken],
+    pub second_target_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DrawThenConniveShape<'a> {
-    pub(crate) draw_tokens: &'a [OwnedLexToken],
-    pub(crate) connive_tokens: &'a [OwnedLexToken],
+pub struct DrawThenConniveShape<'a> {
+    pub draw_tokens: &'a [OwnedLexToken],
+    pub connive_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AdditionalCounterShape {
-    pub(crate) descriptor: CounterDescriptorShape,
+pub struct AdditionalCounterShape {
+    pub descriptor: CounterDescriptorShape,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ConditionalEntryCounterArmShape {
-    pub(crate) descriptor: CounterDescriptorShape,
-    pub(crate) object_type: CardType,
+pub struct ConditionalEntryCounterArmShape {
+    pub descriptor: CounterDescriptorShape,
+    pub object_type: CardType,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TaggedConditionalEntryCountersShape {
-    pub(crate) arms: Vec<ConditionalEntryCounterArmShape>,
+pub struct TaggedConditionalEntryCountersShape {
+    pub arms: Vec<ConditionalEntryCounterArmShape>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PutWithAdditionalCounterShape<'a> {
-    pub(crate) move_tokens: &'a [OwnedLexToken],
-    pub(crate) descriptor: CounterDescriptorShape,
+pub struct PutWithAdditionalCounterShape<'a> {
+    pub move_tokens: &'a [OwnedLexToken],
+    pub descriptor: CounterDescriptorShape,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SacrificeThenPutAdditionalShape<'a> {
-    pub(crate) sacrifice_tokens: &'a [OwnedLexToken],
-    pub(crate) plain_word_sacrifice: bool,
-    pub(crate) put: PutWithAdditionalCounterShape<'a>,
+pub struct SacrificeThenPutAdditionalShape<'a> {
+    pub sacrifice_tokens: &'a [OwnedLexToken],
+    pub plain_word_sacrifice: bool,
+    pub put: PutWithAdditionalCounterShape<'a>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct IfSacrificeThenPutAdditionalShape<'a> {
-    pub(crate) predicate_tokens: &'a [OwnedLexToken],
-    pub(crate) effect: SacrificeThenPutAdditionalShape<'a>,
+pub struct IfSacrificeThenPutAdditionalShape<'a> {
+    pub predicate_tokens: &'a [OwnedLexToken],
+    pub effect: SacrificeThenPutAdditionalShape<'a>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EachPlayerReturnAdditionalShape<'a> {
-    pub(crate) return_tokens: &'a [OwnedLexToken],
-    pub(crate) descriptor: CounterDescriptorShape,
+pub struct EachPlayerReturnAdditionalShape<'a> {
+    pub return_tokens: &'a [OwnedLexToken],
+    pub descriptor: CounterDescriptorShape,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PutCounterChoiceShape<'a> {
-    pub(crate) counter_types: Vec<CounterType>,
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct PutCounterChoiceShape<'a> {
+    pub counter_types: Vec<CounterType>,
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PutFixedAndCounterChoiceShape<'a> {
-    pub(crate) fixed: CounterDescriptorShape,
-    pub(crate) counter_types: Vec<CounterType>,
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct PutFixedAndCounterChoiceShape<'a> {
+    pub fixed: CounterDescriptorShape,
+    pub counter_types: Vec<CounterType>,
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PutCounterSequenceShape<'a> {
+pub enum PutCounterSequenceShape<'a> {
     Plain,
     Then {
         head_tokens: &'a [OwnedLexToken],
@@ -125,27 +125,27 @@ pub(crate) enum PutCounterSequenceShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CounterPlacementShape<'a> {
-    pub(crate) descriptor: CounterDescriptorShape,
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct CounterPlacementShape<'a> {
+    pub descriptor: CounterDescriptorShape,
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SharedCounterTargetShape<'a> {
-    pub(crate) descriptors: Vec<CounterDescriptorShape>,
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct SharedCounterTargetShape<'a> {
+    pub descriptors: Vec<CounterDescriptorShape>,
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CounterFollowupShape<'a> {
-    pub(crate) counter_tokens: &'a [OwnedLexToken],
-    pub(crate) followup_tokens: &'a [OwnedLexToken],
+pub struct CounterFollowupShape<'a> {
+    pub counter_tokens: &'a [OwnedLexToken],
+    pub followup_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CounterPairShape<'a> {
-    pub(crate) first_tokens: &'a [OwnedLexToken],
-    pub(crate) second_tokens: &'a [OwnedLexToken],
+pub struct CounterPairShape<'a> {
+    pub first_tokens: &'a [OwnedLexToken],
+    pub second_tokens: &'a [OwnedLexToken],
 }
 
 fn counter_noun<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -355,7 +355,7 @@ fn parse_return_with_counters_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_return_with_counters_tokens(
+pub fn parse_return_with_counters_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<MoveWithCountersShape<'_>> {
     primitives::parse_all(
@@ -390,7 +390,7 @@ fn parse_put_onto_battlefield_with_counters_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_put_onto_battlefield_with_counters_tokens(
+pub fn parse_put_onto_battlefield_with_counters_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<MoveWithCountersShape<'_>> {
     primitives::parse_all(
@@ -442,7 +442,7 @@ fn parse_sacrifice_at_end_of_combat_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_sacrifice_at_end_of_combat_tokens(
+pub fn parse_sacrifice_at_end_of_combat_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SacrificeAtEndOfCombatShape<'_>> {
     primitives::parse_all(
@@ -479,7 +479,7 @@ fn parse_for_each_counter_kind_lexed<'a>(
     Ok(ForEachCounterKindShape { target_tokens })
 }
 
-pub(crate) fn parse_for_each_counter_kind_tokens(
+pub fn parse_for_each_counter_kind_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ForEachCounterKindShape<'_>> {
     primitives::parse_all(
@@ -534,9 +534,7 @@ fn parse_gets_then_fights_lexed<'a>(input: &mut LexStream<'a>) -> WResult<GetsTh
     })
 }
 
-pub(crate) fn parse_gets_then_fights_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<GetsThenFightsShape<'_>> {
+pub fn parse_gets_then_fights_tokens(tokens: &[OwnedLexToken]) -> Option<GetsThenFightsShape<'_>> {
     primitives::parse_all(tokens, parse_gets_then_fights_lexed, "gets then fights").ok()
 }
 
@@ -560,7 +558,7 @@ fn parse_draw_then_connive_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_draw_then_connive_tokens(
+pub fn parse_draw_then_connive_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DrawThenConniveShape<'_>> {
     primitives::parse_all(tokens, parse_draw_then_connive_lexed, "draw then connive").ok()
@@ -606,7 +604,7 @@ fn parse_if_enters_additional_lexed<'a>(
     Ok(AdditionalCounterShape { descriptor })
 }
 
-pub(crate) fn parse_if_enters_additional_tokens(
+pub fn parse_if_enters_additional_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AdditionalCounterShape> {
     primitives::parse_all(
@@ -641,7 +639,7 @@ fn parse_tagged_enters_additional_lexed<'a>(
     Ok(AdditionalCounterShape { descriptor })
 }
 
-pub(crate) fn parse_tagged_enters_additional_tokens(
+pub fn parse_tagged_enters_additional_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AdditionalCounterShape> {
     primitives::parse_all(
@@ -704,7 +702,7 @@ fn parse_tagged_conditional_entry_counters_lexed<'a>(
     Ok(TaggedConditionalEntryCountersShape { arms })
 }
 
-pub(crate) fn parse_tagged_conditional_entry_counters_tokens(
+pub fn parse_tagged_conditional_entry_counters_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TaggedConditionalEntryCountersShape> {
     primitives::parse_all(
@@ -759,7 +757,7 @@ fn parse_put_with_additional_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_put_with_additional_tokens(
+pub fn parse_put_with_additional_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PutWithAdditionalCounterShape<'_>> {
     primitives::parse_all(
@@ -814,7 +812,7 @@ fn parse_sacrifice_then_put_additional_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_sacrifice_then_put_additional_tokens(
+pub fn parse_sacrifice_then_put_additional_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SacrificeThenPutAdditionalShape<'_>> {
     primitives::parse_all(
@@ -840,7 +838,7 @@ fn parse_if_sacrifice_then_put_additional_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_if_sacrifice_then_put_additional_tokens(
+pub fn parse_if_sacrifice_then_put_additional_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<IfSacrificeThenPutAdditionalShape<'_>> {
     primitives::parse_all(
@@ -886,7 +884,7 @@ fn parse_each_player_return_additional_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_each_player_return_additional_tokens(
+pub fn parse_each_player_return_additional_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EachPlayerReturnAdditionalShape<'_>> {
     primitives::parse_all(
@@ -945,7 +943,7 @@ fn parse_put_counter_choice_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_put_counter_choice_tokens(
+pub fn parse_put_counter_choice_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PutCounterChoiceShape<'_>> {
     primitives::parse_all(tokens, parse_put_counter_choice_lexed, "put counter choice").ok()
@@ -972,7 +970,7 @@ fn parse_put_fixed_and_counter_choice_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_put_fixed_and_counter_choice_tokens(
+pub fn parse_put_fixed_and_counter_choice_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PutFixedAndCounterChoiceShape<'_>> {
     primitives::parse_all(
@@ -1034,7 +1032,7 @@ fn parse_plain_put_counter_sequence_lexed<'a>(
     Ok(PutCounterSequenceShape::Plain)
 }
 
-pub(crate) fn parse_put_counter_sequence_tokens(
+pub fn parse_put_counter_sequence_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PutCounterSequenceShape<'_>> {
     primitives::parse_all(
@@ -1093,7 +1091,7 @@ fn parse_counter_placement_sequence_lexed<'a>(
     Ok(placements)
 }
 
-pub(crate) fn parse_counter_placement_sequence_tokens(
+pub fn parse_counter_placement_sequence_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<CounterPlacementShape<'_>>> {
     primitives::parse_all(
@@ -1130,7 +1128,7 @@ fn parse_shared_counter_target_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_shared_counter_target_tokens(
+pub fn parse_shared_counter_target_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SharedCounterTargetShape<'_>> {
     primitives::parse_all(
@@ -1161,9 +1159,7 @@ fn parse_counter_followup_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_counter_followup_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<CounterFollowupShape<'_>> {
+pub fn parse_counter_followup_tokens(tokens: &[OwnedLexToken]) -> Option<CounterFollowupShape<'_>> {
     primitives::parse_all(tokens, parse_counter_followup_lexed, "counter followup").ok()
 }
 
@@ -1185,7 +1181,7 @@ fn parse_counter_pair_lexed<'a>(input: &mut LexStream<'a>) -> WResult<CounterPai
     })
 }
 
-pub(crate) fn parse_counter_pair_tokens(tokens: &[OwnedLexToken]) -> Option<CounterPairShape<'_>> {
+pub fn parse_counter_pair_tokens(tokens: &[OwnedLexToken]) -> Option<CounterPairShape<'_>> {
     primitives::parse_all(tokens, parse_counter_pair_lexed, "counter pair").ok()
 }
 

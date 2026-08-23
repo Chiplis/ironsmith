@@ -11,17 +11,17 @@ use super::super::super::{leaf, primitives};
 use super::common;
 
 #[derive(Debug, Clone)]
-pub(crate) struct MatchingSpellCostReductionShape<'a> {
-    pub(crate) player: PlayerAst,
-    pub(crate) filter: ObjectFilter,
-    pub(crate) reduction: Value,
-    pub(crate) where_value_tokens: Option<&'a [OwnedLexToken]>,
-    pub(crate) duration: Until,
-    pub(crate) next_spell: bool,
-    pub(crate) next_spell_mana_reduction: Option<ManaCost>,
+pub struct MatchingSpellCostReductionShape<'a> {
+    pub player: PlayerAst,
+    pub filter: ObjectFilter,
+    pub reduction: Value,
+    pub where_value_tokens: Option<&'a [OwnedLexToken]>,
+    pub duration: Until,
+    pub next_spell: bool,
+    pub next_spell_mana_reduction: Option<ManaCost>,
 }
 
-pub(crate) fn parse_matching_spell_cost_reduction_shape(
+pub fn parse_matching_spell_cost_reduction_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<MatchingSpellCostReductionShape<'_>> {
     let words = parser_token_word_refs(tokens);

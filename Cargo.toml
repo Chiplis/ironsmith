@@ -1,14 +1,76 @@
 [workspace]
 members = [
+    "crates/ironsmith-card-source",
+    "crates/ironsmith-artifact-baker",
+    "crates/ironsmith-compiled-artifact",
+    "crates/ironsmith-artifact-effect-decoder",
+    "crates/ironsmith-artifact-effect-decoder-shard-00",
+    "crates/ironsmith-artifact-effect-decoder-shard-01",
+    "crates/ironsmith-artifact-effect-decoder-shard-02",
+    "crates/ironsmith-artifact-effect-decoder-shard-03",
+    "crates/ironsmith-artifact-effect-decoder-shard-04",
+    "crates/ironsmith-artifact-effect-decoder-shard-05",
+    "crates/ironsmith-artifact-effect-decoder-shard-06",
+    "crates/ironsmith-artifact-effect-decoder-shard-07",
+    "crates/ironsmith-status-db",
+    "crates/ironsmith-registry-sync",
     "crates/ironsmith-core",
+    "crates/ironsmith-compiler-api",
+    "crates/ironsmith-compiler-syntax",
+    "crates/ironsmith-compiler-source",
+    "crates/ironsmith-compiler-ast",
+    "crates/ironsmith-compiler-semantic",
+    "crates/ironsmith-compiler-resolve",
+    "crates/ironsmith-grammar-common",
+    "crates/ironsmith-compiler-grammar",
+    "crates/ironsmith-semantic-compare",
+    "crates/ironsmith-runtime-catalog",
+    "crates/ironsmith-engine",
     "crates/ironsmith-runtime",
+    "crates/ironsmith-text",
     "crates/ironsmith-compiler",
+    "crates/ironsmith-compiler-runtime",
+    "crates/ironsmith-dynamic-compile",
     "crates/ironsmith-registry",
+    "crates/ironsmith-web-session",
     "crates/ironsmith-wasm",
+    "crates/ironsmith-wasm-facade",
+    "crates/ironsmith-compiler-wasm",
+    "crates/ironsmith-verifier",
+    "crates/ironsmith-verifier-ziffle",
+    "crates/ironsmith-verifier-wasm-api",
+    "crates/ironsmith-verifier-shard-02-07",
+    "crates/ironsmith-verifier-shard-08-13",
+    "crates/ironsmith-verifier-shard-02-13",
+    "crates/ironsmith-verifier-shard-14-19",
+    "crates/ironsmith-verifier-shard-20-25",
+    "crates/ironsmith-verifier-shard-14-25",
+    "crates/ironsmith-verifier-shard-26-31",
+    "crates/ironsmith-verifier-shard-32-37",
+    "crates/ironsmith-verifier-shard-26-37",
+    "crates/ironsmith-verifier-shard-38-43",
+    "crates/ironsmith-verifier-shard-44-49",
+    "crates/ironsmith-verifier-shard-38-49",
+    "crates/ironsmith-verifier-shard-50-56",
+    "crates/ironsmith-verifier-shard-57-62",
+    "crates/ironsmith-verifier-shard-50-62",
+    "crates/ironsmith-verifier-shard-63-69",
+    "crates/ironsmith-verifier-shard-70-75",
+    "crates/ironsmith-verifier-shard-63-75",
+    "crates/ironsmith-verifier-shard-76-82",
+    "crates/ironsmith-verifier-shard-83-88",
+    "crates/ironsmith-verifier-shard-76-88",
+    "crates/ironsmith-verifier-shard-89-94",
+    "crates/ironsmith-verifier-shard-95-100",
+    "crates/ironsmith-verifier-shard-89-100",
+    "crates/ironsmith-verifier-wasm",
     "crates/ironsmith-cli",
     "crates/ironsmith-tools",
 ]
 default-members = [
+    "crates/ironsmith-card-source",
+    "crates/ironsmith-compiled-artifact",
+    "crates/ironsmith-status-db",
     "crates/ironsmith-core",
     "crates/ironsmith-runtime",
     "crates/ironsmith-compiler",
@@ -17,3 +79,123 @@ default-members = [
     # "crates/ironsmith-cli",
 ]
 resolver = "2"
+
+[profile.release]
+lto = false
+codegen-units = 16
+incremental = false
+
+# The browser pipeline always runs Binaryen over every linked module.  Running
+# LLVM's full optimizer over the two very large Rust bodies first duplicated
+# more than three minutes of work without changing the shipped optimization
+# mode.  Keep dependencies (including the verifier's field arithmetic) at the
+# normal release setting, but make the product bodies fast code-generation
+# inputs for the measured `wasm-opt -O1` packaging pass.
+[profile.release.package.ironsmith-compiler]
+opt-level = 0
+
+[profile.release.package.ironsmith-card-source]
+opt-level = 0
+
+[profile.release.package.ironsmith-status-db]
+opt-level = 0
+
+[profile.release.package.ironsmith-registry-sync]
+opt-level = 0
+
+[profile.release.package.rusqlite]
+opt-level = 0
+
+[profile.release.package.ironsmith-core]
+opt-level = 0
+
+[profile.release.package.ironsmith-compiler-syntax]
+opt-level = 0
+
+[profile.release.package.ironsmith-compiler-source]
+opt-level = 0
+
+[profile.release.package.ironsmith-compiler-ast]
+opt-level = 0
+
+[profile.release.package.ironsmith-compiler-semantic]
+opt-level = 0
+
+[profile.release.package.ironsmith-compiler-resolve]
+opt-level = 0
+
+[profile.release.package.ironsmith-grammar-common]
+opt-level = 0
+
+[profile.release.package.ironsmith-compiler-grammar]
+opt-level = 0
+
+[profile.release.package.ironsmith-engine]
+opt-level = 0
+
+[profile.release.package.ironsmith-runtime-catalog]
+opt-level = 1
+
+[profile.release.package.ironsmith-web-session]
+opt-level = 0
+
+[profile.release.package.ironsmith-compiled-artifact]
+opt-level = 0
+
+# These independent families own the large serde monomorphization set used to
+# decode compiled effects. Binaryen optimizes their linked browser code in the
+# shipped pipeline; LLVM optimization here costs more cold wall time than it
+# saves downstream.
+[profile.release.package.ironsmith-runtime-effect-zone-library]
+opt-level = 0
+[profile.release.package.ironsmith-runtime-effect-player]
+opt-level = 0
+[profile.release.package.ironsmith-runtime-effect-resources]
+opt-level = 0
+[profile.release.package.ironsmith-runtime-effect-permanent]
+opt-level = 0
+[profile.release.package.ironsmith-runtime-effect-combat]
+opt-level = 0
+[profile.release.package.ironsmith-runtime-effect-stack-event]
+opt-level = 0
+[profile.release.package.ironsmith-runtime-effect-composition-a-l]
+opt-level = 0
+[profile.release.package.ironsmith-runtime-effect-composition-m-z]
+opt-level = 0
+
+# Deck-count specialization is deliberately spread across sixteen sibling
+# leaves. Keep the arithmetic dependency optimized, but defer specialization
+# cleanup to the shipped Binaryen pass; per-leaf LLVM work otherwise delays
+# ready engine and compiler crates on an eight-core cold build.
+[profile.release.package.ironsmith-verifier-shard-02-07]
+opt-level = 0
+[profile.release.package.ironsmith-verifier-shard-08-13]
+opt-level = 0
+[profile.release.package.ironsmith-verifier-shard-14-19]
+opt-level = 0
+[profile.release.package.ironsmith-verifier-shard-20-25]
+opt-level = 0
+[profile.release.package.ironsmith-verifier-shard-26-31]
+opt-level = 0
+[profile.release.package.ironsmith-verifier-shard-32-37]
+opt-level = 0
+[profile.release.package.ironsmith-verifier-shard-38-43]
+opt-level = 0
+[profile.release.package.ironsmith-verifier-shard-44-49]
+opt-level = 0
+[profile.release.package.ironsmith-verifier-shard-50-56]
+opt-level = 0
+[profile.release.package.ironsmith-verifier-shard-57-62]
+opt-level = 0
+[profile.release.package.ironsmith-verifier-shard-63-69]
+opt-level = 0
+[profile.release.package.ironsmith-verifier-shard-70-75]
+opt-level = 0
+[profile.release.package.ironsmith-verifier-shard-76-82]
+opt-level = 0
+[profile.release.package.ironsmith-verifier-shard-83-88]
+opt-level = 0
+[profile.release.package.ironsmith-verifier-shard-89-94]
+opt-level = 0
+[profile.release.package.ironsmith-verifier-shard-95-100]
+opt-level = 0

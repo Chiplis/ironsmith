@@ -1,18 +1,18 @@
 use winnow::error::ModalResult as WResult;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use winnow::error::{StrContext, StrContextValue};
 use winnow::prelude::*;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use crate::cards::builders::CardTextError;
 
 use super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::primitives;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use super::common::{finish_text_parse, text_phrase_words};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LeafDurationPhrase {
+pub enum LeafDurationPhrase {
     ThisTurn,
     UntilEndOfTurn,
     UntilEndOfCombat,
@@ -24,7 +24,7 @@ pub(crate) enum LeafDurationPhrase {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LeafTurnDurationPhrase {
+pub enum LeafTurnDurationPhrase {
     ThisTurn,
     UntilEndOfTurn,
     UntilYourNextTurn,
@@ -32,27 +32,27 @@ pub(crate) enum LeafTurnDurationPhrase {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LeafDurationPrefix<'a, T> {
-    pub(crate) duration: T,
-    pub(crate) rest: &'a [OwnedLexToken],
+pub struct LeafDurationPrefix<'a, T> {
+    pub duration: T,
+    pub rest: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LeafDurationSuffix<'a, T> {
-    pub(crate) rest: &'a [OwnedLexToken],
-    pub(crate) duration: T,
+pub struct LeafDurationSuffix<'a, T> {
+    pub rest: &'a [OwnedLexToken],
+    pub duration: T,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LeafDurationWordSpan {
-    pub(crate) duration: LeafDurationPhrase,
-    pub(crate) start: usize,
-    pub(crate) end: usize,
+pub struct LeafDurationWordSpan {
+    pub duration: LeafDurationPhrase,
+    pub start: usize,
+    pub end: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LeafConditionalDurationKind {
+pub enum LeafConditionalDurationKind {
     YouControlSource,
     SourceRemainsTapped,
     SourceRemainsOnBattlefield,
@@ -135,8 +135,8 @@ const LEAF_DURATION_PHRASE_VALUES: &[(&[&str], LeafDurationPhrase)] = &[
     ),
 ];
 
-#[cfg(test)]
-pub(crate) fn parse_leaf_duration_phrase(input: &mut &str) -> WResult<LeafDurationPhrase> {
+#[cfg(any(test, feature = "test-support"))]
+pub fn parse_leaf_duration_phrase(input: &mut &str) -> WResult<LeafDurationPhrase> {
     parse_leaf_duration_phrase_words
         .context(StrContext::Label("duration phrase"))
         .context(StrContext::Expected(StrContextValue::Description(
@@ -145,7 +145,7 @@ pub(crate) fn parse_leaf_duration_phrase(input: &mut &str) -> WResult<LeafDurati
         .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_duration_phrase_lexed<'a>(
+pub fn parse_leaf_duration_phrase_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<LeafDurationPhrase> {
     for (words, value) in LEAF_DURATION_PHRASE_VALUES {
@@ -162,7 +162,7 @@ pub(crate) fn parse_leaf_duration_phrase_lexed<'a>(
     ))
 }
 
-pub(crate) fn parse_leaf_turn_duration_phrase_lexed<'a>(
+pub fn parse_leaf_turn_duration_phrase_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<LeafTurnDurationPhrase> {
     let checkpoint = input.checkpoint();
@@ -177,34 +177,34 @@ pub(crate) fn parse_leaf_turn_duration_phrase_lexed<'a>(
     ))
 }
 
-pub(crate) fn parse_leaf_turn_duration_prefix_tokens<'a>(
+pub fn parse_leaf_turn_duration_prefix_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<LeafDurationPrefix<'a, LeafTurnDurationPhrase>> {
     let (duration, rest) = primitives::parse_prefix(tokens, parse_leaf_turn_duration_phrase_lexed)?;
     Some(LeafDurationPrefix { duration, rest })
 }
 
-pub(crate) fn parse_leaf_turn_duration_suffix_tokens<'a>(
+pub fn parse_leaf_turn_duration_suffix_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<LeafDurationSuffix<'a, LeafTurnDurationPhrase>> {
     parse_leaf_duration_suffix(tokens, parse_leaf_turn_duration_phrase_lexed)
 }
 
-pub(crate) fn parse_leaf_restriction_duration_prefix_tokens<'a>(
+pub fn parse_leaf_restriction_duration_prefix_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<LeafDurationPrefix<'a, LeafDurationPhrase>> {
     let (duration, rest) = primitives::parse_prefix(tokens, parse_leaf_duration_phrase_lexed)?;
     Some(LeafDurationPrefix { duration, rest })
 }
 
-pub(crate) fn parse_leaf_restriction_duration_suffix_tokens<'a>(
+pub fn parse_leaf_restriction_duration_suffix_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<LeafDurationSuffix<'a, LeafDurationPhrase>> {
     parse_leaf_duration_suffix(tokens, parse_leaf_duration_phrase_lexed)
 }
 
-#[cfg(test)]
-pub(crate) fn parse_leaf_duration_prefix_words(words: &[&str]) -> Option<LeafDurationWordSpan> {
+#[cfg(any(test, feature = "test-support"))]
+pub fn parse_leaf_duration_prefix_words(words: &[&str]) -> Option<LeafDurationWordSpan> {
     let mut input: primitives::WordSliceInput<'_> = words;
     let duration = parse_leaf_duration_phrase_word_slice
         .parse_next(&mut input)
@@ -216,8 +216,8 @@ pub(crate) fn parse_leaf_duration_prefix_words(words: &[&str]) -> Option<LeafDur
     })
 }
 
-#[cfg(test)]
-pub(crate) fn find_leaf_duration_words(words: &[&str]) -> Option<LeafDurationWordSpan> {
+#[cfg(any(test, feature = "test-support"))]
+pub fn find_leaf_duration_words(words: &[&str]) -> Option<LeafDurationWordSpan> {
     for start in 0..words.len() {
         let Some(parsed) = parse_leaf_duration_prefix_words(&words[start..]) else {
             continue;
@@ -231,10 +231,8 @@ pub(crate) fn find_leaf_duration_words(words: &[&str]) -> Option<LeafDurationWor
     None
 }
 
-#[cfg(test)]
-pub(crate) fn find_leaf_canonical_until_end_of_turn_words(
-    words: &[&str],
-) -> Option<LeafDurationWordSpan> {
+#[cfg(any(test, feature = "test-support"))]
+pub fn find_leaf_canonical_until_end_of_turn_words(words: &[&str]) -> Option<LeafDurationWordSpan> {
     for start in 0..words.len() {
         let Some(parsed) = parse_leaf_duration_prefix_words(&words[start..]) else {
             continue;
@@ -267,7 +265,7 @@ fn has_source_reference_word(tokens: &[OwnedLexToken]) -> bool {
     .any(|word| has_lexed_word(tokens, word))
 }
 
-pub(crate) fn parse_leaf_conditional_duration_kind_tokens(
+pub fn parse_leaf_conditional_duration_kind_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LeafConditionalDurationKind> {
     primitives::find_prefix(tokens, || primitives::phrase(&["for", "as", "long", "as"]))?;
@@ -292,7 +290,7 @@ pub(crate) fn parse_leaf_conditional_duration_kind_tokens(
     None
 }
 
-pub(crate) fn parse_leaf_conditional_duration_prefix_tokens<'a>(
+pub fn parse_leaf_conditional_duration_prefix_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<LeafDurationPrefix<'a, LeafConditionalDurationKind>> {
     primitives::parse_prefix(tokens, primitives::phrase(&["for", "as", "long", "as"]))?;
@@ -319,7 +317,7 @@ pub(crate) fn parse_leaf_conditional_duration_prefix_tokens<'a>(
     Some(LeafDurationPrefix { duration, rest })
 }
 
-pub(crate) fn strip_leaf_this_turn_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+pub fn strip_leaf_this_turn_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let mut cleaned = Vec::with_capacity(tokens.len());
     let mut index = 0usize;
     while index < tokens.len() {
@@ -335,10 +333,8 @@ pub(crate) fn strip_leaf_this_turn_tokens(tokens: &[OwnedLexToken]) -> Vec<Owned
     cleaned
 }
 
-#[cfg(test)]
-pub(crate) fn parse_duration_phrase_complete(
-    raw: &str,
-) -> Result<LeafDurationPhrase, CardTextError> {
+#[cfg(any(test, feature = "test-support"))]
+pub fn parse_duration_phrase_complete(raw: &str) -> Result<LeafDurationPhrase, CardTextError> {
     finish_text_parse(raw, parse_leaf_duration_phrase, "leaf-duration")
 }
 
@@ -378,7 +374,7 @@ fn parse_leaf_duration_suffix<'a, O>(
     None
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn parse_leaf_duration_phrase_words(input: &mut &str) -> WResult<LeafDurationPhrase> {
     for (words, value) in LEAF_DURATION_PHRASE_VALUES {
         let checkpoint = *input;
@@ -394,7 +390,7 @@ fn parse_leaf_duration_phrase_words(input: &mut &str) -> WResult<LeafDurationPhr
     ))
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn parse_leaf_duration_phrase_word_slice(
     input: &mut primitives::WordSliceInput<'_>,
 ) -> WResult<LeafDurationPhrase> {
@@ -422,7 +418,7 @@ fn parse_leaf_duration_phrase_word_slice(
     ))
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 mod tests {
     use super::*;
 

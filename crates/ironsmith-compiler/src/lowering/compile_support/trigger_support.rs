@@ -186,7 +186,7 @@ fn describe_damage_to_object_and_player_union(
     ))
 }
 
-pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
+pub fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
     match trigger {
         TriggerSpec::WithIntro { intro, trigger } => compile_trigger_spec(*trigger)
             .with_intro_surface(match intro {
@@ -1045,7 +1045,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
     }
 }
 
-pub(crate) fn ensure_concrete_trigger_spec(trigger: &TriggerSpec) -> Result<(), CardTextError> {
+pub fn ensure_concrete_trigger_spec(trigger: &TriggerSpec) -> Result<(), CardTextError> {
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => ensure_concrete_trigger_spec(trigger),
         TriggerSpec::Either(left, right) => {
@@ -1128,7 +1128,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
     }
 }
 
-pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFilter> {
+pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFilter> {
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => inferred_trigger_player_filter(trigger),
         TriggerSpec::StateBased { .. } | TriggerSpec::DayNightChanged => None,
@@ -1317,14 +1317,14 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
     }
 }
 
-pub(crate) fn trigger_binds_player_reference_context(trigger: &TriggerSpec) -> bool {
+pub fn trigger_binds_player_reference_context(trigger: &TriggerSpec) -> bool {
     trigger_binds_iterated_player(trigger)
         || inferred_trigger_player_filter(trigger)
             .as_ref()
             .is_some_and(PlayerFilter::mentions_iterated_player)
 }
 
-pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec) -> bool {
+pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec) -> bool {
     match spec {
         EventValueSpec::Amount | EventValueSpec::LifeAmount => match trigger {
             TriggerSpec::WithIntro { trigger, .. } => trigger_supports_event_value(trigger, spec),
@@ -1402,7 +1402,7 @@ fn spell_cast_filter_binds_target_count(filter: &crate::target::ObjectFilter) ->
         || filter.target_count.is_some()
 }
 
-pub(crate) fn compile_trigger_effects(
+pub fn compile_trigger_effects(
     trigger: Option<&TriggerSpec>,
     effects: &[EffectAst],
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
@@ -1411,7 +1411,7 @@ pub(crate) fn compile_trigger_effects(
     Ok((lowered.effects.to_vec(), lowered.choices))
 }
 
-pub(crate) fn compile_trigger_effects_with_imports(
+pub fn compile_trigger_effects_with_imports(
     trigger: Option<&TriggerSpec>,
     effects: &[EffectAst],
     imports: &ReferenceImports,

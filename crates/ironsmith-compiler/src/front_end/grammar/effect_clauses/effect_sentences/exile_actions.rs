@@ -5,7 +5,7 @@ use crate::grammar::effects as effect_grammar;
 use crate::grammar::effects::control_copy_attach_shapes as cca_shapes;
 use crate::lexer::LexedClause;
 
-pub(crate) fn parse_each_opponent_exiles_card_from_their_hand_or_permanent_they_control(
+pub fn parse_each_opponent_exiles_card_from_their_hand_or_permanent_they_control(
     tokens: &[OwnedLexToken],
 ) -> Option<EffectAst> {
     if let Some(shape) =
@@ -38,7 +38,7 @@ pub(crate) fn parse_each_opponent_exiles_card_from_their_hand_or_permanent_they_
 /// zone arms. That incorrectly applies the permanent types to graveyards and
 /// hands. Authored `all cards from all <zone>` arms prove that those zones are
 /// bare domains, so scope the outer type selector only to the remaining arms.
-pub(crate) fn scope_types_away_from_requantified_bare_card_domains(
+pub fn scope_types_away_from_requantified_bare_card_domains(
     tokens: &[OwnedLexToken],
     mut filter: ObjectFilter,
 ) -> ObjectFilter {
@@ -162,7 +162,7 @@ fn parse_exile_card_from_their_hand_or_permanent_they_control(
     })
 }
 
-pub(crate) use effect_grammar::ParsedExileOwnerPrefix as ParsedOwnerPrefix;
+pub use effect_grammar::ParsedExileOwnerPrefix as ParsedOwnerPrefix;
 
 fn with_exile_actor(mut effect: EffectAst, subject: Option<SubjectAst>) -> EffectAst {
     if let Some(player) = extract_subject_player(subject)
@@ -250,7 +250,7 @@ fn parse_independent_exile_pair(
     }))
 }
 
-pub(crate) fn parse_exile(
+pub fn parse_exile(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -527,7 +527,7 @@ fn parse_attached_object_exile_bundle(
     )))
 }
 
-pub(crate) fn parse_same_name_exile_hand_and_graveyard_clause(
+pub fn parse_same_name_exile_hand_and_graveyard_clause(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
     until_source_leaves: bool,
@@ -817,14 +817,12 @@ fn parse_mixed_target_and_all_exile_list(
     Ok(Some(EffectAst::Sequence { effects }))
 }
 
-pub(crate) fn split_exile_face_down_suffix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], bool) {
+pub fn split_exile_face_down_suffix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], bool) {
     let shape = effect_grammar::parse_exile_face_down_suffix_shape(tokens);
     (shape.core, shape.face_down)
 }
 
-pub(crate) fn split_exile_graveyard_replacement_suffix(
-    tokens: &[OwnedLexToken],
-) -> &[OwnedLexToken] {
+pub fn split_exile_graveyard_replacement_suffix(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     use crate::grammar::primitives as grammar;
 
     let Some((main_slice, tail_slice)) = grammar::split_lexed_once_on_separator(tokens, || {
@@ -848,9 +846,7 @@ pub(crate) fn split_exile_graveyard_replacement_suffix(
     }
 }
 
-pub(crate) fn parse_graveyard_owner_prefix_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<ParsedOwnerPrefix> {
+pub fn parse_graveyard_owner_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<ParsedOwnerPrefix> {
     effect_grammar::parse_exile_graveyard_owner_shape(tokens)
 }
 
@@ -908,7 +904,7 @@ fn exile_top_library_effect(
     effect
 }
 
-pub(crate) fn parse_exile_top_library_clause(
+pub fn parse_exile_top_library_clause(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
     face_down: bool,
@@ -990,9 +986,7 @@ fn parse_exile_bottom_library_clause(
     }
 }
 
-pub(crate) fn parse_target_player_graveyard_filter(
-    tokens: &[OwnedLexToken],
-) -> Option<ObjectFilter> {
+pub fn parse_target_player_graveyard_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let tokens = trim_commas(tokens);
     let owner = parse_graveyard_owner_prefix_lexed(&tokens)?;
     if owner.consumed_words != LexedClause::new(&tokens).word_refs().len() {

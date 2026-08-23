@@ -6,7 +6,7 @@ use crate::target::ObjectFilter;
 use crate::types::Subtype;
 use crate::zone::Zone;
 
-pub(crate) fn parse_cast_this_spell_only(
+pub fn parse_cast_this_spell_only(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = TokenWordView::new(tokens).word_refs();

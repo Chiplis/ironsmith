@@ -1,0 +1,15 @@
+[package]
+name = "ironsmith-status-db"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ironsmith-card-source = { path = "../ironsmith-card-source", default-features = false }
+rusqlite = { version = "0.39" }
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = ["bundled-sqlite"]
+bundled-sqlite = ["rusqlite/bundled"]

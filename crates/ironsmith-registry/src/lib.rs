@@ -1,21 +1,16 @@
 //! Registry ownership crate for the split workspace.
 
 pub mod cards;
-mod compiler_runtime;
 
-mod generated_registry {
-    include!(concat!(env!("OUT_DIR"), "/generated_registry.rs"));
-}
-
-mod generated_meld_counterparts {
-    include!(concat!(env!("OUT_DIR"), "/generated_meld_counterparts.rs"));
-}
-
-#[path = "runtime_registry_impl.rs"]
-mod registry_impl;
-
-pub use compiler_runtime::*;
-pub use registry_impl::*;
+pub use ironsmith::cards::{
+    CardRegistry, builtin_registry, clear_runtime_custom_cards,
+    generated_definition_has_unimplemented_content,
+    generated_definition_unsupported_mechanics_message, linked_face_definition_by_name_or_id,
+    meld_counterpart_name, register_runtime_custom_card, reject_unsupported_generated_definition,
+    unsupported_generated_definition_error,
+};
+pub use ironsmith_compiler_runtime::*;
+pub use ironsmith_runtime_catalog::{ArtifactRegistrationError, CardRegistryArtifactExt};
 
 pub use ironsmith::ability;
 pub use ironsmith::alternative_cast;

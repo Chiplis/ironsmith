@@ -17,31 +17,31 @@ const ADDITION_TAILS: &[&[&str]] = &[
 ];
 
 #[derive(Debug, Clone)]
-pub(crate) struct BecomeCreatureDescriptor {
-    pub(crate) card_types: Vec<CardType>,
-    pub(crate) subtypes: Vec<Subtype>,
-    pub(crate) colors: Option<ColorSet>,
+pub struct BecomeCreatureDescriptor {
+    pub card_types: Vec<CardType>,
+    pub subtypes: Vec<Subtype>,
+    pub colors: Option<ColorSet>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct BecomeLeadingPtShape<'a> {
-    pub(crate) power: Value,
-    pub(crate) toughness: Value,
-    pub(crate) value_word_count: usize,
-    pub(crate) creature_word_index: Option<usize>,
-    pub(crate) suffix_tokens: &'a [OwnedLexToken],
+pub struct BecomeLeadingPtShape<'a> {
+    pub power: Value,
+    pub toughness: Value,
+    pub value_word_count: usize,
+    pub creature_word_index: Option<usize>,
+    pub suffix_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct BecomeLeadingCreaturePrefix {
-    pub(crate) supported: bool,
-    pub(crate) card_types: Vec<CardType>,
-    pub(crate) subtypes: Vec<Subtype>,
-    pub(crate) colors: Option<ColorSet>,
+pub struct BecomeLeadingCreaturePrefix {
+    pub supported: bool,
+    pub card_types: Vec<CardType>,
+    pub subtypes: Vec<Subtype>,
+    pub colors: Option<ColorSet>,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum BecomeAnimationSuffixShape<'a> {
+pub enum BecomeAnimationSuffixShape<'a> {
     Ignored {
         preserve_other_types: bool,
         type_retention_surface: Option<ironsmith_core::TypeRetentionSurface>,
@@ -56,7 +56,7 @@ pub(crate) enum BecomeAnimationSuffixShape<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum BecomeSimpleDescriptorShape {
+pub enum BecomeSimpleDescriptorShape {
     ColorsAndSubtypes {
         colors: ColorSet,
         subtypes: Vec<Subtype>,
@@ -90,7 +90,7 @@ fn parse_pt_value_words(words: &[&str]) -> Option<(Value, Value, usize)> {
     Some((power, toughness, 2))
 }
 
-pub(crate) fn parse_become_leading_pt_shape<'a>(
+pub fn parse_become_leading_pt_shape<'a>(
     words: &[&str],
     body_tokens: &'a [OwnedLexToken],
 ) -> Option<BecomeLeadingPtShape<'a>> {
@@ -118,7 +118,7 @@ pub(crate) fn parse_become_leading_pt_shape<'a>(
     })
 }
 
-pub(crate) fn parse_become_leading_creature_prefix(words: &[&str]) -> BecomeLeadingCreaturePrefix {
+pub fn parse_become_leading_creature_prefix(words: &[&str]) -> BecomeLeadingCreaturePrefix {
     let mut card_types = vec![CardType::Creature];
     let mut subtypes = Vec::new();
     let mut colors = ColorSet::new();
@@ -172,9 +172,7 @@ pub(crate) fn parse_become_leading_creature_prefix(words: &[&str]) -> BecomeLead
     }
 }
 
-pub(crate) fn parse_become_creature_descriptor_words(
-    words: &[&str],
-) -> Option<BecomeCreatureDescriptor> {
+pub fn parse_become_creature_descriptor_words(words: &[&str]) -> Option<BecomeCreatureDescriptor> {
     let mut card_types = Vec::new();
     let mut subtypes = Vec::new();
     let mut colors = ColorSet::new();
@@ -219,7 +217,7 @@ pub(crate) fn parse_become_creature_descriptor_words(
     })
 }
 
-pub(crate) fn strip_become_addition_tail_words<'a>(words: &'a [&'a str]) -> (&'a [&'a str], bool) {
+pub fn strip_become_addition_tail_words<'a>(words: &'a [&'a str]) -> (&'a [&'a str], bool) {
     for tail in ADDITION_TAILS {
         if permission_shapes::suffix_words(words, tail) {
             return (&words[..words.len().saturating_sub(tail.len())], true);
@@ -293,7 +291,7 @@ fn split_all_creature_types(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]
         .map(trim_lexed_commas)
 }
 
-pub(crate) fn parse_become_animation_suffix_shape(
+pub fn parse_become_animation_suffix_shape(
     tokens: &[OwnedLexToken],
 ) -> BecomeAnimationSuffixShape<'_> {
     let tokens = trim_lexed_commas(tokens);
@@ -371,7 +369,7 @@ fn creature_subtypes_only(subtypes: &[Subtype]) -> bool {
         .all(|subtype| creature_types.iter().any(|candidate| candidate == subtype))
 }
 
-pub(crate) fn parse_become_simple_descriptor_words(words: &[&str]) -> BecomeSimpleDescriptorShape {
+pub fn parse_become_simple_descriptor_words(words: &[&str]) -> BecomeSimpleDescriptorShape {
     let (words, had_addition_tail) = strip_become_addition_tail_words(words);
     if words.is_empty() {
         return BecomeSimpleDescriptorShape::None;
@@ -426,7 +424,7 @@ pub(crate) fn parse_become_simple_descriptor_words(words: &[&str]) -> BecomeSimp
     BecomeSimpleDescriptorShape::None
 }
 
-pub(crate) fn parse_become_color_words(words: &[&str]) -> Option<ColorSet> {
+pub fn parse_become_color_words(words: &[&str]) -> Option<ColorSet> {
     let mut colors = ColorSet::new();
     let mut saw_color = false;
     for word in words {

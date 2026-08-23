@@ -12,13 +12,13 @@ use crate::target::PlayerFilter;
 use crate::types::CardType;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CounterWordSpan {
-    pub(crate) start: usize,
-    pub(crate) end: usize,
+pub struct CounterWordSpan {
+    pub start: usize,
+    pub end: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RevealReferenceShape {
+pub enum RevealReferenceShape {
     Tagged,
     FromAmongTagged,
     OutsideGame,
@@ -28,7 +28,7 @@ pub(crate) enum RevealReferenceShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CounterReferenceShape<'a> {
+pub enum CounterReferenceShape<'a> {
     Source {
         counter_type_tokens: &'a [OwnedLexToken],
     },
@@ -38,7 +38,7 @@ pub(crate) enum CounterReferenceShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LifeEqualSurface {
+pub enum LifeEqualSurface {
     LifeLostThisWay,
     DamagePreventedThisWay,
     AllPlayersLifeLostThisTurn,
@@ -47,7 +47,7 @@ pub(crate) enum LifeEqualSurface {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TargetStatKind {
+pub enum TargetStatKind {
     Power,
     Toughness,
     ManaValue,
@@ -146,28 +146,28 @@ fn life_total_as_turn_began<'a>(
     Ok(Value::LifeTotalAsTurnBegan(player))
 }
 
-pub(crate) fn parse_life_total_as_turn_began_words(words: &[&str]) -> Option<Value> {
+pub fn parse_life_total_as_turn_began_words(words: &[&str]) -> Option<Value> {
     super::super::primitives::parse_full_word_slice(words, life_total_as_turn_began)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PossessiveTargetStatShape {
-    pub(crate) target_tokens: Vec<OwnedLexToken>,
-    pub(crate) stat: TargetStatKind,
+pub struct PossessiveTargetStatShape {
+    pub target_tokens: Vec<OwnedLexToken>,
+    pub stat: TargetStatKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CounterAdditionalPaymentShape<'a> {
-    pub(crate) multiplier_token: &'a OwnedLexToken,
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
+pub struct CounterAdditionalPaymentShape<'a> {
+    pub multiplier_token: &'a OwnedLexToken,
+    pub filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct HalfLifeShape {
-    pub(crate) rounded_down: bool,
+pub struct HalfLifeShape {
+    pub rounded_down: bool,
 }
 
-pub(crate) fn parse_prefix_at(
+pub fn parse_prefix_at(
     words: &[&str],
     start: usize,
     alternatives: &[&[&str]],
@@ -181,11 +181,11 @@ pub(crate) fn parse_prefix_at(
     })
 }
 
-pub(crate) fn parse_prefix(words: &[&str], alternatives: &[&[&str]]) -> Option<CounterWordSpan> {
+pub fn parse_prefix(words: &[&str], alternatives: &[&[&str]]) -> Option<CounterWordSpan> {
     parse_prefix_at(words, 0, alternatives)
 }
 
-pub(crate) fn parse_token_prefix_at(
+pub fn parse_token_prefix_at(
     tokens: &[OwnedLexToken],
     start: usize,
     expected: &[&str],
@@ -196,13 +196,13 @@ pub(crate) fn parse_token_prefix_at(
     })
 }
 
-pub(crate) fn parse_word(word: &str, choices: &[&str]) -> Option<CounterWordSpan> {
+pub fn parse_word(word: &str, choices: &[&str]) -> Option<CounterWordSpan> {
     choices
         .contains(&word)
         .then_some(CounterWordSpan { start: 0, end: 1 })
 }
 
-pub(crate) fn parse_exact(words: &[&str], alternatives: &[&[&str]]) -> Option<CounterWordSpan> {
+pub fn parse_exact(words: &[&str], alternatives: &[&[&str]]) -> Option<CounterWordSpan> {
     alternatives.iter().find_map(|expected| {
         permission_shapes::exact_words(words, expected).then_some(CounterWordSpan {
             start: 0,
@@ -211,7 +211,7 @@ pub(crate) fn parse_exact(words: &[&str], alternatives: &[&[&str]]) -> Option<Co
     })
 }
 
-pub(crate) fn find_phrase(words: &[&str], alternatives: &[&[&str]]) -> Option<CounterWordSpan> {
+pub fn find_phrase(words: &[&str], alternatives: &[&[&str]]) -> Option<CounterWordSpan> {
     alternatives.iter().find_map(|expected| {
         permission_shapes::find_words(words, expected).map(|start| CounterWordSpan {
             start,
@@ -220,28 +220,28 @@ pub(crate) fn find_phrase(words: &[&str], alternatives: &[&[&str]]) -> Option<Co
     })
 }
 
-pub(crate) fn find_word(words: &[&str], choices: &[&str]) -> Option<usize> {
+pub fn find_word(words: &[&str], choices: &[&str]) -> Option<usize> {
     choices
         .iter()
         .filter_map(|expected| permission_shapes::find_words(words, &[*expected]))
         .min()
 }
 
-pub(crate) fn find_all_words(words: &[&str], required: &[&str]) -> Option<Vec<usize>> {
+pub fn find_all_words(words: &[&str], required: &[&str]) -> Option<Vec<usize>> {
     required
         .iter()
         .map(|expected| permission_shapes::find_words(words, &[*expected]))
         .collect()
 }
 
-pub(crate) fn word_token_boundary(tokens: &[OwnedLexToken], word: usize) -> Option<usize> {
+pub fn word_token_boundary(tokens: &[OwnedLexToken], word: usize) -> Option<usize> {
     TokenWordView::new(tokens)
         .token_start_indices()
         .get(word)
         .copied()
 }
 
-pub(crate) fn parse_source_card_type(word: &str) -> Option<CardType> {
+pub fn parse_source_card_type(word: &str) -> Option<CardType> {
     if let Ok(card_type) = leaf::parse_leaf_card_type_complete(word) {
         return Some(card_type);
     }
@@ -263,7 +263,7 @@ fn parse_plural_card_type(input: &mut &str) -> WResult<CardType> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_reveal_reference(tokens: &[OwnedLexToken]) -> Option<RevealReferenceShape> {
+pub fn parse_reveal_reference(tokens: &[OwnedLexToken]) -> Option<RevealReferenceShape> {
     let words = TokenWordView::new(tokens).word_refs();
     const TAGGED: &[&[&str]] = &[
         &["it"],
@@ -303,7 +303,7 @@ pub(crate) fn parse_reveal_reference(tokens: &[OwnedLexToken]) -> Option<RevealR
     None
 }
 
-pub(crate) fn parse_reveal_full_hand(tokens: &[OwnedLexToken]) -> Option<CounterWordSpan> {
+pub fn parse_reveal_full_hand(tokens: &[OwnedLexToken]) -> Option<CounterWordSpan> {
     let words = TokenWordView::new(tokens).word_refs();
     parse_exact(
         &words,
@@ -315,7 +315,7 @@ pub(crate) fn parse_reveal_full_hand(tokens: &[OwnedLexToken]) -> Option<Counter
     )
 }
 
-pub(crate) fn find_reveal_hand_source(tokens: &[OwnedLexToken]) -> Option<CounterWordSpan> {
+pub fn find_reveal_hand_source(tokens: &[OwnedLexToken]) -> Option<CounterWordSpan> {
     let words = TokenWordView::new(tokens).word_refs();
     find_phrase(
         &words,
@@ -327,7 +327,7 @@ pub(crate) fn find_reveal_hand_source(tokens: &[OwnedLexToken]) -> Option<Counte
     )
 }
 
-pub(crate) fn find_from_preposition(tokens: &[OwnedLexToken]) -> Option<CounterWordSpan> {
+pub fn find_from_preposition(tokens: &[OwnedLexToken]) -> Option<CounterWordSpan> {
     let words = TokenWordView::new(tokens).word_refs();
     find_word(&words, &["from"]).map(|start| CounterWordSpan {
         start,
@@ -335,12 +335,12 @@ pub(crate) fn find_from_preposition(tokens: &[OwnedLexToken]) -> Option<CounterW
     })
 }
 
-pub(crate) fn parse_explicit_top_card(tokens: &[OwnedLexToken]) -> Option<CounterWordSpan> {
+pub fn parse_explicit_top_card(tokens: &[OwnedLexToken]) -> Option<CounterWordSpan> {
     let words = TokenWordView::new(tokens).word_refs();
     parse_exact(&words, &[&["top", "card"], &["the", "top", "card"]])
 }
 
-pub(crate) fn parse_top_library_source(tokens: &[OwnedLexToken]) -> Option<CounterWordSpan> {
+pub fn parse_top_library_source(tokens: &[OwnedLexToken]) -> Option<CounterWordSpan> {
     let words = TokenWordView::new(tokens).word_refs();
     const PREFIXES: &[&[&str]] = &[
         &["the", "top", "card", "of", "your", "library"],
@@ -363,7 +363,7 @@ pub(crate) fn parse_top_library_source(tokens: &[OwnedLexToken]) -> Option<Count
     parse_prefix(&words, PREFIXES)
 }
 
-pub(crate) fn parse_top_library_owner(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {
+pub fn parse_top_library_owner(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {
     let words = TokenWordView::new(tokens).word_refs();
     if find_phrase(
         &words,
@@ -406,7 +406,7 @@ pub(crate) fn parse_top_library_owner(tokens: &[OwnedLexToken]) -> Option<Player
     find_phrase(&words, &[&["of", "your", "library"]]).map(|_| PlayerAst::You)
 }
 
-pub(crate) fn parse_library_tail(tokens: &[OwnedLexToken]) -> Option<CounterWordSpan> {
+pub fn parse_library_tail(tokens: &[OwnedLexToken]) -> Option<CounterWordSpan> {
     let words = TokenWordView::new(tokens).word_refs();
     parse_prefix(
         &words,
@@ -423,7 +423,7 @@ pub(crate) fn parse_library_tail(tokens: &[OwnedLexToken]) -> Option<CounterWord
     )
 }
 
-pub(crate) fn parse_additional_payment_head(
+pub fn parse_additional_payment_head(
     tokens: &[OwnedLexToken],
 ) -> Option<CounterAdditionalPaymentShape<'_>> {
     let words = TokenWordView::new(tokens).word_refs();
@@ -443,7 +443,7 @@ pub(crate) fn parse_additional_payment_head(
     })
 }
 
-pub(crate) fn parse_prior_effect_count_source(
+pub fn parse_prior_effect_count_source(
     tokens: &[OwnedLexToken],
 ) -> Option<ironsmith_core::EffectMetricSource> {
     let words = TokenWordView::new(tokens).word_refs();
@@ -479,7 +479,7 @@ pub(crate) fn parse_prior_effect_count_source(
     })
 }
 
-pub(crate) fn parse_life_equal_surface(words: &[&str]) -> Option<LifeEqualSurface> {
+pub fn parse_life_equal_surface(words: &[&str]) -> Option<LifeEqualSurface> {
     const LIFE_LOST_THIS_WAY: &[&[&str]] = &[
         &["equal", "to", "the", "life", "lost", "this", "way"],
         &["equal", "to", "life", "lost", "this", "way"],
@@ -575,9 +575,7 @@ pub(crate) fn parse_life_equal_surface(words: &[&str]) -> Option<LifeEqualSurfac
     }
 }
 
-pub(crate) fn parse_possessive_target_stat(
-    tokens: &[OwnedLexToken],
-) -> Option<PossessiveTargetStatShape> {
+pub fn parse_possessive_target_stat(tokens: &[OwnedLexToken]) -> Option<PossessiveTargetStatShape> {
     let words = TokenWordView::new(tokens).word_refs();
     let (stat_words, stat) = if permission_shapes::suffix_words(&words, &["mana", "value"]) {
         (2, TargetStatKind::ManaValue)
@@ -602,9 +600,7 @@ pub(crate) fn parse_possessive_target_stat(
     })
 }
 
-pub(crate) fn parse_counter_reference(
-    tokens: &[OwnedLexToken],
-) -> Option<CounterReferenceShape<'_>> {
+pub fn parse_counter_reference(tokens: &[OwnedLexToken]) -> Option<CounterReferenceShape<'_>> {
     let words = TokenWordView::new(tokens).word_refs();
     let prefix = parse_prefix(&words, &[&["for", "each"]])?;
     let counter = find_word(&words[prefix.end..], &["counter", "counters"])? + prefix.end;
@@ -651,7 +647,7 @@ pub(crate) fn parse_counter_reference(
     }
 }
 
-pub(crate) fn parse_half_life(words: &[&str]) -> Option<HalfLifeShape> {
+pub fn parse_half_life(words: &[&str]) -> Option<HalfLifeShape> {
     if parse_prefix(words, &[&["half"]]).is_none()
         || find_word(words, &["life"]).is_none()
         || find_word(words, &["lost"]).is_some()

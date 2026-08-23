@@ -8,13 +8,13 @@ use crate::effect::Value;
 use crate::lexer::{LexStream, OwnedLexToken, TokenKind, trim_lexed_commas};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RemoveShapeError {
+pub enum RemoveShapeError {
     MissingAmount,
     MissingCounterKeyword,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum RemoveCounterDestination<'a> {
+pub enum RemoveCounterDestination<'a> {
     EachOfAnyNumber {
         filter_tokens: &'a [OwnedLexToken],
     },
@@ -35,7 +35,7 @@ pub(crate) enum RemoveCounterDestination<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum RemoveClauseShape<'a> {
+pub enum RemoveClauseShape<'a> {
     AllOfThem,
     FromCombat {
         target_tokens: &'a [OwnedLexToken],
@@ -55,19 +55,19 @@ pub(crate) enum RemoveClauseShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DelayedDestroyTimingShape {
+pub enum DelayedDestroyTimingShape {
     EndOfCombat,
     NextEndStep,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TaggedDestroyRelation {
+pub enum TaggedDestroyRelation {
     Matching,
     ExceptMatching,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum DestroyAllShape<'a> {
+pub enum DestroyAllShape<'a> {
     DealtDamageThisTurn {
         filter_tokens: &'a [OwnedLexToken],
     },
@@ -96,7 +96,7 @@ pub(crate) enum DestroyAllShape<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum DestroyCombatHistoryShape<'a> {
+pub enum DestroyCombatHistoryShape<'a> {
     DealtDamageThisTurn {
         target_tokens: &'a [OwnedLexToken],
     },
@@ -107,14 +107,14 @@ pub(crate) enum DestroyCombatHistoryShape<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct DestroyTargetAndAttachedShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) attachment_filter_tokens: &'a [OwnedLexToken],
-    pub(crate) demonstrative_antecedent: Option<ironsmith_core::DemonstrativeAntecedentSurface>,
+pub struct DestroyTargetAndAttachedShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
+    pub attachment_filter_tokens: &'a [OwnedLexToken],
+    pub demonstrative_antecedent: Option<ironsmith_core::DemonstrativeAntecedentSurface>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum DestroyClauseKind<'a> {
+pub enum DestroyClauseKind<'a> {
     Empty,
     UnsupportedDelayedTiming,
     CombatHistory(DestroyCombatHistoryShape<'a>),
@@ -149,22 +149,22 @@ pub(crate) enum DestroyClauseKind<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct DestroyClauseShape<'a> {
-    pub(crate) timing: Option<DelayedDestroyTimingShape>,
-    pub(crate) kind: DestroyClauseKind<'a>,
+pub struct DestroyClauseShape<'a> {
+    pub timing: Option<DelayedDestroyTimingShape>,
+    pub kind: DestroyClauseKind<'a>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DestroyCounterConstraintKind {
+pub enum DestroyCounterConstraintKind {
     With,
     Without,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DestroyCounterConstraintShape<'a> {
-    pub(crate) base_tokens: &'a [OwnedLexToken],
-    pub(crate) constraint_tokens: &'a [OwnedLexToken],
-    pub(crate) kind: DestroyCounterConstraintKind,
+pub struct DestroyCounterConstraintShape<'a> {
+    pub base_tokens: &'a [OwnedLexToken],
+    pub constraint_tokens: &'a [OwnedLexToken],
+    pub kind: DestroyCounterConstraintKind,
 }
 
 fn counter_word<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -219,7 +219,7 @@ fn source_like_remove_target(tokens: &[OwnedLexToken]) -> bool {
     .any(|expected| exact_tokens(tokens, expected))
 }
 
-pub(crate) fn parse_remove_clause_shape(
+pub fn parse_remove_clause_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<RemoveClauseShape<'_>, RemoveShapeError> {
     let tokens = trim_shape_edges(tokens);
@@ -791,7 +791,7 @@ fn parse_inline_no_regeneration_target(tokens: &[OwnedLexToken]) -> Option<&[Own
     (!target_tokens.is_empty()).then_some(target_tokens)
 }
 
-pub(crate) fn parse_destroy_clause_shape(tokens: &[OwnedLexToken]) -> DestroyClauseShape<'_> {
+pub fn parse_destroy_clause_shape(tokens: &[OwnedLexToken]) -> DestroyClauseShape<'_> {
     let tokens = trim_shape_edges(tokens);
     let (core_tokens, timing) = split_destroy_timing(tokens);
     let kind = if core_tokens.is_empty() {
@@ -867,7 +867,7 @@ pub(crate) fn parse_destroy_clause_shape(tokens: &[OwnedLexToken]) -> DestroyCla
     DestroyClauseShape { timing, kind }
 }
 
-pub(crate) fn parse_destroy_counter_constraint_shape(
+pub fn parse_destroy_counter_constraint_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DestroyCounterConstraintShape<'_>> {
     let (with_idx, (), tail) = primitives::find_prefix(tokens, || primitives::kw("with").void())?;

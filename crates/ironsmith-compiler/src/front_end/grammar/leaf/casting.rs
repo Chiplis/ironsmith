@@ -7,12 +7,12 @@ use crate::filter::AlternativeCastKind;
 use super::super::primitives::{self, WordSliceInput};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LeafAlternativeCastPrefix {
-    pub(crate) kind: AlternativeCastKind,
-    pub(crate) consumed: usize,
+pub struct LeafAlternativeCastPrefix {
+    pub kind: AlternativeCastKind,
+    pub consumed: usize,
 }
 
-pub(crate) fn parse_leaf_alternative_cast_prefix_words(
+pub fn parse_leaf_alternative_cast_prefix_words(
     words: &[&str],
 ) -> Option<LeafAlternativeCastPrefix> {
     let mut input: WordSliceInput<'_> = words;

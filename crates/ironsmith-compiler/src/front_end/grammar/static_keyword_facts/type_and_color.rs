@@ -11,67 +11,67 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, TokenKind, trim_lexed
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SkipYourUpkeepTail<'a> {
+pub enum SkipYourUpkeepTail<'a> {
     None,
     Condition(&'a [OwnedLexToken]),
     Unsupported,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SkipYourUpkeepFact<'a> {
-    pub(crate) tail: SkipYourUpkeepTail<'a>,
+pub struct SkipYourUpkeepFact<'a> {
+    pub tail: SkipYourUpkeepTail<'a>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SubjectTypeAdditionFact<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) descriptor_tokens: &'a [OwnedLexToken],
-    pub(crate) chosen_type: bool,
+pub struct SubjectTypeAdditionFact<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub descriptor_tokens: &'a [OwnedLexToken],
+    pub chosen_type: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SubjectCardTypeIdentityFact<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) descriptor_tokens: &'a [OwnedLexToken],
+pub struct SubjectCardTypeIdentityFact<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub descriptor_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChosenColorAdditionFact;
+pub struct ChosenColorAdditionFact;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PowerToughnessTypeAdditionFact<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) descriptor_tokens: &'a [OwnedLexToken],
-    pub(crate) power: i32,
-    pub(crate) toughness: i32,
+pub struct PowerToughnessTypeAdditionFact<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub descriptor_tokens: &'a [OwnedLexToken],
+    pub power: i32,
+    pub toughness: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ColorTypeAdditionFact<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) descriptor_tokens: &'a [OwnedLexToken],
-    pub(crate) color: ColorSet,
+pub struct ColorTypeAdditionFact<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub descriptor_tokens: &'a [OwnedLexToken],
+    pub color: ColorSet,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SubjectsAreBasicFact<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
+pub struct SubjectsAreBasicFact<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SubjectColorFact<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) color: ColorSet,
+pub struct SubjectColorFact<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub color: ColorSet,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BasicLandSubtypeFact<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) subtype: Subtype,
+pub struct BasicLandSubtypeFact<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub subtype: Subtype,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LandTypeAdditionFact<'a> {
+pub enum LandTypeAdditionFact<'a> {
     EveryBasic {
         subject_tokens: &'a [OwnedLexToken],
     },
@@ -82,30 +82,28 @@ pub(crate) enum LandTypeAdditionFact<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LandAnimationFact<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) power: i32,
-    pub(crate) toughness: i32,
+pub struct LandAnimationFact<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub power: i32,
+    pub toughness: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct OtherTypeAdditionTailFact;
+pub struct OtherTypeAdditionTailFact;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LosesOtherCreatureTypesFact {
-    pub(crate) marker_token: usize,
+pub struct LosesOtherCreatureTypesFact {
+    pub marker_token: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BasePowerToughnessGrantFact<'a> {
-    pub(crate) power: i32,
-    pub(crate) toughness: i32,
-    pub(crate) ability_tokens: &'a [OwnedLexToken],
+pub struct BasePowerToughnessGrantFact<'a> {
+    pub power: i32,
+    pub toughness: i32,
+    pub ability_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_skip_your_upkeep_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<SkipYourUpkeepFact<'_>> {
+pub fn parse_skip_your_upkeep_tokens(tokens: &[OwnedLexToken]) -> Option<SkipYourUpkeepFact<'_>> {
     let (_, rest) =
         primitives::parse_prefix(tokens, semantic_phrase(&["skip", "your", "upkeep", "step"]))?;
     if semantic_tokens_are_empty(rest) {
@@ -128,7 +126,7 @@ pub(crate) fn parse_skip_your_upkeep_tokens(
     })
 }
 
-pub(crate) fn parse_subject_type_addition_tokens(
+pub fn parse_subject_type_addition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SubjectTypeAdditionFact<'_>> {
     primitives::parse_all(
@@ -139,7 +137,7 @@ pub(crate) fn parse_subject_type_addition_tokens(
     .ok()
 }
 
-pub(crate) fn parse_subject_card_type_identity_tokens(
+pub fn parse_subject_card_type_identity_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SubjectCardTypeIdentityFact<'_>> {
     primitives::parse_all(
@@ -150,7 +148,7 @@ pub(crate) fn parse_subject_card_type_identity_tokens(
     .ok()
 }
 
-pub(crate) fn parse_all_cards_chosen_color_addition_tokens(
+pub fn parse_all_cards_chosen_color_addition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ChosenColorAdditionFact> {
     primitives::parse_all(
@@ -186,7 +184,7 @@ pub(crate) fn parse_all_cards_chosen_color_addition_tokens(
     .ok()
 }
 
-pub(crate) fn parse_power_toughness_type_addition_tokens(
+pub fn parse_power_toughness_type_addition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PowerToughnessTypeAdditionFact<'_>> {
     primitives::parse_all(
@@ -197,7 +195,7 @@ pub(crate) fn parse_power_toughness_type_addition_tokens(
     .ok()
 }
 
-pub(crate) fn parse_color_type_addition_tokens(
+pub fn parse_color_type_addition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ColorTypeAdditionFact<'_>> {
     primitives::parse_all(
@@ -208,13 +206,13 @@ pub(crate) fn parse_color_type_addition_tokens(
     .ok()
 }
 
-pub(crate) fn parse_subjects_are_basic_tokens(
+pub fn parse_subjects_are_basic_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SubjectsAreBasicFact<'_>> {
     primitives::parse_all(tokens, parse_subjects_are_basic, "static basic supertype").ok()
 }
 
-pub(crate) fn parse_subject_color_tokens(tokens: &[OwnedLexToken]) -> Option<SubjectColorFact<'_>> {
+pub fn parse_subject_color_tokens(tokens: &[OwnedLexToken]) -> Option<SubjectColorFact<'_>> {
     let fact = primitives::parse_all(tokens, parse_subject_color, "static subject color").ok()?;
     let trailing_subject_word = fact
         .subject_tokens
@@ -231,7 +229,7 @@ pub(crate) fn parse_subject_color_tokens(tokens: &[OwnedLexToken]) -> Option<Sub
     Some(fact)
 }
 
-pub(crate) fn parse_basic_land_subtype_tokens(
+pub fn parse_basic_land_subtype_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<BasicLandSubtypeFact<'_>> {
     let fact = primitives::parse_all(
@@ -246,7 +244,7 @@ pub(crate) fn parse_basic_land_subtype_tokens(
     Some(fact)
 }
 
-pub(crate) fn parse_land_type_addition_tokens(
+pub fn parse_land_type_addition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LandTypeAdditionFact<'_>> {
     primitives::parse_all(
@@ -257,13 +255,11 @@ pub(crate) fn parse_land_type_addition_tokens(
     .ok()
 }
 
-pub(crate) fn parse_land_animation_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<LandAnimationFact<'_>> {
+pub fn parse_land_animation_tokens(tokens: &[OwnedLexToken]) -> Option<LandAnimationFact<'_>> {
     primitives::parse_all(tokens, parse_land_animation, "static land animation").ok()
 }
 
-pub(crate) fn parse_other_type_addition_tail_tokens(
+pub fn parse_other_type_addition_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<OtherTypeAdditionTailFact> {
     primitives::parse_all(
@@ -274,7 +270,7 @@ pub(crate) fn parse_other_type_addition_tail_tokens(
     .ok()
 }
 
-pub(crate) fn find_loses_other_creature_types_tokens(
+pub fn find_loses_other_creature_types_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LosesOtherCreatureTypesFact> {
     primitives::find_prefix(tokens, || {
@@ -286,7 +282,7 @@ pub(crate) fn find_loses_other_creature_types_tokens(
     .map(|(marker_token, _, _)| LosesOtherCreatureTypesFact { marker_token })
 }
 
-pub(crate) fn parse_base_power_toughness_grant_tokens(
+pub fn parse_base_power_toughness_grant_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<BasePowerToughnessGrantFact<'_>> {
     let ((power, toughness), rest) = primitives::parse_prefix(

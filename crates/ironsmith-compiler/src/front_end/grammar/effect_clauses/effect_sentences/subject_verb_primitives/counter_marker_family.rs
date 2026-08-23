@@ -162,7 +162,7 @@ fn parse_put_counter_choice_sequence(
     )]))
 }
 
-pub(crate) fn parse_sentence_put_fixed_and_counter_choice(
+pub fn parse_sentence_put_fixed_and_counter_choice(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = counter_shapes::parse_put_fixed_and_counter_choice_tokens(clause.tokens())
@@ -203,7 +203,7 @@ pub(crate) fn parse_sentence_put_fixed_and_counter_choice(
     ]))
 }
 
-pub(crate) fn parse_sentence_sacrifice_at_end_of_combat(
+pub fn parse_sentence_sacrifice_at_end_of_combat(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = counter_shapes::parse_sacrifice_at_end_of_combat_tokens(clause.tokens())
@@ -226,7 +226,7 @@ pub(crate) fn parse_sentence_sacrifice_at_end_of_combat(
     }]))
 }
 
-pub(crate) fn parse_sentence_for_each_counter_kind_put_or_remove(
+pub fn parse_sentence_for_each_counter_kind_put_or_remove(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = counter_shapes::parse_for_each_counter_kind_tokens(clause.tokens()) else {
@@ -282,7 +282,7 @@ fn lower_counter_placements(
     Ok(effects)
 }
 
-pub(crate) fn parse_sentence_put_counter_sequence(
+pub fn parse_sentence_put_counter_sequence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = counter_shapes::parse_put_counter_sequence_tokens(clause.tokens()) else {
@@ -371,7 +371,7 @@ pub(crate) fn parse_sentence_put_counter_sequence(
     Ok(None)
 }
 
-pub(crate) fn is_pump_like_effect(effect: &EffectAst) -> bool {
+pub fn is_pump_like_effect(effect: &EffectAst) -> bool {
     matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -384,7 +384,7 @@ pub(crate) fn is_pump_like_effect(effect: &EffectAst) -> bool {
     )
 }
 
-pub(crate) fn parse_gets_then_fights_sentence(
+pub fn parse_gets_then_fights_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = counter_shapes::parse_gets_then_fights_tokens(clause.tokens()) else {
@@ -416,13 +416,13 @@ pub(crate) fn parse_gets_then_fights_sentence(
     ]))
 }
 
-pub(crate) fn parse_sentence_gets_then_fights(
+pub fn parse_sentence_gets_then_fights(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_gets_then_fights_sentence(clause)
 }
 
-pub(crate) fn parse_return_with_counters_on_it_sentence(
+pub fn parse_return_with_counters_on_it_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = counter_shapes::parse_return_with_counters_tokens(clause.tokens()) else {
@@ -498,7 +498,7 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
 /// Preserve an X-sized entry-counter clause as part of the return event.
 /// The fixed-number return grammar is intentionally separate because its
 /// descriptor parser does not accept dynamic values.
-pub(crate) fn parse_return_with_dynamic_entry_counters_sentence(
+pub fn parse_return_with_dynamic_entry_counters_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words = crate::lexer::token_word_refs(clause.tokens());
@@ -567,7 +567,7 @@ pub(crate) fn parse_return_with_dynamic_entry_counters_sentence(
     Ok(Some(vec![return_effect, counter_effect]))
 }
 
-pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
+pub fn parse_put_onto_battlefield_with_counters_on_it_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if let Some(effects) = parse_optional_put_from_owned_hand_or_graveyard_with_counters(clause)? {
@@ -744,19 +744,19 @@ fn parse_optional_put_from_owned_hand_or_graveyard_with_counters(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_sentence_return_with_counters_on_it(
+pub fn parse_sentence_return_with_counters_on_it(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_return_with_counters_on_it_sentence(clause)
 }
 
-pub(crate) fn parse_sentence_put_onto_battlefield_with_counters_on_it(
+pub fn parse_sentence_put_onto_battlefield_with_counters_on_it(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_put_onto_battlefield_with_counters_on_it_sentence(clause)
 }
 
-pub(crate) fn replace_target_subtype(target: &mut TargetAst, subtype: Subtype) -> bool {
+pub fn replace_target_subtype(target: &mut TargetAst, subtype: Subtype) -> bool {
     match target {
         TargetAst::Object(filter, _, _) => {
             filter.subtypes = vec![subtype];
@@ -767,10 +767,7 @@ pub(crate) fn replace_target_subtype(target: &mut TargetAst, subtype: Subtype) -
     }
 }
 
-pub(crate) fn clone_return_effect_with_subtype(
-    base: &EffectAst,
-    subtype: Subtype,
-) -> Option<EffectAst> {
+pub fn clone_return_effect_with_subtype(base: &EffectAst, subtype: Subtype) -> Option<EffectAst> {
     match base {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
             SubjectVerbActionAst::ReturnToHand {
@@ -858,7 +855,7 @@ pub(crate) fn clone_return_effect_with_subtype(
         _ => None,
     }
 }
-pub(crate) fn parse_draw_then_connive_sentence(
+pub fn parse_draw_then_connive_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = counter_shapes::parse_draw_then_connive_tokens(clause.tokens()) else {
@@ -876,13 +873,13 @@ pub(crate) fn parse_draw_then_connive_sentence(
     Ok(Some(head_effects))
 }
 
-pub(crate) fn parse_sentence_draw_then_connive(
+pub fn parse_sentence_draw_then_connive(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_draw_then_connive_sentence(clause)
 }
 
-pub(crate) fn parse_if_enters_with_additional_counter_sentence(
+pub fn parse_if_enters_with_additional_counter_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = counter_shapes::parse_if_enters_additional_tokens(clause.tokens()) else {
@@ -909,7 +906,7 @@ pub(crate) fn parse_if_enters_with_additional_counter_sentence(
     }]))
 }
 
-pub(crate) fn parse_tagged_enters_with_additional_counter_sentence(
+pub fn parse_tagged_enters_with_additional_counter_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = counter_shapes::parse_tagged_enters_additional_tokens(clause.tokens()) else {
@@ -928,7 +925,7 @@ pub(crate) fn parse_tagged_enters_with_additional_counter_sentence(
     )]))
 }
 
-pub(crate) fn parse_tagged_conditional_entry_counters_sentence(
+pub fn parse_tagged_conditional_entry_counters_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) =
@@ -968,7 +965,7 @@ pub(crate) fn parse_tagged_conditional_entry_counters_sentence(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_put_onto_battlefield_with_additional_counters_sentence(
+pub fn parse_put_onto_battlefield_with_additional_counters_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = counter_shapes::parse_put_with_additional_tokens(clause.tokens()) else {
@@ -1012,7 +1009,7 @@ fn lower_put_with_additional_counter(
     Ok(effects)
 }
 
-pub(crate) fn parse_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence(
+pub fn parse_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = counter_shapes::parse_sacrifice_then_put_additional_tokens(clause.tokens())
@@ -1050,7 +1047,7 @@ fn lower_sacrifice_then_put_additional(
     Ok(effects)
 }
 
-pub(crate) fn parse_if_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence(
+pub fn parse_if_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) =
@@ -1069,7 +1066,7 @@ pub(crate) fn parse_if_sacrifice_then_put_onto_battlefield_with_additional_count
     }]))
 }
 
-pub(crate) fn parse_each_player_return_with_additional_counter_sentence(
+pub fn parse_each_player_return_with_additional_counter_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = counter_shapes::parse_each_player_return_additional_tokens(clause.tokens())

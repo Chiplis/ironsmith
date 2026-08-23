@@ -14,14 +14,14 @@ use super::super::super::lexer::{
 use super::super::{filters, leaf, primitives, static_keyword_line_shapes};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PregameBeginOnBattlefieldSpec {
-    pub(crate) require_not_starting_player: bool,
-    pub(crate) counters: Vec<(CounterType, u32)>,
-    pub(crate) exile_cards_from_hand: usize,
+pub struct PregameBeginOnBattlefieldSpec {
+    pub require_not_starting_player: bool,
+    pub counters: Vec<(CounterType, u32)>,
+    pub exile_cards_from_hand: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PregameRevealTiming {
+pub enum PregameRevealTiming {
     FirstUpkeep,
     YourFirstUpkeep,
     YourFirstPrecombatMainPhase,
@@ -29,16 +29,16 @@ pub(crate) enum PregameRevealTiming {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PregameRevealFromOpeningHandSpec {
-    pub(crate) timing: PregameRevealTiming,
-    pub(crate) effect_tokens: Range<usize>,
-    pub(crate) effect_before_timing: bool,
+pub struct PregameRevealFromOpeningHandSpec {
+    pub timing: PregameRevealTiming,
+    pub effect_tokens: Range<usize>,
+    pub effect_before_timing: bool,
 }
 
 /// Parses the compound opening-hand reveal templates used by the Chancellor
 /// cycle and Sphinx of Foresight. The consequence remains a normal effect
 /// clause; this grammar only owns the pregame action and delayed timing.
-pub(crate) fn parse_pregame_reveal_from_opening_hand_tokens(
+pub fn parse_pregame_reveal_from_opening_hand_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PregameRevealFromOpeningHandSpec> {
     const INTRO: &[&str] = &[
@@ -109,7 +109,7 @@ pub(crate) fn parse_pregame_reveal_from_opening_hand_tokens(
     None
 }
 
-pub(crate) fn parse_pregame_begin_on_battlefield_tokens(
+pub fn parse_pregame_begin_on_battlefield_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PregameBeginOnBattlefieldSpec>, CardTextError> {
     if primitives::parse_prefix(tokens, parse_pregame_intro_lexed).is_none() {
@@ -174,9 +174,7 @@ pub(crate) fn parse_pregame_begin_on_battlefield_tokens(
     }))
 }
 
-pub(crate) fn parse_can_block_additional_creature_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<usize> {
+pub fn parse_can_block_additional_creature_tokens(tokens: &[OwnedLexToken]) -> Option<usize> {
     primitives::parse_all(
         tokens,
         parse_can_block_additional_creature_lexed,

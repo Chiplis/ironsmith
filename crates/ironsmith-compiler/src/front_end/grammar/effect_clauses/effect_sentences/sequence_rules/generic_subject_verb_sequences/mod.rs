@@ -1,15 +1,15 @@
 use super::SentenceInput;
 
 #[path = "quads.rs"]
-pub(crate) mod branching_selection_programs;
-pub(crate) mod exile_permission_followups;
-pub(crate) mod exiled_collections;
-pub(crate) mod graveyard_copy_cast;
-pub(crate) mod optional_sacrifice_discard;
+pub mod branching_selection_programs;
+pub mod exile_permission_followups;
+pub mod exiled_collections;
+pub mod graveyard_copy_cast;
+pub mod optional_sacrifice_discard;
 #[path = "triples.rs"]
-pub(crate) mod ordered_control_flow_programs;
+pub mod ordered_control_flow_programs;
 #[path = "pairs.rs"]
-pub(crate) mod reference_linked_programs;
+pub mod reference_linked_programs;
 
 use crate::cards::builders::{
     CardTextError, EffectAst, IfResultPredicate, ObjectFilter, PlayerAst, PredicateAst,
@@ -28,9 +28,9 @@ use crate::zone::Zone;
 // The PR-29 recipe-table migration still names these implementations at many
 // call sites. Keep source-compatible aliases without retaining arity as the
 // module's semantic identity; PR-29 removes the aliases with the table.
-pub(crate) use branching_selection_programs as quads;
-pub(crate) use ordered_control_flow_programs as triples;
-pub(crate) use reference_linked_programs as pairs;
+pub use branching_selection_programs as quads;
+pub use ordered_control_flow_programs as triples;
+pub use reference_linked_programs as pairs;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum GenericSequenceVerb {
@@ -78,7 +78,7 @@ fn effect_ast_is_destroy(effect: &EffectAst) -> bool {
     )
 }
 
-pub(crate) fn parse_destroy_for_each_destroyed_consult_exile_put_shuffle(
+pub fn parse_destroy_for_each_destroyed_consult_exile_put_shuffle(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -150,7 +150,7 @@ pub(crate) fn parse_destroy_for_each_destroyed_consult_exile_put_shuffle(
     ]))
 }
 
-pub(crate) fn parse_parameterized_flashback_grant_sequence(
+pub fn parse_parameterized_flashback_grant_sequence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -170,7 +170,7 @@ pub(crate) fn parse_parameterized_flashback_grant_sequence(
     )]))
 }
 
-pub(crate) fn parse_prefixed_library_consult_hand_exile_sequence(
+pub fn parse_prefixed_library_consult_hand_exile_sequence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -194,7 +194,7 @@ pub(crate) fn parse_prefixed_library_consult_hand_exile_sequence(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_iterative_library_procedure_sequence(
+pub fn parse_iterative_library_procedure_sequence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -243,7 +243,7 @@ pub(crate) fn parse_iterative_library_procedure_sequence(
     }]))
 }
 
-pub(crate) fn parse_each_player_repeat_pay_life_tokens_sequence(
+pub fn parse_each_player_repeat_pay_life_tokens_sequence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -302,7 +302,7 @@ pub(crate) fn parse_each_player_repeat_pay_life_tokens_sequence(
     ]))
 }
 
-pub(crate) fn parse_starting_each_player_optional_repeat_sequence(
+pub fn parse_starting_each_player_optional_repeat_sequence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -344,7 +344,7 @@ pub(crate) fn parse_starting_each_player_optional_repeat_sequence(
     }]))
 }
 
-pub(crate) fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(
+pub fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -417,7 +417,7 @@ pub(crate) fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(
     }]))
 }
 
-pub(crate) fn parse_damage_prevention_counter_sequence(
+pub fn parse_damage_prevention_counter_sequence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -474,7 +474,7 @@ pub(crate) fn parse_damage_prevention_counter_sequence(
 /// through a creature-only counter instruction scheduled for the next end
 /// step. The delayed scheduler already captures the immediately preceding
 /// prevention shield when its payload uses `EventValue::Amount`.
-pub(crate) fn parse_damage_prevention_delayed_counter_sequence(
+pub fn parse_damage_prevention_delayed_counter_sequence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -560,7 +560,7 @@ pub(crate) fn parse_damage_prevention_delayed_counter_sequence(
 /// Keep a destroy set and its authored no-regeneration rider as one action.
 /// Re-parsing `They` independently loses relative selectors such as
 /// `that aren't enchanted` from the destroyed set.
-pub(crate) fn parse_destroy_then_no_regeneration_sequence(
+pub fn parse_destroy_then_no_regeneration_sequence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -647,7 +647,7 @@ pub(crate) fn parse_destroy_then_no_regeneration_sequence(
 /// Preserve an exhaustive, shared owner-relative union across hand and
 /// graveyard. The ordinary sentence route otherwise lowers the two zones as
 /// unrelated generic exile clauses.
-pub(crate) fn parse_reveal_then_exile_noncreature_nonland_hand_graveyard_sequence(
+pub fn parse_reveal_then_exile_noncreature_nonland_hand_graveyard_sequence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -682,7 +682,7 @@ pub(crate) fn parse_reveal_then_exile_noncreature_nonland_hand_graveyard_sequenc
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_damage_prevention_reflect_to_any_target_sequence(
+pub fn parse_damage_prevention_reflect_to_any_target_sequence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -736,7 +736,7 @@ pub(crate) fn parse_damage_prevention_reflect_to_any_target_sequence(
     ]))
 }
 
-pub(crate) fn parse_next_damage_prevention_gain_life_sequence(
+pub fn parse_next_damage_prevention_gain_life_sequence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -784,7 +784,7 @@ pub(crate) fn parse_next_damage_prevention_gain_life_sequence(
     Ok(Some(first_effects))
 }
 
-pub(crate) fn parse_next_damage_prevention_exile_top_sequence(
+pub fn parse_next_damage_prevention_exile_top_sequence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -826,7 +826,7 @@ pub(crate) fn parse_next_damage_prevention_exile_top_sequence(
     Ok(Some(first_effects))
 }
 
-pub(crate) fn parse_tap_lock_sequence(
+pub fn parse_tap_lock_sequence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -869,7 +869,7 @@ pub(crate) fn parse_tap_lock_sequence(
     ]))
 }
 
-pub(crate) fn parse_search_delayed_upkeep_unless_pays_sequence(
+pub fn parse_search_delayed_upkeep_unless_pays_sequence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -904,7 +904,7 @@ pub(crate) fn parse_search_delayed_upkeep_unless_pays_sequence(
 /// Preserve a standalone two-sentence Pact-style delayed payment after an
 /// earlier sequence rule has already consumed the instruction that precedes
 /// it (for example, a prevention effect and its life-gain follow-up).
-pub(crate) fn parse_delayed_upkeep_unless_pays_sequence(
+pub fn parse_delayed_upkeep_unless_pays_sequence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

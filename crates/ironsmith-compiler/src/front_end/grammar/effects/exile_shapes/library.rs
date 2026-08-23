@@ -16,17 +16,17 @@ use super::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ExileLibraryPlayerShape {
+pub enum ExileLibraryPlayerShape {
     Player(PlayerAst),
     EachPlayer,
     EachOpponent,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ExileLibraryCardsShape {
-    pub(crate) player: ExileLibraryPlayerShape,
-    pub(crate) count: Value,
-    pub(crate) face_down: bool,
+pub struct ExileLibraryCardsShape {
+    pub player: ExileLibraryPlayerShape,
+    pub count: Value,
+    pub face_down: bool,
 }
 
 fn trim_commas(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -114,7 +114,7 @@ fn parse_position_count_without_owner(
     trim_commas(rest).is_empty().then_some((count, false))
 }
 
-pub(crate) fn parse_exile_dynamic_top_library_shape(
+pub fn parse_exile_dynamic_top_library_shape(
     tokens: &[OwnedLexToken],
     default_player: PlayerAst,
 ) -> Option<ExileLibraryCardsShape> {
@@ -232,7 +232,7 @@ pub(crate) fn parse_exile_dynamic_top_library_shape(
     })
 }
 
-pub(crate) fn parse_exile_top_library_shape(
+pub fn parse_exile_top_library_shape(
     tokens: &[OwnedLexToken],
     default_player: PlayerAst,
 ) -> Option<ExileLibraryCardsShape> {
@@ -252,7 +252,7 @@ pub(crate) fn parse_exile_top_library_shape(
     })
 }
 
-pub(crate) fn parse_exile_bottom_library_shape(
+pub fn parse_exile_bottom_library_shape(
     tokens: &[OwnedLexToken],
     default_player: PlayerAst,
 ) -> Option<ExileLibraryCardsShape> {

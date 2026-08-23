@@ -45,13 +45,13 @@ fn strip_except_this_card_suffix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum DelayedReturnTimingAst {
+pub enum DelayedReturnTimingAst {
     NextEndStep(PlayerFilter),
     NextUpkeep(PlayerAst),
     EndOfCombat,
 }
 
-pub(crate) fn parse_delayed_return_timing_words(words: &[&str]) -> Option<DelayedReturnTimingAst> {
+pub fn parse_delayed_return_timing_words(words: &[&str]) -> Option<DelayedReturnTimingAst> {
     crate::grammar::effects::parse_return_timing_words_shape(words).map(|shape| match shape {
         crate::grammar::effects::ReturnTimingShape::NextEndStep(player) => {
             DelayedReturnTimingAst::NextEndStep(player)
@@ -64,7 +64,7 @@ pub(crate) fn parse_delayed_return_timing_words(words: &[&str]) -> Option<Delaye
         }
     })
 }
-pub(crate) fn wrap_return_with_delayed_timing(
+pub fn wrap_return_with_delayed_timing(
     effect: EffectAst,
     timing: Option<DelayedReturnTimingAst>,
 ) -> EffectAst {
@@ -87,7 +87,7 @@ pub(crate) fn wrap_return_with_delayed_timing(
     }
 }
 
-pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if let Some(for_each_idx) = (0..tokens.len().saturating_sub(1))
         .rev()
         .find(|&idx| tokens[idx].is_word("for") && tokens[idx + 1].is_word("each"))
@@ -622,7 +622,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     }
     Ok(wrap_return_with_delayed_timing(effect, delayed_timing))
 }
-pub(crate) fn parse_exchange(
+pub fn parse_exchange(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {

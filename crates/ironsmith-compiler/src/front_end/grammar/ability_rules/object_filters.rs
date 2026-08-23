@@ -6,7 +6,7 @@ use crate::filter::ObjectFilterUnionConnective;
 use crate::{CardType, Subtype};
 use crate::{ColorSet, ObjectFilter, PlayerFilter, TaggedOpbjectRelation, Zone};
 
-pub(crate) use super::grammar::filters::parse_simple_object_filter_words;
+pub use super::grammar::filters::parse_simple_object_filter_words;
 use super::grammar::filters::{
     apply_filter_tail_decoration, parse_branch_scoped_object_filter_union_lexed,
     parse_extremum_object_filter_lexed, parse_extremum_object_filter_words,
@@ -633,7 +633,7 @@ pub(super) fn parse_attached_reference_or_another_disjunction(
 /// scoped union arms strands `spell`, controller, and mana-value facts on only
 /// the final arm. The ordinary complete-filter grammar already preserves the
 /// shared typed facts, so keep this shape out of the branch-scoped union path.
-pub(crate) fn has_shared_terminal_object_noun(tokens: &[OwnedLexToken]) -> bool {
+pub fn has_shared_terminal_object_noun(tokens: &[OwnedLexToken]) -> bool {
     let is_shared_noun = |token: &OwnedLexToken| {
         token.is_word("card")
             || token.is_word("cards")
@@ -729,7 +729,7 @@ fn preserve_explicit_spell_domain(filter: &mut ObjectFilter, tokens: &[OwnedLexT
     }
 }
 
-pub(crate) fn parse_object_filter(
+pub fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
@@ -866,7 +866,7 @@ fn parse_object_filter_inner(
     ))
 }
 
-pub(crate) fn parse_object_filter_words(
+pub fn parse_object_filter_words(
     word_refs: &[&str],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
@@ -924,7 +924,7 @@ pub(crate) fn parse_object_filter_words(
     ))
 }
 
-pub(crate) fn parse_object_filter_lexed(
+pub fn parse_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
@@ -1068,7 +1068,7 @@ fn tokens_contain_permanent_or_suspended_card_disjunction(tokens: &[OwnedLexToke
     has_permanent && has_suspended_card && has_connector
 }
 
-pub(crate) fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {
+pub fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {
     !filter.card_types.is_empty()
         || !filter.all_card_types.is_empty()
         || !filter.excluded_card_types.is_empty()
@@ -1120,7 +1120,7 @@ pub(crate) fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {
         || !filter.any_of.is_empty()
 }
 
-pub(crate) fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) {
+pub fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) {
     for card_type in extra.card_types {
         push_unique(&mut base.card_types, card_type);
     }
@@ -1248,7 +1248,7 @@ pub(crate) fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) 
     }
 }
 
-pub(crate) fn is_comparison_or_delimiter(tokens: &[OwnedLexToken], idx: usize) -> bool {
+pub fn is_comparison_or_delimiter(tokens: &[OwnedLexToken], idx: usize) -> bool {
     if !token_slice_at_is(tokens, idx, "or") {
         return false;
     }

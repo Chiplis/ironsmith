@@ -6,17 +6,17 @@ use super::super::lexer::OwnedLexToken;
 use super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WordTokenBoundary {
-    pub(crate) token: usize,
+pub struct WordTokenBoundary {
+    pub token: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PtComponents<'a> {
-    pub(crate) power: &'a str,
-    pub(crate) toughness: &'a str,
+pub struct PtComponents<'a> {
+    pub power: &'a str,
+    pub toughness: &'a str,
 }
 
-pub(crate) fn parse_word_token_boundary(
+pub fn parse_word_token_boundary(
     tokens: &[OwnedLexToken],
     word_offset: usize,
 ) -> Option<WordTokenBoundary> {
@@ -26,14 +26,11 @@ pub(crate) fn parse_word_token_boundary(
     })
 }
 
-pub(crate) fn parse_word_token_offset(
-    tokens: &[OwnedLexToken],
-    word_offset: usize,
-) -> Option<usize> {
+pub fn parse_word_token_offset(tokens: &[OwnedLexToken], word_offset: usize) -> Option<usize> {
     parse_word_token_boundary(tokens, word_offset).map(|boundary| boundary.token)
 }
 
-pub(crate) fn parse_rule_id_head(rule_id: &str) -> Option<&str> {
+pub fn parse_rule_id_head(rule_id: &str) -> Option<&str> {
     let mut input = rule_id;
     let prefix: WResult<&str> = literal("parse_").parse_next(&mut input);
     prefix.ok()?;
@@ -41,7 +38,7 @@ pub(crate) fn parse_rule_id_head(rule_id: &str) -> Option<&str> {
     head.ok()
 }
 
-pub(crate) fn parse_pt_components(raw: &str) -> Option<PtComponents<'_>> {
+pub fn parse_pt_components(raw: &str) -> Option<PtComponents<'_>> {
     let mut input = raw;
     let parsed_power: WResult<&str> = take_till(1.., '/').parse_next(&mut input);
     let power = parsed_power.ok()?;

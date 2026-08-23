@@ -9,21 +9,21 @@ use crate::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SourceExiledSpellKind {
+pub enum SourceExiledSpellKind {
     Any,
     Creature,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SourceExiledReference {
-    pub(crate) surface: ironsmith_core::SourceReferenceSurface,
+pub struct SourceExiledReference {
+    pub surface: ironsmith_core::SourceReferenceSurface,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SpellFromSourceExiledFact<'a> {
-    pub(crate) kind: SourceExiledSpellKind,
-    pub(crate) reference: SourceExiledReference,
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
+pub struct SpellFromSourceExiledFact<'a> {
+    pub kind: SourceExiledSpellKind,
+    pub reference: SourceExiledReference,
+    pub tail_tokens: &'a [OwnedLexToken],
 }
 
 /// A static permission whose castable set is a filtered plural spell subject
@@ -34,14 +34,14 @@ pub(crate) struct SpellFromSourceExiledFact<'a> {
 /// "Dinosaur creature spells from among cards you own exiled with this
 /// creature" describes a persistent grant.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SpellsFromSourceExiledFact<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) owned_by_you: bool,
-    pub(crate) reference: SourceExiledReference,
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
+pub struct SpellsFromSourceExiledFact<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub owned_by_you: bool,
+    pub reference: SourceExiledReference,
+    pub tail_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_spell_from_source_exiled_tokens(
+pub fn parse_spell_from_source_exiled_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SpellFromSourceExiledFact<'_>> {
     let ((kind, reference), tail_tokens) =
@@ -53,7 +53,7 @@ pub(crate) fn parse_spell_from_source_exiled_tokens(
     })
 }
 
-pub(crate) fn parse_spells_from_source_exiled_tokens(
+pub fn parse_spells_from_source_exiled_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SpellsFromSourceExiledFact<'_>> {
     let (scope_start, _, after_cards) =

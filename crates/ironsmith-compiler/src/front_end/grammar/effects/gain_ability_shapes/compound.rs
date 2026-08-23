@@ -7,46 +7,46 @@ use crate::grammar::primitives;
 use crate::lexer::{LexStream, OwnedLexToken, TokenWordView, trim_lexed_commas};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SharedAbilityVerb {
+pub enum SharedAbilityVerb {
     Gain,
     Lose,
     Has,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct GainThenGetShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) ability_tokens: &'a [OwnedLexToken],
-    pub(crate) pump_tokens: &'a [OwnedLexToken],
+pub struct GainThenGetShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub ability_tokens: &'a [OwnedLexToken],
+    pub pump_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct GetThenAbilityShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) pump_tokens: &'a [OwnedLexToken],
-    pub(crate) ability_tokens: &'a [OwnedLexToken],
-    pub(crate) ability_verb: SharedAbilityVerb,
+pub struct GetThenAbilityShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub pump_tokens: &'a [OwnedLexToken],
+    pub ability_tokens: &'a [OwnedLexToken],
+    pub ability_verb: SharedAbilityVerb,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum AttachedReferenceSubject {
+pub enum AttachedReferenceSubject {
     EnchantedCreature,
     EquippedCreature,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct AttachedAndRelatedGetAbilityShape<'a> {
-    pub(crate) subject: AttachedReferenceSubject,
-    pub(crate) pump_tokens: &'a [OwnedLexToken],
-    pub(crate) ability_tokens: &'a [OwnedLexToken],
-    pub(crate) duration: Until,
+pub struct AttachedAndRelatedGetAbilityShape<'a> {
+    pub subject: AttachedReferenceSubject,
+    pub pump_tokens: &'a [OwnedLexToken],
+    pub ability_tokens: &'a [OwnedLexToken],
+    pub duration: Until,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct AttachedAndRelatedGetShape<'a> {
-    pub(crate) subject: AttachedReferenceSubject,
-    pub(crate) pump_tokens: &'a [OwnedLexToken],
-    pub(crate) duration: Until,
+pub struct AttachedAndRelatedGetShape<'a> {
+    pub subject: AttachedReferenceSubject,
+    pub pump_tokens: &'a [OwnedLexToken],
+    pub duration: Until,
 }
 
 fn gain_verb<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -109,7 +109,7 @@ fn independent_player_action_precedes_shared_subject(tokens: &[OwnedLexToken]) -
     verb.word_index == player_subject_words && words[verb.word_index + 1..].contains(&"and")
 }
 
-pub(crate) fn parse_gain_then_get_shape(tokens: &[OwnedLexToken]) -> Option<GainThenGetShape<'_>> {
+pub fn parse_gain_then_get_shape(tokens: &[OwnedLexToken]) -> Option<GainThenGetShape<'_>> {
     let tokens = trim_lexed_commas(tokens);
     let (gain_token, (), after_gain) = primitives::find_prefix(tokens, || gain_verb)?;
     let subject_tokens = nonempty_trimmed(tokens.get(..gain_token)?)?;
@@ -124,9 +124,7 @@ pub(crate) fn parse_gain_then_get_shape(tokens: &[OwnedLexToken]) -> Option<Gain
     })
 }
 
-pub(crate) fn parse_get_then_ability_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<GetThenAbilityShape<'_>> {
+pub fn parse_get_then_ability_shape(tokens: &[OwnedLexToken]) -> Option<GetThenAbilityShape<'_>> {
     let tokens = trim_lexed_commas(tokens);
     let (get_token, (), after_get) = primitives::find_prefix(tokens, || get_verb)?;
     let raw_subject_tokens = tokens.get(..get_token)?;
@@ -148,7 +146,7 @@ pub(crate) fn parse_get_then_ability_shape(
     })
 }
 
-pub(crate) fn parse_attached_and_related_get_ability_shape(
+pub fn parse_attached_and_related_get_ability_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedAndRelatedGetAbilityShape<'_>> {
     let shape = parse_get_then_ability_shape(tokens)?;
@@ -181,7 +179,7 @@ pub(crate) fn parse_attached_and_related_get_ability_shape(
     })
 }
 
-pub(crate) fn parse_attached_and_related_get_shape(
+pub fn parse_attached_and_related_get_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedAndRelatedGetShape<'_>> {
     let tokens = trim_lexed_commas(tokens);

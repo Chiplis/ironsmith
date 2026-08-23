@@ -37,7 +37,7 @@ const NOT_CAST_SUFFIXES: &[&[&str]] = &[
     &["if", "it", "wasn't", "cast", "this", "way"],
 ];
 
-pub(crate) fn parse_consult_remainder_order_shape(words: &[&str]) -> Option<LibraryBottomOrderAst> {
+pub fn parse_consult_remainder_order_shape(words: &[&str]) -> Option<LibraryBottomOrderAst> {
     if permission_shapes::find_words(words, &["bottom"]).is_none()
         || permission_shapes::find_words(words, &["library"]).is_none()
     {
@@ -52,7 +52,7 @@ pub(crate) fn parse_consult_remainder_order_shape(words: &[&str]) -> Option<Libr
     None
 }
 
-pub(crate) fn parse_consult_bottom_remainder_shape(
+pub fn parse_consult_bottom_remainder_shape(
     tokens: &[OwnedLexToken],
     mode: LibraryConsultModeAst,
 ) -> Option<LibraryBottomOrderAst> {
@@ -78,7 +78,7 @@ fn declined_move_prefix(input: &mut LexStream<'_>) -> winnow::error::ModalResult
     sequence_any_phrase(DECLINED_ACTION_PHRASES).parse_next(input)
 }
 
-pub(crate) fn is_if_declined_put_match_into_hand_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_if_declined_put_match_into_hand_shape(tokens: &[OwnedLexToken]) -> bool {
     if let Some(((), remainder)) =
         primitives::parse_prefix(tokens, sequence_any_phrase(MOVE_TO_HAND_PHRASES))
     {

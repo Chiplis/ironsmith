@@ -7,43 +7,43 @@ use super::super::lexer::{LexStream, OwnedLexToken, TokenKind, render_token_slic
 use super::primitives;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct OptionalCostWithCastTriggerShape<'a> {
-    pub(crate) label_tokens: &'a [OwnedLexToken],
-    pub(crate) optional_cost_effect_tokens: &'a [OwnedLexToken],
-    pub(crate) followup_effect_tokens: &'a [OwnedLexToken],
+pub struct OptionalCostWithCastTriggerShape<'a> {
+    pub label_tokens: &'a [OwnedLexToken],
+    pub optional_cost_effect_tokens: &'a [OwnedLexToken],
+    pub followup_effect_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum OptionalKeywordCostKind {
+pub enum OptionalKeywordCostKind {
     Behold,
     Blight,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct OptionalKeywordAdditionalCostShape<'a> {
-    pub(crate) kind: OptionalKeywordCostKind,
-    pub(crate) cost_tokens: &'a [OwnedLexToken],
-    pub(crate) behold_subtype: Option<crate::types::Subtype>,
+pub struct OptionalKeywordAdditionalCostShape<'a> {
+    pub kind: OptionalKeywordCostKind,
+    pub cost_tokens: &'a [OwnedLexToken],
+    pub behold_subtype: Option<crate::types::Subtype>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BeholdAndExileAdditionalCostShape {
-    pub(crate) subtype: crate::types::Subtype,
+pub struct BeholdAndExileAdditionalCostShape {
+    pub subtype: crate::types::Subtype,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PartnerWithNameShape<'a> {
-    pub(crate) name_tokens: &'a [OwnedLexToken],
+pub struct PartnerWithNameShape<'a> {
+    pub name_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_partner_with_name_shape_tokens(
+pub fn parse_partner_with_name_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PartnerWithNameShape<'_>> {
     let (name_tokens, _) = primitives::parse_prefix(tokens, parse_partner_with_name_shape_lexed)?;
     Some(PartnerWithNameShape { name_tokens })
 }
 
-pub(crate) fn parse_partner_with_name_tokens(tokens: &[OwnedLexToken]) -> Option<String> {
+pub fn parse_partner_with_name_tokens(tokens: &[OwnedLexToken]) -> Option<String> {
     let shape = parse_partner_with_name_shape_tokens(tokens)?;
     let name = render_token_slice(shape.name_tokens)
         .trim()
@@ -51,7 +51,7 @@ pub(crate) fn parse_partner_with_name_tokens(tokens: &[OwnedLexToken]) -> Option
     (!name.is_empty()).then_some(name)
 }
 
-pub(crate) fn parse_partner_visible_label_tokens(tokens: &[OwnedLexToken]) -> Option<String> {
+pub fn parse_partner_visible_label_tokens(tokens: &[OwnedLexToken]) -> Option<String> {
     let shape =
         primitives::parse_all(tokens, parse_partner_visible_label_lexed, "partner-label").ok()?;
     let label = match shape {
@@ -85,7 +85,7 @@ enum PartnerLabelSeparator {
     EmDash,
 }
 
-pub(crate) fn parse_optional_cost_with_cast_trigger_tokens(
+pub fn parse_optional_cost_with_cast_trigger_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<OptionalCostWithCastTriggerShape<'_>> {
     primitives::parse_all(
@@ -96,7 +96,7 @@ pub(crate) fn parse_optional_cost_with_cast_trigger_tokens(
     .ok()
 }
 
-pub(crate) fn parse_optional_keyword_additional_cost_tokens(
+pub fn parse_optional_keyword_additional_cost_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<OptionalKeywordAdditionalCostShape<'_>> {
     let mut shape = primitives::parse_all(
@@ -117,7 +117,7 @@ pub(crate) fn parse_optional_keyword_additional_cost_tokens(
     Some(shape)
 }
 
-pub(crate) fn parse_behold_and_exile_additional_cost_tokens(
+pub fn parse_behold_and_exile_additional_cost_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<BeholdAndExileAdditionalCostShape> {
     let behold_tokens = primitives::parse_all(

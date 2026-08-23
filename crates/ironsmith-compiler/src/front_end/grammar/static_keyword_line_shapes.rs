@@ -7,90 +7,90 @@ use super::super::lexer::{LexStream, OwnedLexToken, TokenKind};
 use super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TokenBoundary {
-    pub(crate) token: usize,
+pub struct TokenBoundary {
+    pub token: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WordBoundary {
-    pub(crate) word: usize,
+pub struct WordBoundary {
+    pub word: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TokenSpan {
-    pub(crate) start: usize,
-    pub(crate) end: usize,
+pub struct TokenSpan {
+    pub start: usize,
+    pub end: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PregameBattlefieldShape {
-    pub(crate) battlefield: TokenSpan,
-    pub(crate) if_you_do: Option<TokenSpan>,
+pub struct PregameBattlefieldShape {
+    pub battlefield: TokenSpan,
+    pub if_you_do: Option<TokenSpan>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ComposedAnthemHead {
+pub enum ComposedAnthemHead {
     Temporary,
     Permanent { action: Option<TokenBoundary> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PlayerCounterGainHead {
-    pub(crate) get: TokenBoundary,
-    pub(crate) has_counter_resource: bool,
+pub struct PlayerCounterGainHead {
+    pub get: TokenBoundary,
+    pub has_counter_resource: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AsEntersSubject<'a> {
+pub enum AsEntersSubject<'a> {
     This(Option<&'a str>),
     It,
     SourceReference,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AsEntersSubjectShape<'a> {
-    pub(crate) subject: AsEntersSubject<'a>,
-    pub(crate) tail_word: usize,
+pub struct AsEntersSubjectShape<'a> {
+    pub subject: AsEntersSubject<'a>,
+    pub tail_word: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AnimationVerbShape {
-    pub(crate) be: TokenBoundary,
-    pub(crate) has: TokenBoundary,
+pub struct AnimationVerbShape {
+    pub be: TokenBoundary,
+    pub has: TokenBoundary,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SubtypeGrantVerbShape {
-    pub(crate) be: TokenBoundary,
-    pub(crate) with: TokenBoundary,
+pub struct SubtypeGrantVerbShape {
+    pub be: TokenBoundary,
+    pub with: TokenBoundary,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PayLifeEtbShape {
-    pub(crate) pay: TokenBoundary,
-    pub(crate) saw_enter: bool,
-    pub(crate) saw_may: bool,
+pub struct PayLifeEtbShape {
+    pub pay: TokenBoundary,
+    pub saw_enter: bool,
+    pub saw_may: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AffinityForFilter<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) is_artifacts: bool,
+pub struct AffinityForFilter<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub is_artifacts: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ConditionalSpellKeyword {
+pub enum ConditionalSpellKeyword {
     Flash,
     Cascade,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ConditionalSpellKeywordShape<'a> {
-    pub(crate) keyword: ConditionalSpellKeyword,
-    pub(crate) condition_tokens: &'a [OwnedLexToken],
+pub struct ConditionalSpellKeywordShape<'a> {
+    pub keyword: ConditionalSpellKeyword,
+    pub condition_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_affinity_for_filter(tokens: &[OwnedLexToken]) -> Option<AffinityForFilter<'_>> {
+pub fn parse_affinity_for_filter(tokens: &[OwnedLexToken]) -> Option<AffinityForFilter<'_>> {
     primitives::parse_all(
         tokens,
         parse_affinity_for_filter_lexed,
@@ -99,7 +99,7 @@ pub(crate) fn parse_affinity_for_filter(tokens: &[OwnedLexToken]) -> Option<Affi
     .ok()
 }
 
-pub(crate) fn parse_conditional_spell_keyword(
+pub fn parse_conditional_spell_keyword(
     tokens: &[OwnedLexToken],
 ) -> Option<ConditionalSpellKeywordShape<'_>> {
     primitives::parse_all(
@@ -110,17 +110,15 @@ pub(crate) fn parse_conditional_spell_keyword(
     .ok()
 }
 
-pub(crate) fn parse_attachment_restriction_span(tokens: &[OwnedLexToken]) -> Option<TokenSpan> {
+pub fn parse_attachment_restriction_span(tokens: &[OwnedLexToken]) -> Option<TokenSpan> {
     phrase_span(tokens, &["can", "be", "attached", "only", "to"])
 }
 
-pub(crate) fn parse_count_as_card_count_word(words: &[&str]) -> Option<WordBoundary> {
+pub fn parse_count_as_card_count_word(words: &[&str]) -> Option<WordBoundary> {
     first_word(words, &["count"])
 }
 
-pub(crate) fn parse_player_counter_gain_head(
-    tokens: &[OwnedLexToken],
-) -> Option<PlayerCounterGainHead> {
+pub fn parse_player_counter_gain_head(tokens: &[OwnedLexToken]) -> Option<PlayerCounterGainHead> {
     let get = first_token_word(tokens, &["get", "gets"])?;
     let mut input = LexStream::new(tokens);
     let mut has_counter_resource = false;
@@ -146,7 +144,7 @@ pub(crate) fn parse_player_counter_gain_head(
     })
 }
 
-pub(crate) fn parse_pregame_battlefield_shape(
+pub fn parse_pregame_battlefield_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PregameBattlefieldShape> {
     Some(PregameBattlefieldShape {
@@ -155,7 +153,7 @@ pub(crate) fn parse_pregame_battlefield_shape(
     })
 }
 
-pub(crate) fn parse_composed_anthem_head(tokens: &[OwnedLexToken]) -> ComposedAnthemHead {
+pub fn parse_composed_anthem_head(tokens: &[OwnedLexToken]) -> ComposedAnthemHead {
     if phrase_span(tokens, &["until", "end", "of", "turn"]).is_some() {
         return ComposedAnthemHead::Temporary;
     }
@@ -164,7 +162,7 @@ pub(crate) fn parse_composed_anthem_head(tokens: &[OwnedLexToken]) -> ComposedAn
     }
 }
 
-pub(crate) fn parse_as_enters_subject<'a>(
+pub fn parse_as_enters_subject<'a>(
     words: &[&'a str],
     allowed_this_kinds: &[&str],
 ) -> Option<AsEntersSubjectShape<'a>> {
@@ -210,21 +208,19 @@ pub(crate) fn parse_as_enters_subject<'a>(
     })
 }
 
-pub(crate) fn parse_choice_word(words: &[&str]) -> Option<WordBoundary> {
+pub fn parse_choice_word(words: &[&str]) -> Option<WordBoundary> {
     first_word(words, &["choose"])
 }
 
-pub(crate) fn parse_trigger_duplication_triggers_word(words: &[&str]) -> Option<WordBoundary> {
+pub fn parse_trigger_duplication_triggers_word(words: &[&str]) -> Option<WordBoundary> {
     first_word(words, &["triggers"])
 }
 
-pub(crate) fn parse_trigger_duplication_causes_word(words: &[&str]) -> Option<WordBoundary> {
+pub fn parse_trigger_duplication_causes_word(words: &[&str]) -> Option<WordBoundary> {
     first_word(words, &["causes"])
 }
 
-pub(crate) fn parse_copy_exception_type_removal_span(
-    tokens: &[OwnedLexToken],
-) -> Option<TokenSpan> {
+pub fn parse_copy_exception_type_removal_span(tokens: &[OwnedLexToken]) -> Option<TokenSpan> {
     let (start, remove_len, _) = primitives::find_prefix(tokens, || copy_exception_type_removal)?;
     let remove_start = start.checked_add(4)?;
     Some(TokenSpan {
@@ -257,7 +253,7 @@ fn copy_exception_type_removal(input: &mut LexStream<'_>) -> WResult<usize> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_animation_verbs(tokens: &[OwnedLexToken]) -> Option<AnimationVerbShape> {
+pub fn parse_animation_verbs(tokens: &[OwnedLexToken]) -> Option<AnimationVerbShape> {
     let be = parse_animation_copula(tokens)?;
     let tail = &tokens[be.token + 1..];
     let relative_has = first_token_word(tail, &["have", "has"])?;
@@ -269,15 +265,15 @@ pub(crate) fn parse_animation_verbs(tokens: &[OwnedLexToken]) -> Option<Animatio
     })
 }
 
-pub(crate) fn parse_animation_copula(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
+pub fn parse_animation_copula(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
     first_token_word(tokens, &["is", "are", "it's", "it’s", "its"])
 }
 
-pub(crate) fn parse_animation_creature_word(words: &[&str]) -> Option<WordBoundary> {
+pub fn parse_animation_creature_word(words: &[&str]) -> Option<WordBoundary> {
     first_word(words, &["creature", "creatures"])
 }
 
-pub(crate) fn parse_subtype_grant_verbs(tokens: &[OwnedLexToken]) -> Option<SubtypeGrantVerbShape> {
+pub fn parse_subtype_grant_verbs(tokens: &[OwnedLexToken]) -> Option<SubtypeGrantVerbShape> {
     let be = first_token_word(tokens, &["is", "are"])?;
     let relative_with = first_token_word(&tokens[be.token + 1..], &["with"])?;
     Some(SubtypeGrantVerbShape {
@@ -288,7 +284,7 @@ pub(crate) fn parse_subtype_grant_verbs(tokens: &[OwnedLexToken]) -> Option<Subt
     })
 }
 
-pub(crate) fn parse_pay_life_etb_shape(tokens: &[OwnedLexToken]) -> Option<PayLifeEtbShape> {
+pub fn parse_pay_life_etb_shape(tokens: &[OwnedLexToken]) -> Option<PayLifeEtbShape> {
     let pay = first_token_word(tokens, &["pay"])?;
     let prefix = &tokens[..pay.token];
     Some(PayLifeEtbShape {

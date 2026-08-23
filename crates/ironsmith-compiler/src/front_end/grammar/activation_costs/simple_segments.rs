@@ -13,7 +13,7 @@ use super::super::leaf;
 use super::super::primitives;
 use super::ActivationCostSegmentCst;
 
-pub(crate) fn parse_bare_symbol_segment_tokens(
+pub fn parse_bare_symbol_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivationCostSegmentCst> {
     primitives::parse_all(
@@ -24,31 +24,31 @@ pub(crate) fn parse_bare_symbol_segment_tokens(
     .ok()
 }
 
-pub(crate) fn parse_pay_segment_tokens(
+pub fn parse_pay_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     parse_simple_segment(tokens, parse_pay_segment_lexed, "pay-cost")
 }
 
-pub(crate) fn parse_mill_segment_tokens(
+pub fn parse_mill_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     parse_simple_segment(tokens, parse_mill_segment_lexed, "mill")
 }
 
-pub(crate) fn parse_behold_segment_tokens(
+pub fn parse_behold_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     parse_simple_segment(tokens, parse_behold_segment_lexed, "behold")
 }
 
-pub(crate) fn parse_blight_segment_tokens(
+pub fn parse_blight_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     parse_simple_segment(tokens, parse_blight_segment_lexed, "blight")
 }
 
-pub(crate) fn parse_exert_segment_tokens(
+pub fn parse_exert_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     primitives::parse_all(
@@ -219,7 +219,7 @@ fn is_energy_symbol_token(token: &OwnedLexToken) -> bool {
     }
 }
 
-pub(crate) fn is_tap_activation_symbol_token(token: &OwnedLexToken) -> bool {
+pub fn is_tap_activation_symbol_token(token: &OwnedLexToken) -> bool {
     token
         .as_word()
         .is_some_and(|word| word.eq_ignore_ascii_case("t"))

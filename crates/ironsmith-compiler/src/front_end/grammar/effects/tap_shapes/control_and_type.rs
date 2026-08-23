@@ -25,9 +25,7 @@ fn parse_tap_control_relation_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Ta
         .parse_next(input)
 }
 
-pub(crate) fn parse_tap_control_relation_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<TapControlRelation> {
+pub fn parse_tap_control_relation_tokens(tokens: &[OwnedLexToken]) -> Option<TapControlRelation> {
     primitives::parse_prefix(tokens, parse_tap_control_relation_lexed).map(|(relation, _)| relation)
 }
 
@@ -57,9 +55,7 @@ fn parse_tap_type_choice_lexed<'a>(input: &mut LexStream<'a>) -> WResult<TapType
     })
 }
 
-pub(crate) fn parse_tap_type_choice_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<TapTypeChoiceShape<'_>> {
+pub fn parse_tap_type_choice_tokens(tokens: &[OwnedLexToken]) -> Option<TapTypeChoiceShape<'_>> {
     primitives::parse_all(tokens, parse_tap_type_choice_lexed, "tap-type-choice").ok()
 }
 
@@ -88,7 +84,7 @@ fn parse_inline_creature_type_choice_lexed<'a>(
 /// Captures an inline creature-type selection while keeping it distinct from
 /// back-references such as "of the chosen type" and "of that type". Callers
 /// use this only when they must emit a new executable choice.
-pub(crate) fn parse_inline_creature_type_choice_tokens(
+pub fn parse_inline_creature_type_choice_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TapTypeChoiceShape<'_>> {
     primitives::parse_all(
@@ -113,6 +109,6 @@ fn parse_chosen_type_marker_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> 
         .parse_next(input)
 }
 
-pub(crate) fn tap_tokens_mention_chosen_type(tokens: &[OwnedLexToken]) -> bool {
+pub fn tap_tokens_mention_chosen_type(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, parse_chosen_type_marker_lexed).is_some()
 }

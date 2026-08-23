@@ -29,7 +29,7 @@ const TRIGGER_REFERENCE_PHRASES: &[(&[&str], TriggerReferenceSurfaceAst)] = &[
     (&["it"], TriggerReferenceSurfaceAst::It),
 ];
 
-pub(crate) fn build_compiler_triggered_ability(
+pub fn build_compiler_triggered_ability(
     context: ParseContextView<'_>,
     full_tokens: &[OwnedLexToken],
     result_tokens: &[OwnedLexToken],

@@ -8,8 +8,8 @@ use super::super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::super::primitives;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TriggeredSpellOpponentDamageShape {
-    pub(crate) amount: Value,
+pub struct TriggeredSpellOpponentDamageShape {
+    pub amount: Value,
 }
 
 fn parse_triggered_spell_opponent_damage_lexed<'a>(
@@ -60,7 +60,7 @@ fn parse_triggered_spell_opponent_damage_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_triggered_spell_opponent_damage_shape(
+pub fn parse_triggered_spell_opponent_damage_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<TriggeredSpellOpponentDamageShape> {
     primitives::parse_all(

@@ -1,8 +1,6 @@
 use super::*;
 
-pub(crate) fn parse_next_spell_cost_reduction_sentence(
-    tokens: &[OwnedLexToken],
-) -> Option<EffectAst> {
+pub fn parse_next_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let parsed = activated_line_grammar::parse_next_spell_cost_reduction_tokens(tokens)?;
     Some(EffectAst::subject_verb_reduce_next_spell_cost_this_turn(
         PlayerAst::You,
@@ -11,7 +9,7 @@ pub(crate) fn parse_next_spell_cost_reduction_sentence(
     ))
 }
 
-pub(crate) fn parse_each_player_and_their_creatures_damage_sentence(
+pub fn parse_each_player_and_their_creatures_damage_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
     let parsed = effect_grammar::parse_each_player_creatures_damage_tokens(tokens)?;

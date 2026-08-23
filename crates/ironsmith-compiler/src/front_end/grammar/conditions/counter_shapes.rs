@@ -10,13 +10,13 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::{filters, primitives, shared_util};
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PlayerCounterConditionShape {
-    pub(crate) player: PlayerFilter,
-    pub(crate) comparison: Comparison,
-    pub(crate) counter_type: CounterType,
+pub struct PlayerCounterConditionShape {
+    pub player: PlayerFilter,
+    pub comparison: Comparison,
+    pub counter_type: CounterType,
 }
 
-pub(crate) fn parse_player_counter_condition(
+pub fn parse_player_counter_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerCounterConditionShape> {
     let tokens = trim_lexed_commas(tokens);

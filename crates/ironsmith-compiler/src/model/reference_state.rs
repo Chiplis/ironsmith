@@ -6,32 +6,32 @@ use crate::{PlayerFilter, TagKey};
 use super::facts::LoweringFrame;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum RefState<T> {
+pub enum RefState<T> {
     Known(T),
     Unknown,
     Ambiguous,
 }
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct ReferenceFrame {
-    pub(crate) last_effect_id: Option<EffectId>,
-    pub(crate) last_library_search_effect_id: Option<EffectId>,
-    pub(crate) last_object_tag: Option<String>,
-    pub(crate) snapshot_tag_aliases: Vec<(String, String)>,
-    pub(crate) last_it_choice_is_set: bool,
-    pub(crate) last_player_filter: Option<PlayerFilter>,
-    pub(crate) source_object_antecedent: bool,
-    pub(crate) recent_player_choice_tags: Vec<String>,
-    pub(crate) iterated_player: bool,
-    pub(crate) iterated_object: bool,
-    pub(crate) auto_tag_object_targets: bool,
-    pub(crate) force_auto_tag_object_targets: bool,
-    pub(crate) allow_life_event_value: bool,
-    pub(crate) bind_unbound_x_to_last_effect: bool,
+pub struct ReferenceFrame {
+    pub last_effect_id: Option<EffectId>,
+    pub last_library_search_effect_id: Option<EffectId>,
+    pub last_object_tag: Option<String>,
+    pub snapshot_tag_aliases: Vec<(String, String)>,
+    pub last_it_choice_is_set: bool,
+    pub last_player_filter: Option<PlayerFilter>,
+    pub source_object_antecedent: bool,
+    pub recent_player_choice_tags: Vec<String>,
+    pub iterated_player: bool,
+    pub iterated_object: bool,
+    pub auto_tag_object_targets: bool,
+    pub force_auto_tag_object_targets: bool,
+    pub allow_life_event_value: bool,
+    pub bind_unbound_x_to_last_effect: bool,
 }
 
 impl ReferenceFrame {
-    pub(crate) fn from_lowering_frame(frame: &LoweringFrame) -> Self {
+    pub fn from_lowering_frame(frame: &LoweringFrame) -> Self {
         Self {
             last_effect_id: frame.last_effect_id,
             last_library_search_effect_id: frame.last_library_search_effect_id,
@@ -50,7 +50,7 @@ impl ReferenceFrame {
         }
     }
 
-    pub(crate) fn to_lowering_frame(&self) -> LoweringFrame {
+    pub fn to_lowering_frame(&self) -> LoweringFrame {
         LoweringFrame {
             last_effect_id: self.last_effect_id,
             last_library_search_effect_id: self.last_library_search_effect_id,
@@ -76,21 +76,21 @@ impl ReferenceFrame {
 }
 
 impl<T: Clone + PartialEq> RefState<T> {
-    pub(crate) fn from_option(value: Option<T>) -> Self {
+    pub fn from_option(value: Option<T>) -> Self {
         match value {
             Some(value) => Self::Known(value),
             None => Self::Unknown,
         }
     }
 
-    pub(crate) fn into_option(self) -> Option<T> {
+    pub fn into_option(self) -> Option<T> {
         match self {
             Self::Known(value) => Some(value),
             Self::Unknown | Self::Ambiguous => None,
         }
     }
 
-    pub(crate) fn join(left: &Self, right: &Self) -> Self {
+    pub fn join(left: &Self, right: &Self) -> Self {
         match (left, right) {
             (Self::Known(left), Self::Known(right)) if left == right => Self::Known(left.clone()),
             (Self::Unknown, Self::Unknown) => Self::Unknown,
@@ -102,23 +102,23 @@ impl<T: Clone + PartialEq> RefState<T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
-pub(crate) struct ReferenceImports {
-    pub(crate) last_object_tag: Option<TagKey>,
+pub struct ReferenceImports {
+    pub last_object_tag: Option<TagKey>,
     /// Stable parse-time aliases already bound by the enclosing reference
     /// context. Nested lowering must import these alongside `last_object_tag`;
     /// otherwise compiling a conditional branch can erase an alias before the
     /// condition itself is lowered.
-    pub(crate) snapshot_tag_aliases: Vec<(String, String)>,
-    pub(crate) last_it_choice_is_set: bool,
-    pub(crate) iterated_object: bool,
-    pub(crate) last_player_filter: Option<PlayerFilter>,
-    pub(crate) source_object_antecedent: bool,
-    pub(crate) last_effect_id: Option<EffectId>,
-    pub(crate) last_library_search_effect_id: Option<EffectId>,
+    pub snapshot_tag_aliases: Vec<(String, String)>,
+    pub last_it_choice_is_set: bool,
+    pub iterated_object: bool,
+    pub last_player_filter: Option<PlayerFilter>,
+    pub source_object_antecedent: bool,
+    pub last_effect_id: Option<EffectId>,
+    pub last_library_search_effect_id: Option<EffectId>,
 }
 
 impl ReferenceImports {
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.last_object_tag.is_none()
             && self.snapshot_tag_aliases.is_empty()
             && !self.last_it_choice_is_set
@@ -129,7 +129,7 @@ impl ReferenceImports {
             && self.last_library_search_effect_id.is_none()
     }
 
-    pub(crate) fn with_last_object_tag(tag: impl Into<TagKey>) -> Self {
+    pub fn with_last_object_tag(tag: impl Into<TagKey>) -> Self {
         Self {
             last_object_tag: Some(tag.into()),
             last_it_choice_is_set: false,
@@ -138,7 +138,7 @@ impl ReferenceImports {
         }
     }
 
-    pub(crate) fn from_frame(frame: &ReferenceFrame) -> Self {
+    pub fn from_frame(frame: &ReferenceFrame) -> Self {
         Self {
             last_object_tag: frame.last_object_tag.as_ref().map(TagKey::from),
             snapshot_tag_aliases: frame.snapshot_tag_aliases.clone(),
@@ -151,28 +151,28 @@ impl ReferenceImports {
         }
     }
 
-    pub(crate) fn from_lowering_frame(frame: &LoweringFrame) -> Self {
+    pub fn from_lowering_frame(frame: &LoweringFrame) -> Self {
         Self::from_frame(&ReferenceFrame::from_lowering_frame(frame))
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ReferenceEnv {
-    pub(crate) last_object_tag: RefState<TagKey>,
+pub struct ReferenceEnv {
+    pub last_object_tag: RefState<TagKey>,
     /// Parse-time tag aliases bound by `SnapshotLastObjectTag`, mapping a stable
     /// parse-time placeholder tag to the concrete tag captured from
     /// `last_object_tag` at snapshot time. Survives later `last_object_tag`
     /// clobbers so composed effects can still reference an earlier looked pool.
-    pub(crate) snapshot_tag_aliases: Vec<(String, String)>,
-    pub(crate) last_it_choice_is_set: bool,
-    pub(crate) last_player_filter: RefState<PlayerFilter>,
-    pub(crate) source_object_antecedent: bool,
-    pub(crate) last_effect_id: RefState<EffectId>,
-    pub(crate) last_library_search_effect_id: RefState<EffectId>,
-    pub(crate) iterated_player: bool,
-    pub(crate) iterated_object: bool,
-    pub(crate) allow_life_event_value: bool,
-    pub(crate) bind_unbound_x_to_last_effect: bool,
+    pub snapshot_tag_aliases: Vec<(String, String)>,
+    pub last_it_choice_is_set: bool,
+    pub last_player_filter: RefState<PlayerFilter>,
+    pub source_object_antecedent: bool,
+    pub last_effect_id: RefState<EffectId>,
+    pub last_library_search_effect_id: RefState<EffectId>,
+    pub iterated_player: bool,
+    pub iterated_object: bool,
+    pub allow_life_event_value: bool,
+    pub bind_unbound_x_to_last_effect: bool,
 }
 
 impl Default for ReferenceEnv {
@@ -194,7 +194,7 @@ impl Default for ReferenceEnv {
 }
 
 impl ReferenceEnv {
-    pub(crate) fn from_imports(
+    pub fn from_imports(
         imports: &ReferenceImports,
         iterated_player: bool,
         allow_life_event_value: bool,
@@ -220,7 +220,7 @@ impl ReferenceEnv {
         }
     }
 
-    pub(crate) fn from_frame(frame: &ReferenceFrame) -> Self {
+    pub fn from_frame(frame: &ReferenceFrame) -> Self {
         Self {
             last_object_tag: RefState::from_option(
                 frame.last_object_tag.as_ref().map(TagKey::from),
@@ -240,11 +240,11 @@ impl ReferenceEnv {
         }
     }
 
-    pub(crate) fn from_lowering_frame(frame: &LoweringFrame) -> Self {
+    pub fn from_lowering_frame(frame: &LoweringFrame) -> Self {
         Self::from_frame(&ReferenceFrame::from_lowering_frame(frame))
     }
 
-    pub(crate) fn to_frame(
+    pub fn to_frame(
         &self,
         auto_tag_object_targets: bool,
         force_auto_tag_object_targets: bool,
@@ -271,7 +271,7 @@ impl ReferenceEnv {
         }
     }
 
-    pub(crate) fn to_lowering_frame(
+    pub fn to_lowering_frame(
         &self,
         auto_tag_object_targets: bool,
         force_auto_tag_object_targets: bool,
@@ -280,25 +280,25 @@ impl ReferenceEnv {
             .to_lowering_frame()
     }
 
-    pub(crate) fn known_last_object_tag(&self) -> Option<&TagKey> {
+    pub fn known_last_object_tag(&self) -> Option<&TagKey> {
         match &self.last_object_tag {
             RefState::Known(tag) => Some(tag),
             RefState::Unknown | RefState::Ambiguous => None,
         }
     }
 
-    pub(crate) fn known_last_player_filter(&self) -> Option<&PlayerFilter> {
+    pub fn known_last_player_filter(&self) -> Option<&PlayerFilter> {
         match &self.last_player_filter {
             RefState::Known(filter) => Some(filter),
             RefState::Unknown | RefState::Ambiguous => None,
         }
     }
 
-    pub(crate) fn has_source_object_antecedent(&self) -> bool {
+    pub fn has_source_object_antecedent(&self) -> bool {
         self.source_object_antecedent
     }
 
-    pub(crate) fn known_last_effect_id(&self) -> Option<EffectId> {
+    pub fn known_last_effect_id(&self) -> Option<EffectId> {
         match self.last_effect_id {
             RefState::Known(id) => Some(id),
             RefState::Unknown | RefState::Ambiguous => None,
@@ -307,14 +307,14 @@ impl ReferenceEnv {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ReferenceExports {
-    pub(crate) last_object_tag: RefState<TagKey>,
-    pub(crate) last_it_choice_is_set: bool,
-    pub(crate) last_player_filter: RefState<PlayerFilter>,
-    pub(crate) source_object_antecedent: bool,
-    pub(crate) last_effect_id: RefState<EffectId>,
-    pub(crate) last_library_search_effect_id: RefState<EffectId>,
-    pub(crate) iterated_player: bool,
+pub struct ReferenceExports {
+    pub last_object_tag: RefState<TagKey>,
+    pub last_it_choice_is_set: bool,
+    pub last_player_filter: RefState<PlayerFilter>,
+    pub source_object_antecedent: bool,
+    pub last_effect_id: RefState<EffectId>,
+    pub last_library_search_effect_id: RefState<EffectId>,
+    pub iterated_player: bool,
 }
 
 impl Default for ReferenceExports {
@@ -332,7 +332,7 @@ impl Default for ReferenceExports {
 }
 
 impl ReferenceExports {
-    pub(crate) fn from_env(env: &ReferenceEnv) -> Self {
+    pub fn from_env(env: &ReferenceEnv) -> Self {
         Self {
             last_object_tag: env.last_object_tag.clone(),
             last_it_choice_is_set: env.last_it_choice_is_set,
@@ -344,7 +344,7 @@ impl ReferenceExports {
         }
     }
 
-    pub(crate) fn join(left: &Self, right: &Self) -> Self {
+    pub fn join(left: &Self, right: &Self) -> Self {
         Self {
             last_object_tag: RefState::join(&left.last_object_tag, &right.last_object_tag),
             last_it_choice_is_set: left.last_it_choice_is_set && right.last_it_choice_is_set,
@@ -360,7 +360,7 @@ impl ReferenceExports {
         }
     }
 
-    pub(crate) fn to_imports(&self) -> ReferenceImports {
+    pub fn to_imports(&self) -> ReferenceImports {
         ReferenceImports {
             last_object_tag: self.last_object_tag.clone().into_option(),
             snapshot_tag_aliases: Vec::new(),
@@ -375,23 +375,23 @@ impl ReferenceExports {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct LoweredEffects {
-    pub(crate) effects: crate::resolution::ResolutionProgram,
-    pub(crate) choices: Vec<ChooseSpec>,
-    pub(crate) exports: ReferenceExports,
+pub struct LoweredEffects {
+    pub effects: crate::resolution::ResolutionProgram,
+    pub choices: Vec<ChooseSpec>,
+    pub exports: ReferenceExports,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct AnnotatedEffect {
-    pub(crate) effect: EffectAst,
-    pub(crate) in_env: ReferenceEnv,
-    pub(crate) out_env: ReferenceEnv,
-    pub(crate) assigned_effect_id: Option<EffectId>,
-    pub(crate) auto_tag_object_targets: bool,
+pub struct AnnotatedEffect {
+    pub effect: EffectAst,
+    pub in_env: ReferenceEnv,
+    pub out_env: ReferenceEnv,
+    pub assigned_effect_id: Option<EffectId>,
+    pub auto_tag_object_targets: bool,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct AnnotatedEffectSequence {
-    pub(crate) effects: Vec<AnnotatedEffect>,
-    pub(crate) final_env: ReferenceEnv,
+pub struct AnnotatedEffectSequence {
+    pub effects: Vec<AnnotatedEffect>,
+    pub final_env: ReferenceEnv,
 }

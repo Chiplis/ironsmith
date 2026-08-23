@@ -16,13 +16,13 @@ const INSTEAD_OF_PUTTING_IT_INTO: &[&str] = &["instead", "of", "putting", "it", 
 const INSTEAD_OF_PUTTING_THEM_INTO: &[&str] = &["instead", "of", "putting", "them", "into"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct InsteadFollowupShape {
-    pub(crate) semantics: InsteadSemantics,
-    pub(crate) conditional_intro: bool,
-    pub(crate) leading_instead_surface: bool,
+pub struct InsteadFollowupShape {
+    pub semantics: InsteadSemantics,
+    pub conditional_intro: bool,
+    pub leading_instead_surface: bool,
 }
 
-pub(crate) fn parse_instead_followup_semantics_lexed<'a>(
+pub fn parse_instead_followup_semantics_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<InsteadSemantics> {
     let tokens: Vec<&OwnedLexToken> = repeat(0.., any).parse_next(input)?;
@@ -33,17 +33,13 @@ pub(crate) fn parse_instead_followup_semantics_lexed<'a>(
     Ok(classify_instead_words(&words))
 }
 
-pub(crate) fn classify_instead_followup_semantics_tokens(
-    tokens: &[OwnedLexToken],
-) -> InsteadSemantics {
+pub fn classify_instead_followup_semantics_tokens(tokens: &[OwnedLexToken]) -> InsteadSemantics {
     primitives::parse_prefix(tokens, parse_instead_followup_semantics_lexed)
         .map(|(semantics, _)| semantics)
         .unwrap_or(InsteadSemantics::NonReplacement)
 }
 
-pub(crate) fn parse_instead_followup_shape_tokens(
-    tokens: &[OwnedLexToken],
-) -> InsteadFollowupShape {
+pub fn parse_instead_followup_shape_tokens(tokens: &[OwnedLexToken]) -> InsteadFollowupShape {
     let leading_instead_surface = tokens.windows(2).any(|pair| {
         (pair[0].is_comma() && pair[1].is_word("instead"))
             || (pair[0].is_word("may") && pair[1].is_word("instead"))

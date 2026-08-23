@@ -8,6 +8,7 @@ static OBJECT_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
 static CARD_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
 /// Snapshot of global ID counters so deterministic replays can restore identity space.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy)]
 pub struct IdCountersSnapshot {
     pub player: u8,
@@ -16,19 +17,23 @@ pub struct IdCountersSnapshot {
 }
 
 /// Player identifier, index-based for efficiency.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PlayerId(pub u8);
 
 /// Unique object identifier, monotonically increasing.
 /// Never reused - when an object changes zones, it gets a new ID per MTG rule 400.7.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ObjectId(pub u64);
 
 /// Stable object instance identifier used across zone changes.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct StableId(pub ObjectId);
 
 /// Card definition identifier, references static card data.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct CardId(pub u32);
 

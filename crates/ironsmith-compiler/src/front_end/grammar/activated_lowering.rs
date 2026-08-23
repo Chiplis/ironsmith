@@ -12,29 +12,29 @@ use crate::ir::ActivatedPresentationKind;
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActivatedManaEffectKind {
+pub enum ActivatedManaEffectKind {
     AddMana,
     ColorsAmong,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActivatedRestrictionSentenceKind {
+pub enum ActivatedRestrictionSentenceKind {
     ManaSource,
     SpendThisManaOnly,
     WhenSpendThisManaToCast,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActivatedXDefinitionIntro {
+pub enum ActivatedXDefinitionIntro {
     WhereXIs,
     XIs,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ActivatedXDefinitionShape<'a> {
-    pub(crate) intro: ActivatedXDefinitionIntro,
-    pub(crate) value_tokens: &'a [OwnedLexToken],
-    pub(crate) exiled_card_mana_value: bool,
+pub struct ActivatedXDefinitionShape<'a> {
+    pub intro: ActivatedXDefinitionIntro,
+    pub value_tokens: &'a [OwnedLexToken],
+    pub exiled_card_mana_value: bool,
 }
 
 fn surface_has_sequence(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> bool {
@@ -50,7 +50,7 @@ fn parse_colors_among_mana_surface(tokens: &[OwnedLexToken]) -> bool {
         && surface_has_sequence(tokens, &["add", "one", "mana", "of", "that", "color"])
 }
 
-pub(crate) fn parse_activated_mana_effect_kind(
+pub fn parse_activated_mana_effect_kind(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivatedManaEffectKind> {
     if parse_colors_among_mana_surface(tokens) {
@@ -67,15 +67,15 @@ pub(crate) fn parse_activated_mana_effect_kind(
     .map(|_| ActivatedManaEffectKind::AddMana)
 }
 
-pub(crate) fn contains_where_x_definition(tokens: &[OwnedLexToken]) -> bool {
+pub fn contains_where_x_definition(tokens: &[OwnedLexToken]) -> bool {
     surface_has_sequence(tokens, &["where", "x", "is"])
 }
 
-pub(crate) fn contains_add_x_mana(tokens: &[OwnedLexToken]) -> bool {
+pub fn contains_add_x_mana(tokens: &[OwnedLexToken]) -> bool {
     surface_has_sequence(tokens, &["add", "x", "mana"])
 }
 
-pub(crate) fn any_player_may_activate_on_stack(tokens: &[OwnedLexToken]) -> bool {
+pub fn any_player_may_activate_on_stack(tokens: &[OwnedLexToken]) -> bool {
     surface_has_sequence(
         tokens,
         &["any", "player", "may", "activate", "this", "ability"],
@@ -91,7 +91,7 @@ fn has_source_command_zone_origin(tokens: &[OwnedLexToken]) -> bool {
     reference_shapes::contains_source_from_command_zone(&words)
 }
 
-pub(crate) fn parse_activated_presentation_kind_tokens(
+pub fn parse_activated_presentation_kind_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivatedPresentationKind> {
     let (delimiter, _, _) = primitives::find_prefix(tokens, || {
@@ -127,7 +127,7 @@ pub(crate) fn parse_activated_presentation_kind_tokens(
     }
 }
 
-pub(crate) fn parse_activated_functional_zones_tokens(
+pub fn parse_activated_functional_zones_tokens(
     cost_tokens: &[OwnedLexToken],
     effect_tokens: &[OwnedLexToken],
 ) -> Vec<Zone> {
@@ -179,7 +179,7 @@ fn parse_mana_source_restriction_lexed<'a>(input: &mut LexStream<'a>) -> WResult
     primitives::sentence_end().parse_next(input)
 }
 
-pub(crate) fn classify_activated_restriction_sentence(
+pub fn classify_activated_restriction_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivatedRestrictionSentenceKind> {
     if primitives::parse_all(
@@ -238,7 +238,7 @@ fn exiled_card_mana_value_tail(tokens: &[OwnedLexToken]) -> bool {
     .is_ok()
 }
 
-pub(crate) fn parse_activated_x_definition_tokens(
+pub fn parse_activated_x_definition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivatedXDefinitionShape<'_>> {
     let (intro, value_tokens) = primitives::parse_all(
@@ -254,7 +254,7 @@ pub(crate) fn parse_activated_x_definition_tokens(
     })
 }
 
-pub(crate) fn find_activated_x_definition_tokens(
+pub fn find_activated_x_definition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivatedXDefinitionShape<'_>> {
     let (offset, _, _) =
@@ -272,7 +272,7 @@ fn parse_level_number_lexed<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
     Ok(level)
 }
 
-pub(crate) fn parse_level_number_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
+pub fn parse_level_number_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
     primitives::parse_prefix(tokens, parse_level_number_lexed).map(|(level, _)| level)
 }
 

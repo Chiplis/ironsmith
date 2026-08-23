@@ -61,11 +61,11 @@ fn same_name_that_reference<'a>(input: &mut primitives::WordSliceInput<'a>) -> M
     .parse_next(input)
 }
 
-pub(crate) fn is_same_name_that_reference_words(words: &[&str]) -> bool {
+pub fn is_same_name_that_reference_words(words: &[&str]) -> bool {
     primitives::parse_full_word_slice(words, same_name_that_reference).is_some()
 }
 
-pub(crate) fn same_name_antecedent_surface_words(
+pub fn same_name_antecedent_surface_words(
     words: &[&str],
 ) -> Option<ironsmith_core::SameNameAntecedentSurface> {
     words

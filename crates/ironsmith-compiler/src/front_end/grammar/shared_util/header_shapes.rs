@@ -9,19 +9,19 @@ use crate::lexer::{
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct SagaChapterHeader {
-    pub(crate) chapters: Vec<u32>,
-    pub(crate) presentation_label: Option<String>,
-    pub(crate) body: String,
+pub struct SagaChapterHeader {
+    pub chapters: Vec<u32>,
+    pub presentation_label: Option<String>,
+    pub body: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct LevelHeader {
-    pub(crate) minimum: u32,
-    pub(crate) maximum: Option<u32>,
+pub struct LevelHeader {
+    pub minimum: u32,
+    pub maximum: Option<u32>,
 }
 
-pub(crate) fn parse_saga_chapter_header(line: &str) -> Option<SagaChapterHeader> {
+pub fn parse_saga_chapter_header(line: &str) -> Option<SagaChapterHeader> {
     let tokens = lex_line(line.trim(), 0).ok()?;
     let (chapters, rest_tokens) = primitives::parse_prefix(&tokens, parse_saga_prefix)?;
     let body_shape = parse_saga_chapter_body_tokens(rest_tokens);
@@ -95,7 +95,7 @@ fn parse_labeled_saga_chapter_body<'a>(
     })
 }
 
-pub(crate) fn parse_level_header(line: &str) -> Option<LevelHeader> {
+pub fn parse_level_header(line: &str) -> Option<LevelHeader> {
     let tokens = lex_line(line.trim(), 0).ok()?;
     if !permission_shapes::prefix_tokens(&tokens, &["level"]) {
         return None;

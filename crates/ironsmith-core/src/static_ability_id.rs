@@ -3,6 +3,7 @@
 //! This enum provides unique identifiers for each type of static ability.
 
 /// Unique identifier for each type of static ability.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StaticAbilityId {
     Flying,

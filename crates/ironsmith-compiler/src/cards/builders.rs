@@ -1,29 +1,29 @@
-pub(crate) use crate::ability::{ActivationTiming, PresentationKeyword, PresentationLabel};
+pub use crate::ability::{ActivationTiming, PresentationKeyword, PresentationLabel};
 use crate::card::{CardBuilder, LinkedFaceLayout, PowerToughness};
 pub use crate::cards::CardDefinition;
 use crate::color::ColorSet;
 pub use crate::cost::OptionalCost;
 use crate::cost::TotalCost;
 pub use crate::diagnostics::{CardTextError, ParseAnnotations, TextSpan};
-pub(crate) use crate::effect::EffectPredicate;
+pub use crate::effect::EffectPredicate;
 pub use crate::effect::{ChoiceCount, EventValueSpec, Value};
-pub(crate) use crate::effect_sentences::{CarryContext, TokenCopyFollowup, Verb};
+pub use crate::effect_sentences::{CarryContext, TokenCopyFollowup, Verb};
 #[cfg(test)]
-pub(crate) use crate::effect_sentences::{
+pub use crate::effect_sentences::{
     find_verb, parse_effect_sentence_lexed, parse_shared_color_target_fanout_sentence,
 };
 use crate::mana::ManaCost;
-pub(crate) use crate::model::compiler_semantic::{
+pub use crate::model::compiler_semantic::{
     ConditionalModeSelection, GiftTimingAst, LineAst, ParsedAbility, ParsedCardItem,
     ParsedConditionalModeChange, ParsedLevelAbilityAst, ParsedLevelAbilityItemAst,
     ParsedLevelActivatedAbilityAst, ParsedLineAst, ParsedModalActivatedHeader, ParsedModalAst,
     ParsedModalGate, ParsedModalHeader, ParsedModalModeAst, ParsedRestrictions,
 };
-pub(crate) use crate::model::facts::{
+pub use crate::model::facts::{
     EffectLoweringContext, IdGenContext, LineInfo, LoweringFrame, MetadataLine, NormalizedLine,
 };
 pub use crate::model::reference::RefState;
-pub(crate) use crate::model::reference_state::{ReferenceEnv, ReferenceImports};
+pub use crate::model::reference_state::{ReferenceEnv, ReferenceImports};
 pub use crate::model::{
     AdditionalCostChoiceOptionAst, ClashOpponentAst, ControlDurationAst, DamageBySpec,
     ExchangeValueAst, ExchangeValueKindAst, ExtraTurnAnchorAst,
@@ -35,69 +35,43 @@ pub use crate::model::{
 };
 use crate::object::AuraAttachmentFilter;
 pub use crate::payload::{IfResultPredicate, KeywordAction};
-pub(crate) use crate::permission_helpers::{PermissionClauseSpec, PermissionLifetime};
+pub use crate::permission_helpers::{PermissionClauseSpec, PermissionLifetime};
 use crate::resolution::ResolutionProgram;
 use crate::static_abilities::StaticAbility;
-pub(crate) use crate::tag::TagKey;
+pub use crate::tag::TagKey;
 pub use crate::target::{ObjectFilter, PlayerFilter};
 pub use crate::types::CardType;
 use crate::types::{Subtype, Supertype};
-pub(crate) use crate::util::SubjectAst;
+pub use crate::util::SubjectAst;
 pub use ironsmith_core::CardId;
 
 #[cfg(test)]
-pub(crate) mod document_parser {
-    pub(crate) use crate::cst::KeywordLineKindCst;
+pub mod document_parser {
+    pub use crate::cst::KeywordLineKindCst;
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum GrantedAbilityAst {
-    KeywordAction(KeywordAction),
-    StaticAbility(StaticAbility),
-    ThisAbility,
-    MustAttack,
-    MustBlock,
-    CanAttackAsThoughNoDefender,
-    CanBlockAdditionalCreatureEachCombat {
-        additional: usize,
-    },
-    ParsedObjectAbility {
-        ability: ParsedAbility,
-        display: String,
-    },
-}
+pub use ironsmith_compiler_semantic::cards::builders::GrantedAbilityAst;
 
-impl From<KeywordAction> for GrantedAbilityAst {
-    fn from(action: KeywordAction) -> Self {
-        Self::KeywordAction(action)
-    }
-}
+pub use crate::lexer::OwnedLexToken;
 
-pub(crate) use crate::lexer::OwnedLexToken;
-
-pub(crate) use crate::model::ast::{
-    ChooseOneModeAst, EffectAst, PredicateAst, ReturnAsAuraAst, StaticAbilityAst,
-    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst,
-    TriggerSpec, TurnHistoryPredicateAst,
+pub use crate::model::ast::{
+    ChooseOneModeAst, EffectAst, PredicateAst, StaticAbilityAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst, TriggerSpec,
+    TurnHistoryPredicateAst,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum InsteadSemantics {
-    SelfReplacement,
-    FutureReplacement,
-    NonReplacement,
-}
+pub use ironsmith_compiler_semantic::cards::builders::InsteadSemantics;
 
 #[derive(Debug, Clone)]
 pub struct CardDefinitionBuilder {
-    pub(crate) card_builder: CardBuilder,
-    pub(crate) abilities: Vec<crate::ability::Ability>,
-    pub(crate) spell_effect: Option<ResolutionProgram>,
-    pub(crate) alternative_casts: Vec<crate::alternative_cast::AlternativeCastingMethod>,
-    pub(crate) optional_costs: Vec<OptionalCost>,
-    pub(crate) additional_cost: TotalCost,
-    pub(crate) aura_attach_filter: Option<AuraAttachmentFilter>,
-    pub(crate) has_fuse: bool,
+    pub card_builder: CardBuilder,
+    pub abilities: Vec<crate::ability::Ability>,
+    pub spell_effect: Option<ResolutionProgram>,
+    pub alternative_casts: Vec<crate::alternative_cast::AlternativeCastingMethod>,
+    pub optional_costs: Vec<OptionalCost>,
+    pub additional_cost: TotalCost,
+    pub aura_attach_filter: Option<AuraAttachmentFilter>,
+    pub has_fuse: bool,
 }
 
 impl CardDefinitionBuilder {
@@ -525,6 +499,36 @@ impl CardDefinitionBuilder {
             }
         }
         Ok(self)
+    }
+
+    pub fn apply_compiler_metadata(
+        self,
+        meta: crate::model::facts::MetadataLine,
+    ) -> Result<Self, CardTextError> {
+        let structural = match meta {
+            crate::model::facts::MetadataLine::ManaCost(value) => {
+                crate::front_end::MetadataLine::ManaCost(value)
+            }
+            crate::model::facts::MetadataLine::TypeLine(value) => {
+                crate::front_end::MetadataLine::TypeLine(value)
+            }
+            crate::model::facts::MetadataLine::FirstPrintedSet(value) => {
+                crate::front_end::MetadataLine::FirstPrintedSet(value)
+            }
+            crate::model::facts::MetadataLine::AttractionLights(value) => {
+                crate::front_end::MetadataLine::AttractionLights(value)
+            }
+            crate::model::facts::MetadataLine::PowerToughness(value) => {
+                crate::front_end::MetadataLine::PowerToughness(value)
+            }
+            crate::model::facts::MetadataLine::Loyalty(value) => {
+                crate::front_end::MetadataLine::Loyalty(value)
+            }
+            crate::model::facts::MetadataLine::Defense(value) => {
+                crate::front_end::MetadataLine::Defense(value)
+            }
+        };
+        self.apply_metadata(structural)
     }
 
     pub fn parse_text(self, text: impl Into<String>) -> Result<CardDefinition, CardTextError> {
@@ -1306,7 +1310,7 @@ impl CardDefinitionBuilder {
         ))
     }
 
-    pub(crate) fn soulshift_triggered_ability_from_value(amount: Value) -> crate::ability::Ability {
+    pub fn soulshift_triggered_ability_from_value(amount: Value) -> crate::ability::Ability {
         Self::soulshift_triggered_ability(
             crate::filter::Comparison::LessThanOrEqualExpr(Box::new(amount)),
             Some(PresentationLabel::Keyword(PresentationKeyword::Soulshift(
@@ -2543,8 +2547,7 @@ pub const CHOSEN_OBJECTS_TAG: &str = crate::host::CHOSEN_OBJECTS_TAG;
 pub const COPIED_STACK_OBJECT_TAG: &str = crate::host::COPIED_STACK_OBJECT_TAG;
 /// Parse-time alias for an authored target selected by the ability's
 /// controller (for example, "the creature you chose").
-pub(crate) const ABILITY_CONTROLLER_TARGET_CHOICE_TAG: &str =
-    "__ability_controller_target_choice_0";
+pub const ABILITY_CONTROLLER_TARGET_CHOICE_TAG: &str = "__ability_controller_target_choice_0";
 /// Parse-time alias for an authored target selected by the opponent tied to a
 /// prior target (for example, "the creature your opponent chose").
-pub(crate) const OPPONENT_TARGET_CHOICE_TAG: &str = "__opponent_target_choice_1";
+pub const OPPONENT_TARGET_CHOICE_TAG: &str = "__opponent_target_choice_1";

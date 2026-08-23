@@ -10,20 +10,20 @@ use crate::util::possessive_normalized_word_refs;
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SearchZonePairShape {
-    pub(crate) owner: PlayerFilter,
-    pub(crate) first_zone: Zone,
-    pub(crate) second_zone: Zone,
+pub struct SearchZonePairShape {
+    pub owner: PlayerFilter,
+    pub first_zone: Zone,
+    pub second_zone: Zone,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SearchTargetExileBundleShape {
-    pub(crate) player: PlayerAst,
-    pub(crate) filter: PlayerFilter,
+pub struct SearchTargetExileBundleShape {
+    pub player: PlayerAst,
+    pub filter: PlayerFilter,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SearchForEachWayKind {
+pub enum SearchForEachWayKind {
     Exiled,
     DestroyedOrDied,
     PutIntoGraveyard,
@@ -31,23 +31,23 @@ pub(crate) enum SearchForEachWayKind {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SearchForEachWayShape<'a> {
-    pub(crate) kind: SearchForEachWayKind,
-    pub(crate) iterated_filter_tokens: Option<&'a [OwnedLexToken]>,
-    pub(crate) effect_tokens: Option<&'a [OwnedLexToken]>,
-    pub(crate) permanent_card_type_consult: bool,
+pub struct SearchForEachWayShape<'a> {
+    pub kind: SearchForEachWayKind,
+    pub iterated_filter_tokens: Option<&'a [OwnedLexToken]>,
+    pub effect_tokens: Option<&'a [OwnedLexToken]>,
+    pub permanent_card_type_consult: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SearchExiledConsultFinish {
+pub enum SearchExiledConsultFinish {
     Shuffle,
     PutRestOnBottom,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SearchExiledConsultShape<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) finish: SearchExiledConsultFinish,
+pub struct SearchExiledConsultShape<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub finish: SearchExiledConsultFinish,
 }
 
 fn word(input: &mut primitives::WordSliceInput<'_>, expected: &'static str) -> WResult<()> {
@@ -134,7 +134,7 @@ fn parse_zone_pair_words(
     })
 }
 
-pub(crate) fn parse_search_exile_zone_pair_shape_lexed(
+pub fn parse_search_exile_zone_pair_shape_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<SearchZonePairShape> {
     let words = parser_token_word_refs(tokens);
@@ -222,7 +222,7 @@ fn parse_target_exile_bundle_words(
     Ok(subject)
 }
 
-pub(crate) fn parse_target_exile_bundle_shape_lexed(
+pub fn parse_target_exile_bundle_shape_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<SearchTargetExileBundleShape> {
     let words = parser_token_word_refs(trim_lexed_commas(tokens));
@@ -250,7 +250,7 @@ fn comma_parts(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], Option<&[OwnedLex
     (trim_lexed_commas(tokens), None)
 }
 
-pub(crate) fn parse_search_for_each_way_shape_lexed(
+pub fn parse_search_for_each_way_shape_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<SearchForEachWayShape<'_>> {
     let (head, effect_tokens) = comma_parts(tokens);
@@ -319,7 +319,7 @@ pub(crate) fn parse_search_for_each_way_shape_lexed(
     })
 }
 
-pub(crate) fn parse_search_exiled_consult_shape_lexed(
+pub fn parse_search_exiled_consult_shape_lexed(
     effect_tokens: &[OwnedLexToken],
 ) -> Option<SearchExiledConsultShape<'_>> {
     let (_, after_prefix) = primitives::parse_prefix(
@@ -363,7 +363,7 @@ pub(crate) fn parse_search_exiled_consult_shape_lexed(
     })
 }
 
-pub(crate) fn search_each_player_exiled_permanents_shape_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn search_each_player_exiled_permanents_shape_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(
         tokens,
         primitives::phrase(&["each", "player", "turns", "face", "up", "all", "cards"]),

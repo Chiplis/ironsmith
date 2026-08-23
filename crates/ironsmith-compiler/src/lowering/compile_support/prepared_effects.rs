@@ -16,10 +16,8 @@ use super::{
 };
 
 #[cfg(test)]
-pub(crate) fn compile_statement_effects(
-    effects: &[EffectAst],
-) -> Result<Vec<Effect>, CardTextError> {
-    stacker::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
+pub fn compile_statement_effects(effects: &[EffectAst]) -> Result<Vec<Effect>, CardTextError> {
+    crate::stack::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
         Ok(
             compile_statement_effects_with_imports(effects, &ReferenceImports::default())?
                 .effects
@@ -28,17 +26,17 @@ pub(crate) fn compile_statement_effects(
     })
 }
 
-pub(crate) fn compile_statement_effects_with_imports(
+pub fn compile_statement_effects_with_imports(
     effects: &[EffectAst],
     imports: &ReferenceImports,
 ) -> Result<LoweredEffects, CardTextError> {
-    stacker::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
+    crate::stack::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
         let prepared = rewrite_prepare_effects_for_lowering(effects, imports.clone())?;
         materialize_prepared_statement_effects(&prepared)
     })
 }
 
-pub(crate) fn materialize_prepared_statement_effects(
+pub fn materialize_prepared_statement_effects(
     prepared: &PreparedEffectsForLowering,
 ) -> Result<LoweredEffects, CardTextError> {
     if let Some(mut lowered) = materialize_trailing_self_replacement(prepared)? {
@@ -74,7 +72,7 @@ pub(crate) fn materialize_prepared_statement_effects(
     Ok(lowered)
 }
 
-pub(crate) fn materialize_prepared_effects_with_trigger_context(
+pub fn materialize_prepared_effects_with_trigger_context(
     prepared: &PreparedEffectsForLowering,
 ) -> Result<LoweredEffects, CardTextError> {
     if let Some(lowered) = materialize_trailing_self_replacement(prepared)? {
@@ -1090,7 +1088,7 @@ fn retarget_death_replacement_from_exiled_attachment(
 /// a return-and-reattach procedure. The intervening Aura result becomes the
 /// destination reference, but it must not replace the historical object in
 /// the later "Equipment that were attached to it" filter.
-pub(crate) fn rebind_returned_attachment_history_to_triggering_object(
+pub fn rebind_returned_attachment_history_to_triggering_object(
     segments: &mut [crate::resolution::ResolutionSegment],
 ) {
     for segment in segments {
@@ -1814,7 +1812,7 @@ fn predicate_uses_implicit_object_reference(predicate: &PredicateAst) -> bool {
     }
 }
 
-pub(crate) fn materialize_prepared_triggered_effects(
+pub fn materialize_prepared_triggered_effects(
     prepared: &PreparedTriggeredEffectsForLowering,
 ) -> Result<(LoweredEffects, Option<Condition>), CardTextError> {
     let mut lowered = materialize_prepared_effects_with_trigger_context(&prepared.prepared)?;
@@ -2734,7 +2732,7 @@ fn choose_spec_contains_it_tag(spec: &ChooseSpec) -> bool {
     }
 }
 
-pub(crate) fn compile_effect_prelude_tags(prelude: &[EffectPreludeTag]) -> Vec<Effect> {
+pub fn compile_effect_prelude_tags(prelude: &[EffectPreludeTag]) -> Vec<Effect> {
     prelude
         .iter()
         .map(|tag| match tag {
@@ -2757,7 +2755,7 @@ pub(crate) fn compile_effect_prelude_tags(prelude: &[EffectPreludeTag]) -> Vec<E
         .collect()
 }
 
-pub(crate) fn compile_condition_from_predicate_ast_with_env(
+pub fn compile_condition_from_predicate_ast_with_env(
     predicate: &PredicateAst,
     refs: &ReferenceEnv,
     saved_last_object_tag: Option<&TagKey>,
@@ -2769,7 +2767,7 @@ pub(crate) fn compile_condition_from_predicate_ast_with_env(
     compile_condition_from_predicate_ast(predicate, &mut ctx, &saved_last_tag)
 }
 
-pub(crate) fn compile_prepared_predicate_for_lowering(
+pub fn compile_prepared_predicate_for_lowering(
     prepared: &PreparedPredicateForLowering,
 ) -> Result<Condition, CardTextError> {
     compile_condition_from_predicate_ast_with_env(

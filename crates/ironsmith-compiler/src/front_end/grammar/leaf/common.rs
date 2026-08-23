@@ -1,10 +1,10 @@
 use winnow::ascii::multispace0;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use winnow::ascii::space1;
 use winnow::combinator::{alt, delimited, eof, peek, terminated};
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use winnow::token::literal;
 use winnow::token::one_of;
 
@@ -26,7 +26,7 @@ pub(super) fn phrase<'a>(
     terminated(expected, word_boundary).void()
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(super) fn text_phrase_words<'a>(
     expected: &'static [&'static str],
 ) -> impl Parser<&'a str, (), ErrMode<ContextError>> {

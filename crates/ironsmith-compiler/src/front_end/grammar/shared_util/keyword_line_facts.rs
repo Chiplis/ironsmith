@@ -10,7 +10,7 @@ use crate::mana::ManaCost;
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum NamedCostKeyword {
+pub enum NamedCostKeyword {
     Replicate,
     Escalate,
     Evoke,
@@ -36,59 +36,59 @@ enum SharedKeywordHead {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LevelUpLineFact {
-    pub(crate) mana_cost: Option<ManaCost>,
+pub struct LevelUpLineFact {
+    pub mana_cost: Option<ManaCost>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum MadnessCostFact<'a> {
+pub enum MadnessCostFact<'a> {
     RepeatedMana(ManaCost),
     ActivationTokens(&'a [OwnedLexToken]),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct MadnessLineFact<'a> {
-    pub(crate) cost: MadnessCostFact<'a>,
+pub struct MadnessLineFact<'a> {
+    pub cost: MadnessCostFact<'a>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BargainLineFact;
+pub struct BargainLineFact;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct NamedCostLineFact<'a> {
-    pub(crate) cost_tokens: &'a [OwnedLexToken],
+pub struct NamedCostLineFact<'a> {
+    pub cost_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EpicLineFact;
+pub struct EpicLineFact;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RetraceLineFact;
+pub struct RetraceLineFact;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct HarmonizeLineFact<'a> {
-    pub(crate) cost_tokens: &'a [OwnedLexToken],
+pub struct HarmonizeLineFact<'a> {
+    pub cost_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WarpLineFact<'a> {
-    pub(crate) cost_tokens: &'a [OwnedLexToken],
+pub struct WarpLineFact<'a> {
+    pub cost_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ReinforceLineFact<'a> {
-    pub(crate) amount: Option<leaf::LeafNumber>,
-    pub(crate) cost_tokens: &'a [OwnedLexToken],
+pub struct ReinforceLineFact<'a> {
+    pub amount: Option<leaf::LeafNumber>,
+    pub cost_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_level_up_line_tokens(tokens: &[OwnedLexToken]) -> Option<LevelUpLineFact> {
+pub fn parse_level_up_line_tokens(tokens: &[OwnedLexToken]) -> Option<LevelUpLineFact> {
     let rest = parse_expected_head(tokens, SharedKeywordHead::LevelUp)?;
     let mana_cost = primitives::parse_prefix(rest, leaf::parse_leaf_mana_cost_prefix_lexed)
         .map(|(prefix, _)| prefix.cost);
     Some(LevelUpLineFact { mana_cost })
 }
 
-pub(crate) fn parse_madness_line_tokens(tokens: &[OwnedLexToken]) -> Option<MadnessLineFact<'_>> {
+pub fn parse_madness_line_tokens(tokens: &[OwnedLexToken]) -> Option<MadnessLineFact<'_>> {
     let rest = parse_expected_head(tokens, SharedKeywordHead::Madness)?;
     let comma = primitives::find_prefix(rest, primitives::comma).map(|(idx, _, _)| idx);
     let cost_tokens = strip_leading_cost_separators(&rest[..comma.unwrap_or(rest.len())]);
@@ -103,12 +103,12 @@ pub(crate) fn parse_madness_line_tokens(tokens: &[OwnedLexToken]) -> Option<Madn
     Some(MadnessLineFact { cost })
 }
 
-pub(crate) fn parse_bargain_line_tokens(tokens: &[OwnedLexToken]) -> Option<BargainLineFact> {
+pub fn parse_bargain_line_tokens(tokens: &[OwnedLexToken]) -> Option<BargainLineFact> {
     parse_expected_head(tokens, SharedKeywordHead::Bargain)?;
     Some(BargainLineFact)
 }
 
-pub(crate) fn parse_named_cost_line_tokens(
+pub fn parse_named_cost_line_tokens(
     tokens: &[OwnedLexToken],
     expected: NamedCostKeyword,
 ) -> Option<NamedCostLineFact<'_>> {
@@ -128,31 +128,27 @@ pub(crate) fn parse_named_cost_line_tokens(
     })
 }
 
-pub(crate) fn parse_epic_line_tokens(tokens: &[OwnedLexToken]) -> Option<EpicLineFact> {
+pub fn parse_epic_line_tokens(tokens: &[OwnedLexToken]) -> Option<EpicLineFact> {
     parse_expected_head(tokens, SharedKeywordHead::Epic)?;
     Some(EpicLineFact)
 }
 
-pub(crate) fn parse_retrace_line_tokens(tokens: &[OwnedLexToken]) -> Option<RetraceLineFact> {
+pub fn parse_retrace_line_tokens(tokens: &[OwnedLexToken]) -> Option<RetraceLineFact> {
     parse_expected_head(tokens, SharedKeywordHead::Retrace)?;
     Some(RetraceLineFact)
 }
 
-pub(crate) fn parse_harmonize_line_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<HarmonizeLineFact<'_>> {
+pub fn parse_harmonize_line_tokens(tokens: &[OwnedLexToken]) -> Option<HarmonizeLineFact<'_>> {
     let cost_tokens = parse_expected_head(tokens, SharedKeywordHead::Harmonize)?;
     Some(HarmonizeLineFact { cost_tokens })
 }
 
-pub(crate) fn parse_warp_line_tokens(tokens: &[OwnedLexToken]) -> Option<WarpLineFact<'_>> {
+pub fn parse_warp_line_tokens(tokens: &[OwnedLexToken]) -> Option<WarpLineFact<'_>> {
     let cost_tokens = parse_expected_head(tokens, SharedKeywordHead::Warp)?;
     Some(WarpLineFact { cost_tokens })
 }
 
-pub(crate) fn parse_reinforce_line_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<ReinforceLineFact<'_>> {
+pub fn parse_reinforce_line_tokens(tokens: &[OwnedLexToken]) -> Option<ReinforceLineFact<'_>> {
     let tail = parse_expected_head(tokens, SharedKeywordHead::Reinforce)?;
     if primitives::find_prefix(tokens, || {
         alt((primitives::kw("has"), primitives::kw("have")))

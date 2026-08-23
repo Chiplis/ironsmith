@@ -6,7 +6,7 @@ use crate::recognition::{ParseDiagnostic, ParseExpectation, ParseOutcome, RuleId
 const TYPED_CLAUSE_HEAD_RULE: RuleId = RuleId::new("typed-effect-clause-head");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ClauseActorHeadAst {
+pub enum ClauseActorHeadAst {
     Implicit,
     Controller,
     Player,
@@ -17,7 +17,7 @@ pub(crate) enum ClauseActorHeadAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ClauseHeadFormAst {
+pub enum ClauseHeadFormAst {
     Action(ClauseVerbAst),
     Conditional,
     Iteration,
@@ -32,7 +32,7 @@ pub(crate) enum ClauseHeadFormAst {
 /// existing single/pair indexes without re-tokenizing or rescanning a whole
 /// sentence for every candidate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TypedClauseHeadAst<'a> {
+pub struct TypedClauseHeadAst<'a> {
     pub first_word: &'a str,
     pub second_word: Option<&'a str>,
     pub actor: ClauseActorHeadAst,
@@ -41,7 +41,7 @@ pub(crate) struct TypedClauseHeadAst<'a> {
 }
 
 impl TypedClauseHeadAst<'_> {
-    pub(crate) fn permits_action_fallback(self) -> bool {
+    pub fn permits_action_fallback(self) -> bool {
         matches!(
             self.form,
             ClauseHeadFormAst::Action(_) | ClauseHeadFormAst::Structural
@@ -49,7 +49,7 @@ impl TypedClauseHeadAst<'_> {
     }
 }
 
-pub(crate) fn classify_typed_clause_head<'a>(
+pub fn classify_typed_clause_head<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> ParseOutcome<TypedClauseHeadAst<'a>> {
     let words = TokenWordView::new(tokens).to_word_refs();

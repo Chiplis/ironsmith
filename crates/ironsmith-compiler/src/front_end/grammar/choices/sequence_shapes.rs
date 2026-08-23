@@ -13,40 +13,40 @@ use super::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChosenCantBlockShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) exclude_tagged_choice: bool,
-    pub(crate) bare_other_reference: bool,
+pub struct ChosenCantBlockShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub exclude_tagged_choice: bool,
+    pub bare_other_reference: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ChosenCantBlockSyntaxError {
+pub enum ChosenCantBlockSyntaxError {
     MissingSubject,
     MissingObjectFilter,
     UnsupportedObjectFilter,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ChoiceBecomeKind {
+pub enum ChoiceBecomeKind {
     CreatureType { excluded_subtypes: Vec<Subtype> },
     BasicLandType,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ChoiceBecomeSubject<'a> {
+pub enum ChoiceBecomeSubject<'a> {
     Target(&'a [OwnedLexToken]),
     AllObjects(&'a [OwnedLexToken]),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ChoiceBecomeShape<'a> {
-    pub(crate) kind: ChoiceBecomeKind,
-    pub(crate) subject: ChoiceBecomeSubject<'a>,
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
+pub struct ChoiceBecomeShape<'a> {
+    pub kind: ChoiceBecomeKind,
+    pub subject: ChoiceBecomeSubject<'a>,
+    pub tail_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ChoiceBecomeSyntaxError {
+pub enum ChoiceBecomeSyntaxError {
     MissingCreatureSubtypeExclusion,
     UnsupportedCreatureSubtypeExclusion,
     UnsupportedCreatureTypeClause,
@@ -57,29 +57,29 @@ pub(crate) enum ChoiceBecomeSyntaxError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChoiceLibraryMoveShape<'a> {
-    pub(crate) first_clause: &'a [OwnedLexToken],
-    pub(crate) second_clause: &'a [OwnedLexToken],
-    pub(crate) moved_tokens: &'a [OwnedLexToken],
-    pub(crate) moved_is_tagged_choice: bool,
+pub struct ChoiceLibraryMoveShape<'a> {
+    pub first_clause: &'a [OwnedLexToken],
+    pub second_clause: &'a [OwnedLexToken],
+    pub moved_tokens: &'a [OwnedLexToken],
+    pub moved_is_tagged_choice: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ChoiceBattlefieldController {
+pub enum ChoiceBattlefieldController {
     Preserve,
     You,
     Owner,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChoiceBattlefieldMoveShape<'a> {
-    pub(crate) first_clause: &'a [OwnedLexToken],
-    pub(crate) second_clause: &'a [OwnedLexToken],
-    pub(crate) tapped: bool,
-    pub(crate) controller: ChoiceBattlefieldController,
+pub struct ChoiceBattlefieldMoveShape<'a> {
+    pub first_clause: &'a [OwnedLexToken],
+    pub second_clause: &'a [OwnedLexToken],
+    pub tapped: bool,
+    pub controller: ChoiceBattlefieldController,
 }
 
-pub(crate) fn parse_chosen_cant_block_shape(
+pub fn parse_chosen_cant_block_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ChosenCantBlockShape<'_>>, ChosenCantBlockSyntaxError> {
     let Some(negation) =
@@ -120,7 +120,7 @@ pub(crate) fn parse_chosen_cant_block_shape(
     }))
 }
 
-pub(crate) fn parse_choice_become_shape<'a>(
+pub fn parse_choice_become_shape<'a>(
     first: &'a [OwnedLexToken],
     second: &'a [OwnedLexToken],
 ) -> Result<Option<ChoiceBecomeShape<'a>>, ChoiceBecomeSyntaxError> {
@@ -192,12 +192,12 @@ pub(crate) fn parse_choice_become_shape<'a>(
     }))
 }
 
-pub(crate) fn parse_that_type_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_that_type_tokens(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens).word_refs();
     primitives::parse_full_word_slice(&words, word_phrase(&["that", "type"])).is_some()
 }
 
-pub(crate) fn parse_choice_library_move_shape(
+pub fn parse_choice_library_move_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ChoiceLibraryMoveShape<'_>> {
     let separator = parse_choice_clause_separator_tokens(tokens, ChoiceClauseSeparator::And)?;
@@ -235,7 +235,7 @@ pub(crate) fn parse_choice_library_move_shape(
     })
 }
 
-pub(crate) fn parse_choice_battlefield_move_shape(
+pub fn parse_choice_battlefield_move_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ChoiceBattlefieldMoveShape<'_>> {
     let separator = parse_choice_clause_separator_tokens(tokens, ChoiceClauseSeparator::Then)?;

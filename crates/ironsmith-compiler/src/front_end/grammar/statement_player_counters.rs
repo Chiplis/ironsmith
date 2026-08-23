@@ -6,7 +6,7 @@ use super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PlayerCounterSubject {
+pub enum PlayerCounterSubject {
     EachOpponent,
     EachPlayer,
     TargetOpponent,
@@ -16,7 +16,7 @@ pub(crate) enum PlayerCounterSubject {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PlayerCounterKind {
+pub enum PlayerCounterKind {
     Poison,
     Energy,
     Experience,
@@ -24,13 +24,13 @@ pub(crate) enum PlayerCounterKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PlayerGetsCountersShape {
-    pub(crate) subject: PlayerCounterSubject,
-    pub(crate) count: u32,
-    pub(crate) kind: PlayerCounterKind,
+pub struct PlayerGetsCountersShape {
+    pub subject: PlayerCounterSubject,
+    pub count: u32,
+    pub kind: PlayerCounterKind,
 }
 
-pub(crate) fn parse_player_gets_counters_surface_tokens(
+pub fn parse_player_gets_counters_surface_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerGetsCountersShape> {
     primitives::find_prefix(tokens, || player_gets_counters_clause)

@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 /// Types of counters that can be placed on objects.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CounterType {
     PlusOnePlusOne,
@@ -150,7 +151,7 @@ pub enum CounterType {
     Winch,
     Wind,
     Wish,
-    Named(&'static str),
+    Named(crate::InternedStr),
 }
 
 impl CounterType {
@@ -216,6 +217,6 @@ mod tests {
     fn counter_type_descriptions_are_stable() {
         assert_eq!(CounterType::Flying.description(), "flying");
         assert_eq!(CounterType::PlusOnePlusOne.description(), "+1/+1");
-        assert_eq!(CounterType::Named("hour").description(), "hour");
+        assert_eq!(CounterType::Named("hour".into()).description(), "hour");
     }
 }

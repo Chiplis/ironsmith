@@ -210,7 +210,7 @@ fn lower_consult_repeated_move(
     ))
 }
 
-pub(crate) fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+pub fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let leading_result = crate::grammar::structure::split_leading_result_prefix_lexed(tokens);
     let bundle_tokens = leading_result
         .as_ref()

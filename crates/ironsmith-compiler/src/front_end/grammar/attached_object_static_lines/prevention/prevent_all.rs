@@ -8,14 +8,14 @@ use crate::lexer::{LexStream, OwnedLexToken};
 use super::super::subjects::{semantic_finish, semantic_phrase};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AttachedPreventAllKind {
+pub enum AttachedPreventAllKind {
     DamageDealtToAndBy,
     DamageDealtBy,
     CombatDamageDealtBy,
     DamageDealtTo,
 }
 
-pub(crate) fn parse_attached_prevent_all_tokens(
+pub fn parse_attached_prevent_all_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedPreventAllKind> {
     primitives::parse_all(

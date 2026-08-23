@@ -108,20 +108,17 @@ struct OtherThanSplit<'a> {
     exclusions: &'a [&'a str],
 }
 
-pub(crate) fn parse_filter_face_state_words(words: &[&str]) -> Option<(bool, usize)> {
+pub fn parse_filter_face_state_words(words: &[&str]) -> Option<(bool, usize)> {
     let mut input: WordInput<'_> = words;
     let state = parse_filter_face_state.parse_next(&mut input).ok()?;
     Some((state.is_face_down(), words.len().checked_sub(input.len())?))
 }
 
-pub(crate) fn parse_simple_object_filter_words(
-    input_words: &[&str],
-    other: bool,
-) -> Option<ObjectFilter> {
+pub fn parse_simple_object_filter_words(input_words: &[&str], other: bool) -> Option<ObjectFilter> {
     parse_simple_object_filter_words_with_list_marker(input_words, other, false)
 }
 
-pub(crate) fn parse_simple_object_filter_lexed(
+pub fn parse_simple_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Option<ObjectFilter> {
@@ -143,7 +140,7 @@ pub(crate) fn parse_simple_object_filter_lexed(
 /// artifacts. `ObjectFilter::any_of` already carries the required inclusive-union
 /// semantics, so keep the shared domain on the outer filter and put each type arm (and
 /// its local exclusions) in a nested selector.
-pub(crate) fn preserve_branch_scoped_card_type_union(
+pub fn preserve_branch_scoped_card_type_union(
     filter: &mut ObjectFilter,
     tokens: &[OwnedLexToken],
     other: bool,

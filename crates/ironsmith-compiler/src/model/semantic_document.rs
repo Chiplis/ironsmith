@@ -12,39 +12,39 @@ use crate::model::compiler_semantic::{ParsedLevelAbilityItemAst, ParsedLineAst};
 use crate::model::facts::LineInfo;
 
 #[derive(Debug, Clone)]
-pub(crate) struct RewriteSemanticDocument {
-    pub(crate) builder: CardDefinitionBuilder,
-    pub(crate) annotations: ParseAnnotations,
-    pub(crate) provenance: ProvenanceStore,
-    pub(crate) symbols: SymbolTable,
-    pub(crate) items: Vec<RewriteSemanticItem>,
-    pub(crate) overload_items: Option<Vec<RewriteSemanticItem>>,
-    pub(crate) cleave_items: Option<Vec<RewriteSemanticItem>>,
-    pub(crate) allow_unsupported: bool,
+pub struct RewriteSemanticDocument {
+    pub builder: CardDefinitionBuilder,
+    pub annotations: ParseAnnotations,
+    pub provenance: ProvenanceStore,
+    pub symbols: SymbolTable,
+    pub items: Vec<RewriteSemanticItem>,
+    pub overload_items: Option<Vec<RewriteSemanticItem>>,
+    pub cleave_items: Option<Vec<RewriteSemanticItem>>,
+    pub allow_unsupported: bool,
 }
 
 /// Typed, document-wide facts that are recognized while the front end still owns
 /// the lexed Oracle text. Later stages may consume these facts, but must not
 /// rediscover them from the source text.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct DocumentSemanticFacts {
-    pub(crate) overload_rewrite: Option<OverloadRewritePayload>,
-    pub(crate) cleave_rewrite: Option<CleaveRewritePayload>,
+pub struct DocumentSemanticFacts {
+    pub overload_rewrite: Option<OverloadRewritePayload>,
+    pub cleave_rewrite: Option<CleaveRewritePayload>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct OverloadRewritePayload {
-    pub(crate) keyword_line_index: usize,
-    pub(crate) target_spans: Vec<crate::cards::TextSpan>,
+pub struct OverloadRewritePayload {
+    pub keyword_line_index: usize,
+    pub target_spans: Vec<crate::cards::TextSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CleaveRewritePayload {
-    pub(crate) keyword_line_index: usize,
+pub struct CleaveRewritePayload {
+    pub keyword_line_index: usize,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum RewriteSemanticItem {
+pub enum RewriteSemanticItem {
     Metadata,
     Keyword(RewriteKeywordLine),
     ParsedLine(ParsedLineAst),
@@ -60,7 +60,7 @@ pub(crate) enum RewriteSemanticItem {
 /// line-family tokens. Preparation and lowering consume the typed fact instead
 /// of decoding an internal string prefix.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ChosenOptionContext {
+pub enum ChosenOptionContext {
     SourceOption(String),
     MaxSpeed,
     StationThreshold(i32),
@@ -76,11 +76,11 @@ pub(crate) enum ChosenOptionContext {
 }
 
 impl ChosenOptionContext {
-    pub(crate) fn source_option(label: impl Into<String>) -> Self {
+    pub fn source_option(label: impl Into<String>) -> Self {
         Self::SourceOption(label.into())
     }
 
-    pub(crate) fn station_threshold(&self) -> Option<i32> {
+    pub fn station_threshold(&self) -> Option<i32> {
         match self {
             Self::StationThreshold(threshold) => Some(*threshold),
             _ => None,
@@ -89,33 +89,33 @@ impl ChosenOptionContext {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct RewriteKeywordLine {
-    pub(crate) info: LineInfo,
-    pub(crate) kind: RewriteKeywordLineKind,
-    pub(crate) parse_tokens: Vec<OwnedLexToken>,
-    pub(crate) full_parse_tokens: Vec<OwnedLexToken>,
-    pub(crate) payload: KeywordLinePayloadCst,
+pub struct RewriteKeywordLine {
+    pub info: LineInfo,
+    pub kind: RewriteKeywordLineKind,
+    pub parse_tokens: Vec<OwnedLexToken>,
+    pub full_parse_tokens: Vec<OwnedLexToken>,
+    pub payload: KeywordLinePayloadCst,
 }
 
-pub(crate) type RewriteKeywordLineKind = KeywordLineKindCst;
+pub type RewriteKeywordLineKind = KeywordLineKindCst;
 
 #[derive(Debug, Clone)]
-pub(crate) struct RewriteActivatedLine {
-    pub(crate) info: LineInfo,
-    pub(crate) cost: TotalCost,
-    pub(crate) compiler_cost: crate::model::CompilerTotalCost,
-    pub(crate) cost_parse_tokens: Vec<OwnedLexToken>,
-    pub(crate) effect_parse_tokens: Vec<OwnedLexToken>,
-    pub(crate) timing_hint: ActivationTiming,
-    pub(crate) is_loyalty_ability: bool,
-    pub(crate) functional_zones: Vec<crate::zone::Zone>,
-    pub(crate) presentation_kind: Option<ActivatedPresentationKind>,
-    pub(crate) presentation: Option<PresentationLabel>,
-    pub(crate) chosen_option: Option<ChosenOptionContext>,
+pub struct RewriteActivatedLine {
+    pub info: LineInfo,
+    pub cost: TotalCost,
+    pub compiler_cost: crate::model::CompilerTotalCost,
+    pub cost_parse_tokens: Vec<OwnedLexToken>,
+    pub effect_parse_tokens: Vec<OwnedLexToken>,
+    pub timing_hint: ActivationTiming,
+    pub is_loyalty_ability: bool,
+    pub functional_zones: Vec<crate::zone::Zone>,
+    pub presentation_kind: Option<ActivatedPresentationKind>,
+    pub presentation: Option<PresentationLabel>,
+    pub chosen_option: Option<ChosenOptionContext>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActivatedPresentationKind {
+pub enum ActivatedPresentationKind {
     Throw,
     ThrowEllipsis,
     Boast,
@@ -128,7 +128,7 @@ pub(crate) enum ActivatedPresentationKind {
 }
 
 impl ActivatedPresentationKind {
-    pub(crate) fn display(self) -> &'static str {
+    pub fn display(self) -> &'static str {
         match self {
             Self::Throw => "Throw",
             Self::ThrowEllipsis => "Throw ...",
@@ -144,70 +144,70 @@ impl ActivatedPresentationKind {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct RewriteTriggeredLine {
-    pub(crate) info: LineInfo,
-    pub(crate) full_text: String,
-    pub(crate) full_parse_tokens: Vec<OwnedLexToken>,
-    pub(crate) intervening_if: Option<PredicateAst>,
-    pub(crate) max_triggers_per_turn: Option<u32>,
-    pub(crate) chosen_option: Option<ChosenOptionContext>,
-    pub(crate) presentation: Option<PresentationLabel>,
+pub struct RewriteTriggeredLine {
+    pub info: LineInfo,
+    pub full_text: String,
+    pub full_parse_tokens: Vec<OwnedLexToken>,
+    pub intervening_if: Option<PredicateAst>,
+    pub max_triggers_per_turn: Option<u32>,
+    pub chosen_option: Option<ChosenOptionContext>,
+    pub presentation: Option<PresentationLabel>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct RewriteStaticLine {
-    pub(crate) info: LineInfo,
-    pub(crate) parse_tokens: Vec<OwnedLexToken>,
-    pub(crate) chosen_option: Option<ChosenOptionContext>,
+pub struct RewriteStaticLine {
+    pub info: LineInfo,
+    pub parse_tokens: Vec<OwnedLexToken>,
+    pub chosen_option: Option<ChosenOptionContext>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct RewriteStatementLine {
-    pub(crate) info: LineInfo,
-    pub(crate) parse_tokens: Vec<OwnedLexToken>,
+pub struct RewriteStatementLine {
+    pub info: LineInfo,
+    pub parse_tokens: Vec<OwnedLexToken>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct RewriteModalBlock {
-    pub(crate) header: LineInfo,
-    pub(crate) header_tokens: Vec<OwnedLexToken>,
-    pub(crate) modes: Vec<RewriteModalMode>,
+pub struct RewriteModalBlock {
+    pub header: LineInfo,
+    pub header_tokens: Vec<OwnedLexToken>,
+    pub modes: Vec<RewriteModalMode>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct RewriteModalMode {
-    pub(crate) info: LineInfo,
-    pub(crate) text: String,
-    pub(crate) point_cost: Option<u32>,
-    pub(crate) additional_mana_cost: Option<crate::mana::ManaCost>,
-    pub(crate) effects_ast: Vec<EffectAst>,
+pub struct RewriteModalMode {
+    pub info: LineInfo,
+    pub text: String,
+    pub point_cost: Option<u32>,
+    pub additional_mana_cost: Option<crate::mana::ManaCost>,
+    pub effects_ast: Vec<EffectAst>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct RewriteLevelHeader {
-    pub(crate) min_level: u32,
-    pub(crate) max_level: Option<u32>,
-    pub(crate) pt: Option<(i32, i32)>,
-    pub(crate) items: Vec<RewriteLevelItem>,
+pub struct RewriteLevelHeader {
+    pub min_level: u32,
+    pub max_level: Option<u32>,
+    pub pt: Option<(i32, i32)>,
+    pub items: Vec<RewriteLevelItem>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct RewriteLevelItem {
-    pub(crate) parsed: ParsedLevelAbilityItemAst,
+pub struct RewriteLevelItem {
+    pub parsed: ParsedLevelAbilityItemAst,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct RewriteSagaChapterLine {
-    pub(crate) info: LineInfo,
-    pub(crate) chapters: Vec<u32>,
-    pub(crate) presentation_label: Option<PresentationLabel>,
+pub struct RewriteSagaChapterLine {
+    pub info: LineInfo,
+    pub chapters: Vec<u32>,
+    pub presentation_label: Option<PresentationLabel>,
     #[cfg(test)]
-    pub(crate) text: String,
-    pub(crate) effects_ast: Vec<EffectAst>,
+    pub text: String,
+    pub effects_ast: Vec<EffectAst>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct RewriteUnsupportedLine {
-    pub(crate) info: LineInfo,
-    pub(crate) reason_code: &'static str,
+pub struct RewriteUnsupportedLine {
+    pub info: LineInfo,
+    pub reason_code: &'static str,
 }

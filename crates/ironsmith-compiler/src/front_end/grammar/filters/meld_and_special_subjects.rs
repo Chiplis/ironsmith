@@ -264,9 +264,7 @@ pub(super) fn parse_mana_spent_to_cast_predicate(
     None
 }
 
-pub(crate) fn parse_same_color_mana_spent_to_cast_predicate(
-    tokens: &[OwnedLexToken],
-) -> Option<u32> {
+pub fn parse_same_color_mana_spent_to_cast_predicate(tokens: &[OwnedLexToken]) -> Option<u32> {
     if tokens.len() < 12 {
         return None;
     }

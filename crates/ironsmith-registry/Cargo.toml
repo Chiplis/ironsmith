@@ -4,18 +4,21 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = ["handwritten-parse-support"]
+default = []
 handwritten-parse-support = []
 wasm-lean = []
 
 [dependencies]
-ironsmith-core = { path = "../ironsmith-core" }
-ironsmith = { package = "ironsmith-runtime", path = "../ironsmith-runtime" }
-ironsmith-compiler = { path = "../ironsmith-compiler" }
-
-[build-dependencies]
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
+ironsmith-core = { path = "../ironsmith-core", default-features = false }
+ironsmith = { package = "ironsmith-engine", path = "../ironsmith-engine", default-features = false }
+ironsmith-runtime-catalog = { path = "../ironsmith-runtime-catalog", default-features = false }
+ironsmith-compiler = { path = "../ironsmith-compiler", default-features = false }
+ironsmith-compiler-runtime = { path = "../ironsmith-compiler-runtime", default-features = false }
 
 [lib]
 path = "src/lib.rs"
+
+[[test]]
+name = "handwritten_registry"
+path = "tests/handwritten_registry.rs"
+required-features = ["handwritten-parse-support"]

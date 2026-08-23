@@ -7,7 +7,7 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, lex_line, render_toke
 use super::super::primitives;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum VoteCountRewriteSurface {
+pub enum VoteCountRewriteSurface {
     DrawForEachVote {
         vote: String,
     },
@@ -24,7 +24,7 @@ pub(crate) enum VoteCountRewriteSurface {
     },
 }
 
-pub(crate) fn parse_vote_count_rewrite_surface(sentence: &str) -> Option<VoteCountRewriteSurface> {
+pub fn parse_vote_count_rewrite_surface(sentence: &str) -> Option<VoteCountRewriteSurface> {
     let tokens = lex_line(sentence.trim(), 0).ok()?;
     primitives::parse_all(
         &tokens,

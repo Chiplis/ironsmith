@@ -7,7 +7,7 @@ mod joint;
 #[path = "subject_verb_registry_shapes/sequences.rs"]
 mod sequences;
 
-pub(crate) use clause::*;
-pub(crate) use delayed::*;
-pub(crate) use joint::*;
-pub(crate) use sequences::*;
+pub use clause::*;
+pub use delayed::*;
+pub use joint::*;
+pub use sequences::*;

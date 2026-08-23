@@ -8,32 +8,32 @@ use crate::grammar::{primitives, values};
 use crate::lexer::{LexStream, LexedClause, OwnedLexToken};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ReferenceSpanShape {
-    pub(crate) start: usize,
-    pub(crate) end: usize,
+pub struct ReferenceSpanShape {
+    pub start: usize,
+    pub end: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ReferenceShapeError {
+pub enum ReferenceShapeError {
     MissingThatObject,
     MissingIt,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SameControllerShape {
-    pub(crate) cleaned_tokens: Vec<OwnedLexToken>,
-    pub(crate) same_controller: bool,
+pub struct SameControllerShape {
+    pub cleaned_tokens: Vec<OwnedLexToken>,
+    pub same_controller: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SameNameFanoutVerb {
+pub enum SameNameFanoutVerb {
     Destroy,
     Exile,
     Return,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum SameNameFanoutShape<'a> {
+pub enum SameNameFanoutShape<'a> {
     Damage {
         amount: Value,
         first_target_tokens: &'a [OwnedLexToken],
@@ -49,7 +49,7 @@ pub(crate) enum SameNameFanoutShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SharedColorVerb {
+pub enum SharedColorVerb {
     Destroy,
     Exile,
     Untap,
@@ -58,7 +58,7 @@ pub(crate) enum SharedColorVerb {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum SharedColorFanoutShape<'a> {
+pub enum SharedColorFanoutShape<'a> {
     ExplicitGetOrGain {
         verb: SharedColorVerb,
         duration_tokens: Option<&'a [OwnedLexToken]>,
@@ -90,7 +90,7 @@ pub(crate) enum SharedColorFanoutShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ControllerSurface {
+pub enum ControllerSurface {
     TargetPlayerOrControllerOfTarget,
     ContextualTargetPlayer,
     Opponent,
@@ -98,7 +98,7 @@ pub(crate) enum ControllerSurface {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum DamagePartShape {
+pub enum DamagePartShape {
     EachPlayer {
         opponent_only: bool,
     },
@@ -115,11 +115,11 @@ pub(crate) enum DamagePartShape {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompoundDamageShape {
-    pub(crate) source_tokens: Vec<OwnedLexToken>,
-    pub(crate) amount: Value,
-    pub(crate) left_tokens: Vec<OwnedLexToken>,
-    pub(crate) right_tokens: Vec<OwnedLexToken>,
+pub struct CompoundDamageShape {
+    pub source_tokens: Vec<OwnedLexToken>,
+    pub amount: Value,
+    pub left_tokens: Vec<OwnedLexToken>,
+    pub right_tokens: Vec<OwnedLexToken>,
 }
 
 fn trimmed(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -194,7 +194,7 @@ where
     })
 }
 
-pub(crate) fn parse_same_name_reference_span(
+pub fn parse_same_name_reference_span(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ReferenceSpanShape>, ReferenceShapeError> {
     if let Some(shape) = find_span_with(tokens, || same_name_reference) {
@@ -233,7 +233,7 @@ fn same_controller_reference<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn strip_same_controller_shape(tokens: &[OwnedLexToken]) -> SameControllerShape {
+pub fn strip_same_controller_shape(tokens: &[OwnedLexToken]) -> SameControllerShape {
     let mut cleaned_tokens = Vec::with_capacity(tokens.len());
     let mut remaining = tokens;
     let mut same_controller = false;
@@ -267,7 +267,7 @@ fn incomplete_shares_color_reference<'a>(input: &mut LexStream<'a>) -> WResult<(
         .parse_next(input)
 }
 
-pub(crate) fn parse_shares_color_reference_span(
+pub fn parse_shares_color_reference_span(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ReferenceSpanShape>, ReferenceShapeError> {
     if let Some(shape) = find_span_with(tokens, || shares_color_reference) {
@@ -354,9 +354,7 @@ fn last_word_index(tokens: &[OwnedLexToken], word: &'static str) -> Option<usize
     last
 }
 
-pub(crate) fn parse_same_name_fanout_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<SameNameFanoutShape<'_>> {
+pub fn parse_same_name_fanout_shape(tokens: &[OwnedLexToken]) -> Option<SameNameFanoutShape<'_>> {
     let tokens = trimmed(tokens);
     if let Some((deal_start, (), deal_rest)) = primitives::find_prefix(tokens, || deal_verb) {
         let source_tokens = trimmed(&tokens[..deal_start]);
@@ -426,7 +424,7 @@ pub(crate) fn parse_same_name_fanout_shape(
     })
 }
 
-pub(crate) fn split_leading_end_of_turn_shape(
+pub fn split_leading_end_of_turn_shape(
     tokens: &[OwnedLexToken],
 ) -> (Option<&[OwnedLexToken]>, &[OwnedLexToken]) {
     let Some(((), body)) = primitives::parse_prefix(
@@ -443,7 +441,7 @@ pub(crate) fn split_leading_end_of_turn_shape(
     (Some(&tokens[..duration_len]), body)
 }
 
-pub(crate) fn strip_radiance_label(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+pub fn strip_radiance_label(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     primitives::parse_prefix(
         tokens,
         (
@@ -483,7 +481,7 @@ fn explicit_get_or_gain_shape(tokens: &[OwnedLexToken]) -> Option<SharedColorFan
     })
 }
 
-pub(crate) fn parse_shared_color_fanout_shape(
+pub fn parse_shared_color_fanout_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SharedColorFanoutShape<'_>> {
     let tokens = strip_radiance_label(trimmed(tokens));
@@ -725,7 +723,7 @@ fn parse_each_damage_part_shape(tokens: &[OwnedLexToken]) -> Option<DamagePartSh
     })
 }
 
-pub(crate) fn parse_damage_part_shape(
+pub fn parse_damage_part_shape(
     tokens: &[OwnedLexToken],
     require_each: bool,
 ) -> Option<DamagePartShape> {
@@ -791,7 +789,7 @@ fn equal_damage_amount_and_targets(tokens: &[OwnedLexToken]) -> Option<(Value, &
     None
 }
 
-pub(crate) fn parse_compound_damage_shape(tokens: &[OwnedLexToken]) -> Option<CompoundDamageShape> {
+pub fn parse_compound_damage_shape(tokens: &[OwnedLexToken]) -> Option<CompoundDamageShape> {
     let tokens = trimmed(tokens);
     let (deal_idx, (), after_deal) = primitives::find_prefix(tokens, || deal_verb)?;
     let source_tokens = trimmed(&tokens[..deal_idx]).to_vec();

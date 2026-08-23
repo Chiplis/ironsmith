@@ -11,34 +11,34 @@ use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct KickedMultiZoneSearchDestinationShape {
-    pub(crate) filter: ObjectFilter,
-    pub(crate) count: ChoiceCount,
-    pub(crate) search_mode: SearchSelectionMode,
-    pub(crate) zones: Vec<Zone>,
-    pub(crate) default_destination: Zone,
-    pub(crate) kicked_destination: Zone,
+pub struct KickedMultiZoneSearchDestinationShape {
+    pub filter: ObjectFilter,
+    pub count: ChoiceCount,
+    pub search_mode: SearchSelectionMode,
+    pub zones: Vec<Zone>,
+    pub default_destination: Zone,
+    pub kicked_destination: Zone,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PersistentExilePlayTaxShape {
-    pub(crate) target_filter: ObjectFilter,
-    pub(crate) permission_player: PlayerAst,
-    pub(crate) taxed_caster: PlayerFilter,
-    pub(crate) additional_cost: ManaCost,
+pub struct PersistentExilePlayTaxShape {
+    pub target_filter: ObjectFilter,
+    pub permission_player: PlayerAst,
+    pub taxed_caster: PlayerFilter,
+    pub additional_cost: ManaCost,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SpellCastThisWayTaxShape {
-    pub(crate) taxed_caster: Option<PlayerFilter>,
-    pub(crate) additional_cost: ManaCost,
+pub struct SpellCastThisWayTaxShape {
+    pub taxed_caster: Option<PlayerFilter>,
+    pub additional_cost: ManaCost,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct EachPlayerHandExilePlayConstraintsShape {
-    pub(crate) players: PlayerFilter,
-    pub(crate) additional_cost: ManaCost,
-    pub(crate) lands_enter_tapped: bool,
+pub struct EachPlayerHandExilePlayConstraintsShape {
+    pub players: PlayerFilter,
+    pub additional_cost: ManaCost,
+    pub lands_enter_tapped: bool,
 }
 
 fn commas<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -100,7 +100,7 @@ fn kicked_destination_replacement<'a>(input: &mut LexStream<'a>) -> WResult<(Zon
     Ok((kicked, default))
 }
 
-pub(crate) fn parse_kicked_multi_zone_search_destination_tokens(
+pub fn parse_kicked_multi_zone_search_destination_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<KickedMultiZoneSearchDestinationShape> {
     let sentences = split_lexed_sentences(tokens);
@@ -207,7 +207,7 @@ fn taxed_player(tokens: &[OwnedLexToken]) -> Option<PlayerFilter> {
     }
 }
 
-pub(crate) fn parse_spell_cast_this_way_tax_tokens(
+pub fn parse_spell_cast_this_way_tax_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SpellCastThisWayTaxShape> {
     let sentences = split_lexed_sentences(tokens);
@@ -271,7 +271,7 @@ fn each_land_played_this_way_enters_tapped<'a>(input: &mut LexStream<'a>) -> WRe
     primitives::kw("tapped").void().parse_next(input)
 }
 
-pub(crate) fn parse_each_player_hand_exile_play_constraints_tokens(
+pub fn parse_each_player_hand_exile_play_constraints_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EachPlayerHandExilePlayConstraintsShape> {
     let sentences = split_lexed_sentences(tokens);
@@ -304,7 +304,7 @@ pub(crate) fn parse_each_player_hand_exile_play_constraints_tokens(
     })
 }
 
-pub(crate) fn parse_persistent_exile_play_tax_tokens(
+pub fn parse_persistent_exile_play_tax_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PersistentExilePlayTaxShape> {
     let sentences = split_lexed_sentences(tokens);

@@ -150,11 +150,6 @@ fn build_token_word_pieces(
 
 pub type LexToken = OwnedLexToken;
 
-pub(crate) use crate::grammar::lexical::{
-    LexedClause, locate_token_kind, locate_token_word, locate_token_word_choice,
-    token_slice_all_are_kind, token_slice_last_is,
-};
-
 impl PartialEq<TokenKind> for OwnedLexToken {
     fn eq(&self, other: &TokenKind) -> bool {
         self.kind == *other

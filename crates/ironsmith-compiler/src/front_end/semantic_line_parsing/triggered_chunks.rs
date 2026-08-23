@@ -284,7 +284,7 @@ fn absorb_single_conditional_effect_into_trigger(
     }
 }
 
-pub(crate) fn infer_triggered_ability_functional_zones_from_facts(
+pub fn infer_triggered_ability_functional_zones_from_facts(
     trigger: &TriggerSpec,
     facts: &crate::model::facts::TriggerFunctionalZoneFacts,
 ) -> Vec<Zone> {
@@ -382,7 +382,7 @@ fn rewrite_do_this_trigger_frequency_surface(
     });
 }
 
-pub(crate) fn apply_chosen_option_to_triggered_chunk(
+pub fn apply_chosen_option_to_triggered_chunk(
     chunk: LineAst,
     full_text: &str,
     facts: &TriggeredLineSemanticFacts,
@@ -494,7 +494,7 @@ pub(crate) fn apply_chosen_option_to_triggered_chunk(
     }
 }
 
-pub(crate) fn apply_explicit_intervening_if_to_triggered_chunk(
+pub fn apply_explicit_intervening_if_to_triggered_chunk(
     chunk: LineAst,
     explicit_intervening_if: Option<PredicateAst>,
 ) -> Result<LineAst, CardTextError> {

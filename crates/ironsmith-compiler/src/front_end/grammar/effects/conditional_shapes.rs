@@ -5,32 +5,32 @@ use winnow::error::ModalResult as WResult;
 use winnow::token::any;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ForEachPlayerKind {
+pub enum ForEachPlayerKind {
     Opponent,
     Player,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ForEachNoControlLoseGameShape<'a> {
-    pub(crate) player_kind: ForEachPlayerKind,
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
+pub struct ForEachNoControlLoseGameShape<'a> {
+    pub player_kind: ForEachPlayerKind,
+    pub filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CounterSpellConditionalKind {
+pub enum CounterSpellConditionalKind {
     IfKicked,
     SecondCastThisTurn,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CounterSpellConditionalShape<'a> {
-    pub(crate) kind: CounterSpellConditionalKind,
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct CounterSpellConditionalShape<'a> {
+    pub kind: CounterSpellConditionalKind,
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ExileGreatestPowerCreatureShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct ExileGreatestPowerCreatureShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
 fn for_each_player_kind<'a>(input: &mut LexStream<'a>) -> WResult<ForEachPlayerKind> {
@@ -104,7 +104,7 @@ fn parse_for_each_no_control_lose_game_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_for_each_no_control_lose_game_tokens(
+pub fn parse_for_each_no_control_lose_game_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ForEachNoControlLoseGameShape<'_>> {
     primitives::parse_all(
@@ -149,7 +149,7 @@ fn parse_counter_spell_conditional_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_counter_spell_conditional_tokens(
+pub fn parse_counter_spell_conditional_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CounterSpellConditionalShape<'_>> {
     primitives::parse_all(
@@ -197,7 +197,7 @@ fn parse_exile_greatest_power_creature_lexed<'a>(
     Ok(ExileGreatestPowerCreatureShape { target_tokens })
 }
 
-pub(crate) fn parse_exile_greatest_power_creature_tokens(
+pub fn parse_exile_greatest_power_creature_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ExileGreatestPowerCreatureShape<'_>> {
     primitives::parse_all(

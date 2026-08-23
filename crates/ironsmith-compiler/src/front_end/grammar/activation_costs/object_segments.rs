@@ -76,7 +76,7 @@ enum DiscardCostShape {
     },
 }
 
-pub(crate) fn parse_sacrifice_segment_tokens(
+pub fn parse_sacrifice_segment_tokens(
     tokens: &[OwnedLexToken],
     contextual_source_reference: impl Fn(&[&str]) -> Option<crate::target::SourceReferenceSurface>,
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
@@ -114,7 +114,7 @@ pub(crate) fn parse_sacrifice_segment_tokens(
     })
 }
 
-pub(crate) fn parse_discard_segment_tokens(
+pub fn parse_discard_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     let shape = primitives::parse_all(tokens, parse_discard_cost_shape_lexed, "discard-cost")
@@ -196,7 +196,7 @@ pub(crate) fn parse_discard_segment_tokens(
     })
 }
 
-pub(crate) fn parse_unattach_segment_tokens(
+pub fn parse_unattach_segment_tokens(
     tokens: &[OwnedLexToken],
     contextual_source_reference: impl FnOnce(&[&str]) -> bool,
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
@@ -249,7 +249,7 @@ pub(crate) fn parse_unattach_segment_tokens(
     }
 }
 
-pub(crate) fn parse_tap_chosen_segment_tokens(
+pub fn parse_tap_chosen_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     let shape = primitives::parse_all(tokens, parse_tap_chosen_shape_lexed, "tap-chosen-cost")

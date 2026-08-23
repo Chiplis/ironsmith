@@ -3,18 +3,18 @@ use crate::lexer::{LexedClause, OwnedLexToken};
 use crate::target::PlayerFilter;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ExileReferenceBinding {
+pub enum ExileReferenceBinding {
     SourceExiled,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChooseThenExileReferenceShape {
-    pub(crate) binding: ExileReferenceBinding,
+pub struct ChooseThenExileReferenceShape {
+    pub binding: ExileReferenceBinding,
 }
 
 /// Parses a choice whose result is immediately exiled and can therefore be
 /// referenced later as "the exiled card".
-pub(crate) fn parse_choose_then_exile_reference_shape(
+pub fn parse_choose_then_exile_reference_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ChooseThenExileReferenceShape> {
     let atoms = [
@@ -48,7 +48,7 @@ pub(crate) fn parse_choose_then_exile_reference_shape(
     })
 }
 
-pub(crate) fn parse_exile_reference_action_shape(
+pub fn parse_exile_reference_action_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ExileReferenceBinding> {
     let atoms = [
@@ -66,14 +66,14 @@ pub(crate) fn parse_exile_reference_action_shape(
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct AnyPlayerMaySacrificeShape<'a> {
-    pub(crate) players: PlayerFilter,
-    pub(crate) action_tokens: &'a [OwnedLexToken],
+pub struct AnyPlayerMaySacrificeShape<'a> {
+    pub players: PlayerFilter,
+    pub action_tokens: &'a [OwnedLexToken],
 }
 
 /// "Any player/opponent may" offers are made in turn order beginning with the
 /// active player and stop after the first eligible player who accepts.
-pub(crate) fn parse_any_player_may_sacrifice_shape(
+pub fn parse_any_player_may_sacrifice_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<AnyPlayerMaySacrificeShape<'_>> {
     let atoms = [

@@ -4,7 +4,7 @@
 //! phrase recognition remains owned by grammar while semantic construction
 //! stays in the front-end family layer.
 
-pub(crate) mod early;
-pub(crate) mod late;
-pub(crate) mod mid;
-pub(crate) mod type_and_color;
+pub mod early;
+pub mod late;
+pub mod mid;
+pub mod type_and_color;

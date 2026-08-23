@@ -75,7 +75,7 @@ pub(super) fn wrap_delayed_next_step_unless_pays(
 /// is the local counterpart of the whole-sentence parser below: it keeps
 /// subject-aware verb handlers from rejecting the timing tail after they have
 /// consumed the resource amount and noun.
-pub(crate) fn wrap_parsed_effect_in_delayed_next_step_unless_pays(
+pub fn wrap_parsed_effect_in_delayed_next_step_unless_pays(
     trailing: &[OwnedLexToken],
     effect: EffectAst,
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -168,7 +168,7 @@ fn wrap_delayed_timing_inside_leading_condition(
 /// "sacrifice it at the beginning of the next end step". The action is parsed
 /// normally after removing only the timing marker, then wrapped in the same
 /// delayed queue AST used by prefix-timed sentences.
-pub(crate) fn parse_sentence_delayed_timing_suffix(
+pub fn parse_sentence_delayed_timing_suffix(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause = clause.trimmed();
@@ -268,7 +268,7 @@ pub(crate) fn parse_sentence_delayed_timing_suffix(
     Ok(Some(vec![effect]))
 }
 
-pub(crate) fn find_unquoted_token_word(
+pub fn find_unquoted_token_word(
     clause: SubjectVerbPrimitiveClause<'_>,
     word: &str,
 ) -> Option<usize> {
@@ -415,13 +415,13 @@ fn rewrite_cost_source_values_to_it_tag(cost: &mut crate::cost::TotalCost) {
     }
 }
 
-pub(crate) fn rewrite_unless_cost_source_values_to_it_tag(effect: &mut EffectAst) {
+pub fn rewrite_unless_cost_source_values_to_it_tag(effect: &mut EffectAst) {
     if let EffectAst::UnlessPays { cost, .. } = effect {
         rewrite_cost_source_values_to_it_tag(cost);
     }
 }
 
-pub(crate) fn parse_sentence_delayed_next_step_unless_pays(
+pub fn parse_sentence_delayed_next_step_unless_pays(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let segments = clause.trimmed_period_segments();
@@ -522,7 +522,7 @@ pub(crate) fn parse_sentence_delayed_next_step_unless_pays(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
+pub fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let segments = clause.trimmed_period_segments();
@@ -740,9 +740,7 @@ fn parse_unless_sacrifice_or_pay_cost(
 /// ordinary unless primitive, so it uses this fact to avoid turning
 /// `... unless target opponent sacrifices ... or pays 3 life` into a choice
 /// made by the source controller.
-pub(crate) fn has_unless_sacrifice_or_pay_choice(
-    tokens: &[OwnedLexToken],
-) -> Result<bool, CardTextError> {
+pub fn has_unless_sacrifice_or_pay_choice(tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
     let Some(unless_idx) = tokens.iter().position(|token| token.is_word("unless")) else {
         return Ok(false);
     };
@@ -752,7 +750,7 @@ pub(crate) fn has_unless_sacrifice_or_pay_choice(
 
 /// Try to build an UnlessPays or UnlessAction AST from the tokens after "unless".
 /// Returns the unless wrapper containing the given `effects` as the main effects.
-pub(crate) fn try_build_unless(
+pub fn try_build_unless(
     effects: Vec<EffectAst>,
     clause: SubjectVerbPrimitiveClause<'_>,
     unless_idx: usize,
@@ -956,7 +954,7 @@ pub(crate) fn try_build_unless(
     Ok(None)
 }
 
-pub(crate) fn parse_sentence_fallback_mechanic_marker(
+pub fn parse_sentence_fallback_mechanic_marker(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if delayed_clause_mentions_cast_or_play_action(clause)
@@ -996,7 +994,7 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
     )))
 }
 
-pub(crate) fn parse_sentence_implicit_become_clause(
+pub fn parse_sentence_implicit_become_clause(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(subject_shape) = delayed_grammar::parse_implicit_become_subject_shape(clause.tokens())
@@ -1219,7 +1217,7 @@ pub(crate) fn parse_sentence_implicit_become_clause(
     )]))
 }
 
-pub(crate) fn parse_sentence_gains_or_loses_all_creature_types(
+pub fn parse_sentence_gains_or_loses_all_creature_types(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = delayed_grammar::parse_delayed_creature_types_shape(clause.tokens()) else {
@@ -1263,7 +1261,7 @@ pub(crate) fn parse_sentence_gains_or_loses_all_creature_types(
     Ok(Some(vec![effect]))
 }
 
-pub(crate) fn parse_sentence_lose_draw_clash_repeat_process(
+pub fn parse_sentence_lose_draw_clash_repeat_process(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = delayed_grammar::parse_lose_draw_clash_shape(clause.tokens()) else {

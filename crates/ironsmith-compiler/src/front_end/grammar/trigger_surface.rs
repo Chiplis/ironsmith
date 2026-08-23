@@ -5,12 +5,12 @@ use winnow::Parser;
 use winnow::combinator::alt;
 
 mod frequency;
-pub(crate) use frequency::{
+pub use frequency::{
     parse_becomes_tapped_during_your_turn_tokens, parse_trigger_frequency_condition_tokens,
     parse_trigger_frequency_tokens,
 };
 
-pub(crate) fn parse_trigger_intro_prefix_tokens(
+pub fn parse_trigger_intro_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TriggerIntroSurfaceAst> {
     primitives::parse_prefix(
@@ -23,7 +23,7 @@ pub(crate) fn parse_trigger_intro_prefix_tokens(
     )
     .map(|(intro, _)| intro)
 }
-pub(crate) fn parse_trigger_intro_surface_tokens(
+pub fn parse_trigger_intro_surface_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TriggerIntroSurfaceAst> {
     if let Some(intro) = parse_trigger_intro_prefix_tokens(tokens) {

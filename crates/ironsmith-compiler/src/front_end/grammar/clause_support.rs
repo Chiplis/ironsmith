@@ -13,10 +13,10 @@ use super::primitives::{self, TokenWordView, WordSliceInput};
 
 #[path = "clause_support/ability_shapes.rs"]
 mod ability_shapes;
-pub(crate) use ability_shapes::*;
+pub use ability_shapes::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProtectionTargetKind {
+pub enum ProtectionTargetKind {
     EachManaValueAmong { filter_word_first: usize },
     Spell,
     PermanentCastThisTurn,
@@ -31,68 +31,68 @@ pub(crate) enum ProtectionTargetKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ProtectionTarget<'a> {
-    pub(crate) value: &'a str,
-    pub(crate) target_word: usize,
-    pub(crate) target_token_first: usize,
-    pub(crate) kind: ProtectionTargetKind,
+pub struct ProtectionTarget<'a> {
+    pub value: &'a str,
+    pub target_word: usize,
+    pub target_token_first: usize,
+    pub kind: ProtectionTargetKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ProtectionChain<'a> {
-    pub(crate) targets: Vec<ProtectionTarget<'a>>,
+pub struct ProtectionChain<'a> {
+    pub targets: Vec<ProtectionTarget<'a>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TokenSpan {
-    pub(crate) first: usize,
-    pub(crate) end: usize,
+pub struct TokenSpan {
+    pub first: usize,
+    pub end: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TriggerIntro {
-    pub(crate) body_first: usize,
-    pub(crate) is_non_at_intro: bool,
+pub struct TriggerIntro {
+    pub body_first: usize,
+    pub is_non_at_intro: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SourceTriggerKind {
+pub enum SourceTriggerKind {
     BecomesBlocked,
     LeavesBattlefield,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SourceTriggerPrefix {
-    pub(crate) kind: SourceTriggerKind,
-    pub(crate) effect_first: usize,
+pub struct SourceTriggerPrefix {
+    pub kind: SourceTriggerKind,
+    pub effect_first: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TriggerDelimiterKind {
+pub enum TriggerDelimiterKind {
     Comma,
     Then,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TriggerDelimiter {
-    pub(crate) index: usize,
-    pub(crate) kind: TriggerDelimiterKind,
+pub struct TriggerDelimiter {
+    pub index: usize,
+    pub kind: TriggerDelimiterKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TriggerDelimiterFacts {
-    pub(crate) first_comma: Option<usize>,
-    pub(crate) first_comma_or_then: Option<TriggerDelimiter>,
+pub struct TriggerDelimiterFacts {
+    pub first_comma: Option<usize>,
+    pub first_comma_or_then: Option<TriggerDelimiter>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AttackWithShape {
-    pub(crate) subject_words: Range<usize>,
-    pub(crate) attacked_words: Option<Range<usize>>,
-    pub(crate) object_token_first: usize,
+pub struct AttackWithShape {
+    pub subject_words: Range<usize>,
+    pub attacked_words: Option<Range<usize>>,
+    pub object_token_first: usize,
 }
 
-pub(crate) fn parse_color_only_hexproof_filter_words(words: &[&str]) -> Option<ObjectFilter> {
+pub fn parse_color_only_hexproof_filter_words(words: &[&str]) -> Option<ObjectFilter> {
     primitives::parse_full_word_slice(words, parse_color_only_hexproof_filter_word_slice)
 }
 
@@ -143,9 +143,7 @@ fn parse_color_only_hexproof_filter_word_slice(
     }
 }
 
-pub(crate) fn parse_protection_chain_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<ProtectionChain<'_>> {
+pub fn parse_protection_chain_tokens(tokens: &[OwnedLexToken]) -> Option<ProtectionChain<'_>> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     let from_words = parse_protection_from_words(&words)?;
@@ -164,15 +162,15 @@ pub(crate) fn parse_protection_chain_tokens(
     (!targets.is_empty()).then_some(ProtectionChain { targets })
 }
 
-pub(crate) fn parse_ability_segments_tokens(tokens: &[OwnedLexToken]) -> Vec<TokenSpan> {
+pub fn parse_ability_segments_tokens(tokens: &[OwnedLexToken]) -> Vec<TokenSpan> {
     parse_token_segments(tokens, SegmentDelimiter::CommaOrSemicolon)
 }
 
-pub(crate) fn parse_conjoined_segments_tokens(tokens: &[OwnedLexToken]) -> Vec<TokenSpan> {
+pub fn parse_conjoined_segments_tokens(tokens: &[OwnedLexToken]) -> Vec<TokenSpan> {
     parse_token_segments(tokens, SegmentDelimiter::And)
 }
 
-pub(crate) fn parse_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> TriggerIntro {
+pub fn parse_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> TriggerIntro {
     let mut input = LexStream::new(tokens);
     let intro = parse_trigger_intro_lexed(&mut input).ok();
     TriggerIntro {
@@ -181,7 +179,7 @@ pub(crate) fn parse_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> TriggerInt
     }
 }
 
-pub(crate) fn parse_monstrous_damage_hand_trigger_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_monstrous_damage_hand_trigger_tokens(tokens: &[OwnedLexToken]) -> bool {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     let mut input: WordSliceInput<'_> = &words;
@@ -211,7 +209,7 @@ pub(crate) fn parse_monstrous_damage_hand_trigger_tokens(tokens: &[OwnedLexToken
         && word_occurs(&words, &["hand"])
 }
 
-pub(crate) fn parse_combined_x_cost_trigger_tokens(tokens: &[OwnedLexToken]) -> Option<usize> {
+pub fn parse_combined_x_cost_trigger_tokens(tokens: &[OwnedLexToken]) -> Option<usize> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     phrase_occurs_normalized(
@@ -242,9 +240,7 @@ pub(crate) fn parse_combined_x_cost_trigger_tokens(tokens: &[OwnedLexToken]) -> 
     view.token_start_indices().get(copy_word).copied()
 }
 
-pub(crate) fn parse_source_trigger_prefix_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<SourceTriggerPrefix> {
+pub fn parse_source_trigger_prefix_tokens(tokens: &[OwnedLexToken]) -> Option<SourceTriggerPrefix> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     let (kind, word_count) =
@@ -266,7 +262,7 @@ pub(crate) fn parse_source_trigger_prefix_tokens(
     Some(SourceTriggerPrefix { kind, effect_first })
 }
 
-pub(crate) fn parse_blocked_damage_effect_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_blocked_damage_effect_tokens(tokens: &[OwnedLexToken]) -> bool {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     let mut input: WordSliceInput<'_> = &words;
@@ -291,12 +287,12 @@ pub(crate) fn parse_blocked_damage_effect_tokens(tokens: &[OwnedLexToken]) -> bo
         && input.is_empty()
 }
 
-pub(crate) fn parse_trigger_delimiters_tokens(tokens: &[OwnedLexToken]) -> TriggerDelimiterFacts {
+pub fn parse_trigger_delimiters_tokens(tokens: &[OwnedLexToken]) -> TriggerDelimiterFacts {
     let mut input = LexStream::new(tokens);
     parse_trigger_delimiter_facts_lexed(&mut input)
 }
 
-pub(crate) fn parse_attack_with_shape_tokens(tokens: &[OwnedLexToken]) -> Option<AttackWithShape> {
+pub fn parse_attack_with_shape_tokens(tokens: &[OwnedLexToken]) -> Option<AttackWithShape> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     let (attack_word, with_word) = parse_attack_with_words(&words)?;

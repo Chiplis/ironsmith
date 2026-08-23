@@ -106,7 +106,7 @@ fn subject_verb_player_effect(
     })
 }
 
-pub(crate) fn parse_become(
+pub fn parse_become(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -133,7 +133,7 @@ pub(crate) fn parse_become(
     Ok(EffectAst::subject_verb_set_life_total(player, amount))
 }
 
-pub(crate) fn parse_switch(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+pub fn parse_switch(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     use crate::effect::Until;
 
     // Split off trailing duration, if present.
@@ -163,7 +163,7 @@ pub(crate) fn parse_switch(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     ))
 }
 
-pub(crate) fn parse_skip(
+pub fn parse_skip(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -188,7 +188,7 @@ pub(crate) fn parse_skip(
     })
 }
 
-pub(crate) fn parse_end(
+pub fn parse_end(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -215,7 +215,7 @@ pub(crate) fn parse_end(
     }
 }
 
-pub(crate) fn parse_flip(
+pub fn parse_flip(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -249,7 +249,7 @@ pub(crate) fn parse_flip(
     })
 }
 
-pub(crate) fn parse_roll(
+pub fn parse_roll(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -275,7 +275,7 @@ pub(crate) fn parse_roll(
     ))
 }
 
-pub(crate) fn parse_regenerate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+pub fn parse_regenerate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let words = crate::lexer::token_word_refs(tokens);
     if words
         .first()
@@ -294,7 +294,7 @@ pub(crate) fn parse_regenerate(tokens: &[OwnedLexToken]) -> Result<EffectAst, Ca
     Ok(EffectAst::subject_verb_regenerate(target))
 }
 
-pub(crate) fn parse_mill(
+pub fn parse_mill(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -335,7 +335,7 @@ fn parse_named_player_counter_count(
         .unwrap_or(Value::Fixed(1)))
 }
 
-pub(crate) fn parse_get(
+pub fn parse_get(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -573,7 +573,7 @@ fn constrain_untap_target_to_battlefield(target: &mut TargetAst) {
     }
 }
 
-pub(crate) fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+pub fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {
         return Err(CardTextError::ParseError(
             "untap clause missing target".to_string(),
@@ -655,7 +655,7 @@ pub(crate) fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
     }
 }
 
-pub(crate) fn parse_scry(
+pub fn parse_scry(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -675,7 +675,7 @@ pub(crate) fn parse_scry(
     ))
 }
 
-pub(crate) fn parse_surveil(
+pub fn parse_surveil(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -695,7 +695,7 @@ pub(crate) fn parse_surveil(
     ))
 }
 
-pub(crate) fn parse_pay(
+pub fn parse_pay(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {

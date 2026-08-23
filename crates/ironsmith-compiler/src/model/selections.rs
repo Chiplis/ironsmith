@@ -8,7 +8,7 @@ use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerFilterAst {
+pub enum CompilerFilterAst {
     Object(ObjectFilter),
     Player(PlayerFilter),
     Spell(ObjectFilter),
@@ -16,7 +16,7 @@ pub(crate) enum CompilerFilterAst {
 }
 
 impl CompilerFilterAst {
-    pub(crate) fn domain(&self) -> ObjectDomain {
+    pub fn domain(&self) -> ObjectDomain {
         match self {
             Self::Object(_) => ObjectDomain::Object,
             Self::Player(_) => ObjectDomain::Player,
@@ -27,7 +27,7 @@ impl CompilerFilterAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ArithmeticOperatorAst {
+pub enum ArithmeticOperatorAst {
     Add,
     Subtract,
     Multiply,
@@ -37,7 +37,7 @@ pub(crate) enum ArithmeticOperatorAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerValueAst {
+pub enum CompilerValueAst {
     Fixed(i32),
     X,
     Dynamic(Value),
@@ -53,13 +53,13 @@ pub(crate) enum CompilerValueAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SelectionKindAst {
+pub enum SelectionKindAst {
     Target,
     Choose,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum SelectionDomainAst {
+pub enum SelectionDomainAst {
     Source,
     AnyTarget,
     AnyOtherTarget,
@@ -74,7 +74,7 @@ pub(crate) enum SelectionDomainAst {
 }
 
 impl SelectionDomainAst {
-    pub(crate) fn symbol_domain(&self) -> ObjectDomain {
+    pub fn symbol_domain(&self) -> ObjectDomain {
         match self {
             Self::Source | Self::AnyTarget | Self::AnyOtherTarget | Self::ObjectOrPlayer { .. } => {
                 ObjectDomain::Object
@@ -89,14 +89,14 @@ impl SelectionDomainAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SelectionCardinalityAst {
+pub struct SelectionCardinalityAst {
     pub min: CompilerValueAst,
     pub max: Option<CompilerValueAst>,
     pub reference_cardinality: Cardinality,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SelectionLegalityAst {
+pub struct SelectionLegalityAst {
     pub targetable: bool,
     pub zones: Vec<Zone>,
     pub controller_only: bool,
@@ -106,7 +106,7 @@ pub(crate) struct SelectionLegalityAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerSelectionAst {
+pub struct CompilerSelectionAst {
     pub kind: SelectionKindAst,
     pub domain: SelectionDomainAst,
     pub cardinality: SelectionCardinalityAst,
@@ -116,7 +116,7 @@ pub(crate) struct CompilerSelectionAst {
 }
 
 impl CompilerSelectionAst {
-    pub(crate) fn bind(
+    pub fn bind(
         context: ParseContextView<'_>,
         kind: SelectionKindAst,
         domain: SelectionDomainAst,

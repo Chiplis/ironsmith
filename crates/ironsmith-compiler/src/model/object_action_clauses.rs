@@ -11,7 +11,7 @@ use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerObjectOperandAst {
+pub enum CompilerObjectOperandAst {
     Source,
     Selection(CompilerSelectionAst),
     Reference(SymbolReference),
@@ -19,7 +19,7 @@ pub(crate) enum CompilerObjectOperandAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerControllerAst {
+pub enum CompilerControllerAst {
     Preserve,
     Owner,
     Actor,
@@ -27,7 +27,7 @@ pub(crate) enum CompilerControllerAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerEntryStateAst {
+pub struct CompilerEntryStateAst {
     pub tapped: bool,
     pub attacking: bool,
     pub attack_target: Option<ClauseActorAst>,
@@ -38,7 +38,7 @@ pub(crate) struct CompilerEntryStateAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerMovementClauseAst {
+pub struct CompilerMovementClauseAst {
     pub object: CompilerObjectOperandAst,
     pub source_zones: Vec<Zone>,
     pub source_top_only: bool,
@@ -51,7 +51,7 @@ pub(crate) struct CompilerMovementClauseAst {
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
-pub(crate) struct CompilerCopyModificationsAst {
+pub struct CompilerCopyModificationsAst {
     pub set_colors: Option<ColorSet>,
     pub set_card_types: Option<Vec<CardType>>,
     pub add_card_types: Vec<CardType>,
@@ -67,7 +67,7 @@ pub(crate) struct CompilerCopyModificationsAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerCreationKindAst {
+pub enum CompilerCreationKindAst {
     Token {
         name: String,
         definition: TokenDefinitionSpec,
@@ -84,7 +84,7 @@ pub(crate) enum CompilerCreationKindAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerDelayedDispositionAst {
+pub enum CompilerDelayedDispositionAst {
     None,
     ExileEndOfCombat,
     SacrificeEndOfCombat,
@@ -93,7 +93,7 @@ pub(crate) enum CompilerDelayedDispositionAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerCreationClauseAst {
+pub struct CompilerCreationClauseAst {
     pub kind: CompilerCreationKindAst,
     pub count: CompilerValueAst,
     pub controller: ClauseActorAst,
@@ -104,7 +104,7 @@ pub(crate) struct CompilerCreationClauseAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerControlClauseAst {
+pub struct CompilerControlClauseAst {
     pub object: CompilerObjectOperandAst,
     pub controller: ClauseActorAst,
     pub duration: Option<ClauseDurationAst>,
@@ -112,7 +112,7 @@ pub(crate) struct CompilerControlClauseAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerAttachmentClauseAst {
+pub struct CompilerAttachmentClauseAst {
     pub attachment: CompilerObjectOperandAst,
     pub target: Option<CompilerObjectOperandAst>,
     pub legality: Option<AuraAttachmentFilter>,
@@ -120,7 +120,7 @@ pub(crate) struct CompilerAttachmentClauseAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerObjectActionClauseAst {
+pub enum CompilerObjectActionClauseAst {
     Movement(CompilerMovementClauseAst),
     Creation(CompilerCreationClauseAst),
     Control(CompilerControlClauseAst),

@@ -216,36 +216,36 @@ const PAY_LIFE_ENTER_TAPPED_TAILS: &[&[&str]] = &[
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct MayChooseNotUntapFact<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) simple_source_subject: bool,
+pub struct MayChooseNotUntapFact<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub simple_source_subject: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AttackEachCombatFact<'a> {
+pub enum AttackEachCombatFact<'a> {
     AttachedController,
     Subject(&'a [OwnedLexToken]),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RetraceGrantFact {
-    pub(crate) card_types: Vec<CardType>,
+pub struct RetraceGrantFact {
+    pub card_types: Vec<CardType>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ConditionalDrawReplacementFact<'a> {
-    pub(crate) condition_tokens: &'a [OwnedLexToken],
-    pub(crate) draw_count: u32,
-    pub(crate) life_loss: Option<u32>,
+pub struct ConditionalDrawReplacementFact<'a> {
+    pub condition_tokens: &'a [OwnedLexToken],
+    pub draw_count: u32,
+    pub life_loss: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PayLifeOrEnterTappedFact {
-    pub(crate) amount: u32,
+pub struct PayLifeOrEnterTappedFact {
+    pub amount: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PayLifeOrEnterTappedError {
+pub enum PayLifeOrEnterTappedError {
     MissingPay,
     UnsupportedPrefix,
     MissingAmount,
@@ -254,16 +254,16 @@ pub(crate) enum PayLifeOrEnterTappedError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CopyActivatedAbilitiesFact {
-    pub(crate) marker_token: usize,
-    pub(crate) filter_start_token: usize,
-    pub(crate) filter_end_token: usize,
-    pub(crate) only_loyalty: bool,
-    pub(crate) once_each_turn_word_start: Option<usize>,
-    pub(crate) exclude_source_name: bool,
+pub struct CopyActivatedAbilitiesFact {
+    pub marker_token: usize,
+    pub filter_start_token: usize,
+    pub filter_end_token: usize,
+    pub only_loyalty: bool,
+    pub once_each_turn_word_start: Option<usize>,
+    pub exclude_source_name: bool,
 }
 
-pub(crate) fn parse_may_choose_not_untap_tokens(
+pub fn parse_may_choose_not_untap_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<MayChooseNotUntapFact<'_>> {
     parse_semantic_all(tokens, parse_may_choose_not_untap_lexed)
@@ -302,11 +302,11 @@ fn parse_may_choose_not_untap_lexed<'a>(
     })
 }
 
-pub(crate) fn is_surveilled_graveyard_play_life_cost(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_surveilled_graveyard_play_life_cost(tokens: &[OwnedLexToken]) -> bool {
     parse_semantic_all(tokens, semantic_phrase(SURVEILLED_GRAVEYARD_PLAY_LIFE_COST)).is_some()
 }
 
-pub(crate) fn is_source_linked_exile_cast_with_any_mana(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_source_linked_exile_cast_with_any_mana(tokens: &[OwnedLexToken]) -> bool {
     parse_semantic_all(tokens, parse_source_linked_exile_cast_lexed).is_some()
 }
 
@@ -322,7 +322,7 @@ fn parse_source_linked_exile_cast_lexed(input: &mut LexStream<'_>) -> WResult<()
     semantic_phrase(ANY_MANA_CAST_SUFFIX).parse_next(input)
 }
 
-pub(crate) fn contains_singular_cast_spell(tokens: &[OwnedLexToken]) -> bool {
+pub fn contains_singular_cast_spell(tokens: &[OwnedLexToken]) -> bool {
     tokens_have_parser(tokens, || {
         alt((
             semantic_phrase(&["cast", "a", "spell"]),
@@ -331,7 +331,7 @@ pub(crate) fn contains_singular_cast_spell(tokens: &[OwnedLexToken]) -> bool {
     })
 }
 
-pub(crate) fn parse_play_permission_with_haste_followup(
+pub fn parse_play_permission_with_haste_followup(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     let sentences = split_lexed_sentences(tokens);
@@ -343,7 +343,7 @@ pub(crate) fn parse_play_permission_with_haste_followup(
         .then_some(*permission)
 }
 
-pub(crate) fn parse_play_permission_with_enter_tapped_followup(
+pub fn parse_play_permission_with_enter_tapped_followup(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     let sentences = split_lexed_sentences(tokens);
@@ -364,15 +364,15 @@ pub(crate) fn parse_play_permission_with_enter_tapped_followup(
     .then_some(*permission)
 }
 
-pub(crate) fn is_control_opponents_while_searching(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_control_opponents_while_searching(tokens: &[OwnedLexToken]) -> bool {
     parse_semantic_all(tokens, semantic_phrase(CONTROL_OPPONENTS_WHILE_SEARCHING)).is_some()
 }
 
-pub(crate) fn is_opponent_search_exile_found_cards(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_opponent_search_exile_found_cards(tokens: &[OwnedLexToken]) -> bool {
     parse_semantic_all(tokens, semantic_phrase(OPPONENT_SEARCH_EXILE_FOUND_CARDS)).is_some()
 }
 
-pub(crate) fn is_cast_this_card_from_library_while_searching(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_cast_this_card_from_library_while_searching(tokens: &[OwnedLexToken]) -> bool {
     parse_semantic_all(
         tokens,
         semantic_phrase(CAST_THIS_CARD_FROM_LIBRARY_WHILE_SEARCHING),
@@ -380,7 +380,7 @@ pub(crate) fn is_cast_this_card_from_library_while_searching(tokens: &[OwnedLexT
     .is_some()
 }
 
-pub(crate) fn parse_attack_each_combat_if_able_tokens(
+pub fn parse_attack_each_combat_if_able_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttackEachCombatFact<'_>> {
     parse_semantic_all(tokens, parse_attack_each_combat_if_able_lexed)
@@ -418,7 +418,7 @@ fn parse_subject_attack_each_combat_lexed<'a>(
     )))
 }
 
-pub(crate) fn parse_additional_land_play_count(tokens: &[OwnedLexToken]) -> Option<u32> {
+pub fn parse_additional_land_play_count(tokens: &[OwnedLexToken]) -> Option<u32> {
     parse_semantic_all(tokens, parse_additional_land_play_lexed)
 }
 
@@ -438,7 +438,7 @@ fn parse_additional_land_play_lexed(input: &mut LexStream<'_>) -> WResult<u32> {
     Ok(count)
 }
 
-pub(crate) fn parse_retrace_grant_tokens(tokens: &[OwnedLexToken]) -> Option<RetraceGrantFact> {
+pub fn parse_retrace_grant_tokens(tokens: &[OwnedLexToken]) -> Option<RetraceGrantFact> {
     parse_semantic_all(tokens, parse_retrace_grant_lexed)
 }
 
@@ -482,9 +482,7 @@ fn parse_retrace_subject_atom(input: &mut LexStream<'_>) -> WResult<Option<CardT
     .parse_next(input)
 }
 
-pub(crate) fn parse_draw_replacement_exile_top_and_play_count(
-    tokens: &[OwnedLexToken],
-) -> Option<u32> {
+pub fn parse_draw_replacement_exile_top_and_play_count(tokens: &[OwnedLexToken]) -> Option<u32> {
     parse_semantic_all(tokens, parse_draw_replacement_exile_top_and_play_lexed)
 }
 
@@ -496,7 +494,7 @@ fn parse_draw_replacement_exile_top_and_play_lexed(input: &mut LexStream<'_>) ->
     Ok(count)
 }
 
-pub(crate) fn parse_conditional_draw_replacement_tokens(
+pub fn parse_conditional_draw_replacement_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ConditionalDrawReplacementFact<'_>> {
     parse_semantic_all(tokens, parse_conditional_draw_replacement_lexed)
@@ -532,7 +530,7 @@ fn parse_conditional_draw_replacement_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_pay_life_or_enter_tapped_tokens(
+pub fn parse_pay_life_or_enter_tapped_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PayLifeOrEnterTappedFact>, PayLifeOrEnterTappedError> {
     if !is_pay_life_candidate(tokens) {
@@ -579,7 +577,7 @@ fn is_pay_life_candidate(tokens: &[OwnedLexToken]) -> bool {
         && tokens_have_parser(tokens, || semantic_kw("life"))
 }
 
-pub(crate) fn parse_copy_activated_abilities_tokens(
+pub fn parse_copy_activated_abilities_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CopyActivatedAbilitiesFact> {
     let ((subject_tokens, only_loyalty), filter_tokens) =

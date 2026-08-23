@@ -41,7 +41,7 @@ fn parse_value_player_reference(words: &[&str]) -> PlayerFilter {
     }
 }
 
-pub(crate) fn parse_cards_discarded_this_turn_player(words: &[&str]) -> Option<PlayerFilter> {
+pub fn parse_cards_discarded_this_turn_player(words: &[&str]) -> Option<PlayerFilter> {
     (has_word(words, "cards")
         && has_word(words, "discarded")
         && has_word(words, "this")
@@ -49,7 +49,7 @@ pub(crate) fn parse_cards_discarded_this_turn_player(words: &[&str]) -> Option<P
     .then(|| parse_value_player_reference(words))
 }
 
-pub(crate) fn parse_commander_cast_count_player(words: &[&str]) -> Option<PlayerFilter> {
+pub fn parse_commander_cast_count_player(words: &[&str]) -> Option<PlayerFilter> {
     (has_word(words, "cast")
         && has_any(words, &["commander", "commanders"])
         && permission_shapes::find_words(words, &["from", "the", "command", "zone"]).is_some()
@@ -57,7 +57,7 @@ pub(crate) fn parse_commander_cast_count_player(words: &[&str]) -> Option<Player
     .then(|| parse_value_player_reference(words))
 }
 
-pub(crate) fn parse_cards_in_hand_player(words: &[&str]) -> Option<PlayerFilter> {
+pub fn parse_cards_in_hand_player(words: &[&str]) -> Option<PlayerFilter> {
     if !has_word(words, "cards") || !has_word(words, "in") || !has_any(words, &["hand", "hands"]) {
         return None;
     }
@@ -77,7 +77,7 @@ pub(crate) fn parse_cards_in_hand_player(words: &[&str]) -> Option<PlayerFilter>
     None
 }
 
-pub(crate) fn has_that_player_possessive(words: &[&str]) -> bool {
+pub fn has_that_player_possessive(words: &[&str]) -> bool {
     // The lexer removes the apostrophe but retains the possessive `s`, so
     // Oracle's "that player's" reaches grammar helpers as "that players".
     // Keep this distinct from "that player controls", which is a relative
@@ -85,15 +85,13 @@ pub(crate) fn has_that_player_possessive(words: &[&str]) -> bool {
     permission_shapes::find_words(words, &["that", "players"]).is_some()
 }
 
-pub(crate) fn parse_party_size_player(words: &[&str]) -> Option<PlayerFilter> {
+pub fn parse_party_size_player(words: &[&str]) -> Option<PlayerFilter> {
     (permission_shapes::exact_words(words, &["creatures", "in", "your", "party"])
         || permission_shapes::exact_words(words, &["creature", "in", "your", "party"]))
     .then_some(PlayerFilter::You)
 }
 
-pub(crate) fn parse_counter_reference_value_shape(
-    words: &[&str],
-) -> Option<CounterReferenceValueShape> {
+pub fn parse_counter_reference_value_shape(words: &[&str]) -> Option<CounterReferenceValueShape> {
     if !permission_shapes::prefix_words(words, &["equal", "to"]) {
         return None;
     }

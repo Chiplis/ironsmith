@@ -10,22 +10,22 @@ use super::{
 };
 
 #[derive(Debug, Clone, PartialEq, Default)]
-pub(crate) struct CopyModifierSpec {
-    pub(crate) set_colors: Option<ColorSet>,
-    pub(crate) set_card_types: Option<Vec<CardType>>,
-    pub(crate) set_subtypes: Option<Vec<Subtype>>,
-    pub(crate) added_card_types: Vec<CardType>,
-    pub(crate) added_subtypes: Vec<Subtype>,
-    pub(crate) removed_supertypes: Vec<Supertype>,
-    pub(crate) set_base_power_toughness: Option<(i32, i32)>,
+pub struct CopyModifierSpec {
+    pub set_colors: Option<ColorSet>,
+    pub set_card_types: Option<Vec<CardType>>,
+    pub set_subtypes: Option<Vec<Subtype>>,
+    pub added_card_types: Vec<CardType>,
+    pub added_subtypes: Vec<Subtype>,
+    pub removed_supertypes: Vec<Supertype>,
+    pub set_base_power_toughness: Option<(i32, i32)>,
     /// The copy's base power and toughness are the respective totals of the
     /// authored collection from which its copy source is chosen.
-    pub(crate) set_base_power_toughness_to_source_totals: bool,
-    pub(crate) starting_loyalty: Option<u32>,
-    pub(crate) granted_abilities: Vec<StaticAbility>,
+    pub set_base_power_toughness_to_source_totals: bool,
+    pub starting_loyalty: Option<u32>,
+    pub granted_abilities: Vec<StaticAbility>,
     /// "except it has haste and loses soulbond": the copy is created without
     /// the soulbond pairing ability.
-    pub(crate) loses_soulbond: bool,
+    pub loses_soulbond: bool,
 }
 
 fn last_class_location(words: &[&str], class: CreationWordClass) -> Option<usize> {
@@ -54,9 +54,7 @@ fn contains_words(words: &[&str], phrase: &[&str]) -> bool {
         .any(|candidate| candidate == phrase)
 }
 
-pub(crate) fn parse_copy_modifier_words(
-    tail_words: &[&str],
-) -> Result<CopyModifierSpec, CardTextError> {
+pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec, CardTextError> {
     let modifier_words = last_class_location(tail_words, CreationWordClass::Except)
         .and_then(|idx| tail_words.get(idx + 1..))
         .unwrap_or_default();

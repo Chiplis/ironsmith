@@ -22,7 +22,7 @@ use crate::model::symbols::SymbolReference;
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ClauseVerbAst {
+pub enum ClauseVerbAst {
     Add,
     Attach,
     Activate,
@@ -62,19 +62,19 @@ pub(crate) enum ClauseVerbAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ClausePolarityAst {
+pub enum ClausePolarityAst {
     Positive,
     Negative,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ClauseActionAst {
+pub struct ClauseActionAst {
     pub verb: ClauseVerbAst,
     pub polarity: ClausePolarityAst,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ClauseActorAst {
+pub enum ClauseActorAst {
     SourceController,
     ActivePlayer,
     EachOpponent,
@@ -85,7 +85,7 @@ pub(crate) enum ClauseActorAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerPlayerAst {
+pub enum CompilerPlayerAst {
     Any,
     Chosen,
     Defending,
@@ -102,7 +102,7 @@ pub(crate) enum CompilerPlayerAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ClauseSubjectAst {
+pub enum ClauseSubjectAst {
     Source,
     Actor(ClauseActorAst),
     Selection(CompilerSelectionAst),
@@ -111,7 +111,7 @@ pub(crate) enum ClauseSubjectAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ClauseObjectAst {
+pub enum ClauseObjectAst {
     Subject(ClauseSubjectAst),
     Selection(CompilerSelectionAst),
     Filter(CompilerFilterAst),
@@ -120,7 +120,7 @@ pub(crate) enum ClauseObjectAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ClauseQuantityUnitAst {
+pub enum ClauseQuantityUnitAst {
     Objects,
     Cards,
     Players,
@@ -133,7 +133,7 @@ pub(crate) enum ClauseQuantityUnitAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ClauseDistributionAst {
+pub enum ClauseDistributionAst {
     Total,
     Each,
     Divided,
@@ -141,14 +141,14 @@ pub(crate) enum ClauseDistributionAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ClauseQuantityAst {
+pub struct ClauseQuantityAst {
     pub value: CompilerValueAst,
     pub unit: ClauseQuantityUnitAst,
     pub distribution: ClauseDistributionAst,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ClauseDestinationRelationAst {
+pub enum ClauseDestinationRelationAst {
     Into,
     From,
     To,
@@ -157,7 +157,7 @@ pub(crate) enum ClauseDestinationRelationAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ClauseZonePlacementAst {
+pub enum ClauseZonePlacementAst {
     Default,
     Top,
     Bottom,
@@ -167,7 +167,7 @@ pub(crate) enum ClauseZonePlacementAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ClauseDestinationAst {
+pub struct ClauseDestinationAst {
     pub relation: ClauseDestinationRelationAst,
     pub zone: Zone,
     pub placement: ClauseZonePlacementAst,
@@ -175,7 +175,7 @@ pub(crate) struct ClauseDestinationAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ClausePredicateAst {
+pub enum ClausePredicateAst {
     Constant(bool),
     Matches {
         subject: ClauseSubjectAst,
@@ -193,7 +193,7 @@ pub(crate) enum ClausePredicateAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ClauseConditionKindAst {
+pub enum ClauseConditionKindAst {
     If,
     Unless,
     When,
@@ -201,13 +201,13 @@ pub(crate) enum ClauseConditionKindAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ClauseConditionAst {
+pub struct ClauseConditionAst {
     pub kind: ClauseConditionKindAst,
     pub predicate: ClausePredicateAst,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ClauseDurationAst {
+pub enum ClauseDurationAst {
     Permanent,
     ThisTurn,
     UntilEndOfTurn,
@@ -218,7 +218,7 @@ pub(crate) enum ClauseDurationAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ClauseBindingSourceAst {
+pub enum ClauseBindingSourceAst {
     Actor,
     Subject,
     Object,
@@ -226,13 +226,13 @@ pub(crate) enum ClauseBindingSourceAst {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ClauseReferenceBindingAst {
+pub struct ClauseReferenceBindingAst {
     pub reference: SymbolReference,
     pub source: ClauseBindingSourceAst,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ClauseComplementAst {
+pub enum ClauseComplementAst {
     Object(ClauseObjectAst),
     Quantity(ClauseQuantityAst),
     Destination(ClauseDestinationAst),
@@ -247,7 +247,7 @@ pub(crate) enum ClauseComplementAst {
 /// registry can therefore compare two clauses without erasing the source
 /// evidence retained for diagnostics and faithful rendering.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerClauseAst {
+pub struct CompilerClauseAst {
     pub actor: ClauseActorAst,
     pub subject: ClauseSubjectAst,
     pub action: ClauseActionAst,
@@ -269,14 +269,14 @@ pub(crate) struct CompilerClauseAst {
 impl CompilerClauseAst {
     /// Return the semantic form used for registry deduplication and rewrite
     /// fixed points. Source evidence remains on the original clause.
-    pub(crate) fn semantic_identity(&self) -> Self {
+    pub fn semantic_identity(&self) -> Self {
         let mut identity = self.clone();
         identity.provenance = None;
         identity.strip_nested_provenance();
         identity
     }
 
-    pub(crate) fn semantically_equivalent(&self, other: &Self) -> bool {
+    pub fn semantically_equivalent(&self, other: &Self) -> bool {
         self.semantic_identity() == other.semantic_identity()
     }
 

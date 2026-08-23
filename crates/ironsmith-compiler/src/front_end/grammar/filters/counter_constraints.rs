@@ -13,18 +13,18 @@ use crate::object::CounterType;
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CounterTypeWordsSpec {
-    pub(crate) counter_type: CounterType,
-    pub(crate) consumed: usize,
+pub struct CounterTypeWordsSpec {
+    pub counter_type: CounterType,
+    pub consumed: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct FilterCounterConstraintSpec {
-    pub(crate) constraint: CounterConstraint,
-    pub(crate) consumed: usize,
-    pub(crate) one_or_more: bool,
-    pub(crate) plural_counter_noun: bool,
-    pub(crate) plural_subject: bool,
+pub struct FilterCounterConstraintSpec {
+    pub constraint: CounterConstraint,
+    pub consumed: usize,
+    pub one_or_more: bool,
+    pub plural_counter_noun: bool,
+    pub plural_subject: bool,
 }
 
 fn counter_noun<'a>(
@@ -98,12 +98,12 @@ fn parse_known_counter_type_word_slice(
         "flood" => CounterType::Flood,
         "time" => CounterType::Time,
         "brain" => CounterType::Brain,
-        "burden" => CounterType::Named(intern_counter_name("burden")),
+        "burden" => CounterType::Named(intern_counter_name("burden").into()),
         "level" => CounterType::Level,
         "lore" => CounterType::Lore,
         "luck" => CounterType::Luck,
         "oil" => CounterType::Oil,
-        "pressure" => CounterType::Named(intern_counter_name("pressure")),
+        "pressure" => CounterType::Named(intern_counter_name("pressure").into()),
         "quest" => CounterType::Quest,
         "rad" => CounterType::Rad,
         "shield" => CounterType::Shield,
@@ -153,7 +153,7 @@ fn parse_counter_type_words_spec_word_slice(
         .chars()
         .all(|character| character.is_ascii_alphabetic())
     {
-        CounterType::Named(intern_counter_name(previous))
+        CounterType::Named(intern_counter_name(previous).into())
     } else {
         return Err(primitives::backtrack_err(
             "counter type",
@@ -200,7 +200,7 @@ fn parse_filter_counter_constraint_word_slice(
         let word = descriptor_words[0];
         CounterConstraint::Typed(
             parse_counter_type_word(word)
-                .unwrap_or_else(|| CounterType::Named(intern_counter_name(word))),
+                .unwrap_or_else(|| CounterType::Named(intern_counter_name(word).into())),
         )
     } else {
         let mut descriptor_input: primitives::WordSliceInput<'_> = &descriptor_words;
@@ -238,7 +238,7 @@ fn parse_filter_counter_constraint_word_slice(
     })
 }
 
-pub(crate) fn intern_counter_name(word: &str) -> &'static str {
+pub fn intern_counter_name(word: &str) -> &'static str {
     static INTERNER: OnceLock<Mutex<HashMap<String, &'static str>>> = OnceLock::new();
 
     let map = INTERNER.get_or_init(|| Mutex::new(HashMap::new()));
@@ -252,12 +252,12 @@ pub(crate) fn intern_counter_name(word: &str) -> &'static str {
     leaked
 }
 
-pub(crate) fn parse_counter_type_word(word: &str) -> Option<CounterType> {
+pub fn parse_counter_type_word(word: &str) -> Option<CounterType> {
     let words = [word];
     primitives::parse_full_word_slice(&words, parse_known_counter_type_word_slice)
 }
 
-pub(crate) fn parse_counter_type_words(words: &[&str]) -> Option<CounterType> {
+pub fn parse_counter_type_words(words: &[&str]) -> Option<CounterType> {
     let mut input: primitives::WordSliceInput<'_> = words;
     parse_counter_type_words_spec_word_slice
         .parse_next(&mut input)
@@ -265,7 +265,7 @@ pub(crate) fn parse_counter_type_words(words: &[&str]) -> Option<CounterType> {
         .map(|spec| spec.counter_type)
 }
 
-pub(crate) fn parse_counter_type_from_tokens(tokens: &[OwnedLexToken]) -> Option<CounterType> {
+pub fn parse_counter_type_from_tokens(tokens: &[OwnedLexToken]) -> Option<CounterType> {
     let mut words = parser_token_word_refs(tokens);
     parse_counter_type_words(&words).or_else(|| {
         // Many typed grammar callers capture only the descriptor because the
@@ -277,14 +277,12 @@ pub(crate) fn parse_counter_type_from_tokens(tokens: &[OwnedLexToken]) -> Option
     })
 }
 
-pub(crate) fn parse_filter_counter_constraint_words(
-    words: &[&str],
-) -> Option<(CounterConstraint, usize)> {
+pub fn parse_filter_counter_constraint_words(words: &[&str]) -> Option<(CounterConstraint, usize)> {
     let spec = parse_filter_counter_constraint_spec_words(words)?;
     Some((spec.constraint, spec.consumed))
 }
 
-pub(crate) fn parse_filter_counter_constraint_spec_words(
+pub fn parse_filter_counter_constraint_spec_words(
     words: &[&str],
 ) -> Option<FilterCounterConstraintSpec> {
     let mut input: primitives::WordSliceInput<'_> = words;
@@ -315,10 +313,7 @@ fn apply_filter_counter_constraint_surface(
 /// Restore Oracle-only number and pronoun choices after the semantic filter
 /// parser has consumed a counter constraint. These hints do not participate in
 /// filter equality or runtime matching.
-pub(crate) fn preserve_filter_counter_constraint_surface_words(
-    filter: &mut ObjectFilter,
-    words: &[&str],
-) {
+pub fn preserve_filter_counter_constraint_surface_words(filter: &mut ObjectFilter, words: &[&str]) {
     for start in 0..words.len() {
         if let Some(spec) = parse_filter_counter_constraint_spec_words(&words[start..]) {
             apply_filter_counter_constraint_surface(filter, spec);
@@ -326,7 +321,7 @@ pub(crate) fn preserve_filter_counter_constraint_surface_words(
     }
 }
 
-pub(crate) fn preserve_filter_counter_constraint_surface_tokens(
+pub fn preserve_filter_counter_constraint_surface_tokens(
     filter: &mut ObjectFilter,
     tokens: &[OwnedLexToken],
 ) {

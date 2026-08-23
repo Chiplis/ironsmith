@@ -10,6 +10,7 @@ pub trait GrantStaticAbility: Clone + PartialEq {
 }
 
 /// A granted alternative cast whose exact cost is derived from the granted card.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
     clippy::large_enum_variant,
@@ -74,6 +75,7 @@ impl<C> DerivedAlternativeCast<C> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GrantUsageLimit {
     OnceEachTurn,
@@ -84,6 +86,7 @@ pub enum GrantUsageLimit {
 /// the granting source. Runtime identity is carried by `SOURCE_EXILED_TAG`;
 /// this value only preserves the authored source noun and plural spell/pool
 /// wording.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceExiledGrantSurface {
     pub source: SourceReferenceSurface,
@@ -175,6 +178,7 @@ impl<C: CostComponent> DerivedAlternativeCast<C> {
 }
 
 /// Duration for one-shot grant effects.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GrantDuration {
     /// Permanent (for effects that say "gains X" without duration).
@@ -186,6 +190,7 @@ pub enum GrantDuration {
 }
 
 /// What can be granted to a card.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
     clippy::large_enum_variant,
@@ -338,6 +343,7 @@ where
 }
 
 /// A grant specification describing what to grant and to whom.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct GrantSpec<SA, E, C, Cond> {
     /// What to grant (ability or alternative casting method).

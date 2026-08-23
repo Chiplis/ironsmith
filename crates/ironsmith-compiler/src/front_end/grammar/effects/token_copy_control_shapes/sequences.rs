@@ -6,53 +6,53 @@ use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::token::any;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ThenSequenceShape<'a> {
-    pub(crate) head_tokens: &'a [OwnedLexToken],
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
+pub struct ThenSequenceShape<'a> {
+    pub head_tokens: &'a [OwnedLexToken],
+    pub tail_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ReturnSameSubtypesShape<'a> {
-    pub(crate) return_tokens: &'a [OwnedLexToken],
-    pub(crate) subtypes: Vec<Subtype>,
+pub struct ReturnSameSubtypesShape<'a> {
+    pub return_tokens: &'a [OwnedLexToken],
+    pub subtypes: Vec<Subtype>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChooseSameFilterShape<'a> {
-    pub(crate) head_tokens: &'a [OwnedLexToken],
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
+pub struct ChooseSameFilterShape<'a> {
+    pub head_tokens: &'a [OwnedLexToken],
+    pub filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChooseSequenceShape<'a> {
-    pub(crate) head_tokens: &'a [OwnedLexToken],
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
-    pub(crate) head_references_prior_choice: bool,
-    pub(crate) tail_references_prior_choice: bool,
+pub struct ChooseSequenceShape<'a> {
+    pub head_tokens: &'a [OwnedLexToken],
+    pub tail_tokens: &'a [OwnedLexToken],
+    pub head_references_prior_choice: bool,
+    pub tail_references_prior_choice: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ReturnCreateShape<'a> {
-    pub(crate) return_tokens: &'a [OwnedLexToken],
-    pub(crate) create_tokens: &'a [OwnedLexToken],
+pub struct ReturnCreateShape<'a> {
+    pub return_tokens: &'a [OwnedLexToken],
+    pub create_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ExileMayPutShape<'a> {
-    pub(crate) exile_tokens: &'a [OwnedLexToken],
-    pub(crate) put_tokens: &'a [OwnedLexToken],
+pub struct ExileMayPutShape<'a> {
+    pub exile_tokens: &'a [OwnedLexToken],
+    pub put_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ExileShuffleShape<'a> {
-    pub(crate) head_tokens: &'a [OwnedLexToken],
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
+pub struct ExileShuffleShape<'a> {
+    pub head_tokens: &'a [OwnedLexToken],
+    pub tail_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DestroyLandDamageShape<'a> {
-    pub(crate) destroy_tokens: &'a [OwnedLexToken],
-    pub(crate) damage_tokens: &'a [OwnedLexToken],
+pub struct DestroyLandDamageShape<'a> {
+    pub destroy_tokens: &'a [OwnedLexToken],
+    pub damage_tokens: &'a [OwnedLexToken],
 }
 
 fn split_once<'a>(
@@ -91,7 +91,7 @@ fn subtype_list<'a>(input: &mut LexStream<'a>) -> WResult<Vec<Subtype>> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_then_sequence_shape(tokens: &[OwnedLexToken]) -> Option<ThenSequenceShape<'_>> {
+pub fn parse_then_sequence_shape(tokens: &[OwnedLexToken]) -> Option<ThenSequenceShape<'_>> {
     let (head_tokens, tail_tokens) = split_once(tokens, &["then"])?;
     Some(ThenSequenceShape {
         head_tokens,
@@ -99,7 +99,7 @@ pub(crate) fn parse_then_sequence_shape(tokens: &[OwnedLexToken]) -> Option<Then
     })
 }
 
-pub(crate) fn parse_return_same_subtypes_shape(
+pub fn parse_return_same_subtypes_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ReturnSameSubtypesShape<'_>> {
     primitives::parse_prefix(tokens, primitives::kw("return"))?;
@@ -116,7 +116,7 @@ pub(crate) fn parse_return_same_subtypes_shape(
     })
 }
 
-pub(crate) fn parse_choose_same_filter_shape(
+pub fn parse_choose_same_filter_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ChooseSameFilterShape<'_>> {
     primitives::parse_prefix(tokens, primitives::kw("choose"))?;
@@ -127,7 +127,7 @@ pub(crate) fn parse_choose_same_filter_shape(
     })
 }
 
-pub(crate) fn parse_choice_reference_tail_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_choice_reference_tail_shape(tokens: &[OwnedLexToken]) -> bool {
     [
         &["from", "it"][..],
         &["from", "them"][..],
@@ -138,9 +138,7 @@ pub(crate) fn parse_choice_reference_tail_shape(tokens: &[OwnedLexToken]) -> boo
     .any(|suffix| exact_suffix(tokens, suffix))
 }
 
-pub(crate) fn parse_choose_sequence_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<ChooseSequenceShape<'_>> {
+pub fn parse_choose_sequence_shape(tokens: &[OwnedLexToken]) -> Option<ChooseSequenceShape<'_>> {
     let sequence = parse_then_sequence_shape(tokens)?;
     Some(ChooseSequenceShape {
         head_tokens: sequence.head_tokens,
@@ -150,7 +148,7 @@ pub(crate) fn parse_choose_sequence_shape(
     })
 }
 
-pub(crate) fn parse_return_create_shape(tokens: &[OwnedLexToken]) -> Option<ReturnCreateShape<'_>> {
+pub fn parse_return_create_shape(tokens: &[OwnedLexToken]) -> Option<ReturnCreateShape<'_>> {
     let (return_tokens, create_tokens) = split_once(tokens, &["then"])?;
     let (_, return_tail) = primitives::parse_prefix(return_tokens, primitives::kw("return"))?;
     let (_, create_tail) = primitives::parse_prefix(create_tokens, primitives::kw("create"))?;
@@ -197,7 +195,7 @@ fn has_battlefield_path(tokens: &[OwnedLexToken]) -> bool {
     )
 }
 
-pub(crate) fn parse_exile_may_put_shape(tokens: &[OwnedLexToken]) -> Option<ExileMayPutShape<'_>> {
+pub fn parse_exile_may_put_shape(tokens: &[OwnedLexToken]) -> Option<ExileMayPutShape<'_>> {
     let sequence = parse_then_sequence_shape(tokens)?;
     primitives::parse_prefix(
         sequence.head_tokens,
@@ -241,7 +239,7 @@ fn shuffle_graveyard_into_library<'a>(input: &mut LexStream<'a>) -> WResult<()> 
     Ok(())
 }
 
-pub(crate) fn parse_exile_shuffle_shape(tokens: &[OwnedLexToken]) -> Option<ExileShuffleShape<'_>> {
+pub fn parse_exile_shuffle_shape(tokens: &[OwnedLexToken]) -> Option<ExileShuffleShape<'_>> {
     let sequence = parse_then_sequence_shape(tokens)?;
     alt((
         primitives::phrase(&["you", "exile"]).void(),
@@ -291,7 +289,7 @@ fn land_controller_graveyard_damage<'a>(input: &mut LexStream<'a>) -> WResult<()
     Ok(())
 }
 
-pub(crate) fn parse_destroy_land_damage_shape(
+pub fn parse_destroy_land_damage_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DestroyLandDamageShape<'_>> {
     let sequence = parse_then_sequence_shape(tokens)?;

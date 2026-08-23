@@ -9,67 +9,67 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, TokenKind};
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AnthemKeywordOrder {
+pub enum AnthemKeywordOrder {
     KeywordBeforeAnthem,
     AnthemBeforeKeyword,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AnthemKeywordHead {
-    pub(crate) get_token: usize,
-    pub(crate) have_token: usize,
-    pub(crate) order: AnthemKeywordOrder,
-    pub(crate) pre_grant_is_temporary: bool,
-    pub(crate) clause_tail_end: usize,
+pub struct AnthemKeywordHead {
+    pub get_token: usize,
+    pub have_token: usize,
+    pub order: AnthemKeywordOrder,
+    pub pre_grant_is_temporary: bool,
+    pub clause_tail_end: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct KeywordBeforeAnthemShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) keyword_tokens: &'a [OwnedLexToken],
-    pub(crate) anthem_tail_tokens: &'a [OwnedLexToken],
+pub struct KeywordBeforeAnthemShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub keyword_tokens: &'a [OwnedLexToken],
+    pub anthem_tail_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AnthemKeywordColorSegment {
-    pub(crate) is_token: usize,
-    pub(crate) color: ColorSet,
+pub struct AnthemKeywordColorSegment {
+    pub is_token: usize,
+    pub color: ColorSet,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AnthemKeywordCompoundSplit {
-    pub(crate) split_token: usize,
-    pub(crate) tail_start: usize,
-    pub(crate) second_get_token: Option<usize>,
-    pub(crate) second_tail_end: usize,
+pub struct AnthemKeywordCompoundSplit {
+    pub split_token: usize,
+    pub tail_start: usize,
+    pub second_get_token: Option<usize>,
+    pub second_tail_end: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AnthemKeywordTrailingCondition<'a> {
-    pub(crate) ability_tokens: &'a [OwnedLexToken],
-    pub(crate) condition_tokens: &'a [OwnedLexToken],
-    pub(crate) trailing_if_surface: bool,
+pub struct AnthemKeywordTrailingCondition<'a> {
+    pub ability_tokens: &'a [OwnedLexToken],
+    pub condition_tokens: &'a [OwnedLexToken],
+    pub trailing_if_surface: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AnthemKeywordTrailingConditionError {
+pub enum AnthemKeywordTrailingConditionError {
     MissingAbility,
     MissingCondition,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TokenTailSplit<'a> {
-    pub(crate) head_tokens: &'a [OwnedLexToken],
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
+pub struct TokenTailSplit<'a> {
+    pub head_tokens: &'a [OwnedLexToken],
+    pub tail_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ColonTailSplit {
-    pub(crate) colon_token: usize,
-    pub(crate) last_and_before_colon: Option<usize>,
+pub struct ColonTailSplit {
+    pub colon_token: usize,
+    pub last_and_before_colon: Option<usize>,
 }
 
-pub(crate) fn parse_anthem_keyword_head(tokens: &[OwnedLexToken]) -> Option<AnthemKeywordHead> {
+pub fn parse_anthem_keyword_head(tokens: &[OwnedLexToken]) -> Option<AnthemKeywordHead> {
     let get_token = first_unquoted_token_between(tokens, 0, tokens.len(), parse_get_word)?;
     let have_token = first_unquoted_token_between(
         tokens,
@@ -107,7 +107,7 @@ pub(crate) fn parse_anthem_keyword_head(tokens: &[OwnedLexToken]) -> Option<Anth
     })
 }
 
-pub(crate) fn parse_keyword_before_anthem_shape(
+pub fn parse_keyword_before_anthem_shape(
     tokens: &[OwnedLexToken],
     head: AnthemKeywordHead,
 ) -> Option<KeywordBeforeAnthemShape<'_>> {
@@ -140,7 +140,7 @@ pub(crate) fn parse_keyword_before_anthem_shape(
     })
 }
 
-pub(crate) fn parse_anthem_keyword_color_segment(
+pub fn parse_anthem_keyword_color_segment(
     tokens: &[OwnedLexToken],
     head: AnthemKeywordHead,
 ) -> Option<AnthemKeywordColorSegment> {
@@ -154,7 +154,7 @@ pub(crate) fn parse_anthem_keyword_color_segment(
     Some(AnthemKeywordColorSegment { is_token, color })
 }
 
-pub(crate) fn parse_anthem_keyword_compound_split(
+pub fn parse_anthem_keyword_compound_split(
     tokens: &[OwnedLexToken],
     head: AnthemKeywordHead,
 ) -> Option<AnthemKeywordCompoundSplit> {
@@ -211,7 +211,7 @@ fn modifier_tail_is_attached_for_each_count(
     )
 }
 
-pub(crate) fn split_anthem_keyword_trailing_condition(
+pub fn split_anthem_keyword_trailing_condition(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AnthemKeywordTrailingCondition<'_>>, AnthemKeywordTrailingConditionError> {
     let tokens = trim_edge_punctuation(tokens);
@@ -238,17 +238,15 @@ pub(crate) fn split_anthem_keyword_trailing_condition(
     }))
 }
 
-pub(crate) fn split_anthem_keyword_and_is(tokens: &[OwnedLexToken]) -> Option<TokenTailSplit<'_>> {
+pub fn split_anthem_keyword_and_is(tokens: &[OwnedLexToken]) -> Option<TokenTailSplit<'_>> {
     split_adjacent_pair(tokens, parse_and_word, parse_is_word, 1, true)
 }
 
-pub(crate) fn split_anthem_keyword_and_have(
-    tokens: &[OwnedLexToken],
-) -> Option<TokenTailSplit<'_>> {
+pub fn split_anthem_keyword_and_have(tokens: &[OwnedLexToken]) -> Option<TokenTailSplit<'_>> {
     split_adjacent_pair(tokens, parse_and_word, parse_have_word, 2, false)
 }
 
-pub(crate) fn parse_colon_tail_split(tokens: &[OwnedLexToken]) -> Option<ColonTailSplit> {
+pub fn parse_colon_tail_split(tokens: &[OwnedLexToken]) -> Option<ColonTailSplit> {
     let colon_token = first_kind(tokens, TokenKind::Colon)?;
     let last_and_before_colon = last_token_before(tokens, colon_token, parse_and_word);
     Some(ColonTailSplit {

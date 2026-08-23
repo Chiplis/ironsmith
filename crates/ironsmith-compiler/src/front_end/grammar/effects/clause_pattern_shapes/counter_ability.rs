@@ -5,10 +5,10 @@ use winnow::combinator::{alt, opt, peek, repeat};
 use winnow::error::ModalResult as WResult;
 
 #[derive(Debug, Clone)]
-pub(crate) struct CounterAbilityTargetShape {
-    pub(crate) target_filter: ObjectFilter,
-    pub(crate) target_count: Option<ChoiceCount>,
-    pub(crate) explicit_target: bool,
+pub struct CounterAbilityTargetShape {
+    pub target_filter: ObjectFilter,
+    pub target_count: Option<ChoiceCount>,
+    pub explicit_target: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -311,7 +311,7 @@ fn parse_counter_ability_target_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_counter_ability_target_tokens(
+pub fn parse_counter_ability_target_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CounterAbilityTargetShape> {
     primitives::parse_all(

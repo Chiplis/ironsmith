@@ -13,7 +13,7 @@ use crate::registry::{HeadDiscriminator, RegistryRuleMetadata};
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::types::CardType;
 
-pub(crate) fn parse_keyword_bundle_pump_sentence(
+pub fn parse_keyword_bundle_pump_sentence(
     tokens: &[crate::lexer::OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let shape = shapes::parse_keyword_bundle_pump_shape(tokens).map_err(|error| {
@@ -51,7 +51,7 @@ pub(crate) fn parse_keyword_bundle_pump_sentence(
     ))
 }
 
-pub(crate) fn parse_scaled_target_power_sentence(
+pub fn parse_scaled_target_power_sentence(
     tokens: &[crate::lexer::OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = shapes::parse_scaled_power_shape(tokens) else {

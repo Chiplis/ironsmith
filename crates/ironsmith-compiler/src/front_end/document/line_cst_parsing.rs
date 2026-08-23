@@ -69,7 +69,7 @@ fn moved_or_cast_origin_trigger_split_index(
 pub(super) fn parse_triggered_line_cst(
     line: &PreprocessedLine,
 ) -> Result<TriggeredLineCst, CardTextError> {
-    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+    crate::stack::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
         parse_triggered_line_cst_inner(line)
     })
 }

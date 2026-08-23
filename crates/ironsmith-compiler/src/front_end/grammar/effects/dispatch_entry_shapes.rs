@@ -12,24 +12,24 @@ use winnow::prelude::*;
 use winnow::token::any;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TopLibraryAction {
+pub enum TopLibraryAction {
     Exile,
     Reveal,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TopLibraryCountShape {
-    pub(crate) action: TopLibraryAction,
-    pub(crate) count: u32,
+pub struct TopLibraryCountShape {
+    pub action: TopLibraryAction,
+    pub count: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct FutureZoneCounterShape {
-    pub(crate) counter_type: CounterType,
-    pub(crate) count: u32,
+pub struct FutureZoneCounterShape {
+    pub counter_type: CounterType,
+    pub count: u32,
 }
 
-pub(crate) fn parse_countered_spell_library_placement_tokens(
+pub fn parse_countered_spell_library_placement_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ironsmith_core::ZoneReplacementLibraryPlacement> {
     if !marker_present(tokens, primitives::phrase(&["countered", "this", "way"]))
@@ -59,26 +59,26 @@ pub(crate) fn parse_countered_spell_library_placement_tokens(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum WhereXReplacementScope {
+pub enum WhereXReplacementScope {
     DamageOrLife,
     AnyEffect,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WhereXUsageShape<'a> {
-    pub(crate) binding_tokens: &'a [OwnedLexToken],
-    pub(crate) scope: WhereXReplacementScope,
+pub struct WhereXUsageShape<'a> {
+    pub binding_tokens: &'a [OwnedLexToken],
+    pub scope: WhereXReplacementScope,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TaggedCharacteristicsShape<'a> {
-    pub(crate) colors: ColorSet,
-    pub(crate) subtypes: Vec<Subtype>,
-    pub(crate) ability_word: &'a str,
+pub struct TaggedCharacteristicsShape<'a> {
+    pub colors: ColorSet,
+    pub subtypes: Vec<Subtype>,
+    pub ability_word: &'a str,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DirectAtomicActionShape {
+pub enum DirectAtomicActionShape {
     Learn,
     TimeTravel,
 }
@@ -93,7 +93,7 @@ where
         .is_ok()
 }
 
-pub(crate) fn is_that_object_power_damage_to_source_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_that_object_power_damage_to_source_tokens(tokens: &[OwnedLexToken]) -> bool {
     marker_present(
         tokens,
         alt((
@@ -120,7 +120,7 @@ pub(crate) fn is_that_object_power_damage_to_source_tokens(tokens: &[OwnedLexTok
     )
 }
 
-pub(crate) fn has_to_that_player_damage_target_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn has_to_that_player_damage_target_tokens(tokens: &[OwnedLexToken]) -> bool {
     marker_present(tokens, primitives::phrase(&["to", "that", "player"]))
 }
 
@@ -154,7 +154,7 @@ fn trailing_counter_constraint<'a>(input: &mut LexStream<'a>) -> WResult<Counter
         })
 }
 
-pub(crate) fn parse_trailing_counter_constraint_tokens(
+pub fn parse_trailing_counter_constraint_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CounterConstraint> {
     let mut input = LexStream::new(tokens);
@@ -183,9 +183,7 @@ fn parse_top_library_count_lexed<'a>(input: &mut LexStream<'a>) -> WResult<TopLi
     Ok(TopLibraryCountShape { action, count })
 }
 
-pub(crate) fn parse_top_library_count_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<TopLibraryCountShape> {
+pub fn parse_top_library_count_tokens(tokens: &[OwnedLexToken]) -> Option<TopLibraryCountShape> {
     primitives::parse_all(
         trim_lexed_commas(tokens),
         parse_top_library_count_lexed,
@@ -219,7 +217,7 @@ fn future_zone_counter<'a>(input: &mut LexStream<'a>) -> WResult<FutureZoneCount
     })
 }
 
-pub(crate) fn parse_future_zone_counter_tokens(
+pub fn parse_future_zone_counter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<FutureZoneCounterShape> {
     let mut input = LexStream::new(tokens);
@@ -250,9 +248,7 @@ fn where_x_split<'a>(
     Ok((leading, binding))
 }
 
-pub(crate) fn parse_where_x_usage_shape_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<WhereXUsageShape<'_>> {
+pub fn parse_where_x_usage_shape_tokens(tokens: &[OwnedLexToken]) -> Option<WhereXUsageShape<'_>> {
     let (leading, full_binding_tokens) =
         primitives::parse_all(tokens, where_x_split, "where X binding").ok()?;
     let binding_tokens = full_binding_tokens
@@ -303,7 +299,7 @@ fn parse_flip_result_lexed<'a>(
     Ok((predicate, trim_lexed_commas(effects)))
 }
 
-pub(crate) fn parse_flip_result_shape_tokens(
+pub fn parse_flip_result_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<(IfResultPredicate, &[OwnedLexToken])> {
     primitives::parse_all(tokens, parse_flip_result_lexed, "flip result sentence").ok()
@@ -391,7 +387,7 @@ fn parse_tagged_characteristics_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_tagged_characteristics_shape_tokens(
+pub fn parse_tagged_characteristics_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TaggedCharacteristicsShape<'_>> {
     primitives::parse_all(
@@ -403,12 +399,12 @@ pub(crate) fn parse_tagged_characteristics_shape_tokens(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum OutsideGameArtRatingSentenceKind {
+pub enum OutsideGameArtRatingSentenceKind {
     Request,
     ResultTrigger,
 }
 
-pub(crate) fn parse_outside_game_art_rating_tokens(
+pub fn parse_outside_game_art_rating_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<OutsideGameArtRatingSentenceKind> {
     if marker_present(
@@ -424,11 +420,11 @@ pub(crate) fn parse_outside_game_art_rating_tokens(
     .then_some(OutsideGameArtRatingSentenceKind::ResultTrigger)
 }
 
-pub(crate) fn is_outside_game_art_rating_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_outside_game_art_rating_tokens(tokens: &[OwnedLexToken]) -> bool {
     parse_outside_game_art_rating_tokens(tokens).is_some()
 }
 
-pub(crate) fn is_one_or_more_this_way_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_one_or_more_this_way_tokens(tokens: &[OwnedLexToken]) -> bool {
     marker_present(tokens, primitives::phrase(&["one", "or", "more"]))
         && marker_present(tokens, primitives::phrase(&["this", "way"]))
 }
@@ -446,7 +442,7 @@ fn direct_for_each_who<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     primitives::kw("who").void().parse_next(input)
 }
 
-pub(crate) fn is_direct_for_each_who_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_direct_for_each_who_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, direct_for_each_who).is_some()
 }
 
@@ -462,7 +458,7 @@ fn direct_atomic_action<'a>(input: &mut LexStream<'a>) -> WResult<DirectAtomicAc
     .parse_next(input)
 }
 
-pub(crate) fn parse_direct_atomic_action_tokens(
+pub fn parse_direct_atomic_action_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DirectAtomicActionShape> {
     primitives::parse_all(tokens, direct_atomic_action, "direct atomic action").ok()
@@ -481,7 +477,7 @@ fn otherwise_referential_subject<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn has_otherwise_referential_subject_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn has_otherwise_referential_subject_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, otherwise_referential_subject).is_some()
 }
 
@@ -492,7 +488,7 @@ fn x_cant_be_zero<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     primitives::sentence_end().parse_next(input)
 }
 
-pub(crate) fn is_x_cant_be_zero_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_x_cant_be_zero_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(tokens, x_cant_be_zero, "X cannot be zero").is_ok()
 }
 
@@ -524,9 +520,7 @@ fn token_granted_ability<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLex
     Ok(trim_lexed_commas(abilities))
 }
 
-pub(crate) fn parse_token_granted_ability_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<&[OwnedLexToken]> {
+pub fn parse_token_granted_ability_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     primitives::parse_all(tokens, token_granted_ability, "token granted ability").ok()
 }
 

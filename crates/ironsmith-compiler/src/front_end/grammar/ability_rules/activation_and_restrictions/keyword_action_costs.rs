@@ -305,7 +305,7 @@ fn marker_keyword_set_contains(set: &[&str], keyword: &str) -> bool {
         .any(|candidate| keyword_head_is(keyword, candidate))
 }
 
-pub(crate) fn target_ast_to_object_filter(target: TargetAst) -> Option<ObjectFilter> {
+pub fn target_ast_to_object_filter(target: TargetAst) -> Option<ObjectFilter> {
     match target {
         TargetAst::Source(span) => Some(
             source_reference_surface_for_span(span)
@@ -323,15 +323,15 @@ pub(crate) fn target_ast_to_object_filter(target: TargetAst) -> Option<ObjectFil
     }
 }
 
-pub(crate) fn is_supported_untap_restriction_tail(words: &[&str]) -> bool {
+pub fn is_supported_untap_restriction_tail(words: &[&str]) -> bool {
     parse_keyword_untap_restriction_words(words).is_some()
 }
 
-pub(crate) fn normalize_cant_words(tokens: &[OwnedLexToken]) -> Vec<String> {
+pub fn normalize_cant_words(tokens: &[OwnedLexToken]) -> Vec<String> {
     parse_normalized_keyword_words_tokens(tokens).words
 }
 
-pub(crate) fn keyword_title(keyword: &str) -> String {
+pub fn keyword_title(keyword: &str) -> String {
     let mut out = String::new();
     let mut saw_word = false;
     let mut at_word_start = true;
@@ -474,11 +474,11 @@ fn parse_payment_clause_as_effects(
     }
 }
 
-pub(crate) fn find_payment_alternative_or(tokens: &[OwnedLexToken]) -> Option<usize> {
+pub fn find_payment_alternative_or(tokens: &[OwnedLexToken]) -> Option<usize> {
     parse_payment_alternative_split_tokens(tokens).map(|split| split.delimiter)
 }
 
-pub(crate) fn parse_single_graveyard_bottom_library_payment(
+pub fn parse_single_graveyard_bottom_library_payment(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TotalCost>, CardTextError> {
     let Some(payment) = parse_single_graveyard_bottom_payment_tokens(tokens) else {
@@ -502,7 +502,7 @@ pub(crate) fn parse_single_graveyard_bottom_library_payment(
     .map_err(CardTextError::ParseError)
 }
 
-pub(crate) fn parse_payment_clause_as_total_cost(
+pub fn parse_payment_clause_as_total_cost(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TotalCost>, CardTextError> {
     let trimmed = trim_edge_punctuation(&trim_commas(tokens));
@@ -678,14 +678,14 @@ fn parse_dynamic_payment_clause_as_total_cost(
     }
 }
 
-pub(crate) fn marker_keyword_id(keyword: &str) -> Option<&'static str> {
+pub fn marker_keyword_id(keyword: &str) -> Option<&'static str> {
     MARKER_KEYWORD_IDS
         .iter()
         .copied()
         .find(|candidate| keyword_head_is(keyword, candidate))
 }
 
-pub(crate) fn marker_keyword_display(tokens: &[OwnedLexToken]) -> Option<String> {
+pub fn marker_keyword_display(tokens: &[OwnedLexToken]) -> Option<String> {
     let word_view = ActivationRestrictionCompatWords::new(tokens);
     let words = word_view.to_word_refs();
     let keyword = words.first().copied()?;
@@ -748,7 +748,7 @@ fn buyback_marker_keyword_display(tokens: &[OwnedLexToken], words: &[&str]) -> O
     }
 }
 
-pub(crate) fn marker_text_from_words(words: &[&str]) -> Option<String> {
+pub fn marker_text_from_words(words: &[&str]) -> Option<String> {
     let first = words.first().copied()?;
     let mut text = keyword_title(first);
     if words.len() > 1 {
@@ -758,7 +758,7 @@ pub(crate) fn marker_text_from_words(words: &[&str]) -> Option<String> {
     Some(text)
 }
 
-pub(crate) fn parse_numeric_keyword_action<F>(
+pub fn parse_numeric_keyword_action<F>(
     words: &[&str],
     keyword: &'static str,
     build: F,
@@ -775,14 +775,14 @@ where
     Some(KeywordAction::Marker(keyword))
 }
 
-pub(crate) fn parse_dynamic_soulshift_keyword_action(words: &[&str]) -> Option<KeywordAction> {
+pub fn parse_dynamic_soulshift_keyword_action(words: &[&str]) -> Option<KeywordAction> {
     let parsed = parse_dynamic_soulshift_words(words)?;
     Some(KeywordAction::SoulshiftValue(crate::effect::Value::Count(
         parsed.count_filter,
     )))
 }
 
-pub(crate) enum KeywordCostFallback {
+pub enum KeywordCostFallback {
     MarkerOnly,
     MarkerOrText,
 }
@@ -796,7 +796,7 @@ impl KeywordCostFallback {
     }
 }
 
-pub(crate) fn parse_cost_keyword_action<F>(
+pub fn parse_cost_keyword_action<F>(
     tokens: &[OwnedLexToken],
     keyword: &'static str,
     fallback: KeywordCostFallback,
@@ -818,13 +818,13 @@ where
     Some(KeywordAction::Marker(keyword))
 }
 
-pub(crate) fn parse_single_word_keyword_action(word: &str) -> Option<KeywordAction> {
+pub fn parse_single_word_keyword_action(word: &str) -> Option<KeywordAction> {
     SINGLE_WORD_KEYWORD_ACTIONS
         .iter()
         .find_map(|(keyword, action)| keyword_head_is(word, keyword).then(|| action.clone()))
 }
 
-pub(crate) fn is_known_keyword_action_head(word: &str) -> bool {
+pub fn is_known_keyword_action_head(word: &str) -> bool {
     let word = word.to_ascii_lowercase();
     let word = word.as_str();
     SIMPLE_HEAD_KEYWORD_ACTIONS
@@ -990,7 +990,7 @@ fn parse_exact_ability_phrase(words: &[&str]) -> Option<KeywordAction> {
         .find_map(|(phrase, kind)| (*phrase == words).then(|| exact_ability_phrase_action(*kind)))
 }
 
-pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
+pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
     // "can't be blocked by more than N creature(s)" — a grantable blocking
     // restriction that rides in keyword lists ("trample and can't be blocked
     // by more than one creature").
@@ -1634,7 +1634,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     None
 }
 
-pub(crate) fn maybe_strip_leading_damage_subject_tokens(
+pub fn maybe_strip_leading_damage_subject_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     let split = parse_keyword_damage_subject_split_tokens(tokens)?;

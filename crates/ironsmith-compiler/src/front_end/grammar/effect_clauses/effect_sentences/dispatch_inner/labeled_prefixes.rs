@@ -57,10 +57,10 @@ fn parse_player_villainous_choice_statement(
     }))
 }
 
-pub(crate) fn parse_effect_sentence_inner_lexed(
+pub fn parse_effect_sentence_inner_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+    crate::stack::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
         parse_effect_sentence_inner_lexed_unstacked(tokens)
     })
 }
@@ -591,7 +591,7 @@ fn parse_passive_color_type_addition_sentence(
     Ok((!effects.is_empty()).then_some(effects))
 }
 
-pub(crate) fn parse_subject_verb_extension_sentence(
+pub fn parse_subject_verb_extension_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     macro_rules! one {
@@ -756,4 +756,4 @@ fn parse_for_each_opponent_doesnt_subject_verb_sentence(
 
 #[path = "labeled_prefixes/followup_predicates.rs"]
 mod followup_predicates;
-pub(crate) use followup_predicates::*;
+pub use followup_predicates::*;

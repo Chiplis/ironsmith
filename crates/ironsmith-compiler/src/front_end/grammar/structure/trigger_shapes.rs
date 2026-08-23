@@ -26,14 +26,14 @@ enum TriggerListTailKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TriggerEffectListTailSplit {
-    pub(crate) split_token_idx: usize,
+pub struct TriggerEffectListTailSplit {
+    pub split_token_idx: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct FirstTimeEachTurnTriggerSplit<'a> {
-    pub(crate) trigger_tokens: &'a [OwnedLexToken],
-    pub(crate) limit: u32,
+pub struct FirstTimeEachTurnTriggerSplit<'a> {
+    pub trigger_tokens: &'a [OwnedLexToken],
+    pub limit: u32,
 }
 
 fn phrase_occurs(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> bool {
@@ -186,7 +186,7 @@ fn classify_tail(
     }
 }
 
-pub(crate) fn parse_trigger_effect_list_tail_split_lexed(
+pub fn parse_trigger_effect_list_tail_split_lexed(
     trigger_prefix_tokens: &[OwnedLexToken],
     tail_tokens: &[OwnedLexToken],
 ) -> Option<TriggerEffectListTailSplit> {
@@ -205,7 +205,7 @@ pub(crate) fn parse_trigger_effect_list_tail_split_lexed(
     Some(TriggerEffectListTailSplit { split_token_idx })
 }
 
-pub(crate) fn parse_first_time_each_turn_trigger_suffix_lexed(
+pub fn parse_first_time_each_turn_trigger_suffix_lexed(
     trigger_tokens: &[OwnedLexToken],
 ) -> Option<FirstTimeEachTurnTriggerSplit<'_>> {
     FIRST_TIME_EACH_TURN_SUFFIXES.iter().find_map(|suffix| {
@@ -218,7 +218,7 @@ pub(crate) fn parse_first_time_each_turn_trigger_suffix_lexed(
     })
 }
 
-pub(crate) fn rewrite_attached_controller_effect_tokens_lexed(
+pub fn rewrite_attached_controller_effect_tokens_lexed(
     trigger_tokens: &[OwnedLexToken],
     effects_tokens: &[OwnedLexToken],
 ) -> Vec<OwnedLexToken> {

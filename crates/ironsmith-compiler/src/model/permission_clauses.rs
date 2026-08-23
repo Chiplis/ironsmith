@@ -16,7 +16,7 @@ use crate::target::PlayerFilter;
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerPermissionDispositionAst {
+pub enum CompilerPermissionDispositionAst {
     Execute,
     Permit,
     Prohibit,
@@ -24,7 +24,7 @@ pub(crate) enum CompilerPermissionDispositionAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerCastingActionAst {
+pub enum CompilerCastingActionAst {
     CastSpell,
     PlayLand,
     CastOrPlay,
@@ -33,13 +33,13 @@ pub(crate) enum CompilerCastingActionAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerPermissionActorAst {
+pub enum CompilerPermissionActorAst {
     Actor(ClauseActorAst),
     Players(PlayerFilter),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerCastingOriginAst {
+pub enum CompilerCastingOriginAst {
     Default,
     Zones {
         zones: Vec<Zone>,
@@ -53,14 +53,14 @@ pub(crate) enum CompilerCastingOriginAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerManaFlexibilityAst {
+pub enum CompilerManaFlexibilityAst {
     AsWritten,
     AnyColor,
     AnyType,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerAlternativeCastAst {
+pub enum CompilerAlternativeCastAst {
     Blitz,
     Dash,
     Flashback,
@@ -72,7 +72,7 @@ pub(crate) enum CompilerAlternativeCastAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerCastingPaymentAst {
+pub enum CompilerCastingPaymentAst {
     PrintedCost,
     WithoutPayingManaCost,
     Alternative(CompilerAlternativeCastAst),
@@ -80,7 +80,7 @@ pub(crate) enum CompilerCastingPaymentAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerCostAdjustmentAst {
+pub enum CompilerCostAdjustmentAst {
     AddMana(ManaCost),
     ReduceMana(ManaCost),
     ReduceValue(CompilerValueAst),
@@ -88,14 +88,14 @@ pub(crate) enum CompilerCostAdjustmentAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerCastingCostAst {
+pub struct CompilerCastingCostAst {
     pub payment: CompilerCastingPaymentAst,
     pub adjustments: Vec<CompilerCostAdjustmentAst>,
     pub mana_flexibility: CompilerManaFlexibilityAst,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerPermissionExpirationAst {
+pub enum CompilerPermissionExpirationAst {
     Immediate,
     UntilEndOfTurn,
     UntilYourNextTurn,
@@ -117,13 +117,13 @@ pub(crate) enum CompilerPermissionExpirationAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerPermissionStartAst {
+pub enum CompilerPermissionStartAst {
     Immediate,
     NextTurn(PlayerFilter),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerPermissionFrequencyAst {
+pub enum CompilerPermissionFrequencyAst {
     Unbounded,
     Once,
     AtMost(u32),
@@ -131,7 +131,7 @@ pub(crate) enum CompilerPermissionFrequencyAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerPermissionClauseAst {
+pub struct CompilerPermissionClauseAst {
     pub disposition: CompilerPermissionDispositionAst,
     pub action: CompilerCastingActionAst,
     pub actor: CompilerPermissionActorAst,

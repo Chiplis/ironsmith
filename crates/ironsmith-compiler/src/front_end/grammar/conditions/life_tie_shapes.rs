@@ -8,16 +8,16 @@ use super::super::{leaf, primitives};
 use crate::target::PlayerFilter;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PlayerLifeTieConditionShape {
-    pub(crate) minimum_players: u32,
-    pub(crate) tied_players: PlayerFilter,
+pub struct PlayerLifeTieConditionShape {
+    pub minimum_players: u32,
+    pub tied_players: PlayerFilter,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct PlayerLifeTieChoiceConditionalShape<'a> {
-    pub(crate) minimum_players: u32,
-    pub(crate) tied_players: PlayerFilter,
-    pub(crate) consequence_tokens: &'a [OwnedLexToken],
+pub struct PlayerLifeTieChoiceConditionalShape<'a> {
+    pub minimum_players: u32,
+    pub tied_players: PlayerFilter,
+    pub consequence_tokens: &'a [OwnedLexToken],
 }
 
 fn parse_life_extreme(input: &mut LexStream<'_>) -> WResult<PlayerFilter> {
@@ -80,7 +80,7 @@ fn parse_player_life_tie_choice_conditional_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_player_life_tie_condition_tokens(
+pub fn parse_player_life_tie_condition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerLifeTieConditionShape> {
     primitives::parse_all(
@@ -91,7 +91,7 @@ pub(crate) fn parse_player_life_tie_condition_tokens(
     .ok()
 }
 
-pub(crate) fn parse_player_life_tie_choice_conditional_tokens(
+pub fn parse_player_life_tie_choice_conditional_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerLifeTieChoiceConditionalShape<'_>> {
     primitives::parse_all(

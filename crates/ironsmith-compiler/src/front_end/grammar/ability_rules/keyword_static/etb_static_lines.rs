@@ -69,7 +69,7 @@ fn etb_starts_with_trigger_intro_after_label(tokens: &[OwnedLexToken]) -> bool {
     etb_grammar::parse_etb_trigger_intro_prefix_tokens(body_tokens).is_some()
 }
 
-pub(crate) fn parse_enters_tapped_with_counters_line(
+pub fn parse_enters_tapped_with_counters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     if tokens.is_empty() {
@@ -109,7 +109,7 @@ pub(crate) fn parse_enters_tapped_with_counters_line(
     Ok(Some(abilities))
 }
 
-pub(crate) fn parse_enters_with_counters_line(
+pub fn parse_enters_with_counters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let full_words = crate::lexer::token_word_refs(tokens);
@@ -906,7 +906,7 @@ fn parse_equal_to_greatest_cards_drawn_this_turn_value(tokens: &[OwnedLexToken])
     }
 }
 
-pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
     if !etb_grammar::parse_where_x_prefix_tokens(tokens) {
         return None;
     }
@@ -1143,7 +1143,7 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
     None
 }
 
-pub(crate) fn parse_where_x_is_colored_mana_symbols_value(
+pub fn parse_where_x_is_colored_mana_symbols_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     if !etb_grammar::parse_where_x_prefix_tokens(tokens) {
@@ -1157,13 +1157,13 @@ pub(crate) fn parse_where_x_is_colored_mana_symbols_value(
     (used == tail.len()).then_some(value)
 }
 
-pub(crate) fn parse_value_binding_clause_lexed(
+pub fn parse_value_binding_clause_lexed(
     tokens: &[crate::lexer::OwnedLexToken],
 ) -> Option<Value> {
     parse_value_binding_clause(tokens)
 }
 
-pub(crate) fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let parsed = etb_grammar::parse_where_x_source_stat_tokens(tokens)?;
     let reference_words =
         crate::lexer::parser_token_word_refs(parsed.reference_tokens);
@@ -1210,7 +1210,7 @@ fn parse_enters_with_fallback_counter_value(tail: &[OwnedLexToken]) -> Option<Va
         .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
 }
 
-pub(crate) fn parse_where_x_is_fixed_plus_reference_value(
+pub fn parse_where_x_is_fixed_plus_reference_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     let captured = etb_grammar::parse_where_x_fixed_plus_reference_tokens(tokens)?;
@@ -1252,7 +1252,7 @@ pub(crate) fn parse_where_x_is_fixed_plus_reference_value(
     ))
 }
 
-pub(crate) fn parse_where_x_life_gained_this_turn_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_where_x_life_gained_this_turn_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     if matches!(
         etb_grammar::parse_where_x_player_metric_tokens(tokens),
         Some(WhereXPlayerMetric::LifeGainedByYouThisTurn)
@@ -1263,7 +1263,7 @@ pub(crate) fn parse_where_x_life_gained_this_turn_value(tokens: &[OwnedLexToken]
     }
 }
 
-pub(crate) fn parse_where_x_life_lost_this_turn_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_where_x_life_lost_this_turn_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     match etb_grammar::parse_where_x_player_metric_tokens(tokens) {
         Some(WhereXPlayerMetric::LifeLostByYouThisTurn) => {
             Some(Value::LifeLostThisTurn(PlayerFilter::You))
@@ -1275,7 +1275,7 @@ pub(crate) fn parse_where_x_life_lost_this_turn_value(tokens: &[OwnedLexToken]) 
     }
 }
 
-pub(crate) fn parse_where_x_opponents_dealt_combat_damage_this_turn_value(
+pub fn parse_where_x_opponents_dealt_combat_damage_this_turn_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     if matches!(
@@ -1288,7 +1288,7 @@ pub(crate) fn parse_where_x_opponents_dealt_combat_damage_this_turn_value(
     }
 }
 
-pub(crate) fn parse_where_x_noncombat_damage_to_opponents_value(
+pub fn parse_where_x_noncombat_damage_to_opponents_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     if matches!(
@@ -1303,7 +1303,7 @@ pub(crate) fn parse_where_x_noncombat_damage_to_opponents_value(
     }
 }
 
-pub(crate) fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let parsed = etb_grammar::parse_where_x_aggregate_filter_tokens(tokens)?;
 
     if parsed.aggregate == EtbAggregateKind::Greatest
@@ -1510,7 +1510,7 @@ fn parse_spell_cast_history_aggregate_filter(
     Some(filter)
 }
 
-pub(crate) fn parse_where_x_greatest_commander_mana_value_filter(
+pub fn parse_where_x_greatest_commander_mana_value_filter(
     commander_tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     if !etb_grammar::parse_commander_battlefield_or_command_zone_tokens(commander_tokens) {
@@ -1531,7 +1531,7 @@ pub(crate) fn parse_where_x_greatest_commander_mana_value_filter(
     Some(Value::GreatestManaValue(combined))
 }
 
-pub(crate) fn parse_where_x_is_number_of_differently_named_filter_value(
+pub fn parse_where_x_is_number_of_differently_named_filter_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     let filter_tokens = etb_grammar::parse_where_x_differently_named_filter_tokens(tokens)?;
@@ -1539,7 +1539,7 @@ pub(crate) fn parse_where_x_is_number_of_differently_named_filter_value(
     Some(Value::DistinctNames(filter))
 }
 
-pub(crate) fn parse_where_x_is_number_of_different_powers_filter_value(
+pub fn parse_where_x_is_number_of_different_powers_filter_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     let filter_tokens = etb_grammar::parse_where_x_different_powers_filter_tokens(tokens)?;
@@ -1547,7 +1547,7 @@ pub(crate) fn parse_where_x_is_number_of_different_powers_filter_value(
     Some(Value::DistinctPowers(filter))
 }
 
-pub(crate) fn parse_where_x_is_greatest_number_of_filter_value(
+pub fn parse_where_x_is_greatest_number_of_filter_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     let filter_tokens = etb_grammar::parse_where_x_greatest_number_filter_tokens(tokens)?;
@@ -1676,7 +1676,7 @@ fn parse_shared_domain_relative_selector_filter(
     Some(shared)
 }
 
-pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let words = crate::lexer::token_word_refs(tokens);
     if words.iter().any(|word| matches!(*word, "plus" | "minus"))
         || words
@@ -1855,7 +1855,7 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
     Some(scale_where_x_number_value(Value::Count(filter), multiplier))
 }
 
-pub(crate) fn parse_static_abilities_among_scope_value(
+pub fn parse_static_abilities_among_scope_value(
     filter_tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     let parsed = etb_grammar::parse_etb_static_abilities_among_scope_tokens(filter_tokens)?;
@@ -1890,7 +1890,7 @@ fn scale_where_x_number_value(value: Value, multiplier: i32) -> Value {
     }
 }
 
-pub(crate) fn parse_where_x_is_fixed_plus_number_of_filter_value(
+pub fn parse_where_x_is_fixed_plus_number_of_filter_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     let captured = etb_grammar::parse_where_x_fixed_plus_number_of_filter_tokens(tokens)?;
@@ -1931,7 +1931,7 @@ pub(crate) fn parse_where_x_is_fixed_plus_number_of_filter_value(
     ))
 }
 
-pub(crate) fn parse_where_x_is_sum_of_number_of_filter_values(
+pub fn parse_where_x_is_sum_of_number_of_filter_values(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     let words = parser_token_word_refs(tokens);
@@ -1952,7 +1952,7 @@ pub(crate) fn parse_where_x_is_sum_of_number_of_filter_values(
     Some(Value::Add(Box::new(left), Box::new(right)))
 }
 
-pub(crate) fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
+pub fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     let captured = etb_grammar::parse_where_x_number_of_filter_offset_tokens(tokens)?;
@@ -1987,7 +1987,7 @@ pub(crate) fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
     ))
 }
 
-pub(crate) fn parse_enters_tapped_for_filter_line(
+pub fn parse_enters_tapped_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -2083,7 +2083,7 @@ pub(crate) fn parse_enters_tapped_for_filter_line(
     Ok(Some(StaticAbility::enters_tapped_for_filter(filter)))
 }
 
-pub(crate) fn parse_enters_untapped_for_filter_line(
+pub fn parse_enters_untapped_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -2119,7 +2119,7 @@ pub(crate) fn parse_enters_untapped_for_filter_line(
     Ok(Some(StaticAbility::enters_untapped_for_filter(filter)))
 }
 
-pub(crate) fn parse_x_at_most_enters_tapped_line(
+pub fn parse_x_at_most_enters_tapped_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some(leading_if) =
@@ -2162,7 +2162,7 @@ pub(crate) fn parse_x_at_most_enters_tapped_line(
     )))
 }
 
-pub(crate) fn parse_as_enters_reveal_from_hand_line(
+pub fn parse_as_enters_reveal_from_hand_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let trimmed = trim_edge_punctuation(tokens);
@@ -2203,7 +2203,7 @@ pub(crate) fn parse_as_enters_reveal_from_hand_line(
     )))
 }
 
-pub(crate) fn parse_reveal_from_hand_or_enters_tapped_line(
+pub fn parse_reveal_from_hand_or_enters_tapped_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -2972,7 +2972,7 @@ fn parse_enters_tapped_unless_two_or_more_opponents_condition(
     if count == 2 { Some(()) } else { None }
 }
 
-pub(crate) fn parse_conditional_enters_tapped_unless_line(
+pub fn parse_conditional_enters_tapped_unless_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -3174,7 +3174,7 @@ fn parse_filtered_etb_counter_otherwise_count(
     Ok(Some(count))
 }
 
-pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
+pub fn parse_enters_with_additional_counter_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if let Some(branches) = split_filtered_etb_counter_if_otherwise(tokens) {
@@ -3604,7 +3604,8 @@ mod filtered_turn_history_counter_tests {
             matches!(
                 source_counters.unhinted(),
                 Value::CountersOn(spec, Some(crate::object::CounterType::Named(name)))
-                    if matches!(spec.base(), ChooseSpec::Source) && *name == "ingredient"
+                    if matches!(spec.base(), ChooseSpec::Source)
+                        && name.as_str() == "ingredient"
             ),
             "{source_counters:?}"
         );
@@ -3820,7 +3821,7 @@ fn parse_additional_counter_count_from_tokens(tokens: &[OwnedLexToken]) -> Value
     Value::Fixed(1)
 }
 
-pub(crate) fn parse_as_enters_becomes_characteristics_for_filter_line(
+pub fn parse_as_enters_becomes_characteristics_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -3896,7 +3897,7 @@ pub(crate) fn parse_as_enters_becomes_characteristics_for_filter_line(
     )))
 }
 
-pub(crate) fn parse_as_enters_or_turns_face_up_pt_choice_line(
+pub fn parse_as_enters_or_turns_face_up_pt_choice_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);

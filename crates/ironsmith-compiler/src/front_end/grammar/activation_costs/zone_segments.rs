@@ -27,13 +27,13 @@ enum ReturnCostShape {
     Chosen(ReturnChosenShape),
 }
 
-pub(crate) fn parse_reveal_segment_tokens(
+pub fn parse_reveal_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     parse_segment(tokens, parse_reveal_segment_lexed, "reveal-cost")
 }
 
-pub(crate) fn parse_return_segment_tokens(
+pub fn parse_return_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     let shape = primitives::parse_all(tokens, parse_return_cost_shape_lexed, "return-cost")
@@ -53,7 +53,7 @@ pub(crate) fn parse_return_segment_tokens(
 /// Parse costs shaped like "Put a card from your hand on top of your library".
 /// Returning `None` lets the caller fall back to the ordinary put-counter cost
 /// grammar for all other `put` segments.
-pub(crate) fn parse_move_to_library_top_cost_tokens(
+pub fn parse_move_to_library_top_cost_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<Result<ActivationCostSegmentCst, CardTextError>> {
     if !tokens.first().is_some_and(|token| token.is_word("put")) {
@@ -97,7 +97,7 @@ pub(crate) fn parse_move_to_library_top_cost_tokens(
 /// bottom of its owner's library". Keeping the source surface typed prevents
 /// the broad put-counter grammar from interpreting `creature` as a counter
 /// type and `library` as the chosen-object zone.
-pub(crate) fn parse_move_source_to_library_bottom_cost_tokens(
+pub fn parse_move_source_to_library_bottom_cost_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<Result<ActivationCostSegmentCst, CardTextError>> {
     let words = TokenWordView::new(tokens).word_refs();

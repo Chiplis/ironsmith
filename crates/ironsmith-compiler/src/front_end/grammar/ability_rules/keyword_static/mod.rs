@@ -1,6 +1,6 @@
 mod costs_replacements_and_permissions;
 mod leading_conditional_sentence_chain;
-pub(crate) use costs_replacements_and_permissions::*;
+pub use costs_replacements_and_permissions::*;
 
 use super::activation_and_restrictions::{
     parse_ability_phrase, parse_activated_line, parse_activation_cost,
@@ -91,7 +91,7 @@ use super::grammar::static_keyword_facts::mid::{
 };
 use super::grammar::static_keyword_facts::type_and_color as type_and_color_facts;
 use super::grammar::static_keyword_shapes;
-pub(crate) use super::grammar::values::parse_add_mana_equal_amount_value_lexed as parse_add_mana_equal_amount_value;
+pub use super::grammar::values::parse_add_mana_equal_amount_value_lexed as parse_add_mana_equal_amount_value;
 use super::grammar::values::parse_max_cards_in_hand_value_lexed;
 use super::grammar::{
     attached_object_static_lines as attached_grammar, document_shapes as document_grammar,
@@ -205,7 +205,7 @@ fn parse_life_total_or_less_spell_cost_condition(
         .then_some(ThisSpellCostCondition::YouLifeTotalOrLess(amount as i32))
 }
 
-pub(crate) fn parse_can_be_attached_only_to_line(
+pub fn parse_can_be_attached_only_to_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let Some(attachment) = static_keyword_line_shapes::parse_attachment_restriction_span(tokens)
@@ -1776,7 +1776,7 @@ fn parse_static_ability_ast_line_early_lexed(
     Ok(None)
 }
 
-pub(crate) fn parse_damage_doubling_mana_value_marker_line(
+pub fn parse_damage_doubling_mana_value_marker_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if early_static_facts::parse_damage_doubling_mana_value_marker_tokens(tokens).is_none() {
@@ -1793,10 +1793,10 @@ pub(crate) fn parse_damage_doubling_mana_value_marker_line(
     Ok(Some(keyword_static_marker(tokens)))
 }
 
-pub(crate) fn parse_static_ability_ast_line_lexed(
+pub fn parse_static_ability_ast_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+    crate::stack::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
         parse_static_ability_ast_line_lexed_unstacked(tokens)
     })
 }
@@ -2033,7 +2033,7 @@ fn parse_static_ability_ast_line_lexed_unstacked(
     parse_static_ability_ast_line_lexed_single(tokens)
 }
 
-pub(crate) fn parse_removed_draft_leading_conditional_static_sentence_chain(
+pub fn parse_removed_draft_leading_conditional_static_sentence_chain(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let sentences = split_lexed_sentences(tokens);
@@ -2808,7 +2808,7 @@ fn looks_like_player_counter_gain_effect_tokens(tokens: &[OwnedLexToken]) -> boo
         })
 }
 
-pub(crate) fn parse_activated_abilities_cant_be_activated_line(
+pub fn parse_activated_abilities_cant_be_activated_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     use crate::effect::Restriction;
@@ -2853,7 +2853,7 @@ pub(crate) fn parse_activated_abilities_cant_be_activated_line(
     Ok(Some(StaticAbility::restriction(restriction, display)))
 }
 
-pub(crate) fn parse_activated_abilities_cost_increase_line(
+pub fn parse_activated_abilities_cost_increase_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some(spec) = static_keyword_cost_shapes::parse_activated_ability_cost_increase(tokens)
@@ -2893,7 +2893,7 @@ pub(crate) fn parse_activated_abilities_cost_increase_line(
     )))
 }
 
-pub(crate) fn parse_activated_abilities_cant_be_activated_line_lexed(
+pub fn parse_activated_abilities_cant_be_activated_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     use crate::effect::Restriction;
@@ -2934,7 +2934,7 @@ pub(crate) fn parse_activated_abilities_cant_be_activated_line_lexed(
     Ok(Some(StaticAbility::restriction(restriction, display)))
 }
 
-pub(crate) fn parse_pregame_begin_on_battlefield_line(
+pub fn parse_pregame_begin_on_battlefield_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_display = render_token_slice(tokens);
@@ -3007,7 +3007,7 @@ fn parse_pregame_reveal_from_opening_hand_line(
     }))
 }
 
-pub(crate) fn parse_pregame_mulligan_redraw_line(
+pub fn parse_pregame_mulligan_redraw_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if early_static_facts::parse_pregame_mulligan_redraw_tokens(tokens).is_none() {
@@ -3020,7 +3020,7 @@ pub(crate) fn parse_pregame_mulligan_redraw_line(
     )))
 }
 
-pub(crate) fn parse_pregame_choose_color_line(
+pub fn parse_pregame_choose_color_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if !keyword_static_lines::parse_pregame_choose_color_tokens(tokens) {
@@ -3033,7 +3033,7 @@ pub(crate) fn parse_pregame_choose_color_line(
     )))
 }
 
-pub(crate) fn parse_combined_pregame_choose_color_line(
+pub fn parse_combined_pregame_choose_color_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let sentences = split_lexed_slices_on_period(tokens);
@@ -3050,7 +3050,7 @@ pub(crate) fn parse_combined_pregame_choose_color_line(
     Ok(Some(vec![first, second]))
 }
 
-pub(crate) fn parse_can_block_additional_creature_each_combat_line(
+pub fn parse_can_block_additional_creature_each_combat_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some(additional) = keyword_static_lines::parse_can_block_additional_creature_tokens(tokens)
@@ -3063,7 +3063,7 @@ pub(crate) fn parse_can_block_additional_creature_each_combat_line(
     ))
 }
 
-pub(crate) fn parse_skulk_rules_text_line(
+pub fn parse_skulk_rules_text_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if !is_skulk_rules_text_line_lexed(tokens) {
@@ -3075,7 +3075,7 @@ pub(crate) fn parse_skulk_rules_text_line(
     ))
 }
 
-pub(crate) fn parse_ward_static_ability_line(
+pub fn parse_ward_static_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if !tokens.first().is_some_and(|token| token.is_word("ward")) {
@@ -3157,7 +3157,7 @@ fn parse_compact_sacrifice_ward_cost(
 }
 
 #[rustfmt::skip]
-pub(crate) fn parse_ward_discard_card_type_cost(tokens: &[OwnedLexToken]) -> Option<TotalCost> {
+pub fn parse_ward_discard_card_type_cost(tokens: &[OwnedLexToken]) -> Option<TotalCost> {
     let words = LexedClause::new(tokens).words();
     if words
         .first().is_none_or(|word| word != "discard")
@@ -3217,7 +3217,7 @@ pub(crate) fn parse_ward_discard_card_type_cost(tokens: &[OwnedLexToken]) -> Opt
     Some(TotalCost::from_cost(cost))
 }
 
-pub(crate) fn parse_composed_anthem_effects_line(
+pub fn parse_composed_anthem_effects_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let anthem_head = static_keyword_line_shapes::parse_composed_anthem_head(tokens);
@@ -3334,7 +3334,7 @@ fn comma_separated_anthem_subject_is_not_split_into_sibling_abilities() {
     }
 }
 
-pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
+pub fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
     if tokens.is_empty() {
         return None;
     }
@@ -3477,7 +3477,7 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
     None
 }
 
-pub(crate) fn parse_affinity_cost_reduction_line(
+pub fn parse_affinity_cost_reduction_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let core_tokens = if let Some(paren_idx) = locate_token_kind(tokens, TokenKind::LParen) {
@@ -3511,7 +3511,7 @@ pub(crate) fn parse_affinity_cost_reduction_line(
     )))
 }
 
-pub(crate) fn parse_filter_dont_untap_during_controllers_untap_steps_line(
+pub fn parse_filter_dont_untap_during_controllers_untap_steps_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some(spec) = keyword_static_lines::parse_dont_untap_during_controllers_step_tokens(tokens)
@@ -3571,7 +3571,7 @@ fn parse_graveyard_metric_threshold_condition(
     Ok(Some((metric, threshold)))
 }
 
-pub(crate) fn parse_conditional_source_spell_keyword_line(
+pub fn parse_conditional_source_spell_keyword_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some(spec) = static_keyword_line_shapes::parse_conditional_spell_keyword(tokens) else {
@@ -3604,7 +3604,7 @@ pub(crate) fn parse_conditional_source_spell_keyword_line(
 }
 
 #[rustfmt::skip]
-pub(crate) fn parse_enters_tapped_with_choose_color_line(
+pub fn parse_enters_tapped_with_choose_color_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let Some(shape) = early_static_facts::parse_enters_tapped_choice_shape_tokens(tokens) else {
@@ -3623,7 +3623,7 @@ pub(crate) fn parse_enters_tapped_with_choose_color_line(
     ]))
 }
 
-pub(crate) fn parse_damage_not_removed_cleanup_line(
+pub fn parse_damage_not_removed_cleanup_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if keyword_static_lines::parse_damage_not_removed_cleanup_tokens(tokens) {
@@ -3673,7 +3673,7 @@ fn parse_as_enters_choice_subject_clause(
     Some((shape.tail_word, display_subject))
 }
 
-pub(crate) fn parse_choose_basic_land_type_as_enters_line(
+pub fn parse_choose_basic_land_type_as_enters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some((tail_tokens, display_subject)) =
@@ -3703,7 +3703,7 @@ pub(crate) fn parse_choose_basic_land_type_as_enters_line(
     ))))
 }
 
-pub(crate) fn parse_enchanted_land_is_chosen_type_line(
+pub fn parse_enchanted_land_is_chosen_type_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if !is_enchanted_land_is_chosen_type_line_lexed(tokens) {
@@ -3715,7 +3715,7 @@ pub(crate) fn parse_enchanted_land_is_chosen_type_line(
     )))
 }
 
-pub(crate) fn parse_choose_card_name_as_enters_line(
+pub fn parse_choose_card_name_as_enters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some((tail_tokens, display_subject)) =
@@ -3732,7 +3732,7 @@ pub(crate) fn parse_choose_card_name_as_enters_line(
     ))))
 }
 
-pub(crate) fn parse_revealed_hand_choose_nonland_card_name_as_enters_line(
+pub fn parse_revealed_hand_choose_nonland_card_name_as_enters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let sentences = split_lexed_sentences(tokens);
@@ -3762,7 +3762,7 @@ pub(crate) fn parse_revealed_hand_choose_nonland_card_name_as_enters_line(
     ))
 }
 
-pub(crate) fn parse_note_life_total_as_enters_line(
+pub fn parse_note_life_total_as_enters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some((tail_tokens, display_subject)) =
@@ -3779,7 +3779,7 @@ pub(crate) fn parse_note_life_total_as_enters_line(
     ))))
 }
 
-pub(crate) fn parse_discard_hand_as_enters_line(
+pub fn parse_discard_hand_as_enters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some((tail_tokens, display_subject)) =
@@ -3797,7 +3797,7 @@ pub(crate) fn parse_discard_hand_as_enters_line(
     ))))
 }
 
-pub(crate) fn parse_source_is_chosen_type_in_addition_line(
+pub fn parse_source_is_chosen_type_in_addition_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some(display) = parse_source_is_chosen_type_in_addition_line_lexed(tokens) else {
@@ -3810,7 +3810,7 @@ pub(crate) fn parse_source_is_chosen_type_in_addition_line(
     )))
 }
 
-pub(crate) fn parse_source_is_chosen_color_line(
+pub fn parse_source_is_chosen_color_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some((subject, has_article)) =
@@ -3831,7 +3831,7 @@ pub(crate) fn parse_source_is_chosen_color_line(
     )))
 }
 
-pub(crate) fn parse_choose_creature_type_as_enters_line(
+pub fn parse_choose_creature_type_as_enters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some((tail_tokens, display_subject)) =
@@ -3856,7 +3856,7 @@ pub(crate) fn parse_choose_creature_type_as_enters_line(
     )))
 }
 
-pub(crate) fn parse_choose_color_and_creature_type_as_enters_line(
+pub fn parse_choose_color_and_creature_type_as_enters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let Some((tail_tokens, display_subject)) =
@@ -3880,7 +3880,7 @@ pub(crate) fn parse_choose_color_and_creature_type_as_enters_line(
     ]))
 }
 
-pub(crate) fn parse_choose_color_creature_type_pairs_as_enters_line(
+pub fn parse_choose_color_creature_type_pairs_as_enters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some((tail_tokens, display_subject)) =
@@ -3934,7 +3934,7 @@ pub(crate) fn parse_choose_color_creature_type_pairs_as_enters_line(
     )))
 }
 
-pub(crate) fn parse_choose_named_options_as_enters_line(
+pub fn parse_choose_named_options_as_enters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some((tail_tokens, display_subject)) =
@@ -4168,7 +4168,7 @@ fn parse_trigger_duplication_core(
     )))
 }
 
-pub(crate) fn parse_trigger_duplication_line_ast(
+pub fn parse_trigger_duplication_line_ast(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
@@ -4197,7 +4197,7 @@ pub(crate) fn parse_trigger_duplication_line_ast(
     }))
 }
 
-pub(crate) fn parse_trigger_suppression_line_ast(
+pub fn parse_trigger_suppression_line_ast(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
@@ -4222,7 +4222,7 @@ pub(crate) fn parse_trigger_suppression_line_ast(
     )))
 }
 
-pub(crate) fn parse_double_damage_from_sources_you_control_of_chosen_type_line(
+pub fn parse_double_damage_from_sources_you_control_of_chosen_type_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if !is_double_damage_from_sources_you_control_of_chosen_type_line_lexed(tokens) {
@@ -4236,7 +4236,7 @@ pub(crate) fn parse_double_damage_from_sources_you_control_of_chosen_type_line(
     ))
 }
 
-pub(crate) fn parse_damage_amount_replacement_line(
+pub fn parse_damage_amount_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
@@ -4277,7 +4277,7 @@ pub(crate) fn parse_damage_amount_replacement_line(
     ))
 }
 
-pub(crate) fn parse_double_damage_amount_replacement_line(
+pub fn parse_double_damage_amount_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
@@ -4436,7 +4436,7 @@ fn parse_damage_amount_replacement_target_filters(
     }
 }
 
-pub(crate) fn parse_minimum_damage_amount_replacement_line(
+pub fn parse_minimum_damage_amount_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
@@ -4457,7 +4457,7 @@ pub(crate) fn parse_minimum_damage_amount_replacement_line(
     )))
 }
 
-pub(crate) fn parse_enter_as_copy_as_enters_line(
+pub fn parse_enter_as_copy_as_enters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     fn parse_added_copy_abilities(
@@ -4741,7 +4741,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
     }
 }
 
-pub(crate) fn parse_choose_color_as_enters_line(
+pub fn parse_choose_color_as_enters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some((tail_tokens, display_subject)) =
@@ -4804,7 +4804,7 @@ mod enter_as_copy_added_color_tests {
     }
 }
 
-pub(crate) fn parse_choose_color_as_becomes_attached_line(
+pub fn parse_choose_color_as_becomes_attached_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some(fact) = static_mid_facts::parse_attached_color_choice_fact(tokens) else {
@@ -4854,7 +4854,7 @@ pub(crate) fn parse_choose_color_as_becomes_attached_line(
     )))
 }
 
-pub(crate) fn parse_choose_player_as_enters_line(
+pub fn parse_choose_player_as_enters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some((tail_tokens, display_subject)) =
@@ -4875,7 +4875,7 @@ pub(crate) fn parse_choose_player_as_enters_line(
     )))
 }
 
-pub(crate) fn parse_damage_redirect_to_source_line(
+pub fn parse_damage_redirect_to_source_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if static_mid_facts::parse_redirect_damage_to_source_fact(tokens).is_none() {
@@ -4886,7 +4886,7 @@ pub(crate) fn parse_damage_redirect_to_source_line(
     ))
 }
 
-pub(crate) fn parse_damage_redirect_to_source_controller_line(
+pub fn parse_damage_redirect_to_source_controller_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some(spec) = keyword_static_lines::parse_damage_redirect_controller_tokens(tokens) else {
@@ -4905,7 +4905,7 @@ pub(crate) fn parse_damage_redirect_to_source_controller_line(
     )))
 }
 
-pub(crate) fn parse_no_more_than_creatures_can_attack_or_block_each_combat_line(
+pub fn parse_no_more_than_creatures_can_attack_or_block_each_combat_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if tokens.len() < 8 {
@@ -4941,7 +4941,7 @@ pub(crate) fn parse_no_more_than_creatures_can_attack_or_block_each_combat_line(
     Ok(Some(ability))
 }
 
-pub(crate) fn parse_characteristic_defining_pt_line(
+pub fn parse_characteristic_defining_pt_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let sentence_tokens = trim_edge_punctuation(tokens);
@@ -5221,7 +5221,7 @@ fn bind_characteristic_count_to_affected_controller(
     value
 }
 
-pub(crate) fn parse_characteristic_defining_pt_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_characteristic_defining_pt_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let words = LexedClause::new(tokens).words();
     if words.is_empty() {
         return None;
@@ -5260,7 +5260,7 @@ pub(crate) fn parse_characteristic_defining_pt_value(tokens: &[OwnedLexToken]) -
     Some(acc)
 }
 
-pub(crate) fn parse_characteristic_defining_pt_term(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_characteristic_defining_pt_term(tokens: &[OwnedLexToken]) -> Option<Value> {
     if tokens.is_empty() {
         return None;
     }
@@ -5308,7 +5308,7 @@ pub(crate) fn parse_characteristic_defining_pt_term(tokens: &[OwnedLexToken]) ->
     ))
 }
 
-pub(crate) fn parse_shuffle_into_library_from_graveyard_line(
+pub fn parse_shuffle_into_library_from_graveyard_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if is_shuffle_into_library_from_graveyard_line_lexed(tokens) {
@@ -5318,7 +5318,7 @@ pub(crate) fn parse_shuffle_into_library_from_graveyard_line(
     Ok(None)
 }
 
-pub(crate) fn parse_permanents_enter_tapped_line(
+pub fn parse_permanents_enter_tapped_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if is_permanents_enter_tapped_line_lexed(tokens) {
@@ -5327,7 +5327,7 @@ pub(crate) fn parse_permanents_enter_tapped_line(
     Ok(None)
 }
 
-pub(crate) fn parse_creatures_entering_dont_cause_abilities_to_trigger_line(
+pub fn parse_creatures_entering_dont_cause_abilities_to_trigger_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if is_creatures_entering_dont_cause_abilities_to_trigger_line_lexed(tokens) {
@@ -5338,7 +5338,7 @@ pub(crate) fn parse_creatures_entering_dont_cause_abilities_to_trigger_line(
     Ok(None)
 }
 
-pub(crate) fn parse_creatures_assign_combat_damage_using_toughness_line(
+pub fn parse_creatures_assign_combat_damage_using_toughness_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     match parse_creatures_assign_combat_damage_using_toughness_line_lexed(tokens) {
@@ -5362,7 +5362,7 @@ pub(crate) fn parse_creatures_assign_combat_damage_using_toughness_line(
     Ok(None)
 }
 
-pub(crate) fn parse_you_assign_combat_damage_of_creatures_attacking_you_line(
+pub fn parse_you_assign_combat_damage_of_creatures_attacking_you_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if is_you_assign_combat_damage_of_creatures_attacking_you_line_lexed(tokens) {
@@ -5373,7 +5373,7 @@ pub(crate) fn parse_you_assign_combat_damage_of_creatures_attacking_you_line(
     Ok(None)
 }
 
-pub(crate) fn parse_lethal_damage_to_creatures_you_control_uses_power_line(
+pub fn parse_lethal_damage_to_creatures_you_control_uses_power_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if is_lethal_damage_to_creatures_you_control_uses_power_line_lexed(tokens) {
@@ -5384,7 +5384,7 @@ pub(crate) fn parse_lethal_damage_to_creatures_you_control_uses_power_line(
     Ok(None)
 }
 
-pub(crate) fn parse_players_cant_cycle_line(
+pub fn parse_players_cant_cycle_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if is_players_cant_cycle_line_lexed(tokens) {
@@ -5393,7 +5393,7 @@ pub(crate) fn parse_players_cant_cycle_line(
     Ok(None)
 }
 
-pub(crate) fn parse_starting_life_bonus_line(
+pub fn parse_starting_life_bonus_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some(amount) = keyword_static_lines::parse_starting_life_bonus_tokens(tokens) else {
@@ -5402,7 +5402,7 @@ pub(crate) fn parse_starting_life_bonus_line(
     Ok(Some(StaticAbility::starting_life_bonus(amount as i32)))
 }
 
-pub(crate) fn parse_buyback_cost_reduction_line(
+pub fn parse_buyback_cost_reduction_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some(amount) = keyword_static_lines::parse_buyback_cost_reduction_tokens(tokens) else {
@@ -5411,7 +5411,7 @@ pub(crate) fn parse_buyback_cost_reduction_line(
     Ok(Some(StaticAbility::buyback_cost_reduction(amount)))
 }
 
-pub(crate) fn parse_spell_cost_increase_per_target_beyond_first_line(
+pub fn parse_spell_cost_increase_per_target_beyond_first_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some(cost_head) = static_keyword_cost_shapes::parse_spell_cost_increase_head(tokens) else {
@@ -5450,7 +5450,7 @@ pub(crate) fn parse_spell_cost_increase_per_target_beyond_first_line(
 /// Parse a mandatory nonmana cost that scales with the number of announced
 /// targets. This must run before the broad spell-cost modifier parser, which
 /// would otherwise reinterpret the bare number as generic mana.
-pub(crate) fn parse_spell_additional_life_cost_per_target_line(
+pub fn parse_spell_additional_life_cost_per_target_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = crate::lexer::token_word_refs(tokens);
@@ -5476,7 +5476,7 @@ pub(crate) fn parse_spell_additional_life_cost_per_target_line(
     )))
 }
 
-pub(crate) fn parse_if_this_spell_costs_less_to_cast_line_lexed(
+pub fn parse_if_this_spell_costs_less_to_cast_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some(spec) = split_if_this_spell_costs_line_lexed(tokens) else {
@@ -5590,7 +5590,7 @@ fn parse_target_whose_controller_has_cards_in_graveyard_cost_condition(
     )
 }
 
-pub(crate) fn parse_this_spell_cost_condition(
+pub fn parse_this_spell_cost_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::static_abilities::ThisSpellCostCondition> {
     use crate::static_abilities::ThisSpellCostCondition;
@@ -5821,7 +5821,7 @@ fn parse_conjoined_this_spell_cost_condition(
     None
 }
 
-pub(crate) fn parse_trailing_this_spell_cost_condition(
+pub fn parse_trailing_this_spell_cost_condition(
     remaining_tokens: &[OwnedLexToken],
     clause_words: &[&str],
 ) -> Result<Option<crate::static_abilities::ThisSpellCostCondition>, CardTextError> {

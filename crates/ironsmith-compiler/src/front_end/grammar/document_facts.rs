@@ -3,7 +3,7 @@ use super::super::lexer::OwnedLexToken;
 use super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct OverloadKeywordLine;
+pub struct OverloadKeywordLine;
 
 fn parse_overload_keyword_tokens(tokens: &[OwnedLexToken]) -> Option<OverloadKeywordLine> {
     primitives::parse_prefix(tokens, primitives::kw("overload"))?;
@@ -16,7 +16,7 @@ fn is_cleave_keyword_tokens(tokens: &[OwnedLexToken]) -> bool {
 
 /// Builds document-wide facts while the front end still owns the lexed Oracle
 /// text. The overload payload is consumed before preparation and lowering.
-pub(crate) fn parse_document_semantic_facts<'a>(
+pub fn parse_document_semantic_facts<'a>(
     lines: impl IntoIterator<Item = (usize, &'a [OwnedLexToken])>,
 ) -> DocumentSemanticFacts {
     let mut overload_keyword_line_index = None;

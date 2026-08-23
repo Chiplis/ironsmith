@@ -1,0 +1,18 @@
+[package]
+name = "ironsmith-wasm"
+version = "0.1.2"
+edition = "2024"
+
+[dependencies]
+ironsmith-compiled-artifact = { path = "../ironsmith-compiled-artifact", default-features = false }
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []
+generated-registry = []
+wasm = []
+wasm-lean = []
+shadow-continuous = []
+paranoid-invariants = []

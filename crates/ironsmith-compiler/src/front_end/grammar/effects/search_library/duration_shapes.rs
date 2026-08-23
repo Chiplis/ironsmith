@@ -7,14 +7,14 @@ use crate::grammar::{leaf, primitives};
 use crate::lexer::{LexStream, OwnedLexToken, TokenKind, trim_lexed_commas};
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SearchRestrictionDurationShape {
-    pub(crate) duration: Until,
-    pub(crate) remainder: Vec<OwnedLexToken>,
-    pub(crate) placement: SearchRestrictionDurationPlacement,
+pub struct SearchRestrictionDurationShape {
+    pub duration: Until,
+    pub remainder: Vec<OwnedLexToken>,
+    pub placement: SearchRestrictionDurationPlacement,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SearchRestrictionDurationPlacement {
+pub enum SearchRestrictionDurationPlacement {
     Prefix,
     Suffix,
 }
@@ -83,7 +83,7 @@ fn until_from_leaf(duration: leaf::LeafDurationPhrase) -> Until {
     }
 }
 
-pub(crate) fn parse_search_restriction_duration_shape_lexed(
+pub fn parse_search_restriction_duration_shape_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<SearchRestrictionDurationShape>, CardTextError> {
     if tokens.is_empty() {

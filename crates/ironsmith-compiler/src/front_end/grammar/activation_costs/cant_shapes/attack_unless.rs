@@ -23,13 +23,13 @@ use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AttackUnlessScope {
+pub enum AttackUnlessScope {
     Attack,
     AttackOrBlock,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AttackUnlessSurface {
+pub enum AttackUnlessSurface {
     ControllerCastCreatureSpellThisTurn,
     ControllerCastNoncreatureSpellThisTurn,
     ControllerControlsMoreCreatures,
@@ -55,12 +55,12 @@ pub(crate) enum AttackUnlessSurface {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct AttackUnlessConditionFact<'a> {
-    pub(crate) scope: AttackUnlessScope,
-    pub(crate) surface: AttackUnlessSurface,
-    pub(crate) condition: CantAttackUnlessConditionSpec,
-    pub(crate) display_tokens: &'a [OwnedLexToken],
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
+pub struct AttackUnlessConditionFact<'a> {
+    pub scope: AttackUnlessScope,
+    pub surface: AttackUnlessSurface,
+    pub condition: CantAttackUnlessConditionSpec,
+    pub display_tokens: &'a [OwnedLexToken],
+    pub tail_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -76,7 +76,7 @@ struct ParsedRequirement {
     condition: CantAttackUnlessConditionSpec,
 }
 
-pub(crate) fn parse_attack_unless_condition_tokens(
+pub fn parse_attack_unless_condition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttackUnlessConditionFact<'_>> {
     let capture =

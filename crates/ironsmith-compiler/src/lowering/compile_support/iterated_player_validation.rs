@@ -26,7 +26,7 @@ fn comparison_contains_pending_effect_metric(comparison: &Comparison) -> bool {
     }
 }
 
-pub(crate) fn object_filter_mentions_iterated_player(filter: &ObjectFilter) -> bool {
+pub fn object_filter_mentions_iterated_player(filter: &ObjectFilter) -> bool {
     [
         filter.controller.as_ref(),
         filter.cast_by.as_ref(),
@@ -126,7 +126,7 @@ fn object_filter_contains_pending_effect_metric(filter: &ObjectFilter) -> bool {
         .any(comparison_contains_pending_effect_metric)
 }
 
-pub(crate) fn choose_spec_mentions_iterated_player(spec: &ChooseSpec) -> bool {
+pub fn choose_spec_mentions_iterated_player(spec: &ChooseSpec) -> bool {
     match spec {
         ChooseSpec::SurfaceHinted { spec, .. }
         | ChooseSpec::Target(spec)
@@ -160,7 +160,7 @@ fn choose_spec_contains_pending_effect_metric(spec: &ChooseSpec) -> bool {
     }
 }
 
-pub(crate) fn value_mentions_iterated_player(value: &Value) -> bool {
+pub fn value_mentions_iterated_player(value: &Value) -> bool {
     match value {
         Value::SurfaceHinted { value, .. }
         | Value::Scaled(value, _)
@@ -297,7 +297,7 @@ pub(crate) fn value_mentions_iterated_player(value: &Value) -> bool {
     }
 }
 
-pub(crate) fn value_contains_pending_effect_metric(value: &Value) -> bool {
+pub fn value_contains_pending_effect_metric(value: &Value) -> bool {
     match value {
         Value::PendingEffectMetric { .. }
         | Value::PendingEffectMetricOffset { .. }
@@ -372,7 +372,7 @@ fn anthem_count_mentions_iterated_player(count: &ironsmith_core::AnthemCountExpr
     }
 }
 
-pub(crate) fn condition_mentions_iterated_player(condition: &Condition) -> bool {
+pub fn condition_mentions_iterated_player(condition: &Condition) -> bool {
     use Condition::*;
     match condition {
         YouControl(filter)
@@ -514,7 +514,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
     }
 }
 
-pub(crate) fn effect_mentions_iterated_player(effect: &Effect) -> bool {
+pub fn effect_mentions_iterated_player(effect: &Effect) -> bool {
     let target_iterated_player_is_bound_by_delegated_chooser =
         if let Some(target) = effect.downcast_ref::<crate::effects::TargetOnlyEffect>() {
             target.chooser.is_some()
@@ -649,7 +649,7 @@ pub(crate) fn effect_mentions_iterated_player(effect: &Effect) -> bool {
     found
 }
 
-pub(crate) fn effect_contains_pending_effect_metric(effect: &Effect) -> bool {
+pub fn effect_contains_pending_effect_metric(effect: &Effect) -> bool {
     if effect
         .target_spec()
         .is_some_and(choose_spec_contains_pending_effect_metric)
@@ -725,6 +725,6 @@ pub(crate) fn effect_contains_pending_effect_metric(effect: &Effect) -> bool {
     found
 }
 
-pub(crate) fn effects_contain_pending_effect_metric(effects: &[Effect]) -> bool {
+pub fn effects_contain_pending_effect_metric(effects: &[Effect]) -> bool {
     effects.iter().any(effect_contains_pending_effect_metric)
 }

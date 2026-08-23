@@ -64,12 +64,12 @@ const POWER_GREATER_SUFFIXES: &[&[&str]] = &[
 ];
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct CombatControlPredicateShape<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) min_count: Option<u32>,
-    pub(crate) requires_different_powers: bool,
-    pub(crate) power_toughness_relation: Option<PowerToughnessRelation>,
-    pub(crate) other: bool,
+pub struct CombatControlPredicateShape<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub min_count: Option<u32>,
+    pub requires_different_powers: bool,
+    pub power_toughness_relation: Option<PowerToughnessRelation>,
+    pub other: bool,
 }
 
 fn strip_relation_suffix(
@@ -85,7 +85,7 @@ fn strip_relation_suffix(
     }
 }
 
-pub(crate) fn parse_combat_control_predicate_shape_lexed(
+pub fn parse_combat_control_predicate_shape_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<CombatControlPredicateShape<'_>> {
     let (_prefix, mut filter_tokens) =

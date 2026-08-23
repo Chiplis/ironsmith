@@ -4,7 +4,7 @@ use winnow::prelude::*;
 use crate::grammar::primitives::{self, WordSliceInput};
 use crate::lexer::OwnedLexToken;
 
-pub(crate) fn parse_protection_from_colored_spells_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_protection_from_colored_spells_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,
         primitives::phrase(&[
@@ -23,7 +23,7 @@ pub(crate) fn parse_protection_from_colored_spells_tokens(tokens: &[OwnedLexToke
     .is_ok()
 }
 
-pub(crate) fn parse_casualty_planeswalker_copy_prefix_words(words: &[&str]) -> bool {
+pub fn parse_casualty_planeswalker_copy_prefix_words(words: &[&str]) -> bool {
     parse_prefix_words(
         words,
         &[
@@ -42,7 +42,7 @@ pub(crate) fn parse_casualty_planeswalker_copy_prefix_words(words: &[&str]) -> b
     )
 }
 
-pub(crate) fn parse_read_ahead_prefix_words(words: &[&str]) -> bool {
+pub fn parse_read_ahead_prefix_words(words: &[&str]) -> bool {
     parse_prefix_words(words, &["read", "ahead"])
 }
 

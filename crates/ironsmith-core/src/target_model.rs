@@ -1,5 +1,6 @@
 use crate::{ChoiceCount, ObjectFilter, ObjectId, PlayerFilter, PlayerId, TagKey, Zone};
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SourceReferenceSurface {
     FullName(String),
@@ -12,6 +13,7 @@ pub enum SourceReferenceSurface {
 ///
 /// This is presentation metadata only. Object identity is still carried by a
 /// tagged snapshot so runtime characteristic and controller lookups use LKI.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SacrificedObjectKind {
     Creature,
@@ -41,6 +43,7 @@ impl SourceReferenceSurface {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChooseSpecSurfaceHint {
     SourceReference(SourceReferenceSurface),
@@ -48,6 +51,7 @@ pub enum ChooseSpecSurfaceHint {
 }
 
 /// Specifies what can be chosen or targeted by an effect.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChooseSpec {
     SurfaceHinted {

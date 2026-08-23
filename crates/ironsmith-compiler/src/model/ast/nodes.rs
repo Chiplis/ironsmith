@@ -75,7 +75,7 @@ pub struct CompilerAbilityPayload<LegacyAbility, Effect, ReferenceImports, Trigg
 impl<LegacyAbility, Effect, ReferenceImports, Trigger>
     CompilerAbilityPayload<LegacyAbility, Effect, ReferenceImports, Trigger>
 {
-    pub(crate) fn from_legacy(
+    pub fn from_legacy(
         legacy: LegacyAbility,
         effects: Option<Vec<Effect>>,
         reference_imports: ReferenceImports,
@@ -89,15 +89,15 @@ impl<LegacyAbility, Effect, ReferenceImports, Trigger>
         }
     }
 
-    pub(crate) fn legacy(&self) -> &LegacyAbility {
+    pub fn legacy(&self) -> &LegacyAbility {
         &self.legacy
     }
 
-    pub(crate) fn legacy_mut(&mut self) -> &mut LegacyAbility {
+    pub fn legacy_mut(&mut self) -> &mut LegacyAbility {
         &mut self.legacy
     }
 
-    pub(crate) fn into_legacy(self) -> LegacyAbility {
+    pub fn into_legacy(self) -> LegacyAbility {
         self.legacy
     }
 }

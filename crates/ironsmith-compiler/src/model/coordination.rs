@@ -12,7 +12,7 @@ use crate::model::provenance::SemanticProvenance;
 use crate::model::symbols::SymbolReference;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CoordinationKindAst {
+pub enum CoordinationKindAst {
     Sequence,
     Conjunction,
     Disjunction,
@@ -23,7 +23,7 @@ pub(crate) enum CoordinationKindAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CoordinationOperatorAst {
+pub enum CoordinationOperatorAst {
     And,
     Or,
     Then,
@@ -34,20 +34,20 @@ pub(crate) enum CoordinationOperatorAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum EffectOrderingAst {
+pub enum EffectOrderingAst {
     Ordered,
     Unordered,
     Alternative,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum EffectDependencyAst {
+pub enum EffectDependencyAst {
     Independent,
     DependsOnMembers(Vec<usize>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CarryKindAst {
+pub enum CarryKindAst {
     Actor,
     Subject,
     Action,
@@ -57,7 +57,7 @@ pub(crate) enum CarryKindAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CarriedFactAst {
+pub enum CarriedFactAst {
     Actor,
     Subject(Option<ClauseSubjectAst>),
     Action(Option<ClauseActionAst>),
@@ -67,7 +67,7 @@ pub(crate) enum CarriedFactAst {
 }
 
 impl CarriedFactAst {
-    pub(crate) fn kind(&self) -> CarryKindAst {
+    pub fn kind(&self) -> CarryKindAst {
         match self {
             Self::Actor => CarryKindAst::Actor,
             Self::Subject(_) => CarryKindAst::Subject,
@@ -80,14 +80,14 @@ impl CarriedFactAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CoordinationCarryAst {
+pub struct CoordinationCarryAst {
     pub from_member: usize,
     pub to_member: usize,
     pub fact: CarriedFactAst,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CoordinationBoundaryAst {
+pub struct CoordinationBoundaryAst {
     pub operator: CoordinationOperatorAst,
     pub ordering: EffectOrderingAst,
     pub dependency: EffectDependencyAst,
@@ -96,7 +96,7 @@ pub(crate) struct CoordinationBoundaryAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CoordinationMemberAst {
+pub struct CoordinationMemberAst {
     pub effects: Vec<EffectAst>,
     pub imports: Vec<SymbolReference>,
     pub exports: Vec<SymbolReference>,
@@ -104,7 +104,7 @@ pub(crate) struct CoordinationMemberAst {
 }
 
 impl CoordinationMemberAst {
-    pub(crate) fn new(effects: Vec<EffectAst>) -> Self {
+    pub fn new(effects: Vec<EffectAst>) -> Self {
         Self {
             effects,
             imports: Vec::new(),
@@ -115,7 +115,7 @@ impl CoordinationMemberAst {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum CoordinationError {
+pub enum CoordinationError {
     EmptyProgram,
     BoundaryCount {
         members: usize,
@@ -140,7 +140,7 @@ pub(crate) enum CoordinationError {
 /// A compiler-owned effect program whose clause relationships have already
 /// been resolved by grammar recognition.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CoordinationAst {
+pub struct CoordinationAst {
     pub kind: CoordinationKindAst,
     pub members: Vec<CoordinationMemberAst>,
     pub boundaries: Vec<CoordinationBoundaryAst>,
@@ -148,7 +148,7 @@ pub(crate) struct CoordinationAst {
 }
 
 impl CoordinationAst {
-    pub(crate) fn new(
+    pub fn new(
         kind: CoordinationKindAst,
         members: Vec<CoordinationMemberAst>,
         boundaries: Vec<CoordinationBoundaryAst>,
@@ -204,17 +204,17 @@ impl CoordinationAst {
         })
     }
 
-    pub(crate) fn effects(&self) -> impl Iterator<Item = &EffectAst> {
+    pub fn effects(&self) -> impl Iterator<Item = &EffectAst> {
         self.members.iter().flat_map(|member| member.effects.iter())
     }
 
-    pub(crate) fn effects_mut(&mut self) -> impl Iterator<Item = &mut EffectAst> {
+    pub fn effects_mut(&mut self) -> impl Iterator<Item = &mut EffectAst> {
         self.members
             .iter_mut()
             .flat_map(|member| member.effects.iter_mut())
     }
 
-    pub(crate) fn into_effects(self) -> Vec<EffectAst> {
+    pub fn into_effects(self) -> Vec<EffectAst> {
         self.members
             .into_iter()
             .flat_map(|member| member.effects)

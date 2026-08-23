@@ -12,48 +12,48 @@ use super::{leaf, primitives};
 
 #[path = "activation_restrictions/cast_facts.rs"]
 mod cast_facts;
-pub(crate) use cast_facts::*;
+pub use cast_facts::*;
 
 #[path = "activation_restrictions/clause_facts.rs"]
 mod clause_facts;
-pub(crate) use clause_facts::*;
+pub use clause_facts::*;
 
 #[path = "activation_restrictions/object_facts.rs"]
 mod object_facts;
-pub(crate) use object_facts::*;
+pub use object_facts::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ActivationNegationSpan {
-    pub(crate) first: usize,
-    pub(crate) end: usize,
+pub struct ActivationNegationSpan {
+    pub first: usize,
+    pub end: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ActivationWordSpan {
-    pub(crate) first: usize,
-    pub(crate) end: usize,
+pub struct ActivationWordSpan {
+    pub first: usize,
+    pub end: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CantRestrictionOrSplit {
-    pub(crate) first: Vec<OwnedLexToken>,
-    pub(crate) second: Vec<OwnedLexToken>,
+pub struct CantRestrictionOrSplit {
+    pub first: Vec<OwnedLexToken>,
+    pub second: Vec<OwnedLexToken>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ActivationCastLimitQualifier {
-    pub(crate) filter: ObjectFilter,
-    pub(crate) consumed: usize,
+pub struct ActivationCastLimitQualifier {
+    pub filter: ObjectFilter,
+    pub consumed: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StaticRestrictionConditionKind {
+pub enum StaticRestrictionConditionKind {
     If,
     AsLongAs,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StaticRestrictionConditionShape {
+pub enum StaticRestrictionConditionShape {
     Timing {
         timing: ActivationTiming,
         remainder_first: usize,
@@ -71,29 +71,27 @@ pub(crate) enum StaticRestrictionConditionShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ManaRetentionSubject {
+pub enum ManaRetentionSubject {
     You,
     AnyPlayer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct UnspentManaRetentionTail {
-    pub(crate) color: Option<Color>,
+pub struct UnspentManaRetentionTail {
+    pub color: Option<Color>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct UnspentManaRetentionStatic {
-    pub(crate) subject: ManaRetentionSubject,
-    pub(crate) color: Option<Color>,
+pub struct UnspentManaRetentionStatic {
+    pub subject: ManaRetentionSubject,
+    pub color: Option<Color>,
 }
 
-pub(crate) fn parse_unspent_mana_retention_tail_words(
-    words: &[&str],
-) -> Option<UnspentManaRetentionTail> {
+pub fn parse_unspent_mana_retention_tail_words(words: &[&str]) -> Option<UnspentManaRetentionTail> {
     primitives::parse_full_word_slice(words, parse_unspent_mana_retention_tail_word_slice)
 }
 
-pub(crate) fn parse_unspent_mana_retention_static_words(
+pub fn parse_unspent_mana_retention_static_words(
     words: &[&str],
 ) -> Option<UnspentManaRetentionStatic> {
     primitives::parse_full_word_slice(words, parse_unspent_mana_retention_static_word_slice)
@@ -165,7 +163,7 @@ fn parse_retained_mana_color_word(input: &mut primitives::WordSliceInput<'_>) ->
     ))
 }
 
-pub(crate) fn parse_activation_negation_span_tokens(
+pub fn parse_activation_negation_span_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivationNegationSpan> {
     let mut input = LexStream::new(tokens);
@@ -174,7 +172,7 @@ pub(crate) fn parse_activation_negation_span_tokens(
         .ok()
 }
 
-pub(crate) fn parse_activation_cast_limit_qualifier_words(
+pub fn parse_activation_cast_limit_qualifier_words(
     words: &[&str],
 ) -> Option<ActivationCastLimitQualifier> {
     let mut input: primitives::WordSliceInput<'_> = words;
@@ -187,9 +185,7 @@ pub(crate) fn parse_activation_cast_limit_qualifier_words(
     })
 }
 
-pub(crate) fn parse_activation_possessive_owner_tokens(
-    tokens: &[OwnedLexToken],
-) -> Vec<OwnedLexToken> {
+pub fn parse_activation_possessive_owner_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let mut normalized = tokens.to_vec();
     if let Some(last) = normalized.last_mut()
         && let Some(word) = last.as_word()
@@ -200,7 +196,7 @@ pub(crate) fn parse_activation_possessive_owner_tokens(
     normalized
 }
 
-pub(crate) fn parse_static_restriction_condition_shape_tokens(
+pub fn parse_static_restriction_condition_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<StaticRestrictionConditionShape> {
     for parser in [
@@ -236,7 +232,7 @@ fn parse_during_extra_turns_prefix_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_source_attached_to_creature_condition_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_source_attached_to_creature_condition_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,
         parse_source_attached_to_creature_condition_lexed,
@@ -245,7 +241,7 @@ pub(crate) fn parse_source_attached_to_creature_condition_tokens(tokens: &[Owned
     .is_ok()
 }
 
-pub(crate) fn parse_cant_restriction_or_split_tokens(
+pub fn parse_cant_restriction_or_split_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CantRestrictionOrSplit> {
     let negation = parse_activation_negation_span_tokens(tokens)?;

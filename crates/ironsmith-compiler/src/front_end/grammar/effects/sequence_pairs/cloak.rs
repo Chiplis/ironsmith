@@ -11,11 +11,11 @@ use crate::lexer::{LexStream, OwnedLexToken, TokenWordView};
 use super::super::parse_exile_library_owner_shape;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CloakPileSequenceShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) library_count: Value,
-    pub(crate) library_owner: PlayerAst,
-    pub(crate) enters_tapped: bool,
+pub struct CloakPileSequenceShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
+    pub library_count: Value,
+    pub library_owner: PlayerAst,
+    pub enters_tapped: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -106,7 +106,7 @@ fn parse_cloak_entry(input: &mut LexStream<'_>) -> WResult<bool> {
     Ok(true)
 }
 
-pub(crate) fn parse_cloak_pile_sequence_shape<'a>(
+pub fn parse_cloak_pile_sequence_shape<'a>(
     exile: &'a [OwnedLexToken],
     entry: &[OwnedLexToken],
 ) -> Option<CloakPileSequenceShape<'a>> {

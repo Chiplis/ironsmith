@@ -20,11 +20,11 @@ mod condition_shapes;
 mod continuing_shapes;
 mod count_shapes;
 
-pub(crate) use addition_shapes::{
+pub use addition_shapes::{
     TypeColorScope, parse_anthem_and_addition_shape, parse_type_color_addition_shape,
     parse_where_x_y_bindings_shape,
 };
-pub(crate) use anthem_keyword_shapes::{
+pub use anthem_keyword_shapes::{
     AnthemKeywordOrder, AnthemKeywordTrailingConditionError, parse_anthem_keyword_color_segment,
     parse_anthem_keyword_compound_split, parse_anthem_keyword_head, parse_colon_tail_split,
     parse_keyword_before_anthem_shape, split_anthem_keyword_and_have, split_anthem_keyword_and_is,
@@ -38,16 +38,16 @@ mod static_grant_facts;
 mod subject_shapes;
 mod tail_static_shapes;
 
-pub(crate) use clause_shapes::{
+pub use clause_shapes::{
     AnthemPrefixConditionKind, AnthemTailShape, parse_fixed_prefix_condition_shape,
     parse_modifier_shape, parse_prefix_condition_shape, parse_tail_shape,
     parse_word_token_candidates, split_trailing_modifier_maximum,
 };
-pub(crate) use compound_shapes::{
+pub use compound_shapes::{
     parse_carried_conditional_anthem_grant, parse_carried_subject_type_addition,
     parse_conditional_anthem_otherwise, parse_conditional_anthem_replacement,
 };
-pub(crate) use condition_shapes::{
+pub use condition_shapes::{
     DevotionConditionError, DevotionPlayerKind, ExistentialConditionTail, FixedStaticConditionKind,
     SourceCounterConditionError, parse_blocking_source_condition, parse_conjoined_condition_splits,
     parse_devotion_condition_shape, parse_entered_count_condition,
@@ -55,38 +55,38 @@ pub(crate) use condition_shapes::{
     parse_life_total_or_less_condition, parse_source_counter_condition,
     parse_source_in_graveyard_condition, parse_x_value_at_least_condition,
 };
-pub(crate) use continuing_shapes::{
+pub use continuing_shapes::{
     ContinuingSegmentShape, parse_continuing_segment_shape, parse_direct_have_tail,
     parse_persistent_anthem_tail_head, split_keyword_and_activated, strip_must_attack_suffix,
 };
-pub(crate) use count_shapes::{
+pub use count_shapes::{
     ForEachSpecialShape, StickerCountKind, parse_compound_count_segments, parse_for_each_rest,
     parse_for_each_special_shape, parse_sticker_count_shape, strip_each_or_every,
 };
-pub(crate) use granted_tail_shapes::{
+pub use granted_tail_shapes::{
     GrantedAbilityConditionKind, SpecialGrantedKeyword, parse_granted_ability_candidates,
     parse_granted_subject_facts, parse_special_granted_keyword, split_granted_ability_condition,
     split_type_addition_subject,
 };
-pub(crate) use misc_shapes::{
+pub use misc_shapes::{
     parse_equipment_equip_shape, parse_keyword_if_color_shape, parse_trailing_grant_segment,
     split_keyword_if_color_segments, split_trailing_grant_segments,
 };
-pub(crate) use soulbond_shapes::{SoulbondSharedEffect, parse_soulbond_shared_shape};
-pub(crate) use special_grant_shapes::{
+pub use soulbond_shapes::{SoulbondSharedEffect, parse_soulbond_shared_shape};
+pub use special_grant_shapes::{
     parse_anthem_goaded_shape, parse_anthem_no_defender_grant_tokens,
     parse_colored_spell_protection_tokens, parse_commander_creature_subject_tokens,
     parse_no_defender_granted_fragment_tokens, parse_subject_color_and_grant_tokens,
     parse_unblockable_keyword_fragment_tokens,
 };
-pub(crate) use static_grant_facts::{
+pub use static_grant_facts::{
     GrantedAlternativeCastKeyword, parse_every_subtype_family_tokens,
     parse_granted_alternative_cast_keyword_tokens, parse_static_grant_duration_fact,
 };
-pub(crate) use subject_shapes::{
+pub use subject_shapes::{
     AnthemSubjectGrammarMatch, object_filter_specificity_score, parse_exact_anthem_subject_grammar,
 };
-pub(crate) use tail_static_shapes::{
+pub use tail_static_shapes::{
     BasePowerToughnessConditionShape, IsntCreatureShapeError, parse_base_power_grant_shape,
     parse_base_power_toughness_grant_shape, parse_base_power_toughness_shape,
     parse_base_power_toughness_type_addition_shape, parse_isnt_creature_shape,
@@ -94,123 +94,123 @@ pub(crate) use tail_static_shapes::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TurnThresholdPlayer {
+pub enum TurnThresholdPlayer {
     You,
     Opponent,
     Any,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TurnThreshold {
-    pub(crate) player: TurnThresholdPlayer,
-    pub(crate) count: u32,
+pub struct TurnThreshold {
+    pub player: TurnThresholdPlayer,
+    pub count: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SourceCounterCountClause<'a> {
-    pub(crate) counter_type_word: &'a str,
-    pub(crate) source_tokens: &'a [OwnedLexToken],
-    pub(crate) starts_with_source_pronoun: bool,
+pub struct SourceCounterCountClause<'a> {
+    pub counter_type_word: &'a str,
+    pub source_tokens: &'a [OwnedLexToken],
+    pub starts_with_source_pronoun: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct FirstSpellEachTurnClause<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) mana_source_tokens: Option<&'a [OwnedLexToken]>,
+pub struct FirstSpellEachTurnClause<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub mana_source_tokens: Option<&'a [OwnedLexToken]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CantBeBlockedAsLongAsClause<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) condition_tokens: &'a [OwnedLexToken],
+pub struct CantBeBlockedAsLongAsClause<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub condition_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CantBeBlockedClause<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
+pub struct CantBeBlockedClause<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct KeywordsAndCantBeBlockedClause<'a> {
-    pub(crate) keyword_tokens: &'a [OwnedLexToken],
+pub struct KeywordsAndCantBeBlockedClause<'a> {
+    pub keyword_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct KeywordsAndCantBeBlockedByMoreThanClause<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) keyword_tokens: &'a [OwnedLexToken],
-    pub(crate) blocker_threshold_tokens: &'a [OwnedLexToken],
+pub struct KeywordsAndCantBeBlockedByMoreThanClause<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub keyword_tokens: &'a [OwnedLexToken],
+    pub blocker_threshold_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CantBeBlockedAndHasKeywordsClause<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) keyword_tokens: &'a [OwnedLexToken],
+pub struct CantBeBlockedAndHasKeywordsClause<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub keyword_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LandwalkBlockOverrideClause<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) ability_word: &'a str,
+pub struct LandwalkBlockOverrideClause<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub ability_word: &'a str,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct GrantedEscapeCostTail<'a> {
-    pub(crate) exile_count_tokens: &'a [OwnedLexToken],
+pub struct GrantedEscapeCostTail<'a> {
+    pub exile_count_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct GrantedMiracleCostReductionTail<'a> {
-    pub(crate) reduction_cost_tokens: &'a [OwnedLexToken],
+pub struct GrantedMiracleCostReductionTail<'a> {
+    pub reduction_cost_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CantBeBlockedByMoreThanClause<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) blocker_threshold_tokens: &'a [OwnedLexToken],
+pub struct CantBeBlockedByMoreThanClause<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub blocker_threshold_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CanBlockAdditionalCreatureClause<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) additional_count_tokens: &'a [OwnedLexToken],
+pub struct CanBlockAdditionalCreatureClause<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub additional_count_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CantBeBlockedSubjectFacts {
-    pub(crate) has_conjunction_or_comma: bool,
-    pub(crate) starts_with_source_pronoun: bool,
-    pub(crate) has_rejected_clause_word: bool,
-    pub(crate) mentions_power_or_toughness: bool,
+pub struct CantBeBlockedSubjectFacts {
+    pub has_conjunction_or_comma: bool,
+    pub starts_with_source_pronoun: bool,
+    pub has_rejected_clause_word: bool,
+    pub mentions_power_or_toughness: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct HasKeywordUnblockableHead {
-    pub(crate) has_token: usize,
+pub struct HasKeywordUnblockableHead {
+    pub has_token: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct GrantedKeywordVerbFacts {
-    pub(crate) have_token: usize,
-    pub(crate) prefix_has_get: bool,
-    pub(crate) starts_with_as_long_as: bool,
-    pub(crate) tail_has_have: bool,
-    pub(crate) tail_has_get_or_be: bool,
+pub struct GrantedKeywordVerbFacts {
+    pub have_token: usize,
+    pub prefix_has_get: bool,
+    pub starts_with_as_long_as: bool,
+    pub tail_has_have: bool,
+    pub tail_has_get_or_be: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TrailingAsLongAsClause<'a> {
-    pub(crate) keyword_tokens: &'a [OwnedLexToken],
-    pub(crate) condition_tokens: &'a [OwnedLexToken],
+pub struct TrailingAsLongAsClause<'a> {
+    pub keyword_tokens: &'a [OwnedLexToken],
+    pub condition_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct MustAttackKeywordTail<'a> {
-    pub(crate) keyword_tokens: &'a [OwnedLexToken],
+pub struct MustAttackKeywordTail<'a> {
+    pub keyword_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GrantedKeywordTokenKind {
+pub enum GrantedKeywordTokenKind {
     Blitz,
     Emerge,
     Scavenge,
@@ -220,127 +220,127 @@ pub(crate) enum GrantedKeywordTokenKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SubjectLosesKeywordsClause<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) loss_tokens: &'a [OwnedLexToken],
-    pub(crate) additional_gain_tokens: Option<&'a [OwnedLexToken]>,
-    pub(crate) loss_mode: ironsmith_core::AbilityLossMode,
+pub struct SubjectLosesKeywordsClause<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub loss_tokens: &'a [OwnedLexToken],
+    pub additional_gain_tokens: Option<&'a [OwnedLexToken]>,
+    pub loss_mode: ironsmith_core::AbilityLossMode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EachCreatureSubject<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
+pub struct EachCreatureSubject<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct IndestructibleGrantClause<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) ability_tokens: &'a [OwnedLexToken],
+pub struct IndestructibleGrantClause<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub ability_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LoseAllTransformShape {
-    pub(crate) subject_word_end: usize,
-    pub(crate) descriptor_words: Range<usize>,
-    pub(crate) power_toughness_word: usize,
-    pub(crate) name_words: Option<Range<usize>>,
-    pub(crate) except_mana_abilities: bool,
+pub struct LoseAllTransformShape {
+    pub subject_word_end: usize,
+    pub descriptor_words: Range<usize>,
+    pub power_toughness_word: usize,
+    pub name_words: Option<Range<usize>>,
+    pub except_mana_abilities: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LoseAllAbilitiesShape {
-    pub(crate) subject_word_end: usize,
-    pub(crate) becomes: bool,
-    pub(crate) except_mana_abilities: bool,
-    pub(crate) base_power_toughness_word: Option<usize>,
+pub struct LoseAllAbilitiesShape {
+    pub subject_word_end: usize,
+    pub becomes: bool,
+    pub except_mana_abilities: bool,
+    pub base_power_toughness_word: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct KeywordTypeAdditionSplit<'a> {
-    pub(crate) keyword_tokens: &'a [OwnedLexToken],
-    pub(crate) addition_tokens: &'a [OwnedLexToken],
+pub struct KeywordTypeAdditionSplit<'a> {
+    pub keyword_tokens: &'a [OwnedLexToken],
+    pub addition_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SuffixFilterHead {
+pub enum SuffixFilterHead {
     Other,
     Pronoun,
     Normal,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SharedSuffixCandidate {
-    pub(crate) and_token: usize,
-    pub(crate) split_token: usize,
+pub struct SharedSuffixCandidate {
+    pub and_token: usize,
+    pub split_token: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PermanentCardOwner {
+pub enum PermanentCardOwner {
     You,
     Opponent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PermanentCardCountFacts {
-    pub(crate) zone: Zone,
-    pub(crate) owner: Option<PermanentCardOwner>,
+pub struct PermanentCardCountFacts {
+    pub zone: Zone,
+    pub owner: Option<PermanentCardOwner>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ConditionalMustBlockTarget {
+pub enum ConditionalMustBlockTarget {
     Source,
     EnchantedCreature,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ConditionalMustBlockShape<'a> {
-    pub(crate) condition_tokens: &'a [OwnedLexToken],
-    pub(crate) target: ConditionalMustBlockTarget,
+pub struct ConditionalMustBlockShape<'a> {
+    pub condition_tokens: &'a [OwnedLexToken],
+    pub target: ConditionalMustBlockTarget,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct NoDefenderConditionalShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) condition_tokens: &'a [OwnedLexToken],
+pub struct NoDefenderConditionalShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub condition_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct NoDefenderSubjectShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
+pub struct NoDefenderSubjectShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct GetsAttacksShape {
-    pub(crate) get_token: usize,
-    pub(crate) and_token: usize,
+pub struct GetsAttacksShape {
+    pub get_token: usize,
+    pub and_token: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AnthemGrantedTailKind {
+pub enum AnthemGrantedTailKind {
     CantBeBlocked,
     BeEverySubtype(crate::types::SubtypeFamily),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AnthemAndGrantedTail {
-    pub(crate) get_token: usize,
-    pub(crate) and_token: usize,
-    pub(crate) tail_kind: AnthemGrantedTailKind,
+pub struct AnthemAndGrantedTail {
+    pub get_token: usize,
+    pub and_token: usize,
+    pub tail_kind: AnthemGrantedTailKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SubjectEverySubtypeShape<'a> {
-    pub(crate) condition_tokens: Option<&'a [OwnedLexToken]>,
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) family: crate::types::SubtypeFamily,
+pub struct SubjectEverySubtypeShape<'a> {
+    pub condition_tokens: Option<&'a [OwnedLexToken]>,
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub family: crate::types::SubtypeFamily,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AnthemModifierHead {
-    pub(crate) get_token: usize,
-    pub(crate) modifier_token: usize,
-    pub(crate) has_target: bool,
-    pub(crate) temporary: bool,
+pub struct AnthemModifierHead {
+    pub get_token: usize,
+    pub modifier_token: usize,
+    pub has_target: bool,
+    pub temporary: bool,
 }
 
 const CANT_BE_BLOCKED_PHRASES: &[&[&str]] = &[
@@ -402,7 +402,7 @@ const GRANTED_MIRACLE_COST_REDUCED_PREFIX_PHRASES: &[&[&str]] = &[
     ],
 ];
 
-pub(crate) fn parse_first_spell_each_turn_clause(
+pub fn parse_first_spell_each_turn_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<FirstSpellEachTurnClause<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -414,7 +414,7 @@ pub(crate) fn parse_first_spell_each_turn_clause(
     .ok()
 }
 
-pub(crate) fn parse_cant_be_blocked_as_long_as_clause(
+pub fn parse_cant_be_blocked_as_long_as_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<CantBeBlockedAsLongAsClause<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -426,7 +426,7 @@ pub(crate) fn parse_cant_be_blocked_as_long_as_clause(
     .ok()
 }
 
-pub(crate) fn parse_defending_player_controls_most_creatures_or_tied_condition(
+pub fn parse_defending_player_controls_most_creatures_or_tied_condition(
     tokens: &[OwnedLexToken],
 ) -> bool {
     token_phrase_complete(
@@ -448,9 +448,7 @@ pub(crate) fn parse_defending_player_controls_most_creatures_or_tied_condition(
     )
 }
 
-pub(crate) fn parse_cant_be_blocked_clause(
-    tokens: &[OwnedLexToken],
-) -> Option<CantBeBlockedClause<'_>> {
+pub fn parse_cant_be_blocked_clause(tokens: &[OwnedLexToken]) -> Option<CantBeBlockedClause<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
     let (subject_tokens, _) = primitives::split_lexed_once_before_suffix(tokens, 1, || {
         primitives::any_phrase(CANT_BE_BLOCKED_PHRASES)
@@ -459,7 +457,7 @@ pub(crate) fn parse_cant_be_blocked_clause(
     (!subject_tokens.is_empty()).then_some(CantBeBlockedClause { subject_tokens })
 }
 
-pub(crate) fn parse_keywords_and_cant_be_blocked_clause(
+pub fn parse_keywords_and_cant_be_blocked_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<KeywordsAndCantBeBlockedClause<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -470,7 +468,7 @@ pub(crate) fn parse_keywords_and_cant_be_blocked_clause(
     (!keyword_tokens.is_empty()).then_some(KeywordsAndCantBeBlockedClause { keyword_tokens })
 }
 
-pub(crate) fn parse_keywords_and_cant_be_blocked_by_more_than_clause(
+pub fn parse_keywords_and_cant_be_blocked_by_more_than_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<KeywordsAndCantBeBlockedByMoreThanClause<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -527,7 +525,7 @@ pub(crate) fn parse_keywords_and_cant_be_blocked_by_more_than_clause(
     None
 }
 
-pub(crate) fn parse_cant_be_blocked_and_has_keywords_clause(
+pub fn parse_cant_be_blocked_and_has_keywords_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<CantBeBlockedAndHasKeywordsClause<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -549,7 +547,7 @@ pub(crate) fn parse_cant_be_blocked_and_has_keywords_clause(
     None
 }
 
-pub(crate) fn parse_landwalk_block_override_clause(
+pub fn parse_landwalk_block_override_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<LandwalkBlockOverrideClause<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -561,7 +559,7 @@ pub(crate) fn parse_landwalk_block_override_clause(
     .ok()
 }
 
-pub(crate) fn parse_granted_escape_cost_tail_clause(
+pub fn parse_granted_escape_cost_tail_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<GrantedEscapeCostTail<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -573,7 +571,7 @@ pub(crate) fn parse_granted_escape_cost_tail_clause(
     .ok()
 }
 
-pub(crate) fn parse_granted_miracle_cost_reduction_tail_clause(
+pub fn parse_granted_miracle_cost_reduction_tail_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<GrantedMiracleCostReductionTail<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -585,7 +583,7 @@ pub(crate) fn parse_granted_miracle_cost_reduction_tail_clause(
     .ok()
 }
 
-pub(crate) fn parse_cant_be_blocked_by_more_than_clause(
+pub fn parse_cant_be_blocked_by_more_than_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<CantBeBlockedByMoreThanClause<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -597,7 +595,7 @@ pub(crate) fn parse_cant_be_blocked_by_more_than_clause(
     .ok()
 }
 
-pub(crate) fn parse_can_block_additional_creature_clause(
+pub fn parse_can_block_additional_creature_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<CanBlockAdditionalCreatureClause<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -609,9 +607,7 @@ pub(crate) fn parse_can_block_additional_creature_clause(
     .ok()
 }
 
-pub(crate) fn parse_cant_be_blocked_subject_facts(
-    tokens: &[OwnedLexToken],
-) -> CantBeBlockedSubjectFacts {
+pub fn parse_cant_be_blocked_subject_facts(tokens: &[OwnedLexToken]) -> CantBeBlockedSubjectFacts {
     let words = TokenWordView::new(tokens).word_refs();
     let starts_with_source_pronoun = words
         .first()
@@ -648,7 +644,7 @@ pub(crate) fn parse_cant_be_blocked_subject_facts(
     }
 }
 
-pub(crate) fn parse_has_keyword_unblockable_head(
+pub fn parse_has_keyword_unblockable_head(
     tokens: &[OwnedLexToken],
 ) -> Option<HasKeywordUnblockableHead> {
     let mut input = LexStream::new(tokens);
@@ -664,7 +660,7 @@ pub(crate) fn parse_has_keyword_unblockable_head(
         .then_some(HasKeywordUnblockableHead { has_token })
 }
 
-pub(crate) fn parse_granted_keyword_verb_facts(
+pub fn parse_granted_keyword_verb_facts(
     tokens: &[OwnedLexToken],
 ) -> Option<GrantedKeywordVerbFacts> {
     let mut input = LexStream::new(tokens);
@@ -688,7 +684,7 @@ pub(crate) fn parse_granted_keyword_verb_facts(
     })
 }
 
-pub(crate) fn granted_keyword_subject_is_rejected(tokens: &[OwnedLexToken]) -> bool {
+pub fn granted_keyword_subject_is_rejected(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens).word_refs();
     let has_attached_marker = words
         .iter()
@@ -723,7 +719,7 @@ pub(crate) fn granted_keyword_subject_is_rejected(tokens: &[OwnedLexToken]) -> b
     (has_attached_marker && !attached_marker_is_typed) || has_bare_mana || has_rejected_word
 }
 
-pub(crate) fn split_trailing_as_long_as_clause(
+pub fn split_trailing_as_long_as_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<TrailingAsLongAsClause<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -756,7 +752,7 @@ pub(crate) fn split_trailing_as_long_as_clause(
 /// "during your turn" phrase, such as "This creature has first strike during
 /// your turn."  Keeping this structural avoids letting the keyword parser
 /// silently discard the timing suffix.
-pub(crate) fn split_trailing_during_your_turn_clause(
+pub fn split_trailing_during_your_turn_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -767,7 +763,7 @@ pub(crate) fn split_trailing_during_your_turn_clause(
     (!keyword_tokens.is_empty()).then_some(keyword_tokens)
 }
 
-pub(crate) fn split_must_attack_keyword_tail(
+pub fn split_must_attack_keyword_tail(
     tokens: &[OwnedLexToken],
 ) -> Option<MustAttackKeywordTail<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -783,7 +779,7 @@ pub(crate) fn split_must_attack_keyword_tail(
     (!keyword_tokens.is_empty()).then_some(MustAttackKeywordTail { keyword_tokens })
 }
 
-pub(crate) fn classify_granted_keyword_tokens(tokens: &[OwnedLexToken]) -> GrantedKeywordTokenKind {
+pub fn classify_granted_keyword_tokens(tokens: &[OwnedLexToken]) -> GrantedKeywordTokenKind {
     let words = TokenWordView::new(trim_anthem_clause_tokens(tokens)).word_refs();
     if primitives::parse_word_sequence_complete(&words, &["blitz"]).is_some() {
         GrantedKeywordTokenKind::Blitz
@@ -802,7 +798,7 @@ pub(crate) fn classify_granted_keyword_tokens(tokens: &[OwnedLexToken]) -> Grant
     }
 }
 
-pub(crate) fn parse_granted_flashback_cost_equals_mana(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_granted_flashback_cost_equals_mana(tokens: &[OwnedLexToken]) -> bool {
     token_phrase_complete(
         tokens,
         &[
@@ -819,7 +815,7 @@ pub(crate) fn parse_granted_flashback_cost_equals_mana(tokens: &[OwnedLexToken])
     )
 }
 
-pub(crate) fn parse_granted_blitz_cost_equals_mana(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_granted_blitz_cost_equals_mana(tokens: &[OwnedLexToken]) -> bool {
     token_any_phrase_complete(
         tokens,
         &[
@@ -833,7 +829,7 @@ pub(crate) fn parse_granted_blitz_cost_equals_mana(tokens: &[OwnedLexToken]) -> 
     )
 }
 
-pub(crate) fn parse_granted_emerge_cost_equals_mana(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_granted_emerge_cost_equals_mana(tokens: &[OwnedLexToken]) -> bool {
     token_any_phrase_complete(
         tokens,
         &[
@@ -847,7 +843,7 @@ pub(crate) fn parse_granted_emerge_cost_equals_mana(tokens: &[OwnedLexToken]) ->
     )
 }
 
-pub(crate) fn parse_granted_scavenge_cost_equals_mana(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_granted_scavenge_cost_equals_mana(tokens: &[OwnedLexToken]) -> bool {
     token_any_phrase_complete(
         tokens,
         &[
@@ -861,11 +857,11 @@ pub(crate) fn parse_granted_scavenge_cost_equals_mana(tokens: &[OwnedLexToken]) 
     )
 }
 
-pub(crate) fn parse_all_creatures_lose_flying(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_all_creatures_lose_flying(tokens: &[OwnedLexToken]) -> bool {
     token_phrase_complete(tokens, &["all", "creatures", "lose", "flying"])
 }
 
-pub(crate) fn parse_subject_loses_keywords_clause(
+pub fn parse_subject_loses_keywords_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<SubjectLosesKeywordsClause<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -913,9 +909,7 @@ pub(crate) fn parse_subject_loses_keywords_clause(
     })
 }
 
-pub(crate) fn parse_each_creature_subject(
-    tokens: &[OwnedLexToken],
-) -> Option<EachCreatureSubject<'_>> {
+pub fn parse_each_creature_subject(tokens: &[OwnedLexToken]) -> Option<EachCreatureSubject<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
     let (_, rest) = primitives::parse_prefix(tokens, primitives::phrase(&["each", "creature"]))?;
     let consumed = tokens.len().saturating_sub(rest.len());
@@ -923,7 +917,7 @@ pub(crate) fn parse_each_creature_subject(
     (consumed == 2 && !filter_tokens.is_empty()).then_some(EachCreatureSubject { filter_tokens })
 }
 
-pub(crate) fn parse_additional_creature_count(tokens: &[OwnedLexToken]) -> Option<usize> {
+pub fn parse_additional_creature_count(tokens: &[OwnedLexToken]) -> Option<usize> {
     let tokens = trim_anthem_clause_tokens(tokens);
     if primitives::parse_all(tokens, primitives::kw("an"), "additional-creature-article").is_ok() {
         return Some(1);
@@ -937,7 +931,7 @@ pub(crate) fn parse_additional_creature_count(tokens: &[OwnedLexToken]) -> Optio
     usize::try_from(count).ok()
 }
 
-pub(crate) fn parse_indestructible_grant_clause(
+pub fn parse_indestructible_grant_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<IndestructibleGrantClause<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -955,9 +949,7 @@ pub(crate) fn parse_indestructible_grant_clause(
     )
 }
 
-pub(crate) fn parse_lose_all_transform_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<LoseAllTransformShape> {
+pub fn parse_lose_all_transform_shape(tokens: &[OwnedLexToken]) -> Option<LoseAllTransformShape> {
     let words = TokenWordView::new(tokens).word_refs();
     if words.len() < 8 {
         return None;
@@ -1002,9 +994,7 @@ pub(crate) fn parse_lose_all_transform_shape(
     })
 }
 
-pub(crate) fn parse_lose_all_abilities_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<LoseAllAbilitiesShape> {
+pub fn parse_lose_all_abilities_shape(tokens: &[OwnedLexToken]) -> Option<LoseAllAbilitiesShape> {
     let words = TokenWordView::new(tokens).word_refs();
     if first_phrase_offset(&words, &["with", "base", "power", "and", "toughness"]).is_some()
         && first_word_offset(&words, &["is", "are"]).is_some()
@@ -1044,20 +1034,20 @@ pub(crate) fn parse_lose_all_abilities_shape(
     })
 }
 
-pub(crate) fn emerge_subject_is_spell_cast(tokens: &[OwnedLexToken]) -> bool {
+pub fn emerge_subject_is_spell_cast(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens).word_refs();
     first_word_offset(&words, &["spell"]).is_some()
         && first_word_offset(&words, &["cast"]).is_some()
 }
 
-pub(crate) fn parse_source_counter_threshold_head(
+pub fn parse_source_counter_threshold_head(
     tokens: &[OwnedLexToken],
 ) -> Option<GrantedKeywordVerbFacts> {
     let facts = parse_granted_keyword_verb_facts(tokens)?;
     facts.starts_with_as_long_as.then_some(facts)
 }
 
-pub(crate) fn split_keyword_and_type_addition(
+pub fn split_keyword_and_type_addition(
     tokens: &[OwnedLexToken],
 ) -> Option<KeywordTypeAdditionSplit<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -1090,7 +1080,7 @@ pub(crate) fn split_keyword_and_type_addition(
     }
 }
 
-pub(crate) fn classify_suffix_filter_head(tokens: &[OwnedLexToken]) -> SuffixFilterHead {
+pub fn classify_suffix_filter_head(tokens: &[OwnedLexToken]) -> SuffixFilterHead {
     let words = TokenWordView::new(tokens).word_refs();
     if primitives::parse_word_sequence_prefix(&words, &["other"]).is_some()
         || primitives::parse_word_sequence_prefix(&words, &["another"]).is_some()
@@ -1105,9 +1095,7 @@ pub(crate) fn classify_suffix_filter_head(tokens: &[OwnedLexToken]) -> SuffixFil
     }
 }
 
-pub(crate) fn parse_shared_suffix_candidates(
-    tokens: &[OwnedLexToken],
-) -> Vec<SharedSuffixCandidate> {
+pub fn parse_shared_suffix_candidates(tokens: &[OwnedLexToken]) -> Vec<SharedSuffixCandidate> {
     let mut candidates = Vec::new();
     let mut input = LexStream::new(tokens);
     let initial_len = input.len();
@@ -1172,11 +1160,11 @@ fn parse_shared_suffix_head(input: &mut LexStream<'_>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn is_source_it_subject(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_source_it_subject(tokens: &[OwnedLexToken]) -> bool {
     token_phrase_complete(tokens, &["it"]) || token_phrase_complete(tokens, &["this", "token"])
 }
 
-pub(crate) fn parse_enchanted_player_controls_prefix(
+pub fn parse_enchanted_player_controls_prefix(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -1187,9 +1175,7 @@ pub(crate) fn parse_enchanted_player_controls_prefix(
     (!prefix.is_empty()).then_some(prefix)
 }
 
-pub(crate) fn parse_attached_condition_subject(
-    tokens: &[OwnedLexToken],
-) -> Option<&[OwnedLexToken]> {
+pub fn parse_attached_condition_subject(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let tokens = trim_anthem_clause_tokens(tokens);
     let (_, rest) = primitives::parse_prefix(
         tokens,
@@ -1206,7 +1192,7 @@ pub(crate) fn parse_attached_condition_subject(
     (consumed > 0).then_some(&tokens[..consumed])
 }
 
-pub(crate) fn parse_permanent_card_count_facts(
+pub fn parse_permanent_card_count_facts(
     tokens: &[OwnedLexToken],
 ) -> Option<PermanentCardCountFacts> {
     let words = TokenWordView::new(tokens).word_refs();
@@ -1237,7 +1223,7 @@ pub(crate) fn parse_permanent_card_count_facts(
     None
 }
 
-pub(crate) fn parse_conditional_must_block_shape(
+pub fn parse_conditional_must_block_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ConditionalMustBlockShape<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -1301,7 +1287,7 @@ pub(crate) fn parse_conditional_must_block_shape(
     })
 }
 
-pub(crate) fn parse_subject_no_defender_as_long_shape(
+pub fn parse_subject_no_defender_as_long_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<NoDefenderConditionalShape<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -1316,7 +1302,7 @@ pub(crate) fn parse_subject_no_defender_as_long_shape(
     )
 }
 
-pub(crate) fn parse_attached_no_defender_shape(
+pub fn parse_attached_no_defender_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<NoDefenderSubjectShape<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -1330,7 +1316,7 @@ pub(crate) fn parse_attached_no_defender_shape(
         .then_some(NoDefenderSubjectShape { subject_tokens })
 }
 
-pub(crate) fn parse_plain_no_defender_shape(
+pub fn parse_plain_no_defender_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<NoDefenderSubjectShape<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -1342,7 +1328,7 @@ pub(crate) fn parse_plain_no_defender_shape(
     (!subject_tokens.is_empty()).then_some(NoDefenderSubjectShape { subject_tokens })
 }
 
-pub(crate) fn parse_leading_condition_no_defender_shape(
+pub fn parse_leading_condition_no_defender_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<NoDefenderConditionalShape<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -1365,7 +1351,7 @@ pub(crate) fn parse_leading_condition_no_defender_shape(
     )
 }
 
-pub(crate) fn parse_gets_attacks_shape(tokens: &[OwnedLexToken]) -> Option<GetsAttacksShape> {
+pub fn parse_gets_attacks_shape(tokens: &[OwnedLexToken]) -> Option<GetsAttacksShape> {
     let tokens = trim_anthem_clause_tokens(tokens);
     let get_token = first_token_word(tokens, AnthemWordClass::Get)?;
     let relative_and = first_token_word(&tokens[get_token + 1..], AnthemWordClass::And)?;
@@ -1384,9 +1370,7 @@ pub(crate) fn parse_gets_attacks_shape(tokens: &[OwnedLexToken]) -> Option<GetsA
     })
 }
 
-pub(crate) fn parse_anthem_and_granted_tail(
-    tokens: &[OwnedLexToken],
-) -> Option<AnthemAndGrantedTail> {
+pub fn parse_anthem_and_granted_tail(tokens: &[OwnedLexToken]) -> Option<AnthemAndGrantedTail> {
     let tokens = trim_anthem_clause_tokens(tokens);
     let get_token = first_token_word(tokens, AnthemWordClass::Get)?;
     let relative_and = first_token_word(&tokens[get_token + 1..], AnthemWordClass::And)?;
@@ -1418,7 +1402,7 @@ pub(crate) fn parse_anthem_and_granted_tail(
     })
 }
 
-pub(crate) fn parse_subject_every_subtype_shape(
+pub fn parse_subject_every_subtype_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SubjectEverySubtypeShape<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
@@ -1450,7 +1434,7 @@ pub(crate) fn parse_subject_every_subtype_shape(
     })
 }
 
-pub(crate) fn parse_anthem_modifier_head(tokens: &[OwnedLexToken]) -> Option<AnthemModifierHead> {
+pub fn parse_anthem_modifier_head(tokens: &[OwnedLexToken]) -> Option<AnthemModifierHead> {
     let tokens = trim_anthem_clause_tokens(tokens);
     let words = TokenWordView::new(tokens).word_refs();
     let get_token = first_token_word(tokens, AnthemWordClass::Get)?;
@@ -1476,9 +1460,7 @@ pub(crate) fn parse_anthem_modifier_head(tokens: &[OwnedLexToken]) -> Option<Ant
 
 /// Parses the complete static-condition shape
 /// "<player> (has|have) drawn N or more card(s) this turn".
-pub(crate) fn parse_cards_drawn_this_turn_threshold(
-    tokens: &[OwnedLexToken],
-) -> Option<TurnThreshold> {
+pub fn parse_cards_drawn_this_turn_threshold(tokens: &[OwnedLexToken]) -> Option<TurnThreshold> {
     primitives::parse_all(
         tokens,
         parse_cards_drawn_this_turn_threshold_lexed,
@@ -1489,9 +1471,7 @@ pub(crate) fn parse_cards_drawn_this_turn_threshold(
 
 /// Parses the complete static-condition shape
 /// "<player> (has|have) rolled N or more die/dice this turn".
-pub(crate) fn parse_dice_rolled_this_turn_threshold(
-    tokens: &[OwnedLexToken],
-) -> Option<TurnThreshold> {
+pub fn parse_dice_rolled_this_turn_threshold(tokens: &[OwnedLexToken]) -> Option<TurnThreshold> {
     primitives::parse_all(
         tokens,
         parse_dice_rolled_this_turn_threshold_lexed,
@@ -1501,14 +1481,14 @@ pub(crate) fn parse_dice_rolled_this_turn_threshold(
 }
 
 /// Parses the complete granted-keyword color condition after `if`.
-pub(crate) fn parse_if_source_is_color(tokens: &[OwnedLexToken]) -> Option<ColorSet> {
+pub fn parse_if_source_is_color(tokens: &[OwnedLexToken]) -> Option<ColorSet> {
     primitives::parse_all(tokens, parse_if_source_is_color_lexed, "if-source-is-color").ok()
 }
 
 /// Parses the structural tail of an anthem count such as
 /// "lore counters on this enchantment". The caller owns semantic validation of
 /// the counter type and the source-reference surface.
-pub(crate) fn parse_source_counter_count_clause(
+pub fn parse_source_counter_count_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<SourceCounterCountClause<'_>> {
     let (counter_type_word, source_tokens) =

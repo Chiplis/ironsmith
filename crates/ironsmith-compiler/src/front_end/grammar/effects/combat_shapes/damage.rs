@@ -36,7 +36,7 @@ const CREATURE_CONTROLLER_TARGETS: &[&[&str]] = &[
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CombatPlayerDamageTargetShape {
+pub enum CombatPlayerDamageTargetShape {
     EachPlayer,
     EachOtherPlayer,
     EachOpponent,
@@ -44,7 +44,7 @@ pub(crate) enum CombatPlayerDamageTargetShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CombatSimpleDamageTargetShape {
+pub enum CombatSimpleDamageTargetShape {
     DefaultAny,
     CreatureController,
     IteratedPlayer,
@@ -56,41 +56,41 @@ pub(crate) enum CombatSimpleDamageTargetShape {
 /// that distinction typed so lowering can materialize the spell target before
 /// resolving both the controller and any same-clause “that spell” values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CombatEmbeddedTargetControllerShape {
+pub enum CombatEmbeddedTargetControllerShape {
     Spell,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct CombatDamageHeadShape<'a> {
-    pub(crate) body_tokens: &'a [OwnedLexToken],
-    pub(crate) direct_hand_size_each_opponent: bool,
-    pub(crate) divided: bool,
-    pub(crate) event_amount_prefix_len: Option<usize>,
-    pub(crate) fallback_hand_size_each_opponent: bool,
+pub struct CombatDamageHeadShape<'a> {
+    pub body_tokens: &'a [OwnedLexToken],
+    pub direct_hand_size_each_opponent: bool,
+    pub divided: bool,
+    pub event_amount_prefix_len: Option<usize>,
+    pub fallback_hand_size_each_opponent: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct CombatDividedEqualShape<'a> {
-    pub(crate) amount_tokens: &'a [OwnedLexToken],
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct CombatDividedEqualShape<'a> {
+    pub amount_tokens: &'a [OwnedLexToken],
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct CombatDamageToTargetEqualShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) amount_is_event_result: bool,
-    pub(crate) target_is_each_or_all: bool,
+pub struct CombatDamageToTargetEqualShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
+    pub amount_is_event_result: bool,
+    pub target_is_each_or_all: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct CombatDamageEqualShape<'a> {
-    pub(crate) amount_tokens: &'a [OwnedLexToken],
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) target_is_each_or_all: bool,
+pub struct CombatDamageEqualShape<'a> {
+    pub amount_tokens: &'a [OwnedLexToken],
+    pub target_tokens: &'a [OwnedLexToken],
+    pub target_is_each_or_all: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CombatDividedTargetError {
+pub enum CombatDividedTargetError {
     MissingTargetsAfterAmong,
     MissingTargetPhrase,
     UnsupportedTargetCount,
@@ -98,19 +98,19 @@ pub(crate) enum CombatDividedTargetError {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct CombatDividedTargetShape<'a> {
-    pub(crate) count: ChoiceCount,
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) any_target: bool,
+pub struct CombatDividedTargetShape<'a> {
+    pub count: ChoiceCount,
+    pub target_tokens: &'a [OwnedLexToken],
+    pub any_target: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CombatDividedAmountError {
+pub enum CombatDividedAmountError {
     MissingDamageKeyword,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum CombatDividedAmountShape<'a> {
+pub enum CombatDividedAmountShape<'a> {
     EvenlyEach {
         filter_tokens: &'a [OwnedLexToken],
     },
@@ -121,7 +121,7 @@ pub(crate) enum CombatDividedAmountShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CombatDamageTargetShapeError {
+pub enum CombatDamageTargetShapeError {
     MissingDamageKeyword,
     UnsupportedTrailingIfClause,
     UnsupportedEmbeddedIfClause,
@@ -129,7 +129,7 @@ pub(crate) enum CombatDamageTargetShapeError {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum CombatDamageTargetShape<'a> {
+pub enum CombatDamageTargetShape<'a> {
     InsteadIf {
         target_tokens: &'a [OwnedLexToken],
         predicate_tokens: &'a [OwnedLexToken],
@@ -204,7 +204,7 @@ fn phrase_at_start(tokens: &[OwnedLexToken], phrases: &'static [&'static [&'stat
     primitives::parse_prefix(tokens, primitives::any_phrase(phrases)).is_some()
 }
 
-pub(crate) fn parse_combat_player_damage_target_shape_lexed(
+pub fn parse_combat_player_damage_target_shape_lexed(
     tokens: &[OwnedLexToken],
     allow_prefix: bool,
 ) -> Option<CombatPlayerDamageTargetShape> {
@@ -228,7 +228,7 @@ pub(crate) fn parse_combat_player_damage_target_shape_lexed(
     }
 }
 
-pub(crate) fn parse_combat_simple_damage_target_shape_lexed(
+pub fn parse_combat_simple_damage_target_shape_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<CombatSimpleDamageTargetShape> {
     if exact_phrase(tokens, &[&["instead"]]) {
@@ -245,7 +245,7 @@ pub(crate) fn parse_combat_simple_damage_target_shape_lexed(
     }
 }
 
-pub(crate) fn parse_combat_embedded_target_controller_shape_lexed(
+pub fn parse_combat_embedded_target_controller_shape_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<CombatEmbeddedTargetControllerShape> {
     exact_phrase(
@@ -265,7 +265,7 @@ fn required_hand_size_markers(tokens: &[OwnedLexToken]) -> bool {
         .all(|word| primitives::find_prefix(tokens, || primitives::kw(word)).is_some())
 }
 
-pub(crate) fn is_combat_divided_damage_clause_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_combat_divided_damage_clause_lexed(tokens: &[OwnedLexToken]) -> bool {
     let Some((_idx, (), after_divided)) =
         primitives::find_prefix(tokens, || primitives::kw("divided").void())
     else {
@@ -274,9 +274,7 @@ pub(crate) fn is_combat_divided_damage_clause_lexed(tokens: &[OwnedLexToken]) ->
     primitives::find_prefix(after_divided, || primitives::kw("among")).is_some()
 }
 
-pub(crate) fn parse_combat_damage_head_shape_lexed(
-    tokens: &[OwnedLexToken],
-) -> CombatDamageHeadShape<'_> {
+pub fn parse_combat_damage_head_shape_lexed(tokens: &[OwnedLexToken]) -> CombatDamageHeadShape<'_> {
     let tokens = primitives::parse_prefix(
         tokens,
         alt((primitives::kw("deal"), primitives::kw("deals"))).void(),
@@ -310,7 +308,7 @@ pub(crate) fn parse_combat_damage_head_shape_lexed(
     }
 }
 
-pub(crate) fn parse_combat_divided_equal_shape_lexed(
+pub fn parse_combat_divided_equal_shape_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<CombatDividedEqualShape<'_>> {
     let (_, after_equal_to) =
@@ -323,7 +321,7 @@ pub(crate) fn parse_combat_divided_equal_shape_lexed(
     })
 }
 
-pub(crate) fn parse_combat_damage_to_target_equal_shape_lexed(
+pub fn parse_combat_damage_to_target_equal_shape_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<CombatDamageToTargetEqualShape<'_>> {
     primitives::parse_prefix(tokens, primitives::phrase(&["damage", "to"]))?;
@@ -392,7 +390,7 @@ fn last_target_to_marker(tokens: &[OwnedLexToken]) -> Option<usize> {
     }
 }
 
-pub(crate) fn parse_combat_damage_equal_shape_lexed(
+pub fn parse_combat_damage_equal_shape_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<CombatDamageEqualShape<'_>> {
     primitives::parse_prefix(tokens, primitives::phrase(&["damage", "equal", "to"]))?;
@@ -425,7 +423,7 @@ pub(crate) fn parse_combat_damage_equal_shape_lexed(
     })
 }
 
-pub(crate) fn parse_combat_divided_target_shape_lexed(
+pub fn parse_combat_divided_target_shape_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<CombatDividedTargetShape<'_>, CombatDividedTargetError> {
     let Some((_among_idx, (), after_among)) =
@@ -488,7 +486,7 @@ pub(crate) fn parse_combat_divided_target_shape_lexed(
     })
 }
 
-pub(crate) fn parse_combat_divided_amount_shape_lexed(
+pub fn parse_combat_divided_amount_shape_lexed(
     tokens: &[OwnedLexToken],
     used: usize,
 ) -> Result<CombatDividedAmountShape<'_>, CombatDividedAmountError> {
@@ -575,7 +573,7 @@ fn normalize_damage_target_tokens(
     Ok(target_tokens)
 }
 
-pub(crate) fn parse_combat_damage_target_shape_lexed(
+pub fn parse_combat_damage_target_shape_lexed(
     tokens: &[OwnedLexToken],
     used: usize,
 ) -> Result<CombatDamageTargetShape<'_>, CombatDamageTargetShapeError> {

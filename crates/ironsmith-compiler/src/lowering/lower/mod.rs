@@ -25,19 +25,19 @@ use super::semantic_line_parsing::{
     normalize_exert_followup_source_reference_tokens, parse_keyword_line_for_test,
     parse_single_effect_lexed, parse_triggered_line, strip_lexed_suffix_phrase,
 };
-pub(crate) use normalization_support::normalize_rewrite_line_ast_standalone;
-pub(crate) use normalization_support::prepare_parsed_card_ast_for_lowering;
+pub use normalization_support::normalize_rewrite_line_ast_standalone;
+pub use normalization_support::prepare_parsed_card_ast_for_lowering;
 #[cfg(test)]
-pub(crate) use normalization_support::rewrite_document_to_normalized_card_ast;
+pub use normalization_support::rewrite_document_to_normalized_card_ast;
 
-pub(crate) use damage_and_cost_rewrites::*;
-pub(crate) use modal_and_level_lowering::*;
-pub(crate) use rewrite_support::infer_triggered_ability_functional_zones_from_facts;
+pub use damage_and_cost_rewrites::*;
+pub use modal_and_level_lowering::*;
+pub use rewrite_support::infer_triggered_ability_functional_zones_from_facts;
 use rewrite_support::{
     rewrite_finalize_lowered_card, rewrite_normalize_selected_sacrifice_tags,
     runtime_effects_to_costs,
 };
-pub(crate) use rewrite_text_helpers::*;
+pub use rewrite_text_helpers::*;
 
 use super::compile_support::{
     collect_tag_spans_from_effects_with_context, compile_condition_from_predicate_ast_with_env,

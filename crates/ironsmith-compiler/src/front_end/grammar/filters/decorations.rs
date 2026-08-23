@@ -65,23 +65,23 @@ const CHOSEN_MANA_VALUE_QUALITY_PHRASES: &[&[&str]] = &[
 ];
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct FilterEnvelopeDecorations {
+pub struct FilterEnvelopeDecorations {
     distinct_names: bool,
     vote_winners_only: bool,
 }
 
 impl FilterEnvelopeDecorations {
     #[cfg(test)]
-    pub(crate) fn has_distinct_names(self) -> bool {
+    pub fn has_distinct_names(self) -> bool {
         self.distinct_names
     }
 
     #[cfg(test)]
-    pub(crate) fn has_vote_winner_suffix(self) -> bool {
+    pub fn has_vote_winner_suffix(self) -> bool {
         self.vote_winners_only
     }
 
-    pub(crate) fn apply(self, mut filter: ObjectFilter) -> ObjectFilter {
+    pub fn apply(self, mut filter: ObjectFilter) -> ObjectFilter {
         filter.distinct_names |= self.distinct_names;
         if self.vote_winners_only {
             filter = filter.match_tagged(
@@ -92,26 +92,26 @@ impl FilterEnvelopeDecorations {
         filter
     }
 
-    pub(crate) fn apply_distinct_names_only(self, mut filter: ObjectFilter) -> ObjectFilter {
+    pub fn apply_distinct_names_only(self, mut filter: ObjectFilter) -> ObjectFilter {
         filter.distinct_names |= self.distinct_names;
         filter
     }
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct LexedFilterEnvelope {
-    pub(crate) core_tokens: Vec<OwnedLexToken>,
-    pub(crate) decorations: FilterEnvelopeDecorations,
+pub struct LexedFilterEnvelope {
+    pub core_tokens: Vec<OwnedLexToken>,
+    pub decorations: FilterEnvelopeDecorations,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct WordFilterEnvelope<'a> {
-    pub(crate) core_words: Vec<&'a str>,
-    pub(crate) decorations: FilterEnvelopeDecorations,
+pub struct WordFilterEnvelope<'a> {
+    pub core_words: Vec<&'a str>,
+    pub decorations: FilterEnvelopeDecorations,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FilterTailDecoration {
+pub enum FilterTailDecoration {
     WithCounter(CounterConstraint),
     WithoutCounter(CounterConstraint),
     WithKeyword(FilterKeywordConstraint),
@@ -120,21 +120,21 @@ pub(crate) enum FilterTailDecoration {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ParsedFilterTailDecoration {
-    pub(crate) decoration: FilterTailDecoration,
-    pub(crate) consumed: usize,
+pub struct ParsedFilterTailDecoration {
+    pub decoration: FilterTailDecoration,
+    pub consumed: usize,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct LexedFilterTailSplit {
-    pub(crate) base_tokens: Vec<OwnedLexToken>,
-    pub(crate) decoration: FilterTailDecoration,
+pub struct LexedFilterTailSplit {
+    pub base_tokens: Vec<OwnedLexToken>,
+    pub decoration: FilterTailDecoration,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct WordFilterTailSplit<'a> {
-    pub(crate) base_words: &'a [&'a str],
-    pub(crate) decoration: FilterTailDecoration,
+pub struct WordFilterTailSplit<'a> {
+    pub base_words: &'a [&'a str],
+    pub decoration: FilterTailDecoration,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -155,7 +155,7 @@ struct WordDecorationSpan {
     consumed: usize,
 }
 
-pub(crate) fn parse_filter_lexed_envelope(tokens: &[OwnedLexToken]) -> LexedFilterEnvelope {
+pub fn parse_filter_lexed_envelope(tokens: &[OwnedLexToken]) -> LexedFilterEnvelope {
     let (tokens, vote_winners_only) = parse_vote_winner_suffix_tokens(tokens);
     let (core_tokens, distinct_names) = parse_different_names_tokens(&tokens);
     LexedFilterEnvelope {
@@ -167,7 +167,7 @@ pub(crate) fn parse_filter_lexed_envelope(tokens: &[OwnedLexToken]) -> LexedFilt
     }
 }
 
-pub(crate) fn parse_filter_word_envelope<'a>(words: &'a [&'a str]) -> WordFilterEnvelope<'a> {
+pub fn parse_filter_word_envelope<'a>(words: &'a [&'a str]) -> WordFilterEnvelope<'a> {
     let (words, vote_winners_only) = parse_vote_winner_suffix_words(words);
     let (core_words, distinct_names) = parse_different_names_words(words);
     WordFilterEnvelope {
@@ -179,7 +179,7 @@ pub(crate) fn parse_filter_word_envelope<'a>(words: &'a [&'a str]) -> WordFilter
     }
 }
 
-pub(crate) fn parse_filter_distinct_names_tokens(tokens: &[OwnedLexToken]) -> LexedFilterEnvelope {
+pub fn parse_filter_distinct_names_tokens(tokens: &[OwnedLexToken]) -> LexedFilterEnvelope {
     let (core_tokens, distinct_names) = parse_different_names_tokens(tokens);
     LexedFilterEnvelope {
         core_tokens,
@@ -190,11 +190,11 @@ pub(crate) fn parse_filter_distinct_names_tokens(tokens: &[OwnedLexToken]) -> Le
     }
 }
 
-pub(crate) fn trim_vote_winner_suffix(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexToken>, bool) {
+pub fn trim_vote_winner_suffix(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexToken>, bool) {
     parse_vote_winner_suffix_tokens(tokens)
 }
 
-pub(crate) fn strip_not_on_battlefield_phrase(tokens: &mut Vec<OwnedLexToken>) -> bool {
+pub fn strip_not_on_battlefield_phrase(tokens: &mut Vec<OwnedLexToken>) -> bool {
     let word_view = TokenWordView::new(tokens);
     let words = word_view.to_word_refs();
     let Some(span) = parse_not_on_battlefield_span(&words) else {
@@ -211,7 +211,7 @@ pub(crate) fn strip_not_on_battlefield_phrase(tokens: &mut Vec<OwnedLexToken>) -
     true
 }
 
-pub(crate) fn apply_parity_filter_phrases(words: &[&str], filter: &mut ObjectFilter) {
+pub fn apply_parity_filter_phrases(words: &[&str], filter: &mut ObjectFilter) {
     let parsed = parse_filter_parity_decorations(words);
     if let Some(parity) = parsed.mana_value {
         filter.mana_value_parity = Some(parity);
@@ -221,7 +221,7 @@ pub(crate) fn apply_parity_filter_phrases(words: &[&str], filter: &mut ObjectFil
     }
 }
 
-pub(crate) fn parse_filter_tail_decoration_tokens(
+pub fn parse_filter_tail_decoration_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LexedFilterTailSplit> {
     for token_idx in 0..tokens.len() {
@@ -248,7 +248,7 @@ pub(crate) fn parse_filter_tail_decoration_tokens(
     None
 }
 
-pub(crate) fn parse_filter_tail_decoration_split_words<'a>(
+pub fn parse_filter_tail_decoration_split_words<'a>(
     words: &'a [&'a str],
 ) -> Option<WordFilterTailSplit<'a>> {
     for word_idx in 0..words.len() {
@@ -267,10 +267,7 @@ pub(crate) fn parse_filter_tail_decoration_split_words<'a>(
     None
 }
 
-pub(crate) fn apply_filter_tail_decoration(
-    filter: &mut ObjectFilter,
-    decoration: FilterTailDecoration,
-) {
+pub fn apply_filter_tail_decoration(filter: &mut ObjectFilter, decoration: FilterTailDecoration) {
     match decoration {
         FilterTailDecoration::WithCounter(constraint) => filter.with_counter = Some(constraint),
         FilterTailDecoration::WithoutCounter(constraint) => {

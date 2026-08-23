@@ -6,36 +6,36 @@ use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::token::any;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SplitAllVerbShape {
+pub enum SplitAllVerbShape {
     Destroy,
     Exile,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SplitAllConnectiveShape {
+pub enum SplitAllConnectiveShape {
     And,
     Or,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SplitAllShape<'a> {
-    pub(crate) verb: SplitAllVerbShape,
-    pub(crate) connective: SplitAllConnectiveShape,
-    pub(crate) body_tokens: &'a [OwnedLexToken],
-    pub(crate) filter_tokens: Vec<&'a [OwnedLexToken]>,
+pub struct SplitAllShape<'a> {
+    pub verb: SplitAllVerbShape,
+    pub connective: SplitAllConnectiveShape,
+    pub body_tokens: &'a [OwnedLexToken],
+    pub filter_tokens: Vec<&'a [OwnedLexToken]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ExileReturnSameShape<'a> {
-    pub(crate) exile_tokens: &'a [OwnedLexToken],
-    pub(crate) return_tokens: &'a [OwnedLexToken],
-    pub(crate) counter_tokens: Option<&'a [OwnedLexToken]>,
-    pub(crate) delayed_until_end_of_combat: bool,
+pub struct ExileReturnSameShape<'a> {
+    pub exile_tokens: &'a [OwnedLexToken],
+    pub return_tokens: &'a [OwnedLexToken],
+    pub counter_tokens: Option<&'a [OwnedLexToken]>,
+    pub delayed_until_end_of_combat: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ExileEachTargetTypeShape<'a> {
-    pub(crate) filter_tokens: Vec<&'a [OwnedLexToken]>,
+pub struct ExileEachTargetTypeShape<'a> {
+    pub filter_tokens: Vec<&'a [OwnedLexToken]>,
 }
 
 fn marker_anywhere<'a, O, P>(tokens: &'a [OwnedLexToken], parser: P) -> bool
@@ -120,7 +120,7 @@ fn is_temporary_exile(tokens: &[OwnedLexToken]) -> bool {
     marker_anywhere(before, primitives::kw("until"))
 }
 
-pub(crate) fn parse_split_all_shape(tokens: &[OwnedLexToken]) -> Option<SplitAllShape<'_>> {
+pub fn parse_split_all_shape(tokens: &[OwnedLexToken]) -> Option<SplitAllShape<'_>> {
     let (verb, body) = if let Some((_, rest)) =
         primitives::parse_prefix(tokens, primitives::phrase(&["destroy", "all"]))
     {
@@ -221,9 +221,7 @@ fn counter_followup<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken
     Ok(trim_lexed_commas(counter_tokens))
 }
 
-pub(crate) fn parse_exile_return_same_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<ExileReturnSameShape<'_>> {
+pub fn parse_exile_return_same_shape(tokens: &[OwnedLexToken]) -> Option<ExileReturnSameShape<'_>> {
     let tokens = trim_lexed_commas(tokens);
     let tokens = primitives::parse_prefix(tokens, primitives::phrase(&["you", "may"]))
         .map(|(_, rest)| rest)
@@ -258,7 +256,7 @@ fn target_filter_segment(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     (!filter_tokens.is_empty()).then_some(filter_tokens)
 }
 
-pub(crate) fn parse_exile_each_target_type_shape(
+pub fn parse_exile_each_target_type_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ExileEachTargetTypeShape<'_>> {
     let (_, body) = primitives::parse_prefix(tokens, primitives::kw("exile"))?;

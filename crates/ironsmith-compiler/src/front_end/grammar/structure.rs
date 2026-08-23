@@ -148,36 +148,36 @@ fn structure_push_unique<T: PartialEq>(items: &mut Vec<T>, value: T) {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ModalHeaderChooseSpec {
-    pub(crate) choose_idx: usize,
-    pub(crate) min: Value,
-    pub(crate) max: Option<Value>,
-    pub(crate) random: bool,
-    pub(crate) x_clause_start: Option<usize>,
+pub struct ModalHeaderChooseSpec {
+    pub choose_idx: usize,
+    pub min: Value,
+    pub max: Option<Value>,
+    pub random: bool,
+    pub x_clause_start: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ModalHeaderFlags {
-    pub(crate) commander_allows_both: bool,
-    pub(crate) choose_both_control_card_types: Vec<crate::types::CardType>,
-    pub(crate) choose_both_exact_life_total: Option<i32>,
-    pub(crate) same_mode_more_than_once: bool,
-    pub(crate) mode_must_be_unchosen: bool,
-    pub(crate) mode_must_be_unchosen_this_turn: bool,
-    pub(crate) distinct_player_targets_per_mode: bool,
-    pub(crate) if_kicked_choose_any_number: bool,
+pub struct ModalHeaderFlags {
+    pub commander_allows_both: bool,
+    pub choose_both_control_card_types: Vec<crate::types::CardType>,
+    pub choose_both_exact_life_total: Option<i32>,
+    pub same_mode_more_than_once: bool,
+    pub mode_must_be_unchosen: bool,
+    pub mode_must_be_unchosen_this_turn: bool,
+    pub distinct_player_targets_per_mode: bool,
+    pub if_kicked_choose_any_number: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TrailingModalGateSpec<'a> {
-    pub(crate) prefix_tokens: &'a [OwnedLexToken],
-    pub(crate) predicate: IfResultPredicate,
-    pub(crate) remove_mode_only: bool,
-    pub(crate) reflexive: bool,
+pub struct TrailingModalGateSpec<'a> {
+    pub prefix_tokens: &'a [OwnedLexToken],
+    pub predicate: IfResultPredicate,
+    pub remove_mode_only: bool,
+    pub reflexive: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum MetadataLineKind {
+pub enum MetadataLineKind {
     ManaCost,
     TypeLine,
     FirstPrintedSet,
@@ -188,13 +188,13 @@ pub(crate) enum MetadataLineKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct MetadataLineSpec<'a> {
-    pub(crate) kind: MetadataLineKind,
-    pub(crate) value_tokens: &'a [OwnedLexToken],
+pub struct MetadataLineSpec<'a> {
+    pub kind: MetadataLineKind,
+    pub value_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StatementLineFamily {
+pub enum StatementLineFamily {
     Emblem,
     PactNextUpkeep,
     NextTurnCantCast,
@@ -207,45 +207,45 @@ pub(crate) enum StatementLineFamily {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StaticLineFamily {
+pub enum StaticLineFamily {
     UntapAllDuringEachOtherPlayersUntapStep,
     GrantedQuotedAbility,
     Generic,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LeadingResultPrefixKind {
+pub enum LeadingResultPrefixKind {
     If,
     When,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct LeadingResultPrefixSpec<'a> {
-    pub(crate) kind: LeadingResultPrefixKind,
-    pub(crate) predicate: IfResultPredicate,
-    pub(crate) trailing_tokens: &'a [OwnedLexToken],
+pub struct LeadingResultPrefixSpec<'a> {
+    pub kind: LeadingResultPrefixKind,
+    pub predicate: IfResultPredicate,
+    pub trailing_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TrailingIfClauseSpec<'a> {
-    pub(crate) leading_tokens: &'a [OwnedLexToken],
-    pub(crate) predicate: PredicateAst,
+pub struct TrailingIfClauseSpec<'a> {
+    pub leading_tokens: &'a [OwnedLexToken],
+    pub predicate: PredicateAst,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum IfClausePredicateSpec {
+pub enum IfClausePredicateSpec {
     Conditional(PredicateAst),
     Result(IfResultPredicate),
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct IfClauseSplitSpec {
-    pub(crate) predicate: IfClausePredicateSpec,
-    pub(crate) effects: Vec<EffectAst>,
+pub struct IfClauseSplitSpec {
+    pub predicate: IfClausePredicateSpec,
+    pub effects: Vec<EffectAst>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ConditionalPredicateTailSpec {
+pub enum ConditionalPredicateTailSpec {
     Plain(PredicateAst),
     InsteadIf {
         base_predicate: PredicateAst,
@@ -254,18 +254,18 @@ pub(crate) enum ConditionalPredicateTailSpec {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TriggeredConditionalClauseSpec<'a> {
-    pub(crate) trigger_tokens: &'a [OwnedLexToken],
-    pub(crate) predicate: PredicateAst,
-    pub(crate) effects_tokens: &'a [OwnedLexToken],
+pub struct TriggeredConditionalClauseSpec<'a> {
+    pub trigger_tokens: &'a [OwnedLexToken],
+    pub predicate: PredicateAst,
+    pub effects_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct StateTriggeredClauseSpec<'a> {
-    pub(crate) trigger_tokens: &'a [OwnedLexToken],
-    pub(crate) display_tokens: &'a [OwnedLexToken],
-    pub(crate) predicate: PredicateAst,
-    pub(crate) effects_tokens: &'a [OwnedLexToken],
+pub struct StateTriggeredClauseSpec<'a> {
+    pub trigger_tokens: &'a [OwnedLexToken],
+    pub display_tokens: &'a [OwnedLexToken],
+    pub predicate: PredicateAst,
+    pub effects_tokens: &'a [OwnedLexToken],
 }
 
 fn is_sentence_quote(token: &LexToken) -> bool {
@@ -283,7 +283,7 @@ fn parse_remove_mode_only_prefix<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn split_metadata_line_lexed(tokens: &[OwnedLexToken]) -> Option<MetadataLineSpec<'_>> {
+pub fn split_metadata_line_lexed(tokens: &[OwnedLexToken]) -> Option<MetadataLineSpec<'_>> {
     fn match_metadata_prefix<'a>(
         tokens: &'a [OwnedLexToken],
         phrase: &'static [&'static str],
@@ -322,7 +322,7 @@ pub(crate) fn split_metadata_line_lexed(tokens: &[OwnedLexToken]) -> Option<Meta
         .or_else(|| match_metadata_prefix(tokens, &["defense"], MetadataLineKind::Defense))
 }
 
-pub(crate) fn classify_statement_line_family_lexed(
+pub fn classify_statement_line_family_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<StatementLineFamily> {
     if super::effects::emblem_shapes::parse_emblem_payload_tokens(tokens).is_some() {
@@ -616,9 +616,7 @@ fn quoted_grant_head_looks_like_object_filter(head: &[OwnedLexToken]) -> bool {
     })
 }
 
-pub(crate) fn classify_static_line_family_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<StaticLineFamily> {
+pub fn classify_static_line_family_lexed(tokens: &[OwnedLexToken]) -> Option<StaticLineFamily> {
     if super::abilities::split_untap_each_other_players_untap_step_line_lexed(tokens).is_some() {
         return Some(StaticLineFamily::UntapAllDuringEachOtherPlayersUntapStep);
     }
@@ -773,7 +771,7 @@ fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     }))
 }
 
-pub(crate) fn parse_if_result_predicate(tokens: &[OwnedLexToken]) -> Option<IfResultPredicate> {
+pub fn parse_if_result_predicate(tokens: &[OwnedLexToken]) -> Option<IfResultPredicate> {
     super::modal_results::parse_if_result_predicate_lexed_tokens(tokens)
 }
 
@@ -833,7 +831,7 @@ fn parse_sentence_segment_len<'a>(
     Ok(initial_len - input.len())
 }
 
-pub(crate) fn split_lexed_sentences(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
+pub fn split_lexed_sentences(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
     let mut segments = Vec::new();
     let mut remaining = tokens;
 
@@ -857,7 +855,7 @@ pub(crate) fn split_lexed_sentences(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexT
     segments
 }
 
-pub(crate) fn find_trigger_effect_list_tail_split_lexed(
+pub fn find_trigger_effect_list_tail_split_lexed(
     trigger_prefix_tokens: &[OwnedLexToken],
     tail_tokens: &[OwnedLexToken],
 ) -> Option<usize> {
@@ -865,7 +863,7 @@ pub(crate) fn find_trigger_effect_list_tail_split_lexed(
         .map(|split| split.split_token_idx)
 }
 
-pub(crate) fn split_first_time_each_turn_trigger_suffix_lexed(
+pub fn split_first_time_each_turn_trigger_suffix_lexed(
     trigger_tokens: &[OwnedLexToken],
 ) -> (&[OwnedLexToken], Option<u32>) {
     trigger_shapes::parse_first_time_each_turn_trigger_suffix_lexed(trigger_tokens)
@@ -873,13 +871,13 @@ pub(crate) fn split_first_time_each_turn_trigger_suffix_lexed(
         .unwrap_or((trigger_tokens, None))
 }
 
-pub(crate) fn rewrite_attached_controller_trigger_effect_tokens_lexed(
+pub fn rewrite_attached_controller_trigger_effect_tokens_lexed(
     trigger_tokens: &[OwnedLexToken],
     effects_tokens: &[OwnedLexToken],
 ) -> Vec<OwnedLexToken> {
     trigger_shapes::rewrite_attached_controller_effect_tokens_lexed(trigger_tokens, effects_tokens)
 }
-pub(crate) fn scan_modal_header_flags(tokens: &[OwnedLexToken]) -> ModalHeaderFlags {
+pub fn scan_modal_header_flags(tokens: &[OwnedLexToken]) -> ModalHeaderFlags {
     let mode_must_be_unchosen_this_turn = one_of_phrases_occurs(
         tokens,
         &[
@@ -980,7 +978,7 @@ fn scan_choose_both_exact_life_total(tokens: &[OwnedLexToken]) -> Option<i32> {
     None
 }
 
-pub(crate) fn split_leading_result_prefix_lexed<'a>(
+pub fn split_leading_result_prefix_lexed<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<LeadingResultPrefixSpec<'a>> {
     let trimmed = trim_lexed_commas(tokens);
@@ -1093,19 +1091,19 @@ fn compact_ascii_numeric_range(token: &OwnedLexToken) -> Option<(i32, i32)> {
     (min <= max).then_some((min, max))
 }
 
-pub(crate) fn split_trailing_if_clause_lexed<'a>(
+pub fn split_trailing_if_clause_lexed<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<TrailingIfClauseSpec<'a>> {
     split_trailing_predicate_clause_lexed(tokens, "if")
 }
 
-pub(crate) fn parse_predicate_with_grammar_entrypoint_lexed(
+pub fn parse_predicate_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<PredicateAst, CardTextError> {
     super::filters::parse_predicate(tokens)
 }
 
-pub(crate) fn split_if_clause_lexed(
+pub fn split_if_clause_lexed(
     tokens: &[OwnedLexToken],
     mut parse_effects: impl FnMut(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
 ) -> Result<IfClauseSplitSpec, CardTextError> {
@@ -1454,13 +1452,13 @@ fn parse_cards_in_hand_difference_draw_effect(
     )])
 }
 
-pub(crate) fn split_trailing_unless_clause_lexed<'a>(
+pub fn split_trailing_unless_clause_lexed<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<TrailingIfClauseSpec<'a>> {
     split_trailing_predicate_clause_lexed(tokens, "unless")
 }
 
-pub(crate) fn parse_trailing_if_predicate_lexed(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+pub fn parse_trailing_if_predicate_lexed(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let trimmed = trim_lexed_commas(tokens);
     if !trimmed
         .first()
@@ -1477,7 +1475,7 @@ pub(crate) fn parse_trailing_if_predicate_lexed(tokens: &[OwnedLexToken]) -> Opt
     parse_predicate_with_grammar_entrypoint_lexed(predicate_tokens).ok()
 }
 
-pub(crate) fn parse_conditional_predicate_tail_lexed(
+pub fn parse_conditional_predicate_tail_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ConditionalPredicateTailSpec> {
     let mut trimmed = trim_lexed_commas(tokens).to_vec();
@@ -1593,7 +1591,7 @@ fn rfind_unquoted_dynamic_word(tokens: &[OwnedLexToken], word: &'static str) -> 
     result
 }
 
-pub(crate) fn parse_who_player_predicate_lexed(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+pub fn parse_who_player_predicate_lexed(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let trimmed = trim_lexed_commas(tokens);
     if !trimmed
         .first()
@@ -1621,9 +1619,7 @@ pub(crate) fn parse_who_player_predicate_lexed(tokens: &[OwnedLexToken]) -> Opti
     parse_predicate_with_grammar_entrypoint_lexed(&predicate_tokens).ok()
 }
 
-pub(crate) fn parse_trailing_instead_if_predicate_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<PredicateAst> {
+pub fn parse_trailing_instead_if_predicate_lexed(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let trimmed = trim_lexed_commas(tokens);
     if !trimmed
         .first()
@@ -1643,7 +1639,7 @@ pub(crate) fn parse_trailing_instead_if_predicate_lexed(
     parse_predicate_with_grammar_entrypoint_lexed(predicate_tokens).ok()
 }
 
-pub(crate) fn split_triggered_conditional_clause_lexed<'a>(
+pub fn split_triggered_conditional_clause_lexed<'a>(
     tokens: &'a [OwnedLexToken],
     start_idx: usize,
 ) -> Option<TriggeredConditionalClauseSpec<'a>> {
@@ -1777,7 +1773,7 @@ pub(crate) fn split_triggered_conditional_clause_lexed<'a>(
     None
 }
 
-pub(crate) fn split_state_triggered_clause_lexed<'a>(
+pub fn split_state_triggered_clause_lexed<'a>(
     tokens: &'a [OwnedLexToken],
     start_idx: usize,
     split_idx: usize,
@@ -1821,7 +1817,7 @@ pub(crate) fn split_state_triggered_clause_lexed<'a>(
     })
 }
 
-pub(crate) fn split_trailing_modal_gate_clause<'a>(
+pub fn split_trailing_modal_gate_clause<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<TrailingModalGateSpec<'a>> {
     let sentence_start = structure_token_kind_rindex(tokens, TokenKind::Period)
@@ -1910,7 +1906,7 @@ fn parse_modal_header_choose_spec_inner<'a>(
     ))
 }
 
-pub(crate) fn parse_modal_header_choose_spec<'a>(
+pub fn parse_modal_header_choose_spec<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<Option<ModalHeaderChooseSpec>, ErrMode<ContextError>> {
     parse_modal_header_choose_spec_inner

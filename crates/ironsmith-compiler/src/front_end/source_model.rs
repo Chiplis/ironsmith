@@ -12,22 +12,6 @@ pub enum MetadataLine {
     Defense(String),
 }
 
-impl From<crate::model::facts::MetadataLine> for MetadataLine {
-    fn from(value: crate::model::facts::MetadataLine) -> Self {
-        match value {
-            crate::model::facts::MetadataLine::ManaCost(text) => Self::ManaCost(text),
-            crate::model::facts::MetadataLine::TypeLine(text) => Self::TypeLine(text),
-            crate::model::facts::MetadataLine::FirstPrintedSet(text) => Self::FirstPrintedSet(text),
-            crate::model::facts::MetadataLine::AttractionLights(text) => {
-                Self::AttractionLights(text)
-            }
-            crate::model::facts::MetadataLine::PowerToughness(text) => Self::PowerToughness(text),
-            crate::model::facts::MetadataLine::Loyalty(text) => Self::Loyalty(text),
-            crate::model::facts::MetadataLine::Defense(text) => Self::Defense(text),
-        }
-    }
-}
-
 /// One contiguous relationship between a normalized view and the authored
 /// source. Both ranges are byte ranges and therefore remain safe for Unicode
 /// slicing.

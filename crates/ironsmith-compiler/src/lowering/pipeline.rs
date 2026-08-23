@@ -12,7 +12,7 @@ use super::effect_pipeline::{LoweredCardDocument, NormalizedCardAst};
 use super::ir::RewriteSemanticDocument;
 use super::lower;
 
-pub(crate) fn parse_text_to_semantic_document_with_context(
+pub fn parse_text_to_semantic_document_with_context(
     context: &mut ParseContext,
     builder: CardDefinitionBuilder,
     text: String,
@@ -20,31 +20,29 @@ pub(crate) fn parse_text_to_semantic_document_with_context(
     document_parser::parse_text_to_semantic_document_with_context(context, builder, text)
 }
 
-pub(crate) fn parse_semantic_document(
+pub fn parse_semantic_document(
     doc: RewriteSemanticDocument,
 ) -> Result<ParsedCardAst, CardTextError> {
     crate::semantic_document::parse_semantic_document(doc)
 }
 
-pub(crate) fn prepare_parsed_document(
-    ast: ParsedCardAst,
-) -> Result<NormalizedCardAst, CardTextError> {
+pub fn prepare_parsed_document(ast: ParsedCardAst) -> Result<NormalizedCardAst, CardTextError> {
     lower::prepare_parsed_card_ast_for_lowering(ast)
 }
 
-pub(crate) fn lower_prepared_document_with_facts(
+pub fn lower_prepared_document_with_facts(
     ast: NormalizedCardAst,
 ) -> Result<LoweredCardDocument, CardTextError> {
     lower::lower_normalized_card_ast_with_facts(ast)
 }
 
 #[cfg(test)]
-pub(crate) fn parse_text_with_annotations_lowered(
+pub fn parse_text_with_annotations_lowered(
     builder: CardDefinitionBuilder,
     text: String,
     allow_unsupported: bool,
 ) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
-    let mut context = ParseContext::for_builder(&builder, &text, allow_unsupported);
+    let mut context = crate::parse_context_for_builder(&builder, &text, allow_unsupported);
     let lowered =
         parse_text_with_annotations_lowered_with_facts_context(&mut context, builder, text)?;
     Ok((lowered.definition, lowered.annotations))
@@ -56,11 +54,11 @@ fn parse_text_to_semantic_document(
     text: String,
     allow_unsupported: bool,
 ) -> Result<(RewriteSemanticDocument, ParseAnnotations), CardTextError> {
-    let mut context = ParseContext::for_builder(&builder, &text, allow_unsupported);
+    let mut context = crate::parse_context_for_builder(&builder, &text, allow_unsupported);
     parse_text_to_semantic_document_with_context(&mut context, builder, text)
 }
 
-pub(crate) fn parse_text_with_annotations_lowered_with_facts_context(
+pub fn parse_text_with_annotations_lowered_with_facts_context(
     context: &mut ParseContext,
     builder: CardDefinitionBuilder,
     text: String,

@@ -3,5 +3,5 @@ mod counter;
 #[path = "zone_move_shapes/draw.rs"]
 mod draw;
 
-pub(crate) use counter::*;
-pub(crate) use draw::*;
+pub use counter::*;
+pub use draw::*;

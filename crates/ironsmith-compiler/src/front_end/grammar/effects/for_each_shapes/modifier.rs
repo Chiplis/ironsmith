@@ -8,7 +8,7 @@ use crate::lexer::{OwnedLexToken, TokenKind};
 use crate::util::trim_edge_punctuation_tokens;
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum ModifierTailAction<'a> {
+pub enum ModifierTailAction<'a> {
     Complete,
     DynamicForEach(&'a [OwnedLexToken]),
     WhereX(&'a [OwnedLexToken]),
@@ -16,17 +16,17 @@ pub(crate) enum ModifierTailAction<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ModifierTailShape<'a> {
-    pub(crate) duration: Until,
-    pub(crate) condition: Option<ConditionExpr>,
-    pub(crate) action: ModifierTailAction<'a>,
+pub struct ModifierTailShape<'a> {
+    pub duration: Until,
+    pub condition: Option<ConditionExpr>,
+    pub action: ModifierTailAction<'a>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct FixedPtAlternativeShape<'a> {
-    pub(crate) first_modifier: OwnedLexToken,
-    pub(crate) second_modifier: OwnedLexToken,
-    pub(crate) trailing_tokens: &'a [OwnedLexToken],
+pub struct FixedPtAlternativeShape<'a> {
+    pub first_modifier: OwnedLexToken,
+    pub second_modifier: OwnedLexToken,
+    pub trailing_tokens: &'a [OwnedLexToken],
 }
 
 fn normalized_pt_modifier_prefix(
@@ -48,7 +48,7 @@ fn normalized_pt_modifier_prefix(
     Some((OwnedLexToken::word(modifier, first.span()), &tokens[2..]))
 }
 
-pub(crate) fn parse_fixed_pt_alternative_shape(
+pub fn parse_fixed_pt_alternative_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<FixedPtAlternativeShape<'_>> {
     let (first_modifier, rest) = normalized_pt_modifier_prefix(tokens)?;
@@ -127,7 +127,7 @@ fn accepted_fixed_tail(tokens: &[OwnedLexToken]) -> bool {
         || accepted_alternative_modifier(tokens)
 }
 
-pub(crate) fn parse_modifier_tail_shape(tokens: &[OwnedLexToken]) -> ModifierTailShape<'_> {
+pub fn parse_modifier_tail_shape(tokens: &[OwnedLexToken]) -> ModifierTailShape<'_> {
     let after_modifier = trim_edge_punctuation_tokens(tokens.get(1..).unwrap_or_default());
     let (mut duration, tail) = duration_prefix(after_modifier);
     let tail = trim_edge_punctuation_tokens(tail);

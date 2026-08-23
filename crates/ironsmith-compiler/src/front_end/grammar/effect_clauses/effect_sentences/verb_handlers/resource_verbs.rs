@@ -9,7 +9,7 @@ fn subject_verb_player_resource_effect(
     })
 }
 
-pub(crate) fn parse_effect_with_verb(
+pub fn parse_effect_with_verb(
     verb: Verb,
     subject: Option<SubjectAst>,
     tokens: &[OwnedLexToken],
@@ -342,7 +342,7 @@ fn parse_library_nth_from_top_destination(tokens: &[OwnedLexToken]) -> Option<Va
     resource_grammar::parse_resource_library_position_shape(tokens)
 }
 
-pub(crate) fn parse_look(
+pub fn parse_look(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -453,7 +453,7 @@ pub(crate) fn parse_look(
     }
 }
 
-pub(crate) fn parse_reorder(
+pub fn parse_reorder(
     tokens: &[OwnedLexToken],
     _subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -493,7 +493,7 @@ pub(crate) fn parse_reorder(
     Ok(EffectAst::subject_verb_reorder_graveyard(owner.player))
 }
 
-pub(crate) fn parse_shuffle(
+pub fn parse_shuffle(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -554,7 +554,7 @@ pub(crate) fn parse_shuffle(
     }
 }
 
-pub(crate) fn parse_goad(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+pub fn parse_goad(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let target_tokens = trim_commas(tokens);
     if target_tokens.is_empty() {
         return Err(CardTextError::ParseError("missing goad target".to_string()));
@@ -615,7 +615,7 @@ fn add_chosen_name_constraint_to_target(
     }
 }
 
-pub(crate) fn parse_detain(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+pub fn parse_detain(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let target_tokens = trim_commas(tokens);
     if target_tokens.is_empty() {
         return Err(CardTextError::ParseError(
@@ -635,7 +635,7 @@ pub(crate) fn parse_detain(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     )?))
 }
 
-pub(crate) fn parse_suspect(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+pub fn parse_suspect(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let target_tokens = trim_commas(tokens);
     if target_tokens.is_empty() {
         return Err(CardTextError::ParseError(

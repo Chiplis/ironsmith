@@ -7,13 +7,13 @@ use winnow::combinator::{alt, repeat};
 use winnow::error::ModalResult as WResult;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ClauseSubjectVerbShape<'a> {
-    pub(crate) kind: chain_splitting::ChainVerbKind,
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) action_tokens: &'a [OwnedLexToken],
+pub struct ClauseSubjectVerbShape<'a> {
+    pub kind: chain_splitting::ChainVerbKind,
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub action_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_clause_subject_verb_shape(
+pub fn parse_clause_subject_verb_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ClauseSubjectVerbShape<'_>> {
     let found = chain_splitting::find_chain_verb_tokens(tokens)?;
@@ -27,15 +27,15 @@ pub(crate) fn parse_clause_subject_verb_shape(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LeadingMayActorShape {
+pub enum LeadingMayActorShape {
     Player(PlayerAst),
     Implicit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LeadingMayClauseShape<'a> {
-    pub(crate) actor: LeadingMayActorShape,
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct LeadingMayClauseShape<'a> {
+    pub actor: LeadingMayActorShape,
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 fn player_word<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -152,9 +152,7 @@ fn may_actor<'a>(input: &mut LexStream<'a>) -> WResult<LeadingMayActorShape> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_leading_may_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<LeadingMayClauseShape<'_>> {
+pub fn parse_leading_may_shape(tokens: &[OwnedLexToken]) -> Option<LeadingMayClauseShape<'_>> {
     let (actor, effect_tokens) = primitives::parse_prefix(tokens, may_actor)?;
     // In `you may have each opponent lose 1 life`, `have` is only the
     // causative marker. Keep the explicit participant tokens as the action's
@@ -184,7 +182,7 @@ fn map_pump_duration(duration: leaf::LeafDurationPhrase) -> Option<Until> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum PumpSubjectKind<'a> {
+pub enum PumpSubjectKind<'a> {
     Tagged,
     DemonstrativeTarget,
     ControlledFilter {
@@ -203,19 +201,19 @@ pub(crate) enum PumpSubjectKind<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PumpSubjectShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) duration: Option<Until>,
-    pub(crate) kind: PumpSubjectKind<'a>,
+pub struct PumpSubjectShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub duration: Option<Until>,
+    pub kind: PumpSubjectKind<'a>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TaggedPluralPumpShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) modifier_tokens: &'a [OwnedLexToken],
+pub struct TaggedPluralPumpShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub modifier_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_tagged_plural_pump_shape(
+pub fn parse_tagged_plural_pump_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<TaggedPluralPumpShape<'_>> {
     let (_, after_subject) = primitives::parse_prefix(
@@ -246,7 +244,7 @@ where
     .is_ok()
 }
 
-pub(crate) fn parse_pump_subject_shape(tokens: &[OwnedLexToken]) -> Option<PumpSubjectShape<'_>> {
+pub fn parse_pump_subject_shape(tokens: &[OwnedLexToken]) -> Option<PumpSubjectShape<'_>> {
     let (subject_tokens, duration) = leaf::parse_leaf_restriction_duration_prefix_tokens(tokens)
         .and_then(|parsed| {
             map_pump_duration(parsed.duration).map(|duration| (parsed.rest, duration))
@@ -383,13 +381,13 @@ pub(crate) fn parse_pump_subject_shape(tokens: &[OwnedLexToken]) -> Option<PumpS
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct AbilityTailShape<'a> {
-    pub(crate) ability_tokens: &'a [OwnedLexToken],
-    pub(crate) trailing_tokens: &'a [OwnedLexToken],
-    pub(crate) duration: Until,
+pub struct AbilityTailShape<'a> {
+    pub ability_tokens: &'a [OwnedLexToken],
+    pub trailing_tokens: &'a [OwnedLexToken],
+    pub duration: Until,
 }
 
-pub(crate) fn parse_ability_tail_shape(tokens: &[OwnedLexToken]) -> AbilityTailShape<'_> {
+pub fn parse_ability_tail_shape(tokens: &[OwnedLexToken]) -> AbilityTailShape<'_> {
     let words = TokenWordView::new(tokens);
     let word_refs = words.word_refs();
     let Some(duration) = gain_ability_shapes::parse_simple_ability_duration_shape(&word_refs)
@@ -412,13 +410,13 @@ pub(crate) fn parse_ability_tail_shape(tokens: &[OwnedLexToken]) -> AbilityTailS
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ReferenceSubjectShape {
+pub enum ReferenceSubjectShape {
     Source,
     Tagged,
     Other,
 }
 
-pub(crate) fn parse_reference_subject_shape(tokens: &[OwnedLexToken]) -> ReferenceSubjectShape {
+pub fn parse_reference_subject_shape(tokens: &[OwnedLexToken]) -> ReferenceSubjectShape {
     if exact(tokens, primitives::kw("this").void()) {
         ReferenceSubjectShape::Source
     } else if exact(
@@ -431,7 +429,7 @@ pub(crate) fn parse_reference_subject_shape(tokens: &[OwnedLexToken]) -> Referen
     }
 }
 
-pub(crate) fn is_return_tagged_reference_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_return_tagged_reference_shape(tokens: &[OwnedLexToken]) -> bool {
     exact(
         tokens,
         primitives::any_phrase(&[
@@ -450,7 +448,7 @@ pub(crate) fn is_return_tagged_reference_shape(tokens: &[OwnedLexToken]) -> bool
     )
 }
 
-pub(crate) fn is_exiled_cards_to_hand_shape(
+pub fn is_exiled_cards_to_hand_shape(
     subject_tokens: &[OwnedLexToken],
     action_tokens: &[OwnedLexToken],
 ) -> bool {

@@ -12,7 +12,7 @@ use super::super::{filters, leaf, primitives};
 use super::condition_quantities::parse_condition_quantity_prefix;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FixedStaticConditionKind {
+pub enum FixedStaticConditionKind {
     SourceEquipmentAttachedToCreature,
     SourceSpellWasKicked,
     OpponentLostLifeThisTurn,
@@ -35,22 +35,22 @@ pub(crate) enum FixedStaticConditionKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DevotionPlayerKind {
+pub enum DevotionPlayerKind {
     You,
     IteratedPlayer,
     Opponent,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct DevotionConditionShape {
-    pub(crate) player: DevotionPlayerKind,
-    pub(crate) colors: Vec<Color>,
-    pub(crate) operator: ValueComparisonOperator,
-    pub(crate) amount: u32,
+pub struct DevotionConditionShape {
+    pub player: DevotionPlayerKind,
+    pub colors: Vec<Color>,
+    pub operator: ValueComparisonOperator,
+    pub amount: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum DevotionConditionError {
+pub enum DevotionConditionError {
     UnsupportedPlayer,
     UnsupportedColor(String),
     MissingColor,
@@ -60,18 +60,18 @@ pub(crate) enum DevotionConditionError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BlockingSourceConditionShape {
-    pub(crate) comparison: Comparison,
+pub struct BlockingSourceConditionShape {
+    pub comparison: Comparison,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ConjoinedConditionSplit<'a> {
-    pub(crate) left_tokens: &'a [OwnedLexToken],
-    pub(crate) right_tokens: &'a [OwnedLexToken],
+pub struct ConjoinedConditionSplit<'a> {
+    pub left_tokens: &'a [OwnedLexToken],
+    pub right_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ExistentialConditionTail<'a> {
+pub enum ExistentialConditionTail<'a> {
     CardTypesInYourGraveyard {
         threshold: u32,
     },
@@ -90,33 +90,33 @@ pub(crate) enum ExistentialConditionTail<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ExistentialConditionShape<'a> {
-    pub(crate) comparison: Comparison,
-    pub(crate) tail: ExistentialConditionTail<'a>,
+pub struct ExistentialConditionShape<'a> {
+    pub comparison: Comparison,
+    pub tail: ExistentialConditionTail<'a>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EnteredCountConditionShape<'a> {
-    pub(crate) comparison: Comparison,
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) begins_with_other: bool,
+pub struct EnteredCountConditionShape<'a> {
+    pub comparison: Comparison,
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub begins_with_other: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SourceCounterConditionShape {
-    pub(crate) comparison: Comparison,
-    pub(crate) counter_type: Option<CounterType>,
-    pub(crate) pronoun: Option<ironsmith_core::SourceCounterPronounSurface>,
+pub struct SourceCounterConditionShape {
+    pub comparison: Comparison,
+    pub counter_type: Option<CounterType>,
+    pub pronoun: Option<ironsmith_core::SourceCounterPronounSurface>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SourceCounterConditionError {
+pub enum SourceCounterConditionError {
     MissingQuantity,
     MissingCounterPhrase,
     UnsupportedTail,
 }
 
-pub(crate) fn parse_fixed_static_condition_kind(
+pub fn parse_fixed_static_condition_kind(
     tokens: &[OwnedLexToken],
 ) -> Option<FixedStaticConditionKind> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
@@ -128,7 +128,7 @@ pub(crate) fn parse_fixed_static_condition_kind(
     .ok()
 }
 
-pub(crate) fn parse_life_total_or_less_condition(tokens: &[OwnedLexToken]) -> Option<u32> {
+pub fn parse_life_total_or_less_condition(tokens: &[OwnedLexToken]) -> Option<u32> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
     let (_, tail) = primitives::parse_prefix(tokens, primitives::phrase(&["you", "have"]))?;
     let quantity = parse_condition_quantity_prefix(tail, false, false)?;
@@ -138,7 +138,7 @@ pub(crate) fn parse_life_total_or_less_condition(tokens: &[OwnedLexToken]) -> Op
     comparison_to_at_most_threshold(quantity.comparison)
 }
 
-pub(crate) fn parse_devotion_condition_shape(
+pub fn parse_devotion_condition_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<DevotionConditionShape>, DevotionConditionError> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
@@ -190,7 +190,7 @@ pub(crate) fn parse_devotion_condition_shape(
     }))
 }
 
-pub(crate) fn parse_x_value_at_least_condition(tokens: &[OwnedLexToken]) -> Option<u32> {
+pub fn parse_x_value_at_least_condition(tokens: &[OwnedLexToken]) -> Option<u32> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
     let (_, tail) = primitives::parse_prefix(tokens, primitives::phrase(&["x", "is"]))?;
     let quantity = parse_condition_quantity_prefix(tail, false, true)?;
@@ -200,7 +200,7 @@ pub(crate) fn parse_x_value_at_least_condition(tokens: &[OwnedLexToken]) -> Opti
     comparison_to_at_least_threshold(quantity.comparison, false)
 }
 
-pub(crate) fn parse_blocking_source_condition(
+pub fn parse_blocking_source_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<BlockingSourceConditionShape> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
@@ -219,7 +219,7 @@ pub(crate) fn parse_blocking_source_condition(
     })
 }
 
-pub(crate) fn parse_source_in_graveyard_condition(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_source_in_graveyard_condition(tokens: &[OwnedLexToken]) -> bool {
     let tokens = super::trim_anthem_clause_tokens(tokens);
     let Some((relation_token, _, tail)) = primitives::find_prefix(tokens, || {
         alt((primitives::kw("is"), primitives::kw("are"))).void()
@@ -231,7 +231,7 @@ pub(crate) fn parse_source_in_graveyard_condition(tokens: &[OwnedLexToken]) -> b
         && parse_complete_any_phrase(tail, &[&["in", "your", "graveyard"], &["in", "graveyard"]])
 }
 
-pub(crate) fn parse_conjoined_condition_splits(
+pub fn parse_conjoined_condition_splits(
     tokens: &[OwnedLexToken],
 ) -> Vec<ConjoinedConditionSplit<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
@@ -257,7 +257,7 @@ pub(crate) fn parse_conjoined_condition_splits(
     splits
 }
 
-pub(crate) fn parse_existential_condition_shape(
+pub fn parse_existential_condition_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ExistentialConditionShape<'_>>, ()> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
@@ -304,7 +304,7 @@ pub(crate) fn parse_existential_condition_shape(
     }))
 }
 
-pub(crate) fn parse_entered_count_condition(
+pub fn parse_entered_count_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<EnteredCountConditionShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
@@ -322,7 +322,7 @@ pub(crate) fn parse_entered_count_condition(
     })
 }
 
-pub(crate) fn parse_source_counter_condition(
+pub fn parse_source_counter_condition(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<SourceCounterConditionShape>, SourceCounterConditionError> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
@@ -895,7 +895,7 @@ mod tests {
             parse_source_counter_condition(&named_masculine),
             Ok(Some(SourceCounterConditionShape {
                 comparison: Comparison::GreaterThanOrEqual(1),
-                counter_type: Some(CounterType::Named("conqueror")),
+                counter_type: Some(CounterType::Named("conqueror".into())),
                 pronoun: Some(ironsmith_core::SourceCounterPronounSurface::Him),
             }))
         );

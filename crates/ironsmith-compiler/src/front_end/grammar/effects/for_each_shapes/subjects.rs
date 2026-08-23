@@ -7,47 +7,47 @@ use crate::lexer::{OwnedLexToken, trim_lexed_commas};
 use crate::mana::ManaSymbol;
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ForEachObjectSubjectShape<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
+pub struct ForEachObjectSubjectShape<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ForEachObjectEffectShape<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct ForEachObjectEffectShape<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ForEachTargetSubjectShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct ForEachTargetSubjectShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ForEachTargetPlayersShape<'a> {
-    pub(crate) count: ChoiceCount,
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct ForEachTargetPlayersShape<'a> {
+    pub count: ChoiceCount,
+    pub target_tokens: &'a [OwnedLexToken],
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ForEachSpentManaEffectShape<'a> {
-    pub(crate) source_tokens: &'a [OwnedLexToken],
-    pub(crate) reference: ironsmith_core::ManaSpentCastReferenceSurface,
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct ForEachSpentManaEffectShape<'a> {
+    pub source_tokens: &'a [OwnedLexToken],
+    pub reference: ironsmith_core::ManaSpentCastReferenceSurface,
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ForEachManaSymbolSpentEffectShape<'a> {
-    pub(crate) symbol: ManaSymbol,
-    pub(crate) group_size: u32,
-    pub(crate) reference: ironsmith_core::ManaSpentCastReferenceSurface,
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct ForEachManaSymbolSpentEffectShape<'a> {
+    pub symbol: ManaSymbol,
+    pub group_size: u32,
+    pub reference: ironsmith_core::ManaSpentCastReferenceSurface,
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ForEachDynamicTargetEffectShape<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct ForEachDynamicTargetEffectShape<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 fn for_each_prefix<'a>(input: &mut crate::lexer::LexStream<'a>) -> winnow::error::ModalResult<()> {
@@ -120,7 +120,7 @@ fn contains_effect_verb_outside_filter_zone(tokens: &[OwnedLexToken]) -> bool {
     true
 }
 
-pub(crate) fn parse_for_each_object_subject_shape(
+pub fn parse_for_each_object_subject_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ForEachObjectSubjectShape<'_>> {
     let (_, rest) = primitives::parse_prefix(trim_lexed_commas(tokens), for_each_prefix)?;
@@ -137,7 +137,7 @@ pub(crate) fn parse_for_each_object_subject_shape(
     Some(ForEachObjectSubjectShape { filter_tokens })
 }
 
-pub(crate) fn parse_for_each_object_effect_shape(
+pub fn parse_for_each_object_effect_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ForEachObjectEffectShape<'_>> {
     // A leading bare "Each" is an ordinary quantified subject (for example,
@@ -161,9 +161,9 @@ pub(crate) fn parse_for_each_object_effect_shape(
 
 #[path = "subjects/iterated_effects.rs"]
 mod iterated_effects;
-pub(crate) use iterated_effects::*;
+pub use iterated_effects::*;
 
-pub(crate) fn parse_for_each_target_subject_shape(
+pub fn parse_for_each_target_subject_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ForEachTargetSubjectShape<'_>> {
     let (_, rest) = primitives::parse_prefix(trim_lexed_commas(tokens), for_each_prefix)?;
@@ -173,7 +173,7 @@ pub(crate) fn parse_for_each_target_subject_shape(
     (!target_tokens.is_empty()).then_some(ForEachTargetSubjectShape { target_tokens })
 }
 
-pub(crate) fn parse_for_each_target_players_shape(
+pub fn parse_for_each_target_players_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ForEachTargetPlayersShape<'_>> {
     let tokens = trim_lexed_commas(tokens);

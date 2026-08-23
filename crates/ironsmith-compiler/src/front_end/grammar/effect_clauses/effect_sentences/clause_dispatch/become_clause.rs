@@ -34,7 +34,7 @@ fn trailing_duration_belongs_to_quoted_ability(
         == 1
 }
 
-pub(crate) fn parse_become_clause(
+pub fn parse_become_clause(
     subject_tokens: &[OwnedLexToken],
     rest_tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {

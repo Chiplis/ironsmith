@@ -65,7 +65,7 @@ fn counted_target_object_filter(target: &TargetAst) -> Option<&ObjectFilter> {
 /// Preserve the selected opponent as both the copier and the retargeting
 /// decision owner for clauses of the form "up to one target opponent may
 /// also copy that spell. They may choose new targets for that copy."
-pub(crate) fn parse_target_opponent_may_copy_triggering_spell_then_retarget(
+pub fn parse_target_opponent_may_copy_triggering_spell_then_retarget(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -180,7 +180,7 @@ mod target_opponent_copy_triggering_spell_tests {
 /// it" as the same one-shot cast watcher used by the canonical "when you next
 /// cast" spelling. The following retarget sentence is part of the copy
 /// effect, not a second action on the currently resolving stack object.
-pub(crate) fn parse_copy_next_spell_when_cast_then_retarget(
+pub fn parse_copy_next_spell_when_cast_then_retarget(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -309,7 +309,7 @@ mod copy_next_spell_when_cast_tests {
 
 /// Preserve an attached object's combat history as a condition rather than
 /// letting the postfix `if` words collapse into the counter target filter.
-pub(crate) fn parse_counter_on_enchanted_if_attacked_or_blocked_since_last_upkeep(
+pub fn parse_counter_on_enchanted_if_attacked_or_blocked_since_last_upkeep(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -361,7 +361,7 @@ pub(crate) fn parse_counter_on_enchanted_if_attacked_or_blocked_since_last_upkee
 /// Preserve the source creature's two-sided block history in the postfix
 /// condition instead of allowing the object-filter grammar to reinterpret
 /// "blocked" as a current characteristic.
-pub(crate) fn parse_counter_on_source_if_blocked_or_been_blocked_since_last_upkeep(
+pub fn parse_counter_on_source_if_blocked_or_been_blocked_since_last_upkeep(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -420,7 +420,7 @@ pub(crate) fn parse_counter_on_source_if_blocked_or_been_blocked_since_last_upke
 /// player}`: remove every non-you player except the defending player from the
 /// full player set. This keeps the execution on the generic simultaneous
 /// `ForPlayersEffect` path without inventing a bespoke participant filter.
-pub(crate) fn parse_controller_defending_loot_then_greatest_mana_value_followup(
+pub fn parse_controller_defending_loot_then_greatest_mana_value_followup(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -608,7 +608,7 @@ mod participant_loot_extremum_tests {
 /// earlier multi-target restriction. The second sentence still parses its own
 /// quality filter (for example, `Wall`); the stable tag supplies only the
 /// authored "of them" membership relation.
-pub(crate) fn parse_multi_target_restriction_then_destroy_typed_subset(
+pub fn parse_multi_target_restriction_then_destroy_typed_subset(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -776,7 +776,7 @@ mod tagged_target_subset_tests {
 /// lets the broad union grammar absorb `search ... library` into the destroy
 /// domain; splitting the authored comma-then boundary first keeps the two
 /// executable actions and their distinct subjects.
-pub(crate) fn parse_destroy_all_then_search_target_opponent_to_graveyard_then_shuffle(
+pub fn parse_destroy_all_then_search_target_opponent_to_graveyard_then_shuffle(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -931,7 +931,7 @@ mod destroy_search_partition_tests {
     }
 }
 
-pub(crate) fn parse_resolving_card_exile_then_return_next_end_step(
+pub fn parse_resolving_card_exile_then_return_next_end_step(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -959,7 +959,7 @@ pub(crate) fn parse_resolving_card_exile_then_return_next_end_step(
 /// Install the destination and controller replacements before the counter
 /// instruction fires. This preserves the single Stack -> Battlefield event;
 /// it never moves a successfully countered card back out of its graveyard.
-pub(crate) fn parse_counter_spell_then_artifact_or_creature_enters_under_your_control(
+pub fn parse_counter_spell_then_artifact_or_creature_enters_under_your_control(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1137,7 +1137,7 @@ mod counter_destination_replacement_tests {
 /// the immediately preceding targeted reveal. The generic count parser cannot
 /// infer that pronoun's zone or player in isolation, so this pair rule keeps
 /// the existing reveal effect and supplies the exact typed hand domain.
-pub(crate) fn parse_reveal_hand_then_draw_shared_terminal_union(
+pub fn parse_reveal_hand_then_draw_shared_terminal_union(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1198,7 +1198,7 @@ pub(crate) fn parse_reveal_hand_then_draw_shared_terminal_union(
 /// that player's graveyard" to the exact opponent whose hand was revealed.
 /// The hand branch alone carries the nonland restriction and revealed-set
 /// tag; the graveyard branch alone carries that opponent's ownership.
-pub(crate) fn parse_reveal_opponent_hand_then_choose_from_it_or_their_graveyard(
+pub fn parse_reveal_opponent_hand_then_choose_from_it_or_their_graveyard(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1339,7 +1339,7 @@ mod revealed_hand_graveyard_disjunction_tests {
 /// opponent's hand. Parsing the cast sentence by itself cannot recover either
 /// the hand owner or the optional one-card choice from "among those cards";
 /// this pair rule retains both as executable structure.
-pub(crate) fn parse_reveal_target_opponent_hand_then_may_cast_from_those_cards(
+pub fn parse_reveal_target_opponent_hand_then_may_cast_from_those_cards(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1415,7 +1415,7 @@ pub(crate) fn parse_reveal_target_opponent_hand_then_may_cast_from_those_cards(
 /// as an exiled collection because it cannot see the prior sentence; this
 /// two-sentence rule retains the looked player's hand as the executable zone
 /// and owner without introducing a new effect capability.
-pub(crate) fn parse_look_at_players_hand_then_may_cast_from_those_cards(
+pub fn parse_look_at_players_hand_then_may_cast_from_those_cards(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1705,7 +1705,7 @@ mod revealed_hand_union_count_tests {
     }
 }
 
-pub(crate) fn parse_participant_secret_object_choice_then_reveal_and_sacrifice(
+pub fn parse_participant_secret_object_choice_then_reveal_and_sacrifice(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1990,7 +1990,7 @@ fn compose_singleton_hand_partition(
     ]
 }
 
-pub(crate) fn parse_inline_look_at_top_then_singleton_hand_partition(
+pub fn parse_inline_look_at_top_then_singleton_hand_partition(
     look_tokens: &[OwnedLexToken],
     partition_tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
@@ -2092,7 +2092,7 @@ pub(super) fn parse_reveal_top_and_choose_one_of_revealed(
     Ok(Some((effects, chosen_tag, chooser, shape.destination)))
 }
 
-pub(crate) fn parse_directional_adjacent_player_control(
+pub fn parse_directional_adjacent_player_control(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -2115,7 +2115,7 @@ pub(crate) fn parse_directional_adjacent_player_control(
     }]))
 }
 
-pub(crate) fn parse_reciprocal_creature_control_sequence(
+pub fn parse_reciprocal_creature_control_sequence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -2383,7 +2383,7 @@ fn mark_target_set_same_controller(target: TargetAst) -> TargetAst {
 const TWIST_YOUR_CREATURES_TAG: &str = "__twist_your_creatures__";
 const TWIST_OPPONENT_CREATURES_TAG: &str = "__twist_opponent_creatures__";
 
-pub(crate) fn parse_exile_face_down_pile_then_cloak(
+pub fn parse_exile_face_down_pile_then_cloak(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -2419,7 +2419,7 @@ pub(crate) fn parse_exile_face_down_pile_then_cloak(
     ]))
 }
 
-pub(crate) fn parse_look_at_top_then_exile_face_down_then_play_while_exiled(
+pub fn parse_look_at_top_then_exile_face_down_then_play_while_exiled(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -2573,7 +2573,7 @@ pub(crate) fn parse_look_at_top_then_exile_face_down_then_play_while_exiled(
     ]))
 }
 
-pub(crate) fn parse_look_at_top_then_put_one_hand_other_bottom(
+pub fn parse_look_at_top_then_put_one_hand_other_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -2627,7 +2627,7 @@ pub(crate) fn parse_look_at_top_then_put_one_hand_other_bottom(
 /// lowering-time snapshot. This sequence rule instead gives the look, choice,
 /// move, and remainder one shared pair of tags up front, which makes the
 /// selected subset and complement explicit in the parser AST.
-pub(crate) fn parse_look_at_top_then_put_counted_hand_rest_bottom(
+pub fn parse_look_at_top_then_put_counted_hand_rest_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -2684,7 +2684,7 @@ pub(crate) fn parse_look_at_top_then_put_counted_hand_rest_bottom(
 /// The source and selected tags make it impossible for the move to affect the
 /// unselected sibling. The library owner is explicit even though the ability's
 /// controller is always the chooser.
-pub(crate) fn parse_look_at_top_then_move_exact_one_to_graveyard(
+pub fn parse_look_at_top_then_move_exact_one_to_graveyard(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -2734,7 +2734,7 @@ pub(crate) fn parse_look_at_top_then_move_exact_one_to_graveyard(
     ]))
 }
 
-pub(crate) fn parse_look_at_top_then_partition_selected_and_remainder(
+pub fn parse_look_at_top_then_partition_selected_and_remainder(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -2861,7 +2861,7 @@ pub(crate) fn parse_look_at_top_then_partition_selected_and_remainder(
     }
 }
 
-pub(crate) fn parse_look_at_top_then_put_one_hand_other_graveyard(
+pub fn parse_look_at_top_then_put_one_hand_other_graveyard(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -2906,7 +2906,7 @@ pub(crate) fn parse_look_at_top_then_put_one_hand_other_graveyard(
     )))
 }
 
-pub(crate) fn parse_reveal_top_then_choose_revealed_and_move(
+pub fn parse_reveal_top_then_choose_revealed_and_move(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -2922,7 +2922,7 @@ pub(crate) fn parse_reveal_top_then_choose_revealed_and_move(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_choose_draw_main_or_combat_phase_then_skip_chosen_this_turn(
+pub fn parse_choose_draw_main_or_combat_phase_then_skip_chosen_this_turn(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -2958,7 +2958,7 @@ pub(crate) fn parse_choose_draw_main_or_combat_phase_then_skip_chosen_this_turn(
     ]))
 }
 
-pub(crate) fn parse_choose_same_controller_targets_then_sacrifice_one(
+pub fn parse_choose_same_controller_targets_then_sacrifice_one(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -2968,7 +2968,7 @@ pub(crate) fn parse_choose_same_controller_targets_then_sacrifice_one(
     )
 }
 
-pub(crate) fn parse_choose_same_controller_targets_then_sacrifice_one_return_other(
+pub fn parse_choose_same_controller_targets_then_sacrifice_one_return_other(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -3142,7 +3142,7 @@ fn append_rest_action_after_choice(
     }
 }
 
-pub(crate) fn parse_choose_then_affect_rest(
+pub fn parse_choose_then_affect_rest(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -3162,7 +3162,7 @@ pub(crate) fn parse_choose_then_affect_rest(
     Ok(append_rest_action_after_choice(first.clone(), action))
 }
 
-pub(crate) fn parse_may_cast_target_graveyard_spell_then_exile_replacement(
+pub fn parse_may_cast_target_graveyard_spell_then_exile_replacement(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -3308,7 +3308,7 @@ pub(crate) fn parse_may_cast_target_graveyard_spell_then_exile_replacement(
 /// result parser sees the cast sentence in isolation and can collapse its
 /// target to the preceding payment result; delegate the trailing body to the
 /// existing strict cast/replacement pair instead.
-pub(crate) fn parse_when_result_may_cast_target_graveyard_spell_then_exile_replacement(
+pub fn parse_when_result_may_cast_target_graveyard_spell_then_exile_replacement(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -3336,7 +3336,7 @@ pub(crate) fn parse_when_result_may_cast_target_graveyard_spell_then_exile_repla
     }]))
 }
 
-pub(crate) fn parse_filtered_future_exile_then_return_next_end_step(
+pub fn parse_filtered_future_exile_then_return_next_end_step(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -3389,7 +3389,7 @@ fn target_for_referenced_stack_object(
     }
 }
 
-pub(crate) fn parse_tempting_offer_copy_spell_sequence(
+pub fn parse_tempting_offer_copy_spell_sequence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -3590,7 +3590,7 @@ fn parse_copy_for_each_target_sentence(
     }))
 }
 
-pub(crate) fn parse_copy_for_each_target_then_each_copy_targets_different(
+pub fn parse_copy_for_each_target_then_each_copy_targets_different(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -3608,7 +3608,7 @@ pub(crate) fn parse_copy_for_each_target_then_each_copy_targets_different(
     Ok(Some(vec![effect]))
 }
 
-pub(crate) fn parse_for_each_tagged_copy_then_copy_targets_it(
+pub fn parse_for_each_tagged_copy_then_copy_targets_it(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -3655,7 +3655,7 @@ pub(crate) fn parse_for_each_tagged_copy_then_copy_targets_it(
     }]))
 }
 
-pub(crate) fn parse_may_put_filtered_card_from_among_into_hand(
+pub fn parse_may_put_filtered_card_from_among_into_hand(
     tokens: &[OwnedLexToken],
     default_player: PlayerAst,
     zone: Zone,
@@ -3821,7 +3821,7 @@ fn parse_self_animate_followup_effects(
     }
 }
 
-pub(crate) fn parse_whenever_gain_life_then_self_animate_source(
+pub fn parse_whenever_gain_life_then_self_animate_source(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -3853,7 +3853,7 @@ pub(crate) fn parse_whenever_gain_life_then_self_animate_source(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_gain_life_then_self_animate_source(
+pub fn parse_gain_life_then_self_animate_source(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -3885,7 +3885,7 @@ pub(crate) fn parse_gain_life_then_self_animate_source(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_choose_then_do_same_for_filter_then_return_to_battlefield(
+pub fn parse_choose_then_do_same_for_filter_then_return_to_battlefield(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -3916,7 +3916,7 @@ pub(crate) fn parse_choose_then_do_same_for_filter_then_return_to_battlefield(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_delayed_dies_exile_top_power_choose_play(
+pub fn parse_delayed_dies_exile_top_power_choose_play(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -3967,7 +3967,7 @@ pub(crate) fn parse_delayed_dies_exile_top_power_choose_play(
     }]))
 }
 
-pub(crate) fn parse_mill_then_may_put_from_among_into_hand(
+pub fn parse_mill_then_may_put_from_among_into_hand(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -4010,7 +4010,7 @@ pub(crate) fn parse_mill_then_may_put_from_among_into_hand(
 /// preceding mill instruction. The up-to-one tagged choice is both the
 /// optionality and the executable provenance boundary; unrelated cards that
 /// were already in the graveyard cannot be chosen.
-pub(crate) fn parse_mill_then_may_cast_from_among(
+pub fn parse_mill_then_may_cast_from_among(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -4445,7 +4445,7 @@ fn parse_put_from_milled_cards_followup(
     Ok(Some((effects, conditional_followup)))
 }
 
-pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_same_sentence(
+pub fn parse_top_cards_put_any_matching_to_zone_rest_same_sentence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -4584,7 +4584,7 @@ pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_same_sentence(
 /// "You may look at the top N cards ... . If you do, reveal <counted filter>
 /// from among them, then put those cards on top ... and the rest on the
 /// bottom ... ."
-pub(crate) fn parse_optional_look_then_reveal_put_top_rest_bottom(
+pub fn parse_optional_look_then_reveal_put_top_rest_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -4683,7 +4683,7 @@ pub(crate) fn parse_optional_look_then_reveal_put_top_rest_bottom(
 /// already sit in the graveyard, so the choose filter references them via
 /// `IT_TAG` (resolved to the mill's collection tag at lowering) and no
 /// rest-into-graveyard split is emitted.
-pub(crate) fn parse_mill_then_may_put_from_among_into_hand_with_if_not_chosen(
+pub fn parse_mill_then_may_put_from_among_into_hand_with_if_not_chosen(
     sentences: &[SentenceInput],
     sentence_idx: usize,
     player: PlayerAst,
@@ -4724,7 +4724,7 @@ pub(crate) fn parse_mill_then_may_put_from_among_into_hand_with_if_not_chosen(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_exile_until_match_grant_play_this_turn(
+pub fn parse_exile_until_match_grant_play_this_turn(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -4757,7 +4757,7 @@ pub(crate) fn parse_exile_until_match_grant_play_this_turn(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_exile_until_match_put_counters_on_match(
+pub fn parse_exile_until_match_put_counters_on_match(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -4806,7 +4806,7 @@ pub(crate) fn parse_exile_until_match_put_counters_on_match(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_target_player_chooses_then_other_cant_block(
+pub fn parse_target_player_chooses_then_other_cant_block(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -4816,7 +4816,7 @@ pub(crate) fn parse_target_player_chooses_then_other_cant_block(
     )
 }
 
-pub(crate) fn parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
+pub fn parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -4826,7 +4826,7 @@ pub(crate) fn parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
     )
 }
 
-pub(crate) fn parse_choose_creature_type_then_become_type(
+pub fn parse_choose_creature_type_then_become_type(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -4836,7 +4836,7 @@ pub(crate) fn parse_choose_creature_type_then_become_type(
     )
 }
 
-pub(crate) fn parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(
+pub fn parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -4971,7 +4971,7 @@ fn compose_reveal_top_put_matching_into_hand_rest_into_graveyard(
     ]
 }
 
-pub(crate) fn parse_consult_match_move_and_bottom_remainder(
+pub fn parse_consult_match_move_and_bottom_remainder(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -5067,7 +5067,7 @@ pub(crate) fn parse_consult_match_move_and_bottom_remainder(
     )))
 }
 
-pub(crate) fn parse_conditional_consult_match_move_and_bottom_remainder(
+pub fn parse_conditional_consult_match_move_and_bottom_remainder(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -5112,7 +5112,7 @@ pub(crate) fn parse_conditional_consult_match_move_and_bottom_remainder(
     }]))
 }
 
-pub(crate) fn parse_consult_match_move_all_to_graveyard(
+pub fn parse_consult_match_move_all_to_graveyard(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -5138,7 +5138,7 @@ pub(crate) fn parse_consult_match_move_all_to_graveyard(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_consult_match_into_hand_exile_others(
+pub fn parse_consult_match_into_hand_exile_others(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -5194,7 +5194,7 @@ pub(crate) fn parse_consult_match_into_hand_exile_others(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_consult_match_into_battlefield_or_hand(
+pub fn parse_consult_match_into_battlefield_or_hand(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -5253,7 +5253,7 @@ pub(crate) fn parse_consult_match_into_battlefield_or_hand(
 ///
 /// This covers cards like Hermit Druid and similar "reveal until, match to hand, rest to graveyard"
 /// patterns.
-pub(crate) fn parse_consult_match_into_hand_others_graveyard(
+pub fn parse_consult_match_into_hand_others_graveyard(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -5322,7 +5322,7 @@ pub(crate) fn parse_consult_match_into_hand_others_graveyard(
     )))
 }
 
-pub(crate) fn parse_consult_match_into_battlefield_others_graveyard(
+pub fn parse_consult_match_into_battlefield_others_graveyard(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

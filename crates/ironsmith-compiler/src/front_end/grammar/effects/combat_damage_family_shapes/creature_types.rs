@@ -18,28 +18,28 @@ const REFERENCED_TYPE_CHOICES: &[&[&str]] = &[
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct DestroyCreatureTypeChoiceShape;
+pub struct DestroyCreatureTypeChoiceShape;
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct PumpCreatureTypeChoiceShape<'a> {
-    pub(crate) base_subject_tokens: &'a [OwnedLexToken],
-    pub(crate) filter_subject_tokens: &'a [OwnedLexToken],
-    pub(crate) trailing_subject_tokens: &'a [OwnedLexToken],
-    pub(crate) get_tail_tokens: &'a [OwnedLexToken],
+pub struct PumpCreatureTypeChoiceShape<'a> {
+    pub base_subject_tokens: &'a [OwnedLexToken],
+    pub filter_subject_tokens: &'a [OwnedLexToken],
+    pub trailing_subject_tokens: &'a [OwnedLexToken],
+    pub get_tail_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct MustAttackCreatureTypeChoiceShape<'a> {
-    pub(crate) filter_subject_tokens: &'a [OwnedLexToken],
-    pub(crate) trailing_subject_tokens: &'a [OwnedLexToken],
+pub struct MustAttackCreatureTypeChoiceShape<'a> {
+    pub filter_subject_tokens: &'a [OwnedLexToken],
+    pub trailing_subject_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct ReturnCreatureTypeChoiceShape {
-    pub(crate) base_target_tokens: Vec<OwnedLexToken>,
-    pub(crate) needs_inline_choice_effect: bool,
-    pub(crate) excluded: bool,
-    pub(crate) has_explicit_target: bool,
+pub struct ReturnCreatureTypeChoiceShape {
+    pub base_target_tokens: Vec<OwnedLexToken>,
+    pub needs_inline_choice_effect: bool,
+    pub excluded: bool,
+    pub has_explicit_target: bool,
 }
 
 fn find_phrase_range(
@@ -84,7 +84,7 @@ fn strip_leading_all(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
         .unwrap_or(tokens)
 }
 
-pub(crate) fn parse_destroy_creature_type_choice_shape(
+pub fn parse_destroy_creature_type_choice_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DestroyCreatureTypeChoiceShape> {
     let (_, tail) = primitives::parse_prefix(
@@ -95,7 +95,7 @@ pub(crate) fn parse_destroy_creature_type_choice_shape(
     Some(DestroyCreatureTypeChoiceShape)
 }
 
-pub(crate) fn parse_pump_creature_type_choice_shape(
+pub fn parse_pump_creature_type_choice_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PumpCreatureTypeChoiceShape<'_>> {
     let (subject_tokens, get_tail_tokens) = split_at_get(tokens)?;
@@ -109,7 +109,7 @@ pub(crate) fn parse_pump_creature_type_choice_shape(
     })
 }
 
-pub(crate) fn parse_must_attack_creature_type_choice_shape(
+pub fn parse_must_attack_creature_type_choice_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<MustAttackCreatureTypeChoiceShape<'_>> {
     let (suffix_start, (), suffix_rest) = primitives::find_prefix(tokens, || {
@@ -193,7 +193,7 @@ fn remove_token_range(tokens: &[OwnedLexToken], range: Range<usize>) -> Vec<Owne
     trim_lexed_commas(&retained).to_vec()
 }
 
-pub(crate) fn parse_return_creature_type_choice_shape(
+pub fn parse_return_creature_type_choice_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ReturnCreatureTypeChoiceShape> {
     let (target_tokens, destination_tokens) = split_return_target_destination(tokens)?;

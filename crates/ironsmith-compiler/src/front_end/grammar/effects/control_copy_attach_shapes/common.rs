@@ -8,21 +8,21 @@ use crate::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BattlefieldControllerShape {
+pub enum BattlefieldControllerShape {
     You,
     Owner,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct BattlefieldControllerPrefix<'a> {
-    pub(crate) controller: BattlefieldControllerShape,
-    pub(crate) rest: &'a [OwnedLexToken],
+pub struct BattlefieldControllerPrefix<'a> {
+    pub controller: BattlefieldControllerShape,
+    pub rest: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct CountedCardTargetShape<'a> {
-    pub(crate) count: ChoiceCount,
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct CountedCardTargetShape<'a> {
+    pub count: ChoiceCount,
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
 fn control_action(input: &mut LexStream<'_>) -> winnow::error::ModalResult<()> {
@@ -65,7 +65,7 @@ fn owner_controller(input: &mut LexStream<'_>) -> winnow::error::ModalResult<()>
     control_action.parse_next(input)
 }
 
-pub(crate) fn parse_battlefield_controller_prefix(
+pub fn parse_battlefield_controller_prefix(
     tokens: &[OwnedLexToken],
 ) -> Option<BattlefieldControllerPrefix<'_>> {
     let tokens = trim_lexed_commas(tokens);
@@ -82,7 +82,7 @@ pub(crate) fn parse_battlefield_controller_prefix(
     })
 }
 
-pub(crate) fn parse_destination_player(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {
+pub fn parse_destination_player(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {
     if explicitly_names_object_owner(tokens) {
         return None;
     }
@@ -98,7 +98,7 @@ pub(crate) fn parse_destination_player(tokens: &[OwnedLexToken]) -> Option<Playe
     None
 }
 
-pub(crate) fn parse_destination_player_reference_surface(
+pub fn parse_destination_player_reference_surface(
     tokens: &[OwnedLexToken],
 ) -> Option<ironsmith_core::DestinationPlayerReferenceSurface> {
     if explicitly_names_object_owner(tokens) {
@@ -115,13 +115,13 @@ pub(crate) fn parse_destination_player_reference_surface(
     None
 }
 
-pub(crate) fn explicitly_names_object_owner(tokens: &[OwnedLexToken]) -> bool {
+pub fn explicitly_names_object_owner(tokens: &[OwnedLexToken]) -> bool {
     ["owner", "owners", "owner's", "owners'"]
         .iter()
         .any(|word| primitives::contains_word(tokens, word))
 }
 
-pub(crate) fn parse_destination_zone(tokens: &[OwnedLexToken]) -> Option<Zone> {
+pub fn parse_destination_zone(tokens: &[OwnedLexToken]) -> Option<Zone> {
     if primitives::contains_word(tokens, "hand") || primitives::contains_word(tokens, "hands") {
         return Some(Zone::Hand);
     }
@@ -133,11 +133,11 @@ pub(crate) fn parse_destination_zone(tokens: &[OwnedLexToken]) -> Option<Zone> {
     None
 }
 
-pub(crate) fn is_rest_reference(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_rest_reference(tokens: &[OwnedLexToken]) -> bool {
     permission_shapes::exact_tokens_any(tokens, &[&["the", "rest"], &["rest"]])
 }
 
-pub(crate) fn is_tagged_object_reference(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_tagged_object_reference(tokens: &[OwnedLexToken]) -> bool {
     permission_shapes::exact_tokens_any(
         trim_lexed_commas(tokens),
         &[
@@ -150,7 +150,7 @@ pub(crate) fn is_tagged_object_reference(tokens: &[OwnedLexToken]) -> bool {
     )
 }
 
-pub(crate) fn is_plural_tagged_object_reference(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_plural_tagged_object_reference(tokens: &[OwnedLexToken]) -> bool {
     let tokens = trim_lexed_commas(tokens);
     permission_shapes::exact_tokens_any(
         tokens,
@@ -158,7 +158,7 @@ pub(crate) fn is_plural_tagged_object_reference(tokens: &[OwnedLexToken]) -> boo
     ) || primitives::parse_prefix(tokens, primitives::kw("those").void()).is_some()
 }
 
-pub(crate) fn starts_with_all_or_each(tokens: &[OwnedLexToken]) -> bool {
+pub fn starts_with_all_or_each(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(
         trim_lexed_commas(tokens),
         alt((primitives::kw("all"), primitives::kw("each"))).void(),
@@ -166,7 +166,7 @@ pub(crate) fn starts_with_all_or_each(tokens: &[OwnedLexToken]) -> bool {
     .is_some()
 }
 
-pub(crate) fn contains_graveyard_and_hand(tokens: &[OwnedLexToken]) -> bool {
+pub fn contains_graveyard_and_hand(tokens: &[OwnedLexToken]) -> bool {
     let graveyard = primitives::contains_word(tokens, "graveyard")
         || primitives::contains_word(tokens, "graveyards");
     let hand =
@@ -174,23 +174,23 @@ pub(crate) fn contains_graveyard_and_hand(tokens: &[OwnedLexToken]) -> bool {
     graveyard && hand
 }
 
-pub(crate) fn contains_from_it(tokens: &[OwnedLexToken]) -> bool {
+pub fn contains_from_it(tokens: &[OwnedLexToken]) -> bool {
     permission_shapes::contains_tokens(tokens, &["from", "it"])
 }
 
-pub(crate) fn contains_among_them(tokens: &[OwnedLexToken]) -> bool {
+pub fn contains_among_them(tokens: &[OwnedLexToken]) -> bool {
     primitives::contains_word(tokens, "among") && primitives::contains_word(tokens, "them")
 }
 
-pub(crate) fn contains_permanent(tokens: &[OwnedLexToken]) -> bool {
+pub fn contains_permanent(tokens: &[OwnedLexToken]) -> bool {
     primitives::contains_word(tokens, "permanent")
 }
 
-pub(crate) fn contains_sticker(tokens: &[OwnedLexToken]) -> bool {
+pub fn contains_sticker(tokens: &[OwnedLexToken]) -> bool {
     primitives::contains_word(tokens, "sticker")
 }
 
-pub(crate) fn parse_counted_card_target_shape(
+pub fn parse_counted_card_target_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<CountedCardTargetShape<'_>> {
     let tokens = trim_lexed_commas(tokens);
@@ -206,7 +206,7 @@ pub(crate) fn parse_counted_card_target_shape(
     })
 }
 
-pub(crate) fn parse_counted_those_cards(tokens: &[OwnedLexToken]) -> Option<u32> {
+pub fn parse_counted_those_cards(tokens: &[OwnedLexToken]) -> Option<u32> {
     let tokens = trim_lexed_commas(tokens);
     let (_, tail) = primitives::parse_prefix(tokens, primitives::kw("put").void())?;
     let parsed = leaf::parse_leaf_number_prefix_tokens(tail)?;
@@ -224,7 +224,7 @@ pub(crate) fn parse_counted_those_cards(tokens: &[OwnedLexToken]) -> Option<u32>
     parsed.into_fixed().map(|(count, _)| count)
 }
 
-pub(crate) fn parse_delayed_hand_tail(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn parse_delayed_hand_tail(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let mut offset = 0usize;
     let mut last = None;
     while offset < tokens.len() {

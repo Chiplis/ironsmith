@@ -10,20 +10,20 @@ use super::{leaf, primitives};
 #[path = "lowering_surfaces/statement_replacements.rs"]
 mod statement_replacements;
 
-pub(crate) use statement_replacements::parse_statement_replacement_surface_tokens;
+pub use statement_replacements::parse_statement_replacement_surface_tokens;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CreatureTypeChoiceBuff;
+pub struct CreatureTypeChoiceBuff;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ThisSpellCostSurface {
-    pub(crate) reduction_cap: Option<i32>,
+pub struct ThisSpellCostSurface {
+    pub reduction_cap: Option<i32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PriorCreatedTokenReference;
+pub struct PriorCreatedTokenReference;
 
-pub(crate) fn parse_prior_created_token_reference_words(
+pub fn parse_prior_created_token_reference_words(
     words: &[&str],
 ) -> Option<PriorCreatedTokenReference> {
     primitives::parse_full_word_slice(
@@ -39,7 +39,7 @@ pub(crate) fn parse_prior_created_token_reference_words(
     )
 }
 
-pub(crate) fn parse_creature_type_choice_buff_tokens(
+pub fn parse_creature_type_choice_buff_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CreatureTypeChoiceBuff> {
     primitives::parse_all(
@@ -82,7 +82,7 @@ fn parse_generic_mana_cap(input: &mut LexStream<'_>) -> WResult<i32> {
     ))
 }
 
-pub(crate) fn parse_this_spell_cost_surface_tokens(
+pub fn parse_this_spell_cost_surface_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ThisSpellCostSurface> {
     primitives::parse_all(

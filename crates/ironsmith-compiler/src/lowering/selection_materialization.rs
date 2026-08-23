@@ -1,6 +1,6 @@
 use crate::model::CompilerSelectionAst;
 
-pub(crate) trait SelectionMaterializer {
+pub trait SelectionMaterializer {
     type RuntimeSelection;
     type Error;
 
@@ -10,7 +10,7 @@ pub(crate) trait SelectionMaterializer {
     ) -> Result<Self::RuntimeSelection, Self::Error>;
 }
 
-pub(crate) fn lower_selection<M: SelectionMaterializer>(
+pub fn lower_selection<M: SelectionMaterializer>(
     materializer: &mut M,
     selection: &CompilerSelectionAst,
 ) -> Result<M::RuntimeSelection, M::Error> {

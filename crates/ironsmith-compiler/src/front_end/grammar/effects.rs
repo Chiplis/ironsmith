@@ -41,165 +41,165 @@ use winnow::error::{ContextError, ErrMode};
 use winnow::prelude::*;
 #[path = "effects/bundle_rules.rs"]
 mod bundle_rules;
-pub(crate) use bundle_rules::*;
+pub use bundle_rules::*;
 #[path = "effects/become_shapes.rs"]
-pub(crate) mod become_shapes;
+pub mod become_shapes;
 #[path = "effects/chain_carry.rs"]
-pub(crate) mod chain_carry;
+pub mod chain_carry;
 #[path = "effects/chain_splitting.rs"]
-pub(crate) mod chain_splitting;
+pub mod chain_splitting;
 #[path = "effects/combat_damage_family_shapes.rs"]
-pub(crate) mod combat_damage_family_shapes;
+pub mod combat_damage_family_shapes;
 #[path = "effects/combat_shapes.rs"]
-pub(crate) mod combat_shapes;
+pub mod combat_shapes;
 #[path = "effects/control_copy_attach_shapes.rs"]
-pub(crate) mod control_copy_attach_shapes;
+pub mod control_copy_attach_shapes;
 #[path = "effects/control_flow.rs"]
-pub(crate) mod control_flow;
+pub mod control_flow;
 #[path = "effects/coordination.rs"]
-pub(crate) mod coordination;
+pub mod coordination;
 #[path = "effects/damage.rs"]
 mod damage;
-pub(crate) use damage::*;
+pub use damage::*;
 #[path = "effects/delayed.rs"]
 mod delayed;
-pub(crate) use delayed::*;
+pub use delayed::*;
 #[path = "effects/delayed_sentence_shapes.rs"]
-pub(crate) mod delayed_sentence_shapes;
+pub mod delayed_sentence_shapes;
 #[path = "effects/delayed_step_shapes.rs"]
-pub(crate) mod delayed_step_shapes;
+pub mod delayed_step_shapes;
 #[path = "effects/dispatch_entry_shapes.rs"]
-pub(crate) mod dispatch_entry_shapes;
+pub mod dispatch_entry_shapes;
 #[path = "effects/divvy_shapes.rs"]
-pub(crate) mod divvy_shapes;
+pub mod divvy_shapes;
 #[path = "effects/fixed_mana_output.rs"]
 mod fixed_mana_output;
-pub(crate) use fixed_mana_output::*;
+pub use fixed_mana_output::*;
 #[path = "effects/emblem_shapes.rs"]
-pub(crate) mod emblem_shapes;
+pub mod emblem_shapes;
 #[path = "effects/exile_shapes.rs"]
 mod exile_shapes;
 #[path = "effects/fanout_shapes.rs"]
-pub(crate) mod fanout_shapes;
+pub mod fanout_shapes;
 #[path = "effects/optional_companion_shapes.rs"]
-pub(crate) mod optional_companion_shapes;
-pub(crate) use exile_shapes::*;
+pub mod optional_companion_shapes;
+pub use exile_shapes::*;
 #[path = "effects/exile_permission_followups.rs"]
 mod exile_permission_followups;
 #[path = "effects/followup_shapes.rs"]
-pub(crate) mod followup_shapes;
-pub(crate) use exile_permission_followups::*;
+pub mod followup_shapes;
+pub use exile_permission_followups::*;
 #[path = "effects/for_each_shapes.rs"]
-pub(crate) mod for_each_shapes;
+pub mod for_each_shapes;
 #[path = "effects/generic_program_shapes.rs"]
 mod generic_program_shapes;
-pub(crate) use generic_program_shapes::*;
+pub use generic_program_shapes::*;
 #[path = "effects/gain_life_shapes.rs"]
 mod gain_life_shapes;
 #[path = "effects/generic_sequence_shapes.rs"]
-pub(crate) mod generic_sequence_shapes;
-pub(crate) use gain_life_shapes::*;
+pub mod generic_sequence_shapes;
+pub use gain_life_shapes::*;
 #[path = "effects/gain_ability_shapes.rs"]
-pub(crate) mod gain_ability_shapes;
+pub mod gain_ability_shapes;
 #[path = "effects/instead.rs"]
 mod instead;
-pub(crate) use instead::*;
+pub use instead::*;
 #[path = "effects/control.rs"]
 mod control;
 #[path = "effects/labeled_dispatch.rs"]
-pub(crate) mod labeled_dispatch;
+pub mod labeled_dispatch;
 #[path = "effects/looked_card_shapes.rs"]
-pub(crate) mod looked_card_shapes;
-pub(crate) use control::*;
-pub(crate) use looked_card_shapes::{
+pub mod looked_card_shapes;
+pub use control::*;
+pub use looked_card_shapes::{
     LookedCardDestinationShape, RevealedCardChooserShape, ThreeWayLookedCardDispositionShape,
     parse_counted_looked_hand_remainder_shape, parse_exact_looked_card_move_shape,
     parse_revealed_card_choice_shape, parse_three_way_looked_card_disposition_shape,
 };
 #[path = "effects/conditional_shapes.rs"]
 mod conditional_shapes;
-pub(crate) use conditional_shapes::*;
+pub use conditional_shapes::*;
 #[path = "effects/kicked_counter_replacement.rs"]
 mod kicked_counter_replacement;
-pub(crate) use kicked_counter_replacement::*;
+pub use kicked_counter_replacement::*;
 #[path = "effects/creation_shapes.rs"]
 mod creation_shapes;
-pub(crate) use creation_shapes::*;
+pub use creation_shapes::*;
 #[path = "effects/return_exchange.rs"]
 mod return_exchange;
-pub(crate) use return_exchange::*;
+pub use return_exchange::*;
 #[path = "effects/replacement_prevention_shapes.rs"]
 mod replacement_prevention_shapes;
-pub(crate) use replacement_prevention_shapes::*;
+pub use replacement_prevention_shapes::*;
 #[path = "effects/token_copy_control_shapes.rs"]
 mod token_copy_control_shapes;
-pub(crate) use token_copy_control_shapes::*;
+pub use token_copy_control_shapes::*;
 #[path = "effects/rewrite_shapes.rs"]
 mod rewrite_shapes;
-pub(crate) use rewrite_shapes::*;
+pub use rewrite_shapes::*;
 #[path = "effects/mana_replacement.rs"]
 mod mana_replacement;
-pub(crate) use mana_replacement::*;
+pub use mana_replacement::*;
 #[path = "effects/misc_action_shapes.rs"]
-pub(crate) mod misc_action_shapes;
+pub mod misc_action_shapes;
 #[path = "effects/next_spell_grants.rs"]
 mod next_spell_grants;
 #[path = "effects/remove_destroy_shapes.rs"]
-pub(crate) mod remove_destroy_shapes;
+pub mod remove_destroy_shapes;
 #[path = "effects/resource_shapes.rs"]
-pub(crate) mod resource_shapes;
+pub mod resource_shapes;
 #[path = "effects/sacrifice_discard_shapes.rs"]
-pub(crate) mod sacrifice_discard_shapes;
+pub mod sacrifice_discard_shapes;
 #[path = "effects/sequence_quad_shapes.rs"]
-pub(crate) mod sequence_quad_shapes;
-pub(crate) use next_spell_grants::*;
+pub mod sequence_quad_shapes;
+pub use next_spell_grants::*;
 #[path = "effects/search_library.rs"]
 mod search_library;
-pub(crate) use search_library::*;
+pub use search_library::*;
 #[path = "effects/source_linked_exile_sequences.rs"]
 mod source_linked_exile_sequences;
-pub(crate) use source_linked_exile_sequences::*;
+pub use source_linked_exile_sequences::*;
 #[path = "effects/choice_damage_shapes.rs"]
-pub(crate) mod choice_damage_shapes;
+pub mod choice_damage_shapes;
 #[path = "effects/clause_dispatch_shapes.rs"]
-pub(crate) mod clause_dispatch_shapes;
+pub mod clause_dispatch_shapes;
 #[path = "effects/clause_pattern_shapes.rs"]
-pub(crate) mod clause_pattern_shapes;
+pub mod clause_pattern_shapes;
 #[path = "effects/clause_primitive_shapes.rs"]
-pub(crate) mod clause_primitive_shapes;
+pub mod clause_primitive_shapes;
 #[path = "effects/counter_marker_shapes.rs"]
-pub(crate) mod counter_marker_shapes;
+pub mod counter_marker_shapes;
 #[path = "effects/counter_stat_shapes.rs"]
-pub(crate) mod counter_stat_shapes;
+pub mod counter_stat_shapes;
 #[path = "effects/sentence_predicate_shapes.rs"]
-pub(crate) mod sentence_predicate_shapes;
+pub mod sentence_predicate_shapes;
 #[path = "effects/sequence_pairs.rs"]
 mod sequence_pairs;
 #[path = "effects/special_sentence_shapes.rs"]
-pub(crate) mod special_sentence_shapes;
+pub mod special_sentence_shapes;
 #[path = "effects/subject_verb_registry_shapes.rs"]
-pub(crate) mod subject_verb_registry_shapes;
+pub mod subject_verb_registry_shapes;
 #[path = "effects/triple_sequence_shapes.rs"]
-pub(crate) mod triple_sequence_shapes;
+pub mod triple_sequence_shapes;
 #[path = "effects/typed_clause_heads.rs"]
-pub(crate) mod typed_clause_heads;
-pub(crate) use sequence_pairs::*;
+pub mod typed_clause_heads;
+pub use sequence_pairs::*;
 #[path = "effects/sentence_prelude.rs"]
 mod sentence_prelude;
-pub(crate) use sentence_prelude::*;
+pub use sentence_prelude::*;
 #[path = "effects/tap_shapes.rs"]
 mod tap_shapes;
-pub(crate) use tap_shapes::*;
+pub use tap_shapes::*;
 #[path = "effects/unsupported_shapes.rs"]
 mod unsupported_shapes;
-pub(crate) use unsupported_shapes::*;
+pub use unsupported_shapes::*;
 #[path = "effects/unless_clause.rs"]
 mod unless_clause;
-pub(crate) use unless_clause::*;
+pub use unless_clause::*;
 #[path = "effects/zone_counter_shapes.rs"]
-pub(crate) mod zone_counter_shapes;
+pub mod zone_counter_shapes;
 #[path = "effects/zone_move_shapes.rs"]
-pub(crate) mod zone_move_shapes;
+pub mod zone_move_shapes;
 const IF_YOU_PHRASE: &[&str] = &["if", "you"];
 const THIS_TURN_PHRASE: &[&str] = &["this", "turn"];
 const THIS_WAY_PHRASE: &[&str] = &["this", "way"];
@@ -438,7 +438,7 @@ fn is_prevent_damage_explicit_reference_word(word: &str) -> bool {
     matches!(word, "this" | "that" | "it")
 }
 
-pub(crate) fn cant_sentence_clause_tokens_for_restriction_scan_lexed(
+pub fn cant_sentence_clause_tokens_for_restriction_scan_lexed(
     clause_tokens: &[OwnedLexToken],
 ) -> Vec<OwnedLexToken> {
     split_lexed_sentences(clause_tokens)
@@ -448,9 +448,7 @@ pub(crate) fn cant_sentence_clause_tokens_for_restriction_scan_lexed(
         .to_vec()
 }
 
-pub(crate) fn cant_sentence_has_supported_negation_gate_lexed(
-    clause_tokens: &[OwnedLexToken],
-) -> bool {
+pub fn cant_sentence_has_supported_negation_gate_lexed(clause_tokens: &[OwnedLexToken]) -> bool {
     let Some((neg_start, _)) = find_cant_sentence_negation_span_lexed(clause_tokens) else {
         return false;
     };
@@ -466,9 +464,7 @@ pub(crate) fn cant_sentence_has_supported_negation_gate_lexed(
         })
 }
 
-pub(crate) fn find_cant_sentence_negation_span_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<(usize, usize)> {
+pub fn find_cant_sentence_negation_span_lexed(tokens: &[OwnedLexToken]) -> Option<(usize, usize)> {
     let mut cursor = 0usize;
 
     while cursor < tokens.len() {
@@ -539,7 +535,7 @@ fn cant_sentence_for_as_long_as_marker<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn split_cant_sentence_next_turn_prefix_lexed(
+pub fn split_cant_sentence_next_turn_prefix_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<OwnedLexToken>> {
     let mut cursor = 0usize;
@@ -561,13 +557,13 @@ pub(crate) fn split_cant_sentence_next_turn_prefix_lexed(
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct CantSentencePreparedClause {
-    pub(crate) duration: crate::effect::Until,
-    pub(crate) duration_surface: crate::effect::RestrictionDurationSurface,
-    pub(crate) clause_tokens: Vec<OwnedLexToken>,
+pub struct CantSentencePreparedClause {
+    pub duration: crate::effect::Until,
+    pub duration_surface: crate::effect::RestrictionDurationSurface,
+    pub clause_tokens: Vec<OwnedLexToken>,
 }
 
-pub(crate) fn prepare_cant_sentence_restriction_clause_lexed(
+pub fn prepare_cant_sentence_restriction_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<CantSentencePreparedClause>, CardTextError> {
     let duration_surface = parse_search_restriction_duration_shape_lexed(tokens)?
@@ -632,9 +628,7 @@ fn labeled_effect_prefix<'a>(input: &mut LexStream<'a>) -> Result<(), ErrMode<Co
         .parse_next(input)
 }
 
-pub(crate) fn split_labeled_effect_prefix_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<&[OwnedLexToken]> {
+pub fn split_labeled_effect_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let (_, rest) = primitives::parse_prefix(tokens, labeled_effect_prefix)?;
     Some(rest)
 }
@@ -643,7 +637,7 @@ fn labeled_prefix_tokens(prefix: &str) -> Option<Vec<OwnedLexToken>> {
     lex_line(prefix.trim(), 0).ok()
 }
 
-pub(crate) fn is_labeled_ability_prefix_text(prefix: &str) -> bool {
+pub fn is_labeled_ability_prefix_text(prefix: &str) -> bool {
     let Some(tokens) = labeled_prefix_tokens(prefix) else {
         return false;
     };
@@ -675,7 +669,7 @@ fn is_labeled_ability_prefix_words(words: &[&str]) -> bool {
         .any(|word| primitives::parse_word_sequence_prefix(words, &[*word]).is_some())
 }
 
-pub(crate) fn preserve_labeled_ability_prefix_for_parse_text(prefix: &str) -> bool {
+pub fn preserve_labeled_ability_prefix_for_parse_text(prefix: &str) -> bool {
     let Some(tokens) = labeled_prefix_tokens(prefix) else {
         return false;
     };
@@ -736,31 +730,31 @@ fn starts_with_if_clause_text(text: &str) -> bool {
         .is_some_and(|word| *word == "if")
 }
 
-pub(crate) fn should_strip_labeled_ability_prefix_text(prefix: &str, remainder: &str) -> bool {
+pub fn should_strip_labeled_ability_prefix_text(prefix: &str, remainder: &str) -> bool {
     is_labeled_ability_prefix_text(prefix)
         || (starts_with_if_clause_text(remainder) && is_generic_ability_label_prefix_text(prefix))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ChooseNewTargetsClauseSplit<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) count: Option<ChoiceCount>,
-    pub(crate) explicit_target: bool,
-    pub(crate) reference_target: bool,
+pub struct ChooseNewTargetsClauseSplit<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
+    pub count: Option<ChoiceCount>,
+    pub explicit_target: bool,
+    pub reference_target: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ChangeTargetClauseSplit {
-    pub(crate) target_tokens: Vec<OwnedLexToken>,
-    pub(crate) fixed_to_source: bool,
+pub struct ChangeTargetClauseSplit {
+    pub target_tokens: Vec<OwnedLexToken>,
+    pub fixed_to_source: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ForEachDoesntClauseSplit<'a> {
-    pub(crate) inner_tokens: &'a [OwnedLexToken],
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
-    pub(crate) negation_idx: usize,
-    pub(crate) negation_len: usize,
+pub struct ForEachDoesntClauseSplit<'a> {
+    pub inner_tokens: &'a [OwnedLexToken],
+    pub effect_tokens: &'a [OwnedLexToken],
+    pub negation_idx: usize,
+    pub negation_len: usize,
 }
 
 const CHOOSE_NEW_TARGET_PREFIXES: &[&[&str]] = &[
@@ -797,7 +791,7 @@ const FOR_EACH_PLAYER_PREFIXES: &[&[&str]] = &[
     &["each", "players"],
 ];
 
-pub(crate) fn split_choose_new_targets_clause_lexed(
+pub fn split_choose_new_targets_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ChooseNewTargetsClauseSplit<'_>> {
     let (_, mut tail_tokens) =
@@ -845,7 +839,7 @@ pub(crate) fn split_choose_new_targets_clause_lexed(
     })
 }
 
-pub(crate) fn split_change_target_unless_clause_lexed(
+pub fn split_change_target_unless_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
     primitives::split_lexed_once_on_separator(tokens, || {
@@ -855,7 +849,7 @@ pub(crate) fn split_change_target_unless_clause_lexed(
     .map(|(main, unless)| (trim_lexed_commas(main), trim_lexed_commas(unless)))
 }
 
-pub(crate) fn split_change_target_clause_lexed(
+pub fn split_change_target_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ChangeTargetClauseSplit> {
     let (_, after_prefix_tokens) =
@@ -883,7 +877,7 @@ pub(crate) fn split_change_target_clause_lexed(
     })
 }
 
-pub(crate) fn negated_action_word_index(words: &[&str]) -> Option<(usize, usize)> {
+pub fn negated_action_word_index(words: &[&str]) -> Option<(usize, usize)> {
     let mut idx = 0usize;
     while idx < words.len() {
         if is_compact_negated_action_word(words[idx]) {
@@ -960,19 +954,19 @@ fn split_for_each_doesnt_clause_lexed<'a>(
     })
 }
 
-pub(crate) fn split_for_each_opponent_doesnt_clause_lexed(
+pub fn split_for_each_opponent_doesnt_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ForEachDoesntClauseSplit<'_>> {
     split_for_each_doesnt_clause_lexed(tokens, FOR_EACH_OPPONENT_PREFIXES)
 }
 
-pub(crate) fn split_for_each_player_doesnt_clause_lexed(
+pub fn split_for_each_player_doesnt_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ForEachDoesntClauseSplit<'_>> {
     split_for_each_doesnt_clause_lexed(tokens, FOR_EACH_PLAYER_PREFIXES)
 }
 
-pub(crate) fn split_negated_who_this_way_filter_tokens_lexed(
+pub fn split_negated_who_this_way_filter_tokens_lexed(
     inner_tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     let inner_clause = LexedClause::new(inner_tokens);
@@ -1023,7 +1017,7 @@ fn parse_prevent_damage_source_excluding_target(
     Ok(Some((source_filter, excluded_target)))
 }
 
-pub(crate) fn parse_prevent_damage_sentence_lexed(
+pub fn parse_prevent_damage_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let words = parser_token_word_refs(tokens);
@@ -1209,7 +1203,7 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
     )))
 }
 
-pub(crate) fn parse_prevent_damage_source_target_lexed(
+pub fn parse_prevent_damage_source_target_lexed(
     tokens: &[OwnedLexToken],
     clause_words: &[&str],
 ) -> Result<(TargetAst, bool), CardTextError> {
@@ -1319,7 +1313,7 @@ fn strip_prevent_damage_shares_color_clause_lexed(
     (tokens, false)
 }
 
-pub(crate) fn parse_prevent_damage_target_scope_lexed(
+pub fn parse_prevent_damage_target_scope_lexed(
     tokens: &[OwnedLexToken],
     clause_words: &[&str],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -1372,7 +1366,7 @@ fn conditional_sentence_family_head<'a>(
     .parse_next(input)
 }
 
-pub(crate) fn split_conditional_sentence_family_head_lexed(
+pub fn split_conditional_sentence_family_head_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     let (_, rest) = primitives::parse_prefix(tokens, conditional_sentence_family_head)?;
@@ -1380,7 +1374,7 @@ pub(crate) fn split_conditional_sentence_family_head_lexed(
     consumed.checked_sub(1).map(|if_idx| &tokens[if_idx..])
 }
 
-pub(crate) fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
+pub fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
     parse_effect_chain_lexed: fn(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
 ) -> Result<Vec<EffectAst>, CardTextError> {
@@ -1399,7 +1393,7 @@ pub(crate) fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
     }])
 }
 
-pub(crate) fn parse_conditional_sentence_family_lexed(
+pub fn parse_conditional_sentence_family_lexed(
     tokens: &[OwnedLexToken],
     parse_effect_chain_lexed: fn(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1420,7 +1414,7 @@ pub(crate) fn parse_conditional_sentence_family_lexed(
 /// The duration is intentionally part of this grammar. A bare "You have no
 /// maximum hand size" is a static ability, while the same words followed by
 /// "for the rest of the game" establish a rule as a resolving effect.
-pub(crate) fn parse_persistent_no_maximum_hand_size_player_lexed(
+pub fn parse_persistent_no_maximum_hand_size_player_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerFilter> {
     let words = token_word_refs(tokens);
@@ -1449,7 +1443,7 @@ pub(crate) fn parse_persistent_no_maximum_hand_size_player_lexed(
     .then_some(player)
 }
 
-pub(crate) fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
+pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words = token_word_refs(tokens);
@@ -1621,13 +1615,13 @@ pub(crate) fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_cant_effect_sentence(
+pub fn parse_cant_effect_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_cant_effect_sentence_with_grammar_entrypoint_lexed(tokens)
 }
 
-pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
+pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
     subject_starts_effect_lexed: fn(&[OwnedLexToken]) -> bool,
     parse_leading_effects_lexed: fn(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
@@ -2478,4 +2472,4 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
 }
 #[path = "effects/cant_duration_shapes.rs"]
 mod cant_duration_shapes;
-pub(crate) use cant_duration_shapes::*;
+pub use cant_duration_shapes::*;

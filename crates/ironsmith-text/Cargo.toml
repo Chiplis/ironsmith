@@ -1,0 +1,20 @@
+[package]
+name = "ironsmith-text"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+engine = { package = "ironsmith-engine", path = "../ironsmith-engine", default-features = false }
+ironsmith-core = { path = "../ironsmith-core", default-features = false }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+stacker = "0.1.23"
+
+[features]
+default = []
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(ironsmith_runtime_parser_tests)"] }
+
+[lib]
+path = "src/lib.rs"

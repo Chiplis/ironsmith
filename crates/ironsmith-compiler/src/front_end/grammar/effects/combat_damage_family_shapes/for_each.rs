@@ -5,9 +5,9 @@ use crate::grammar::primitives;
 use crate::lexer::{OwnedLexToken, trim_lexed_commas};
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ForEachCommaShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct ForEachCommaShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 fn split_for_each_comma(
@@ -33,15 +33,13 @@ fn split_for_each_comma(
     })
 }
 
-pub(crate) fn parse_for_each_target_objects_shape(
+pub fn parse_for_each_target_objects_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ForEachCommaShape<'_>> {
     split_for_each_comma(tokens, false)
 }
 
-pub(crate) fn parse_for_each_this_way_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<ForEachCommaShape<'_>> {
+pub fn parse_for_each_this_way_shape(tokens: &[OwnedLexToken]) -> Option<ForEachCommaShape<'_>> {
     split_for_each_comma(tokens, true)
 }
 

@@ -78,7 +78,7 @@ const DELAYED_END_STEP_EXILE_PREFIXES: &[&[&str]] = &[
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TokenCopyModifierKind {
+pub enum TokenCopyModifierKind {
     GainHasteUntilEndOfTurn,
     HasHaste,
     EnterTappedAndAttacking,
@@ -100,9 +100,7 @@ fn has_terminal_phrase(words: &[&str], phrase: &[&str]) -> bool {
         .is_some_and(|start| start.saturating_add(phrase.len()) == words.len())
 }
 
-pub(crate) fn parse_token_copy_modifier_kind(
-    tokens: &[OwnedLexToken],
-) -> Option<TokenCopyModifierKind> {
+pub fn parse_token_copy_modifier_kind(tokens: &[OwnedLexToken]) -> Option<TokenCopyModifierKind> {
     let words = non_article_words(tokens);
     if common::exact_any(
         &words,

@@ -18,19 +18,19 @@ use crate::lexer::{
 
 #[path = "bundle_rules/replacement_sequences.rs"]
 mod replacement_sequences;
-pub(crate) use replacement_sequences::*;
+pub use replacement_sequences::*;
 
 #[path = "bundle_rules/consult_sequences.rs"]
 mod consult_sequences;
-pub(crate) use consult_sequences::*;
+pub use consult_sequences::*;
 
 #[path = "bundle_rules/selection_sequences.rs"]
 mod selection_sequences;
-pub(crate) use selection_sequences::*;
+pub use selection_sequences::*;
 
 #[path = "bundle_rules/resource_sequences.rs"]
 mod resource_sequences;
-pub(crate) use resource_sequences::*;
+pub use resource_sequences::*;
 
 fn atom<'a>(
     expected: &'static str,
@@ -125,11 +125,11 @@ fn token_slice_for_words(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AlternativeCostBundleShape {
-    pub(crate) kind: AlternativeCastKind,
+pub struct AlternativeCostBundleShape {
+    pub kind: AlternativeCastKind,
 }
 
-pub(crate) fn parse_alternative_cost_bundle_shape(
+pub fn parse_alternative_cost_bundle_shape(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
 ) -> Option<AlternativeCostBundleShape> {
@@ -157,9 +157,9 @@ pub(crate) fn parse_alternative_cost_bundle_shape(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChosenTypeReferenceShape;
+pub struct ChosenTypeReferenceShape;
 
-pub(crate) fn parse_chosen_type_reference_shape(
+pub fn parse_chosen_type_reference_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ChosenTypeReferenceShape> {
     let words = parser_token_word_refs(tokens);
@@ -170,9 +170,9 @@ pub(crate) fn parse_chosen_type_reference_shape(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SourceLeavesReturnShape;
+pub struct SourceLeavesReturnShape;
 
-pub(crate) fn parse_source_leaves_return_shape(
+pub fn parse_source_leaves_return_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SourceLeavesReturnShape> {
     let words = parser_token_word_refs(tokens);
@@ -194,17 +194,17 @@ pub(crate) fn parse_source_leaves_return_shape(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum OutsideChoiceShapeError {
+pub enum OutsideChoiceShapeError {
     MissingOutsideGameFrom,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct OutsideGameChoiceShape<'a> {
-    pub(crate) reveal_filter: &'a [OwnedLexToken],
-    pub(crate) choose_filter: &'a [OwnedLexToken],
+pub struct OutsideGameChoiceShape<'a> {
+    pub reveal_filter: &'a [OwnedLexToken],
+    pub choose_filter: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_outside_game_choice_shape<'a>(
+pub fn parse_outside_game_choice_shape<'a>(
     first: &'a [OwnedLexToken],
     second: &[OwnedLexToken],
 ) -> Result<Option<OutsideGameChoiceShape<'a>>, OutsideChoiceShapeError> {
@@ -252,14 +252,12 @@ pub(crate) fn parse_outside_game_choice_shape<'a>(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct OutsideGameWishShape {
-    pub(crate) filter_tokens: Vec<OwnedLexToken>,
-    pub(crate) exile_source: bool,
+pub struct OutsideGameWishShape {
+    pub filter_tokens: Vec<OwnedLexToken>,
+    pub exile_source: bool,
 }
 
-pub(crate) fn parse_outside_game_wish_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<OutsideGameWishShape> {
+pub fn parse_outside_game_wish_shape(tokens: &[OwnedLexToken]) -> Option<OutsideGameWishShape> {
     let tokens = trim_lexed_commas(tokens);
     let words = parser_token_word_refs(tokens);
     if !has_atom(&words, "outside") || !has_atom(&words, "game") {
@@ -298,13 +296,11 @@ pub(crate) fn parse_outside_game_wish_shape(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ForEachChosenShape<'a> {
-    pub(crate) body: &'a [OwnedLexToken],
+pub struct ForEachChosenShape<'a> {
+    pub body: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_for_each_chosen_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<ForEachChosenShape<'_>> {
+pub fn parse_for_each_chosen_shape(tokens: &[OwnedLexToken]) -> Option<ForEachChosenShape<'_>> {
     let words = parser_token_word_refs(tokens);
     if words.len() < 5 {
         return None;
@@ -321,18 +317,18 @@ pub(crate) fn parse_for_each_chosen_shape(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RevealedHandPlayer {
+pub enum RevealedHandPlayer {
     TargetPlayer,
     TargetOpponent,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct DiscardRevealChoiceShape<'a> {
-    pub(crate) revealed_player: RevealedHandPlayer,
-    pub(crate) choose_clause: &'a [OwnedLexToken],
+pub struct DiscardRevealChoiceShape<'a> {
+    pub revealed_player: RevealedHandPlayer,
+    pub choose_clause: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_discard_reveal_choice_shape<'a>(
+pub fn parse_discard_reveal_choice_shape<'a>(
     first: &[OwnedLexToken],
     second: &'a [OwnedLexToken],
     third: &[OwnedLexToken],
@@ -360,18 +356,18 @@ pub(crate) fn parse_discard_reveal_choice_shape<'a>(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SelectedHandDoubleChoiceShape<'a> {
-    pub(crate) revealed_player: RevealedHandPlayer,
-    pub(crate) choice_prefix: &'a [OwnedLexToken],
-    pub(crate) first_choice: &'a [OwnedLexToken],
-    pub(crate) second_choice: &'a [OwnedLexToken],
+pub struct SelectedHandDoubleChoiceShape<'a> {
+    pub revealed_player: RevealedHandPlayer,
+    pub choice_prefix: &'a [OwnedLexToken],
+    pub first_choice: &'a [OwnedLexToken],
+    pub second_choice: &'a [OwnedLexToken],
 }
 
 /// Recognize a revealed-hand instruction that selects two independently
 /// filtered cards before discarding the combined selection. Keeping the two
 /// filter spans distinct prevents a conjunction from being collapsed into a
 /// single, over-constrained object filter.
-pub(crate) fn parse_selected_hand_double_choice_shape<'a>(
+pub fn parse_selected_hand_double_choice_shape<'a>(
     first: &[OwnedLexToken],
     second: &'a [OwnedLexToken],
     third: &[OwnedLexToken],
@@ -405,24 +401,24 @@ pub(crate) fn parse_selected_hand_double_choice_shape<'a>(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ChosenCounterAction {
+pub enum ChosenCounterAction {
     PutOrRemove,
     PutAdditional,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ChosenCounterTarget<'a> {
+pub enum ChosenCounterTarget<'a> {
     PermanentOrSuspendedCard,
     Clause(&'a [OwnedLexToken]),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ChosenCounterBundleShape<'a> {
-    pub(crate) action: ChosenCounterAction,
-    pub(crate) target: ChosenCounterTarget<'a>,
+pub struct ChosenCounterBundleShape<'a> {
+    pub action: ChosenCounterAction,
+    pub target: ChosenCounterTarget<'a>,
 }
 
-pub(crate) fn parse_chosen_counter_bundle_shape<'a>(
+pub fn parse_chosen_counter_bundle_shape<'a>(
     first: &'a [OwnedLexToken],
     second: &[OwnedLexToken],
 ) -> Option<ChosenCounterBundleShape<'a>> {
@@ -501,16 +497,14 @@ pub(crate) fn parse_chosen_counter_bundle_shape<'a>(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RevealUntilLandPlayer {
+pub enum RevealUntilLandPlayer {
     TargetPlayer,
     TargetOpponent,
     ThatPlayer,
     DefendingPlayer,
 }
 
-pub(crate) fn parse_reveal_until_land_player(
-    tokens: &[OwnedLexToken],
-) -> Option<RevealUntilLandPlayer> {
+pub fn parse_reveal_until_land_player(tokens: &[OwnedLexToken]) -> Option<RevealUntilLandPlayer> {
     let words = parser_token_word_refs(tokens);
     let tail = &[
         "reveals",
@@ -558,12 +552,12 @@ pub(crate) fn parse_reveal_until_land_player(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ConsultBattlefieldFollowupShape {
-    pub(crate) order: LibraryBottomOrderAst,
-    pub(crate) enters_tapped: bool,
+pub struct ConsultBattlefieldFollowupShape {
+    pub order: LibraryBottomOrderAst,
+    pub enters_tapped: bool,
 }
 
-pub(crate) fn parse_consult_battlefield_followup_shape(
+pub fn parse_consult_battlefield_followup_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ConsultBattlefieldFollowupShape> {
     let words = parser_token_word_refs(tokens);
@@ -587,11 +581,11 @@ pub(crate) fn parse_consult_battlefield_followup_shape(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LifeBidShape<'a> {
-    pub(crate) target: &'a [OwnedLexToken],
+pub struct LifeBidShape<'a> {
+    pub target: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_life_bid_shape(tokens: &[OwnedLexToken]) -> Option<LifeBidShape<'_>> {
+pub fn parse_life_bid_shape(tokens: &[OwnedLexToken]) -> Option<LifeBidShape<'_>> {
     let sentences = split_lexed_sentences(tokens);
     let [first, start, top, stands, reward] = sentences.as_slice() else {
         return None;
@@ -635,12 +629,12 @@ pub(crate) fn parse_life_bid_shape(tokens: &[OwnedLexToken]) -> Option<LifeBidSh
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RegenerateControlShape<'a> {
-    pub(crate) regenerate_target: &'a [OwnedLexToken],
-    pub(crate) control_target: &'a [OwnedLexToken],
+pub struct RegenerateControlShape<'a> {
+    pub regenerate_target: &'a [OwnedLexToken],
+    pub control_target: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_regenerate_control_shape<'a>(
+pub fn parse_regenerate_control_shape<'a>(
     first: &'a [OwnedLexToken],
     second: &'a [OwnedLexToken],
 ) -> Option<RegenerateControlShape<'a>> {
@@ -728,7 +722,7 @@ fn parse_slot_items(tokens: &[OwnedLexToken]) -> Option<Vec<Vec<OwnedLexToken>>>
     (items.len() >= 2).then_some(items)
 }
 
-pub(crate) fn parse_explicit_card_name_surface_tokens(tokens: &[OwnedLexToken]) -> Option<String> {
+pub fn parse_explicit_card_name_surface_tokens(tokens: &[OwnedLexToken]) -> Option<String> {
     let words = parser_token_word_refs(tokens);
     let named_word = atom_offset(&words, "named")?;
     let name_start = named_word.checked_add(1)?;
@@ -741,12 +735,12 @@ pub(crate) fn parse_explicit_card_name_surface_tokens(tokens: &[OwnedLexToken]) 
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SearchLibrarySlotsShape {
-    pub(crate) multi_zone: bool,
-    pub(crate) filters: Vec<Vec<OwnedLexToken>>,
+pub struct SearchLibrarySlotsShape {
+    pub multi_zone: bool,
+    pub filters: Vec<Vec<OwnedLexToken>>,
 }
 
-pub(crate) fn parse_search_library_slots_shape(
+pub fn parse_search_library_slots_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SearchLibrarySlotsShape> {
     let words = parser_token_word_refs(tokens);
@@ -809,12 +803,12 @@ pub(crate) fn parse_search_library_slots_shape(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct KickedSearchLibrarySlotsShape {
-    pub(crate) default_filter: Vec<OwnedLexToken>,
-    pub(crate) replacement_filters: Vec<Vec<OwnedLexToken>>,
+pub struct KickedSearchLibrarySlotsShape {
+    pub default_filter: Vec<OwnedLexToken>,
+    pub replacement_filters: Vec<Vec<OwnedLexToken>>,
 }
 
-pub(crate) fn parse_kicked_search_library_slots_shape(
+pub fn parse_kicked_search_library_slots_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<KickedSearchLibrarySlotsShape> {
     let sentences = split_lexed_sentences(tokens);

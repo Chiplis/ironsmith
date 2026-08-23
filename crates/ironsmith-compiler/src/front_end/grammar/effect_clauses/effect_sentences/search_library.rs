@@ -59,7 +59,7 @@ fn bind_owner_subject_same_sentence_tail(
     });
 }
 
-pub(crate) fn parse_search_library_sentence(
+pub fn parse_search_library_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     fn carry_conjugated_search_player(leading: &[EffectAst], search: &mut [EffectAst]) {
@@ -88,7 +88,7 @@ pub(crate) fn parse_search_library_sentence(
     )
 }
 
-pub(crate) fn parse_restriction_duration_lexed(
+pub fn parse_restriction_duration_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(crate::effect::Until, Vec<OwnedLexToken>)>, CardTextError> {
     Ok(
@@ -97,7 +97,7 @@ pub(crate) fn parse_restriction_duration_lexed(
     )
 }
 
-pub(crate) fn normalize_search_library_filter(filter: &mut ObjectFilter) {
+pub fn normalize_search_library_filter(filter: &mut ObjectFilter) {
     filter.zone = None;
     if filter.subtypes.iter().any(|subtype| {
         matches!(
@@ -119,7 +119,7 @@ pub(crate) fn normalize_search_library_filter(filter: &mut ObjectFilter) {
     }
 }
 
-pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
+pub fn parse_shuffle_graveyard_into_library_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = search_grammar::parse_shuffle_graveyard_shape_lexed(tokens) else {
@@ -350,7 +350,7 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
     append_trailing(vec![shuffle])
 }
 
-pub(crate) fn parse_shuffle_object_into_library_sentence(
+pub fn parse_shuffle_object_into_library_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = search_grammar::parse_shuffle_object_shape_lexed(tokens) else {
@@ -459,7 +459,7 @@ fn shuffle_target_moves_all(tokens: &[OwnedLexToken]) -> bool {
         )
 }
 
-pub(crate) fn parse_exile_hand_and_graveyard_bundle_sentence(
+pub fn parse_exile_hand_and_graveyard_bundle_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if tokens.is_empty() {
@@ -512,7 +512,7 @@ fn parse_search_exile_all_cards_zone_pair(
     })
 }
 
-pub(crate) fn parse_target_player_exiles_creature_and_graveyard_sentence(
+pub fn parse_target_player_exiles_creature_and_graveyard_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = search_grammar::parse_target_exile_bundle_shape_lexed(tokens) else {
@@ -540,7 +540,7 @@ pub(crate) fn parse_target_player_exiles_creature_and_graveyard_sentence(
     ]))
 }
 
-pub(crate) fn parse_for_each_exiled_this_way_sentence(
+pub fn parse_for_each_exiled_this_way_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = search_grammar::parse_search_for_each_way_shape_lexed(tokens) else {
@@ -717,7 +717,7 @@ mod typed_exiled_result_iterator_tests {
     }
 }
 
-pub(crate) fn parse_each_player_put_permanent_cards_exiled_with_source_sentence(
+pub fn parse_each_player_put_permanent_cards_exiled_with_source_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if !search_grammar::search_each_player_exiled_permanents_shape_lexed(tokens) {
@@ -749,7 +749,7 @@ pub(crate) fn parse_each_player_put_permanent_cards_exiled_with_source_sentence(
     }]))
 }
 
-pub(crate) fn parse_for_each_destroyed_this_way_sentence(
+pub fn parse_for_each_destroyed_this_way_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = search_grammar::parse_search_for_each_way_shape_lexed(tokens) else {
@@ -836,7 +836,7 @@ fn bind_sacrificed_snapshot_controller(effect: &mut EffectAst) {
 /// instruction.  The last-known predicate deliberately stays inside the
 /// object loop: it preserves both the exact sacrificed subset and the
 /// controller each object had before leaving the battlefield.
-pub(crate) fn parse_for_each_sacrificed_this_way_sentence(
+pub fn parse_for_each_sacrificed_this_way_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = search_grammar::parse_search_for_each_way_shape_lexed(tokens) else {
@@ -895,7 +895,7 @@ pub(crate) fn parse_for_each_sacrificed_this_way_sentence(
     }]))
 }
 
-pub(crate) fn parse_for_each_put_into_graveyard_this_way_sentence(
+pub fn parse_for_each_put_into_graveyard_this_way_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = search_grammar::parse_search_for_each_way_shape_lexed(tokens) else {
@@ -1005,7 +1005,7 @@ mod typed_put_into_graveyard_result_iterator_tests {
     }
 }
 
-pub(crate) fn parse_earthbend_sentence(
+pub fn parse_earthbend_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let words = token_word_refs(tokens);
@@ -1029,7 +1029,7 @@ pub(crate) fn parse_earthbend_sentence(
     Ok(Some(EffectAst::subject_verb_earthbend(count)))
 }
 
-pub(crate) fn parse_enchant_sentence(
+pub fn parse_enchant_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let words = token_word_refs(tokens);
@@ -1049,7 +1049,7 @@ pub(crate) fn parse_enchant_sentence(
     Ok(Some(EffectAst::subject_verb_enchant(filter)))
 }
 
-pub(crate) fn parse_restriction_duration(
+pub fn parse_restriction_duration(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(crate::effect::Until, Vec<OwnedLexToken>)>, CardTextError> {
     parse_restriction_duration_lexed(tokens)

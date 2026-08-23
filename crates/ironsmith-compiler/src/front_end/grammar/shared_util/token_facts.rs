@@ -20,40 +20,40 @@ use crate::lexer::{OwnedLexToken, TokenWordView};
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ActivationCostStartFact {
-    pub(crate) token_index: usize,
-    pub(crate) head: leaf::LeafActivationCostHead,
+pub struct ActivationCostStartFact {
+    pub token_index: usize,
+    pub head: leaf::LeafActivationCostHead,
 }
 
 #[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CostSegmentsFact<'a> {
-    pub(crate) segments: Vec<&'a [OwnedLexToken]>,
+pub struct CostSegmentsFact<'a> {
+    pub segments: Vec<&'a [OwnedLexToken]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct MayWordBoundaryFact {
-    pub(crate) token_index: usize,
+pub struct MayWordBoundaryFact {
+    pub token_index: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LeadingSelectedWordsFact {
-    pub(crate) consumed_words: usize,
+pub struct LeadingSelectedWordsFact {
+    pub consumed_words: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChoiceCountBeforeTargetFact {
-    pub(crate) count: ChoiceCount,
-    pub(crate) consumed_tokens: usize,
+pub struct ChoiceCountBeforeTargetFact {
+    pub count: ChoiceCount,
+    pub consumed_tokens: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum OutlawWord {
+pub enum OutlawWord {
     Outlaw,
     NonOutlaw,
 }
 
-pub(crate) fn parse_activation_cost_start_tokens(
+pub fn parse_activation_cost_start_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivationCostStartFact> {
     let (token_index, head, _) =
@@ -62,7 +62,7 @@ pub(crate) fn parse_activation_cost_start_tokens(
 }
 
 #[cfg(test)]
-pub(crate) fn parse_cost_segments_tokens(tokens: &[OwnedLexToken]) -> CostSegmentsFact<'_> {
+pub fn parse_cost_segments_tokens(tokens: &[OwnedLexToken]) -> CostSegmentsFact<'_> {
     let mut segments = Vec::new();
     let mut remaining = tokens;
     while !remaining.is_empty() {
@@ -81,14 +81,14 @@ pub(crate) fn parse_cost_segments_tokens(tokens: &[OwnedLexToken]) -> CostSegmen
     CostSegmentsFact { segments }
 }
 
-pub(crate) fn parse_first_may_word_token(tokens: &[OwnedLexToken]) -> Option<MayWordBoundaryFact> {
+pub fn parse_first_may_word_token(tokens: &[OwnedLexToken]) -> Option<MayWordBoundaryFact> {
     let (token_index, _, _) = primitives::find_prefix(tokens, || primitives::kw("may"))?;
     Some(MayWordBoundaryFact { token_index })
 }
 
 /// Pure lexical transform: strips a caller-provided set without assigning any
 /// semantic meaning to the words. Oracle vocabularies must use typed facts.
-pub(crate) fn strip_leading_selected_word_refs_lexical(
+pub fn strip_leading_selected_word_refs_lexical(
     words: &[&str],
     selected: &[&str],
 ) -> LeadingSelectedWordsFact {
@@ -99,7 +99,7 @@ pub(crate) fn strip_leading_selected_word_refs_lexical(
     LeadingSelectedWordsFact { consumed_words }
 }
 
-pub(crate) fn non_article_word_refs<'a>(words: &[&'a str]) -> Vec<&'a str> {
+pub fn non_article_word_refs<'a>(words: &[&'a str]) -> Vec<&'a str> {
     words
         .iter()
         .copied()
@@ -107,12 +107,12 @@ pub(crate) fn non_article_word_refs<'a>(words: &[&'a str]) -> Vec<&'a str> {
         .collect()
 }
 
-pub(crate) fn non_article_token_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
+pub fn non_article_token_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
     let view = TokenWordView::new(tokens);
     non_article_word_refs(&view.word_refs())
 }
 
-pub(crate) fn parse_outlaw_word(word: &str) -> Option<OutlawWord> {
+pub fn parse_outlaw_word(word: &str) -> Option<OutlawWord> {
     let mut input = word;
     (parse_outlaw_text, eof)
         .map(|(outlaw, _)| outlaw)
@@ -120,7 +120,7 @@ pub(crate) fn parse_outlaw_word(word: &str) -> Option<OutlawWord> {
         .ok()
 }
 
-pub(crate) fn parse_choice_count_before_target_tokens(
+pub fn parse_choice_count_before_target_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ChoiceCountBeforeTargetFact> {
     let (parsed, rest) = primitives::parse_prefix(

@@ -10,13 +10,13 @@ use crate::recognition::ParseOutcome;
 
 #[path = "document_shapes/labels.rs"]
 mod labels;
-pub(crate) use labels::*;
+pub use labels::*;
 #[path = "document_shapes/choice_context.rs"]
 mod choice_context;
-pub(crate) use choice_context::*;
+pub use choice_context::*;
 #[path = "document_shapes/unsupported.rs"]
 mod unsupported;
-pub(crate) use unsupported::*;
+pub use unsupported::*;
 #[path = "document_shape_parsers.rs"]
 mod shape_parsers;
 use shape_parsers::{
@@ -25,22 +25,22 @@ use shape_parsers::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TriggerCapSurface {
+pub enum TriggerCapSurface {
     Once,
     Twice,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TriggerCapSuffixShape<'a> {
-    pub(crate) head_tokens: &'a [OwnedLexToken],
-    pub(crate) cap: TriggerCapSurface,
+pub struct TriggerCapSuffixShape<'a> {
+    pub head_tokens: &'a [OwnedLexToken],
+    pub cap: TriggerCapSurface,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct NamedOptionChoiceHeader;
+pub struct NamedOptionChoiceHeader;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum NonpermanentStatementSurface {
+pub enum NonpermanentStatementSurface {
     Quantified,
     UntilEndOfTurn,
     ConditionalPriorResult,
@@ -48,13 +48,13 @@ pub(crate) enum NonpermanentStatementSurface {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ConditionalReplacementSurface;
+pub struct ConditionalReplacementSurface;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct NextCastTriggerSurface;
+pub struct NextCastTriggerSurface;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActivationCostHeadSurface {
+pub enum ActivationCostHeadSurface {
     Leaf(leaf::LeafActivationCostHead),
     ManaGroup,
     Untap,
@@ -63,27 +63,27 @@ pub(crate) enum ActivationCostHeadSurface {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct NamedSourcePrefixSurface {
-    pub(crate) tail: String,
+pub struct NamedSourcePrefixSurface {
+    pub tail: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CommaSplitSurface {
-    pub(crate) head: String,
-    pub(crate) body: String,
+pub struct CommaSplitSurface {
+    pub head: String,
+    pub body: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct NamedReferenceSurface;
+pub struct NamedReferenceSurface;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SourceAliasEffectVerbSurface;
+pub struct SourceAliasEffectVerbSurface;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DelayedPriorObjectDiesSurface;
+pub struct DelayedPriorObjectDiesSurface;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RevealFirstDrawSurface {
+pub enum RevealFirstDrawSurface {
     MandatoryEachTurn,
     MandatoryOwnTurns,
     OptionalEachTurn,
@@ -91,43 +91,43 @@ pub(crate) enum RevealFirstDrawSurface {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RevealFirstDrawFollowupSurface;
+pub struct RevealFirstDrawFollowupSurface;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum UnsupportedLineHeadSurface {
+pub enum UnsupportedLineHeadSurface {
     ModalChoice,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct HalfStartingLifePlusOneSurface;
+pub struct HalfStartingLifePlusOneSurface;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CumulativeUpkeepSurface;
+pub struct CumulativeUpkeepSurface;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SourceLeavesBattlefieldSurface;
+pub struct SourceLeavesBattlefieldSurface;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct StaticEffectContinuesUntilEndOfTurnSurface;
+pub struct StaticEffectContinuesUntilEndOfTurnSurface;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ThisPermanentSurface;
+pub struct ThisPermanentSurface;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WhenOneOrMoreSurface;
+pub struct WhenOneOrMoreSurface;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WhenOneOrMoreThisWayFollowupSurface;
+pub struct WhenOneOrMoreThisWayFollowupSurface;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct NamedSourceEntersSurface {
-    pub(crate) tail: String,
+pub struct NamedSourceEntersSurface {
+    pub tail: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AliasFaceSeparatorSurface;
+pub struct AliasFaceSeparatorSurface;
 
-pub(crate) fn parse_trailing_trigger_cap_suffix_tokens(
+pub fn parse_trailing_trigger_cap_suffix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TriggerCapSuffixShape<'_>> {
     const CAPS: &[(&[&str], TriggerCapSurface)] = &[
@@ -185,7 +185,7 @@ pub(crate) fn parse_trailing_trigger_cap_suffix_tokens(
     None
 }
 
-pub(crate) fn parse_named_option_choice_header(
+pub fn parse_named_option_choice_header(
     tokens: &[OwnedLexToken],
 ) -> Option<NamedOptionChoiceHeader> {
     let words = TokenWordView::new(tokens).word_refs();
@@ -199,7 +199,7 @@ pub(crate) fn parse_named_option_choice_header(
     Some(NamedOptionChoiceHeader)
 }
 
-pub(crate) fn parse_blocked_keyword_action_surface(tokens: &[OwnedLexToken]) -> Option<()> {
+pub fn parse_blocked_keyword_action_surface(tokens: &[OwnedLexToken]) -> Option<()> {
     let words = TokenWordView::new(tokens).word_refs();
     (permission_shapes::suffix_words(&words, &["cant", "be", "blocked"])
         && !permission_shapes::prefix_words(&words, &["this"])
@@ -207,7 +207,7 @@ pub(crate) fn parse_blocked_keyword_action_surface(tokens: &[OwnedLexToken]) -> 
     .then_some(())
 }
 
-pub(crate) fn parse_nonpermanent_statement_surface(
+pub fn parse_nonpermanent_statement_surface(
     tokens: &[OwnedLexToken],
 ) -> Option<NonpermanentStatementSurface> {
     let words = TokenWordView::new(tokens).word_refs();
@@ -235,7 +235,7 @@ pub(crate) fn parse_nonpermanent_statement_surface(
     }
 }
 
-pub(crate) fn parse_conditional_replacement_surface(
+pub fn parse_conditional_replacement_surface(
     tokens: &[OwnedLexToken],
 ) -> Option<ConditionalReplacementSurface> {
     let words = TokenWordView::new(tokens).word_refs();
@@ -244,9 +244,7 @@ pub(crate) fn parse_conditional_replacement_surface(
     .then_some(ConditionalReplacementSurface)
 }
 
-pub(crate) fn parse_next_cast_trigger_surface(
-    tokens: &[OwnedLexToken],
-) -> Option<NextCastTriggerSurface> {
+pub fn parse_next_cast_trigger_surface(tokens: &[OwnedLexToken]) -> Option<NextCastTriggerSurface> {
     let words = TokenWordView::new(tokens).word_refs();
     ((permission_shapes::prefix_words(&words, &["when"])
         || permission_shapes::prefix_words(&words, &["whenever"]))
@@ -255,16 +253,14 @@ pub(crate) fn parse_next_cast_trigger_surface(
     .then_some(NextCastTriggerSurface)
 }
 
-pub(crate) fn parse_activation_cost_head(
-    tokens: &[OwnedLexToken],
-) -> Option<ActivationCostHeadSurface> {
+pub fn parse_activation_cost_head(tokens: &[OwnedLexToken]) -> Option<ActivationCostHeadSurface> {
     match recognize_activation_cost_head(tokens) {
         ParseOutcome::Match(matched) => Some(matched.value),
         ParseOutcome::NoMatch | ParseOutcome::Error(_) => None,
     }
 }
 
-pub(crate) fn recognize_activation_cost_head(
+pub fn recognize_activation_cost_head(
     tokens: &[OwnedLexToken],
 ) -> ParseOutcome<ActivationCostHeadSurface> {
     match leaf::recognize_activation_cost_head(tokens) {
@@ -283,7 +279,7 @@ pub(crate) fn recognize_activation_cost_head(
     }
 }
 
-pub(crate) fn parse_source_alias_effect_verb_surface(
+pub fn parse_source_alias_effect_verb_surface(
     alias: &str,
     remainder: &str,
 ) -> Option<SourceAliasEffectVerbSurface> {
@@ -319,10 +315,7 @@ pub(crate) fn parse_source_alias_effect_verb_surface(
     .then_some(SourceAliasEffectVerbSurface)
 }
 
-pub(crate) fn parse_named_source_prefix(
-    text: &str,
-    name: &str,
-) -> Option<NamedSourcePrefixSurface> {
+pub fn parse_named_source_prefix(text: &str, name: &str) -> Option<NamedSourcePrefixSurface> {
     let text_tokens = lex_line(text.trim(), 0).ok()?;
     let name_tokens = lex_line(name.trim(), 0).ok()?;
     let name_words = TokenWordView::new(&name_tokens).word_refs();
@@ -340,7 +333,7 @@ pub(crate) fn parse_named_source_prefix(
     (!tail.is_empty()).then_some(NamedSourcePrefixSurface { tail })
 }
 
-pub(crate) fn parse_first_comma(text: &str) -> Option<CommaSplitSurface> {
+pub fn parse_first_comma(text: &str) -> Option<CommaSplitSurface> {
     let tokens = lex_line(text.trim(), 0).ok()?;
     let (comma_index, _, _) = primitives::find_prefix(&tokens, || primitives::comma().void())?;
     let head = render_token_slice(tokens.get(..comma_index)?)
@@ -352,18 +345,18 @@ pub(crate) fn parse_first_comma(text: &str) -> Option<CommaSplitSurface> {
     (!head.is_empty() && !body.is_empty()).then_some(CommaSplitSurface { head, body })
 }
 
-pub(crate) fn parse_named_reference(text: &str) -> Option<NamedReferenceSurface> {
+pub fn parse_named_reference(text: &str) -> Option<NamedReferenceSurface> {
     let tokens = lex_line(text.trim(), 0).ok()?;
     primitives::find_prefix(&tokens, || primitives::kw("named")).map(|_| NamedReferenceSurface)
 }
 
-pub(crate) fn parse_alias_face_separator(alias: &str) -> Option<AliasFaceSeparatorSurface> {
+pub fn parse_alias_face_separator(alias: &str) -> Option<AliasFaceSeparatorSurface> {
     let mut input = alias;
     alias_face_separator.parse_next(&mut input).ok()?;
     Some(AliasFaceSeparatorSurface)
 }
 
-pub(crate) fn parse_delayed_prior_object_dies_surface(
+pub fn parse_delayed_prior_object_dies_surface(
     tokens: &[OwnedLexToken],
 ) -> Option<DelayedPriorObjectDiesSurface> {
     let words = TokenWordView::new(tokens).word_refs();
@@ -376,9 +369,7 @@ pub(crate) fn parse_delayed_prior_object_dies_surface(
     Some(DelayedPriorObjectDiesSurface)
 }
 
-pub(crate) fn parse_reveal_first_draw_surface(
-    tokens: &[OwnedLexToken],
-) -> Option<RevealFirstDrawSurface> {
+pub fn parse_reveal_first_draw_surface(tokens: &[OwnedLexToken]) -> Option<RevealFirstDrawSurface> {
     let words = TokenWordView::new(tokens).word_refs();
     if permission_shapes::exact_words(
         &words,
@@ -415,21 +406,19 @@ pub(crate) fn parse_reveal_first_draw_surface(
     }
 }
 
-pub(crate) fn parse_reveal_first_draw_followup_surface(
+pub fn parse_reveal_first_draw_followup_surface(
     tokens: &[OwnedLexToken],
 ) -> Option<RevealFirstDrawFollowupSurface> {
     permission_shapes::prefix_tokens(tokens, &["whenever", "you", "reveal"])
         .then_some(RevealFirstDrawFollowupSurface)
 }
 
-pub(crate) fn parse_unsupported_line_head(
-    tokens: &[OwnedLexToken],
-) -> Option<UnsupportedLineHeadSurface> {
+pub fn parse_unsupported_line_head(tokens: &[OwnedLexToken]) -> Option<UnsupportedLineHeadSurface> {
     permission_shapes::prefix_tokens(tokens, &["choose"])
         .then_some(UnsupportedLineHeadSurface::ModalChoice)
 }
 
-pub(crate) fn parse_half_starting_life_plus_one_surface(
+pub fn parse_half_starting_life_plus_one_surface(
     tokens: &[OwnedLexToken],
 ) -> Option<HalfStartingLifePlusOneSurface> {
     permission_shapes::contains_tokens(
@@ -442,21 +431,21 @@ pub(crate) fn parse_half_starting_life_plus_one_surface(
     .then_some(HalfStartingLifePlusOneSurface)
 }
 
-pub(crate) fn parse_cumulative_upkeep_surface(
+pub fn parse_cumulative_upkeep_surface(
     tokens: &[OwnedLexToken],
 ) -> Option<CumulativeUpkeepSurface> {
     permission_shapes::prefix_tokens(tokens, &["cumulative", "upkeep"])
         .then_some(CumulativeUpkeepSurface)
 }
 
-pub(crate) fn parse_source_leaves_battlefield_surface(
+pub fn parse_source_leaves_battlefield_surface(
     tokens: &[OwnedLexToken],
 ) -> Option<SourceLeavesBattlefieldSurface> {
     permission_shapes::contains_tokens(tokens, &["leaves", "the", "battlefield"])
         .then_some(SourceLeavesBattlefieldSurface)
 }
 
-pub(crate) fn parse_static_effect_continues_until_end_of_turn_surface(
+pub fn parse_static_effect_continues_until_end_of_turn_surface(
     tokens: &[OwnedLexToken],
 ) -> Option<StaticEffectContinuesUntilEndOfTurnSurface> {
     let words = TokenWordView::new(tokens).word_refs();
@@ -488,22 +477,18 @@ pub(crate) fn parse_static_effect_continues_until_end_of_turn_surface(
     Some(StaticEffectContinuesUntilEndOfTurnSurface)
 }
 
-pub(crate) fn parse_this_permanent_surface(
-    tokens: &[OwnedLexToken],
-) -> Option<ThisPermanentSurface> {
+pub fn parse_this_permanent_surface(tokens: &[OwnedLexToken]) -> Option<ThisPermanentSurface> {
     permission_shapes::contains_tokens(tokens, &["this", "permanent"])
         .then_some(ThisPermanentSurface)
 }
 
-pub(crate) fn parse_when_one_or_more_surface(
-    tokens: &[OwnedLexToken],
-) -> Option<WhenOneOrMoreSurface> {
+pub fn parse_when_one_or_more_surface(tokens: &[OwnedLexToken]) -> Option<WhenOneOrMoreSurface> {
     (permission_shapes::prefix_tokens(tokens, &["when", "one", "or", "more"])
         || permission_shapes::prefix_tokens(tokens, &["whenever", "one", "or", "more"]))
     .then_some(WhenOneOrMoreSurface)
 }
 
-pub(crate) fn parse_when_one_or_more_this_way_followup_surface(
+pub fn parse_when_one_or_more_this_way_followup_surface(
     tokens: &[OwnedLexToken],
 ) -> Option<WhenOneOrMoreThisWayFollowupSurface> {
     primitives::parse_prefix(tokens, when_one_or_more_followup_head)?;
@@ -514,7 +499,7 @@ pub(crate) fn parse_when_one_or_more_this_way_followup_surface(
         .then_some(WhenOneOrMoreThisWayFollowupSurface)
 }
 
-pub(crate) fn parse_named_source_enters_surface(text: &str) -> Option<NamedSourceEntersSurface> {
+pub fn parse_named_source_enters_surface(text: &str) -> Option<NamedSourceEntersSurface> {
     let tokens = lex_line(text.trim(), 0).ok()?;
     let (_, _, tail_tokens) = primitives::find_prefix(&tokens, || primitives::kw("enters").void())?;
     if tail_tokens

@@ -7,33 +7,33 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EtbPlayedByOpponentKind {
+pub enum EtbPlayedByOpponentKind {
     YourOpponents,
     AnOpponent,
     Opponents,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EtbPlayedByOpponentSuffix<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) kind: EtbPlayedByOpponentKind,
+pub struct EtbPlayedByOpponentSuffix<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub kind: EtbPlayedByOpponentKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EtbLandRevealTappedSubject {
+pub enum EtbLandRevealTappedSubject {
     ThisLand,
     It,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EtbTaggedManaValueReference {
+pub enum EtbTaggedManaValueReference {
     ExiledCard,
     TriggeringSpell,
     ThatCard,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EtbAmongMetric {
+pub enum EtbAmongMetric {
     CardTypesAmongCards,
     CardTypesAmong,
     BasicLandTypesAmong,
@@ -42,25 +42,25 @@ pub(crate) enum EtbAmongMetric {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EtbAmongScope<'a> {
-    pub(crate) metric: EtbAmongMetric,
-    pub(crate) scope_tokens: &'a [OwnedLexToken],
+pub struct EtbAmongScope<'a> {
+    pub metric: EtbAmongMetric,
+    pub scope_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EtbStaticAbilitiesAmongScope<'a> {
-    pub(crate) ability_tokens: &'a [OwnedLexToken],
-    pub(crate) scope_tokens: &'a [OwnedLexToken],
+pub struct EtbStaticAbilitiesAmongScope<'a> {
+    pub ability_tokens: &'a [OwnedLexToken],
+    pub scope_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EtbGraveyardOwner {
+pub enum EtbGraveyardOwner {
     You,
     Opponent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EtbAsLongAsClause<'a> {
+pub enum EtbAsLongAsClause<'a> {
     ThisInYourGraveyard {
         continuation_tokens: &'a [OwnedLexToken],
     },
@@ -71,52 +71,52 @@ pub(crate) enum EtbAsLongAsClause<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EtbOtherTypeNoun {
+pub enum EtbOtherTypeNoun {
     Type,
     Types,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EtbBecomesAdditionalTypeTail<'a> {
-    pub(crate) descriptor_tokens: &'a [OwnedLexToken],
-    pub(crate) other_type_noun: EtbOtherTypeNoun,
-    pub(crate) trailing_tokens: &'a [OwnedLexToken],
+pub struct EtbBecomesAdditionalTypeTail<'a> {
+    pub descriptor_tokens: &'a [OwnedLexToken],
+    pub other_type_noun: EtbOtherTypeNoun,
+    pub trailing_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EtbSelfSubject {
+pub enum EtbSelfSubject {
     Creature,
     Permanent,
     Object,
 }
 
-pub(crate) fn etb_tokens_have_entry_verb(tokens: &[OwnedLexToken]) -> bool {
+pub fn etb_tokens_have_entry_verb(tokens: &[OwnedLexToken]) -> bool {
     tokens_have_parser(tokens, || {
         alt((semantic_kw("enter"), semantic_kw("enters"))).void()
     })
 }
 
-pub(crate) fn etb_tokens_have_or_marker(tokens: &[OwnedLexToken]) -> bool {
+pub fn etb_tokens_have_or_marker(tokens: &[OwnedLexToken]) -> bool {
     tokens_have_parser(tokens, || semantic_kw("or"))
 }
 
-pub(crate) fn etb_tokens_have_unless_marker(tokens: &[OwnedLexToken]) -> bool {
+pub fn etb_tokens_have_unless_marker(tokens: &[OwnedLexToken]) -> bool {
     tokens_have_parser(tokens, || semantic_kw("unless"))
 }
 
-pub(crate) fn etb_tokens_have_tapped_marker(tokens: &[OwnedLexToken]) -> bool {
+pub fn etb_tokens_have_tapped_marker(tokens: &[OwnedLexToken]) -> bool {
     tokens_have_parser(tokens, || semantic_kw("tapped"))
 }
 
-pub(crate) fn etb_tokens_have_untapped_marker(tokens: &[OwnedLexToken]) -> bool {
+pub fn etb_tokens_have_untapped_marker(tokens: &[OwnedLexToken]) -> bool {
     tokens_have_parser(tokens, || semantic_kw("untapped"))
 }
 
-pub(crate) fn etb_tokens_have_copy_marker(tokens: &[OwnedLexToken]) -> bool {
+pub fn etb_tokens_have_copy_marker(tokens: &[OwnedLexToken]) -> bool {
     tokens_have_parser(tokens, || semantic_kw("copy"))
 }
 
-pub(crate) fn parse_etb_played_by_opponent_suffix_tokens(
+pub fn parse_etb_played_by_opponent_suffix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EtbPlayedByOpponentSuffix<'_>> {
     primitives::parse_all(
@@ -127,19 +127,19 @@ pub(crate) fn parse_etb_played_by_opponent_suffix_tokens(
     .ok()
 }
 
-pub(crate) fn parse_as_this_land_enters_prefix_tokens(
+pub fn parse_as_this_land_enters_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     parse_semantic_prefix(tokens, &["as", "this", "land", "enters"])
 }
 
-pub(crate) fn etb_tokens_have_reveal_from_hand_marker(tokens: &[OwnedLexToken]) -> bool {
+pub fn etb_tokens_have_reveal_from_hand_marker(tokens: &[OwnedLexToken]) -> bool {
     tokens_have_word(tokens, "reveal")
         && tokens_have_word(tokens, "from")
         && tokens_have_word(tokens, "hand")
 }
 
-pub(crate) fn find_if_you_dont_tail_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn find_if_you_dont_tail_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let (_, _, rest) = primitives::find_prefix(tokens, || {
         (
             semantic_phrase(&["if", "you"]),
@@ -150,16 +150,14 @@ pub(crate) fn find_if_you_dont_tail_tokens(tokens: &[OwnedLexToken]) -> Option<&
     Some(rest)
 }
 
-pub(crate) fn parse_land_reveal_trailing_tapped_prefix_tokens(
+pub fn parse_land_reveal_trailing_tapped_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EtbLandRevealTappedSubject> {
     primitives::parse_prefix(tokens, parse_land_reveal_trailing_tapped_prefix_lexed)
         .map(|(subject, _)| subject)
 }
 
-pub(crate) fn parse_first_three_turns_prefix_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<&[OwnedLexToken]> {
+pub fn parse_first_three_turns_prefix_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let parser = (
         alt((
             semantic_kw("its"),
@@ -174,11 +172,11 @@ pub(crate) fn parse_first_three_turns_prefix_tokens(
     primitives::parse_prefix(tokens, parser).map(|(_, rest)| rest)
 }
 
-pub(crate) fn etb_tokens_have_devotion_value_marker(tokens: &[OwnedLexToken]) -> bool {
+pub fn etb_tokens_have_devotion_value_marker(tokens: &[OwnedLexToken]) -> bool {
     tokens_have_word(tokens, "devotion")
 }
 
-pub(crate) fn etb_tokens_have_all_players_hand_count_value(tokens: &[OwnedLexToken]) -> bool {
+pub fn etb_tokens_have_all_players_hand_count_value(tokens: &[OwnedLexToken]) -> bool {
     tokens_have_word(tokens, "cards")
         && tokens_have_word(tokens, "in")
         && tokens_have_word(tokens, "all")
@@ -188,7 +186,7 @@ pub(crate) fn etb_tokens_have_all_players_hand_count_value(tokens: &[OwnedLexTok
         })
 }
 
-pub(crate) fn parse_same_name_as_triggering_spell_graveyard_value_tokens(
+pub fn parse_same_name_as_triggering_spell_graveyard_value_tokens(
     tokens: &[OwnedLexToken],
 ) -> bool {
     primitives::parse_all(
@@ -199,7 +197,7 @@ pub(crate) fn parse_same_name_as_triggering_spell_graveyard_value_tokens(
     .is_ok()
 }
 
-pub(crate) fn parse_tagged_mana_value_reference_tokens(
+pub fn parse_tagged_mana_value_reference_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EtbTaggedManaValueReference> {
     primitives::parse_all(
@@ -210,7 +208,7 @@ pub(crate) fn parse_tagged_mana_value_reference_tokens(
     .ok()
 }
 
-pub(crate) fn etb_tokens_have_your_hand_count_value(tokens: &[OwnedLexToken]) -> bool {
+pub fn etb_tokens_have_your_hand_count_value(tokens: &[OwnedLexToken]) -> bool {
     tokens_have_word(tokens, "cards")
         && tokens_have_word(tokens, "in")
         && tokens_have_word(tokens, "your")
@@ -219,17 +217,17 @@ pub(crate) fn etb_tokens_have_your_hand_count_value(tokens: &[OwnedLexToken]) ->
         })
 }
 
-pub(crate) fn etb_tokens_have_common_creature_type_value(tokens: &[OwnedLexToken]) -> bool {
+pub fn etb_tokens_have_common_creature_type_value(tokens: &[OwnedLexToken]) -> bool {
     tokens_have_word(tokens, "creature")
         && tokens_have_word(tokens, "type")
         && tokens_have_word(tokens, "common")
 }
 
-pub(crate) fn parse_etb_among_scope_tokens(tokens: &[OwnedLexToken]) -> Option<EtbAmongScope<'_>> {
+pub fn parse_etb_among_scope_tokens(tokens: &[OwnedLexToken]) -> Option<EtbAmongScope<'_>> {
     primitives::parse_all(tokens, parse_etb_among_scope_lexed, "ETB among scope").ok()
 }
 
-pub(crate) fn parse_etb_static_abilities_among_scope_tokens(
+pub fn parse_etb_static_abilities_among_scope_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EtbStaticAbilitiesAmongScope<'_>> {
     primitives::parse_all(
@@ -240,23 +238,21 @@ pub(crate) fn parse_etb_static_abilities_among_scope_tokens(
     .ok()
 }
 
-pub(crate) fn etb_tokens_have_graveyard_marker(tokens: &[OwnedLexToken]) -> bool {
+pub fn etb_tokens_have_graveyard_marker(tokens: &[OwnedLexToken]) -> bool {
     tokens_have_parser(tokens, || {
         alt((semantic_kw("graveyard"), semantic_kw("graveyards"))).void()
     })
 }
 
-pub(crate) fn etb_tokens_have_and_graveyard_marker(tokens: &[OwnedLexToken]) -> bool {
+pub fn etb_tokens_have_and_graveyard_marker(tokens: &[OwnedLexToken]) -> bool {
     tokens_have_parser(tokens, || semantic_phrase(&["and", "graveyard"]))
 }
 
-pub(crate) fn etb_tokens_have_sacrificed_marker(tokens: &[OwnedLexToken]) -> bool {
+pub fn etb_tokens_have_sacrificed_marker(tokens: &[OwnedLexToken]) -> bool {
     tokens_have_word(tokens, "sacrificed")
 }
 
-pub(crate) fn parse_etb_graveyard_owner_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<EtbGraveyardOwner> {
+pub fn parse_etb_graveyard_owner_tokens(tokens: &[OwnedLexToken]) -> Option<EtbGraveyardOwner> {
     if tokens_have_parser(tokens, || semantic_phrase(&["your", "graveyard"])) {
         return Some(EtbGraveyardOwner::You);
     }
@@ -276,7 +272,7 @@ pub(crate) fn parse_etb_graveyard_owner_tokens(
     None
 }
 
-pub(crate) fn parse_etb_as_long_as_clause_tokens(
+pub fn parse_etb_as_long_as_clause_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EtbAsLongAsClause<'_>> {
     let parsed = primitives::parse_all(
@@ -303,7 +299,7 @@ pub(crate) fn parse_etb_as_long_as_clause_tokens(
     }
 }
 
-pub(crate) fn etb_tokens_have_with_additional_counters(tokens: &[OwnedLexToken]) -> bool {
+pub fn etb_tokens_have_with_additional_counters(tokens: &[OwnedLexToken]) -> bool {
     tokens_have_word(tokens, "with")
         && tokens_have_word(tokens, "additional")
         && tokens_have_parser(tokens, || {
@@ -311,13 +307,13 @@ pub(crate) fn etb_tokens_have_with_additional_counters(tokens: &[OwnedLexToken])
         })
 }
 
-pub(crate) fn parse_it_becomes_your_choice_of_prefix_tokens(
+pub fn parse_it_becomes_your_choice_of_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     parse_semantic_prefix(tokens, &["it", "becomes", "your", "choice", "of"])
 }
 
-pub(crate) fn parse_it_becomes_additional_type_tail_tokens(
+pub fn parse_it_becomes_additional_type_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EtbBecomesAdditionalTypeTail<'_>> {
     primitives::parse_all(
@@ -328,13 +324,11 @@ pub(crate) fn parse_it_becomes_additional_type_tail_tokens(
     .ok()
 }
 
-pub(crate) fn parse_etb_self_subject_tokens(tokens: &[OwnedLexToken]) -> Option<EtbSelfSubject> {
+pub fn parse_etb_self_subject_tokens(tokens: &[OwnedLexToken]) -> Option<EtbSelfSubject> {
     primitives::parse_all(tokens, parse_etb_self_subject_lexed, "ETB self subject").ok()
 }
 
-pub(crate) fn parse_face_up_choice_tail_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<&[OwnedLexToken]> {
+pub fn parse_face_up_choice_tail_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     primitives::parse_all(
         tokens,
         parse_face_up_choice_tail_lexed,
@@ -343,7 +337,7 @@ pub(crate) fn parse_face_up_choice_tail_tokens(
     .ok()
 }
 
-pub(crate) fn etb_tokens_have_your_party_size_value(tokens: &[OwnedLexToken]) -> bool {
+pub fn etb_tokens_have_your_party_size_value(tokens: &[OwnedLexToken]) -> bool {
     tokens_have_word(tokens, "party")
         && tokens_have_word(tokens, "your")
         && tokens_have_parser(tokens, || {

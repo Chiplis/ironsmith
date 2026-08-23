@@ -1,4 +1,4 @@
-pub(crate) fn parse_conditional_anthem_replacement_line(
+pub fn parse_conditional_anthem_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(shape) = anthem_grant_grammar::parse_conditional_anthem_replacement(tokens) else {
@@ -28,7 +28,7 @@ pub(crate) fn parse_conditional_anthem_replacement_line(
     ]))
 }
 
-pub(crate) fn parse_conditional_anthem_otherwise_line(
+pub fn parse_conditional_anthem_otherwise_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(shape) = anthem_grant_grammar::parse_conditional_anthem_otherwise(tokens) else {
@@ -54,7 +54,7 @@ pub(crate) fn parse_conditional_anthem_otherwise_line(
     ]))
 }
 
-pub(crate) fn parse_carried_conditional_anthem_grant_line(
+pub fn parse_carried_conditional_anthem_grant_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(shape) = anthem_grant_grammar::parse_carried_conditional_anthem_grant(tokens) else {
@@ -97,7 +97,7 @@ pub(crate) fn parse_carried_conditional_anthem_grant_line(
     Ok(Some(result))
 }
 
-pub(crate) fn parse_anthem_and_keyword_line(
+pub fn parse_anthem_and_keyword_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -496,7 +496,7 @@ pub(crate) fn parse_anthem_and_keyword_line(
     Ok(Some(result))
 }
 
-pub(crate) fn parse_anthem_and_goaded_line(
+pub fn parse_anthem_and_goaded_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -522,7 +522,7 @@ pub(crate) fn parse_anthem_and_goaded_line(
     ]))
 }
 
-pub(crate) fn parse_anthem_and_no_defender_line(
+pub fn parse_anthem_and_no_defender_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(shape) = anthem_grant_grammar::parse_anthem_no_defender_grant_tokens(tokens) else {
@@ -758,7 +758,7 @@ fn add_static_ability_ast_condition(
     })
 }
 
-pub(crate) fn parse_protection_from_colored_spells_line(
+pub fn parse_protection_from_colored_spells_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if anthem_grant_grammar::parse_colored_spell_protection_tokens(tokens).is_none() {
@@ -1098,7 +1098,7 @@ fn parsed_ability_from_ability(ability: Ability) -> ParsedAbility {
     }
 }
 
-pub(crate) fn parse_equipment_you_control_have_equip_line(
+pub fn parse_equipment_you_control_have_equip_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(shape) = anthem_grant_grammar::parse_equipment_equip_shape(tokens) else {
@@ -1408,7 +1408,7 @@ fn nonstatic_keyword_action_as_granted_object_ability(
     }
 }
 
-pub(crate) fn parse_heterogeneous_granted_tail(
+pub fn parse_heterogeneous_granted_tail(
     tail_tokens: &[OwnedLexToken],
     clause_words: &[&str],
     attached_subject: bool,
@@ -1567,7 +1567,7 @@ fn is_can_block_shadow_as_though_no_shadow_clause(tokens: &[OwnedLexToken]) -> b
 /// member is the rules permission to block shadow creatures. Keeping this
 /// complete line together prevents the ordinary granted-ability grammar from
 /// reducing the permission's final `shadow` noun to a quoted ability marker.
-pub(crate) fn parse_attached_anthem_reach_shadow_permission_line(
+pub fn parse_attached_anthem_reach_shadow_permission_line(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<StaticAbilityAst>> {
     let words = crate::lexer::parser_token_word_refs(tokens);
@@ -1618,7 +1618,7 @@ pub(crate) fn parse_attached_anthem_reach_shadow_permission_line(
     ])
 }
 
-pub(crate) fn parse_source_can_block_shadow_as_though_no_shadow_line(
+pub fn parse_source_can_block_shadow_as_though_no_shadow_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let trimmed = trim_edge_punctuation(tokens);
@@ -1636,7 +1636,7 @@ pub(crate) fn parse_source_can_block_shadow_as_though_no_shadow_line(
     )))
 }
 
-pub(crate) fn parse_targeting_as_though_no_ability_line(
+pub fn parse_targeting_as_though_no_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let Some(spec) = crate::effect_sentences::
@@ -1679,7 +1679,7 @@ fn shadow_block_permission_is_typed_and_rejects_plain_shadow() {
     }
 }
 
-pub(crate) fn lower_granted_tail_for_anthem_subject(
+pub fn lower_granted_tail_for_anthem_subject(
     subject: &AnthemSubjectAst,
     condition: &Option<crate::ConditionExpr>,
     granted_tail: ParsedGrantedTailAst,
@@ -1730,7 +1730,7 @@ pub(crate) fn lower_granted_tail_for_anthem_subject(
     granted
 }
 
-pub(crate) fn parse_attached_restriction_and_granted_ability_line(
+pub fn parse_attached_restriction_and_granted_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(shape) = attached_grammar::parse_attached_combat_restriction_grant_tokens(tokens)
@@ -1776,7 +1776,7 @@ pub(crate) fn parse_attached_restriction_and_granted_ability_line(
     Ok(Some(result))
 }
 
-pub(crate) fn parse_subject_color_and_granted_ability_line(
+pub fn parse_subject_color_and_granted_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(shape) = anthem_grant_grammar::parse_subject_color_and_grant_tokens(tokens) else {
@@ -1834,7 +1834,7 @@ fn wrap_conditioned_animation_static_ability(
     ability.into()
 }
 
-pub(crate) fn lower_static_animation_bundle(
+pub fn lower_static_animation_bundle(
     bundle: StaticAnimationBundleAst,
 ) -> Vec<StaticAbilityAst> {
     let filter = anthem_subject_filter(&bundle.subject);
@@ -1975,7 +1975,7 @@ fn parse_continuing_anthem_granted_segment(
     Ok(None)
 }
 
-pub(crate) fn parse_anthem_with_trailing_segments_line(
+pub fn parse_anthem_with_trailing_segments_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -2302,7 +2302,7 @@ pub(crate) fn parse_anthem_with_trailing_segments_line(
     Ok(Some(result))
 }
 
-pub(crate) fn parse_conditional_all_creatures_able_to_block_line(
+pub fn parse_conditional_all_creatures_able_to_block_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let Some(shape) = anthem_grant_grammar::parse_conditional_must_block_shape(tokens) else {
@@ -2420,7 +2420,7 @@ fn persistent_lure_cards_lower_to_specific_attacker_rule_restrictions() {
     );
 }
 
-pub(crate) fn parse_source_can_attack_as_though_no_defender_as_long_as_line(
+pub fn parse_source_can_attack_as_though_no_defender_as_long_as_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let Some(shape) = anthem_grant_grammar::parse_subject_no_defender_as_long_shape(tokens) else {
@@ -2447,7 +2447,7 @@ pub(crate) fn parse_source_can_attack_as_though_no_defender_as_long_as_line(
     Ok(Some(granted))
 }
 
-pub(crate) fn parse_attached_can_attack_as_though_no_defender_line(
+pub fn parse_attached_can_attack_as_though_no_defender_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let Some(shape) = anthem_grant_grammar::parse_attached_no_defender_shape(tokens) else {
@@ -2464,7 +2464,7 @@ pub(crate) fn parse_attached_can_attack_as_though_no_defender_line(
     }))
 }
 
-pub(crate) fn parse_plain_can_attack_as_though_no_defender_line(
+pub fn parse_plain_can_attack_as_though_no_defender_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let Some(shape) = anthem_grant_grammar::parse_plain_no_defender_shape(tokens) else {
@@ -2484,7 +2484,7 @@ pub(crate) fn parse_plain_can_attack_as_though_no_defender_line(
     }))
 }
 
-pub(crate) fn parse_attacked_player_can_attack_as_though_no_defender_line(
+pub fn parse_attacked_player_can_attack_as_though_no_defender_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let trimmed = trim_edge_punctuation(tokens);
@@ -2539,7 +2539,7 @@ fn plain_no_defender_permissions_lower_to_the_typed_combat_ability() {
     );
 }
 
-pub(crate) fn parse_as_long_as_condition_can_attack_as_though_no_defender_line(
+pub fn parse_as_long_as_condition_can_attack_as_though_no_defender_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let Some(shape) = anthem_grant_grammar::parse_leading_condition_no_defender_shape(tokens)
@@ -2567,7 +2567,7 @@ pub(crate) fn parse_as_long_as_condition_can_attack_as_though_no_defender_line(
     Ok(Some(granted))
 }
 
-pub(crate) fn parse_gets_and_attacks_each_combat_if_able_line(
+pub fn parse_gets_and_attacks_each_combat_if_able_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -2591,7 +2591,7 @@ pub(crate) fn parse_gets_and_attacks_each_combat_if_able_line(
     Ok(Some(result))
 }
 
-pub(crate) fn parse_anthem_and_granted_ability_line(
+pub fn parse_anthem_and_granted_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     if anthem_grant_grammar::parse_static_grant_duration_fact(tokens).is_some() {
@@ -2619,7 +2619,7 @@ pub(crate) fn parse_anthem_and_granted_ability_line(
     Ok(Some(result))
 }
 
-pub(crate) fn parse_subject_is_every_subtype_family_line(
+pub fn parse_subject_is_every_subtype_family_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     if anthem_grant_grammar::parse_static_grant_duration_fact(tokens).is_some() {
@@ -2640,7 +2640,7 @@ pub(crate) fn parse_subject_is_every_subtype_family_line(
     )))
 }
 
-pub(crate) fn parse_anthem_line(
+pub fn parse_anthem_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some(head) = anthem_grant_grammar::parse_anthem_modifier_head(tokens) else {
@@ -2663,7 +2663,7 @@ pub(crate) fn parse_anthem_line(
     Ok(Some(build_anthem_static_ability(&clause)))
 }
 
-pub(crate) fn parse_multi_subject_anthem_line(
+pub fn parse_multi_subject_anthem_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let Some(head) = anthem_grant_grammar::parse_anthem_modifier_head(tokens) else {
@@ -2780,7 +2780,7 @@ fn shared_head_supertype_subtype_anthem_remains_one_typed_subject() {
     }));
 }
 
-pub(crate) fn parse_has_base_power_toughness_static_line(
+pub fn parse_has_base_power_toughness_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some(shape) = anthem_grant_grammar::parse_base_power_toughness_shape(tokens) else {
@@ -2820,7 +2820,7 @@ pub(crate) fn parse_has_base_power_toughness_static_line(
     }
 }
 
-pub(crate) fn parse_has_base_power_toughness_and_type_color_addition_static_line(
+pub fn parse_has_base_power_toughness_and_type_color_addition_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(shape) = anthem_grant_grammar::parse_base_power_toughness_type_addition_shape(tokens)
@@ -2842,7 +2842,7 @@ pub(crate) fn parse_has_base_power_toughness_and_type_color_addition_static_line
     Ok(Some(compiled))
 }
 
-pub(crate) fn parse_isnt_creature_line(
+pub fn parse_isnt_creature_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let display = crate::lexer::token_word_refs(tokens).join(" ");
@@ -2889,7 +2889,7 @@ pub(crate) fn parse_isnt_creature_line(
     Ok(Some(StaticAbility::new(remove)))
 }
 
-pub(crate) fn parse_has_base_power_toughness_and_granted_keywords_static_line(
+pub fn parse_has_base_power_toughness_and_granted_keywords_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -2972,7 +2972,7 @@ pub(crate) fn parse_has_base_power_toughness_and_granted_keywords_static_line(
     Ok(Some(compiled))
 }
 
-pub(crate) fn parse_has_base_power_and_granted_ability_static_line(
+pub fn parse_has_base_power_and_granted_ability_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -3027,7 +3027,7 @@ pub(crate) fn parse_has_base_power_and_granted_ability_static_line(
     Ok(Some(compiled))
 }
 
-pub(crate) fn parse_filter_has_granted_ability_line(
+pub fn parse_filter_has_granted_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);

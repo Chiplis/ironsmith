@@ -18,45 +18,45 @@ use super::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TypedChoiceObjectClause {
-    pub(crate) actor: ChoiceClauseActor,
-    pub(crate) filter: ObjectFilter,
-    pub(crate) count: ChoiceCount,
-    pub(crate) count_source: Option<ChoiceObjectCountSource>,
-    pub(crate) references: ChoiceObjectReferenceFacts,
+pub struct TypedChoiceObjectClause {
+    pub actor: ChoiceClauseActor,
+    pub filter: ObjectFilter,
+    pub count: ChoiceCount,
+    pub count_source: Option<ChoiceObjectCountSource>,
+    pub references: ChoiceObjectReferenceFacts,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum TypedChoiceObjectClauseKind {
+pub enum TypedChoiceObjectClauseKind {
     Object(TypedChoiceObjectClause),
     CardName,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TypedTargetPlayerChoice {
-    pub(crate) actor: TargetPlayerChoiceActor,
-    pub(crate) count: ChoiceCount,
-    pub(crate) count_source: Option<ChoiceObjectCountSource>,
-    pub(crate) filter: ObjectFilter,
+pub struct TypedTargetPlayerChoice {
+    pub actor: TargetPlayerChoiceActor,
+    pub count: ChoiceCount,
+    pub count_source: Option<ChoiceObjectCountSource>,
+    pub filter: ObjectFilter,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TypedChosenCantBlock {
-    pub(crate) filter: ObjectFilter,
-    pub(crate) exclude_tagged_choice: bool,
+pub struct TypedChosenCantBlock {
+    pub filter: ObjectFilter,
+    pub exclude_tagged_choice: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum TypedChoiceBecomeSubject<'a> {
+pub enum TypedChoiceBecomeSubject<'a> {
     Target(&'a [OwnedLexToken]),
     AllObjects(ObjectFilter),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TypedChoiceBecomeShape<'a> {
-    pub(crate) kind: ChoiceBecomeKind,
-    pub(crate) subject: TypedChoiceBecomeSubject<'a>,
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
+pub struct TypedChoiceBecomeShape<'a> {
+    pub kind: ChoiceBecomeKind,
+    pub subject: TypedChoiceBecomeSubject<'a>,
+    pub tail_tokens: &'a [OwnedLexToken],
 }
 
 fn parse_typed_choice_filter_words(
@@ -66,7 +66,7 @@ fn parse_typed_choice_filter_words(
         .map_err(|_| ChoiceObjectClauseSyntaxError::UnsupportedFilter)
 }
 
-pub(crate) fn parse_typed_target_player_choice_tokens(
+pub fn parse_typed_target_player_choice_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TypedTargetPlayerChoice>, ChoiceObjectClauseSyntaxError> {
     let Some(shape) = parse_target_player_choice_tokens(tokens)? else {
@@ -94,7 +94,7 @@ pub(crate) fn parse_typed_target_player_choice_tokens(
     }))
 }
 
-pub(crate) fn parse_typed_choice_object_clause_tokens(
+pub fn parse_typed_choice_object_clause_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TypedChoiceObjectClauseKind>, ChoiceObjectClauseSyntaxError> {
     let Some(kind) = parse_choice_object_clause_tokens(tokens)? else {
@@ -177,7 +177,7 @@ pub(crate) fn parse_typed_choice_object_clause_tokens(
     )))
 }
 
-pub(crate) fn parse_typed_chosen_cant_block_tokens(
+pub fn parse_typed_chosen_cant_block_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TypedChosenCantBlock>, ChosenCantBlockSyntaxError> {
     let Some(shape) = parse_chosen_cant_block_shape(tokens)? else {
@@ -195,7 +195,7 @@ pub(crate) fn parse_typed_chosen_cant_block_tokens(
     }))
 }
 
-pub(crate) fn parse_typed_choice_become_shape<'a>(
+pub fn parse_typed_choice_become_shape<'a>(
     first: &'a [OwnedLexToken],
     second: &'a [OwnedLexToken],
 ) -> Result<Option<TypedChoiceBecomeShape<'a>>, ChoiceBecomeSyntaxError> {

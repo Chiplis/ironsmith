@@ -16,48 +16,48 @@ use super::super::super::{leaf, primitives};
 use super::{CreationPhrase, CreationTokens, CreationWordClass, CreationWords};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DelayedCombatTokenAction {
+pub enum DelayedCombatTokenAction {
     Exile,
     Sacrifice,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TrailingCreateDelay {
-    pub(crate) start_word: usize,
-    pub(crate) player: PlayerFilter,
+pub struct TrailingCreateDelay {
+    pub start_word: usize,
+    pub player: PlayerFilter,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CopySourceTailSpec {
-    pub(crate) source_tokens: Vec<OwnedLexToken>,
-    pub(crate) enters_tapped: bool,
-    pub(crate) enters_attacking: bool,
+pub struct CopySourceTailSpec {
+    pub source_tokens: Vec<OwnedLexToken>,
+    pub enters_tapped: bool,
+    pub enters_attacking: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct InlineCombatSpec {
-    pub(crate) source_tokens: Vec<OwnedLexToken>,
-    pub(crate) enters_tapped: bool,
-    pub(crate) enters_attacking: bool,
-    pub(crate) attacks_that_player_or_planeswalker: bool,
+pub struct InlineCombatSpec {
+    pub source_tokens: Vec<OwnedLexToken>,
+    pub enters_tapped: bool,
+    pub enters_attacking: bool,
+    pub attacks_that_player_or_planeswalker: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CopySourceClauseSpec {
-    pub(crate) source_tokens: Vec<OwnedLexToken>,
-    pub(crate) enters_tapped: bool,
-    pub(crate) enters_attacking: bool,
-    pub(crate) attacks_that_player_or_planeswalker: bool,
+pub struct CopySourceClauseSpec {
+    pub source_tokens: Vec<OwnedLexToken>,
+    pub enters_tapped: bool,
+    pub enters_attacking: bool,
+    pub attacks_that_player_or_planeswalker: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct EqualToCountClause<'a> {
-    pub(crate) value_tokens: &'a [OwnedLexToken],
-    pub(crate) cut_token: usize,
+pub struct EqualToCountClause<'a> {
+    pub value_tokens: &'a [OwnedLexToken],
+    pub cut_token: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CreateCountHead {
+pub enum CreateCountHead {
     Default,
     EventAmount,
     EqualToDynamic,
@@ -67,40 +67,38 @@ pub(crate) enum CreateCountHead {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CreateHeadSpec<'a> {
-    pub(crate) body_tokens: &'a [OwnedLexToken],
-    pub(crate) count: CreateCountHead,
-    pub(crate) name_words: Vec<&'a str>,
-    pub(crate) name_tokens: &'a [OwnedLexToken],
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
+pub struct CreateHeadSpec<'a> {
+    pub body_tokens: &'a [OwnedLexToken],
+    pub count: CreateCountHead,
+    pub name_words: Vec<&'a str>,
+    pub name_tokens: &'a [OwnedLexToken],
+    pub tail_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct NamedTokenClauseShape {
-    pub(crate) clause: Range<usize>,
-    pub(crate) name: Range<usize>,
+pub struct NamedTokenClauseShape {
+    pub clause: Range<usize>,
+    pub name: Range<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct AttachmentClause<'a> {
-    pub(crate) prefix_tokens: &'a [OwnedLexToken],
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct AttachmentClause<'a> {
+    pub prefix_tokens: &'a [OwnedLexToken],
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct ForEachClause<'a> {
-    pub(crate) prefix_tokens: &'a [OwnedLexToken],
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) start_word: usize,
+pub struct ForEachClause<'a> {
+    pub prefix_tokens: &'a [OwnedLexToken],
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub start_word: usize,
 }
 
 #[path = "token_shapes/pt.rs"]
 mod pt;
-pub(crate) use pt::*;
+pub use pt::*;
 
-pub(crate) fn parse_delayed_combat_token_action_words(
-    words: &[&str],
-) -> Option<DelayedCombatTokenAction> {
+pub fn parse_delayed_combat_token_action_words(words: &[&str]) -> Option<DelayedCombatTokenAction> {
     let surface = CreationWords::new(words);
     if words.len() != 7
         || !surface.class_at(1, CreationWordClass::InlineReference)
@@ -118,7 +116,7 @@ pub(crate) fn parse_delayed_combat_token_action_words(
     }
 }
 
-pub(crate) fn parse_trailing_create_delay_words(words: &[&str]) -> Option<TrailingCreateDelay> {
+pub fn parse_trailing_create_delay_words(words: &[&str]) -> Option<TrailingCreateDelay> {
     let surface = CreationWords::new(words);
     let start_word = surface.suffix_location(CreationPhrase::TrailingNextEndStep)?;
     if CreationWords::new(&words[..start_word]).has(CreationWordClass::When) {
@@ -132,7 +130,7 @@ pub(crate) fn parse_trailing_create_delay_words(words: &[&str]) -> Option<Traili
     Some(TrailingCreateDelay { start_word, player })
 }
 
-pub(crate) fn parse_copy_source_tail_tokens(tokens: &[OwnedLexToken]) -> CopySourceTailSpec {
+pub fn parse_copy_source_tail_tokens(tokens: &[OwnedLexToken]) -> CopySourceTailSpec {
     let token_surface = CreationTokens::new(tokens);
     let words = token_surface.words();
     let mut cursor = 0usize;
@@ -173,7 +171,7 @@ pub(crate) fn parse_copy_source_tail_tokens(tokens: &[OwnedLexToken]) -> CopySou
     }
 }
 
-pub(crate) fn parse_inline_combat_tokens(tokens: &[OwnedLexToken]) -> InlineCombatSpec {
+pub fn parse_inline_combat_tokens(tokens: &[OwnedLexToken]) -> InlineCombatSpec {
     let token_surface = CreationTokens::new(tokens);
     let words = token_surface.words();
     let surface = CreationWords::new(&words);
@@ -207,9 +205,7 @@ pub(crate) fn parse_inline_combat_tokens(tokens: &[OwnedLexToken]) -> InlineComb
     }
 }
 
-pub(crate) fn parse_copy_source_clause_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<CopySourceClauseSpec> {
+pub fn parse_copy_source_clause_tokens(tokens: &[OwnedLexToken]) -> Option<CopySourceClauseSpec> {
     let token_surface = CreationTokens::new(tokens);
     let words = token_surface.words();
     let of_word = CreationWords::new(&words).location(CreationWordClass::Of)?;
@@ -252,7 +248,7 @@ pub(crate) fn parse_copy_source_clause_tokens(
     })
 }
 
-pub(crate) fn parse_equal_to_count_clause_tokens(
+pub fn parse_equal_to_count_clause_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EqualToCountClause<'_>> {
     let token_surface = CreationTokens::new(tokens);
@@ -267,7 +263,7 @@ pub(crate) fn parse_equal_to_count_clause_tokens(
     })
 }
 
-pub(crate) fn creation_body_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+pub fn creation_body_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     if CreationTokens::new(tokens).token_is(0, CreationWordClass::Create) {
         &tokens[1..]
     } else {
@@ -275,7 +271,7 @@ pub(crate) fn creation_body_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken]
     }
 }
 
-pub(crate) fn parse_create_head_tokens(tokens: &[OwnedLexToken]) -> Option<CreateHeadSpec<'_>> {
+pub fn parse_create_head_tokens(tokens: &[OwnedLexToken]) -> Option<CreateHeadSpec<'_>> {
     let body_tokens = creation_body_tokens(tokens);
     let token_surface = CreationTokens::new(body_tokens);
     let words = token_surface.words();
@@ -424,16 +420,12 @@ fn parse_named_token_clause(input: &mut LexStream<'_>) -> WResult<NamedTokenClau
     })
 }
 
-pub(crate) fn parse_named_token_clause_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<NamedTokenClauseShape> {
+pub fn parse_named_token_clause_tokens(tokens: &[OwnedLexToken]) -> Option<NamedTokenClauseShape> {
     let mut input = LexStream::new(tokens);
     parse_named_token_clause.parse_next(&mut input).ok()
 }
 
-pub(crate) fn parse_attachment_clause_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<AttachmentClause<'_>> {
+pub fn parse_attachment_clause_tokens(tokens: &[OwnedLexToken]) -> Option<AttachmentClause<'_>> {
     let token_surface = CreationTokens::new(tokens);
     let words = token_surface.words();
     let surface = CreationWords::new(&words);
@@ -453,7 +445,7 @@ pub(crate) fn parse_attachment_clause_tokens(
     })
 }
 
-pub(crate) fn parse_for_each_clause_tokens(tokens: &[OwnedLexToken]) -> Option<ForEachClause<'_>> {
+pub fn parse_for_each_clause_tokens(tokens: &[OwnedLexToken]) -> Option<ForEachClause<'_>> {
     let token_surface = CreationTokens::new(tokens);
     let words = token_surface.words();
     let surface = CreationWords::new(&words);
@@ -487,7 +479,7 @@ pub(crate) fn parse_for_each_clause_tokens(tokens: &[OwnedLexToken]) -> Option<F
     })
 }
 
-pub(crate) fn parse_for_each_prefix_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn parse_for_each_prefix_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let token_surface = CreationTokens::new(tokens);
     let words = token_surface.words();
     if !CreationWords::new(&words).starts(CreationPhrase::ForEach) {
@@ -497,7 +489,7 @@ pub(crate) fn parse_for_each_prefix_tokens(tokens: &[OwnedLexToken]) -> Option<&
     Some(trim_lexed_commas(tokens.get(start..)?))
 }
 
-pub(crate) fn parse_where_clause_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn parse_where_clause_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let token_surface = CreationTokens::new(tokens);
     let words = token_surface.words();
     let where_word = CreationWords::new(&words).location(CreationWordClass::Where)?;
@@ -505,12 +497,12 @@ pub(crate) fn parse_where_clause_tokens(tokens: &[OwnedLexToken]) -> Option<&[Ow
     Some(trim_lexed_commas(tokens.get(start..)?))
 }
 
-pub(crate) fn parse_time_only_words(words: &[&str]) -> bool {
+pub fn parse_time_only_words(words: &[&str]) -> bool {
     let surface = CreationWords::new(words);
     words.is_empty() || (words.len() == 1 && surface.first_is(CreationWordClass::Time))
 }
 
-pub(crate) fn create_count_head_value(head: &CreateCountHead) -> Value {
+pub fn create_count_head_value(head: &CreateCountHead) -> Value {
     match head {
         CreateCountHead::Default => Value::Fixed(1),
         CreateCountHead::EventAmount => Value::EventValue(EventValueSpec::Amount),

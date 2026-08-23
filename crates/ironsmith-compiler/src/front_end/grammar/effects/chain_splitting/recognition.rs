@@ -228,7 +228,7 @@ pub(super) struct CommaBoundaryFacts {
     pub(super) preserve_boundary: bool,
 }
 
-pub(crate) fn starts_with_inline_token_rules_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn starts_with_inline_token_rules_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
     let tokens = if primitives::parse_prefix(tokens, primitives::quote().void()).is_some() {
         tokens.get(1..).unwrap_or_default()
     } else {
@@ -237,17 +237,17 @@ pub(crate) fn starts_with_inline_token_rules_tail_tokens(tokens: &[OwnedLexToken
     starts_any(tokens, INLINE_TOKEN_RULES_TAIL_PREFIXES)
 }
 
-pub(crate) fn is_token_creation_context_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_token_creation_context_tokens(tokens: &[OwnedLexToken]) -> bool {
     contains_any(tokens, &["token", "tokens"])
         && find_chain_verb_tokens(tokens)
             .is_some_and(|verb| verb.kind == super::ChainVerbKind::Create)
 }
 
-pub(crate) fn starts_with_player_may_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn starts_with_player_may_tokens(tokens: &[OwnedLexToken]) -> bool {
     starts_any(tokens, PLAYER_MAY_PREFIXES)
 }
 
-pub(crate) fn strip_leading_instead_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn strip_leading_instead_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let (_, rest) = primitives::parse_prefix(tokens, primitives::kw("instead").void())?;
     if starts_any(rest, &[&["of"], &["if"]]) {
         return None;
@@ -256,7 +256,7 @@ pub(crate) fn strip_leading_instead_tokens(tokens: &[OwnedLexToken]) -> Option<&
     (!rest.is_empty()).then_some(rest)
 }
 
-pub(crate) fn has_basic_effect_head_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn has_basic_effect_head_tokens(tokens: &[OwnedLexToken]) -> bool {
     exact_any(
         tokens,
         &[
@@ -269,7 +269,7 @@ pub(crate) fn has_basic_effect_head_tokens(tokens: &[OwnedLexToken]) -> bool {
         || super::super::parse_persistent_no_maximum_hand_size_player_lexed(tokens).is_some()
 }
 
-pub(crate) fn has_extended_effect_head_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn has_extended_effect_head_tokens(tokens: &[OwnedLexToken]) -> bool {
     has_basic_effect_head_tokens(tokens)
         || parse_prevent_next_damage(tokens)
         || parse_prevent_all_damage(tokens)
@@ -281,7 +281,7 @@ pub(crate) fn has_extended_effect_head_tokens(tokens: &[OwnedLexToken]) -> bool 
         || is_choose_target_prelude(tokens)
 }
 
-pub(crate) fn preserve_and_reason(
+pub fn preserve_and_reason(
     current: &[OwnedLexToken],
     remaining: &[OwnedLexToken],
     extended: bool,

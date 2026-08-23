@@ -114,7 +114,7 @@ fn dynamic_player<'a>(input: &mut LexStream<'a>) -> WResult<PlayerAst> {
     })
 }
 
-pub(crate) fn parse_delayed_player_prefix_words(
+pub fn parse_delayed_player_prefix_words(
     words: &[&str],
     static_must_be_exact: bool,
 ) -> Option<(PlayerAst, usize)> {
@@ -129,7 +129,7 @@ pub(crate) fn parse_delayed_player_prefix_words(
     Some((player, tokens.len().saturating_sub(rest.len())))
 }
 
-pub(crate) fn parse_delayed_upkeep_payment_shape(
+pub fn parse_delayed_upkeep_payment_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DelayedUpkeepPaymentShape<'_>> {
     let tokens = trimmed(tokens);
@@ -154,9 +154,7 @@ pub(crate) fn parse_delayed_upkeep_payment_shape(
     (!mana_tokens.is_empty()).then_some(DelayedUpkeepPaymentShape { mana_tokens })
 }
 
-pub(crate) fn parse_next_end_step_prefix_remainder(
-    tokens: &[OwnedLexToken],
-) -> Option<&[OwnedLexToken]> {
+pub fn parse_next_end_step_prefix_remainder(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let (_, remainder) = primitives::parse_prefix(
         trimmed(tokens),
         alt((
@@ -167,7 +165,7 @@ pub(crate) fn parse_next_end_step_prefix_remainder(
     Some(trimmed(remainder))
 }
 
-pub(crate) fn split_delayed_payment_action_shape(
+pub fn split_delayed_payment_action_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DelayedPaymentActionSplit<'_>> {
     let tokens = trimmed(tokens);
@@ -180,7 +178,7 @@ pub(crate) fn split_delayed_payment_action_shape(
     })
 }
 
-pub(crate) fn parse_implicit_become_subject_shape(
+pub fn parse_implicit_become_subject_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ImplicitBecomeSubjectShape<'_>> {
     let tokens = trimmed(tokens);
@@ -231,11 +229,11 @@ pub(crate) fn parse_implicit_become_subject_shape(
     })
 }
 
-pub(crate) fn is_known_fallback_marker_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_known_fallback_marker_shape(tokens: &[OwnedLexToken]) -> bool {
     delayed_starts_any_shape(tokens, KNOWN_FALLBACK_MARKER_PREFIXES)
 }
 
-pub(crate) fn parse_delayed_timing_marker_shape(
+pub fn parse_delayed_timing_marker_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DelayedTimingMarkerShape> {
     let patterns: &'static [(&'static [&'static str], DelayedTimingStepShape, PlayerAst)] = &[

@@ -5,7 +5,112 @@ use crate::cards::builders::{
 use crate::effect::Value;
 use ironsmith_core::ValueSurfaceHint;
 
-pub(crate) fn normalize_effects_ast(effects: &[EffectAst]) -> Vec<EffectAst> {
+fn source_counter_removal(effect: &EffectAst) -> Option<crate::object::CounterType> {
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::RemoveUpToAnyCounters {
+                amount,
+                target: TargetAst::Source(_),
+                counter_type: Some(counter_type),
+                up_to: false,
+                distributed_across_all: false,
+                all_of_them: false,
+            },
+        ..
+    }) = effect
+    else {
+        return None;
+    };
+    matches!(amount.unhinted(), Value::CountersOnSource(kind) if kind == counter_type)
+        .then_some(*counter_type)
+}
+
+fn bind_damage_amount_to_removed_counter_count(
+    effect: &mut EffectAst,
+    counter_type: crate::object::CounterType,
+) -> usize {
+    let mut bound = 0;
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect {
+        let amount = match action {
+            SubjectVerbActionAst::DealDamage { amount, .. }
+            | SubjectVerbActionAst::DealDamageEqualToPower { amount, .. }
+            | SubjectVerbActionAst::DealDistributedDamage { amount, .. }
+            | SubjectVerbActionAst::DealDamageEach { amount, .. } => Some(amount),
+            _ => None,
+        };
+        if let Some(amount) = amount
+            && matches!(
+                amount.unhinted(),
+                Value::EventValue(crate::effect::EventValueSpec::Amount)
+            )
+        {
+            let hints = amount.surface_hints().to_vec();
+            *amount = Value::PendingPriorEffectMetric(
+                ironsmith_core::PriorEffectMetricQuery::new(
+                    ironsmith_core::EffectMetricSource::Outcome,
+                    ironsmith_core::EffectMetric::Count,
+                )
+                .with_action(ironsmith_core::PriorEffectAction::Removed)
+                .with_counter_type(Some(counter_type)),
+            )
+            .with_surface_hints(hints);
+            bound += 1;
+        }
+    }
+    super::effect_ast_traversal::for_each_nested_effects_mut(effect, true, |nested| {
+        for child in nested {
+            bound += bind_damage_amount_to_removed_counter_count(child, counter_type);
+        }
+    });
+    bound
+}
+
+fn is_removed_counter_damage_fanout_member(effect: &EffectAst) -> bool {
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => matches!(
+            action,
+            SubjectVerbActionAst::DealDamage { .. }
+                | SubjectVerbActionAst::DealDamageEqualToPower { .. }
+                | SubjectVerbActionAst::DealDistributedDamage { .. }
+                | SubjectVerbActionAst::DealDamageEach { .. }
+        ),
+        EffectAst::Sequence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::SourceSentence { effects, .. }
+        | EffectAst::Coordinated { effects, .. }
+        | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayer { effects }
+        | EffectAst::ForEachPlayersFiltered { effects, .. }
+        | EffectAst::ForEachObject { effects, .. } => {
+            !effects.is_empty() && effects.iter().all(is_removed_counter_damage_fanout_member)
+        }
+        _ => false,
+    }
+}
+
+fn bind_removed_counter_damage_fanout(effects: &mut [EffectAst]) -> bool {
+    let [removal, damage @ ..] = effects else {
+        return false;
+    };
+    let Some(counter_type) = source_counter_removal(removal) else {
+        return false;
+    };
+    if damage.is_empty() || !damage.iter().all(is_removed_counter_damage_fanout_member) {
+        return false;
+    }
+    let mut rebound = damage.to_vec();
+    let bound = rebound
+        .iter_mut()
+        .map(|effect| bind_damage_amount_to_removed_counter_count(effect, counter_type))
+        .sum::<usize>();
+    if bound < 2 {
+        return false;
+    }
+    damage.clone_from_slice(&rebound);
+    true
+}
+
+pub fn normalize_effects_ast(effects: &[EffectAst]) -> Vec<EffectAst> {
     let mut normalized = effects.to_vec();
     bind_typed_where_x_references(&mut normalized, None);
     normalize_effects_vec(&mut normalized);
@@ -141,7 +246,7 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     // typed shared-result provenance at this common AST boundary once the
     // producer is provably a source-bound counter removal and every following
     // member belongs to the damage fanout.
-    crate::effect_sentences::bind_removed_counter_damage_fanout(effects);
+    bind_removed_counter_damage_fanout(effects);
     correlate_delegated_subsets_with_prior_target_collections(effects);
     bind_explicit_chosen_object_followups(effects);
     correlate_conditional_quantified_choice_followups(effects);
@@ -1283,9 +1388,7 @@ fn direct_destroy_references_chosen_collection(effect: &EffectAst) -> bool {
 /// choice tag, it is both a semantic continuation of the quantified choice
 /// and a no-op when the condition is false. Keep the producer and consumer in
 /// one branch and give them the same durable tag before reference lowering.
-pub(crate) fn correlate_conditional_quantified_choice_followups(
-    effects: &mut Vec<EffectAst>,
-) -> bool {
+pub fn correlate_conditional_quantified_choice_followups(effects: &mut Vec<EffectAst>) -> bool {
     let mut index = 0usize;
     let mut changed = false;
     while index + 1 < effects.len() {

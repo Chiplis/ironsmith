@@ -79,9 +79,7 @@ struct ControlledCreaturePowerShape<'a> {
     comparison_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_activate_only_timing_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<ActivationTiming> {
+pub fn parse_activate_only_timing_lexed(tokens: &[OwnedLexToken]) -> Option<ActivationTiming> {
     if matches_exact_tokens(tokens, ANY_PLAYER_DURING_THEIR_TURN_BEFORE_END_STEP) {
         return Some(ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep);
     }
@@ -112,23 +110,23 @@ pub(crate) fn parse_activate_only_timing_lexed(
     None
 }
 
-pub(crate) fn is_activate_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_activate_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_any_prefix_tokens(tokens, ACTIVATE_ONLY_RESTRICTION_PREFIXES)
         || matches_exact_tokens(tokens, ANY_PLAYER_DURING_THEIR_TURN_BEFORE_END_STEP)
 }
 
-pub(crate) fn is_any_player_may_activate_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_any_player_may_activate_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_prefix_tokens(
         tokens,
         &["any", "player", "may", "activate", "this", "ability"],
     )
 }
 
-pub(crate) fn is_trigger_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_trigger_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_any_prefix_tokens(tokens, THIS_ABILITY_TRIGGERS_ONLY_PREFIXES)
 }
 
-pub(crate) fn parse_triggered_times_each_turn_from_words(words: &[&str]) -> Option<u32> {
+pub fn parse_triggered_times_each_turn_from_words(words: &[&str]) -> Option<u32> {
     let mut input: primitives::WordSliceInput<'_> = words;
     alt((
         |input: &mut primitives::WordSliceInput<'_>| {
@@ -143,18 +141,18 @@ pub(crate) fn parse_triggered_times_each_turn_from_words(words: &[&str]) -> Opti
     parse_activation_count_per_turn(input)
 }
 
-pub(crate) fn parse_triggered_times_each_turn_lexed(tokens: &[OwnedLexToken]) -> Option<u32> {
+pub fn parse_triggered_times_each_turn_lexed(tokens: &[OwnedLexToken]) -> Option<u32> {
     parse_triggered_times_each_turn_from_words(&TokenWordView::new(tokens).word_refs())
 }
 
-pub(crate) fn parse_activation_count_per_turn(words: &[&str]) -> Option<u32> {
+pub fn parse_activation_count_per_turn(words: &[&str]) -> Option<u32> {
     let shape = parse_count_each_turn_shape(words, 0)?;
     let count_words = words.get(shape.count_start..shape.count_end)?;
     let parsed = leaf::parse_leaf_number_prefix_words(count_words)?.into_fixed()?;
     (parsed.1 == count_words.len()).then_some(parsed.0)
 }
 
-pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
+pub fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
     if let Some(condition) = parse_repeated_or_if_activation_condition(tokens) {
         return Some(condition);
     }
@@ -767,10 +765,10 @@ mod tests {
                 "Activate only if there are three or more brick counters on this artifact."
             )),
             Some(ConditionExpr::SourceHasCounterAtLeast {
-                counter_type: crate::CounterType::Named("brick"),
+                counter_type: crate::CounterType::Named(counter_name),
                 count: 3,
                 ..
-            })
+            }) if counter_name.as_str() == "brick"
         ));
         assert_eq!(
             parse_activation_condition_lexed(&lex(

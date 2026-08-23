@@ -7,6 +7,61 @@ fn external_card_score(score: Option<f32>) -> Option<f32> {
 }
 
 impl WasmGame {
+    fn materialize_compiled_artifact_batch(
+        artifacts: &[CompiledCardArtifact],
+    ) -> Result<Vec<CardDefinition>, String> {
+        let mut runtime_ids = HashMap::with_capacity(artifacts.len());
+        for artifact in artifacts {
+            artifact.validate().map_err(|error| error.to_string())?;
+            if runtime_ids
+                .insert(artifact.card.local_id, CardId::new())
+                .is_some()
+            {
+                return Err(format!(
+                    "duplicate artifact-local card id {}",
+                    artifact.card.local_id.0
+                ));
+            }
+        }
+
+        let mut definitions = Vec::with_capacity(artifacts.len());
+        for artifact in artifacts {
+            let mut definition =
+                ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(artifact)
+                    .map_err(|error| error.to_string())?;
+            if !artifact
+                .card
+                .name
+                .eq_ignore_ascii_case(&definition.card.name)
+            {
+                return Err(format!(
+                    "artifact name {:?} does not match definition name {:?}",
+                    artifact.card.name, definition.card.name
+                ));
+            }
+            definition.card.id = runtime_ids[&artifact.card.local_id];
+            definition.card.other_face = artifact
+                .card
+                .other_face
+                .map(|local_id| {
+                    runtime_ids.get(&local_id).copied().ok_or_else(|| {
+                        format!(
+                            "artifact {} references missing local face id {}",
+                            artifact.card.name, local_id.0
+                        )
+                    })
+                })
+                .transpose()?;
+            if let Some(error) =
+                ironsmith::cards::unsupported_generated_definition_error(&definition)
+            {
+                return Err(error);
+            }
+            definitions.push(definition);
+        }
+        Ok(definitions)
+    }
+
     fn external_source_definition_names(source: &ExternalCardSourceFile) -> Vec<&str> {
         match &source.group {
             ExternalCardSourceGroup::Single { name, .. } => vec![name.as_str()],
@@ -100,6 +155,7 @@ impl WasmGame {
         Ok(definition)
     }
 
+    #[cfg(feature = "dynamic-compile")]
     fn compile_external_linked_group(
         &self,
         layout: &str,
@@ -118,15 +174,15 @@ impl WasmGame {
         };
         let front_id = CardId::new();
         let back_id = CardId::new();
-        let front_builder = ironsmith_compiler::CardDefinitionBuilder::new(front_id, &front.name);
-        let back_builder = ironsmith_compiler::CardDefinitionBuilder::new(back_id, &back.name);
-        let mut front_definition = ironsmith_registry::compile_builder_to_runtime_definition(
+        let front_builder = ironsmith_dynamic_compile::CompilerCardDefinitionBuilder::new(front_id, &front.name);
+        let back_builder = ironsmith_dynamic_compile::CompilerCardDefinitionBuilder::new(back_id, &back.name);
+        let mut front_definition = ironsmith_dynamic_compile::compile_builder_to_runtime_definition(
             front_builder,
             front.block.clone(),
             false,
         )
         .map_err(|err| format!("front face: {err}"))?;
-        let mut back_definition = ironsmith_registry::compile_builder_to_runtime_definition(
+        let mut back_definition = ironsmith_dynamic_compile::compile_builder_to_runtime_definition(
             back_builder,
             back.block.clone(),
             false,
@@ -156,6 +212,16 @@ impl WasmGame {
         }
 
         Ok(vec![front_definition, back_definition])
+    }
+
+    #[cfg(not(feature = "dynamic-compile"))]
+    fn compile_external_linked_group(
+        &self,
+        _layout: &str,
+        _faces: &[ExternalCardFaceSource],
+        _has_fuse: bool,
+    ) -> Result<Vec<CardDefinition>, String> {
+        Err("source compilation is provided by ironsmith-compiler-wasm; register compiled artifacts with the lean engine".to_string())
     }
 
     fn register_external_source_metadata(&mut self, source: &ExternalCardSourceFile) {
@@ -376,6 +442,81 @@ mod external_registry_tests {
 
 #[wasm_bindgen]
 impl WasmGame {
+    /// Register a compiler-produced card artifact in the parser-free engine.
+    #[wasm_bindgen(js_name = registerCompiledCardArtifact)]
+    pub fn register_compiled_card_artifact(
+        &mut self,
+        artifact_js: JsValue,
+    ) -> Result<(), JsValue> {
+        let artifact: CompiledCardArtifact = serde_wasm_bindgen::from_value(artifact_js)
+            .map_err(|err| JsValue::from_str(&format!("invalid compiled card artifact: {err}")))?;
+        let definitions = Self::materialize_compiled_artifact_batch(std::slice::from_ref(&artifact))
+            .map_err(|err| {
+                JsValue::from_str(&format!("compiled card registration failed: {err}"))
+            })?;
+        for definition in definitions {
+            self.registry.register(definition.clone());
+            self.game.register_linked_face_definition(&definition);
+        }
+        Ok(())
+    }
+
+    /// Register one source group after the compiler module has produced its
+    /// typed artifacts. Artifact-local face IDs are remapped atomically into
+    /// this engine session, so unrelated groups cannot collide.
+    #[wasm_bindgen(js_name = registerCompiledCardSourceArtifacts)]
+    pub fn register_compiled_card_source_artifacts(
+        &mut self,
+        source_js: JsValue,
+        artifacts_js: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let source: ExternalCardSourceFile = serde_wasm_bindgen::from_value(source_js)
+            .map_err(|err| JsValue::from_str(&format!("invalid card source payload: {err}")))?;
+        let artifacts: Vec<CompiledCardArtifact> = serde_wasm_bindgen::from_value(artifacts_js)
+            .map_err(|err| JsValue::from_str(&format!("invalid compiled artifact batch: {err}")))?;
+        let definition_names = Self::external_source_definition_names(&source);
+        if !source.replace_existing {
+            self.registry
+                .ensure_cards_loaded(definition_names.iter().copied());
+            if definition_names
+                .iter()
+                .any(|name| self.registry.get(name).is_some())
+            {
+                self.register_resolvable_external_aliases(&source.aliases);
+                return serde_wasm_bindgen::to_value(&ExternalCardRegistrationSummary {
+                    loaded: 0,
+                    failed: Vec::new(),
+                })
+                .map_err(|err| JsValue::from_str(&format!("card source summary encode failed: {err}")));
+            }
+        }
+
+        if artifacts.len() != definition_names.len() {
+            return Err(JsValue::from_str(&format!(
+                "compiled artifact batch has {} card(s), but source group has {}",
+                artifacts.len(),
+                definition_names.len()
+            )));
+        }
+        self.register_external_source_metadata(&source);
+        let definitions = Self::materialize_compiled_artifact_batch(&artifacts)
+            .map_err(|err| JsValue::from_str(&format!("compiled card registration failed: {err}")))?;
+        let loaded = definitions.len();
+        for definition in definitions {
+            self.clear_external_error(definition.name());
+            self.registry.register(definition.clone());
+            self.game.register_linked_face_definition(&definition);
+        }
+        for alias in source.aliases {
+            self.registry.register_alias(alias.alias, alias.canonical);
+        }
+        serde_wasm_bindgen::to_value(&ExternalCardRegistrationSummary {
+            loaded,
+            failed: Vec::new(),
+        })
+        .map_err(|err| JsValue::from_str(&format!("card source summary encode failed: {err}")))
+    }
+
     #[wasm_bindgen(js_name = registerExternalCardSourcesJson)]
     pub fn register_external_card_sources_json(
         &mut self,

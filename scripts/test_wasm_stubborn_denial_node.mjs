@@ -35,8 +35,12 @@ function packageBase(pkg) {
 async function initGame(pkg) {
   const base = packageBase(pkg);
   const wasmModule = await import(`${base}/ironsmith.js`);
-  const wasmBytes = await readFile(new URL(`${base}/ironsmith_bg.wasm`, import.meta.url));
-  await wasmModule.default({ module_or_path: wasmBytes });
+  const [engine, compiler, verifier] = await Promise.all([
+    readFile(new URL(`${base}/engine_bg.wasm`, import.meta.url)),
+    readFile(new URL(`${base}/compiler_bg.wasm`, import.meta.url)),
+    readFile(new URL(`${base}/verifier_bg.wasm`, import.meta.url)),
+  ]);
+  await wasmModule.default({ engine, compiler, verifier });
   return {
     game: new wasmModule.WasmGame(),
     packagePath: base.replace(/^\.\.\//, ""),

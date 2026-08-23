@@ -172,6 +172,9 @@ def collect_unique_blocks(
         toughness = face.get("toughness")
         loyalty = face.get("loyalty")
         defense = face.get("defense")
+        attraction_lights = face.get("attraction_lights") or card.get(
+            "attraction_lights"
+        )
 
         if not name or not type_line:
             return None
@@ -193,6 +196,11 @@ def collect_unique_blocks(
         if mana_cost:
             lines.append(f"Mana cost: {mana_cost}")
         lines.append(f"Type: {type_line}")
+        if isinstance(attraction_lights, list) and attraction_lights:
+            lines.append(
+                "Attraction lights: "
+                + ", ".join(str(light) for light in attraction_lights)
+            )
         if power is not None and toughness is not None:
             lines.append(f"Power/Toughness: {power}/{toughness}")
         if loyalty is not None:

@@ -1,0 +1,18 @@
+[package]
+name = "ironsmith-grammar-common"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ironsmith-core = { path = "../ironsmith-core", default-features = false, features = ["serde"] }
+ironsmith-compiler-api = { path = "../ironsmith-compiler-api", default-features = false }
+ironsmith-compiler-semantic = { path = "../ironsmith-compiler-semantic", default-features = false }
+ironsmith-compiler-syntax = { path = "../ironsmith-compiler-syntax", default-features = false }
+winnow = { version = "1.0.1", default-features = false, features = ["std", "ascii"] }
+
+[features]
+default = []
+test-support = []
+
+[lib]
+path = "src/lib.rs"

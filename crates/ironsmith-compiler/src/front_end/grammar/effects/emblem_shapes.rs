@@ -9,10 +9,10 @@ use crate::lexer::{LexStream, OwnedLexToken, TokenKind};
 use super::super::primitives;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct EmblemPayloadShape<'a> {
-    pub(crate) explicit_you: bool,
-    pub(crate) ability_groups: Vec<&'a [OwnedLexToken]>,
-    pub(crate) requires_whole_sentence_dispatch: bool,
+pub struct EmblemPayloadShape<'a> {
+    pub explicit_you: bool,
+    pub ability_groups: Vec<&'a [OwnedLexToken]>,
+    pub requires_whole_sentence_dispatch: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,9 +106,7 @@ fn emblem_payload<'a>(input: &mut LexStream<'a>) -> WResult<(bool, Vec<EmblemGro
     Ok((explicit_you, spans))
 }
 
-pub(crate) fn parse_emblem_payload_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<EmblemPayloadShape<'_>> {
+pub fn parse_emblem_payload_tokens(tokens: &[OwnedLexToken]) -> Option<EmblemPayloadShape<'_>> {
     let (explicit_you, spans) =
         primitives::parse_all(tokens, emblem_payload, "emblem typed ability payload").ok()?;
     let ability_groups = spans

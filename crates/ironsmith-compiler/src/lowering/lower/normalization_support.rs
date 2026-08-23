@@ -120,7 +120,7 @@ fn normalize_rewrite_line_ast(
     })
 }
 
-pub(crate) fn normalize_rewrite_line_ast_standalone(
+pub fn normalize_rewrite_line_ast_standalone(
     info: crate::cards::builders::LineInfo,
     chunks: Vec<LineAst>,
     restrictions: ParsedRestrictions,
@@ -364,7 +364,7 @@ fn prepare_parsed_item_to_normalized_item(
     }
 }
 
-pub(crate) fn prepare_parsed_card_ast_for_lowering(
+pub fn prepare_parsed_card_ast_for_lowering(
     ast: ParsedCardAst,
 ) -> Result<NormalizedCardAst, CardTextError> {
     let ParsedCardAst {
@@ -422,7 +422,7 @@ pub(crate) fn prepare_parsed_card_ast_for_lowering(
 }
 
 #[cfg(test)]
-pub(crate) fn rewrite_document_to_normalized_card_ast(
+pub fn rewrite_document_to_normalized_card_ast(
     doc: RewriteSemanticDocument,
 ) -> Result<NormalizedCardAst, CardTextError> {
     prepare_parsed_card_ast_for_lowering(super::super::semantic_document::parse_semantic_document(

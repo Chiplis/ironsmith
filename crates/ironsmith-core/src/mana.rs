@@ -1,6 +1,7 @@
 use crate::color::Color;
 
 /// Atomic mana payment options.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ManaSymbol {
     /// White mana {W}
@@ -65,6 +66,7 @@ impl ManaSymbol {
 /// - `{W/U}` (hybrid) = `[[White, Blue]]`
 /// - `{2/W}` (twobrid) = `[[Generic(2), White]]`
 /// - `{W/P}` (phyrexian) = `[[White, Life(2)]]`
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ManaCost {
     pips: Vec<Vec<ManaSymbol>>,

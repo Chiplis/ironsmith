@@ -4,6 +4,7 @@ use crate::{
     StaticAbilityId, Subtype, Zone,
 };
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ActivationTiming {
     #[default]
@@ -24,12 +25,14 @@ pub enum ActivationTiming {
     DuringSourceOwnersUpkeep,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManaUsageSubtypeRequirement {
     Exact(Subtype),
     ChosenTypeOfSource,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManaSpendBonusCondition {
     IfThisManaIsSpentToCast,
@@ -39,6 +42,7 @@ pub enum ManaSpendBonusCondition {
     WhenYouSpendThisManaToCast,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManaSpendAbilityGrantDuration {
     UntilEndOfTurn,
@@ -49,6 +53,7 @@ pub enum ManaSpendAbilityGrantDuration {
 ///
 /// These are kept separate from `StaticAbilityId`: some keywords, such as
 /// riot, lower to triggered gameplay abilities rather than a static marker.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManaSpendGrantedKeyword {
     Riot,
@@ -59,6 +64,7 @@ pub enum ManaSpendGrantedKeyword {
 /// This deliberately lives in the shared model rather than the runtime cost
 /// payer so a mana unit's predicate can be compiled without depending on the
 /// runtime crate.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManaPaymentPurpose {
     CastSpell,
@@ -72,6 +78,7 @@ pub enum ManaPaymentPurpose {
 }
 
 /// A composable predicate over the complete transaction a mana unit would pay.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
     clippy::large_enum_variant,
@@ -95,6 +102,7 @@ impl Eq for ManaPaymentPredicate {}
 ///
 /// Each matching unit creates its own copy of this program when spent, which
 /// is the per-unit multiplicity required by CR 106.6a.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ManaSpendPayload<E> {
     pub predicate: ManaPaymentPredicate,
@@ -104,6 +112,7 @@ pub struct ManaSpendPayload<E> {
 
 impl<E: PartialEq> Eq for ManaSpendPayload<E> {}
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
     clippy::large_enum_variant,
@@ -235,6 +244,7 @@ impl<E> ManaUsageRestriction<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RestrictedManaUnit<E> {
     pub symbol: ManaSymbol,
@@ -245,12 +255,14 @@ pub struct RestrictedManaUnit<E> {
 
 impl<E: PartialEq> Eq for RestrictedManaUnit<E> {}
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ability<SA, T, E, C> {
     pub kind: AbilityKind<SA, T, E, C>,
     pub functional_zones: Vec<Zone>,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum AbilityKind<SA, T, E, C> {
     Static(SA),
@@ -258,6 +270,7 @@ pub enum AbilityKind<SA, T, E, C> {
     Activated(ActivatedAbility<E, C>),
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProtectionFrom {
     Color(ColorSet),
@@ -272,6 +285,7 @@ pub enum ProtectionFrom {
     Everything,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct LevelAbility<SA> {
     pub min_level: u32,
@@ -280,6 +294,7 @@ pub struct LevelAbility<SA> {
     pub abilities: Vec<SA>,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PresentationKeyword {
     Prowess,
@@ -370,6 +385,7 @@ impl PresentationKeyword {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ActivatedPresentationLabel {
     Throw,
@@ -420,6 +436,7 @@ impl ActivatedPresentationLabel {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PresentationLabel {
     AbilityWord(String),
@@ -484,6 +501,7 @@ impl PresentationLabel {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TriggeredAbility<T, E> {
     pub trigger: T,
@@ -493,6 +511,7 @@ pub struct TriggeredAbility<T, E> {
     pub presentation_label: Option<PresentationLabel>,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ActivatedAbility<E, C> {
     pub mana_cost: TotalCost<C>,

@@ -74,10 +74,7 @@ fn triggering_same_mana_value_filter() -> ObjectFilter {
 /// the source tokens explicitly anchor the adjective immediately before
 /// `land(s)`, split that mixed branch and retain the Basic exclusion only on
 /// the land arm.
-pub(crate) fn preserve_terminal_nonbasic_land_union(
-    tokens: &[OwnedLexToken],
-    filter: &mut ObjectFilter,
-) {
+pub fn preserve_terminal_nonbasic_land_union(tokens: &[OwnedLexToken], filter: &mut ObjectFilter) {
     let adjective_is_land_local = tokens.windows(2).any(|window| {
         window[0].is_word("nonbasic") && (window[1].is_word("land") || window[1].is_word("lands"))
     });
@@ -144,7 +141,7 @@ pub(crate) fn preserve_terminal_nonbasic_land_union(
     filter.any_of = branches;
 }
 
-pub(crate) fn parse_sacrifice(
+pub fn parse_sacrifice(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
     target: Option<TargetAst>,
@@ -588,7 +585,7 @@ pub(crate) fn parse_sacrifice(
     Ok(wrap_unless_escaped(effect, unless_escaped))
 }
 
-pub(crate) fn parse_discard(
+pub fn parse_discard(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -829,7 +826,7 @@ pub(crate) fn parse_discard(
     ))
 }
 
-pub(crate) fn discard_subject_owner_filter(subject: Option<SubjectAst>) -> Option<PlayerFilter> {
+pub fn discard_subject_owner_filter(subject: Option<SubjectAst>) -> Option<PlayerFilter> {
     match subject {
         Some(SubjectAst::Player(PlayerAst::Target)) => Some(PlayerFilter::target_player()),
         Some(SubjectAst::Player(PlayerAst::TargetOpponent)) => {

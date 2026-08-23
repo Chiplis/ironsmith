@@ -11,12 +11,13 @@ import sys
 import tempfile
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlparse
 
 from stream_scryfall_blocks import (
     SUPPORTED_PAPER_FORMATS,
     is_legal_in_supported_paper_format,
     is_non_paper_print,
-    iter_json_array,
+    iter_cards,
 )
 
 
@@ -50,6 +51,19 @@ def download_file(url: str, destination: Path) -> None:
     )
     with urllib.request.urlopen(request) as response, destination.open("wb") as out:
         shutil.copyfileobj(response, out)
+
+
+def bulk_download_uri(metadata: dict) -> str:
+    """Scryfall serves gzipped JSONL now; older payloads exposed a JSON array."""
+    for key in ("jsonl_download_uri", "download_uri"):
+        uri = str(metadata.get(key) or "").strip()
+        if uri:
+            return uri
+    return ""
+
+
+def download_file_name(uri: str) -> str:
+    return Path(urlparse(uri).path).name or "default-cards.json"
 
 
 def default_metadata_path(out: Path) -> Path:
@@ -107,7 +121,7 @@ def write_download_metadata(
         "type": metadata.get("type"),
         "name": metadata.get("name"),
         "uri": metadata.get("uri"),
-        "download_uri": metadata.get("download_uri"),
+        "download_uri": bulk_download_uri(metadata),
         "updated_at": metadata.get("updated_at"),
         "total_entries": total,
         "kept_cards": kept,
@@ -170,7 +184,7 @@ def write_filtered_cards(source: Path, destination: Path) -> tuple[int, int]:
     selected: dict[tuple[str, str], dict] = {}
     earliest_printings: dict[tuple[str, str], dict] = {}
 
-    for card in iter_json_array(source):
+    for card in iter_cards(source):
         total += 1
         if not should_keep_card(card):
             continue
@@ -234,7 +248,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--input",
         type=Path,
-        help="Use an existing Default Cards dump (.json or .json.gz) instead of downloading.",
+        help=(
+            "Use an existing Default Cards dump (.json, .jsonl, or either gzipped) "
+            "instead of downloading."
+        ),
     )
     parser.add_argument(
         "--metadata-out",
@@ -266,9 +283,12 @@ def main() -> int:
         metadata = None
     else:
         metadata = fetch_json(BULK_DATA_URL)
-        download_uri = metadata.get("download_uri")
+        download_uri = bulk_download_uri(metadata)
         if not download_uri:
-            print("Failed to find download_uri in Scryfall bulk-data metadata.", file=sys.stderr)
+            print(
+                "Failed to find a download URI in Scryfall bulk-data metadata.",
+                file=sys.stderr,
+            )
             return 1
 
         if (
@@ -284,7 +304,7 @@ def main() -> int:
             return 0
 
         with tempfile.TemporaryDirectory(prefix="ironsmith-scryfall-") as tmpdir:
-            source = Path(tmpdir) / "default-cards.json"
+            source = Path(tmpdir) / download_file_name(download_uri)
             print(f"[INFO] downloading {download_uri}", file=sys.stderr)
             download_file(download_uri, source)
             total, kept = write_filtered_cards(source, args.out)

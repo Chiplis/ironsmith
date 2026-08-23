@@ -13,9 +13,7 @@ use crate::static_abilities::StaticAbility;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
 
-pub(crate) fn parse_buyback(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<OptionalCost>, CardTextError> {
+pub fn parse_buyback(tokens: &[OwnedLexToken]) -> Result<Option<OptionalCost>, CardTextError> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     if !permission_shapes::prefix_words(&words, &["buyback"]) {
@@ -35,7 +33,7 @@ pub(crate) fn parse_buyback(
     )?)))
 }
 
-pub(crate) fn parse_optional_cost(
+pub fn parse_optional_cost(
     tokens: &[OwnedLexToken],
     keyword: &str,
     constructor: fn(TotalCost) -> OptionalCost,
@@ -90,9 +88,7 @@ impl MorphKind {
     }
 }
 
-pub(crate) fn parse_morph(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<ParsedAbility>, CardTextError> {
+pub fn parse_morph(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility>, CardTextError> {
     let words = TokenWordView::new(tokens).word_refs();
     let Some(kind) = words.first().and_then(|word| match *word {
         "morph" => Some(MorphKind::Morph),
@@ -140,7 +136,7 @@ pub(crate) fn parse_morph(
     }))
 }
 
-pub(crate) fn parse_escape(
+pub fn parse_escape(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     let view = TokenWordView::new(tokens);
@@ -219,7 +215,7 @@ pub(crate) fn parse_escape(
     }))
 }
 
-pub(crate) fn parse_jump_start(tokens: &[OwnedLexToken]) -> Option<AlternativeCastingMethod> {
+pub fn parse_jump_start(tokens: &[OwnedLexToken]) -> Option<AlternativeCastingMethod> {
     let words = TokenWordView::new(tokens).word_refs();
     (permission_shapes::prefix_words(&words, &["jumpstart"])
         || permission_shapes::prefix_words(&words, &["jump", "start"]))
@@ -228,7 +224,7 @@ pub(crate) fn parse_jump_start(tokens: &[OwnedLexToken]) -> Option<AlternativeCa
     })
 }
 
-pub(crate) fn parse_bestow(
+pub fn parse_bestow(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     if !starts_with_keyword(tokens, "bestow") {
@@ -253,7 +249,7 @@ pub(crate) fn parse_bestow(
     Ok(Some(AlternativeCastingMethod::Bestow { total_cost }))
 }
 
-pub(crate) fn parse_blitz(
+pub fn parse_blitz(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     if !starts_with_keyword(tokens, "blitz") {
@@ -288,9 +284,7 @@ pub(crate) fn parse_blitz(
     Ok(Some(AlternativeCastingMethod::Blitz { total_cost }))
 }
 
-pub(crate) fn parse_transmute(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<ParsedAbility>, CardTextError> {
+pub fn parse_transmute(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility>, CardTextError> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     if !permission_shapes::prefix_words(&words, &["transmute"])
@@ -346,9 +340,7 @@ pub(crate) fn parse_transmute(
     }))
 }
 
-pub(crate) fn parse_transfigure(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<ParsedAbility>, CardTextError> {
+pub fn parse_transfigure(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility>, CardTextError> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     if !permission_shapes::prefix_words(&words, &["transfigure"])

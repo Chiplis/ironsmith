@@ -2,27 +2,27 @@ use super::*;
 use crate::lexer::LexStream;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CombatRequirementKind {
+pub enum CombatRequirementKind {
     AttackOrBlock,
     Attack,
     MustBeBlocked,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CombatRequirementDuration {
+pub enum CombatRequirementDuration {
     Turn,
     Combat,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CombatRequirementShape<'a> {
-    pub(crate) kind: CombatRequirementKind,
-    pub(crate) duration: CombatRequirementDuration,
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
+pub struct CombatRequirementShape<'a> {
+    pub kind: CombatRequirementKind,
+    pub duration: CombatRequirementDuration,
+    pub subject_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum MustBlockShape<'a> {
+pub enum MustBlockShape<'a> {
     SubjectThisTurn {
         subject_tokens: &'a [OwnedLexToken],
     },
@@ -36,7 +36,7 @@ pub(crate) enum MustBlockShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DurationTriggerPrefixShape {
+pub enum DurationTriggerPrefixShape {
     UntilEndOfTurn,
     UntilYourNextTurn,
     UntilYourNextUpkeep,
@@ -45,7 +45,7 @@ pub(crate) enum DurationTriggerPrefixShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TriggerClauseIntroShape {
+pub enum TriggerClauseIntroShape {
     Event,
     Step,
 }
@@ -143,7 +143,7 @@ fn combat_requirement<'a>(input: &mut LexStream<'a>) -> WResult<CombatRequiremen
     .parse_next(input)
 }
 
-pub(crate) fn parse_combat_requirement_shape(
+pub fn parse_combat_requirement_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<CombatRequirementShape<'_>> {
     let shape = primitives::parse_all(
@@ -222,7 +222,7 @@ fn subject_blocks_attacker<'a>(input: &mut LexStream<'a>) -> WResult<MustBlockSh
     })
 }
 
-pub(crate) fn parse_must_block_shape(tokens: &[OwnedLexToken]) -> Option<MustBlockShape<'_>> {
+pub fn parse_must_block_shape(tokens: &[OwnedLexToken]) -> Option<MustBlockShape<'_>> {
     primitives::parse_all(
         trim_shape_edges(tokens),
         alt((
@@ -235,7 +235,7 @@ pub(crate) fn parse_must_block_shape(tokens: &[OwnedLexToken]) -> Option<MustBlo
     .ok()
 }
 
-pub(crate) fn parse_duration_trigger_prefix_shape(
+pub fn parse_duration_trigger_prefix_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DurationTriggerPrefixShape> {
     primitives::parse_prefix(
@@ -256,7 +256,7 @@ pub(crate) fn parse_duration_trigger_prefix_shape(
     .map(|(shape, _)| shape)
 }
 
-pub(crate) fn parse_trigger_clause_intro_shape(
+pub fn parse_trigger_clause_intro_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<TriggerClauseIntroShape> {
     primitives::parse_prefix(

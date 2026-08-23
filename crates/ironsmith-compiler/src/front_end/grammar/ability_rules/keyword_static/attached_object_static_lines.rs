@@ -86,7 +86,7 @@ fn parse_attached_combat_restriction_and_loses_all_abilities_line(
     ]))
 }
 
-pub(crate) fn parse_attached_conditional_loses_all_abilities_line(
+pub fn parse_attached_conditional_loses_all_abilities_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(comma_idx) = tokens.iter().position(|token| token.kind == TokenKind::Comma) else {
@@ -126,7 +126,7 @@ pub(crate) fn parse_attached_conditional_loses_all_abilities_line(
 /// is routed through the same typed attached-object parsers as an explicit
 /// subject, so the pronoun cannot silently fall back to the Aura itself or to
 /// every permanent.
-pub(crate) fn parse_carried_attached_subject_line(
+pub fn parse_carried_attached_subject_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let sentences = crate::lexer::split_lexed_sentences(tokens);
@@ -302,7 +302,7 @@ fn parse_attached_otherwise_has_keyword_sentence(
     )
 }
 
-pub(crate) fn parse_attached_conditional_keyword_otherwise_line(
+pub fn parse_attached_conditional_keyword_otherwise_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let sentences = crate::lexer::split_lexed_sentences(tokens);
@@ -325,7 +325,7 @@ pub(crate) fn parse_attached_conditional_keyword_otherwise_line(
     Ok(Some(grants))
 }
 
-pub(crate) fn annihilator_granted_ability(amount: u32) -> Ability {
+pub fn annihilator_granted_ability(amount: u32) -> Ability {
     Ability {
         kind: AbilityKind::Triggered(TriggeredAbility {
             trigger: Trigger::this_attacks(),
@@ -353,7 +353,7 @@ fn parse_attached_with_base_power_toughness_clause(
     )
 }
 
-pub(crate) fn display_text_for_tokens(
+pub fn display_text_for_tokens(
     tokens: &[OwnedLexToken],
     capitalize_effect_start: bool,
 ) -> String {
@@ -485,7 +485,7 @@ fn parse_attached_granted_activated_line(
     )
 }
 
-pub(crate) fn parse_attached_land_ability_reset_line(
+pub fn parse_attached_land_ability_reset_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(shape) = attached_grammar::parse_attached_land_ability_reset_tokens(tokens) else {
@@ -588,7 +588,7 @@ fn parse_attached_nonstatic_keyword_ability(
     Ok(Some((parsed, display)))
 }
 
-pub(crate) fn cumulative_upkeep_granted_ability(total_cost: TotalCost) -> Ability {
+pub fn cumulative_upkeep_granted_ability(total_cost: TotalCost) -> Ability {
     let payment_effects = crate::costs::total_cost_to_payment_effects(&total_cost);
 
     Ability {
@@ -610,7 +610,7 @@ pub(crate) fn cumulative_upkeep_granted_ability(total_cost: TotalCost) -> Abilit
     }
 }
 
-pub(crate) fn parse_equipped_creature_has_line(
+pub fn parse_equipped_creature_has_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(has) = attached_grammar::parse_equipped_creature_has_tokens(tokens) else {
@@ -632,7 +632,7 @@ pub(crate) fn parse_equipped_creature_has_line(
     )
 }
 
-pub(crate) fn parse_enchanted_creature_has_line(
+pub fn parse_enchanted_creature_has_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let tokens = super::grammar::line_families::parse_visible_line_tokens(tokens);
@@ -802,7 +802,7 @@ pub(crate) fn parse_enchanted_creature_has_line(
 /// into the object filter of a one-shot goad effect. That changes
 /// "has indestructible and is goaded" into "goad each creature that already
 /// has indestructible."
-pub(crate) fn parse_attached_has_keywords_and_is_goaded_line(
+pub fn parse_attached_has_keywords_and_is_goaded_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let tokens = super::grammar::line_families::parse_visible_line_tokens(tokens);
@@ -853,7 +853,7 @@ pub(crate) fn parse_attached_has_keywords_and_is_goaded_line(
 /// Parsing the second sentence as a spell-resolution `MayEffect` would make
 /// the sacrifice happen when the Aura resolves and would lose the
 /// "ignore ... until end of turn" semantics entirely.
-pub(crate) fn parse_attached_restrictions_with_ignore_special_action_line(
+pub fn parse_attached_restrictions_with_ignore_special_action_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let sentences = crate::lexer::split_lexed_sentences(tokens);
@@ -965,7 +965,7 @@ pub(crate) fn parse_attached_restrictions_with_ignore_special_action_line(
     ]))
 }
 
-pub(crate) fn parse_attached_has_and_loses_keywords_line(
+pub fn parse_attached_has_and_loses_keywords_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(parsed) = attached_grammar::parse_attached_has_and_loses_tokens(tokens) else {
@@ -1018,7 +1018,7 @@ pub(crate) fn parse_attached_has_and_loses_keywords_line(
     Ok(Some(result))
 }
 
-pub(crate) fn parse_attached_cant_attack_or_block_line(
+pub fn parse_attached_cant_attack_or_block_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let Some(parsed) = attached_grammar::parse_attached_combat_restriction_tokens(tokens) else {
@@ -1052,7 +1052,7 @@ pub(crate) fn parse_attached_cant_attack_or_block_line(
     }))
 }
 
-pub(crate) fn parse_attached_all_creatures_able_to_block_line(
+pub fn parse_attached_all_creatures_able_to_block_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let Some(subject) = attached_grammar::parse_all_creatures_block_attached_tokens(tokens) else {
@@ -1073,7 +1073,7 @@ pub(crate) fn parse_attached_all_creatures_able_to_block_line(
     }))
 }
 
-pub(crate) fn parse_attached_tap_abilities_cant_be_activated_line(
+pub fn parse_attached_tap_abilities_cant_be_activated_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let Some(subject) = attached_grammar::parse_attached_tap_ability_restriction_tokens(tokens)
@@ -1095,7 +1095,7 @@ pub(crate) fn parse_attached_tap_abilities_cant_be_activated_line(
     }))
 }
 
-pub(crate) fn parse_you_control_attached_creature_line(
+pub fn parse_you_control_attached_creature_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if attached_grammar::parse_you_control_attached_tokens(tokens).is_none() {
@@ -1107,7 +1107,7 @@ pub(crate) fn parse_you_control_attached_creature_line(
     )))
 }
 
-pub(crate) fn parse_attached_gets_and_cant_block_line(
+pub fn parse_attached_gets_and_cant_block_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(parsed) = attached_grammar::parse_attached_gets_tail_tokens(tokens) else {
@@ -1188,7 +1188,7 @@ pub(crate) fn parse_attached_gets_and_cant_block_line(
     Ok(Some(vec![anthem.into(), granted]))
 }
 
-pub(crate) fn parse_attached_type_transform_line(
+pub fn parse_attached_type_transform_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(parsed) = attached_grammar::parse_attached_transform_tokens(tokens) else {
@@ -1386,7 +1386,7 @@ pub(crate) fn parse_attached_type_transform_line(
     Ok(Some(out))
 }
 
-pub(crate) fn parse_prevent_damage_to_source_remove_counter_line(
+pub fn parse_prevent_damage_to_source_remove_counter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let Some(spec) = attached_grammar::parse_remove_counter_prevention_tokens(tokens) else {
@@ -1395,7 +1395,7 @@ pub(crate) fn parse_prevent_damage_to_source_remove_counter_line(
     lower_remove_counter_prevention_spec(spec).map(Some)
 }
 
-pub(crate) fn lower_remove_counter_prevention_spec(
+pub fn lower_remove_counter_prevention_spec(
     spec: attached_grammar::RemoveCounterPreventionSpec<'_>,
 ) -> Result<StaticAbilityAst, CardTextError> {
     let amount = match spec.amount {
@@ -1435,7 +1435,7 @@ pub(crate) fn lower_remove_counter_prevention_spec(
     })
 }
 
-pub(crate) fn parse_prevent_damage_to_source_put_counters_line(
+pub fn parse_prevent_damage_to_source_put_counters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let Some(parsed) = attached_grammar::parse_put_counter_prevention_tokens(tokens) else {
@@ -1494,7 +1494,7 @@ pub(crate) fn parse_prevent_damage_to_source_put_counters_line(
     }))
 }
 
-pub(crate) fn parse_attached_prevent_all_damage_dealt_by_attached_line(
+pub fn parse_attached_prevent_all_damage_dealt_by_attached_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     if attached_grammar::parse_attached_prevent_all_tokens(tokens)
@@ -1512,7 +1512,7 @@ pub(crate) fn parse_attached_prevent_all_damage_dealt_by_attached_line(
     }))
 }
 
-pub(crate) fn parse_attached_prevent_all_damage_dealt_to_and_by_attached_line(
+pub fn parse_attached_prevent_all_damage_dealt_to_and_by_attached_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     if attached_grammar::parse_attached_prevent_all_tokens(tokens)
@@ -1531,7 +1531,7 @@ pub(crate) fn parse_attached_prevent_all_damage_dealt_to_and_by_attached_line(
     }))
 }
 
-pub(crate) fn parse_attached_prevent_all_combat_damage_dealt_by_attached_line(
+pub fn parse_attached_prevent_all_combat_damage_dealt_by_attached_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     if attached_grammar::parse_attached_prevent_all_tokens(tokens)
@@ -1549,7 +1549,7 @@ pub(crate) fn parse_attached_prevent_all_combat_damage_dealt_by_attached_line(
     }))
 }
 
-pub(crate) fn parse_attached_prevent_all_damage_dealt_to_attached_line(
+pub fn parse_attached_prevent_all_damage_dealt_to_attached_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     if attached_grammar::parse_attached_prevent_all_tokens(tokens)
@@ -1567,7 +1567,7 @@ pub(crate) fn parse_attached_prevent_all_damage_dealt_to_attached_line(
     }))
 }
 
-pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
+pub fn parse_attached_has_keywords_and_triggered_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(parsed) = attached_grammar::parse_attached_keywords_and_trigger_tokens(tokens) else {
@@ -1663,7 +1663,7 @@ pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
     Ok(Some(static_abilities))
 }
 
-pub(crate) fn parse_attached_is_legendary_gets_and_has_keywords_line(
+pub fn parse_attached_is_legendary_gets_and_has_keywords_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(parsed) = attached_grammar::parse_attached_legendary_gets_has_tokens(tokens) else {
@@ -1710,7 +1710,7 @@ pub(crate) fn parse_attached_is_legendary_gets_and_has_keywords_line(
     Ok(Some(out))
 }
 
-pub(crate) fn parse_attached_gets_and_has_ability_line(
+pub fn parse_attached_gets_and_has_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(shape) = attached_grammar::parse_attached_gets_and_has_tokens(tokens) else {
@@ -1838,7 +1838,7 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
     )))
 }
 
-pub(crate) fn parse_equipped_gets_and_has_activated_ability_line(
+pub fn parse_equipped_gets_and_has_activated_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(shape) = attached_grammar::parse_equipped_activated_grant_tokens(tokens) else {
@@ -1876,7 +1876,7 @@ pub(crate) fn parse_equipped_gets_and_has_activated_ability_line(
     Ok(Some(static_abilities))
 }
 
-pub(crate) fn parse_enchanted_has_activated_ability_line(
+pub fn parse_enchanted_has_activated_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let Some(shape) = attached_grammar::parse_attached_has_tokens(tokens) else {

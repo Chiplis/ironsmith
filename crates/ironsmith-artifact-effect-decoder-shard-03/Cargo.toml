@@ -1,0 +1,16 @@
+[package]
+name = "ironsmith-runtime-effect-permanent"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ironsmith-core = { path = "../ironsmith-core", default-features = false, features = ["serde"] }
+ironsmith-compiled-artifact = { path = "../ironsmith-compiled-artifact", default-features = false }
+serde = "1.0.228"
+serde_json = "1.0.149"
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []

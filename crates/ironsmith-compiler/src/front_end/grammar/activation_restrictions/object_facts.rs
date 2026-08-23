@@ -12,30 +12,30 @@ use super::clause_facts::{exact, exact_any, prefix};
 use crate::lexer::{LexStream, OwnedLexToken, TokenWordView};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActivatedAbilityOwnerScope {
+pub enum ActivatedAbilityOwnerScope {
     All,
     TapCostOnly,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ActivatedAbilityOwnerShape {
-    pub(crate) owner_tokens: Range<usize>,
-    pub(crate) scope: ActivatedAbilityOwnerScope,
+pub struct ActivatedAbilityOwnerShape {
+    pub owner_tokens: Range<usize>,
+    pub scope: ActivatedAbilityOwnerScope,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ItOwnerReference;
+pub struct ItOwnerReference;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PossessiveActivatedAbilitySubject;
+pub struct PossessiveActivatedAbilitySubject;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TargetIndicatorShape {
-    pub(crate) consumed: usize,
+pub struct TargetIndicatorShape {
+    pub consumed: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum TargetRestrictionEnvelope {
+pub enum TargetRestrictionEnvelope {
     FilteredSources {
         spell_descriptor_tokens: Option<Range<usize>>,
         source_descriptor_tokens: Range<usize>,
@@ -47,7 +47,7 @@ pub(crate) enum TargetRestrictionEnvelope {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum NegatedObjectTailShape {
+pub enum NegatedObjectTailShape {
     AttackYou,
     AttackYouOrPlaneswalkers,
     BeBlockedExceptBy { payload_words: usize },
@@ -58,14 +58,14 @@ pub(crate) enum NegatedObjectTailShape {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AndOrSeparatorFacts {
-    pub(crate) separators: Vec<Range<usize>>,
+pub struct AndOrSeparatorFacts {
+    pub separators: Vec<Range<usize>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BePreventedTail;
+pub struct BePreventedTail;
 
-pub(crate) fn parse_activated_ability_owner_shape_tokens(
+pub fn parse_activated_ability_owner_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivatedAbilityOwnerShape> {
     let view = TokenWordView::new(tokens);
@@ -129,11 +129,11 @@ pub(crate) fn parse_activated_ability_owner_shape_tokens(
     })
 }
 
-pub(crate) fn parse_it_owner_reference_words(words: &[&str]) -> Option<ItOwnerReference> {
+pub fn parse_it_owner_reference_words(words: &[&str]) -> Option<ItOwnerReference> {
     exact_any(words, &[&["it"], &["its"], &["them"], &["their"]]).then_some(ItOwnerReference)
 }
 
-pub(crate) fn parse_possessive_activated_ability_subject_tokens(
+pub fn parse_possessive_activated_ability_subject_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PossessiveActivatedAbilitySubject> {
     let words = TokenWordView::new(tokens).word_refs();
@@ -142,9 +142,7 @@ pub(crate) fn parse_possessive_activated_ability_subject_tokens(
     .then_some(PossessiveActivatedAbilitySubject)
 }
 
-pub(crate) fn parse_target_indicator_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<TargetIndicatorShape> {
+pub fn parse_target_indicator_tokens(tokens: &[OwnedLexToken]) -> Option<TargetIndicatorShape> {
     let mut input = LexStream::new(tokens);
     let initial_len = input.len();
     parse_target_indicator_lexed.parse_next(&mut input).ok()?;
@@ -178,7 +176,7 @@ fn parse_target_indicator_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     primitives::kw("target").void().parse_next(input)
 }
 
-pub(crate) fn parse_target_restriction_envelope_tokens(
+pub fn parse_target_restriction_envelope_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TargetRestrictionEnvelope> {
     let view = TokenWordView::new(tokens);
@@ -225,7 +223,7 @@ pub(crate) fn parse_target_restriction_envelope_tokens(
     })
 }
 
-pub(crate) fn parse_negated_object_tail_words(words: &[&str]) -> Option<NegatedObjectTailShape> {
+pub fn parse_negated_object_tail_words(words: &[&str]) -> Option<NegatedObjectTailShape> {
     if exact(words, &["attack", "you"]) {
         // "can't attack you" leaves the player's planeswalkers attackable —
         // a distinct, narrower restriction than the Ghostly Prison shape.
@@ -258,7 +256,7 @@ pub(crate) fn parse_negated_object_tail_words(words: &[&str]) -> Option<NegatedO
     }
 }
 
-pub(crate) fn parse_and_or_separator_facts_tokens(
+pub fn parse_and_or_separator_facts_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AndOrSeparatorFacts> {
     let mut separators = Vec::new();
@@ -279,7 +277,7 @@ pub(crate) fn parse_and_or_separator_facts_tokens(
     (!separators.is_empty()).then_some(AndOrSeparatorFacts { separators })
 }
 
-pub(crate) fn parse_be_prevented_tail_words(words: &[&str]) -> Option<BePreventedTail> {
+pub fn parse_be_prevented_tail_words(words: &[&str]) -> Option<BePreventedTail> {
     exact(words, &["be", "prevented"]).then_some(BePreventedTail)
 }
 

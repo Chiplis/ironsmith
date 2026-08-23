@@ -10,19 +10,19 @@ use super::super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::super::primitives;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct AggregateChoiceComplementShape {
-    pub(crate) chooser: PlayerAst,
-    pub(crate) filter: ObjectFilter,
-    pub(crate) count: ChoiceCount,
-    pub(crate) constraint: ChoiceAggregateConstraint,
+pub struct AggregateChoiceComplementShape {
+    pub chooser: PlayerAst,
+    pub filter: ObjectFilter,
+    pub count: ChoiceCount,
+    pub constraint: ChoiceAggregateConstraint,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct DistinctSlotChoiceComplementShape {
-    pub(crate) chooser: PlayerAst,
-    pub(crate) filter: ObjectFilter,
-    pub(crate) slot_filters: Vec<ObjectFilter>,
-    pub(crate) count_per_slot: ChoiceCount,
+pub struct DistinctSlotChoiceComplementShape {
+    pub chooser: PlayerAst,
+    pub filter: ObjectFilter,
+    pub slot_filters: Vec<ObjectFilter>,
+    pub count_per_slot: ChoiceCount,
 }
 
 fn controlled_creature_filter() -> ObjectFilter {
@@ -74,7 +74,7 @@ fn parse_aggregate_choice_complement_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_aggregate_choice_complement_shape(
+pub fn parse_aggregate_choice_complement_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<AggregateChoiceComplementShape> {
     primitives::parse_all(
@@ -122,7 +122,7 @@ fn parse_party_choice_complement_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_party_choice_complement_shape(
+pub fn parse_party_choice_complement_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DistinctSlotChoiceComplementShape> {
     primitives::parse_all(

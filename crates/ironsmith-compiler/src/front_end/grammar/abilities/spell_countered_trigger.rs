@@ -10,9 +10,9 @@ use crate::target::PlayerFilter;
 use super::super::primitives;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SpellCounteredTriggerSpec<'a> {
-    pub(crate) filter_tokens: Option<&'a [OwnedLexToken]>,
-    pub(crate) controller: PlayerFilter,
+pub struct SpellCounteredTriggerSpec<'a> {
+    pub filter_tokens: Option<&'a [OwnedLexToken]>,
+    pub controller: PlayerFilter,
 }
 
 fn parse_cast_verb<'a>(input: &mut LexStream<'a>) -> Result<(), ErrMode<ContextError>> {
@@ -192,7 +192,7 @@ fn parse_spell_countered_trigger_spec<'a>(
     })
 }
 
-pub(crate) fn parse_spell_countered_trigger_spec_lexed(
+pub fn parse_spell_countered_trigger_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<SpellCounteredTriggerSpec<'_>> {
     primitives::parse_prefix(tokens, parse_spell_countered_trigger_spec).map(|(spec, _)| spec)

@@ -12,20 +12,20 @@ use super::nearby_primitives::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActivatedAbilitySpecialSubject {
+pub enum ActivatedAbilitySpecialSubject {
     ChosenName,
     TwoCardTypes(CardType, CardType),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DynamicPlayerKind {
+pub enum DynamicPlayerKind {
     You,
     Opponent,
     Any,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EarlyStaticMarkerKind {
+pub enum EarlyStaticMarkerKind {
     XMaximumPlayerCount,
     XMinimumOne,
     ExhaustAsUnactivated,
@@ -37,7 +37,7 @@ pub(crate) enum EarlyStaticMarkerKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StaticTextMarkerKind {
+pub enum StaticTextMarkerKind {
     Banding,
     AuraRetentionClarification,
     YouHaveHexproof,
@@ -46,7 +46,7 @@ pub(crate) enum StaticTextMarkerKind {
     DoubleDamageToEnchantedPlayer,
 }
 
-pub(crate) fn parse_activated_ability_special_subject_tokens(
+pub fn parse_activated_ability_special_subject_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivatedAbilitySpecialSubject> {
     primitives::parse_all(
@@ -65,7 +65,7 @@ pub(crate) fn parse_activated_ability_special_subject_tokens(
     .ok()
 }
 
-pub(crate) fn parse_cards_drawn_this_turn_player_tokens(
+pub fn parse_cards_drawn_this_turn_player_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DynamicPlayerKind> {
     let mut input = LexStream::new(tokens);
@@ -85,7 +85,7 @@ pub(crate) fn parse_cards_drawn_this_turn_player_tokens(
     Some(player)
 }
 
-pub(crate) fn parse_spell_cast_this_turn_player_tokens(
+pub fn parse_spell_cast_this_turn_player_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DynamicPlayerKind> {
     find_semantic(tokens, || {
@@ -102,9 +102,7 @@ pub(crate) fn parse_spell_cast_this_turn_player_tokens(
     }
 }
 
-pub(crate) fn parse_early_static_marker_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<EarlyStaticMarkerKind> {
+pub fn parse_early_static_marker_tokens(tokens: &[OwnedLexToken]) -> Option<EarlyStaticMarkerKind> {
     if parse_living_metal_tokens(tokens) {
         return Some(EarlyStaticMarkerKind::LivingMetal);
     }
@@ -173,7 +171,7 @@ fn parse_living_metal_tokens(tokens: &[OwnedLexToken]) -> bool {
             .is_some_and(|token| matches!(token.kind, TokenKind::LParen | TokenKind::Period))
 }
 
-pub(crate) fn parse_static_text_marker_kind_tokens(
+pub fn parse_static_text_marker_kind_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<StaticTextMarkerKind> {
     primitives::parse_all(
@@ -234,7 +232,7 @@ pub(crate) fn parse_static_text_marker_kind_tokens(
     .ok()
 }
 
-pub(crate) fn parse_revealed_hand_as_enters_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_revealed_hand_as_enters_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
     semantic_all(
         tokens,
         semantic_phrase(&["each", "opponent", "reveals", "their", "hand"]),
@@ -242,7 +240,7 @@ pub(crate) fn parse_revealed_hand_as_enters_tail_tokens(tokens: &[OwnedLexToken]
     )
 }
 
-pub(crate) fn parse_choose_revealed_nonland_name_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_choose_revealed_nonland_name_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
     semantic_all(
         tokens,
         semantic_phrase(&[
@@ -252,7 +250,7 @@ pub(crate) fn parse_choose_revealed_nonland_name_tail_tokens(tokens: &[OwnedLexT
     )
 }
 
-pub(crate) fn parse_trigger_duplication_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_trigger_duplication_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
     semantic_all(
         tokens,
         (

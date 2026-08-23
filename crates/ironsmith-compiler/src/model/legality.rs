@@ -5,7 +5,7 @@ use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum TurnOwnerAst {
+pub enum TurnOwnerAst {
     Any,
     You,
     Opponent,
@@ -14,7 +14,7 @@ pub(crate) enum TurnOwnerAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PhaseStepAst {
+pub enum PhaseStepAst {
     Untap,
     Upkeep,
     Draw,
@@ -30,7 +30,7 @@ pub(crate) enum PhaseStepAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum TimingWindowAst {
+pub enum TimingWindowAst {
     AnyTime,
     SorcerySpeed,
     DuringTurn(TurnOwnerAst),
@@ -50,14 +50,14 @@ pub(crate) enum TimingWindowAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LegalityRelationshipAst {
+pub enum LegalityRelationshipAst {
     Only,
     Except,
     Unless,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LegalityPeriodAst {
+pub enum LegalityPeriodAst {
     Turn,
     Round,
     Combat,
@@ -65,14 +65,14 @@ pub(crate) enum LegalityPeriodAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LegalityFrequencyAst {
+pub struct LegalityFrequencyAst {
     pub maximum: u32,
     pub period: LegalityPeriodAst,
     pub per_object: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ManaUseConstraintAst {
+pub enum ManaUseConstraintAst {
     Any,
     CastSpells(ObjectFilter),
     ActivateAbilities(ObjectFilter),
@@ -81,14 +81,14 @@ pub(crate) enum ManaUseConstraintAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PermissionKindAst {
+pub enum PermissionKindAst {
     Cast,
     PlayLand,
     Activate,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerPermissionAst {
+pub struct CompilerPermissionAst {
     pub kind: PermissionKindAst,
     pub subject: ObjectFilter,
     pub from_zones: Vec<Zone>,
@@ -99,7 +99,7 @@ pub(crate) struct CompilerPermissionAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerActivationLegalityAst {
+pub struct CompilerActivationLegalityAst {
     pub relationship: LegalityRelationshipAst,
     pub timing: Option<TimingWindowAst>,
     pub condition: Option<PredicateAst>,
@@ -110,7 +110,7 @@ pub(crate) struct CompilerActivationLegalityAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerCastingLegalityAst {
+pub struct CompilerCastingLegalityAst {
     pub relationship: LegalityRelationshipAst,
     pub timing: Option<TimingWindowAst>,
     pub condition: Option<PredicateAst>,
@@ -121,7 +121,7 @@ pub(crate) struct CompilerCastingLegalityAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerTriggerLegalityAst {
+pub struct CompilerTriggerLegalityAst {
     pub condition: Option<PredicateAst>,
     pub frequency: Option<LegalityFrequencyAst>,
     pub provenance: Option<SemanticProvenance>,

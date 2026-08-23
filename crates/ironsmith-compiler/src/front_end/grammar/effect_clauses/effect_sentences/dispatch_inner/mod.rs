@@ -21,7 +21,7 @@ use super::super::token_primitives::iter_contains;
 use super::super::util::{
     is_article, parse_card_type, parse_subject, parse_target_phrase, parse_value,
 };
-pub(crate) use super::super::util::{strip_leading_articles, trim_commas, trim_edge_punctuation};
+pub use super::super::util::{strip_leading_articles, trim_commas, trim_edge_punctuation};
 use super::sentence_helpers::*;
 use super::{
     TokenCopyFollowup, parse_cant_effect_sentence_lexed, parse_effect_chain_lexed,

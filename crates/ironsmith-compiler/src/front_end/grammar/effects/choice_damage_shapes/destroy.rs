@@ -10,13 +10,13 @@ use super::common::{
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct DestroyMultiTargetShape {
-    pub(crate) target_start_word: usize,
-    pub(crate) repeated_target_words: bool,
-    pub(crate) has_followup_tail: bool,
+pub struct DestroyMultiTargetShape {
+    pub target_start_word: usize,
+    pub repeated_target_words: bool,
+    pub has_followup_tail: bool,
 }
 
-pub(crate) fn up_to_one_target_word_starts(words: &[&str]) -> Vec<usize> {
+pub fn up_to_one_target_word_starts(words: &[&str]) -> Vec<usize> {
     let mut starts = Vec::new();
     let mut offset = 0usize;
     while offset + 4 <= words.len() {
@@ -52,7 +52,7 @@ fn has_target_and_attached_set(words: &[&str]) -> bool {
     )
 }
 
-pub(crate) fn parse_destroy_multi_target_shape(
+pub fn parse_destroy_multi_target_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DestroyMultiTargetShape> {
     let words = TokenWordView::new(tokens).to_word_refs();

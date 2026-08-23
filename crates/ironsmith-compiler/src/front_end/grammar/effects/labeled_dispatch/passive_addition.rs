@@ -58,13 +58,13 @@ const TAGGED_SUBJECTS: &[&[&str]] = &[
 ];
 
 #[derive(Debug, Clone)]
-pub(crate) struct PassiveColorTypeAdditionShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) tagged_subject: bool,
-    pub(crate) colors: ColorSet,
-    pub(crate) card_types: Vec<CardType>,
-    pub(crate) subtypes: Vec<Subtype>,
-    pub(crate) adds_colors: bool,
+pub struct PassiveColorTypeAdditionShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub tagged_subject: bool,
+    pub colors: ColorSet,
+    pub card_types: Vec<CardType>,
+    pub subtypes: Vec<Subtype>,
+    pub adds_colors: bool,
 }
 
 fn strip_addition_tail(tokens: &[OwnedLexToken]) -> Option<(bool, &[OwnedLexToken])> {
@@ -74,7 +74,7 @@ fn strip_addition_tail(tokens: &[OwnedLexToken]) -> Option<(bool, &[OwnedLexToke
     primitives::strip_lexed_suffix_phrases(tokens, TYPE_TAILS).map(|(_, rest)| (false, rest))
 }
 
-pub(crate) fn parse_passive_color_type_addition_shape(
+pub fn parse_passive_color_type_addition_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PassiveColorTypeAdditionShape<'_>> {
     let (adds_colors, body_tokens) = strip_addition_tail(tokens)?;

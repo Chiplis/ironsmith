@@ -7,9 +7,9 @@ use super::super::super::lexer::{LexStream, lex_line, render_token_slice};
 use super::super::primitives;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PreprocessSentenceList {
-    pub(crate) sentences: Vec<String>,
-    pub(crate) terminal_period: bool,
+pub struct PreprocessSentenceList {
+    pub sentences: Vec<String>,
+    pub terminal_period: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,7 +54,7 @@ fn parse_preprocess_sentence_list_lexed(
     })
 }
 
-pub(crate) fn parse_preprocess_sentence_list(text: &str) -> Option<PreprocessSentenceList> {
+pub fn parse_preprocess_sentence_list(text: &str) -> Option<PreprocessSentenceList> {
     let tokens = lex_line(text.trim(), 0).ok()?;
     primitives::parse_all(
         &tokens,

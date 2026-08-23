@@ -13,7 +13,7 @@ use super::super::{
 
 #[path = "traversal/shapes.rs"]
 mod shapes;
-pub(crate) use shapes::*;
+pub use shapes::*;
 #[path = "traversal/counted_stop.rs"]
 mod counted_stop;
 use counted_stop::parse_equal_to_counted_active_stop;
@@ -308,9 +308,7 @@ fn parse_active_stop(tokens: &[OwnedLexToken]) -> Option<ConsultTraversalStopSha
     })
 }
 
-pub(crate) fn parse_consult_traversal_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<ConsultTraversalShape> {
+pub fn parse_consult_traversal_shape(tokens: &[OwnedLexToken]) -> Option<ConsultTraversalShape> {
     let (prefix, consult) = split_prefix_and_consult(tokens)?;
     let (verb, mode) = consult_verb(consult)?;
     if crate::grammar::effects::for_each_shapes::parse_for_each_object_effect_shape(consult)

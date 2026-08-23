@@ -36,7 +36,7 @@ const ATTACHED_EXCLUSIONS: &[&[&str]] = &[
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SacrificeUnlessKind {
+pub enum SacrificeUnlessKind {
     None,
     Escaped,
     ManaSpent(ManaSymbol),
@@ -45,17 +45,17 @@ pub(crate) enum SacrificeUnlessKind {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SacrificeClauseShape<'a> {
-    pub(crate) body_tokens: &'a [OwnedLexToken],
-    pub(crate) full_body_tokens: &'a [OwnedLexToken],
-    pub(crate) unless_token_offset: Option<usize>,
-    pub(crate) unless_kind: SacrificeUnlessKind,
-    pub(crate) sacrifice_references_it: bool,
-    pub(crate) has_graveyard_history: bool,
+pub struct SacrificeClauseShape<'a> {
+    pub body_tokens: &'a [OwnedLexToken],
+    pub full_body_tokens: &'a [OwnedLexToken],
+    pub unless_token_offset: Option<usize>,
+    pub unless_kind: SacrificeUnlessKind,
+    pub sacrifice_references_it: bool,
+    pub has_graveyard_history: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum SacrificeQuantityShape<'a> {
+pub enum SacrificeQuantityShape<'a> {
     ThatMany {
         filter_tokens: &'a [OwnedLexToken],
     },
@@ -72,20 +72,20 @@ pub(crate) enum SacrificeQuantityShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SacrificeAggregateKind {
+pub enum SacrificeAggregateKind {
     GreatestManaValue,
     GreatestPower,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SacrificeAggregateShape<'a> {
-    pub(crate) kind: SacrificeAggregateKind,
-    pub(crate) object_tokens: &'a [OwnedLexToken],
-    pub(crate) among_tokens: &'a [OwnedLexToken],
+pub struct SacrificeAggregateShape<'a> {
+    pub kind: SacrificeAggregateKind,
+    pub object_tokens: &'a [OwnedLexToken],
+    pub among_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SacrificeTaggedReferenceKind {
+pub enum SacrificeTaggedReferenceKind {
     ItOrCard,
     Token,
     OneOfTaggedSet,
@@ -93,26 +93,26 @@ pub(crate) enum SacrificeTaggedReferenceKind {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SacrificeObjectShape<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) tagged_reference: Option<SacrificeTaggedReferenceKind>,
+pub struct SacrificeObjectShape<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub tagged_reference: Option<SacrificeTaggedReferenceKind>,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SacrificeCountShape<'a> {
-    pub(crate) count: u32,
-    pub(crate) other: bool,
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
+pub struct SacrificeCountShape<'a> {
+    pub count: u32,
+    pub other: bool,
+    pub filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SacrificeFractionRoundedShape<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) denominator: u32,
-    pub(crate) rounded_up: bool,
+pub struct SacrificeFractionRoundedShape<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub denominator: u32,
+    pub rounded_up: bool,
 }
 
-pub(crate) fn parse_sacrifice_mana_spent_symbol(tokens: &[OwnedLexToken]) -> Option<ManaSymbol> {
+pub fn parse_sacrifice_mana_spent_symbol(tokens: &[OwnedLexToken]) -> Option<ManaSymbol> {
     let [mana_token, rest @ ..] = tokens else {
         return None;
     };
@@ -133,7 +133,7 @@ pub(crate) fn parse_sacrifice_mana_spent_symbol(tokens: &[OwnedLexToken]) -> Opt
     Some(*symbol)
 }
 
-pub(crate) fn parse_sacrifice_clause_shape(tokens: &[OwnedLexToken]) -> SacrificeClauseShape<'_> {
+pub fn parse_sacrifice_clause_shape(tokens: &[OwnedLexToken]) -> SacrificeClauseShape<'_> {
     let full_body_tokens = primitives::parse_prefix(
         tokens,
         alt((
@@ -190,7 +190,7 @@ pub(crate) fn parse_sacrifice_clause_shape(tokens: &[OwnedLexToken]) -> Sacrific
     }
 }
 
-pub(crate) fn parse_sacrifice_quantity_shape(
+pub fn parse_sacrifice_quantity_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SacrificeQuantityShape<'_>> {
     if let Some((_, rest)) =
@@ -239,7 +239,7 @@ pub(crate) fn parse_sacrifice_quantity_shape(
     })
 }
 
-pub(crate) fn parse_sacrifice_fraction_rounded_shape(
+pub fn parse_sacrifice_fraction_rounded_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SacrificeFractionRoundedShape<'_>> {
     let (denominator, rest) = if let Some((_, rest)) =
@@ -277,7 +277,7 @@ pub(crate) fn parse_sacrifice_fraction_rounded_shape(
     })
 }
 
-pub(crate) fn parse_sacrifice_count_shape(tokens: &[OwnedLexToken]) -> SacrificeCountShape<'_> {
+pub fn parse_sacrifice_count_shape(tokens: &[OwnedLexToken]) -> SacrificeCountShape<'_> {
     let mut count = 1u32;
     let mut rest = tokens;
     // `one of them` names one member of the previously established object
@@ -318,7 +318,7 @@ pub(crate) fn parse_sacrifice_count_shape(tokens: &[OwnedLexToken]) -> Sacrifice
     }
 }
 
-pub(crate) fn parse_sacrifice_aggregate_shape(
+pub fn parse_sacrifice_aggregate_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SacrificeAggregateShape<'_>> {
     let (marker_offset, kind, among_tokens) = primitives::find_prefix(tokens, || {
@@ -336,7 +336,7 @@ pub(crate) fn parse_sacrifice_aggregate_shape(
     })
 }
 
-pub(crate) fn parse_sacrifice_object_shape(tokens: &[OwnedLexToken]) -> SacrificeObjectShape<'_> {
+pub fn parse_sacrifice_object_shape(tokens: &[OwnedLexToken]) -> SacrificeObjectShape<'_> {
     let filter_tokens = primitives::strip_lexed_suffix_phrases(tokens, CHOICE_SUFFIXES)
         .map(|(_, rest)| rest)
         .unwrap_or(tokens);
@@ -358,7 +358,7 @@ pub(crate) fn parse_sacrifice_object_shape(tokens: &[OwnedLexToken]) -> Sacrific
     }
 }
 
-pub(crate) fn parse_sacrifice_attached_exclusion(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_sacrifice_attached_exclusion(tokens: &[OwnedLexToken]) -> bool {
     let words = parser_token_word_refs(tokens);
     ATTACHED_EXCLUSIONS
         .iter()

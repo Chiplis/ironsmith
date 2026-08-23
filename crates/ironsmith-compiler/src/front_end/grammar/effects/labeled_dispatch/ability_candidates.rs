@@ -38,9 +38,9 @@ const TRIGGER_WORDS: &[&[&str]] = &[&["when"], &["whenever"]];
 const SUBJECT_EXCLUSION_WORDS: &[&[&str]] = &[&["shares"], &["choice"]];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AbilityCandidateShape {
-    pub(crate) simple_source_gain: bool,
-    pub(crate) simple_gain: bool,
+pub struct AbilityCandidateShape {
+    pub simple_source_gain: bool,
+    pub simple_gain: bool,
 }
 
 fn is_source_reference(words: &[&str]) -> bool {
@@ -196,7 +196,7 @@ fn simple_gain(tokens: &[OwnedLexToken], words: &[&str]) -> bool {
             || has_quoted_or_activated_ability)
 }
 
-pub(crate) fn parse_ability_candidate_shape(tokens: &[OwnedLexToken]) -> AbilityCandidateShape {
+pub fn parse_ability_candidate_shape(tokens: &[OwnedLexToken]) -> AbilityCandidateShape {
     let words = parser_token_word_refs(tokens);
     AbilityCandidateShape {
         simple_source_gain: simple_source_gain(&words),

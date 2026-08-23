@@ -10,23 +10,23 @@ use crate::grammar::{filters, leaf, primitives};
 use crate::lexer::{LexStream, OwnedLexToken, TokenWordView, trim_lexed_commas};
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct GainAbilityDurationShape {
-    pub(crate) start: usize,
-    pub(crate) len: usize,
-    pub(crate) duration: Until,
-    pub(crate) condition: Option<ConditionExpr>,
+pub struct GainAbilityDurationShape {
+    pub start: usize,
+    pub len: usize,
+    pub duration: Until,
+    pub condition: Option<ConditionExpr>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct LeadingGainDurationShape {
-    pub(crate) consumed_words: usize,
-    pub(crate) duration: Until,
+pub struct LeadingGainDurationShape {
+    pub consumed_words: usize,
+    pub duration: Until,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct QuotedGainDurationShape {
-    pub(crate) close_quote_token: usize,
-    pub(crate) duration: Until,
+pub struct QuotedGainDurationShape {
+    pub close_quote_token: usize,
+    pub duration: Until,
 }
 
 fn until_end_of_turn(input: &mut WordSliceInput<'_>) -> WResult<Until> {
@@ -201,7 +201,7 @@ fn affected_object_counter_duration_lexed(input: &mut LexStream<'_>) -> WResult<
 /// The surrounding gain-ability parser uses the returned word count to start
 /// verb recognition after the condition, so the condition's own `has` cannot
 /// be mistaken for the grant verb.
-pub(crate) fn parse_leading_affected_object_counter_duration_shape(
+pub fn parse_leading_affected_object_counter_duration_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LeadingGainDurationShape> {
     let (duration, rest) =
@@ -278,7 +278,7 @@ fn source_tapped_duration<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 /// Parse the duration as a typed suffix over lexer tokens. The returned word
 /// span is only a boundary for the surrounding gain-ability parser; semantic
 /// recognition is wholly owned by the Winnow grammar above.
-pub(crate) fn parse_source_tapped_gain_duration_shape(
+pub fn parse_source_tapped_gain_duration_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<GainAbilityDurationShape> {
     let (start_token, (), rest) = primitives::find_prefix(tokens, || source_tapped_duration)?;
@@ -295,9 +295,7 @@ pub(crate) fn parse_source_tapped_gain_duration_shape(
     })
 }
 
-pub(crate) fn parse_simple_ability_duration_shape(
-    words: &[&str],
-) -> Option<GainAbilityDurationShape> {
+pub fn parse_simple_ability_duration_shape(words: &[&str]) -> Option<GainAbilityDurationShape> {
     let mut start = 0usize;
     while start < words.len() {
         let mut input = &words[start..];
@@ -323,15 +321,11 @@ pub(crate) fn parse_simple_ability_duration_shape(
     None
 }
 
-pub(crate) fn parse_gain_ability_duration_shape(
-    words: &[&str],
-) -> Option<GainAbilityDurationShape> {
+pub fn parse_gain_ability_duration_shape(words: &[&str]) -> Option<GainAbilityDurationShape> {
     parse_simple_ability_duration_shape(words)
 }
 
-pub(crate) fn parse_leading_gain_duration_shape(
-    words: &[&str],
-) -> Option<LeadingGainDurationShape> {
+pub fn parse_leading_gain_duration_shape(words: &[&str]) -> Option<LeadingGainDurationShape> {
     let mut input: WordSliceInput<'_> = words;
     let duration = continuous_duration.parse_next(&mut input).ok()?;
     Some(LeadingGainDurationShape {
@@ -340,7 +334,7 @@ pub(crate) fn parse_leading_gain_duration_shape(
     })
 }
 
-pub(crate) fn parse_quoted_gain_duration_shape(
+pub fn parse_quoted_gain_duration_shape(
     tokens: &[OwnedLexToken],
     gain_token_idx: usize,
 ) -> Option<QuotedGainDurationShape> {
@@ -486,7 +480,7 @@ mod tests {
             shape.duration,
             Until::ForAsLongAs(
                 ironsmith_core::ContinuousDurationPredicate::affected_object_has_counter(
-                    crate::object::CounterType::Named("bounty")
+                    crate::object::CounterType::Named("bounty".into())
                 )
             )
         );

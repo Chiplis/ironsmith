@@ -16,37 +16,37 @@ mod subjects;
 #[path = "become_shapes/surface.rs"]
 mod surface;
 
-pub(crate) use descriptors::*;
-pub(crate) use subjects::*;
-pub(crate) use surface::*;
+pub use descriptors::*;
+pub use subjects::*;
+pub use surface::*;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ControllerOwnerSubjectShape {
-    pub(crate) subject: SubjectAst,
-    pub(crate) target: TargetAst,
+pub struct ControllerOwnerSubjectShape {
+    pub subject: SubjectAst,
+    pub target: TargetAst,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BasePowerToughnessSubjectShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct BasePowerToughnessSubjectShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct BecomePowerToughnessTail<'a> {
-    pub(crate) descriptor_words: &'a [&'a str],
-    pub(crate) power: Value,
-    pub(crate) toughness: Value,
+pub struct BecomePowerToughnessTail<'a> {
+    pub descriptor_words: &'a [&'a str],
+    pub power: Value,
+    pub toughness: Value,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct FilteredObjectAnimationShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) dependent_subject: bool,
-    pub(crate) removes_all_abilities: bool,
-    pub(crate) preserve_other_types: bool,
-    pub(crate) descriptor: BecomeCreatureDescriptor,
-    pub(crate) power: Value,
-    pub(crate) toughness: Value,
+pub struct FilteredObjectAnimationShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub dependent_subject: bool,
+    pub removes_all_abilities: bool,
+    pub preserve_other_types: bool,
+    pub descriptor: BecomeCreatureDescriptor,
+    pub power: Value,
+    pub toughness: Value,
 }
 
 fn possessive_word_stem(input: &mut &str) -> WResult<String> {
@@ -72,7 +72,7 @@ fn possessive_word_stem(input: &mut &str) -> WResult<String> {
     Ok(singular.to_string())
 }
 
-pub(crate) fn parse_possessive_subject_stem(word: &str) -> Option<String> {
+pub fn parse_possessive_subject_stem(word: &str) -> Option<String> {
     possessive_word_stem.parse(word).ok()
 }
 
@@ -153,7 +153,7 @@ fn parsed_controller_owner_shape(
     })
 }
 
-pub(crate) fn parse_controller_owner_subject_tokens(
+pub fn parse_controller_owner_subject_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ControllerOwnerSubjectShape> {
     const TRIGGERING_STACK_CONTROLLER: &[&[&str]] = &[
@@ -229,7 +229,7 @@ pub(crate) fn parse_controller_owner_subject_tokens(
         .flatten()
 }
 
-pub(crate) fn parse_counter_state_pronoun_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_counter_state_pronoun_tokens(tokens: &[OwnedLexToken]) -> bool {
     [
         &["counter", "on", "it"][..],
         &["counter", "on", "them"],
@@ -240,7 +240,7 @@ pub(crate) fn parse_counter_state_pronoun_tokens(tokens: &[OwnedLexToken]) -> bo
     .any(|phrase| primitives::find_prefix(tokens, || primitives::phrase(phrase).void()).is_some())
 }
 
-pub(crate) fn parse_base_power_toughness_subject_tokens(
+pub fn parse_base_power_toughness_subject_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<BasePowerToughnessSubjectShape<'_>> {
     let (base_start, _, _) = primitives::find_prefix(tokens, || {
@@ -265,7 +265,7 @@ fn parse_modifier_words(words: &[&str]) -> Option<(Value, Value, usize)> {
     Some((power, toughness, 2))
 }
 
-pub(crate) fn parse_become_base_pt_words<'a>(
+pub fn parse_become_base_pt_words<'a>(
     words: &'a [&'a str],
 ) -> Option<BecomePowerToughnessTail<'a>> {
     if let Some(iterated) = parse_become_iterated_mana_value_pt_words(words) {
@@ -337,7 +337,7 @@ fn parse_become_iterated_counter_value_words(words: &[&str]) -> Option<Value> {
     ))
 }
 
-pub(crate) fn parse_filtered_object_animation_tokens(
+pub fn parse_filtered_object_animation_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<FilteredObjectAnimationShape<'_>> {
     let tokens = crate::lexer::trim_lexed_commas(tokens);
@@ -441,7 +441,7 @@ pub(crate) fn parse_filtered_object_animation_tokens(
     })
 }
 
-pub(crate) fn parse_become_iterated_mana_value_pt_words<'a>(
+pub fn parse_become_iterated_mana_value_pt_words<'a>(
     words: &'a [&'a str],
 ) -> Option<BecomePowerToughnessTail<'a>> {
     const HEADS: &[&[&str]] = &[

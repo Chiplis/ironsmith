@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LandwalkKind {
     Subtype { subtype: Subtype, snow: bool },
@@ -8,6 +9,7 @@ pub enum LandwalkKind {
     ArtifactLand,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Anthem {
     pub filter: Option<ObjectFilter>,
@@ -33,6 +35,7 @@ pub struct Anthem {
     pub replacement_surface: Option<AnthemReplacementSurface>,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AnthemReplacementSurface {
     pub power: i32,
@@ -91,6 +94,7 @@ impl Anthem {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct AttachedAbilityGrant<T, E, C, Cond> {
     pub ability: AbilityModel<T, E, C, Cond>,
@@ -127,6 +131,7 @@ impl<T, E, C, Cond> AttachedAbilityGrant<T, E, C, Cond> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct AttachedChosenLandwalkGrant {
     pub display: String,
@@ -145,6 +150,7 @@ impl AttachedChosenLandwalkGrant {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct GrantAbility<T, E, C, Cond> {
     pub filter: ObjectFilter,
@@ -181,6 +187,7 @@ impl<T, E, C, Cond> GrantAbility<T, E, C, Cond> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, PartialEq)]
 pub struct GrantObjectAbilityForFilter<T, E, C, Cond> {
     pub filter: ObjectFilter,
@@ -247,6 +254,7 @@ impl<T, E, C, Cond> GrantObjectAbilityForFilter<T, E, C, Cond> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CopyActivatedAbilities {
     pub filter: ObjectFilter,
@@ -305,6 +313,7 @@ impl CopyActivatedAbilities {
 /// complete payload. The color-protection selector represents Oracle's
 /// narrower "protection from any color" category without treating unrelated
 /// protection qualities as colors.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StaticAbilityVariantSelector {
     Any(StaticAbilityId),
@@ -328,6 +337,7 @@ impl StaticAbilityVariantSelector {
 ///
 /// Unlike a fixed ability grant, this preserves payloads such as a protection
 /// quality, a landwalk kind, or a qualified-hexproof filter.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CopyStaticAbilityVariants {
     pub filter: ObjectFilter,
@@ -356,6 +366,7 @@ impl CopyStaticAbilityVariants {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CopyTriggeredAbilities {
     pub filter: ObjectFilter,
@@ -381,6 +392,7 @@ impl CopyTriggeredAbilities {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CostReductionCharacteristicIntersection {
     pub characteristic: crate::ObjectCharacteristic,
@@ -405,6 +417,7 @@ impl CostReductionCharacteristicIntersection {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CostReduction {
     pub filter: ObjectFilter,
@@ -449,6 +462,7 @@ impl CostReduction {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct OptionalLifeAdditionalCost {
     pub label: String,
@@ -464,6 +478,7 @@ impl OptionalLifeAdditionalCost {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CostReductionManaCost {
     pub filter: ObjectFilter,
@@ -507,6 +522,7 @@ impl CostReductionManaCost {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CostIncrease {
     pub filter: ObjectFilter,
@@ -538,6 +554,7 @@ impl CostIncrease {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CostIncreaseManaCost {
     pub filter: ObjectFilter,
@@ -569,6 +586,7 @@ impl CostIncreaseManaCost {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ThisSpellCostReduction<Cond> {
     pub amount: Value,
@@ -603,6 +621,7 @@ impl<Cond> ThisSpellCostReduction<Cond> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ThisSpellCostReductionManaCost<Cond> {
     pub cost: ManaCost,
@@ -625,6 +644,7 @@ impl<Cond> ThisSpellCostReductionManaCost<Cond> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SetColorsForFilter {
     pub filter: ObjectFilter,
@@ -640,6 +660,7 @@ impl SetColorsForFilter {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RemoveCardTypesForFilter {
     pub filter: ObjectFilter,
@@ -661,11 +682,13 @@ impl RemoveCardTypesForFilter {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActivatedAbilityCostCondition {
     TargetsExactly { count: usize, filter: ObjectFilter },
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum AttackCostCondition {
     PayGenericPerSourceCounter {
@@ -682,6 +705,7 @@ pub enum AttackCostCondition {
     },
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum AttackingGroupAttackCondition {
     AtLeastNOtherCreaturesAttack(u32),
@@ -689,6 +713,7 @@ pub enum AttackingGroupAttackCondition {
     CreatureWithGreaterPowerAlsoAttacks,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
     clippy::large_enum_variant,
@@ -702,6 +727,7 @@ pub enum DefendingPlayerAttackCondition {
     IsPoisoned,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
     clippy::large_enum_variant,
@@ -718,6 +744,7 @@ pub enum CantAttackUnlessConditionSpec {
     SourceCondition(Condition),
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond> {
     pub filter: ObjectFilter,
@@ -740,6 +767,7 @@ pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond> {
     pub set_base_power_toughness_from_self: bool,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EnterAsCopyLinkedExilePairSpec {
     pub counter_type: CounterType,

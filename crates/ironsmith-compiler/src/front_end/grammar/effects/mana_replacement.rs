@@ -8,8 +8,8 @@ use crate::mana::ManaSymbol;
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ManaReplacementClauseSpec {
-    pub(crate) replacement_mana: ManaSymbol,
+pub struct ManaReplacementClauseSpec {
+    pub replacement_mana: ManaSymbol,
 }
 
 fn parse_replacement_mana_symbol<'a>(
@@ -60,7 +60,7 @@ fn parse_mana_replacement_clause<'a>(
     Ok(ManaReplacementClauseSpec { replacement_mana })
 }
 
-pub(crate) fn parse_mana_replacement_clause_spec_lexed(
+pub fn parse_mana_replacement_clause_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaReplacementClauseSpec> {
     primitives::parse_all(

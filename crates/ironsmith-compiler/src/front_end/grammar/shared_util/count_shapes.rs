@@ -43,14 +43,14 @@ fn parse_for_each_object_filter_words(
     crate::object_filters::parse_object_filter_lexed(&tokens, false).ok()
 }
 
-pub(crate) fn mana_from_source_spent_to_cast_value(source_words: &[&str]) -> Option<Value> {
+pub fn mana_from_source_spent_to_cast_value(source_words: &[&str]) -> Option<Value> {
     mana_from_source_spent_to_cast_value_with_reference(
         source_words,
         ironsmith_core::ManaSpentCastReferenceSurface::ThisSpell,
     )
 }
 
-pub(crate) fn mana_from_source_spent_to_cast_value_with_reference(
+pub fn mana_from_source_spent_to_cast_value_with_reference(
     source_words: &[&str],
     reference: ironsmith_core::ManaSpentCastReferenceSurface,
 ) -> Option<Value> {
@@ -115,7 +115,7 @@ fn parse_mana_from_source_spent_count(words: &[&str], item_start: usize) -> Opti
     None
 }
 
-pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)> {
+pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)> {
     let head = parse_for_each_head(words)?;
     let idx = head.item_start;
 

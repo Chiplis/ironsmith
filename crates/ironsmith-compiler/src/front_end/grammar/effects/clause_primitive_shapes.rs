@@ -10,15 +10,15 @@ use crate::lexer::{OwnedLexToken, TokenKind, TokenWordView};
 
 #[path = "clause_primitive_shapes/combat_and_duration.rs"]
 mod combat_and_duration;
-pub(crate) use combat_and_duration::*;
+pub use combat_and_duration::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CopyTargetsShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct CopyTargetsShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StackRetargetFilterKind {
+pub enum StackRetargetFilterKind {
     ActivatedAbility,
     SpellOrAbility,
     Ability,
@@ -27,19 +27,19 @@ pub(crate) enum StackRetargetFilterKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct StackRetargetFilterShape {
-    pub(crate) kind: StackRetargetFilterKind,
-    pub(crate) other: bool,
+pub struct StackRetargetFilterShape {
+    pub kind: StackRetargetFilterKind,
+    pub other: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChooseCardNameShape<'a> {
-    pub(crate) player: PlayerAst,
-    pub(crate) filter_tokens: Option<&'a [OwnedLexToken]>,
+pub struct ChooseCardNameShape<'a> {
+    pub player: PlayerAst,
+    pub filter_tokens: Option<&'a [OwnedLexToken]>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum PowerDamageTargetShape<'a> {
+pub enum PowerDamageTargetShape<'a> {
     EachPlayer,
     EachOtherPlayer,
     EachOpponent,
@@ -48,28 +48,28 @@ pub(crate) enum PowerDamageTargetShape<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PowerDamageShape<'a> {
-    pub(crate) source_tokens: &'a [OwnedLexToken],
-    pub(crate) source_is_tagged: bool,
-    pub(crate) amount: Value,
-    pub(crate) target: PowerDamageTargetShape<'a>,
+pub struct PowerDamageShape<'a> {
+    pub source_tokens: &'a [OwnedLexToken],
+    pub source_is_tagged: bool,
+    pub amount: Value,
+    pub target: PowerDamageTargetShape<'a>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct FightShape<'a> {
-    pub(crate) left_tokens: Option<&'a [OwnedLexToken]>,
-    pub(crate) right_tokens: &'a [OwnedLexToken],
-    pub(crate) right_is_tagged_other: bool,
+pub struct FightShape<'a> {
+    pub left_tokens: Option<&'a [OwnedLexToken]>,
+    pub right_tokens: &'a [OwnedLexToken],
+    pub right_is_tagged_other: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RetargetReferenceShape {
+pub enum RetargetReferenceShape {
     Copy,
     Other,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RetargetConstraintShape {
+pub enum RetargetConstraintShape {
     SingleTarget,
     SingleCreatureTarget,
     SourceOnlyTarget,
@@ -78,7 +78,7 @@ pub(crate) enum RetargetConstraintShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RepeatProcessShape {
+pub enum RepeatProcessShape {
     Required,
     Once,
     May,
@@ -119,7 +119,7 @@ fn has_word(tokens: &[OwnedLexToken], word: &'static str) -> bool {
     primitives::find_prefix(tokens, || primitives::kw(word)).is_some()
 }
 
-pub(crate) fn parse_copy_targets_shape(tokens: &[OwnedLexToken]) -> Option<CopyTargetsShape<'_>> {
+pub fn parse_copy_targets_shape(tokens: &[OwnedLexToken]) -> Option<CopyTargetsShape<'_>> {
     let (_, target_tokens) = primitives::parse_prefix(
         trim_shape_edges(tokens),
         alt((
@@ -133,7 +133,7 @@ pub(crate) fn parse_copy_targets_shape(tokens: &[OwnedLexToken]) -> Option<CopyT
     })
 }
 
-pub(crate) fn parse_stack_retarget_filter_shape(
+pub fn parse_stack_retarget_filter_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<StackRetargetFilterShape> {
     let has_ability = has_word(tokens, "ability") || has_word(tokens, "abilities");
@@ -166,9 +166,7 @@ fn choose_name_prefix<'a>(input: &mut crate::lexer::LexStream<'a>) -> WResult<Pl
     .parse_next(input)
 }
 
-pub(crate) fn parse_choose_card_name_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<ChooseCardNameShape<'_>> {
+pub fn parse_choose_card_name_shape(tokens: &[OwnedLexToken]) -> Option<ChooseCardNameShape<'_>> {
     let tokens = trim_shape_edges(tokens);
     let (player, tail) = primitives::parse_prefix(tokens, choose_name_prefix)?;
     // "choose the name of a nonland card revealed this way"
@@ -203,9 +201,7 @@ pub(crate) fn parse_choose_card_name_shape(
     })
 }
 
-pub(crate) fn is_each_player_exiles_hand_face_down_and_draws_shape(
-    tokens: &[OwnedLexToken],
-) -> bool {
+pub fn is_each_player_exiles_hand_face_down_and_draws_shape(tokens: &[OwnedLexToken]) -> bool {
     exact_phrase(
         tokens,
         &[
@@ -251,7 +247,7 @@ fn characteristic_reference_word_count(words: &[&str]) -> Option<(usize, bool)> 
     Some((count, toughness))
 }
 
-pub(crate) fn is_it_reference_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_it_reference_shape(tokens: &[OwnedLexToken]) -> bool {
     exact_phrase(tokens, &["it"])
 }
 
@@ -353,7 +349,7 @@ fn target_shape(tokens: &[OwnedLexToken], allow_self: bool) -> PowerDamageTarget
     }
 }
 
-pub(crate) fn parse_power_damage_shape(
+pub fn parse_power_damage_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PowerDamageShape<'_>>, CardTextError> {
     if primitives::find_prefix(tokens, || primitives::kw("divided").void()).is_some() {
@@ -454,7 +450,7 @@ pub(crate) fn parse_power_damage_shape(
     }))
 }
 
-pub(crate) fn parse_fight_shape(tokens: &[OwnedLexToken]) -> Option<FightShape<'_>> {
+pub fn parse_fight_shape(tokens: &[OwnedLexToken]) -> Option<FightShape<'_>> {
     let tokens = trim_shape_edges(tokens);
     let (left, right) = primitives::split_lexed_once_on_separator(tokens, || {
         alt((primitives::kw("fight"), primitives::kw("fights"))).void()
@@ -484,7 +480,7 @@ fn clash_opponent<'a>(input: &mut crate::lexer::LexStream<'a>) -> WResult<ClashO
     .parse_next(input)
 }
 
-pub(crate) fn parse_clash_shape(tokens: &[OwnedLexToken]) -> Option<ClashOpponentAst> {
+pub fn parse_clash_shape(tokens: &[OwnedLexToken]) -> Option<ClashOpponentAst> {
     let tokens = trim_shape_edges(tokens);
     let (_, tail) = primitives::parse_prefix(
         tokens,
@@ -506,9 +502,7 @@ pub(crate) fn parse_clash_shape(tokens: &[OwnedLexToken]) -> Option<ClashOpponen
     .ok()
 }
 
-pub(crate) fn parse_retarget_reference_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<RetargetReferenceShape> {
+pub fn parse_retarget_reference_shape(tokens: &[OwnedLexToken]) -> Option<RetargetReferenceShape> {
     let tokens = trim_shape_edges(tokens);
     if primitives::parse_prefix(
         tokens,
@@ -539,9 +533,7 @@ pub(crate) fn parse_retarget_reference_shape(
     }
 }
 
-pub(crate) fn parse_retarget_constraint_shapes(
-    tokens: &[OwnedLexToken],
-) -> Vec<RetargetConstraintShape> {
+pub fn parse_retarget_constraint_shapes(tokens: &[OwnedLexToken]) -> Vec<RetargetConstraintShape> {
     let tokens = trim_shape_edges(tokens);
     let mut constraints = Vec::new();
     let candidates: &'static [(&'static [&'static str], RetargetConstraintShape)] = &[
@@ -600,7 +592,7 @@ fn parse_repeat_process<'a>(
     Ok((explicit_may, shape))
 }
 
-pub(crate) fn parse_repeat_process_shape(tokens: &[OwnedLexToken]) -> Option<RepeatProcessShape> {
+pub fn parse_repeat_process_shape(tokens: &[OwnedLexToken]) -> Option<RepeatProcessShape> {
     let (explicit_may, shape) = primitives::parse_all(
         trim_shape_edges(tokens),
         parse_repeat_process,
@@ -616,7 +608,7 @@ pub(crate) fn parse_repeat_process_shape(tokens: &[OwnedLexToken]) -> Option<Rep
     }
 }
 
-pub(crate) fn is_dont_lose_mana_between_steps_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_dont_lose_mana_between_steps_shape(tokens: &[OwnedLexToken]) -> bool {
     exact_phrase(
         tokens,
         &[

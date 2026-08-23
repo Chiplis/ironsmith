@@ -4,13 +4,13 @@ use crate::model::document_program::CompilerDocumentProgramAst;
 /// One mode of an `EffectAst::ChooseOneOf` modal choice: a label shown to the
 /// player and the effects that resolve when that mode is chosen.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ChooseOneModeAst {
+pub struct ChooseOneModeAst {
     pub description: String,
     pub effects: Vec<EffectAst>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum EffectAst {
+pub enum EffectAst {
     /// A new-style effect assembled from the common semantic clause
     /// vocabulary. Lowering owns the only conversion into runtime actions.
     Clause(Box<CompilerClauseAst>),
@@ -450,7 +450,7 @@ pub(crate) enum EffectAst {
 }
 
 impl EffectAst {
-    pub(crate) fn subject_verb(
+    pub fn subject_verb(
         role: SubjectVerbRoleAst,
         player: PlayerAst,
         action: SubjectVerbActionAst,
@@ -461,7 +461,7 @@ impl EffectAst {
         })
     }
 
-    pub(crate) fn subject_verb_draw_for_each_tagged_matching(
+    pub fn subject_verb_draw_for_each_tagged_matching(
         player: PlayerAst,
         tag: TagKey,
         filter: ObjectFilter,
@@ -473,7 +473,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_grant_next_spell_ability_this_turn(
+    pub fn subject_verb_grant_next_spell_ability_this_turn(
         player: PlayerAst,
         filter: ObjectFilter,
         ability: GrantedAbilityAst,
@@ -488,11 +488,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_may_move_to_zone(
-        player: PlayerAst,
-        target: TargetAst,
-        zone: Zone,
-    ) -> Self {
+    pub fn subject_verb_may_move_to_zone(player: PlayerAst, target: TargetAst, zone: Zone) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Chooser,
             player,
@@ -507,7 +503,7 @@ impl EffectAst {
     /// emit the look themselves should pass a fresh tag, while standalone
     /// follow-ups should snapshot the prior `last_object_tag` via
     /// `SnapshotLastObjectTag` (handled here) and pass `IT_TAG`.
-    pub(crate) fn compose_put_some_into_hand_rest_on_bottom_of_library(
+    pub fn compose_put_some_into_hand_rest_on_bottom_of_library(
         player: PlayerAst,
         count: ChoiceCount,
         looked_tag: TagKey,
@@ -543,7 +539,7 @@ impl EffectAst {
     /// Composes "choose up to N of the looked-at cards for the top of the
     /// library, put the rest on the bottom" while preserving the stated
     /// random-versus-chosen ordering of the remainder.
-    pub(crate) fn compose_put_some_on_top_rest_on_bottom_of_library(
+    pub fn compose_put_some_on_top_rest_on_bottom_of_library(
         player: PlayerAst,
         count: ChoiceCount,
         looked_tag: TagKey,
@@ -590,7 +586,7 @@ impl EffectAst {
     /// moves the remainder to the graveyard. See
     /// `compose_put_some_into_hand_rest_on_bottom_of_library` for the
     /// `looked_tag` contract.
-    pub(crate) fn compose_put_some_into_hand_rest_into_graveyard(
+    pub fn compose_put_some_into_hand_rest_into_graveyard(
         player: PlayerAst,
         count: ChoiceCount,
         looked_tag: TagKey,
@@ -606,7 +602,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn compose_put_some_to_zone_rest_to_zone(
+    pub fn compose_put_some_to_zone_rest_to_zone(
         player: PlayerAst,
         count: ChoiceCount,
         looked_tag: TagKey,
@@ -645,7 +641,7 @@ impl EffectAst {
         ]
     }
 
-    pub(crate) fn subject_verb_grant_protection_choice(
+    pub fn subject_verb_grant_protection_choice(
         target: TargetAst,
         chooser: PlayerAst,
         allow_colorless: bool,
@@ -665,7 +661,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_prevent_all_combat_damage(duration: Until) -> Self {
+    pub fn subject_verb_prevent_all_combat_damage(duration: Until) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -673,7 +669,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_assign_no_combat_damage(source: TargetAst, duration: Until) -> Self {
+    pub fn subject_verb_assign_no_combat_damage(source: TargetAst, duration: Until) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -681,7 +677,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_prevent_all_combat_damage_from_source(
+    pub fn subject_verb_prevent_all_combat_damage_from_source(
         source: TargetAst,
         duration: Until,
     ) -> Self {
@@ -690,7 +686,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_prevent_all_combat_damage_source_would_deal(
+    pub fn subject_verb_prevent_all_combat_damage_source_would_deal(
         source: TargetAst,
         duration: Until,
     ) -> Self {
@@ -715,7 +711,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_prevent_all_combat_damage_from_source_filter(
+    pub fn subject_verb_prevent_all_combat_damage_from_source_filter(
         source_filter: ObjectFilter,
         duration: Until,
     ) -> Self {
@@ -730,7 +726,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_prevent_all_combat_damage_from_source_filter_excluding_target(
+    pub fn subject_verb_prevent_all_combat_damage_from_source_filter_excluding_target(
         source_filter: ObjectFilter,
         excluded_source_target: TargetAst,
         duration: Until,
@@ -746,7 +742,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_prevent_all_combat_damage_to_players(duration: Until) -> Self {
+    pub fn subject_verb_prevent_all_combat_damage_to_players(duration: Until) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -754,7 +750,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_prevent_all_combat_damage_to_you(duration: Until) -> Self {
+    pub fn subject_verb_prevent_all_combat_damage_to_you(duration: Until) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -762,14 +758,14 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_prevent_next_time_damage(
+    pub fn subject_verb_prevent_next_time_damage(
         source: PreventNextTimeDamageSourceAst,
         target: PreventNextTimeDamageTargetAst,
     ) -> Self {
         Self::subject_verb_prevent_next_time_damage_with_reflection(source, target, false)
     }
 
-    pub(crate) fn subject_verb_prevent_next_time_damage_with_reflection(
+    pub fn subject_verb_prevent_next_time_damage_with_reflection(
         source: PreventNextTimeDamageSourceAst,
         target: PreventNextTimeDamageTargetAst,
         reflect_damage_to_source_controller: bool,
@@ -786,7 +782,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_replace_next_damage_to_target(
+    pub fn subject_verb_replace_next_damage_to_target(
         target: TargetAst,
         damage_target_tag: TagKey,
         replacement_effects: Vec<EffectAst>,
@@ -802,15 +798,11 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_prevent_damage(
-        amount: Value,
-        target: TargetAst,
-        duration: Until,
-    ) -> Self {
+    pub fn subject_verb_prevent_damage(amount: Value, target: TargetAst, duration: Until) -> Self {
         Self::subject_verb_prevent_damage_with_source_choice(amount, target, duration, false)
     }
 
-    pub(crate) fn subject_verb_prevent_damage_with_source_choice(
+    pub fn subject_verb_prevent_damage_with_source_choice(
         amount: Value,
         target: TargetAst,
         duration: Until,
@@ -826,7 +818,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_prevent_damage_with_options(
+    pub fn subject_verb_prevent_damage_with_options(
         amount: Value,
         target: TargetAst,
         duration: Until,
@@ -848,14 +840,11 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_prevent_all_damage_to_target(
-        target: TargetAst,
-        duration: Until,
-    ) -> Self {
+    pub fn subject_verb_prevent_all_damage_to_target(target: TargetAst, duration: Until) -> Self {
         Self::subject_verb_prevent_all_damage_to_target_with_source_choice(target, duration, false)
     }
 
-    pub(crate) fn subject_verb_prevent_all_damage_to_target_with_source_choice(
+    pub fn subject_verb_prevent_all_damage_to_target_with_source_choice(
         target: TargetAst,
         duration: Until,
         source_of_your_choice: bool,
@@ -873,7 +862,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_prevent_all_damage_to_target_with_mana_color_source_choice(
+    pub fn subject_verb_prevent_all_damage_to_target_with_mana_color_source_choice(
         target: TargetAst,
         duration: Until,
     ) -> Self {
@@ -890,7 +879,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_prevent_all_damage_to_target_from_target_source(
+    pub fn subject_verb_prevent_all_damage_to_target_from_target_source(
         target: TargetAst,
         source_target: TargetAst,
         duration: Until,
@@ -908,7 +897,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_prevent_all_damage_to_target_from_source_filter(
+    pub fn subject_verb_prevent_all_damage_to_target_from_source_filter(
         target: TargetAst,
         source_filter: ObjectFilter,
         duration: Until,
@@ -924,7 +913,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_prevent_all_damage_from_source_filter(
+    pub fn subject_verb_prevent_all_damage_from_source_filter(
         source_filter: ObjectFilter,
         duration: Until,
     ) -> Self {
@@ -938,7 +927,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_prevent_damage_to_target_put_counters(
+    pub fn subject_verb_prevent_damage_to_target_put_counters(
         amount: Option<Value>,
         target: TargetAst,
         duration: Until,
@@ -956,7 +945,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_prevent_damage_each(
+    pub fn subject_verb_prevent_damage_each(
         amount: Value,
         filter: ObjectFilter,
         duration: Until,
@@ -972,7 +961,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_copy_spell(
+    pub fn subject_verb_copy_spell(
         target: TargetAst,
         count: Value,
         player: PlayerAst,
@@ -1002,7 +991,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn with_copy_count_surface(
+    pub fn with_copy_count_surface(
         mut self,
         surface: ironsmith_core::effect::CopyCountSurface,
     ) -> Self {
@@ -1017,10 +1006,7 @@ impl EffectAst {
     }
 
     /// Preserve the authored kind of a stack-object back-reference.
-    pub(crate) fn with_copy_target_reference_kind(
-        mut self,
-        kind: crate::filter::StackObjectKind,
-    ) -> Self {
+    pub fn with_copy_target_reference_kind(mut self, kind: crate::filter::StackObjectKind) -> Self {
         if let Self::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::CopySpell {
@@ -1036,7 +1022,7 @@ impl EffectAst {
     }
 
     /// Preserve an authored pronoun independently of the resolved target tag.
-    pub(crate) fn with_copy_target_reference_pronoun(mut self, pronoun: bool) -> Self {
+    pub fn with_copy_target_reference_pronoun(mut self, pronoun: bool) -> Self {
         if let Self::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::CopySpell {
@@ -1052,7 +1038,7 @@ impl EffectAst {
     }
 
     /// Preserve the set quantifier on a spell/ability-copy action.
-    pub(crate) fn with_copy_all_matches(mut self, all_matches: bool) -> Self {
+    pub fn with_copy_all_matches(mut self, all_matches: bool) -> Self {
         if let Self::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::CopySpell {
@@ -1068,7 +1054,7 @@ impl EffectAst {
     }
 
     /// Preserve card types introduced by a copy exception.
-    pub(crate) fn with_copy_added_card_types(mut self, added_card_types: Vec<CardType>) -> Self {
+    pub fn with_copy_added_card_types(mut self, added_card_types: Vec<CardType>) -> Self {
         if let Self::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::CopySpell {
@@ -1084,7 +1070,7 @@ impl EffectAst {
     }
 
     /// Preserve subtypes introduced by a copy exception.
-    pub(crate) fn with_copy_added_subtypes(mut self, added_subtypes: Vec<Subtype>) -> Self {
+    pub fn with_copy_added_subtypes(mut self, added_subtypes: Vec<Subtype>) -> Self {
         if let Self::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::CopySpell {
@@ -1100,7 +1086,7 @@ impl EffectAst {
     }
 
     /// Preserve fixed base power/toughness introduced by a copy exception.
-    pub(crate) fn with_copy_set_base_power_toughness(
+    pub fn with_copy_set_base_power_toughness(
         mut self,
         set_base_power_toughness: Option<(i32, i32)>,
     ) -> Self {
@@ -1119,10 +1105,7 @@ impl EffectAst {
     }
 
     /// Preserve colors set by a copy exception.
-    pub(crate) fn with_copy_set_colors(
-        mut self,
-        set_colors: Option<crate::color::ColorSet>,
-    ) -> Self {
+    pub fn with_copy_set_colors(mut self, set_colors: Option<crate::color::ColorSet>) -> Self {
         if let Self::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::CopySpell {
@@ -1137,7 +1120,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn subject_verb_copy_spell_for_each_target(
+    pub fn subject_verb_copy_spell_for_each_target(
         target: TargetAst,
         object_filter: Option<ObjectFilter>,
         player_filter: Option<PlayerFilter>,
@@ -1159,7 +1142,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_scale_x_value(target: TargetAst, multiplier: u32) -> Self {
+    pub fn subject_verb_scale_x_value(target: TargetAst, multiplier: u32) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -1167,7 +1150,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_put_tagged_remainder_on_bottom_of_library(
+    pub fn subject_verb_put_tagged_remainder_on_bottom_of_library(
         tag: TagKey,
         keep_tagged: Option<TagKey>,
         order: LibraryBottomOrderAst,
@@ -1182,7 +1165,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_put_tagged_remainder_on_bottom_of_library_with_surface(
+    pub fn subject_verb_put_tagged_remainder_on_bottom_of_library_with_surface(
         tag: TagKey,
         keep_tagged: Option<TagKey>,
         order: LibraryBottomOrderAst,
@@ -1202,7 +1185,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_cast_tagged(
+    pub fn subject_verb_cast_tagged(
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
@@ -1221,7 +1204,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_cast_tagged_with_additional_cost(
+    pub fn subject_verb_cast_tagged_with_additional_cost(
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
@@ -1242,7 +1225,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_cast_tagged_with_additional_cost_and_mana_spend_mode(
+    pub fn subject_verb_cast_tagged_with_additional_cost_and_mana_spend_mode(
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
@@ -1269,7 +1252,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn may_cast_matching_spell_without_paying_mana_cost(
+    pub fn may_cast_matching_spell_without_paying_mana_cost(
         player: PlayerAst,
         filter: ObjectFilter,
         zone: Zone,
@@ -1283,7 +1266,7 @@ impl EffectAst {
         }
     }
 
-    pub(crate) fn may_cast_matching_spell_without_paying_mana_cost_from_zone_owner(
+    pub fn may_cast_matching_spell_without_paying_mana_cost_from_zone_owner(
         player: PlayerAst,
         zone_owner: PlayerAst,
         filter: ObjectFilter,
@@ -1298,7 +1281,7 @@ impl EffectAst {
         }
     }
 
-    pub(crate) fn may_cast_matching_spell_with_alternative_cost(
+    pub fn may_cast_matching_spell_with_alternative_cost(
         player: PlayerAst,
         filter: ObjectFilter,
         zone: Zone,
@@ -1313,7 +1296,7 @@ impl EffectAst {
         }
     }
 
-    pub(crate) fn subject_verb_grant_play_tagged_until_end_of_turn(
+    pub fn subject_verb_grant_play_tagged_until_end_of_turn(
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
@@ -1330,7 +1313,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_grant_play_tagged_until_end_of_turn_with_optional_surface(
+    pub fn subject_verb_grant_play_tagged_until_end_of_turn_with_optional_surface(
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
@@ -1357,7 +1340,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_grant_play_tagged_until_end_of_turn_from_current_zone_with_optional_surface(
+    pub fn subject_verb_grant_play_tagged_until_end_of_turn_from_current_zone_with_optional_surface(
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
@@ -1384,7 +1367,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_grant_play_tagged_until_end_of_turn_while_on_top_of_library(
+    pub fn subject_verb_grant_play_tagged_until_end_of_turn_while_on_top_of_library(
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
@@ -1410,7 +1393,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_grant_play_tagged_until_source_exiles_another(
+    pub fn subject_verb_grant_play_tagged_until_source_exiles_another(
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
@@ -1438,7 +1421,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_grant_tagged_spell_alternative_cost_pay_life_by_mana_value_until_end_of_turn(
+    pub fn subject_verb_grant_tagged_spell_alternative_cost_pay_life_by_mana_value_until_end_of_turn(
         tag: TagKey,
         player: PlayerAst,
     ) -> Self {
@@ -1452,7 +1435,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_grant_play_tagged_until_your_next_turn(
+    pub fn subject_verb_grant_play_tagged_until_your_next_turn(
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
@@ -1473,7 +1456,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_grant_play_tagged_until_your_next_end_step(
+    pub fn subject_verb_grant_play_tagged_until_your_next_end_step(
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
@@ -1498,7 +1481,7 @@ impl EffectAst {
     ///
     /// The tagged collection remains intact so the player chooses which card
     /// to play at play/cast time rather than during effect resolution.
-    pub(crate) fn with_tagged_play_max_plays(mut self, limit: Option<u32>) -> Self {
+    pub fn with_tagged_play_max_plays(mut self, limit: Option<u32>) -> Self {
         if let Self::SubjectVerb(subject_verb) = &mut self {
             match &mut subject_verb.action {
                 SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn { max_plays, .. }
@@ -1511,7 +1494,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn subject_verb_grant_play_tagged_for_as_long_as_exiled(
+    pub fn subject_verb_grant_play_tagged_for_as_long_as_exiled(
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
@@ -1537,7 +1520,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_grant_play_tagged_during_turns_counter_put_on_source(
+    pub fn subject_verb_grant_play_tagged_during_turns_counter_put_on_source(
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
@@ -1560,7 +1543,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_grant_play_tagged_with_play_constraints(
+    pub fn subject_verb_grant_play_tagged_with_play_constraints(
         tag: TagKey,
         player: PlayerAst,
         spell_cost_increase: Option<ManaCost>,
@@ -1583,7 +1566,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_grant_play_tagged_for_as_long_as_you_control_source(
+    pub fn subject_verb_grant_play_tagged_for_as_long_as_you_control_source(
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
@@ -1604,7 +1587,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_return_to_battlefield(
+    pub fn subject_verb_return_to_battlefield(
         target: TargetAst,
         tapped: bool,
         transformed: bool,
@@ -1629,7 +1612,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn with_graveyard_or_exile_return_origin(mut self) -> Self {
+    pub fn with_graveyard_or_exile_return_origin(mut self) -> Self {
         if let Self::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::ReturnToBattlefield {
@@ -1644,7 +1627,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn with_top_only_return_choice(mut self, top_only: bool) -> Self {
+    pub fn with_top_only_return_choice(mut self, top_only: bool) -> Self {
         if let Self::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::ReturnToBattlefield {
@@ -1659,7 +1642,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn subject_verb_return_all_to_battlefield(
+    pub fn subject_verb_return_all_to_battlefield(
         filter: ObjectFilter,
         tapped: bool,
         face_down: bool,
@@ -1678,7 +1661,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_put_all_onto_battlefield(
+    pub fn subject_verb_put_all_onto_battlefield(
         filter: ObjectFilter,
         tapped: bool,
         face_down: bool,
@@ -1697,10 +1680,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_exile_until_source_leaves(
-        target: TargetAst,
-        face_down: bool,
-    ) -> Self {
+    pub fn subject_verb_exile_until_source_leaves(target: TargetAst, face_down: bool) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -1715,7 +1695,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_exile_until_target_leaves(
+    pub fn subject_verb_exile_until_target_leaves(
         target: TargetAst,
         leave_watcher: TargetAst,
         face_down: bool,
@@ -1734,10 +1714,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_exile_all_until_source_leaves(
-        target: TargetAst,
-        face_down: bool,
-    ) -> Self {
+    pub fn subject_verb_exile_all_until_source_leaves(target: TargetAst, face_down: bool) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -1752,7 +1729,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_exile_until_opponent_becomes_monarch(
+    pub fn subject_verb_exile_until_opponent_becomes_monarch(
         target: TargetAst,
         face_down: bool,
     ) -> Self {
@@ -1770,7 +1747,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn with_explicit_exile_return_surface(mut self) -> Self {
+    pub fn with_explicit_exile_return_surface(mut self) -> Self {
         if let Self::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::ExileUntilSourceLeaves {
@@ -1785,7 +1762,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn subject_verb_move_to_zone(
+    pub fn subject_verb_move_to_zone(
         target: TargetAst,
         zone: Zone,
         to_top: bool,
@@ -1806,7 +1783,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_move_to_zone_with_attacking(
+    pub fn subject_verb_move_to_zone_with_attacking(
         target: TargetAst,
         zone: Zone,
         to_top: bool,
@@ -1830,7 +1807,7 @@ impl EffectAst {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn subject_verb_move_to_zone_with_attack_target(
+    pub fn subject_verb_move_to_zone_with_attack_target(
         target: TargetAst,
         zone: Zone,
         to_top: bool,
@@ -1869,7 +1846,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_move_all_to_zone(
+    pub fn subject_verb_move_all_to_zone(
         target: TargetAst,
         zone: Zone,
         to_top: bool,
@@ -1905,7 +1882,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn with_destination_player_surface(mut self, player: Option<PlayerAst>) -> Self {
+    pub fn with_destination_player_surface(mut self, player: Option<PlayerAst>) -> Self {
         if let Some(player) = player
             && let Self::SubjectVerb(subject_verb) = &mut self
             && let SubjectVerbActionAst::MoveToZone {
@@ -1918,7 +1895,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn with_library_order(
+    pub fn with_library_order(
         mut self,
         order: Option<LibraryBottomOrderAst>,
         chooser: PlayerAst,
@@ -1937,7 +1914,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn with_move_to_zone_verb_surface(
+    pub fn with_move_to_zone_verb_surface(
         mut self,
         surface: ironsmith_core::MoveToZoneVerbSurface,
     ) -> Self {
@@ -1953,7 +1930,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn with_source_top_only(mut self, source_top_only: bool) -> Self {
+    pub fn with_source_top_only(mut self, source_top_only: bool) -> Self {
         if !source_top_only {
             return self;
         }
@@ -1971,7 +1948,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn with_move_to_zone_actor_surface(mut self, actor: PlayerAst) -> Self {
+    pub fn with_move_to_zone_actor_surface(mut self, actor: PlayerAst) -> Self {
         if matches!(actor, PlayerAst::Implicit) {
             return self;
         }
@@ -1985,7 +1962,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn with_move_to_zone_plural_surface(mut self) -> Self {
+    pub fn with_move_to_zone_plural_surface(mut self) -> Self {
         if let Self::SubjectVerb(subject_verb) = &mut self
             && let SubjectVerbActionAst::MoveToZone {
                 target_plural_surface,
@@ -2001,7 +1978,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn with_move_to_zone_plural_surface_if(self, plural: bool) -> Self {
+    pub fn with_move_to_zone_plural_surface_if(self, plural: bool) -> Self {
         if plural {
             self.with_move_to_zone_plural_surface()
         } else {
@@ -2009,7 +1986,7 @@ impl EffectAst {
         }
     }
 
-    pub(crate) fn with_move_to_zone_target_reference_surface(
+    pub fn with_move_to_zone_target_reference_surface(
         mut self,
         surface: ironsmith_core::SearchResultReferenceSurface,
     ) -> Self {
@@ -2024,7 +2001,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn with_move_to_zone_transformed(mut self) -> Self {
+    pub fn with_move_to_zone_transformed(mut self) -> Self {
         if let Self::SubjectVerb(subject_verb) = &mut self
             && let SubjectVerbActionAst::MoveToZone {
                 battlefield_transformed,
@@ -2036,7 +2013,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn with_destination_player_reference_surface(
+    pub fn with_destination_player_reference_surface(
         mut self,
         surface: Option<ironsmith_core::DestinationPlayerReferenceSurface>,
     ) -> Self {
@@ -2052,7 +2029,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn with_exiled_with_source_surface(
+    pub fn with_exiled_with_source_surface(
         mut self,
         surface: Option<ironsmith_core::ExiledWithSourceMoveSurface>,
     ) -> Self {
@@ -2079,7 +2056,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn subject_verb_move_to_library_top_or_bottom_choice(target: TargetAst) -> Self {
+    pub fn subject_verb_move_to_library_top_or_bottom_choice(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -2087,7 +2064,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_target_only(target: TargetAst) -> Self {
+    pub fn subject_verb_target_only(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -2098,7 +2075,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_explicit_target_only(target: TargetAst) -> Self {
+    pub fn subject_verb_explicit_target_only(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -2109,7 +2086,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_explicit_target_only_for_chooser(
+    pub fn subject_verb_explicit_target_only_for_chooser(
         target: TargetAst,
         chooser: PlayerAst,
     ) -> Self {
@@ -2123,7 +2100,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_tag_matching_objects(
+    pub fn subject_verb_tag_matching_objects(
         filter: ObjectFilter,
         zones: Vec<Zone>,
         tag: TagKey,
@@ -2140,7 +2117,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_tagged_object_union(
+    pub fn subject_verb_tagged_object_union(
         filter: ObjectFilter,
         zones: Vec<Zone>,
         tag: TagKey,
@@ -2158,7 +2135,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_pump(
+    pub fn subject_verb_pump(
         power: Value,
         toughness: Value,
         target: TargetAst,
@@ -2179,7 +2156,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_set_base_power_toughness(
+    pub fn subject_verb_set_base_power_toughness(
         power: Value,
         toughness: Value,
         target: TargetAst,
@@ -2199,7 +2176,7 @@ impl EffectAst {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn subject_verb_become_base_pt_creature(
+    pub fn subject_verb_become_base_pt_creature(
         power: Value,
         toughness: Value,
         target: TargetAst,
@@ -2240,7 +2217,7 @@ impl EffectAst {
 
     /// Preserve an authored plural/set subject on a resolving continuous
     /// effect without changing the target identity established by its AST.
-    pub(crate) fn with_set_quantifier_surface(
+    pub fn with_set_quantifier_surface(
         mut self,
         surface: Option<ironsmith_core::SetQuantifierSurface>,
     ) -> Self {
@@ -2276,11 +2253,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn subject_verb_set_base_power(
-        power: Value,
-        target: TargetAst,
-        duration: Until,
-    ) -> Self {
+    pub fn subject_verb_set_base_power(power: Value, target: TargetAst, duration: Until) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -2292,7 +2265,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_pump_for_each(
+    pub fn subject_verb_pump_for_each(
         power_per: i32,
         toughness_per: i32,
         target: TargetAst,
@@ -2312,7 +2285,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_pump_all(
+    pub fn subject_verb_pump_all(
         filter: ObjectFilter,
         power: Value,
         toughness: Value,
@@ -2331,7 +2304,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_pump_by_last_effect(
+    pub fn subject_verb_pump_by_last_effect(
         power: i32,
         toughness: i32,
         target: TargetAst,
@@ -2351,7 +2324,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_add_card_types(
+    pub fn subject_verb_add_card_types(
         target: TargetAst,
         card_types: Vec<CardType>,
         duration: Until,
@@ -2367,7 +2340,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_remove_card_types(
+    pub fn subject_verb_remove_card_types(
         target: TargetAst,
         card_types: Vec<CardType>,
         duration: Until,
@@ -2383,7 +2356,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_set_card_types(
+    pub fn subject_verb_set_card_types(
         target: TargetAst,
         card_types: Vec<CardType>,
         duration: Until,
@@ -2399,7 +2372,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_add_subtypes(
+    pub fn subject_verb_add_subtypes(
         target: TargetAst,
         subtypes: Vec<Subtype>,
         duration: Until,
@@ -2415,7 +2388,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_remove_subtypes(
+    pub fn subject_verb_remove_subtypes(
         target: TargetAst,
         subtypes: Vec<Subtype>,
         duration: Until,
@@ -2431,7 +2404,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_set_creature_subtypes(
+    pub fn subject_verb_set_creature_subtypes(
         target: TargetAst,
         subtypes: Vec<Subtype>,
         duration: Until,
@@ -2447,7 +2420,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_become_saddled_until_end_of_turn(target: TargetAst) -> Self {
+    pub fn subject_verb_become_saddled_until_end_of_turn(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -2455,11 +2428,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_add_colors(
-        target: TargetAst,
-        colors: ColorSet,
-        duration: Until,
-    ) -> Self {
+    pub fn subject_verb_add_colors(target: TargetAst, colors: ColorSet, duration: Until) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -2471,7 +2440,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_add_all_subtypes_of_family(
+    pub fn subject_verb_add_all_subtypes_of_family(
         target: TargetAst,
         family: SubtypeFamily,
         duration: Until,
@@ -2487,7 +2456,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_remove_all_subtypes_of_family(
+    pub fn subject_verb_remove_all_subtypes_of_family(
         target: TargetAst,
         family: SubtypeFamily,
         duration: Until,
@@ -2503,7 +2472,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_become_aura_enchantment(
+    pub fn subject_verb_become_aura_enchantment(
         target: TargetAst,
         attachment_filter: ObjectFilter,
         duration: Until,
@@ -2516,7 +2485,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_become_aura_enchantment_with_grants(
+    pub fn subject_verb_become_aura_enchantment_with_grants(
         target: TargetAst,
         attachment_filter: ObjectFilter,
         granted_abilities: Vec<GrantedAbilityAst>,
@@ -2534,7 +2503,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_become_basic_land_type(
+    pub fn subject_verb_become_basic_land_type(
         target: TargetAst,
         subtype: Subtype,
         duration: Until,
@@ -2550,11 +2519,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_set_colors(
-        target: TargetAst,
-        colors: ColorSet,
-        duration: Until,
-    ) -> Self {
+    pub fn subject_verb_set_colors(target: TargetAst, colors: ColorSet, duration: Until) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -2566,7 +2531,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_make_colorless(target: TargetAst, duration: Until) -> Self {
+    pub fn subject_verb_make_colorless(target: TargetAst, duration: Until) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -2574,10 +2539,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_become_basic_land_type_choice(
-        target: TargetAst,
-        duration: Until,
-    ) -> Self {
+    pub fn subject_verb_become_basic_land_type_choice(target: TargetAst, duration: Until) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -2585,7 +2547,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_become_creature_type_choice(
+    pub fn subject_verb_become_creature_type_choice(
         target: TargetAst,
         duration: Until,
         excluded_subtypes: Vec<Subtype>,
@@ -2601,7 +2563,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_become_color_choice(
+    pub fn subject_verb_become_color_choice(
         target: TargetAst,
         duration: Until,
         allow_multiple: bool,
@@ -2617,7 +2579,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_become_copy(
+    pub fn subject_verb_become_copy(
         target: TargetAst,
         source: TargetAst,
         duration: Until,
@@ -2657,7 +2619,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_grant_abilities_all(
+    pub fn subject_verb_grant_abilities_all(
         filter: ObjectFilter,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
@@ -2676,7 +2638,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_grant_abilities_all_with_condition(
+    pub fn subject_verb_grant_abilities_all_with_condition(
         filter: ObjectFilter,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
@@ -2696,7 +2658,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_grant_abilities_all_dynamically(
+    pub fn subject_verb_grant_abilities_all_dynamically(
         filter: ObjectFilter,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
@@ -2715,7 +2677,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_grant_abilities_all_dynamically_with_condition(
+    pub fn subject_verb_grant_abilities_all_dynamically_with_condition(
         filter: ObjectFilter,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
@@ -2735,7 +2697,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_remove_abilities_all(
+    pub fn subject_verb_remove_abilities_all(
         filter: ObjectFilter,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
@@ -2753,7 +2715,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_remove_abilities_all_with_condition(
+    pub fn subject_verb_remove_abilities_all_with_condition(
         filter: ObjectFilter,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
@@ -2772,7 +2734,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_grant_abilities_choice_all(
+    pub fn subject_verb_grant_abilities_choice_all(
         filter: ObjectFilter,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
@@ -2788,7 +2750,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_grant_abilities_to_target(
+    pub fn subject_verb_grant_abilities_to_target(
         target: TargetAst,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
@@ -2806,7 +2768,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_grant_abilities_to_target_with_condition(
+    pub fn subject_verb_grant_abilities_to_target_with_condition(
         target: TargetAst,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
@@ -2825,7 +2787,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_grant_to_target(
+    pub fn subject_verb_grant_to_target(
         target: TargetAst,
         grantable: crate::grant::Grantable,
         duration: crate::grant::GrantDuration,
@@ -2841,7 +2803,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_grant_by_spec(
+    pub fn subject_verb_grant_by_spec(
         spec: crate::grant::GrantSpec,
         player: PlayerAst,
         duration: crate::grant::GrantDuration,
@@ -2857,7 +2819,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_remove_abilities_from_target(
+    pub fn subject_verb_remove_abilities_from_target(
         target: TargetAst,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
@@ -2873,7 +2835,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_grant_abilities_choice_to_target(
+    pub fn subject_verb_grant_abilities_choice_to_target(
         target: TargetAst,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
@@ -2889,7 +2851,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_consult_top_of_library(
+    pub fn subject_verb_consult_top_of_library(
         player: PlayerAst,
         mode: LibraryConsultModeAst,
         filter: ObjectFilter,
@@ -2912,7 +2874,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_consult_top_of_library_with_max_exposed(
+    pub fn subject_verb_consult_top_of_library_with_max_exposed(
         player: PlayerAst,
         mode: LibraryConsultModeAst,
         filter: ObjectFilter,
@@ -2937,7 +2899,7 @@ impl EffectAst {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn subject_verb_search_library(
+    pub fn subject_verb_search_library(
         filter: ObjectFilter,
         destination: Zone,
         chooser: PlayerAst,
@@ -2979,7 +2941,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn with_search_zones(mut self, zones: Vec<Zone>) -> Self {
+    pub fn with_search_zones(mut self, zones: Vec<Zone>) -> Self {
         if let Self::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::SearchLibrary { search_zones, .. },
             ..
@@ -2990,7 +2952,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn with_search_battlefield_entry_counters(
+    pub fn with_search_battlefield_entry_counters(
         mut self,
         counters: Vec<ironsmith_core::BattlefieldEntryCounterSpec>,
     ) -> Self {
@@ -3008,7 +2970,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn subject_verb_cant(
+    pub fn subject_verb_cant(
         restriction: crate::effect::Restriction,
         duration: crate::effect::Until,
         condition: Option<crate::ConditionExpr>,
@@ -3021,7 +2983,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_cant_starting(
+    pub fn subject_verb_cant_starting(
         restriction: crate::effect::Restriction,
         duration: crate::effect::Until,
         start: crate::effect::RestrictionStart,
@@ -3036,7 +2998,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_cant_starting_with_duration_surface(
+    pub fn subject_verb_cant_starting_with_duration_surface(
         restriction: crate::effect::Restriction,
         duration: crate::effect::Until,
         start: crate::effect::RestrictionStart,
@@ -3056,7 +3018,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_redirect_next_damage_from_source_to_target(
+    pub fn subject_verb_redirect_next_damage_from_source_to_target(
         amount: Value,
         target: TargetAst,
     ) -> Self {
@@ -3072,7 +3034,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_redirect_next_damage_to_controller(
+    pub fn subject_verb_redirect_next_damage_to_controller(
         amount: Value,
         protected_target: TargetAst,
     ) -> Self {
@@ -3088,7 +3050,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_redirect_next_time_damage_to_source(
+    pub fn subject_verb_redirect_next_time_damage_to_source(
         source: PreventNextTimeDamageSourceAst,
         target: TargetAst,
         destination: RedirectNextTimeDamageDestinationAst,
@@ -3106,7 +3068,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_redirect_next_time_damage_to_target(
+    pub fn subject_verb_redirect_next_time_damage_to_target(
         source: PreventNextTimeDamageSourceAst,
         target: TargetAst,
         destination_target: TargetAst,
@@ -3124,7 +3086,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_redirect_all_damage_this_turn_to_source(
+    pub fn subject_verb_redirect_all_damage_this_turn_to_source(
         source: PreventNextTimeDamageSourceAst,
         target: TargetAst,
         destination: RedirectNextTimeDamageDestinationAst,
@@ -3142,7 +3104,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_redirect_all_damage_this_turn_by_source_to_source_controller(
+    pub fn subject_verb_redirect_all_damage_this_turn_by_source_to_source_controller(
         source: TargetAst,
     ) -> Self {
         Self::subject_verb(
@@ -3152,7 +3114,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_redirect_all_damage_this_turn_to_target(
+    pub fn subject_verb_redirect_all_damage_this_turn_to_target(
         player_filter: PlayerFilter,
         object_filter: ObjectFilter,
         target: TargetAst,
@@ -3168,7 +3130,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_meld(
+    pub fn subject_verb_meld(
         result_name: impl Into<String>,
         enters_tapped: bool,
         enters_attacking: bool,
@@ -3184,7 +3146,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_search_library_slots_to_hand(
+    pub fn subject_verb_search_library_slots_to_hand(
         player: PlayerAst,
         slots: Vec<SearchLibrarySlotAst>,
         reveal: bool,
@@ -3193,7 +3155,7 @@ impl EffectAst {
         Self::subject_verb_search_library_slots(player, slots, Zone::Hand, reveal, progress_tag)
     }
 
-    pub(crate) fn subject_verb_search_library_slots(
+    pub fn subject_verb_search_library_slots(
         player: PlayerAst,
         slots: Vec<SearchLibrarySlotAst>,
         destination: Zone,
@@ -3212,7 +3174,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_retarget_stack_object(
+    pub fn subject_verb_retarget_stack_object(
         chooser: PlayerAst,
         target: TargetAst,
         mode: RetargetModeAst,
@@ -3231,7 +3193,7 @@ impl EffectAst {
     }
 
     /// Preserve an authored plural copy back-reference ("the copies").
-    pub(crate) fn with_retarget_plural_copy_reference(mut self, plural: bool) -> Self {
+    pub fn with_retarget_plural_copy_reference(mut self, plural: bool) -> Self {
         if let Self::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::RetargetStackObject {
@@ -3246,10 +3208,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn subject_verb_grant_ability_to_source(
-        ability: ParsedAbility,
-        duration: Until,
-    ) -> Self {
+    pub fn subject_verb_grant_ability_to_source(ability: ParsedAbility, duration: Until) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3260,7 +3219,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_exchange_control(
+    pub fn subject_verb_exchange_control(
         filter: ObjectFilter,
         count: u32,
         shared_type: Option<SharedTypeConstraintAst>,
@@ -3276,7 +3235,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_exchange_control_heterogeneous(
+    pub fn subject_verb_exchange_control_heterogeneous(
         permanent1: TargetAst,
         permanent2: TargetAst,
         shared_type: Option<SharedTypeConstraintAst>,
@@ -3292,10 +3251,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_destroy_all_attached_to(
-        filter: ObjectFilter,
-        target: TargetAst,
-    ) -> Self {
+    pub fn subject_verb_destroy_all_attached_to(filter: ObjectFilter, target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3303,7 +3259,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_exile_all_attached_to(
+    pub fn subject_verb_exile_all_attached_to(
         filter: ObjectFilter,
         target: TargetAst,
         face_down: bool,
@@ -3319,7 +3275,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_attach(object: TargetAst, target: TargetAst) -> Self {
+    pub fn subject_verb_attach(object: TargetAst, target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3327,7 +3283,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_unattach(object: TargetAst) -> Self {
+    pub fn subject_verb_unattach(object: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3335,7 +3291,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_enchant(filter: AuraAttachmentFilter) -> Self {
+    pub fn subject_verb_enchant(filter: AuraAttachmentFilter) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3343,7 +3299,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_exile_when_source_leaves(target: TargetAst) -> Self {
+    pub fn subject_verb_exile_when_source_leaves(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3351,7 +3307,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_sacrifice_source_when_leaves(target: TargetAst) -> Self {
+    pub fn subject_verb_sacrifice_source_when_leaves(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3359,7 +3315,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_register_zone_replacement(
+    pub fn subject_verb_register_zone_replacement(
         target: TargetAst,
         from_zone: Option<Zone>,
         to_zone: Option<Zone>,
@@ -3384,7 +3340,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_register_zone_replacement_with_counters(
+    pub fn subject_verb_register_zone_replacement_with_counters(
         target: TargetAst,
         from_zone: Option<Zone>,
         to_zone: Option<Zone>,
@@ -3410,7 +3366,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_register_zone_replacement_with_library_placement(
+    pub fn subject_verb_register_zone_replacement_with_library_placement(
         target: TargetAst,
         from_zone: Option<Zone>,
         to_zone: Option<Zone>,
@@ -3436,7 +3392,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_register_zone_replacement_with_linked_exile_follow_up(
+    pub fn subject_verb_register_zone_replacement_with_linked_exile_follow_up(
         target: TargetAst,
         from_zone: Option<Zone>,
         to_zone: Option<Zone>,
@@ -3462,7 +3418,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_register_future_zone_replacement(
+    pub fn subject_verb_register_future_zone_replacement(
         filter: ObjectFilter,
         from_zone: Option<Zone>,
         to_zone: Option<Zone>,
@@ -3486,7 +3442,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_register_draw_replacement(
+    pub fn subject_verb_register_draw_replacement(
         player: PlayerFilter,
         replacement_effects: Vec<EffectAst>,
         duration: ZoneReplacementDurationAst,
@@ -3502,7 +3458,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_register_mana_replacement(
+    pub fn subject_verb_register_mana_replacement(
         source_filter: ObjectFilter,
         replacement_mana: Vec<ManaSymbol>,
         mode: crate::effects::ReplacementApplyMode,
@@ -3518,7 +3474,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_register_damaged_by_source_zone_replacement(
+    pub fn subject_verb_register_damaged_by_source_zone_replacement(
         filter: ObjectFilter,
         from_zone: Option<Zone>,
         to_zone: Option<Zone>,
@@ -3538,7 +3494,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_register_enter_under_control_replacement(
+    pub fn subject_verb_register_enter_under_control_replacement(
         filter: ObjectFilter,
         duration: ZoneReplacementDurationAst,
     ) -> Self {
@@ -3549,7 +3505,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_register_enter_tapped_replacement(
+    pub fn subject_verb_register_enter_tapped_replacement(
         filter: ObjectFilter,
         duration: ZoneReplacementDurationAst,
     ) -> Self {
@@ -3560,7 +3516,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_register_next_batch_enter_with_counters(
+    pub fn subject_verb_register_next_batch_enter_with_counters(
         filter: ObjectFilter,
         counter_type: CounterType,
         count: Value,
@@ -3576,7 +3532,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_choose_spell_cast_history(
+    pub fn subject_verb_choose_spell_cast_history(
         chooser: PlayerAst,
         cast_by: PlayerAst,
         filter: ObjectFilter,
@@ -3593,7 +3549,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_damage(amount: Value, target: TargetAst) -> Self {
+    pub fn subject_verb_damage(amount: Value, target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3605,7 +3561,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_damage_each(amount: Value, filter: ObjectFilter) -> Self {
+    pub fn subject_verb_damage_each(amount: Value, filter: ObjectFilter) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3613,7 +3569,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_damage_equal_to_power(source: TargetAst, target: TargetAst) -> Self {
+    pub fn subject_verb_damage_equal_to_power(source: TargetAst, target: TargetAst) -> Self {
         Self::subject_verb_damage_with_source(
             source.clone(),
             Value::PowerOf(Box::new(crate::target::ChooseSpec::Source)),
@@ -3621,7 +3577,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_damage_with_source(
+    pub fn subject_verb_damage_with_source(
         source: TargetAst,
         amount: Value,
         target: TargetAst,
@@ -3638,7 +3594,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_distributed_damage(amount: Value, target: TargetAst) -> Self {
+    pub fn subject_verb_distributed_damage(amount: Value, target: TargetAst) -> Self {
         Self::subject_verb_distributed_damage_with_source_and_mode(
             amount,
             target,
@@ -3648,7 +3604,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_evenly_distributed_damage(amount: Value, target: TargetAst) -> Self {
+    pub fn subject_verb_evenly_distributed_damage(amount: Value, target: TargetAst) -> Self {
         Self::subject_verb_distributed_damage_with_source_and_mode(
             amount,
             target,
@@ -3658,7 +3614,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_distributed_damage_with_source(
+    pub fn subject_verb_distributed_damage_with_source(
         amount: Value,
         target: TargetAst,
         source: TargetAst,
@@ -3673,7 +3629,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_distributed_damage_with_source_and_mode(
+    pub fn subject_verb_distributed_damage_with_source_and_mode(
         amount: Value,
         target: TargetAst,
         source: TargetAst,
@@ -3693,7 +3649,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_proliferate(count: Value) -> Self {
+    pub fn subject_verb_proliferate(count: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3701,7 +3657,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_investigate(player: PlayerAst, count: Value) -> Self {
+    pub fn subject_verb_investigate(player: PlayerAst, count: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             player,
@@ -3709,7 +3665,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_incubate(player: PlayerAst, amount: Value, count: Value) -> Self {
+    pub fn subject_verb_incubate(player: PlayerAst, amount: Value, count: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             player,
@@ -3717,7 +3673,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_learn(player: PlayerAst) -> Self {
+    pub fn subject_verb_learn(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             player,
@@ -3725,7 +3681,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_emit_keyword_action(
+    pub fn subject_verb_emit_keyword_action(
         action: crate::events::KeywordActionKind,
         amount: u32,
     ) -> Self {
@@ -3736,7 +3692,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_amass(subtype: Option<Subtype>, amount: Value) -> Self {
+    pub fn subject_verb_amass(subtype: Option<Subtype>, amount: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3744,7 +3700,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_bolster(amount: u32) -> Self {
+    pub fn subject_verb_bolster(amount: u32) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3752,7 +3708,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_support(amount: u32) -> Self {
+    pub fn subject_verb_support(amount: u32) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3760,7 +3716,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_adapt(amount: u32) -> Self {
+    pub fn subject_verb_adapt(amount: u32) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3768,7 +3724,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_monstrosity(amount: Value) -> Self {
+    pub fn subject_verb_monstrosity(amount: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3776,7 +3732,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_discover(player: PlayerAst, count: Value) -> Self {
+    pub fn subject_verb_discover(player: PlayerAst, count: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             player,
@@ -3784,7 +3740,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_fateseal(player: PlayerAst, count: Value) -> Self {
+    pub fn subject_verb_fateseal(player: PlayerAst, count: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             player,
@@ -3792,7 +3748,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_populate(count: Value) -> Self {
+    pub fn subject_verb_populate(count: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3810,7 +3766,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_explore(target: TargetAst) -> Self {
+    pub fn subject_verb_explore(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3818,7 +3774,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_endure(target: TargetAst, amount: Value) -> Self {
+    pub fn subject_verb_endure(target: TargetAst, amount: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3826,7 +3782,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_exploit() -> Self {
+    pub fn subject_verb_exploit() -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3834,7 +3790,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_connive(target: TargetAst, count: Value) -> Self {
+    pub fn subject_verb_connive(target: TargetAst, count: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3842,7 +3798,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_connive_iterated() -> Self {
+    pub fn subject_verb_connive_iterated() -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3850,7 +3806,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_put_rest_on_bottom_of_library() -> Self {
+    pub fn subject_verb_put_rest_on_bottom_of_library() -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3858,7 +3814,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn() -> Self {
+    pub fn subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn() -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3866,7 +3822,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_open_attraction(player: PlayerAst, reminder: bool) -> Self {
+    pub fn subject_verb_open_attraction(player: PlayerAst, reminder: bool) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             player,
@@ -3874,7 +3830,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_manifest_top_card(player: PlayerAst) -> Self {
+    pub fn subject_verb_manifest_top_card(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
             player,
@@ -3882,7 +3838,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_cloak_top_card(player: PlayerAst) -> Self {
+    pub fn subject_verb_cloak_top_card(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
             player,
@@ -3890,7 +3846,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_manifest_from_hand(player: PlayerAst) -> Self {
+    pub fn subject_verb_manifest_from_hand(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             player,
@@ -3898,7 +3854,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_manifest_dread(player: PlayerAst) -> Self {
+    pub fn subject_verb_manifest_dread(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             player,
@@ -3906,7 +3862,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_earthbend(counters: u32) -> Self {
+    pub fn subject_verb_earthbend(counters: u32) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3914,7 +3870,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_behold(subtype: Subtype, count: u32) -> Self {
+    pub fn subject_verb_behold(subtype: Subtype, count: u32) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3922,7 +3878,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_fight(creature1: TargetAst, creature2: TargetAst) -> Self {
+    pub fn subject_verb_fight(creature1: TargetAst, creature2: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3933,7 +3889,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_fight_iterated(creature2: TargetAst) -> Self {
+    pub fn subject_verb_fight_iterated(creature2: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3941,7 +3897,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_clash(opponent: ClashOpponentAst) -> Self {
+    pub fn subject_verb_clash(opponent: ClashOpponentAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3949,7 +3905,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_add_mana(player: PlayerAst, mana: Vec<ManaSymbol>) -> Self {
+    pub fn subject_verb_add_mana(player: PlayerAst, mana: Vec<ManaSymbol>) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -3957,7 +3913,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_add_mana_scaled(
+    pub fn subject_verb_add_mana_scaled(
         player: PlayerAst,
         mana: Vec<ManaSymbol>,
         amount: Value,
@@ -3969,7 +3925,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_add_mana_any_color(
+    pub fn subject_verb_add_mana_any_color(
         player: PlayerAst,
         amount: Value,
         available_colors: Option<Vec<crate::color::Color>>,
@@ -3977,7 +3933,7 @@ impl EffectAst {
         Self::subject_verb_add_mana_any_color_with_distinct(player, amount, available_colors, false)
     }
 
-    pub(crate) fn subject_verb_add_mana_any_color_with_distinct(
+    pub fn subject_verb_add_mana_any_color_with_distinct(
         player: PlayerAst,
         amount: Value,
         available_colors: Option<Vec<crate::color::Color>>,
@@ -3994,7 +3950,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_add_mana_any_one_color(player: PlayerAst, amount: Value) -> Self {
+    pub fn subject_verb_add_mana_any_one_color(player: PlayerAst, amount: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -4002,7 +3958,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_add_mana_chosen_color(
+    pub fn subject_verb_add_mana_chosen_color(
         player: PlayerAst,
         amount: Value,
         fixed_option: Option<crate::color::Color>,
@@ -4017,7 +3973,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_add_mana_from_land_could_produce(
+    pub fn subject_verb_add_mana_from_land_could_produce(
         player: PlayerAst,
         amount: Value,
         land_filter: ObjectFilter,
@@ -4038,10 +3994,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_add_mana_colors_among(
-        player: PlayerAst,
-        filter: ObjectFilter,
-    ) -> Self {
+    pub fn subject_verb_add_mana_colors_among(player: PlayerAst, filter: ObjectFilter) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -4049,7 +4002,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_add_one_mana_any_color_among(
+    pub fn subject_verb_add_one_mana_any_color_among(
         player: PlayerAst,
         filter: ObjectFilter,
     ) -> Self {
@@ -4063,7 +4016,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_choose_color_of_object_add_mana(
+    pub fn subject_verb_choose_color_of_object_add_mana(
         player: PlayerAst,
         filter: ObjectFilter,
     ) -> Self {
@@ -4077,10 +4030,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_add_mana_commander_identity(
-        player: PlayerAst,
-        amount: Value,
-    ) -> Self {
+    pub fn subject_verb_add_mana_commander_identity(player: PlayerAst, amount: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -4088,10 +4038,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_exchange_life_totals(
-        player1: PlayerAst,
-        player2: PlayerAst,
-    ) -> Self {
+    pub fn subject_verb_exchange_life_totals(player1: PlayerAst, player2: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player1,
@@ -4099,7 +4046,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_exchange_text_boxes(target: TargetAst) -> Self {
+    pub fn subject_verb_exchange_text_boxes(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4107,7 +4054,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_exchange_zones(player: PlayerAst, zone1: Zone, zone2: Zone) -> Self {
+    pub fn subject_verb_exchange_zones(player: PlayerAst, zone1: Zone, zone2: Zone) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -4115,7 +4062,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_exchange_values(
+    pub fn subject_verb_exchange_values(
         left: ExchangeValueAst,
         right: ExchangeValueAst,
         duration: Until,
@@ -4131,7 +4078,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_exile_instead_of_graveyard_this_turn(player: PlayerAst) -> Self {
+    pub fn subject_verb_exile_instead_of_graveyard_this_turn(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -4139,14 +4086,11 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_control_combat_choices_this_turn(
-        attackers: bool,
-        blockers: bool,
-    ) -> Self {
+    pub fn subject_verb_control_combat_choices_this_turn(attackers: bool, blockers: bool) -> Self {
         Self::subject_verb_control_combat_choices(attackers, blockers, false)
     }
 
-    pub(crate) fn subject_verb_control_combat_choices(
+    pub fn subject_verb_control_combat_choices(
         attackers: bool,
         blockers: bool,
         this_combat: bool,
@@ -4162,7 +4106,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_control_player(
+    pub fn subject_verb_control_player(
         player: PlayerAst,
         target: PlayerFilter,
         duration: ControlDurationAst,
@@ -4177,7 +4121,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_reduce_next_spell_cost_this_turn(
+    pub fn subject_verb_reduce_next_spell_cost_this_turn(
         player: PlayerAst,
         filter: ObjectFilter,
         reduction: ManaCost,
@@ -4189,7 +4133,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_reduce_matching_spell_cost_this_turn(
+    pub fn subject_verb_reduce_matching_spell_cost_this_turn(
         player: PlayerAst,
         filter: ObjectFilter,
         reduction: Value,
@@ -4197,7 +4141,7 @@ impl EffectAst {
         Self::subject_verb_reduce_matching_spell_cost(player, filter, reduction, Until::EndOfTurn)
     }
 
-    pub(crate) fn subject_verb_reduce_matching_spell_cost(
+    pub fn subject_verb_reduce_matching_spell_cost(
         player: PlayerAst,
         filter: ObjectFilter,
         reduction: Value,
@@ -4215,7 +4159,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_reduce_next_spell_generic_cost_this_turn(
+    pub fn subject_verb_reduce_next_spell_generic_cost_this_turn(
         player: PlayerAst,
         filter: ObjectFilter,
         reduction: Value,
@@ -4232,7 +4176,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_gain_control(
+    pub fn subject_verb_gain_control(
         player: PlayerAst,
         target: TargetAst,
         duration: Until,
@@ -4240,7 +4184,7 @@ impl EffectAst {
         Self::subject_verb_gain_control_with_condition(player, target, duration, None)
     }
 
-    pub(crate) fn subject_verb_gain_control_with_condition(
+    pub fn subject_verb_gain_control_with_condition(
         player: PlayerAst,
         target: TargetAst,
         duration: Until,
@@ -4251,7 +4195,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_gain_control_with_condition_and_source_surface(
+    pub fn subject_verb_gain_control_with_condition_and_source_surface(
         player: PlayerAst,
         target: TargetAst,
         duration: Until,
@@ -4271,7 +4215,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_reveal_top(player: PlayerAst) -> Self {
+    pub fn subject_verb_reveal_top(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
             player,
@@ -4279,7 +4223,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_exile_top_of_library(
+    pub fn subject_verb_exile_top_of_library(
         player: PlayerAst,
         count: Value,
         tags: Vec<TagKey>,
@@ -4294,7 +4238,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_exile_top_of_library_with_optional_surface(
+    pub fn subject_verb_exile_top_of_library_with_optional_surface(
         player: PlayerAst,
         count: Value,
         tags: Vec<TagKey>,
@@ -4314,7 +4258,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_exile_top_of_library_face_down(
+    pub fn subject_verb_exile_top_of_library_face_down(
         player: PlayerAst,
         count: Value,
         accumulated_tag: TagKey,
@@ -4332,7 +4276,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_reveal_tagged(tag: TagKey) -> Self {
+    pub fn subject_verb_reveal_tagged(tag: TagKey) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4340,7 +4284,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_put_onto_battlefield(
+    pub fn subject_verb_put_onto_battlefield(
         player: PlayerAst,
         target: TargetAst,
         tapped: bool,
@@ -4359,7 +4303,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_cloak_onto_battlefield(
+    pub fn subject_verb_cloak_onto_battlefield(
         player: PlayerAst,
         target: TargetAst,
         tapped: bool,
@@ -4379,7 +4323,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_reveal_cards_from_hand(
+    pub fn subject_verb_reveal_cards_from_hand(
         player: PlayerAst,
         count: ChoiceCount,
         count_value: Option<Value>,
@@ -4396,23 +4340,15 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_look_at_top_cards(
-        player: PlayerAst,
-        count: Value,
-        tag: TagKey,
-    ) -> Self {
+    pub fn subject_verb_look_at_top_cards(player: PlayerAst, count: Value, tag: TagKey) -> Self {
         Self::subject_verb_top_library_cards(player, count, tag, false)
     }
 
-    pub(crate) fn subject_verb_reveal_top_cards(
-        player: PlayerAst,
-        count: Value,
-        tag: TagKey,
-    ) -> Self {
+    pub fn subject_verb_reveal_top_cards(player: PlayerAst, count: Value, tag: TagKey) -> Self {
         Self::subject_verb_top_library_cards(player, count, tag, true)
     }
 
-    pub(crate) fn subject_verb_look_at_objects(player: PlayerAst, filter: ObjectFilter) -> Self {
+    pub fn subject_verb_look_at_objects(player: PlayerAst, filter: ObjectFilter) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -4420,7 +4356,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_look_at_target(target: TargetAst) -> Self {
+    pub fn subject_verb_look_at_target(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4441,7 +4377,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_put_into_hand(player: PlayerAst, object: ObjectRefAst) -> Self {
+    pub fn subject_verb_put_into_hand(player: PlayerAst, object: ObjectRefAst) -> Self {
         let ObjectRefAst::Tagged(tag) = object;
         Self::subject_verb_move_to_zone(
             TargetAst::Tagged(tag, None),
@@ -4454,7 +4390,7 @@ impl EffectAst {
         .with_destination_player_surface(Some(player))
     }
 
-    pub(crate) fn subject_verb_additional_land_plays(
+    pub fn subject_verb_additional_land_plays(
         player: PlayerAst,
         count: Value,
         duration: Until,
@@ -4466,7 +4402,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_extra_turn_after_turn(
+    pub fn subject_verb_extra_turn_after_turn(
         player: PlayerAst,
         anchor: ExtraTurnAnchorAst,
     ) -> Self {
@@ -4477,7 +4413,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_reorder_top_of_library(tag: TagKey) -> Self {
+    pub fn subject_verb_reorder_top_of_library(tag: TagKey) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4485,10 +4421,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_shuffle_objects_into_library(
-        player: PlayerAst,
-        target: TargetAst,
-    ) -> Self {
+    pub fn subject_verb_shuffle_objects_into_library(player: PlayerAst, target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
             player,
@@ -4501,9 +4434,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_shuffle_objects_into_library_possessive_owner(
-        target: TargetAst,
-    ) -> Self {
+    pub fn subject_verb_shuffle_objects_into_library_possessive_owner(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
             PlayerAst::ItsOwner,
@@ -4516,7 +4447,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_shuffle_objects_into_owner_library(target: TargetAst) -> Self {
+    pub fn subject_verb_shuffle_objects_into_owner_library(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
             PlayerAst::ItsOwner,
@@ -4529,7 +4460,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_shuffle_all_objects_into_library(
+    pub fn subject_verb_shuffle_all_objects_into_library(
         player: PlayerAst,
         target: TargetAst,
     ) -> Self {
@@ -4545,7 +4476,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_shuffle_all_objects_into_owner_library(target: TargetAst) -> Self {
+    pub fn subject_verb_shuffle_all_objects_into_owner_library(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
             PlayerAst::ItsOwner,
@@ -4558,7 +4489,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_add_mana_imprinted_colors() -> Self {
+    pub fn subject_verb_add_mana_imprinted_colors() -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4566,7 +4497,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_flip_coin(player: PlayerAst) -> Self {
+    pub fn subject_verb_flip_coin(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -4574,7 +4505,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_flip_coin_face_only(player: PlayerAst) -> Self {
+    pub fn subject_verb_flip_coin_face_only(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -4582,11 +4513,11 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_roll_die(player: PlayerAst, sides: u32) -> Self {
+    pub fn subject_verb_roll_die(player: PlayerAst, sides: u32) -> Self {
         Self::subject_verb_roll_die_with_die_text(player, sides, None)
     }
 
-    pub(crate) fn subject_verb_roll_die_with_die_text(
+    pub fn subject_verb_roll_die_with_die_text(
         player: PlayerAst,
         sides: u32,
         die_text: Option<String>,
@@ -4598,7 +4529,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_roll_dice_choose_result_with_die_text(
+    pub fn subject_verb_roll_dice_choose_result_with_die_text(
         player: PlayerAst,
         count: u32,
         sides: u32,
@@ -4615,7 +4546,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_shuffle_hand_and_graveyard_into_library(player: PlayerAst) -> Self {
+    pub fn subject_verb_shuffle_hand_and_graveyard_into_library(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -4623,7 +4554,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_shuffle_hand_graveyard_and_owned_permanents_into_library(
+    pub fn subject_verb_shuffle_hand_graveyard_and_owned_permanents_into_library(
         player: PlayerAst,
     ) -> Self {
         Self::subject_verb(
@@ -4633,11 +4564,11 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_shuffle_graveyard_into_library(player: PlayerAst) -> Self {
+    pub fn subject_verb_shuffle_graveyard_into_library(player: PlayerAst) -> Self {
         Self::subject_verb_shuffle_graveyard_into_library_with_surface(player, false)
     }
 
-    pub(crate) fn subject_verb_shuffle_graveyard_into_library_with_surface(
+    pub fn subject_verb_shuffle_graveyard_into_library_with_surface(
         player: PlayerAst,
         explicit_all_cards_from: bool,
     ) -> Self {
@@ -4650,7 +4581,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_reorder_graveyard(player: PlayerAst) -> Self {
+    pub fn subject_verb_reorder_graveyard(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -4658,7 +4589,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_choose_color(player: PlayerAst) -> Self {
+    pub fn subject_verb_choose_color(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Chooser,
             player,
@@ -4666,7 +4597,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_choose_card_type(player: PlayerAst, options: Vec<CardType>) -> Self {
+    pub fn subject_verb_choose_card_type(player: PlayerAst, options: Vec<CardType>) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Chooser,
             player,
@@ -4674,10 +4605,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_choose_named_option(
-        player: PlayerAst,
-        options: Vec<String>,
-    ) -> Self {
+    pub fn subject_verb_choose_named_option(player: PlayerAst, options: Vec<String>) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Chooser,
             player,
@@ -4685,7 +4613,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_choose_creature_type(
+    pub fn subject_verb_choose_creature_type(
         player: PlayerAst,
         excluded_subtypes: Vec<Subtype>,
     ) -> Self {
@@ -4699,10 +4627,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_choose_subtype_type(
-        player: PlayerAst,
-        family: SubtypeFamily,
-    ) -> Self {
+    pub fn subject_verb_choose_subtype_type(player: PlayerAst, family: SubtypeFamily) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Chooser,
             player,
@@ -4713,7 +4638,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_choose_land_type(player: PlayerAst, exclude_basic: bool) -> Self {
+    pub fn subject_verb_choose_land_type(player: PlayerAst, exclude_basic: bool) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Chooser,
             player,
@@ -4721,7 +4646,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_choose_card_name(
+    pub fn subject_verb_choose_card_name(
         player: PlayerAst,
         filter: Option<ObjectFilter>,
         tag: TagKey,
@@ -4733,7 +4658,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_choose_player(
+    pub fn subject_verb_choose_player(
         chooser: PlayerAst,
         filter: PlayerFilter,
         tag: TagKey,
@@ -4752,7 +4677,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_tap(target: TargetAst) -> Self {
+    pub fn subject_verb_tap(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4760,7 +4685,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_untap(target: TargetAst) -> Self {
+    pub fn subject_verb_untap(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4768,7 +4693,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_tap_all(filter: ObjectFilter) -> Self {
+    pub fn subject_verb_tap_all(filter: ObjectFilter) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4776,7 +4701,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_untap_all(filter: ObjectFilter) -> Self {
+    pub fn subject_verb_untap_all(filter: ObjectFilter) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4784,7 +4709,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_tap_or_untap(target: TargetAst) -> Self {
+    pub fn subject_verb_tap_or_untap(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4792,7 +4717,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_tap_or_untap_all(
+    pub fn subject_verb_tap_or_untap_all(
         tap_filter: ObjectFilter,
         untap_filter: ObjectFilter,
     ) -> Self {
@@ -4806,7 +4731,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_phase_out(target: TargetAst) -> Self {
+    pub fn subject_verb_phase_out(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4818,7 +4743,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_phase_out_all(filter: ObjectFilter) -> Self {
+    pub fn subject_verb_phase_out_all(filter: ObjectFilter) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4830,7 +4755,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_phase_out_all_until_source_leaves(
+    pub fn subject_verb_phase_out_all_until_source_leaves(
         filter: ObjectFilter,
         source_surface: SourceReferenceSurface,
     ) -> Self {
@@ -4845,7 +4770,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_phase_in(target: TargetAst) -> Self {
+    pub fn subject_verb_phase_in(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4853,7 +4778,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_phase_in_all(filter: ObjectFilter) -> Self {
+    pub fn subject_verb_phase_in_all(filter: ObjectFilter) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4861,7 +4786,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_transform(target: TargetAst) -> Self {
+    pub fn subject_verb_transform(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4869,7 +4794,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_convert(target: TargetAst) -> Self {
+    pub fn subject_verb_convert(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4877,7 +4802,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_destroy(target: TargetAst) -> Self {
+    pub fn subject_verb_destroy(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4889,7 +4814,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_destroy_no_regeneration(target: TargetAst) -> Self {
+    pub fn subject_verb_destroy_no_regeneration(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4901,7 +4826,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_destroy_all(filter: ObjectFilter) -> Self {
+    pub fn subject_verb_destroy_all(filter: ObjectFilter) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4913,7 +4838,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_destroy_all_of_chosen_color(
+    pub fn subject_verb_destroy_all_of_chosen_color(
         filter: ObjectFilter,
         no_regeneration: bool,
     ) -> Self {
@@ -4928,7 +4853,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_exile(target: TargetAst, face_down: bool) -> Self {
+    pub fn subject_verb_exile(target: TargetAst, face_down: bool) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4941,7 +4866,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_exile_all(filter: ObjectFilter, face_down: bool) -> Self {
+    pub fn subject_verb_exile_all(filter: ObjectFilter, face_down: bool) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4949,7 +4874,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_look_at_hand(target: TargetAst) -> Self {
+    pub fn subject_verb_look_at_hand(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4957,7 +4882,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_counter(target: TargetAst) -> Self {
+    pub fn subject_verb_counter(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4965,7 +4890,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_counter_unless_pays(target: TargetAst, cost: TotalCost) -> Self {
+    pub fn subject_verb_counter_unless_pays(target: TargetAst, cost: TotalCost) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -4973,7 +4898,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_put_counters(
+    pub fn subject_verb_put_counters(
         counter_type: CounterType,
         count: Value,
         target: TargetAst,
@@ -4993,7 +4918,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_put_counter_choice(
+    pub fn subject_verb_put_counter_choice(
         counter_types: Vec<CounterType>,
         count: Value,
         mode_texts: Vec<String>,
@@ -5013,7 +4938,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_put_or_remove_counters(
+    pub fn subject_verb_put_or_remove_counters(
         put_counter_type: CounterType,
         put_count: Value,
         remove_counter_type: CounterType,
@@ -5039,7 +4964,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_put_counters_all(
+    pub fn subject_verb_put_counters_all(
         counter_type: CounterType,
         count: Value,
         filter: ObjectFilter,
@@ -5055,7 +4980,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_remove_up_to_any_counters(
+    pub fn subject_verb_remove_up_to_any_counters(
         amount: Value,
         target: TargetAst,
         counter_type: Option<CounterType>,
@@ -5075,7 +5000,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_remove_up_to_counters_among(
+    pub fn subject_verb_remove_up_to_counters_among(
         amount: Value,
         filter: ObjectFilter,
         counter_type: Option<CounterType>,
@@ -5095,7 +5020,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_remove_all_of_them_counters_from_source() -> Self {
+    pub fn subject_verb_remove_all_of_them_counters_from_source() -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -5110,7 +5035,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_move_all_counters(from: TargetAst, to: TargetAst) -> Self {
+    pub fn subject_verb_move_all_counters(from: TargetAst, to: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -5118,7 +5043,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_move_one_counter(from: TargetAst, to: TargetAst) -> Self {
+    pub fn subject_verb_move_one_counter(from: TargetAst, to: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -5126,15 +5051,15 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_for_each_counter_kind_put_or_remove(target: TargetAst) -> Self {
+    pub fn subject_verb_for_each_counter_kind_put_or_remove(target: TargetAst) -> Self {
         Self::subject_verb_counter_kind_put_or_remove(target, true)
     }
 
-    pub(crate) fn subject_verb_one_counter_kind_put_or_remove(target: TargetAst) -> Self {
+    pub fn subject_verb_one_counter_kind_put_or_remove(target: TargetAst) -> Self {
         Self::subject_verb_counter_kind_put_or_remove(target, false)
     }
 
-    pub(crate) fn subject_verb_fixed_counter_kind_put_or_remove(
+    pub fn subject_verb_fixed_counter_kind_put_or_remove(
         target: TargetAst,
         counter_type: CounterType,
         optional_action: bool,
@@ -5164,7 +5089,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_put_counter_of_chosen_kind(target: TargetAst) -> Self {
+    pub fn subject_verb_put_counter_of_chosen_kind(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -5172,7 +5097,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_return_to_hand(target: TargetAst, random: bool) -> Self {
+    pub fn subject_verb_return_to_hand(target: TargetAst, random: bool) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -5187,7 +5112,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_return_all_to_hand(filter: ObjectFilter) -> Self {
+    pub fn subject_verb_return_all_to_hand(filter: ObjectFilter) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -5199,10 +5124,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn with_return_destination_player_surface(
-        mut self,
-        player: Option<PlayerAst>,
-    ) -> Self {
+    pub fn with_return_destination_player_surface(mut self, player: Option<PlayerAst>) -> Self {
         if let Some(player) = player
             && let Self::SubjectVerb(subject_verb) = &mut self
         {
@@ -5221,7 +5143,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn with_return_set_quantifier_surface(
+    pub fn with_return_set_quantifier_surface(
         mut self,
         surface: Option<ironsmith_core::SetQuantifierSurface>,
     ) -> Self {
@@ -5237,7 +5159,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn with_return_set_reference_surface(mut self, surface: Option<String>) -> Self {
+    pub fn with_return_set_reference_surface(mut self, surface: Option<String>) -> Self {
         if let Some(surface) = surface
             && let Self::SubjectVerb(subject_verb) = &mut self
             && let SubjectVerbActionAst::ReturnToHand {
@@ -5250,7 +5172,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn subject_verb_return_all_to_hand_of_chosen_color(filter: ObjectFilter) -> Self {
+    pub fn subject_verb_return_all_to_hand_of_chosen_color(filter: ObjectFilter) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -5258,10 +5180,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_move_to_library_nth_from_top(
-        target: TargetAst,
-        position: Value,
-    ) -> Self {
+    pub fn subject_verb_move_to_library_nth_from_top(target: TargetAst, position: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -5269,7 +5188,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_double_counters_on_each(
+    pub fn subject_verb_double_counters_on_each(
         counter_type: Option<CounterType>,
         filter: ObjectFilter,
     ) -> Self {
@@ -5283,7 +5202,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_double_counters_on_target(
+    pub fn subject_verb_double_counters_on_target(
         counter_type: Option<CounterType>,
         target: TargetAst,
     ) -> Self {
@@ -5297,7 +5216,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_remove_counters_all(
+    pub fn subject_verb_remove_counters_all(
         amount: Value,
         filter: ObjectFilter,
         counter_type: Option<CounterType>,
@@ -5315,7 +5234,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_put_sticker(
+    pub fn subject_verb_put_sticker(
         target: TargetAst,
         action: crate::events::KeywordActionKind,
     ) -> Self {
@@ -5326,7 +5245,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_unlock_room_door(player: PlayerAst) -> Self {
+    pub fn subject_verb_unlock_room_door(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             player,
@@ -5334,7 +5253,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_switch_power_toughness(target: TargetAst, duration: Until) -> Self {
+    pub fn subject_verb_switch_power_toughness(target: TargetAst, duration: Until) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -5342,7 +5261,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_scale_power_toughness_all(
+    pub fn subject_verb_scale_power_toughness_all(
         filter: ObjectFilter,
         power: bool,
         toughness: bool,
@@ -5362,7 +5281,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_reveal_hand(player: PlayerAst) -> Self {
+    pub fn subject_verb_reveal_hand(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5370,7 +5289,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_discard(
+    pub fn subject_verb_discard(
         player: PlayerAst,
         count: Value,
         random: bool,
@@ -5391,7 +5310,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_discard_hand(player: PlayerAst) -> Self {
+    pub fn subject_verb_discard_hand(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5399,7 +5318,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_poison_counters(player: PlayerAst, count: Value) -> Self {
+    pub fn subject_verb_poison_counters(player: PlayerAst, count: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5407,7 +5326,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_energy_counters(player: PlayerAst, count: Value) -> Self {
+    pub fn subject_verb_energy_counters(player: PlayerAst, count: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5415,7 +5334,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_experience_counters(player: PlayerAst, count: Value) -> Self {
+    pub fn subject_verb_experience_counters(player: PlayerAst, count: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5423,7 +5342,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_ticket_counters(player: PlayerAst, count: Value) -> Self {
+    pub fn subject_verb_ticket_counters(player: PlayerAst, count: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5431,7 +5350,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_pay_energy(player: PlayerAst, amount: Value) -> Self {
+    pub fn subject_verb_pay_energy(player: PlayerAst, amount: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5439,7 +5358,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_pay_life(player: PlayerAst, amount: Value) -> Self {
+    pub fn subject_verb_pay_life(player: PlayerAst, amount: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5447,7 +5366,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_pay_any_energy(player: PlayerAst, min_amount: u32) -> Self {
+    pub fn subject_verb_pay_any_energy(player: PlayerAst, min_amount: u32) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5455,7 +5374,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_pay_any_life(player: PlayerAst, min_amount: u32) -> Self {
+    pub fn subject_verb_pay_any_life(player: PlayerAst, min_amount: u32) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5463,7 +5382,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_pay_mana(player: PlayerAst, cost: ManaCost) -> Self {
+    pub fn subject_verb_pay_mana(player: PlayerAst, cost: ManaCost) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5475,7 +5394,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_pay_mana_up_to(
+    pub fn subject_verb_pay_mana_up_to(
         player: PlayerAst,
         cost: ManaCost,
         x_maximum: Value,
@@ -5491,7 +5410,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_double_mana_pool(player: PlayerAst) -> Self {
+    pub fn subject_verb_double_mana_pool(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5499,7 +5418,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_empty_mana_pool(player: PlayerAst) -> Self {
+    pub fn subject_verb_empty_mana_pool(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5507,7 +5426,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_set_life_total(player: PlayerAst, amount: Value) -> Self {
+    pub fn subject_verb_set_life_total(player: PlayerAst, amount: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5515,7 +5434,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_skip_turn(player: PlayerAst) -> Self {
+    pub fn subject_verb_skip_turn(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5523,7 +5442,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_end_turn(player: PlayerAst) -> Self {
+    pub fn subject_verb_end_turn(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5531,7 +5450,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_reverse_turn_order() -> Self {
+    pub fn subject_verb_reverse_turn_order() -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -5539,7 +5458,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_end_combat_phase(player: PlayerAst) -> Self {
+    pub fn subject_verb_end_combat_phase(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5547,7 +5466,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_skip_combat_phases(player: PlayerAst) -> Self {
+    pub fn subject_verb_skip_combat_phases(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5555,7 +5474,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_skip_next_combat_phase_this_turn(player: PlayerAst) -> Self {
+    pub fn subject_verb_skip_next_combat_phase_this_turn(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5563,7 +5482,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_skip_main_phases_this_turn(player: PlayerAst) -> Self {
+    pub fn subject_verb_skip_main_phases_this_turn(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5571,7 +5490,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_skip_combat_phases_this_turn(player: PlayerAst) -> Self {
+    pub fn subject_verb_skip_combat_phases_this_turn(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5579,7 +5498,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_skip_draw_step(player: PlayerAst) -> Self {
+    pub fn subject_verb_skip_draw_step(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5587,9 +5506,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_additional_phases(
-        phases: Vec<crate::effects::AdditionalPhase>,
-    ) -> Self {
+    pub fn subject_verb_additional_phases(phases: Vec<crate::effects::AdditionalPhase>) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             PlayerAst::Implicit,
@@ -5597,7 +5514,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_play_from_graveyard_until_eot(player: PlayerAst) -> Self {
+    pub fn subject_verb_play_from_graveyard_until_eot(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5605,7 +5522,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_ring_tempts_you(player: PlayerAst) -> Self {
+    pub fn subject_verb_ring_tempts_you(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5613,7 +5530,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_venture_into_dungeon(
+    pub fn subject_verb_venture_into_dungeon(
         player: PlayerAst,
         undercity_if_no_active: bool,
     ) -> Self {
@@ -5626,7 +5543,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_become_monarch(player: PlayerAst) -> Self {
+    pub fn subject_verb_become_monarch(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5634,7 +5551,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_take_initiative(player: PlayerAst) -> Self {
+    pub fn subject_verb_take_initiative(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5642,10 +5559,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_create_emblem(
-        player: PlayerAst,
-        emblem: EmblemDescriptionAst,
-    ) -> Self {
+    pub fn subject_verb_create_emblem(player: PlayerAst, emblem: EmblemDescriptionAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5653,7 +5567,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_lose_game(player: PlayerAst) -> Self {
+    pub fn subject_verb_lose_game(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5661,7 +5575,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_win_game(player: PlayerAst) -> Self {
+    pub fn subject_verb_win_game(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -5669,7 +5583,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_detain(target: TargetAst) -> Self {
+    pub fn subject_verb_detain(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -5677,11 +5591,11 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_goad(target: TargetAst) -> Self {
+    pub fn subject_verb_goad(target: TargetAst) -> Self {
         Self::subject_verb_goad_for(target, Until::YourNextTurn)
     }
 
-    pub(crate) fn subject_verb_goad_for(target: TargetAst, duration: Until) -> Self {
+    pub fn subject_verb_goad_for(target: TargetAst, duration: Until) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -5689,7 +5603,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_suspect(target: TargetAst) -> Self {
+    pub fn subject_verb_suspect(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -5697,7 +5611,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_clear_suspected(target: Option<TargetAst>) -> Self {
+    pub fn subject_verb_clear_suspected(target: Option<TargetAst>) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -5705,7 +5619,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_heal_damage(target: TargetAst, amount: Option<Value>) -> Self {
+    pub fn subject_verb_heal_damage(target: TargetAst, amount: Option<Value>) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -5713,7 +5627,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_remove_from_combat(target: TargetAst) -> Self {
+    pub fn subject_verb_remove_from_combat(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -5721,7 +5635,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_flip(target: TargetAst) -> Self {
+    pub fn subject_verb_flip(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -5729,7 +5643,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_regenerate(target: TargetAst) -> Self {
+    pub fn subject_verb_regenerate(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -5740,7 +5654,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_regenerate_with_follow_up_effects(
+    pub fn subject_verb_regenerate_with_follow_up_effects(
         target: TargetAst,
         follow_up_effects: Vec<EffectAst>,
     ) -> Self {
@@ -5754,7 +5668,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_regenerate_all(filter: ObjectFilter) -> Self {
+    pub fn subject_verb_regenerate_all(filter: ObjectFilter) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -5762,7 +5676,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_sacrifice(
+    pub fn subject_verb_sacrifice(
         player: PlayerAst,
         filter: ObjectFilter,
         count: u32,
@@ -5780,7 +5694,7 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn with_sacrifice_one_of_referenced_set(mut self) -> Self {
+    pub fn with_sacrifice_one_of_referenced_set(mut self) -> Self {
         if let Self::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Sacrifice {
@@ -5795,7 +5709,7 @@ impl EffectAst {
         self
     }
 
-    pub(crate) fn subject_verb_sacrifice_all(player: PlayerAst, filter: ObjectFilter) -> Self {
+    pub fn subject_verb_sacrifice_all(player: PlayerAst, filter: ObjectFilter) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             player,

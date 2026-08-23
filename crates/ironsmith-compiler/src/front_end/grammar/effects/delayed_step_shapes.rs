@@ -8,7 +8,7 @@ use crate::grammar::{leaf, primitives};
 use crate::lexer::{LexStream, LexedClause, OwnedLexToken};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DelayedActionShape {
+pub enum DelayedActionShape {
     Pay,
     Draw,
     Discard,
@@ -17,56 +17,56 @@ pub(crate) enum DelayedActionShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DelayedCreatureTypesShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) gain: bool,
+pub struct DelayedCreatureTypesShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub gain: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DelayedLosingPumpShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) modifier: &'a str,
+pub struct DelayedLosingPumpShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
+    pub modifier: &'a str,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LoseDrawClashShape {
-    pub(crate) life_count: i32,
-    pub(crate) draw_count: i32,
-    pub(crate) repeat_if_win: bool,
+pub struct LoseDrawClashShape {
+    pub life_count: i32,
+    pub draw_count: i32,
+    pub repeat_if_win: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ImplicitBecomePrefixShape {
-    pub(crate) consumed: usize,
-    pub(crate) negated: bool,
+pub struct ImplicitBecomePrefixShape {
+    pub consumed: usize,
+    pub negated: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DelayedUpkeepPaymentShape<'a> {
-    pub(crate) mana_tokens: &'a [OwnedLexToken],
+pub struct DelayedUpkeepPaymentShape<'a> {
+    pub mana_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DelayedPaymentActionSplit<'a> {
-    pub(crate) player_tokens: &'a [OwnedLexToken],
-    pub(crate) action_tokens: &'a [OwnedLexToken],
+pub struct DelayedPaymentActionSplit<'a> {
+    pub player_tokens: &'a [OwnedLexToken],
+    pub action_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ImplicitBecomeSubjectKind {
+pub enum ImplicitBecomeSubjectKind {
     Source,
     Tagged,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ImplicitBecomeSubjectShape<'a> {
-    pub(crate) kind: ImplicitBecomeSubjectKind,
-    pub(crate) set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
-    pub(crate) remainder_tokens: &'a [OwnedLexToken],
+pub struct ImplicitBecomeSubjectShape<'a> {
+    pub kind: ImplicitBecomeSubjectKind,
+    pub set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
+    pub remainder_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DelayedTimingStepShape {
+pub enum DelayedTimingStepShape {
     Upkeep,
     DrawStep,
     EndStep,
@@ -75,11 +75,11 @@ pub(crate) enum DelayedTimingStepShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DelayedTimingMarkerShape {
-    pub(crate) start_word: usize,
-    pub(crate) end_word: usize,
-    pub(crate) step: DelayedTimingStepShape,
-    pub(crate) player: PlayerAst,
+pub struct DelayedTimingMarkerShape {
+    pub start_word: usize,
+    pub end_word: usize,
+    pub step: DelayedTimingStepShape,
+    pub player: PlayerAst,
 }
 
 const KNOWN_FALLBACK_MARKER_PREFIXES: &[&[&str]] = &[
@@ -215,9 +215,9 @@ fn words_to_tokens(words: &[&str]) -> Vec<OwnedLexToken> {
 
 #[path = "delayed_step_shapes/timing_and_subjects.rs"]
 mod timing_and_subjects;
-pub(crate) use timing_and_subjects::*;
+pub use timing_and_subjects::*;
 
-pub(crate) fn is_delayed_lose_game_unless_paid_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_delayed_lose_game_unless_paid_shape(tokens: &[OwnedLexToken]) -> bool {
     exact_phrase(tokens, &["if", "you", "dont", "you", "lose", "the", "game"])
         || exact_phrase(
             tokens,
@@ -258,7 +258,7 @@ fn action_parser<'a>(
     }
 }
 
-pub(crate) fn delayed_action_shape(
+pub fn delayed_action_shape(
     tokens: &[OwnedLexToken],
     kind: DelayedActionShape,
     must_start: bool,
@@ -270,7 +270,7 @@ pub(crate) fn delayed_action_shape(
     }
 }
 
-pub(crate) fn delayed_mentions_mana_cost_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn delayed_mentions_mana_cost_shape(tokens: &[OwnedLexToken]) -> bool {
     primitives::find_prefix(tokens, || {
         (
             primitives::kw("mana"),
@@ -281,14 +281,11 @@ pub(crate) fn delayed_mentions_mana_cost_shape(tokens: &[OwnedLexToken]) -> bool
     .is_some()
 }
 
-pub(crate) fn delayed_exact_shape(
-    tokens: &[OwnedLexToken],
-    phrase: &'static [&'static str],
-) -> bool {
+pub fn delayed_exact_shape(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> bool {
     exact_phrase(tokens, phrase)
 }
 
-pub(crate) fn delayed_starts_any_shape(
+pub fn delayed_starts_any_shape(
     tokens: &[OwnedLexToken],
     phrases: &'static [&'static [&'static str]],
 ) -> bool {
@@ -297,18 +294,18 @@ pub(crate) fn delayed_starts_any_shape(
         .any(|phrase| primitives::parse_prefix(trimmed(tokens), semantic_phrase(phrase)).is_some())
 }
 
-pub(crate) fn delayed_mentions_remains_tapped_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn delayed_mentions_remains_tapped_shape(tokens: &[OwnedLexToken]) -> bool {
     primitives::find_prefix(tokens, || primitives::kw("remains")).is_some()
         && primitives::find_prefix(tokens, || primitives::kw("tapped")).is_some()
 }
 
-pub(crate) fn delayed_referential_sacrifice_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn delayed_referential_sacrifice_shape(tokens: &[OwnedLexToken]) -> bool {
     exact_phrase(tokens, &["sacrifice", "it"])
         || exact_phrase(tokens, &["sacrifice", "that", "card"])
         || exact_phrase(tokens, &["sacrifice", "that", "token"])
 }
 
-pub(crate) fn parse_implicit_become_prefix_words(words: &[&str]) -> ImplicitBecomePrefixShape {
+pub fn parse_implicit_become_prefix_words(words: &[&str]) -> ImplicitBecomePrefixShape {
     let tokens = words_to_tokens(words);
     let tokens = trimmed(&tokens);
     let mut consumed = 0usize;
@@ -372,11 +369,11 @@ fn suffix_len(words: &[&str], phrases: &'static [&'static [&'static str]]) -> Op
     None
 }
 
-pub(crate) fn delayed_until_eot_suffix_len(words: &[&str]) -> Option<usize> {
+pub fn delayed_until_eot_suffix_len(words: &[&str]) -> Option<usize> {
     suffix_len(words, &[&["until", "end", "of", "turn"]])
 }
 
-pub(crate) fn delayed_addition_other_types_suffix_len(words: &[&str]) -> Option<usize> {
+pub fn delayed_addition_other_types_suffix_len(words: &[&str]) -> Option<usize> {
     suffix_len(
         words,
         &[
@@ -388,14 +385,11 @@ pub(crate) fn delayed_addition_other_types_suffix_len(words: &[&str]) -> Option<
     )
 }
 
-pub(crate) fn delayed_article_shape(word: &str) -> bool {
+pub fn delayed_article_shape(word: &str) -> bool {
     matches!(word, "a" | "an" | "the")
 }
 
-pub(crate) fn delayed_negative_type_prefix_len(
-    words: &[&str],
-    already_negated: bool,
-) -> Option<usize> {
+pub fn delayed_negative_type_prefix_len(words: &[&str], already_negated: bool) -> Option<usize> {
     if already_negated {
         return Some(usize::from(
             words
@@ -418,7 +412,7 @@ pub(crate) fn delayed_negative_type_prefix_len(
     primitives::parse_prefix(&tokens, primitives::kw("not")).map(|_| 1)
 }
 
-pub(crate) fn parse_delayed_creature_types_shape(
+pub fn parse_delayed_creature_types_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DelayedCreatureTypesShape<'_>> {
     let tokens = trimmed(tokens);
@@ -447,7 +441,7 @@ pub(crate) fn parse_delayed_creature_types_shape(
     })
 }
 
-pub(crate) fn parse_delayed_losing_pump_shape(
+pub fn parse_delayed_losing_pump_shape(
     subject_tokens: &[OwnedLexToken],
 ) -> Option<DelayedLosingPumpShape<'_>> {
     let (get_idx, _, after_get) = primitives::find_prefix(subject_tokens, || {
@@ -461,7 +455,7 @@ pub(crate) fn parse_delayed_losing_pump_shape(
     })
 }
 
-pub(crate) fn delayed_tagged_creature_reference_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn delayed_tagged_creature_reference_shape(tokens: &[OwnedLexToken]) -> bool {
     exact_phrase(tokens, &["it"]) || exact_phrase(tokens, &["that", "creature"])
 }
 
@@ -489,7 +483,7 @@ fn parse_lose_draw_clash<'a>(input: &mut LexStream<'a>) -> WResult<LoseDrawClash
     })
 }
 
-pub(crate) fn parse_lose_draw_clash_shape(tokens: &[OwnedLexToken]) -> Option<LoseDrawClashShape> {
+pub fn parse_lose_draw_clash_shape(tokens: &[OwnedLexToken]) -> Option<LoseDrawClashShape> {
     primitives::parse_all(
         trimmed(tokens),
         parse_lose_draw_clash,

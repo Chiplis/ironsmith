@@ -15,14 +15,14 @@ use super::super::activation_costs::{
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum CyclingKeywordCostKind {
+pub enum CyclingKeywordCostKind {
     Mana(ManaCost),
     PayLife { amount: u32 },
     Activation { head: ActivationCostSegmentKind },
 }
 
 impl CyclingKeywordCostKind {
-    pub(crate) fn mana_cost(&self) -> Option<&ManaCost> {
+    pub fn mana_cost(&self) -> Option<&ManaCost> {
         match self {
             Self::Mana(cost) => Some(cost),
             Self::PayLife { .. } | Self::Activation { .. } => None,
@@ -31,28 +31,28 @@ impl CyclingKeywordCostKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CyclingKeywordCostGroup<'a> {
-    pub(crate) keyword_tokens: &'a [OwnedLexToken],
-    pub(crate) cost_tokens: &'a [OwnedLexToken],
-    pub(crate) cost_kind: CyclingKeywordCostKind,
+pub struct CyclingKeywordCostGroup<'a> {
+    pub keyword_tokens: &'a [OwnedLexToken],
+    pub cost_tokens: &'a [OwnedLexToken],
+    pub cost_kind: CyclingKeywordCostKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct CyclingFilterSpec {
-    pub(crate) supertypes: Vec<Supertype>,
-    pub(crate) card_types: Vec<CardType>,
-    pub(crate) subtypes: Vec<Subtype>,
-    pub(crate) colors: Option<ColorSet>,
+pub struct CyclingFilterSpec {
+    pub supertypes: Vec<Supertype>,
+    pub card_types: Vec<CardType>,
+    pub subtypes: Vec<Subtype>,
+    pub colors: Option<ColorSet>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum CyclingSearchSpec {
+pub enum CyclingSearchSpec {
     Draw,
     Search(CyclingFilterSpec),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum CyclingSearchParseError {
+pub enum CyclingSearchParseError {
     MissingKeyword,
     UnsupportedRoot(String),
 }
@@ -72,7 +72,7 @@ struct CyclingKeywordShape {
     root: String,
 }
 
-pub(crate) fn parse_cycling_keyword_cost_groups_tokens(
+pub fn parse_cycling_keyword_cost_groups_tokens(
     tokens: &[OwnedLexToken],
 ) -> Vec<CyclingKeywordCostGroup<'_>> {
     let mut input = LexStream::new(tokens);
@@ -81,7 +81,7 @@ pub(crate) fn parse_cycling_keyword_cost_groups_tokens(
         .unwrap_or_default()
 }
 
-pub(crate) fn parse_cycling_search_spec_tokens(
+pub fn parse_cycling_search_spec_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<CyclingSearchSpec, CyclingSearchParseError> {
     let shape = primitives::parse_all(

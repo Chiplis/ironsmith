@@ -14,7 +14,7 @@ use crate::model::provenance::SemanticProvenance;
 use crate::model::symbols::{SymbolReference, SymbolScopeId, SymbolScopeKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ControlFlowSemanticAst {
+pub enum ControlFlowSemanticAst {
     ControlFlow,
     Replacement,
     Prevention,
@@ -22,7 +22,7 @@ pub(crate) enum ControlFlowSemanticAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ConditionPositionAst {
+pub enum ConditionPositionAst {
     Precondition,
     ResultCondition,
     InterveningCondition,
@@ -30,14 +30,14 @@ pub(crate) enum ConditionPositionAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ControlPredicateAst {
+pub enum ControlPredicateAst {
     State(PredicateAst),
     Result(IfResultPredicate),
     Constant(bool),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ControlConditionAst {
+pub struct ControlConditionAst {
     pub position: ConditionPositionAst,
     pub predicate: ControlPredicateAst,
     pub negated_surface: bool,
@@ -45,7 +45,7 @@ pub(crate) struct ControlConditionAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ReplacementKindAst {
+pub enum ReplacementKindAst {
     Instead,
     As,
     Skip,
@@ -54,7 +54,7 @@ pub(crate) enum ReplacementKindAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ReplacedEventAst {
+pub enum ReplacedEventAst {
     PriorEffect,
     Damage,
     Draw,
@@ -67,7 +67,7 @@ pub(crate) enum ReplacedEventAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ReplacementRelationshipAst {
+pub struct ReplacementRelationshipAst {
     pub kind: ReplacementKindAst,
     pub event: ReplacedEventAst,
     pub condition: Option<ControlConditionAst>,
@@ -77,7 +77,7 @@ pub(crate) struct ReplacementRelationshipAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PreventionRelationshipAst {
+pub struct PreventionRelationshipAst {
     pub event: ReplacedEventAst,
     pub condition: Option<ControlConditionAst>,
     pub prevention_program: usize,
@@ -85,7 +85,7 @@ pub(crate) struct PreventionRelationshipAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PermissionRelationshipAst {
+pub struct PermissionRelationshipAst {
     pub actor: ClauseActorAst,
     pub action: ClauseVerbAst,
     pub duration: Option<CompilerDurationAst>,
@@ -93,7 +93,7 @@ pub(crate) struct PermissionRelationshipAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerDurationAst {
+pub enum CompilerDurationAst {
     Clause(ClauseDurationAst),
     ThisTurn,
     UntilEndOfTurn,
@@ -105,7 +105,7 @@ pub(crate) enum CompilerDurationAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum DelayedScheduleAst {
+pub enum DelayedScheduleAst {
     NextEndStep,
     NextCleanupStep,
     NextUntapStep,
@@ -117,7 +117,7 @@ pub(crate) enum DelayedScheduleAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum NestedProgramKindAst {
+pub enum NestedProgramKindAst {
     Consequence,
     Alternative,
     Replacement,
@@ -129,14 +129,14 @@ pub(crate) enum NestedProgramKindAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ControlFlowScopeAst {
+pub struct ControlFlowScopeAst {
     pub id: SymbolScopeId,
     pub parent: Option<SymbolScopeId>,
     pub kind: SymbolScopeKind,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ControlFlowReferenceEnvironmentAst {
+pub struct ControlFlowReferenceEnvironmentAst {
     pub root: SymbolScopeId,
     pub scopes: Vec<ControlFlowScopeAst>,
 }
@@ -169,7 +169,7 @@ impl ControlFlowReferenceEnvironmentAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct NestedProgramAst {
+pub struct NestedProgramAst {
     pub scope: SymbolScopeId,
     pub parent_scope: SymbolScopeId,
     pub kind: NestedProgramKindAst,
@@ -180,7 +180,7 @@ pub(crate) struct NestedProgramAst {
 }
 
 impl NestedProgramAst {
-    pub(crate) fn new(kind: NestedProgramKindAst, effects: Vec<EffectAst>) -> Self {
+    pub fn new(kind: NestedProgramKindAst, effects: Vec<EffectAst>) -> Self {
         Self {
             scope: SymbolScopeId(0),
             parent_scope: SymbolScopeId(0),
@@ -194,7 +194,7 @@ impl NestedProgramAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ControlFlowNodeAst {
+pub enum ControlFlowNodeAst {
     Condition {
         condition: ControlConditionAst,
         consequence_program: usize,
@@ -222,7 +222,7 @@ pub(crate) enum ControlFlowNodeAst {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ControlFlowError {
+pub enum ControlFlowError {
     EmptyProgram,
     ProgramOutOfRange {
         program: usize,
@@ -240,7 +240,7 @@ pub(crate) enum ControlFlowError {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerControlFlowAst {
+pub struct CompilerControlFlowAst {
     pub semantic: ControlFlowSemanticAst,
     pub node: ControlFlowNodeAst,
     pub programs: Vec<NestedProgramAst>,
@@ -249,7 +249,7 @@ pub(crate) struct CompilerControlFlowAst {
 }
 
 impl CompilerControlFlowAst {
-    pub(crate) fn new(
+    pub fn new(
         semantic: ControlFlowSemanticAst,
         node: ControlFlowNodeAst,
         mut programs: Vec<NestedProgramAst>,
@@ -271,11 +271,11 @@ impl CompilerControlFlowAst {
         })
     }
 
-    pub(crate) fn program(&self, index: usize) -> Option<&NestedProgramAst> {
+    pub fn program(&self, index: usize) -> Option<&NestedProgramAst> {
         self.programs.get(index)
     }
 
-    pub(crate) fn program_mut(&mut self, index: usize) -> Option<&mut NestedProgramAst> {
+    pub fn program_mut(&mut self, index: usize) -> Option<&mut NestedProgramAst> {
         self.programs.get_mut(index)
     }
 }

@@ -12,79 +12,79 @@ use super::subjects::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AttachedHasAndLosesSpec<'a> {
-    pub(crate) subject: AttachedSubject,
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) grant_tokens: &'a [OwnedLexToken],
-    pub(crate) lose_tokens: &'a [OwnedLexToken],
+pub struct AttachedHasAndLosesSpec<'a> {
+    pub subject: AttachedSubject,
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub grant_tokens: &'a [OwnedLexToken],
+    pub lose_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AttachedKeywordsAndTriggerSpec<'a> {
-    pub(crate) subject: AttachedSubject,
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) keyword_tokens: &'a [OwnedLexToken],
-    pub(crate) trigger_tokens: &'a [OwnedLexToken],
+pub struct AttachedKeywordsAndTriggerSpec<'a> {
+    pub subject: AttachedSubject,
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub keyword_tokens: &'a [OwnedLexToken],
+    pub trigger_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AttachedGetsTailKind<'a> {
+pub enum AttachedGetsTailKind<'a> {
     Restriction(AttachedCombatRestrictionKind),
     Loses(&'a [OwnedLexToken]),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AttachedGetsTailSpec<'a> {
-    pub(crate) subject: AttachedSubject,
-    pub(crate) get_token: usize,
-    pub(crate) and_token: usize,
-    pub(crate) tail: AttachedGetsTailKind<'a>,
+pub struct AttachedGetsTailSpec<'a> {
+    pub subject: AttachedSubject,
+    pub get_token: usize,
+    pub and_token: usize,
+    pub tail: AttachedGetsTailKind<'a>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AttachedLegendaryGetsHasSpec<'a> {
-    pub(crate) subject: AttachedSubject,
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) get_token: usize,
-    pub(crate) modifier_token: &'a OwnedLexToken,
-    pub(crate) has_token: usize,
-    pub(crate) keyword_tokens: &'a [OwnedLexToken],
+pub struct AttachedLegendaryGetsHasSpec<'a> {
+    pub subject: AttachedSubject,
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub get_token: usize,
+    pub modifier_token: &'a OwnedLexToken,
+    pub has_token: usize,
+    pub keyword_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AttachedGetsAndHasSpec<'a> {
-    pub(crate) subject: AttachedSubject,
-    pub(crate) get_token: usize,
-    pub(crate) and_token: usize,
-    pub(crate) has_token: usize,
-    pub(crate) ability_tokens: &'a [OwnedLexToken],
+pub struct AttachedGetsAndHasSpec<'a> {
+    pub subject: AttachedSubject,
+    pub get_token: usize,
+    pub and_token: usize,
+    pub has_token: usize,
+    pub ability_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AttachedAbilitySplit<'a> {
-    pub(crate) and_token: usize,
-    pub(crate) keyword_tokens: &'a [OwnedLexToken],
-    pub(crate) granted_tokens: &'a [OwnedLexToken],
+pub struct AttachedAbilitySplit<'a> {
+    pub and_token: usize,
+    pub keyword_tokens: &'a [OwnedLexToken],
+    pub granted_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EquippedActivatedGrantSpec<'a> {
-    pub(crate) has_token: usize,
-    pub(crate) ability_tokens: &'a [OwnedLexToken],
-    pub(crate) anthem_bounds: Option<(usize, usize)>,
+pub struct EquippedActivatedGrantSpec<'a> {
+    pub has_token: usize,
+    pub ability_tokens: &'a [OwnedLexToken],
+    pub anthem_bounds: Option<(usize, usize)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AttachedLandAbilityResetSpec<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) granted_abilities: Vec<&'a [OwnedLexToken]>,
+pub struct AttachedLandAbilityResetSpec<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub granted_abilities: Vec<&'a [OwnedLexToken]>,
 }
 
 #[path = "grant_shapes/land_reset.rs"]
 mod land_reset;
-pub(crate) use land_reset::parse_attached_land_ability_reset_tokens;
+pub use land_reset::parse_attached_land_ability_reset_tokens;
 
-pub(crate) fn parse_attached_has_and_loses_tokens(
+pub fn parse_attached_has_and_loses_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedHasAndLosesSpec<'_>> {
     primitives::parse_all(
@@ -95,7 +95,7 @@ pub(crate) fn parse_attached_has_and_loses_tokens(
     .ok()
 }
 
-pub(crate) fn parse_attached_keywords_and_trigger_tokens(
+pub fn parse_attached_keywords_and_trigger_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedKeywordsAndTriggerSpec<'_>> {
     primitives::parse_all(
@@ -106,7 +106,7 @@ pub(crate) fn parse_attached_keywords_and_trigger_tokens(
     .ok()
 }
 
-pub(crate) fn parse_attached_gets_tail_tokens(
+pub fn parse_attached_gets_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedGetsTailSpec<'_>> {
     let (subject, _) = primitives::parse_prefix(tokens, parse_attached_subject_lexed)?;
@@ -135,7 +135,7 @@ pub(crate) fn parse_attached_gets_tail_tokens(
     })
 }
 
-pub(crate) fn parse_attached_legendary_gets_has_tokens(
+pub fn parse_attached_legendary_gets_has_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedLegendaryGetsHasSpec<'_>> {
     let initial_len = tokens.len();
@@ -169,7 +169,7 @@ pub(crate) fn parse_attached_legendary_gets_has_tokens(
     })
 }
 
-pub(crate) fn parse_attached_gets_and_has_tokens(
+pub fn parse_attached_gets_and_has_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedGetsAndHasSpec<'_>> {
     let (subject, _) = primitives::parse_prefix(tokens, parse_attached_subject_lexed)?;
@@ -200,7 +200,7 @@ pub(crate) fn parse_attached_gets_and_has_tokens(
     })
 }
 
-pub(crate) fn parse_attached_ability_splits_tokens(
+pub fn parse_attached_ability_splits_tokens(
     tokens: &[OwnedLexToken],
 ) -> Vec<AttachedAbilitySplit<'_>> {
     let mut splits = Vec::new();
@@ -249,7 +249,7 @@ pub(crate) fn parse_attached_ability_splits_tokens(
     splits
 }
 
-pub(crate) fn parse_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(
         tokens,
         alt((
@@ -261,7 +261,7 @@ pub(crate) fn parse_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> bool {
     .is_some()
 }
 
-pub(crate) fn parse_equipped_activated_grant_tokens(
+pub fn parse_equipped_activated_grant_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EquippedActivatedGrantSpec<'_>> {
     let has = parse_equipped_creature_has_tokens(tokens)?;

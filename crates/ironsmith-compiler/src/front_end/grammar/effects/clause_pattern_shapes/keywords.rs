@@ -6,45 +6,45 @@ use winnow::error::ModalResult as WResult;
 use winnow::token::any;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum KeywordRepeatShape<'a> {
+pub enum KeywordRepeatShape<'a> {
     Once,
     Twice,
     Count(&'a [OwnedLexToken]),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PhaseDirectionShape {
+pub enum PhaseDirectionShape {
     In,
     Out,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PhaseSubjectShape<'a> {
+pub enum PhaseSubjectShape<'a> {
     Target(&'a [OwnedLexToken]),
     All(&'a [OwnedLexToken]),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum NumericKeywordShape {
+pub enum NumericKeywordShape {
     Bolster,
     Support,
     Adapt,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ManifestPlayerShape {
+pub enum ManifestPlayerShape {
     You,
     ThatPlayerOrTargetController,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum KeywordSubjectShape<'a> {
+pub enum KeywordSubjectShape<'a> {
     Source(&'a [OwnedLexToken]),
     Target(&'a [OwnedLexToken]),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum KeywordMechanicShape<'a> {
+pub enum KeywordMechanicShape<'a> {
     Amass {
         subtype: Option<Subtype>,
         amount_and_binding_tokens: &'a [OwnedLexToken],
@@ -634,9 +634,7 @@ fn parse_keyword_mechanic_lexed<'a>(
     .parse_next(input)
 }
 
-pub(crate) fn parse_keyword_mechanic_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<KeywordMechanicShape<'_>> {
+pub fn parse_keyword_mechanic_tokens(tokens: &[OwnedLexToken]) -> Option<KeywordMechanicShape<'_>> {
     primitives::parse_all(
         tokens,
         parse_keyword_mechanic_lexed,

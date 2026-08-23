@@ -8,7 +8,7 @@ use super::super::shared_util::value_shapes::parse_quantity_comparison_prefix_wo
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AttachedChoiceSubject {
+pub enum AttachedChoiceSubject {
     Equipment,
     Aura,
     Permanent,
@@ -17,25 +17,25 @@ pub(crate) enum AttachedChoiceSubject {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AttachedColorChoiceFact<'a> {
-    pub(crate) subject: AttachedChoiceSubject,
-    pub(crate) choice_tokens: &'a [OwnedLexToken],
+pub struct AttachedColorChoiceFact<'a> {
+    pub subject: AttachedChoiceSubject,
+    pub choice_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RedirectDamageToSourceFact;
+pub struct RedirectDamageToSourceFact;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CastMarkerFact;
+pub struct CastMarkerFact;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CostModifierDirectionFact {
+pub enum CostModifierDirectionFact {
     Less,
     More,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CostTargetFact {
+pub enum CostTargetFact {
     You,
     Opponent,
     AnyPlayer,
@@ -43,7 +43,7 @@ pub(crate) enum CostTargetFact {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum KnownSpellCostConditionFact {
+pub enum KnownSpellCostConditionFact {
     LifeTotalLessThanStarting,
     AttackedThisTurn,
     CreatureDiedThisTurn,
@@ -82,64 +82,64 @@ pub(crate) enum KnownSpellCostConditionFact {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct FirstSpellEachTurnCostFact {
-    pub(crate) during_each_of_your_turns: bool,
+pub struct FirstSpellEachTurnCostFact {
+    pub during_each_of_your_turns: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SpellCastActorFact {
+pub enum SpellCastActorFact {
     You,
     Opponent,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SpellCostBetweenFact<'a> {
-    pub(crate) actor: Option<SpellCastActorFact>,
-    pub(crate) from_your_graveyard: bool,
-    pub(crate) descriptor_segments: Vec<&'a [OwnedLexToken]>,
-    pub(crate) target_tokens: Option<&'a [OwnedLexToken]>,
+pub struct SpellCostBetweenFact<'a> {
+    pub actor: Option<SpellCastActorFact>,
+    pub from_your_graveyard: bool,
+    pub descriptor_segments: Vec<&'a [OwnedLexToken]>,
+    pub target_tokens: Option<&'a [OwnedLexToken]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CostComponentBoundary {
-    pub(crate) cost_token: usize,
+pub struct CostComponentBoundary {
+    pub cost_token: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CyclingCostAlternativeFact<'a> {
-    pub(crate) condition_tokens: Option<&'a [OwnedLexToken]>,
-    pub(crate) replacement_cost_tokens: &'a [OwnedLexToken],
+pub struct CyclingCostAlternativeFact<'a> {
+    pub condition_tokens: Option<&'a [OwnedLexToken]>,
+    pub replacement_cost_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActivatedAbilityCostActorFact {
+pub enum ActivatedAbilityCostActorFact {
     You,
     Opponent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ActivatedAbilityCostTailFact {
-    pub(crate) excludes_mana_abilities: bool,
+pub struct ActivatedAbilityCostTailFact {
+    pub excludes_mana_abilities: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TrailingTargetConditionFact<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct TrailingTargetConditionFact<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AlternativeCostPayerFact {
+pub enum AlternativeCostPayerFact {
     You,
     Opponent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ForetellCostModifierFact {
-    pub(crate) direction: CostModifierDirectionFact,
-    pub(crate) during_any_players_turn: bool,
+pub struct ForetellCostModifierFact {
+    pub direction: CostModifierDirectionFact,
+    pub during_any_players_turn: bool,
 }
 
-pub(crate) fn parse_attached_color_choice_fact(
+pub fn parse_attached_color_choice_fact(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedColorChoiceFact<'_>> {
     let view = TokenWordView::new(tokens);
@@ -173,7 +173,7 @@ pub(crate) fn parse_attached_color_choice_fact(
     })
 }
 
-pub(crate) fn parse_redirect_damage_to_source_fact(
+pub fn parse_redirect_damage_to_source_fact(
     tokens: &[OwnedLexToken],
 ) -> Option<RedirectDamageToSourceFact> {
     let words = TokenWordView::new(tokens).word_refs();
@@ -196,13 +196,11 @@ pub(crate) fn parse_redirect_damage_to_source_fact(
     Some(RedirectDamageToSourceFact)
 }
 
-pub(crate) fn parse_cast_marker_fact(tokens: &[OwnedLexToken]) -> Option<CastMarkerFact> {
+pub fn parse_cast_marker_fact(tokens: &[OwnedLexToken]) -> Option<CastMarkerFact> {
     contains_word(&TokenWordView::new(tokens).word_refs(), "cast").then_some(CastMarkerFact)
 }
 
-pub(crate) fn parse_cost_modifier_direction_words(
-    words: &[&str],
-) -> Option<CostModifierDirectionFact> {
+pub fn parse_cost_modifier_direction_words(words: &[&str]) -> Option<CostModifierDirectionFact> {
     let less = primitives::parse_word_sequence_span(words, &["less"]).is_some();
     let more = primitives::parse_word_sequence_span(words, &["more"]).is_some();
     match (less, more) {
@@ -212,11 +210,11 @@ pub(crate) fn parse_cost_modifier_direction_words(
     }
 }
 
-pub(crate) fn parse_this_spell_target_fact(tokens: &[OwnedLexToken]) -> Option<CostTargetFact> {
+pub fn parse_this_spell_target_fact(tokens: &[OwnedLexToken]) -> Option<CostTargetFact> {
     parse_target_fact(tokens, false, true)
 }
 
-pub(crate) fn parse_cost_modifier_target_fact(tokens: &[OwnedLexToken]) -> Option<CostTargetFact> {
+pub fn parse_cost_modifier_target_fact(tokens: &[OwnedLexToken]) -> Option<CostTargetFact> {
     parse_target_fact(tokens, true, false)
 }
 
@@ -269,7 +267,7 @@ fn parse_target_fact(
     Some(CostTargetFact::Object(filter))
 }
 
-pub(crate) fn parse_known_spell_cost_condition(
+pub fn parse_known_spell_cost_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<KnownSpellCostConditionFact> {
     let view = TokenWordView::new(tokens);
@@ -514,7 +512,7 @@ pub(crate) fn parse_known_spell_cost_condition(
     None
 }
 
-pub(crate) fn parse_first_spell_each_turn_cost_fact(
+pub fn parse_first_spell_each_turn_cost_fact(
     tokens: &[OwnedLexToken],
 ) -> Option<FirstSpellEachTurnCostFact> {
     let words = TokenWordView::new(tokens).word_refs();
@@ -532,7 +530,7 @@ pub(crate) fn parse_first_spell_each_turn_cost_fact(
     })
 }
 
-pub(crate) fn parse_spell_cost_between_fact(tokens: &[OwnedLexToken]) -> SpellCostBetweenFact<'_> {
+pub fn parse_spell_cost_between_fact(tokens: &[OwnedLexToken]) -> SpellCostBetweenFact<'_> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     let actor = if (contains_word(&words, "opponent") || contains_word(&words, "opponents"))
@@ -584,7 +582,7 @@ pub(crate) fn parse_spell_cost_between_fact(tokens: &[OwnedLexToken]) -> SpellCo
     }
 }
 
-pub(crate) fn parse_cost_component_boundary(
+pub fn parse_cost_component_boundary(
     tokens: &[OwnedLexToken],
     start_token: usize,
 ) -> Option<CostComponentBoundary> {
@@ -603,7 +601,7 @@ pub(crate) fn parse_cost_component_boundary(
     None
 }
 
-pub(crate) fn parse_where_x_clause_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn parse_where_x_clause_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     let span = primitives::parse_word_sequence_span(&words, &["where", "x", "is"])?;
@@ -611,7 +609,7 @@ pub(crate) fn parse_where_x_clause_tokens(tokens: &[OwnedLexToken]) -> Option<&[
     Some(trim_lexed_commas(tokens.get(token..)?))
 }
 
-pub(crate) fn parse_cycling_cost_alternative_fact(
+pub fn parse_cycling_cost_alternative_fact(
     tokens: &[OwnedLexToken],
 ) -> Option<CyclingCostAlternativeFact<'_>> {
     let view = TokenWordView::new(tokens);
@@ -645,7 +643,7 @@ pub(crate) fn parse_cycling_cost_alternative_fact(
     })
 }
 
-pub(crate) fn parse_activated_ability_cost_actor(
+pub fn parse_activated_ability_cost_actor(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivatedAbilityCostActorFact> {
     let words = TokenWordView::new(tokens).word_refs();
@@ -658,7 +656,7 @@ pub(crate) fn parse_activated_ability_cost_actor(
     }
 }
 
-pub(crate) fn parse_activated_ability_cost_tail(
+pub fn parse_activated_ability_cost_tail(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivatedAbilityCostTailFact> {
     let words = TokenWordView::new(tokens).word_refs();
@@ -677,7 +675,7 @@ pub(crate) fn parse_activated_ability_cost_tail(
     })
 }
 
-pub(crate) fn parse_trailing_target_condition(
+pub fn parse_trailing_target_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<TrailingTargetConditionFact<'_>> {
     let view = TokenWordView::new(tokens);
@@ -690,9 +688,7 @@ pub(crate) fn parse_trailing_target_condition(
     Some(TrailingTargetConditionFact { target_tokens })
 }
 
-pub(crate) fn parse_alternative_cost_payer(
-    tokens: &[OwnedLexToken],
-) -> Option<AlternativeCostPayerFact> {
+pub fn parse_alternative_cost_payer(tokens: &[OwnedLexToken]) -> Option<AlternativeCostPayerFact> {
     let words = TokenWordView::new(tokens).word_refs();
     if primitives::parse_word_sequence_span(&words, &["you", "pay"]).is_some() {
         Some(AlternativeCostPayerFact::You)
@@ -706,7 +702,7 @@ pub(crate) fn parse_alternative_cost_payer(
     }
 }
 
-pub(crate) fn parse_foretell_cost_modifier_fact(
+pub fn parse_foretell_cost_modifier_fact(
     tokens: &[OwnedLexToken],
 ) -> Option<ForetellCostModifierFact> {
     let words = TokenWordView::new(tokens).word_refs();

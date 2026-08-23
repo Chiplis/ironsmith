@@ -8,21 +8,21 @@ use crate::lexer::{LexStream, OwnedLexToken};
 use crate::util::trim_edge_punctuation_tokens;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RegistryDelayedAction {
+pub enum RegistryDelayedAction {
     Sacrifice,
     Exile,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct RegistryNextEndStepShape<'a> {
-    pub(crate) action: RegistryDelayedAction,
-    pub(crate) object_tokens: &'a [OwnedLexToken],
-    pub(crate) your_end_step: bool,
+pub struct RegistryNextEndStepShape<'a> {
+    pub action: RegistryDelayedAction,
+    pub object_tokens: &'a [OwnedLexToken],
+    pub your_end_step: bool,
     /// A condition that is evaluated when the delayed instruction resolves,
     /// such as "if it has mana value 3 or less". Keeping this separate from
     /// the object phrase prevents the registry route from silently consuming
     /// and discarding a behavior-bearing suffix.
-    pub(crate) trailing_tokens: &'a [OwnedLexToken],
+    pub trailing_tokens: &'a [OwnedLexToken],
 }
 
 fn delayed_action<'a>(input: &mut LexStream<'a>) -> WResult<RegistryDelayedAction> {
@@ -63,13 +63,13 @@ fn next_end_step<'a>(input: &mut LexStream<'a>) -> WResult<RegistryNextEndStepSh
     })
 }
 
-pub(crate) fn parse_registry_next_end_step_shape(
+pub fn parse_registry_next_end_step_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<RegistryNextEndStepShape<'_>> {
     primitives::parse_all(tokens, next_end_step, "registry-next-end-step").ok()
 }
 
-pub(crate) fn parse_remain_exiled_tail(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn parse_remain_exiled_tail(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let (_, rest) = primitives::parse_prefix(
         tokens,
         alt((
@@ -83,7 +83,7 @@ pub(crate) fn parse_remain_exiled_tail(tokens: &[OwnedLexToken]) -> Option<&[Own
     Some(trim_edge_punctuation_tokens(rest))
 }
 
-pub(crate) fn is_tagged_delayed_object(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_tagged_delayed_object(tokens: &[OwnedLexToken]) -> bool {
     permission_shapes::exact_tokens_any(
         tokens,
         &[

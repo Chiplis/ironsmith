@@ -8,19 +8,19 @@ use crate::lexer::{OwnedLexToken, render_token_slice};
 use crate::util::trim_edge_punctuation_tokens;
 
 #[derive(Debug, Clone)]
-pub(crate) struct BasePowerClauseShape<'a> {
-    pub(crate) power: Value,
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) duration: Until,
+pub struct BasePowerClauseShape<'a> {
+    pub power: Value,
+    pub target_tokens: &'a [OwnedLexToken],
+    pub duration: Until,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct BasePowerToughnessClauseShape<'a> {
-    pub(crate) power: Value,
-    pub(crate) toughness: Value,
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) duration: Until,
-    pub(crate) where_x_tokens: Option<&'a [OwnedLexToken]>,
+pub struct BasePowerToughnessClauseShape<'a> {
+    pub power: Value,
+    pub toughness: Value,
+    pub target_tokens: &'a [OwnedLexToken],
+    pub duration: Until,
+    pub where_x_tokens: Option<&'a [OwnedLexToken]>,
 }
 
 fn has_or_have<'a>(input: &mut crate::lexer::LexStream<'a>) -> winnow::error::ModalResult<()> {
@@ -114,7 +114,7 @@ fn split_subject_and_rest(
     (!subject.is_empty()).then_some((subject, trim_edge_punctuation_tokens(rest)))
 }
 
-pub(crate) fn parse_base_power_clause_shape(
+pub fn parse_base_power_clause_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<BasePowerClauseShape<'_>>, CardTextError> {
     let Some((subject, rest)) = split_subject_and_rest(tokens) else {
@@ -172,7 +172,7 @@ pub(crate) fn parse_base_power_clause_shape(
     }))
 }
 
-pub(crate) fn parse_base_power_toughness_clause_shape(
+pub fn parse_base_power_toughness_clause_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<BasePowerToughnessClauseShape<'_>>, CardTextError> {
     let Some((subject, rest)) = split_subject_and_rest(tokens) else {

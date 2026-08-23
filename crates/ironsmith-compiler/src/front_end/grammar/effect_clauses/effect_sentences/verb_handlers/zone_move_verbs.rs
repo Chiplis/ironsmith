@@ -11,7 +11,7 @@ fn mana_cost_single_generic(mana: &[ManaSymbol]) -> Option<u8> {
     }
 }
 
-pub(crate) fn parse_move(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+pub fn parse_move(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     use super::super::grammar::primitives as grammar;
     use winnow::Parser as _;
 
@@ -60,7 +60,7 @@ fn draw_count_with_surface(count: Value, additional: bool) -> Value {
     }
 }
 
-pub(crate) fn parse_draw(
+pub fn parse_draw(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -312,12 +312,12 @@ fn parse_draw_for_each_player_condition(
     }))
 }
 
-pub(crate) fn parse_half_rounded_down_draw_count_words(words: &[&str]) -> Option<(Value, usize)> {
+pub fn parse_half_rounded_down_draw_count_words(words: &[&str]) -> Option<(Value, usize)> {
     let tokens = crate::lexer::synthetic_word_tokens(words.iter().copied());
     zone_move_grammar::parse_half_rounded_down_draw_shape(&tokens)
 }
 
-pub(crate) fn parse_draw_trailing_clause(
+pub fn parse_draw_trailing_clause(
     tokens: &[OwnedLexToken],
     draw_effect: EffectAst,
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -367,7 +367,7 @@ pub(crate) fn parse_draw_trailing_clause(
     }
 }
 
-pub(crate) fn parse_draw_card_prefixed_count_value(
+pub fn parse_draw_card_prefixed_count_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
     if tokens.is_empty() {
@@ -478,7 +478,7 @@ fn parse_draw_for_each_counter_reference_value(tokens: &[OwnedLexToken]) -> Opti
     zone_move_grammar::parse_draw_counter_reference_shape(tokens)
 }
 
-pub(crate) fn parse_draw_equal_to_value(
+pub fn parse_draw_equal_to_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
     let Some(shape) = zone_move_grammar::parse_draw_equal_shape(tokens) else {
@@ -599,7 +599,7 @@ fn counter_unless_payment_total_cost(
     crate::cost::TotalCost::from_costs(components)
 }
 
-pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+pub fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if let Some(effect) = parse_counter_unless_source_damage(tokens)? {
         return Ok(effect);
     }

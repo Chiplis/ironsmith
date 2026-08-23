@@ -7,55 +7,55 @@ use super::super::lexer::{LexStream, OwnedLexToken};
 use super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TokenBoundary {
-    pub(crate) token: usize,
+pub struct TokenBoundary {
+    pub token: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WordBoundary {
-    pub(crate) word: usize,
+pub struct WordBoundary {
+    pub word: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SpellCostIncreaseHead {
-    pub(crate) line_start: TokenBoundary,
-    pub(crate) costs: TokenBoundary,
+pub struct SpellCostIncreaseHead {
+    pub line_start: TokenBoundary,
+    pub costs: TokenBoundary,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct OptionalLifeReductionWords {
-    pub(crate) pay: WordBoundary,
-    pub(crate) those_spells: WordBoundary,
-    pub(crate) costs: WordBoundary,
-    pub(crate) payment_has_life: bool,
-    pub(crate) those_spells_paid_life_this_way: bool,
+pub struct OptionalLifeReductionWords {
+    pub pay: WordBoundary,
+    pub those_spells: WordBoundary,
+    pub costs: WordBoundary,
+    pub payment_has_life: bool,
+    pub those_spells_paid_life_this_way: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PlayerAbilityCostWords {
-    pub(crate) activate: WordBoundary,
-    pub(crate) costs: WordBoundary,
+pub struct PlayerAbilityCostWords {
+    pub activate: WordBoundary,
+    pub costs: WordBoundary,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AdditionalCostSpellFilter<'a> {
-    pub(crate) spell_filter_tokens: &'a [OwnedLexToken],
+pub struct AdditionalCostSpellFilter<'a> {
+    pub spell_filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ActivatedAbilityCostIncrease<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) additional_cost_tokens: &'a [OwnedLexToken],
+pub struct ActivatedAbilityCostIncrease<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub additional_cost_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_additional_cost_spell_filter(
+pub fn parse_additional_cost_spell_filter(
     tokens: &[OwnedLexToken],
 ) -> Option<AdditionalCostSpellFilter<'_>> {
     let (parsed, _) = primitives::parse_prefix(tokens, parse_additional_cost_spell_filter_lexed)?;
     Some(parsed)
 }
 
-pub(crate) fn parse_activated_ability_cost_increase(
+pub fn parse_activated_ability_cost_increase(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivatedAbilityCostIncrease<'_>> {
     let (parsed, _) =
@@ -63,9 +63,7 @@ pub(crate) fn parse_activated_ability_cost_increase(
     Some(parsed)
 }
 
-pub(crate) fn parse_spell_cost_increase_head(
-    tokens: &[OwnedLexToken],
-) -> Option<SpellCostIncreaseHead> {
+pub fn parse_spell_cost_increase_head(tokens: &[OwnedLexToken]) -> Option<SpellCostIncreaseHead> {
     let line_start = phrase_start(tokens, &["this", "spell", "costs"])?;
     let relative_costs = first_token_word(&tokens[line_start.token..], &["cost", "costs"])?;
     Some(SpellCostIncreaseHead {
@@ -76,25 +74,23 @@ pub(crate) fn parse_spell_cost_increase_head(
     })
 }
 
-pub(crate) fn parse_cost_verb(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
+pub fn parse_cost_verb(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
     first_token_word(tokens, &["cost", "costs"])
 }
 
-pub(crate) fn parse_trailing_cost_condition_if(words: &[&str]) -> Option<WordBoundary> {
+pub fn parse_trailing_cost_condition_if(words: &[&str]) -> Option<WordBoundary> {
     first_word(words, &["if"])
 }
 
-pub(crate) fn parse_cost_prefix_subject_comma(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
+pub fn parse_cost_prefix_subject_comma(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
     first_comma(tokens)
 }
 
-pub(crate) fn parse_optional_life_subject_is_permanent(words: &[&str]) -> bool {
+pub fn parse_optional_life_subject_is_permanent(words: &[&str]) -> bool {
     first_word(words, &["permanent"]).is_some()
 }
 
-pub(crate) fn parse_optional_life_reduction_words(
-    words: &[&str],
-) -> Option<OptionalLifeReductionWords> {
+pub fn parse_optional_life_reduction_words(words: &[&str]) -> Option<OptionalLifeReductionWords> {
     let pay = first_word(words, &["pay"])?;
     let payment_words = &words[pay.word + 1..];
     let payment_has_life = first_word(payment_words, &["life"]).is_some();
@@ -163,25 +159,23 @@ fn parse_activated_ability_cost_increase_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_cost_modifier_cast_marker(words: &[&str]) -> bool {
+pub fn parse_cost_modifier_cast_marker(words: &[&str]) -> bool {
     first_word(words, &["cast"]).is_some()
 }
 
-pub(crate) fn parse_spells_subject(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
+pub fn parse_spells_subject(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
     first_token_word(tokens, &["spell", "spells"])
 }
 
-pub(crate) fn parse_cost_direction_if_boundary(words: &[&str]) -> Option<WordBoundary> {
+pub fn parse_cost_direction_if_boundary(words: &[&str]) -> Option<WordBoundary> {
     first_word(words, &["if"])
 }
 
-pub(crate) fn parse_spell_and_abilities_separator(
-    tokens: &[OwnedLexToken],
-) -> Option<TokenBoundary> {
+pub fn parse_spell_and_abilities_separator(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
     phrase_start(tokens, &["and", "abilities"])
 }
 
-pub(crate) fn parse_player_ability_cost_words(words: &[&str]) -> Option<PlayerAbilityCostWords> {
+pub fn parse_player_ability_cost_words(words: &[&str]) -> Option<PlayerAbilityCostWords> {
     let activate = first_word(words, &["activate", "activates"])?;
     let relative_costs = first_word(&words[activate.word + 1..], &["cost", "costs"])?;
     Some(PlayerAbilityCostWords {
@@ -192,7 +186,7 @@ pub(crate) fn parse_player_ability_cost_words(words: &[&str]) -> Option<PlayerAb
     })
 }
 
-pub(crate) fn parse_relative_target_clause(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
+pub fn parse_relative_target_clause(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
     phrase_start_any(
         tokens,
         &[
@@ -202,7 +196,7 @@ pub(crate) fn parse_relative_target_clause(tokens: &[OwnedLexToken]) -> Option<T
     )
 }
 
-pub(crate) fn parse_last_cost_verb(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
+pub fn parse_last_cost_verb(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
     let mut input = LexStream::new(tokens);
     let initial_len = input.len();
     let mut last = None;
@@ -222,7 +216,7 @@ pub(crate) fn parse_last_cost_verb(tokens: &[OwnedLexToken]) -> Option<TokenBoun
     last
 }
 
-pub(crate) fn parse_dynamic_cost_each_word(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
+pub fn parse_dynamic_cost_each_word(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
     first_token_word(tokens, &["each"])
 }
 

@@ -10,7 +10,7 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::{filters, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ExileCounterPermissionFamily {
+pub enum ExileCounterPermissionFamily {
     CastNonlandCards,
     PlayLandsAndCastNoncreatureCardsExiledBySource,
     PlayLandsAndCastSpellsOwnedInExile,
@@ -18,7 +18,7 @@ pub(crate) enum ExileCounterPermissionFamily {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ExileCounterPermissionOwner {
+pub enum ExileCounterPermissionOwner {
     Any,
     Opponent,
     You,
@@ -26,7 +26,7 @@ pub(crate) enum ExileCounterPermissionOwner {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ExileCounterManaPermission {
+pub enum ExileCounterManaPermission {
     AnyMana,
     AnyTypeCanBeSpent,
     SnowSources,
@@ -34,23 +34,23 @@ pub(crate) enum ExileCounterManaPermission {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ExileCounterPermissionSpec {
-    pub(crate) family: ExileCounterPermissionFamily,
-    pub(crate) owner: ExileCounterPermissionOwner,
-    pub(crate) counter_type: CounterType,
-    pub(crate) mana_permission: ExileCounterManaPermission,
-    pub(crate) during_your_turn: bool,
+pub struct ExileCounterPermissionSpec {
+    pub family: ExileCounterPermissionFamily,
+    pub owner: ExileCounterPermissionOwner,
+    pub counter_type: CounterType,
+    pub mana_permission: ExileCounterManaPermission,
+    pub during_your_turn: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PlayPermissionEnterCounterSpec<'a> {
-    pub(crate) permission_tokens: &'a [OwnedLexToken],
-    pub(crate) counter_type: CounterType,
-    pub(crate) additional: bool,
-    pub(crate) cast_this_way_filter: Option<ObjectFilter>,
+pub struct PlayPermissionEnterCounterSpec<'a> {
+    pub permission_tokens: &'a [OwnedLexToken],
+    pub counter_type: CounterType,
+    pub additional: bool,
+    pub cast_this_way_filter: Option<ObjectFilter>,
 }
 
-pub(crate) fn parse_exile_counter_permission_tokens(
+pub fn parse_exile_counter_permission_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ExileCounterPermissionSpec> {
     primitives::parse_all(
@@ -66,7 +66,7 @@ pub(crate) fn parse_exile_counter_permission_tokens(
     .ok()
 }
 
-pub(crate) fn parse_play_permission_enter_counter_tokens(
+pub fn parse_play_permission_enter_counter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayPermissionEnterCounterSpec<'_>> {
     primitives::parse_all(

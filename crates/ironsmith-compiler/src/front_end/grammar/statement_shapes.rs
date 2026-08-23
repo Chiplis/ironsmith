@@ -6,19 +6,19 @@ use super::primitives;
 
 #[path = "statement_player_counters.rs"]
 mod player_counters;
-pub(crate) use player_counters::parse_player_gets_counters_surface_tokens;
+pub use player_counters::parse_player_gets_counters_surface_tokens;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DieRollAdjustmentShape;
+pub struct DieRollAdjustmentShape;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AnyPlayerNoOneDoesShape;
+pub struct AnyPlayerNoOneDoesShape;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EachPlayerChooseBounceDrawShape;
+pub struct EachPlayerChooseBounceDrawShape;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StatementForceShape {
+pub enum StatementForceShape {
     DivvySelection,
     ExilePlayCost,
     ConditionalInstead,
@@ -27,13 +27,13 @@ pub(crate) enum StatementForceShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct NextDamagePreventionShape;
+pub struct NextDamagePreventionShape;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DayNightEntersShape;
+pub struct DayNightEntersShape;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RevealFromHandShape;
+pub struct RevealFromHandShape;
 
 fn surface_has_sequence(tokens: &[OwnedLexToken], sequence: &'static [&'static str]) -> bool {
     primitives::find_prefix(tokens, || primitives::phrase(sequence)).is_some()
@@ -43,7 +43,7 @@ fn surface_starts_with(tokens: &[OwnedLexToken], sequence: &'static [&'static st
     primitives::parse_prefix(tokens, primitives::phrase(sequence)).is_some()
 }
 
-pub(crate) fn parse_die_roll_adjustment_tokens(
+pub fn parse_die_roll_adjustment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DieRollAdjustmentShape> {
     (surface_starts_with(tokens, &["after", "you", "roll", "a", "die"])
@@ -57,7 +57,7 @@ pub(crate) fn parse_die_roll_adjustment_tokens(
     .then_some(DieRollAdjustmentShape)
 }
 
-pub(crate) fn parse_any_player_no_one_does_sentences(
+pub fn parse_any_player_no_one_does_sentences(
     sentences: &[Vec<OwnedLexToken>],
 ) -> Option<AnyPlayerNoOneDoesShape> {
     let [may_sentence, no_one_sentence, _followup] = sentences else {
@@ -68,7 +68,7 @@ pub(crate) fn parse_any_player_no_one_does_sentences(
     .then_some(AnyPlayerNoOneDoesShape)
 }
 
-pub(crate) fn parse_each_player_choose_bounce_draw_tokens(
+pub fn parse_each_player_choose_bounce_draw_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EachPlayerChooseBounceDrawShape> {
     (surface_starts_with(
@@ -105,7 +105,7 @@ pub(crate) fn parse_each_player_choose_bounce_draw_tokens(
     .then_some(EachPlayerChooseBounceDrawShape)
 }
 
-pub(crate) fn parse_statement_force_shape(tokens: &[OwnedLexToken]) -> Option<StatementForceShape> {
+pub fn parse_statement_force_shape(tokens: &[OwnedLexToken]) -> Option<StatementForceShape> {
     if parse_player_gets_counters_surface_tokens(tokens).is_some() {
         return Some(StatementForceShape::PlayerGetsCounters);
     }
@@ -138,7 +138,7 @@ pub(crate) fn parse_statement_force_shape(tokens: &[OwnedLexToken]) -> Option<St
     None
 }
 
-pub(crate) fn parse_next_damage_prevention_tokens(
+pub fn parse_next_damage_prevention_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<NextDamagePreventionShape> {
     (surface_starts_with(tokens, &["the", "next", "time"])
@@ -148,9 +148,7 @@ pub(crate) fn parse_next_damage_prevention_tokens(
     .then_some(NextDamagePreventionShape)
 }
 
-pub(crate) fn parse_day_night_enters_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<DayNightEntersShape> {
+pub fn parse_day_night_enters_tokens(tokens: &[OwnedLexToken]) -> Option<DayNightEntersShape> {
     (surface_starts_with(tokens, &["if"])
         && surface_has_sequence(tokens, &["neither", "day", "nor", "night"])
         && surface_has_sequence(tokens, &["it", "becomes", "day"])
@@ -160,9 +158,7 @@ pub(crate) fn parse_day_night_enters_tokens(
     .then_some(DayNightEntersShape)
 }
 
-pub(crate) fn parse_reveal_from_hand_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<RevealFromHandShape> {
+pub fn parse_reveal_from_hand_tokens(tokens: &[OwnedLexToken]) -> Option<RevealFromHandShape> {
     primitives::parse_all(
         tokens,
         (
@@ -175,7 +171,7 @@ pub(crate) fn parse_reveal_from_hand_tokens(
     .ok()
 }
 
-pub(crate) fn has_statement_error_prefix(tokens: &[OwnedLexToken]) -> bool {
+pub fn has_statement_error_prefix(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(
         tokens,
         alt((

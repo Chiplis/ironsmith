@@ -312,7 +312,7 @@ fn remember_single_cross_ability_object_choice(builder: &mut CardDefinitionBuild
     }
 }
 
-pub(crate) fn lower_normalized_card_ast_with_facts(
+pub fn lower_normalized_card_ast_with_facts(
     ast: NormalizedCardAst,
 ) -> Result<LoweredCardDocument, CardTextError> {
     let NormalizedCardAst {

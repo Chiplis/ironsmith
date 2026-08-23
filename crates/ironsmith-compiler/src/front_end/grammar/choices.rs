@@ -12,51 +12,51 @@ use super::{leaf, primitives};
 
 #[path = "choices/object_shapes.rs"]
 mod object_shapes;
-pub(crate) use object_shapes::*;
+pub use object_shapes::*;
 
 #[path = "choices/typed_object_filters.rs"]
 mod typed_object_filters;
-pub(crate) use typed_object_filters::*;
+pub use typed_object_filters::*;
 
 #[path = "choices/type_phrases.rs"]
 mod type_phrases;
-pub(crate) use type_phrases::*;
+pub use type_phrases::*;
 
 #[path = "choices/sequence_shapes.rs"]
 mod sequence_shapes;
-pub(crate) use sequence_shapes::*;
+pub use sequence_shapes::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ChoiceClauseActor {
+pub enum ChoiceClauseActor {
     Implicit,
     You,
     Opponent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct ChoiceClauseHeadShape<'a> {
-    pub(crate) actor: ChoiceClauseActor,
+pub struct ChoiceClauseHeadShape<'a> {
+    pub actor: ChoiceClauseActor,
     /// The authored choice clause beginning at `choose`/`chooses`.  Keeping
     /// the verb lets the shared type-phrase parsers consume the same surface
     /// for implicit, controller, and opponent choosers.
-    pub(crate) choice_tokens: &'a [OwnedLexToken],
+    pub choice_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ChoiceClauseSeparator {
+pub enum ChoiceClauseSeparator {
     And,
     Become,
     Then,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChoiceClauseSeparatorSpan {
-    pub(crate) first: usize,
-    pub(crate) end: usize,
+pub struct ChoiceClauseSeparatorSpan {
+    pub first: usize,
+    pub end: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ChoiceObjectCountSource {
+pub enum ChoiceObjectCountSource {
     CardsDiscardedThisWay,
     ThatMany,
     /// A trailing authored count such as `for each card in their graveyard`.
@@ -66,51 +66,51 @@ pub(crate) enum ChoiceObjectCountSource {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct ChoiceObjectReferenceFacts {
-    pub(crate) references_it: bool,
-    pub(crate) references_container_it: bool,
-    pub(crate) explicit_container_reference: bool,
-    pub(crate) excludes_chosen_this_way: bool,
+pub struct ChoiceObjectReferenceFacts {
+    pub references_it: bool,
+    pub references_container_it: bool,
+    pub explicit_container_reference: bool,
+    pub excludes_chosen_this_way: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ChoiceObjectClauseShape {
-    pub(crate) actor: ChoiceClauseActor,
-    pub(crate) filter_words: Vec<String>,
-    pub(crate) count: ChoiceCount,
-    pub(crate) count_source: Option<ChoiceObjectCountSource>,
-    pub(crate) references: ChoiceObjectReferenceFacts,
-    pub(crate) filter_facts: ChoiceObjectFilterFacts,
+pub struct ChoiceObjectClauseShape {
+    pub actor: ChoiceClauseActor,
+    pub filter_words: Vec<String>,
+    pub count: ChoiceCount,
+    pub count_source: Option<ChoiceObjectCountSource>,
+    pub references: ChoiceObjectReferenceFacts,
+    pub filter_facts: ChoiceObjectFilterFacts,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ChoiceObjectClauseKind {
+pub enum ChoiceObjectClauseKind {
     Object(ChoiceObjectClauseShape),
     CardName,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ChoiceObjectClauseSyntaxError {
+pub enum ChoiceObjectClauseSyntaxError {
     MissingObject,
     MissingFilter,
     UnsupportedFilter,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ChoicePlayerClauseShape {
-    pub(crate) filter: PlayerFilter,
-    pub(crate) random: bool,
-    pub(crate) exclude_previous_choices: usize,
+pub struct ChoicePlayerClauseShape {
+    pub filter: PlayerFilter,
+    pub random: bool,
+    pub exclude_previous_choices: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ChoicePlayerClauseSyntaxError {
+pub enum ChoicePlayerClauseSyntaxError {
     UnsupportedFilter,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChoiceCardTypeRevealShape {
-    pub(crate) count: u32,
+pub struct ChoiceCardTypeRevealShape {
+    pub count: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -128,7 +128,7 @@ enum ContainerReferenceSuffix {
     FromThereIn,
 }
 
-pub(crate) fn parse_choice_clause_separator_tokens(
+pub fn parse_choice_clause_separator_tokens(
     tokens: &[OwnedLexToken],
     separator: ChoiceClauseSeparator,
 ) -> Option<ChoiceClauseSeparatorSpan> {
@@ -152,7 +152,7 @@ pub(crate) fn parse_choice_clause_separator_tokens(
     })
 }
 
-pub(crate) fn parse_choice_object_clause_tokens(
+pub fn parse_choice_object_clause_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ChoiceObjectClauseKind>, ChoiceObjectClauseSyntaxError> {
     let mut input = LexStream::new(tokens);
@@ -264,7 +264,7 @@ pub(crate) fn parse_choice_object_clause_tokens(
     )))
 }
 
-pub(crate) fn parse_choice_clause_head_tokens(
+pub fn parse_choice_clause_head_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ChoiceClauseHeadShape<'_>> {
     let mut input = LexStream::new(tokens);
@@ -280,7 +280,7 @@ pub(crate) fn parse_choice_clause_head_tokens(
     })
 }
 
-pub(crate) fn parse_choice_player_clause_tokens(
+pub fn parse_choice_player_clause_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ChoicePlayerClauseShape>, ChoicePlayerClauseSyntaxError> {
     let mut input = LexStream::new(tokens);
@@ -315,7 +315,7 @@ pub(crate) fn parse_choice_player_clause_tokens(
     }))
 }
 
-pub(crate) fn parse_choice_card_type_reveal_shape_words(
+pub fn parse_choice_card_type_reveal_shape_words(
     first: &[&str],
     second: &[&str],
 ) -> Option<ChoiceCardTypeRevealShape> {

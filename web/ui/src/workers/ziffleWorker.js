@@ -1,5 +1,23 @@
-import initWasm, { WasmGame } from "../../../wasm_demo/pkg/ironsmith.js";
-import wasmUrl from "../../../wasm_demo/pkg/ironsmith_bg.wasm?url";
+import initWasm, {
+  ziffleBuildRevealToken,
+  ziffleBuildRevealTokens,
+  ziffleBuildShuffleStep,
+  ziffleKeygen,
+  ziffleRevealCard,
+  ziffleRevealCards,
+  ziffleVerifyShuffle,
+} from "../../../wasm_demo/pkg/verifier.js";
+import wasmUrl from "../../../wasm_demo/pkg/verifier_bg.wasm?url";
+
+const verifier = {
+  ziffleBuildRevealToken,
+  ziffleBuildRevealTokens,
+  ziffleBuildShuffleStep,
+  ziffleKeygen,
+  ziffleRevealCard,
+  ziffleRevealCards,
+  ziffleVerifyShuffle,
+};
 
 const ZIFFLE_METHODS = new Set([
   "ziffleBuildRevealToken",
@@ -52,7 +70,7 @@ async function ensureReady() {
   if (!initPromise) {
     initPromise = (async () => {
       await initWasm(wasmUrl);
-      game = new WasmGame();
+      game = verifier;
       return game;
     })();
   }

@@ -14,13 +14,13 @@ use super::token_primitives::split_em_dash_label_prefix_tokens;
 
 pub(super) use super::keyword_payloads::*;
 
-pub(crate) fn parse_keyword_line_cst(
+pub fn parse_keyword_line_cst(
     line: &PreprocessedLine,
 ) -> Result<Option<KeywordLineCst>, CardTextError> {
     recognize_keyword_line_cst(line).into_legacy_result_option()
 }
 
-pub(crate) fn recognize_keyword_line_cst(line: &PreprocessedLine) -> ParseOutcome<KeywordLineCst> {
+pub fn recognize_keyword_line_cst(line: &PreprocessedLine) -> ParseOutcome<KeywordLineCst> {
     let tokens = rewrite_keyword_dash_parse_tokens(&line.tokens);
     let full_parse_tokens = line.info.source_tokens.clone();
     let Some(hint) = parse_keyword_dispatch_hint(&tokens) else {
@@ -78,12 +78,12 @@ pub(crate) fn recognize_keyword_line_cst(line: &PreprocessedLine) -> ParseOutcom
         ParseOutcome::Error(diagnostic) => ParseOutcome::Error(diagnostic),
     }
 }
-pub(crate) fn lower_keyword_line_ast(line: &RewriteKeywordLine) -> Result<LineAst, CardTextError> {
+pub fn lower_keyword_line_ast(line: &RewriteKeywordLine) -> Result<LineAst, CardTextError> {
     Ok(line.payload.to_line_ast())
 }
 
 #[cfg(test)]
-pub(crate) fn parse_keyword_payload_for_kind(
+pub fn parse_keyword_payload_for_kind(
     mut info: crate::cards::builders::LineInfo,
     text: &str,
     parse_tokens: &[OwnedLexToken],
@@ -110,7 +110,7 @@ pub(crate) fn parse_keyword_payload_for_kind(
     Ok(payload.to_line_ast())
 }
 
-pub(crate) fn rewrite_keyword_dash_parse_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+pub fn rewrite_keyword_dash_parse_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let Some((label_tokens, body_tokens)) = split_em_dash_label_prefix_tokens(tokens) else {
         return tokens.to_vec();
     };

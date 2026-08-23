@@ -9,45 +9,45 @@ use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::token::any;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TrailingCounterConstraintShape {
+pub enum TrailingCounterConstraintShape {
     NoCounters,
     Constraint(CounterConstraint),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PowerDamageSelfShape<'a> {
-    pub(crate) source_tokens: &'a [OwnedLexToken],
-    pub(crate) first_target_tokens: &'a [OwnedLexToken],
+pub struct PowerDamageSelfShape<'a> {
+    pub source_tokens: &'a [OwnedLexToken],
+    pub first_target_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TappedThisWayBindingShape {
-    pub(crate) damage_to_active_player: bool,
+pub struct TappedThisWayBindingShape {
+    pub damage_to_active_player: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AttackingDoesntTapIfSourceUntappedShape<'a> {
-    pub(crate) affected_tokens: &'a [OwnedLexToken],
+pub struct AttackingDoesntTapIfSourceUntappedShape<'a> {
+    pub affected_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AuraEnchantmentShape<'a> {
-    pub(crate) attachment_tokens: &'a [OwnedLexToken],
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
-    pub(crate) granted_ability_tokens: Vec<&'a [OwnedLexToken]>,
-    pub(crate) attachment_mentions_you_control: bool,
-    pub(crate) loses_all_abilities: bool,
+pub struct AuraEnchantmentShape<'a> {
+    pub attachment_tokens: &'a [OwnedLexToken],
+    pub tail_tokens: &'a [OwnedLexToken],
+    pub granted_ability_tokens: Vec<&'a [OwnedLexToken]>,
+    pub attachment_mentions_you_control: bool,
+    pub loses_all_abilities: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TaggedExactTypeWithQuotedAbilityShape<'a> {
-    pub(crate) card_types: Vec<CardType>,
-    pub(crate) subtypes: Vec<Subtype>,
-    pub(crate) ability_tokens: &'a [OwnedLexToken],
+pub struct TaggedExactTypeWithQuotedAbilityShape<'a> {
+    pub card_types: Vec<CardType>,
+    pub subtypes: Vec<Subtype>,
+    pub ability_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DelayedSentenceShape<'a> {
+pub enum DelayedSentenceShape<'a> {
     NextEndStep,
     NextCombat,
     EndOfCombat {
@@ -56,46 +56,46 @@ pub(crate) enum DelayedSentenceShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct QuotedAbilitySentenceShape;
+pub struct QuotedAbilitySentenceShape;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ImmediateSacrificeSentenceShape;
+pub struct ImmediateSacrificeSentenceShape;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LeadingIfSentenceShape {
-    pub(crate) replacement: bool,
+pub struct LeadingIfSentenceShape {
+    pub replacement: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SourceBlockedLibraryShuffleShape;
+pub struct SourceBlockedLibraryShuffleShape;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SingleGraveyardLibraryBottomShape {
-    pub(crate) count: u32,
+pub struct SingleGraveyardLibraryBottomShape {
+    pub count: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum WhereXReferenceShape {
+pub enum WhereXReferenceShape {
     Source,
     Target,
     TaggedIt,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum WhereXMetricShape {
+pub enum WhereXMetricShape {
     Power,
     Toughness,
     ManaValue,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SacrificeCostObjectKindShape {
+pub enum SacrificeCostObjectKindShape {
     CardType(crate::types::CardType),
     Permanent,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum WhereXValueShape {
+pub enum WhereXValueShape {
     CommanderManaValueChoice,
     ChosenObjectsPowerDifference {
         object_kind: String,
@@ -124,23 +124,23 @@ pub(crate) enum WhereXValueShape {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct WhereXSentenceShape<'a> {
-    pub(crate) stripped_tokens: &'a [OwnedLexToken],
-    pub(crate) where_tokens: &'a [OwnedLexToken],
-    pub(crate) comma_tail_has_effect_clause: bool,
-    pub(crate) stripped_references_target: bool,
-    pub(crate) stripped_starts_search: bool,
+pub struct WhereXSentenceShape<'a> {
+    pub stripped_tokens: &'a [OwnedLexToken],
+    pub where_tokens: &'a [OwnedLexToken],
+    pub comma_tail_has_effect_clause: bool,
+    pub stripped_references_target: bool,
+    pub stripped_starts_search: bool,
     where_segments: Vec<&'a [OwnedLexToken]>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct WhereXLayout<'a> {
-    pub(crate) primary_where_tokens: &'a [OwnedLexToken],
-    pub(crate) trailing_after_where: Vec<OwnedLexToken>,
+pub struct WhereXLayout<'a> {
+    pub primary_where_tokens: &'a [OwnedLexToken],
+    pub trailing_after_where: Vec<OwnedLexToken>,
 }
 
 impl<'a> WhereXSentenceShape<'a> {
-    pub(crate) fn layout(&self, full_where_is_count_value: bool) -> WhereXLayout<'a> {
+    pub fn layout(&self, full_where_is_count_value: bool) -> WhereXLayout<'a> {
         if full_where_is_count_value {
             return WhereXLayout {
                 primary_where_tokens: self.where_tokens,
@@ -214,7 +214,7 @@ fn parse_trailing_counter_constraint_lexed<'a>(
     Ok(TrailingCounterConstraintShape::Constraint(constraint))
 }
 
-pub(crate) fn parse_trailing_counter_constraint_tokens(
+pub fn parse_trailing_counter_constraint_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TrailingCounterConstraintShape> {
     primitives::parse_all(
@@ -263,7 +263,7 @@ fn parse_power_damage_self_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_power_damage_self_tokens(
+pub fn parse_power_damage_self_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PowerDamageSelfShape<'_>> {
     primitives::parse_all(
@@ -304,7 +304,7 @@ fn parse_attacking_doesnt_tap_if_source_untapped_lexed<'a>(
     Ok(AttackingDoesntTapIfSourceUntappedShape { affected_tokens })
 }
 
-pub(crate) fn parse_attacking_doesnt_tap_if_source_untapped_tokens(
+pub fn parse_attacking_doesnt_tap_if_source_untapped_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttackingDoesntTapIfSourceUntappedShape<'_>> {
     primitives::parse_all(
@@ -328,7 +328,7 @@ fn parse_tapped_this_way_where_lexed<'a>(input: &mut LexStream<'a>) -> WResult<(
     primitives::sentence_end().parse_next(input)
 }
 
-pub(crate) fn parse_tapped_this_way_binding_tokens(
+pub fn parse_tapped_this_way_binding_tokens(
     stripped_tokens: &[OwnedLexToken],
     where_tokens: &[OwnedLexToken],
 ) -> Option<TappedThisWayBindingShape> {
@@ -454,9 +454,7 @@ fn aura_ability_tokens(tail_tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
     }
 }
 
-pub(crate) fn parse_aura_enchantment_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<AuraEnchantmentShape<'_>> {
+pub fn parse_aura_enchantment_tokens(tokens: &[OwnedLexToken]) -> Option<AuraEnchantmentShape<'_>> {
     let (attachment_tokens, tail_tokens) = primitives::parse_all(
         tokens,
         parse_aura_enchantment_lexed,
@@ -516,7 +514,7 @@ fn parse_tagged_exact_type_with_quoted_ability_lexed<'a>(
     Ok((descriptor, trim_lexed_commas(ability_tokens)))
 }
 
-pub(crate) fn parse_tagged_exact_type_with_quoted_ability_tokens(
+pub fn parse_tagged_exact_type_with_quoted_ability_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TaggedExactTypeWithQuotedAbilityShape<'_>> {
     let (descriptor, ability_tokens) = primitives::parse_all(
@@ -577,7 +575,7 @@ fn parse_cant_gain_life_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     primitives::sentence_end().parse_next(input)
 }
 
-pub(crate) fn parses_cant_gain_life_replacement_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parses_cant_gain_life_replacement_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,
         parse_cant_gain_life_lexed,
@@ -624,9 +622,7 @@ fn parse_end_combat_delayed_lexed<'a>(input: &mut LexStream<'a>) -> WResult<&'a 
         .parse_next(input)
 }
 
-pub(crate) fn parse_delayed_sentence_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<DelayedSentenceShape<'_>> {
+pub fn parse_delayed_sentence_tokens(tokens: &[OwnedLexToken]) -> Option<DelayedSentenceShape<'_>> {
     if primitives::parse_prefix(tokens, parse_next_end_step_prefix_lexed).is_some() {
         return Some(DelayedSentenceShape::NextEndStep);
     }
@@ -661,7 +657,7 @@ fn ability_action<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_quoted_ability_sentence_tokens(
+pub fn parse_quoted_ability_sentence_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<QuotedAbilitySentenceShape> {
     (marker_anywhere(tokens, quote_marker) && marker_anywhere(tokens, ability_action))
@@ -678,7 +674,7 @@ fn delayed_lifecycle_marker<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_immediate_sacrifice_sentence_tokens(
+pub fn parse_immediate_sacrifice_sentence_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ImmediateSacrificeSentenceShape> {
     let (_, tail) = primitives::parse_prefix(tokens, primitives::kw("sacrifice"))?;
@@ -694,7 +690,7 @@ pub(crate) fn parse_immediate_sacrifice_sentence_tokens(
         .then_some(ImmediateSacrificeSentenceShape)
 }
 
-pub(crate) fn parse_leading_if_sentence_tokens(
+pub fn parse_leading_if_sentence_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LeadingIfSentenceShape> {
     primitives::parse_prefix(tokens, primitives::kw("if"))?;
@@ -743,7 +739,7 @@ fn parse_source_blocked_library_shuffle_lexed<'a>(input: &mut LexStream<'a>) -> 
     primitives::sentence_end().parse_next(input)
 }
 
-pub(crate) fn parse_source_blocked_library_shuffle_tokens(
+pub fn parse_source_blocked_library_shuffle_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SourceBlockedLibraryShuffleShape> {
     primitives::parse_all(
@@ -787,7 +783,7 @@ fn parse_single_graveyard_library_bottom_lexed<'a>(input: &mut LexStream<'a>) ->
     Ok(count)
 }
 
-pub(crate) fn parse_single_graveyard_library_bottom_tokens(
+pub fn parse_single_graveyard_library_bottom_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SingleGraveyardLibraryBottomShape> {
     primitives::parse_all(
@@ -808,9 +804,7 @@ fn segment_has_effect_clause(tokens: &[OwnedLexToken]) -> bool {
         || super::chain_splitting::find_chain_verb_tokens(tokens).is_some()
 }
 
-pub(crate) fn parse_where_x_sentence_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<WhereXSentenceShape<'_>> {
+pub fn parse_where_x_sentence_tokens(tokens: &[OwnedLexToken]) -> Option<WhereXSentenceShape<'_>> {
     let (stripped_tokens, where_tokens) = primitives::parse_prefix(
         tokens,
         repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), peek(where_x_prefix))
@@ -836,7 +830,7 @@ pub(crate) fn parse_where_x_sentence_tokens(
     })
 }
 
-pub(crate) fn starts_with_source_deals_x_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn starts_with_source_deals_x_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(
         tokens,
         alt((
@@ -850,7 +844,7 @@ pub(crate) fn starts_with_source_deals_x_tokens(tokens: &[OwnedLexToken]) -> boo
     .is_some()
 }
 
-pub(crate) fn parse_before_activation_time_tokens(
+pub fn parse_before_activation_time_tokens(
     where_tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     let (prefix, _) = primitives::parse_prefix(
@@ -1290,7 +1284,7 @@ fn parse_counter_reference_where_lexed<'a>(input: &mut LexStream<'a>) -> WResult
     })
 }
 
-pub(crate) fn parse_where_x_value_shape_tokens(
+pub fn parse_where_x_value_shape_tokens(
     where_tokens: &[OwnedLexToken],
     stripped_references_target: bool,
 ) -> Option<WhereXValueShape> {

@@ -7,8 +7,8 @@ use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::token::any;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct NextTurnCantShape<'a> {
-    pub(crate) restriction_tokens: &'a [OwnedLexToken],
+pub struct NextTurnCantShape<'a> {
+    pub restriction_tokens: &'a [OwnedLexToken],
 }
 
 fn next_turn_cant<'a>(input: &mut LexStream<'a>) -> WResult<NextTurnCantShape<'a>> {
@@ -36,14 +36,14 @@ fn next_turn_cant<'a>(input: &mut LexStream<'a>) -> WResult<NextTurnCantShape<'a
     })
 }
 
-pub(crate) fn parse_next_turn_cant_shape_tokens(
+pub fn parse_next_turn_cant_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<NextTurnCantShape<'_>> {
     primitives::parse_all(tokens, next_turn_cant, "next-turn restriction").ok()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DirectClauseShape {
+pub enum DirectClauseShape {
     RingTemptsYou,
     TakeInitiative,
     ChooseOddOrEven,
@@ -235,7 +235,7 @@ fn damaged_players_cant_gain_life(tokens: &[OwnedLexToken]) -> bool {
     has_condition && has_tail
 }
 
-pub(crate) fn parse_direct_clause_shape(tokens: &[OwnedLexToken]) -> Option<DirectClauseShape> {
+pub fn parse_direct_clause_shape(tokens: &[OwnedLexToken]) -> Option<DirectClauseShape> {
     if damaged_players_cant_gain_life(tokens) {
         Some(DirectClauseShape::DamagedPlayersCantGainLife)
     } else {
@@ -244,11 +244,11 @@ pub(crate) fn parse_direct_clause_shape(tokens: &[OwnedLexToken]) -> Option<Dire
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TurnTargetFaceUpShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct TurnTargetFaceUpShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_turn_target_face_up_shape(
+pub fn parse_turn_target_face_up_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<TurnTargetFaceUpShape<'_>> {
     let (_, tail) = primitives::parse_prefix(tokens, primitives::kw("turn"))?;
@@ -265,13 +265,11 @@ pub(crate) fn parse_turn_target_face_up_shape(
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SharedAbilityGainShape {
-    pub(crate) abilities: Vec<KeywordAction>,
+pub struct SharedAbilityGainShape {
+    pub abilities: Vec<KeywordAction>,
 }
 
-pub(crate) fn parse_shared_ability_gain_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<SharedAbilityGainShape> {
+pub fn parse_shared_ability_gain_shape(tokens: &[OwnedLexToken]) -> Option<SharedAbilityGainShape> {
     let (_, body) =
         primitives::parse_prefix(tokens, primitives::phrase(&["all", "abilities", "and"]))?;
     let (_, _, ability_tokens) = primitives::find_prefix(body, || {
@@ -291,22 +289,20 @@ pub(crate) fn parse_shared_ability_gain_shape(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProtectionChoiceChooserShape {
+pub enum ProtectionChoiceChooserShape {
     You,
     TargetController,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ProtectionChoiceShape {
-    pub(crate) includes_colorless: bool,
-    pub(crate) includes_artifacts: bool,
-    pub(crate) chooses_card_type: bool,
-    pub(crate) chooser: ProtectionChoiceChooserShape,
+pub struct ProtectionChoiceShape {
+    pub includes_colorless: bool,
+    pub includes_artifacts: bool,
+    pub chooses_card_type: bool,
+    pub chooser: ProtectionChoiceChooserShape,
 }
 
-pub(crate) fn parse_protection_choice_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<ProtectionChoiceShape> {
+pub fn parse_protection_choice_shape(tokens: &[OwnedLexToken]) -> Option<ProtectionChoiceShape> {
     let fixed_option = alt((
         primitives::phrase(&["colorless", "or", "from"]).value((true, false)),
         primitives::phrase(&["artifacts", "or", "from"]).value((false, true)),
@@ -353,14 +349,14 @@ pub(crate) fn parse_protection_choice_shape(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AssignDamageSourceShape<'a> {
+pub enum AssignDamageSourceShape<'a> {
     Source,
     Tagged,
     Target(&'a [OwnedLexToken]),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum AssignsNoCombatDamageShape<'a> {
+pub enum AssignsNoCombatDamageShape<'a> {
     Supported {
         source: AssignDamageSourceShape<'a>,
         duration: Until,
@@ -368,7 +364,7 @@ pub(crate) enum AssignsNoCombatDamageShape<'a> {
     Unsupported,
 }
 
-pub(crate) fn parse_assigns_no_combat_damage_shape(
+pub fn parse_assigns_no_combat_damage_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<AssignsNoCombatDamageShape<'_>> {
     let (subject_tokens, tail_tokens) = primitives::split_lexed_once_on_separator(tokens, || {
@@ -408,14 +404,14 @@ pub(crate) fn parse_assigns_no_combat_damage_shape(
     Some(AssignsNoCombatDamageShape::Supported { source, duration })
 }
 
-pub(crate) fn strip_optional_you_choice_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+pub fn strip_optional_you_choice_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     primitives::parse_prefix(tokens, primitives::kw("you"))
         .map(|(_, rest)| rest)
         .unwrap_or(tokens)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ChooseTargetChooserShape {
+pub enum ChooseTargetChooserShape {
     AbilityController,
     ItsController,
     /// "That opponent" is the controller of the immediately preceding
@@ -426,12 +422,12 @@ pub(crate) enum ChooseTargetChooserShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChooseTargetShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) chooser: ChooseTargetChooserShape,
+pub struct ChooseTargetShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
+    pub chooser: ChooseTargetChooserShape,
     /// `another player controls` is relative to the player making this
     /// authored target choice, not necessarily the ability's controller.
-    pub(crate) excludes_chooser_controller: bool,
+    pub excludes_chooser_controller: bool,
 }
 
 fn target_phrase_excludes_chooser_controller(tokens: &[OwnedLexToken]) -> bool {
@@ -441,7 +437,7 @@ fn target_phrase_excludes_chooser_controller(tokens: &[OwnedLexToken]) -> bool {
     .is_some()
 }
 
-pub(crate) fn parse_choose_target_shape(tokens: &[OwnedLexToken]) -> Option<ChooseTargetShape<'_>> {
+pub fn parse_choose_target_shape(tokens: &[OwnedLexToken]) -> Option<ChooseTargetShape<'_>> {
     let (chooser, tail) = if let Some((_, tail)) = primitives::parse_prefix(
         tokens,
         (
@@ -490,12 +486,12 @@ pub(crate) fn parse_choose_target_shape(tokens: &[OwnedLexToken]) -> Option<Choo
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TargetOnlyShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) restriction_like: bool,
+pub struct TargetOnlyShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
+    pub restriction_like: bool,
 }
 
-pub(crate) fn parse_target_only_shape(tokens: &[OwnedLexToken]) -> Option<TargetOnlyShape<'_>> {
+pub fn parse_target_only_shape(tokens: &[OwnedLexToken]) -> Option<TargetOnlyShape<'_>> {
     primitives::parse_prefix(tokens, primitives::kw("target"))?;
     if super::parse_clause_subject_verb_shape(tokens).is_some() {
         return None;
@@ -511,7 +507,7 @@ pub(crate) fn parse_target_only_shape(tokens: &[OwnedLexToken]) -> Option<Target
     })
 }
 
-pub(crate) fn parse_embedded_choose_target_shape(
+pub fn parse_embedded_choose_target_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ChooseTargetShape<'_>> {
     let (choose_idx, _, target_tokens) = primitives::find_prefix(tokens, || {

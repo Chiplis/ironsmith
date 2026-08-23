@@ -24,7 +24,7 @@ fn trigger_source_words(words: &[&str]) -> bool {
     crate::grammar::trigger_subjects::parse_trigger_source_subject_words(words).is_some()
 }
 
-pub(crate) fn parse_discard_trigger_card_filter(
+pub fn parse_discard_trigger_card_filter(
     after_discard_tokens: &[OwnedLexToken],
     clause_words: &[&str],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
@@ -146,7 +146,7 @@ fn subtype_list_controller_suffix(words: &[&str]) -> (Option<PlayerFilter>, usiz
     }
 }
 
-pub(crate) fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFilter {
+pub fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFilter {
     use crate::grammar::trigger_subjects::{AttachedControllerSubject, PossessivePlayerReference};
 
     match crate::grammar::trigger_subjects::parse_possessive_player_reference(words) {
@@ -167,7 +167,7 @@ pub(crate) fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFil
     }
 }
 
-pub(crate) fn parse_subject_clause_player_filter(words: &[&str]) -> PlayerFilter {
+pub fn parse_subject_clause_player_filter(words: &[&str]) -> PlayerFilter {
     let facts = trigger_subject_grammar::parse_trigger_subject_surface_facts(words);
     if facts.on_your_team || facts.contains_you {
         PlayerFilter::You
@@ -182,19 +182,17 @@ pub(crate) fn parse_subject_clause_player_filter(words: &[&str]) -> PlayerFilter
     }
 }
 
-pub(crate) fn parse_trigger_subject_player_filter(subject: &[&str]) -> Option<PlayerFilter> {
+pub fn parse_trigger_subject_player_filter(subject: &[&str]) -> Option<PlayerFilter> {
     trigger_subject_grammar::parse_trigger_subject_surface_facts(subject)
         .player
         .map(trigger_controller_player_filter)
 }
 
-pub(crate) fn split_target_clause_before_comma(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+pub fn split_target_clause_before_comma(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     crate::grammar::trigger_subjects::parse_clause_before_first_comma(tokens)
 }
 
-pub(crate) fn parse_shuffle_trigger_subject(
-    subject: &[&str],
-) -> Option<(PlayerFilter, bool, bool)> {
+pub fn parse_shuffle_trigger_subject(subject: &[&str]) -> Option<(PlayerFilter, bool, bool)> {
     let facts = trigger_subject_grammar::parse_shuffle_trigger_subject_facts(subject)?;
     Some((
         trigger_controller_player_filter(facts.player),
@@ -203,18 +201,18 @@ pub(crate) fn parse_shuffle_trigger_subject(
     ))
 }
 
-pub(crate) fn parse_spell_or_ability_controller_tail(words: &[&str]) -> Option<PlayerFilter> {
+pub fn parse_spell_or_ability_controller_tail(words: &[&str]) -> Option<PlayerFilter> {
     let controller =
         crate::grammar::trigger_subjects::parse_spell_or_ability_controller_tail(words)?;
     Some(trigger_controller_player_filter(controller))
 }
 
-pub(crate) fn parse_spell_controller_tail(words: &[&str]) -> Option<PlayerFilter> {
+pub fn parse_spell_controller_tail(words: &[&str]) -> Option<PlayerFilter> {
     let controller = crate::grammar::trigger_subjects::parse_spell_controller_tail(words)?;
     Some(trigger_controller_player_filter(controller))
 }
 
-pub(crate) fn attacking_filter_for_player(player: PlayerFilter) -> ObjectFilter {
+pub fn attacking_filter_for_player(player: PlayerFilter) -> ObjectFilter {
     let mut filter = ObjectFilter::creature();
     if !matches!(player, PlayerFilter::Any) {
         filter.controller = Some(player);
@@ -222,7 +220,7 @@ pub(crate) fn attacking_filter_for_player(player: PlayerFilter) -> ObjectFilter 
     filter
 }
 
-pub(crate) fn strip_leading_one_or_more_lexed(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+pub fn strip_leading_one_or_more_lexed(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     if let Some(used) = leading_one_or_more_prefix_len(tokens) {
         &tokens[used..]
     } else {
@@ -230,7 +228,7 @@ pub(crate) fn strip_leading_one_or_more_lexed(tokens: &[OwnedLexToken]) -> &[Own
     }
 }
 
-pub(crate) fn parse_subtype_list_enters_trigger_filter_lexed(
+pub fn parse_subtype_list_enters_trigger_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Option<ObjectFilter> {
@@ -336,7 +334,7 @@ fn parse_source_or_filter_trigger_subject_filter_lexed(
     Ok(Some(filter))
 }
 
-pub(crate) fn parse_trigger_subject_filter_lexed(
+pub fn parse_trigger_subject_filter_lexed(
     subject_tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     if subject_tokens.is_empty() {
@@ -527,7 +525,7 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
         })
 }
 
-pub(crate) fn trigger_subject_player_selector_lexed(
+pub fn trigger_subject_player_selector_lexed(
     subject_tokens: &[OwnedLexToken],
 ) -> Option<PlayerFilter> {
     let subject_tokens = strip_leading_one_or_more_lexed(subject_tokens);
@@ -536,7 +534,7 @@ pub(crate) fn trigger_subject_player_selector_lexed(
     parse_trigger_subject_player_filter(&subject_words)
 }
 
-pub(crate) fn parse_attack_trigger_subject_filter_lexed(
+pub fn parse_attack_trigger_subject_filter_lexed(
     subject_tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     if let Some(player) = trigger_subject_player_selector_lexed(subject_tokens) {
@@ -592,15 +590,15 @@ fn suspected_attack_subject_preserves_the_designation_filter() {
     assert_eq!(filter.controller, Some(PlayerFilter::You));
 }
 
-pub(crate) fn parse_draw_numbers_each_turn(words: &[&str]) -> Vec<u32> {
+pub fn parse_draw_numbers_each_turn(words: &[&str]) -> Vec<u32> {
     trigger_subject_grammar::parse_draw_turn_surface_facts(words).draw_numbers_this_turn
 }
 
-pub(crate) fn has_draw_except_first_in_draw_step_pattern(words: &[&str]) -> bool {
+pub fn has_draw_except_first_in_draw_step_pattern(words: &[&str]) -> bool {
     trigger_subject_grammar::parse_draw_turn_surface_facts(words).except_first_in_draw_step
 }
 
-pub(crate) fn parse_spell_activity_trigger(
+pub fn parse_spell_activity_trigger(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TriggerSpec>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -802,30 +800,30 @@ pub(crate) fn parse_spell_activity_trigger(
     Ok(None)
 }
 
-pub(crate) fn is_spawn_scion_token_mana_reminder(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_spawn_scion_token_mana_reminder(tokens: &[OwnedLexToken]) -> bool {
     trigger_subject_grammar::parse_trigger_sentence_surface_facts(tokens).spawn_scion_mana_reminder
 }
 
-pub(crate) fn is_round_up_each_time_sentence(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_round_up_each_time_sentence(tokens: &[OwnedLexToken]) -> bool {
     trigger_subject_grammar::parse_trigger_sentence_surface_facts(tokens).round_up_each_time
 }
 
-pub(crate) enum MayCastItVerb {
+pub enum MayCastItVerb {
     Cast,
     Play,
 }
 
-pub(crate) struct MayCastTaggedSpec {
-    pub(crate) tag: TagKey,
-    pub(crate) player: PlayerAst,
-    pub(crate) verb: MayCastItVerb,
-    pub(crate) as_copy: bool,
-    pub(crate) without_paying_mana_cost: bool,
-    pub(crate) predicate: Option<PredicateAst>,
-    pub(crate) cost_reduction: Option<ManaCost>,
+pub struct MayCastTaggedSpec {
+    pub tag: TagKey,
+    pub player: PlayerAst,
+    pub verb: MayCastItVerb,
+    pub as_copy: bool,
+    pub without_paying_mana_cost: bool,
+    pub predicate: Option<PredicateAst>,
+    pub cost_reduction: Option<ManaCost>,
 }
 
-pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<MayCastTaggedSpec> {
+pub fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<MayCastTaggedSpec> {
     let clause_words = crate::lexer::parser_token_word_refs(tokens);
     let facts = trigger_subject_grammar::parse_may_cast_sentence_facts(&clause_words)?;
     use trigger_subject_grammar::{
@@ -896,9 +894,7 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
     })
 }
 
-pub(crate) fn parse_copy_reference_cost_reduction_sentence(
-    tokens: &[OwnedLexToken],
-) -> Option<ManaCost> {
+pub fn parse_copy_reference_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Option<ManaCost> {
     let shape =
         crate::grammar::trigger_subjects::parse_copy_reference_cost_reduction_shape_tokens(tokens)?;
     let reduction_tokens = trim_commas(&tokens[shape.reduction_tokens]).to_vec();
@@ -909,7 +905,7 @@ pub(crate) fn parse_copy_reference_cost_reduction_sentence(
     Some(reduction)
 }
 
-pub(crate) fn build_may_cast_tagged_effect(spec: &MayCastTaggedSpec) -> EffectAst {
+pub fn build_may_cast_tagged_effect(spec: &MayCastTaggedSpec) -> EffectAst {
     let cast = EffectAst::subject_verb_cast_tagged(
         spec.tag.clone(),
         spec.player,
@@ -939,17 +935,17 @@ pub(crate) fn build_may_cast_tagged_effect(spec: &MayCastTaggedSpec) -> EffectAs
     }
 }
 
-pub(crate) fn is_simple_copy_reference_sentence(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_simple_copy_reference_sentence(tokens: &[OwnedLexToken]) -> bool {
     crate::grammar::trigger_subjects::parse_simple_copy_reference_tokens(tokens).is_some()
 }
 
-pub(crate) fn token_name_mentions_eldrazi_spawn_or_scion(name: &str) -> bool {
+pub fn token_name_mentions_eldrazi_spawn_or_scion(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     (lower.matches("eldrazi").next().is_some() && lower.matches("spawn").next().is_some())
         || (lower.matches("eldrazi").next().is_some() && lower.matches("scion").next().is_some())
 }
 
-pub(crate) fn effect_creates_eldrazi_spawn_or_scion(effect: &EffectAst) -> bool {
+pub fn effect_creates_eldrazi_spawn_or_scion(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::SubjectVerb(subject_verb)
             if matches!(
@@ -974,7 +970,7 @@ pub(crate) fn effect_creates_eldrazi_spawn_or_scion(effect: &EffectAst) -> bool 
     }
 }
 
-pub(crate) fn effect_creates_any_token(effect: &EffectAst) -> bool {
+pub fn effect_creates_any_token(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::SubjectVerb(subject_verb)
             if matches!(
@@ -999,7 +995,7 @@ pub(crate) fn effect_creates_any_token(effect: &EffectAst) -> bool {
     }
 }
 
-pub(crate) fn last_created_token_info(
+pub fn last_created_token_info(
     effects: &[EffectAst],
 ) -> Option<(
     String,
@@ -1014,7 +1010,7 @@ pub(crate) fn last_created_token_info(
     None
 }
 
-pub(crate) fn created_token_info_from_effect(
+pub fn created_token_info_from_effect(
     effect: &EffectAst,
 ) -> Option<(
     String,
@@ -1051,7 +1047,7 @@ pub(crate) fn created_token_info_from_effect(
     }
 }
 
-pub(crate) fn title_case_token_word(word: &str) -> String {
+pub fn title_case_token_word(word: &str) -> String {
     let mut chars = word.chars();
     match chars.next() {
         Some(first) => {
@@ -1063,7 +1059,7 @@ pub(crate) fn title_case_token_word(word: &str) -> String {
     }
 }
 
-pub(crate) fn controller_filter_for_token_player(player: PlayerAst) -> Option<PlayerFilter> {
+pub fn controller_filter_for_token_player(player: PlayerAst) -> Option<PlayerFilter> {
     match player {
         PlayerAst::You | PlayerAst::Implicit => Some(PlayerFilter::You),
         PlayerAst::Opponent => Some(PlayerFilter::Opponent),
@@ -1078,7 +1074,7 @@ pub(crate) fn controller_filter_for_token_player(player: PlayerAst) -> Option<Pl
     }
 }
 
-pub(crate) fn parse_sentence_exile_that_token_when_source_leaves(
+pub fn parse_sentence_exile_that_token_when_source_leaves(
     tokens: &[OwnedLexToken],
     prior_effects: &[EffectAst],
 ) -> Option<EffectAst> {
@@ -1096,7 +1092,7 @@ pub(crate) fn parse_sentence_exile_that_token_when_source_leaves(
     ))
 }
 
-pub(crate) fn parse_sentence_sacrifice_source_when_that_token_leaves(
+pub fn parse_sentence_sacrifice_source_when_that_token_leaves(
     tokens: &[OwnedLexToken],
     prior_effects: &[EffectAst],
 ) -> Option<EffectAst> {
@@ -1114,11 +1110,11 @@ pub(crate) fn parse_sentence_sacrifice_source_when_that_token_leaves(
     ))
 }
 
-pub(crate) fn is_generic_token_reminder_sentence(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_generic_token_reminder_sentence(tokens: &[OwnedLexToken]) -> bool {
     crate::grammar::token_definitions::parse_token_reminder_sentence_kind_tokens(tokens).is_some()
 }
 
-pub(crate) fn strip_embedded_token_rules_text(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+pub fn strip_embedded_token_rules_text(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let append_outer_where_x_tail = |stripped: &mut Vec<OwnedLexToken>| {
         // Inline token rules are parsed separately and attached to the token
         // blueprint, but an outer value binding after the closing quote still
@@ -1197,7 +1193,7 @@ pub(crate) fn strip_embedded_token_rules_text(tokens: &[OwnedLexToken]) -> Vec<O
     tokens.to_vec()
 }
 
-pub(crate) fn append_token_reminder_to_last_create_effect(
+pub fn append_token_reminder_to_last_create_effect(
     effects: &mut [EffectAst],
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
@@ -1367,7 +1363,7 @@ fn append_token_granted_ability_to_effect(
     }
 }
 
-pub(crate) fn append_token_reminder_to_effect(
+pub fn append_token_reminder_to_effect(
     effect: Option<&mut EffectAst>,
     reminder: &crate::grammar::token_definitions::TokenReminderFacts,
     ability_presentation: Option<ironsmith_core::TokenAbilityPresentation>,

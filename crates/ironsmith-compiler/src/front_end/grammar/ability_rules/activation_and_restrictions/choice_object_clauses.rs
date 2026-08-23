@@ -17,7 +17,7 @@ use crate::grammar::choices::{
     parse_typed_target_player_choice_tokens,
 };
 
-pub(crate) fn parse_target_player_choose_objects_clause(
+pub fn parse_target_player_choose_objects_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount)>, CardTextError> {
     Ok(
@@ -26,7 +26,7 @@ pub(crate) fn parse_target_player_choose_objects_clause(
     )
 }
 
-pub(crate) fn parse_target_player_choose_objects_clause_with_count_value(
+pub fn parse_target_player_choose_objects_clause_with_count_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount, Option<Value>)>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -138,14 +138,14 @@ fn choice_count_value(
     }
 }
 
-pub(crate) fn parse_you_choose_objects_clause(
+pub fn parse_you_choose_objects_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount)>, CardTextError> {
     Ok(parse_you_choose_objects_clause_with_count_value(tokens)?
         .map(|(chooser, filter, count, _count_value)| (chooser, filter, count)))
 }
 
-pub(crate) fn parse_you_choose_objects_clause_with_count_value(
+pub fn parse_you_choose_objects_clause_with_count_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount, Option<Value>)>, CardTextError> {
     let trimmed_tokens = trim_edge_punctuation(tokens);
@@ -212,7 +212,7 @@ pub(crate) fn parse_you_choose_objects_clause_with_count_value(
     Ok(Some((chooser, choose_filter, parsed.count, count_value)))
 }
 
-pub(crate) fn parse_you_choose_player_clause(
+pub fn parse_you_choose_player_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, PlayerFilter, bool, usize)>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -236,7 +236,7 @@ pub(crate) fn parse_you_choose_player_clause(
     )))
 }
 
-pub(crate) fn parse_target_player_chooses_then_other_cant_block(
+pub fn parse_target_player_chooses_then_other_cant_block(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -655,7 +655,7 @@ mod tests {
     }
 }
 
-pub(crate) fn parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
+pub fn parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -745,7 +745,7 @@ fn compose_reveal_top_choose_card_type_put_to_hand_rest_bottom(
     EffectAst::ChooseOneOf { modes }
 }
 
-pub(crate) fn parse_choose_creature_type_phrase_words(
+pub fn parse_choose_creature_type_phrase_words(
     words: &[&str],
 ) -> Result<Option<(usize, Vec<Subtype>)>, CardTextError> {
     match parse_typed_choice_creature_type_phrase_words(words) {
@@ -770,7 +770,7 @@ pub(crate) fn parse_choose_creature_type_phrase_words(
     }
 }
 
-pub(crate) fn parse_choose_color_phrase_words(
+pub fn parse_choose_color_phrase_words(
     words: &[&str],
 ) -> Result<Option<(usize, Option<ColorSet>)>, CardTextError> {
     match parse_typed_choice_color_phrase_words(words) {
@@ -795,26 +795,26 @@ pub(crate) fn parse_choose_color_phrase_words(
     }
 }
 
-pub(crate) fn parse_choose_card_type_phrase_words(
+pub fn parse_choose_card_type_phrase_words(
     words: &[&str],
 ) -> Result<Option<(usize, Vec<CardType>)>, CardTextError> {
     Ok(parse_typed_choice_card_type_phrase_words(words)
         .map(|parsed| (parsed.consumed, parsed.options)))
 }
 
-pub(crate) fn parse_choose_player_phrase_words(words: &[&str]) -> Option<usize> {
+pub fn parse_choose_player_phrase_words(words: &[&str]) -> Option<usize> {
     parse_typed_choice_player_phrase_words(words).map(|parsed| parsed.consumed)
 }
 
-pub(crate) fn parse_choose_basic_land_type_phrase_words(words: &[&str]) -> Option<usize> {
+pub fn parse_choose_basic_land_type_phrase_words(words: &[&str]) -> Option<usize> {
     parse_choice_basic_land_type_phrase_words(words).map(|parsed| parsed.consumed)
 }
 
-pub(crate) fn parse_choose_land_type_phrase_words(words: &[&str]) -> Option<usize> {
+pub fn parse_choose_land_type_phrase_words(words: &[&str]) -> Option<usize> {
     parse_typed_choice_land_type_phrase_words(words).map(|parsed| parsed.consumed)
 }
 
-pub(crate) fn parse_choose_creature_type_then_become_type(
+pub fn parse_choose_creature_type_then_become_type(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -894,7 +894,7 @@ pub(crate) fn parse_choose_creature_type_then_become_type(
     Ok(Some(vec![effect]))
 }
 
-pub(crate) fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
+pub fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = parse_choice_library_move_shape(tokens) else {
@@ -932,7 +932,7 @@ pub(crate) fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
     ]))
 }
 
-pub(crate) fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefield(
+pub fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefield(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = parse_choice_battlefield_move_shape(tokens) else {

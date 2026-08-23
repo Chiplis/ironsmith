@@ -7,21 +7,19 @@ use crate::mana::ManaSymbol;
 use super::super::super::{leaf, permission_shapes, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BoundedXMaximumShape {
+pub enum BoundedXMaximumShape {
     TriggeringLifeGained,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct BoundedXPaymentShape {
-    pub(crate) cost: crate::mana::ManaCost,
-    pub(crate) maximum: BoundedXMaximumShape,
+pub struct BoundedXPaymentShape {
+    pub cost: crate::mana::ManaCost,
+    pub maximum: BoundedXMaximumShape,
 }
 
 /// Parse a mana payment whose printed X is chosen subject to an authored
 /// upper bound, rather than defined to equal another value.
-pub(crate) fn parse_bounded_x_payment_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<BoundedXPaymentShape> {
+pub fn parse_bounded_x_payment_tokens(tokens: &[OwnedLexToken]) -> Option<BoundedXPaymentShape> {
     let (_, after_pay) = primitives::parse_prefix(tokens, primitives::kw("pay").void())?;
     let parsed_cost = leaf::parse_leaf_mana_cost_prefix_tokens(after_pay)?;
     if !parsed_cost.cost.has_x() {
@@ -46,7 +44,7 @@ pub(crate) fn parse_bounded_x_payment_tokens(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum UntapActionShape<'a> {
+pub enum UntapActionShape<'a> {
     All {
         filter_tokens: &'a [OwnedLexToken],
     },
@@ -59,12 +57,12 @@ pub(crate) enum UntapActionShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ConjoinedUntapAllShape<'a> {
-    pub(crate) left_filter_tokens: &'a [OwnedLexToken],
-    pub(crate) right_filter_tokens: &'a [OwnedLexToken],
+pub struct ConjoinedUntapAllShape<'a> {
+    pub left_filter_tokens: &'a [OwnedLexToken],
+    pub right_filter_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_conjoined_untap_all_tokens(
+pub fn parse_conjoined_untap_all_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ConjoinedUntapAllShape<'_>> {
     let after_all = primitives::strip_lexed_prefix_phrase(tokens, &["all"])?;
@@ -82,11 +80,11 @@ pub(crate) fn parse_conjoined_untap_all_tokens(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RepeatedTaggedManaPayment {
-    pub(crate) pip_groups: Vec<Vec<ManaSymbol>>,
+pub struct RepeatedTaggedManaPayment {
+    pub pip_groups: Vec<Vec<ManaSymbol>>,
 }
 
-pub(crate) fn parse_untap_action_tokens(tokens: &[OwnedLexToken]) -> UntapActionShape<'_> {
+pub fn parse_untap_action_tokens(tokens: &[OwnedLexToken]) -> UntapActionShape<'_> {
     if let Some((_, filter_tokens)) = primitives::parse_prefix(
         tokens,
         alt((primitives::kw("all"), primitives::kw("each"))).void(),
@@ -112,9 +110,7 @@ pub(crate) fn parse_untap_action_tokens(tokens: &[OwnedLexToken]) -> UntapAction
     }
 }
 
-pub(crate) fn parse_chosen_object_set_filter_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<&[OwnedLexToken]> {
+pub fn parse_chosen_object_set_filter_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let (_, filter_tokens) = primitives::parse_prefix(
         tokens,
         alt((
@@ -125,7 +121,7 @@ pub(crate) fn parse_chosen_object_set_filter_tokens(
     (!filter_tokens.is_empty()).then_some(filter_tokens)
 }
 
-pub(crate) fn parse_repeated_tagged_mana_payment_tokens(
+pub fn parse_repeated_tagged_mana_payment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<RepeatedTaggedManaPayment> {
     let repeats =

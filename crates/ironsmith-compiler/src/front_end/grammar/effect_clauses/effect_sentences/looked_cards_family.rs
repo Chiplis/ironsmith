@@ -31,7 +31,7 @@ fn parse_imperative_possessive_library_view(
     Some((player, shape.count, shape.revealed))
 }
 
-pub(crate) fn parse_top_cards_view_sentence(
+pub fn parse_top_cards_view_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<(PlayerAst, crate::effect::Value, bool)> {
     let tokens = trim_lexed_commas(tokens);
@@ -96,7 +96,7 @@ pub(crate) fn parse_top_cards_view_sentence(
     Some((player, shape.count, shape.revealed))
 }
 
-pub(crate) fn parse_looked_card_choice_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+pub fn parse_looked_card_choice_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let filter_tokens = looked_card_shapes::strip_up_to_one_looked_card_choice_tokens(tokens);
     if filter_tokens.is_empty() {
         return None;
@@ -107,20 +107,18 @@ pub(crate) fn parse_looked_card_choice_filter(tokens: &[OwnedLexToken]) -> Optio
     Some(filter)
 }
 
-pub(crate) fn parse_counted_looked_cards_into_your_hand_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<u32> {
+pub fn parse_counted_looked_cards_into_your_hand_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
     looked_card_shapes::parse_counted_looked_cards_into_hand_shape(tokens).map(|shape| shape.count)
 }
 
-pub(crate) fn parse_if_this_spell_was_kicked_counted_looked_cards_into_hand(
+pub fn parse_if_this_spell_was_kicked_counted_looked_cards_into_hand(
     tokens: &[OwnedLexToken],
 ) -> Option<u32> {
     looked_card_shapes::parse_kicked_counted_looked_cards_into_hand_shape(tokens)
         .map(|shape| shape.count)
 }
 
-pub(crate) fn parse_may_put_filtered_looked_card_onto_battlefield(
+pub fn parse_may_put_filtered_looked_card_onto_battlefield(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, ObjectFilter, bool)>, CardTextError> {
     let Some(action_match) =
@@ -142,7 +140,7 @@ pub(crate) fn parse_may_put_filtered_looked_card_onto_battlefield(
     Ok(Some((chooser, filter, shape.tapped)))
 }
 
-pub(crate) fn parse_may_put_filtered_looked_card_onto_battlefield_and_filtered_into_hand(
+pub fn parse_may_put_filtered_looked_card_onto_battlefield_and_filtered_into_hand(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, ObjectFilter, bool, ObjectFilter)>, CardTextError> {
     let Some(action_match) =
@@ -171,16 +169,14 @@ pub(crate) fn parse_may_put_filtered_looked_card_onto_battlefield_and_filtered_i
     )))
 }
 
-pub(crate) fn parse_if_you_dont_put_card_from_among_them_into_your_hand(
-    tokens: &[OwnedLexToken],
-) -> bool {
+pub fn parse_if_you_dont_put_card_from_among_them_into_your_hand(tokens: &[OwnedLexToken]) -> bool {
     looked_card_shapes::is_if_you_dont_put_looked_card_into_hand(tokens)
 }
 
-pub(crate) fn is_put_rest_on_bottom_of_library_sentence(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_put_rest_on_bottom_of_library_sentence(tokens: &[OwnedLexToken]) -> bool {
     looked_card_shapes::is_put_rest_on_library_bottom(tokens)
 }
 
-pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+pub fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     looked_card_shapes::parse_looked_card_reveal_filter_shape(tokens)
 }

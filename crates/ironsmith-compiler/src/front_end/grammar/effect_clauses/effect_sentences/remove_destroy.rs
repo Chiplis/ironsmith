@@ -5,7 +5,7 @@ use crate::util::{
     helper_tag_for_tokens, parse_filter_counter_constraint_words, strip_leading_token_words_any,
 };
 
-pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+pub fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let shape = shapes::parse_remove_clause_shape(tokens).map_err(|error| match error {
         shapes::RemoveShapeError::MissingAmount => CardTextError::ParseError(format!(
             "missing counter removal amount (clause: '{}')",
@@ -300,7 +300,7 @@ fn lower_destroy_all_shape(shape: shapes::DestroyAllShape<'_>) -> Result<EffectA
     }
 }
 
-pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let original_clause = crate::lexer::token_word_refs(tokens).join(" ");
     if crate::lexer::token_word_refs(tokens).as_slice() == ["both", "creatures"] {
         return Ok(EffectAst::Coordinated {
@@ -496,7 +496,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     Ok(wrap_destroy_with_delayed_timing(effect, timing))
 }
 
-pub(crate) fn apply_except_filter_exclusions(base: &mut ObjectFilter, exception: &ObjectFilter) {
+pub fn apply_except_filter_exclusions(base: &mut ObjectFilter, exception: &ObjectFilter) {
     for branch in &exception.any_of {
         apply_except_filter_exclusions(base, branch);
     }

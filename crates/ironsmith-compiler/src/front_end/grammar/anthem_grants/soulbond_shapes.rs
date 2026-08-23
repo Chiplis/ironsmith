@@ -6,7 +6,7 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SoulbondSharedEffect<'a> {
+pub enum SoulbondSharedEffect<'a> {
     PowerToughness {
         modifier_word: &'a str,
     },
@@ -17,16 +17,14 @@ pub(crate) enum SoulbondSharedEffect<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SoulbondSharedShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) subject_is_source_pronoun: bool,
-    pub(crate) subject_has_rejected_word: bool,
-    pub(crate) effect: SoulbondSharedEffect<'a>,
+pub struct SoulbondSharedShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub subject_is_source_pronoun: bool,
+    pub subject_has_rejected_word: bool,
+    pub effect: SoulbondSharedEffect<'a>,
 }
 
-pub(crate) fn parse_soulbond_shared_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<SoulbondSharedShape<'_>> {
+pub fn parse_soulbond_shared_shape(tokens: &[OwnedLexToken]) -> Option<SoulbondSharedShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
     let (_, conditioned) =
         primitives::parse_prefix(tokens, primitives::phrase(&["as", "long", "as"]))?;

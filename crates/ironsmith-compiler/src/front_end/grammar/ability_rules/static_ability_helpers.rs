@@ -15,7 +15,7 @@ use super::lowering_support::rewrite_lower_parsed_ability;
 
 /// Expands marker-backed gameplay keywords to the complete object-ability set
 /// used by a printed instance of the same keyword.
-pub(crate) fn executable_object_abilities_for_keyword_action(
+pub fn executable_object_abilities_for_keyword_action(
     action: &KeywordAction,
 ) -> Option<Vec<Ability>> {
     if !matches!(
@@ -89,7 +89,7 @@ pub(crate) fn executable_object_abilities_for_keyword_action(
     Some(builder.abilities)
 }
 
-pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option<StaticAbility> {
+pub fn static_ability_for_keyword_action(action: KeywordAction) -> Option<StaticAbility> {
     if !action.lowers_to_static_ability() {
         return None;
     }
@@ -249,7 +249,7 @@ fn lower_keyword_action_or_err(action: KeywordAction) -> Result<StaticAbility, C
     })
 }
 
-pub(crate) fn lower_granted_ability_ast(
+pub fn lower_granted_ability_ast(
     ability: &GrantedAbilityAst,
 ) -> Result<StaticAbility, CardTextError> {
     match ability {
@@ -277,13 +277,13 @@ pub(crate) fn lower_granted_ability_ast(
     }
 }
 
-pub(crate) fn lower_granted_abilities_ast(
+pub fn lower_granted_abilities_ast(
     abilities: &[GrantedAbilityAst],
 ) -> Result<Vec<StaticAbility>, CardTextError> {
     abilities.iter().map(lower_granted_ability_ast).collect()
 }
 
-pub(crate) fn decayed_triggered_ability() -> Ability {
+pub fn decayed_triggered_ability() -> Ability {
     Ability::triggered(
         Trigger::this_attacks(),
         ResolutionProgram::from_effects(vec![Effect::new(
@@ -298,7 +298,7 @@ pub(crate) fn decayed_triggered_ability() -> Ability {
     )
 }
 
-pub(crate) fn afflict_triggered_ability(amount: u32) -> Ability {
+pub fn afflict_triggered_ability(amount: u32) -> Ability {
     Ability {
         kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
             trigger: Trigger::this_becomes_blocked(),
@@ -316,7 +316,7 @@ pub(crate) fn afflict_triggered_ability(amount: u32) -> Ability {
     }
 }
 
-pub(crate) fn decayed_object_abilities() -> Vec<Ability> {
+pub fn decayed_object_abilities() -> Vec<Ability> {
     vec![
         Ability::static_ability(StaticAbility::keyword_marker("decayed")),
         Ability::static_ability(StaticAbility::cant_block()),
@@ -324,7 +324,7 @@ pub(crate) fn decayed_object_abilities() -> Vec<Ability> {
     ]
 }
 
-pub(crate) fn exalted_triggered_ability() -> Ability {
+pub fn exalted_triggered_ability() -> Ability {
     let attacker_tag = crate::tag::TagKey::from("exalted_attacker");
     Ability::triggered(
         Trigger::attacks_alone(ObjectFilter::creature().you_control()),
@@ -340,7 +340,7 @@ pub(crate) fn exalted_triggered_ability() -> Ability {
     )
 }
 
-pub(crate) fn myriad_triggered_ability() -> Ability {
+pub fn myriad_triggered_ability() -> Ability {
     let opponent_other_than_defending =
         PlayerFilter::excluding(PlayerFilter::Opponent, PlayerFilter::Defending);
     Ability::triggered(
@@ -361,7 +361,7 @@ pub(crate) fn myriad_triggered_ability() -> Ability {
     )
 }
 
-pub(crate) fn suspend_exile_triggered_abilities() -> Vec<Ability> {
+pub fn suspend_exile_triggered_abilities() -> Vec<Ability> {
     vec![
         Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
@@ -452,7 +452,7 @@ fn graveyard_return_counter_ability(
     }
 }
 
-pub(crate) fn persist_triggered_ability() -> Ability {
+pub fn persist_triggered_ability() -> Ability {
     graveyard_return_counter_ability(
         crate::object::CounterType::MinusOneMinusOne,
         "persist_trigger",
@@ -461,7 +461,7 @@ pub(crate) fn persist_triggered_ability() -> Ability {
     )
 }
 
-pub(crate) fn undying_triggered_ability() -> Ability {
+pub fn undying_triggered_ability() -> Ability {
     graveyard_return_counter_ability(
         crate::object::CounterType::PlusOnePlusOne,
         "undying_trigger",
@@ -470,7 +470,7 @@ pub(crate) fn undying_triggered_ability() -> Ability {
     )
 }
 
-pub(crate) fn lower_granted_ability_ast_to_object_ability(
+pub fn lower_granted_ability_ast_to_object_ability(
     ability: &GrantedAbilityAst,
 ) -> Result<Ability, CardTextError> {
     match ability {
@@ -513,7 +513,7 @@ pub(crate) fn lower_granted_ability_ast_to_object_ability(
     }
 }
 
-pub(crate) fn lower_granted_abilities_ast_to_object_abilities(
+pub fn lower_granted_abilities_ast_to_object_abilities(
     abilities: &[GrantedAbilityAst],
 ) -> Result<Vec<Ability>, CardTextError> {
     let mut lowered = Vec::new();
@@ -555,7 +555,7 @@ pub(crate) fn lower_granted_abilities_ast_to_object_abilities(
 /// Stores a complete object-ability set in a context whose schema only accepts
 /// static abilities. Purely static sets stay direct; sets containing triggered
 /// or activated abilities use a source-filtered executable grant carrier.
-pub(crate) fn object_abilities_to_static_carriers(
+pub fn object_abilities_to_static_carriers(
     abilities: Vec<Ability>,
     display: String,
 ) -> Result<Vec<StaticAbility>, CardTextError> {

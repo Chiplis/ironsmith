@@ -133,9 +133,7 @@ fn sacrificed_object_kind(words: &[&str]) -> Option<SacrificedObjectKind> {
     }
 }
 
-pub(crate) fn parse_target_phrase_inner(
-    tokens: &[OwnedLexToken],
-) -> Result<TargetAst, CardTextError> {
+pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
     let mut tokens = tokens;
     while permission_shapes::prefix_tokens(tokens, &["then"]) {
         tokens = &tokens[1..];

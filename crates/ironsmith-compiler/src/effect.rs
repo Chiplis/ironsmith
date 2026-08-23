@@ -50,7 +50,7 @@ fn build_unless_payment_total_cost(
     crate::cost::TotalCost::from_costs(components)
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct EmblemDescription {
     pub name: String,
     pub text: String,
@@ -72,7 +72,7 @@ impl EmblemDescription {
     }
 }
 
-pub trait EffectPayload: Any + Debug + Send + Sync {
+pub trait EffectPayload: Any + Debug + Send + Sync + erased_serde::Serialize {
     fn clone_box(&self) -> Box<dyn EffectPayload>;
     fn as_any(&self) -> &dyn Any;
     fn type_name(&self) -> &'static str;
@@ -83,7 +83,7 @@ pub trait EffectPayload: Any + Debug + Send + Sync {
 
 impl<T> EffectPayload for T
 where
-    T: Any + Debug + Clone + Send + Sync,
+    T: Any + Debug + Clone + Send + Sync + serde::Serialize,
 {
     fn clone_box(&self) -> Box<dyn EffectPayload> {
         Box::new(self.clone())
@@ -100,6 +100,41 @@ where
 
 #[derive(Debug)]
 pub struct Effect(pub Arc<dyn EffectPayload>);
+
+struct SerializablePayload<'a>(&'a dyn EffectPayload);
+
+impl serde::Serialize for SerializablePayload<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        erased_serde::serialize(self.0, serializer)
+    }
+}
+
+fn stable_payload_kind(type_name: &str) -> &str {
+    type_name
+        .split('<')
+        .next()
+        .unwrap_or(type_name)
+        .rsplit("::")
+        .next()
+        .unwrap_or(type_name)
+}
+
+impl serde::Serialize for Effect {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct as _;
+
+        let mut state = serializer.serialize_struct("CompiledEffect", 2)?;
+        state.serialize_field("kind", stable_payload_kind(self.payload_type_name()))?;
+        state.serialize_field("payload", &SerializablePayload(&*self.0))?;
+        state.end()
+    }
+}
 
 impl Clone for Effect {
     fn clone(&self) -> Self {

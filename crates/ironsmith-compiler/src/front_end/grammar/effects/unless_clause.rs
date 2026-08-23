@@ -8,22 +8,22 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, TokenKind};
 use super::super::primitives;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LeadingUnlessClauseSplit {
-    pub(crate) condition: Range<usize>,
-    pub(crate) effect: Range<usize>,
+pub struct LeadingUnlessClauseSplit {
+    pub condition: Range<usize>,
+    pub effect: Range<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum UnlessPaymentKind {
+pub enum UnlessPaymentKind {
     Cost,
     LifeEqualToItsToughness,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct UnlessPaysShape<'a> {
-    pub(crate) player_tokens: &'a [OwnedLexToken],
-    pub(crate) payment_tokens: &'a [OwnedLexToken],
-    pub(crate) kind: UnlessPaymentKind,
+pub struct UnlessPaysShape<'a> {
+    pub player_tokens: &'a [OwnedLexToken],
+    pub payment_tokens: &'a [OwnedLexToken],
+    pub kind: UnlessPaymentKind,
 }
 
 fn trim_payment_edges(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -48,9 +48,7 @@ fn trim_payment_edges(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     &tokens[start..end]
 }
 
-pub(crate) fn parse_unless_pays_shape_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<UnlessPaysShape<'_>> {
+pub fn parse_unless_pays_shape_tokens(tokens: &[OwnedLexToken]) -> Option<UnlessPaysShape<'_>> {
     let tokens = trim_payment_edges(tokens);
     let tokens = primitives::parse_prefix(tokens, primitives::kw("unless"))
         .map(|(_, rest)| rest)
@@ -81,7 +79,7 @@ pub(crate) fn parse_unless_pays_shape_tokens(
     })
 }
 
-pub(crate) fn parse_leading_unless_clause_split_tokens(
+pub fn parse_leading_unless_clause_split_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LeadingUnlessClauseSplit> {
     primitives::parse_prefix(tokens, primitives::kw("unless"))?;

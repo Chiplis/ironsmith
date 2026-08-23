@@ -10,16 +10,14 @@ use super::super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CounterLimitFact {
+pub struct CounterLimitFact {
     pub counter_type: CounterType,
     pub maximum: u32,
 }
 
 /// Parse "this can't have more than N [kind] counters on it" without
 /// conflating the static cap with a prohibition on placing counters.
-pub(crate) fn parse_counter_limit_fact_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<CounterLimitFact> {
+pub fn parse_counter_limit_fact_tokens(tokens: &[OwnedLexToken]) -> Option<CounterLimitFact> {
     let words = parser_token_word_refs(tokens);
     let cant_idx = words
         .iter()
@@ -58,7 +56,7 @@ pub(crate) fn parse_counter_limit_fact_tokens(
 /// A complete, self-contained restriction surface whose semantic meaning does
 /// not depend on a later filter or condition parser.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DirectCantFact {
+pub enum DirectCantFact {
     PlayerWouldGainNoLifeInstead,
     PlayersCantGainLife,
     PlayersCantSearchLibraries,
@@ -83,7 +81,7 @@ pub(crate) enum DirectCantFact {
     DomainAttackTax,
 }
 
-pub(crate) fn parse_direct_cant_fact_tokens(tokens: &[OwnedLexToken]) -> Option<DirectCantFact> {
+pub fn parse_direct_cant_fact_tokens(tokens: &[OwnedLexToken]) -> Option<DirectCantFact> {
     primitives::parse_all(tokens, parse_direct_cant_fact_lexed, "direct cant fact").ok()
 }
 

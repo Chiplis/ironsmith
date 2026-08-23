@@ -7,8 +7,8 @@ use crate::grammar::{leaf, primitives};
 use crate::lexer::{LexStream, OwnedLexToken};
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct EachPlayerMayDiscardHandAndDrawShape {
-    pub(crate) draw_count: Value,
+pub struct EachPlayerMayDiscardHandAndDrawShape {
+    pub draw_count: Value,
 }
 
 fn card_word(input: &mut LexStream<'_>) -> WResult<()> {
@@ -33,7 +33,7 @@ fn each_player_may_discard_hand_and_draw(
     Ok(EachPlayerMayDiscardHandAndDrawShape { draw_count })
 }
 
-pub(crate) fn parse_each_player_may_discard_hand_and_draw_tokens(
+pub fn parse_each_player_may_discard_hand_and_draw_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EachPlayerMayDiscardHandAndDrawShape> {
     primitives::parse_all(

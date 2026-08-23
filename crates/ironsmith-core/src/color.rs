@@ -1,3 +1,4 @@
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Color {
     White,
@@ -50,6 +51,7 @@ impl Color {
 }
 
 /// A set of colors represented as bitflags for efficient operations.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct ColorSet(u8);
 

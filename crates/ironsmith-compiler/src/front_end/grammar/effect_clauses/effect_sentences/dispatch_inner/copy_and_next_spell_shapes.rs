@@ -3,7 +3,7 @@ use super::super::grammar::effects::delayed_sentence_shapes as delayed_shapes;
 /// "At the beginning of the next combat [phase] this turn, <effects>" — a
 /// one-shot delayed trigger scheduled for the next beginning of combat,
 /// expiring at end of turn.
-pub(crate) fn parse_delayed_next_combat_phase_this_turn_sentence(
+pub fn parse_delayed_next_combat_phase_this_turn_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = delayed_shapes::parse_delayed_next_combat_shape(tokens) else {
@@ -58,7 +58,7 @@ fn delayed_dies_this_way_filter(
         })
 }
 
-pub(crate) fn parse_delayed_until_next_end_step_sentence(
+pub fn parse_delayed_until_next_end_step_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = delayed_shapes::parse_delayed_end_step_shape(tokens) else {
@@ -420,7 +420,7 @@ fn parse_next_cast_single_opponent_or_permanent_copy_loop(
     }])
 }
 
-pub(crate) fn parse_sentence_delayed_trigger_this_turn(
+pub fn parse_sentence_delayed_trigger_this_turn(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause = LexedClause::new(tokens).trimmed();
@@ -692,7 +692,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     }]))
 }
 
-pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
+pub fn parse_delayed_when_that_dies_this_turn_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause = LexedClause::new(tokens).trimmed();
@@ -763,7 +763,7 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
     }]))
 }
 
-pub(crate) fn parse_delayed_when_that_leaves_battlefield_sentence(
+pub fn parse_delayed_when_that_leaves_battlefield_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = delayed_shapes::parse_delayed_tagged_leaves_shape(tokens) else {
@@ -789,11 +789,11 @@ pub(crate) fn parse_delayed_when_that_leaves_battlefield_sentence(
     ]))
 }
 
-pub(crate) fn find_from_among(tokens: &[OwnedLexToken]) -> Option<usize> {
+pub fn find_from_among(tokens: &[OwnedLexToken]) -> Option<usize> {
     crate::lexer::find_token_word_sequence(tokens, &["from", "among"])
 }
 
-pub(crate) fn find_list_start(tokens: &[OwnedLexToken]) -> Option<usize> {
+pub fn find_list_start(tokens: &[OwnedLexToken]) -> Option<usize> {
     for (idx, token) in tokens.iter().enumerate() {
         let Some(word) = token.as_word() else {
             continue;
@@ -814,7 +814,7 @@ pub(crate) fn find_list_start(tokens: &[OwnedLexToken]) -> Option<usize> {
     None
 }
 
-pub(crate) fn split_choose_list(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {
+pub fn split_choose_list(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {
     let mut segments = Vec::new();
     for segment in split_lexed_slices_on_and(tokens) {
         for sub in split_lexed_slices_on_comma(segment) {
@@ -827,7 +827,7 @@ pub(crate) fn split_choose_list(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexTok
     segments
 }
 
-pub(crate) fn merge_filters(base: &ObjectFilter, specific: &ObjectFilter) -> ObjectFilter {
+pub fn merge_filters(base: &ObjectFilter, specific: &ObjectFilter) -> ObjectFilter {
     let mut merged = base.clone();
 
     if !specific.card_types.is_empty() {

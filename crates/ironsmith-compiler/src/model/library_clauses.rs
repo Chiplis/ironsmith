@@ -11,7 +11,7 @@ use crate::model::symbols::SymbolReference;
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum LibraryExposureAst {
+pub enum LibraryExposureAst {
     Inspect,
     Reveal,
     ExileFaceUp,
@@ -22,7 +22,7 @@ pub(crate) enum LibraryExposureAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum LibraryPositionAst {
+pub enum LibraryPositionAst {
     WholeZone,
     Top(CompilerValueAst),
     Bottom(CompilerValueAst),
@@ -37,14 +37,14 @@ pub(crate) enum LibraryPositionAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum LibrarySelectionModeAst {
+pub enum LibrarySelectionModeAst {
     Exact,
     Optional,
     AllMatching,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct LibrarySelectionAst {
+pub struct LibrarySelectionAst {
     pub qualification: Option<CompilerFilterAst>,
     pub minimum: CompilerValueAst,
     pub maximum: Option<CompilerValueAst>,
@@ -53,7 +53,7 @@ pub(crate) struct LibrarySelectionAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum LibraryResultKindAst {
+pub enum LibraryResultKindAst {
     Exposed,
     Matched,
     Found,
@@ -63,20 +63,20 @@ pub(crate) enum LibraryResultKindAst {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LibraryResultBindingAst {
+pub struct LibraryResultBindingAst {
     pub kind: LibraryResultKindAst,
     pub reference: SymbolReference,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum LibraryOrderAst {
+pub enum LibraryOrderAst {
     Preserve,
     Random,
     Chosen,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct LibraryRemainderAst {
+pub struct LibraryRemainderAst {
     pub collection: SymbolReference,
     pub excluding: Vec<SymbolReference>,
     pub destination: ClauseDestinationAst,
@@ -84,7 +84,7 @@ pub(crate) struct LibraryRemainderAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerLibraryClauseAst {
+pub struct CompilerLibraryClauseAst {
     pub owner: ClauseActorAst,
     pub chooser: Option<ClauseActorAst>,
     pub source_zones: Vec<Zone>,

@@ -2722,6 +2722,18 @@ async function answerPendingDecisions(context, immediateTarget = undefined) {
       context.game.dispatch({ type: "select_options", option_indices: [mode] });
       continue;
     }
+    if (decision.kind === "mana_payment") {
+      context.lastBooleanChoice = null;
+      context.game.dispatch({
+        type: "mana_payment",
+        response: {
+          action: "confirm",
+          plan_id: String(decision.plan_id),
+          request_hash: String(decision.request_hash),
+        },
+      });
+      continue;
+    }
     if (decision.kind === "select_options") {
       const choice = nextCastingMethodChoice(context, decision) ??
         nextCostChoiceForQueuedObject(context, decision) ??
@@ -2985,11 +2997,6 @@ function isHiddenObjectChoice(candidate) {
   return label === "hidden card" || label === "unknown card";
 }
 
-function isManaPaymentDecision(decision) {
-  const description = String(decision.description || "");
-  return description.startsWith("Pay mana pip") || description.startsWith("Choose how to pay pip");
-}
-
 function nextCastingMethodChoice(context, decision) {
   if (!String(decision.description || "").startsWith("Choose casting method")) return null;
   if (context.castingMethods.length > 0) {
@@ -3051,7 +3058,7 @@ function isManaColorChoiceDecision(decision) {
 
 function isInternalPaymentDecision(decision) {
   const description = String(decision.description || "");
-  return isManaPaymentDecision(decision) || description.startsWith("Choose the next cost to pay");
+  return description.startsWith("Choose the next cost to pay");
 }
 
 function nextCostChoiceForQueuedObject(context, decision) {

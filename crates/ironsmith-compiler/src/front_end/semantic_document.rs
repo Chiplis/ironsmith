@@ -74,7 +74,7 @@ fn parse_rewrite_items(
         .collect()
 }
 
-pub(crate) fn parse_semantic_document(
+pub fn parse_semantic_document(
     doc: RewriteSemanticDocument,
 ) -> Result<ParsedCardAst, CardTextError> {
     let RewriteSemanticDocument {

@@ -9,7 +9,7 @@ use crate::{PowerToughness, PtValue};
 
 use super::common::{finish_text_parse, spaced};
 
-pub(crate) fn parse_leaf_power_toughness(input: &mut &str) -> WResult<PowerToughness> {
+pub fn parse_leaf_power_toughness(input: &mut &str) -> WResult<PowerToughness> {
     (
         spaced(parse_leaf_pt_value),
         literal('/'),
@@ -23,13 +23,11 @@ pub(crate) fn parse_leaf_power_toughness(input: &mut &str) -> WResult<PowerTough
         .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_power_toughness_complete(
-    raw: &str,
-) -> Result<PowerToughness, CardTextError> {
+pub fn parse_leaf_power_toughness_complete(raw: &str) -> Result<PowerToughness, CardTextError> {
     finish_text_parse(raw, parse_leaf_power_toughness, "leaf-power-toughness")
 }
 
-pub(crate) fn parse_leaf_unsigned_pt(input: &mut &str) -> WResult<(i32, i32)> {
+pub fn parse_leaf_unsigned_pt(input: &mut &str) -> WResult<(i32, i32)> {
     (
         parse_unsigned_pt_component,
         literal('/'),
@@ -43,11 +41,11 @@ pub(crate) fn parse_leaf_unsigned_pt(input: &mut &str) -> WResult<(i32, i32)> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_unsigned_pt_complete(raw: &str) -> Result<(i32, i32), CardTextError> {
+pub fn parse_leaf_unsigned_pt_complete(raw: &str) -> Result<(i32, i32), CardTextError> {
     finish_text_parse(raw, parse_leaf_unsigned_pt, "leaf-unsigned-pt")
 }
 
-pub(crate) fn parse_leaf_pt_modifier_values(input: &mut &str) -> WResult<(Value, Value)> {
+pub fn parse_leaf_pt_modifier_values(input: &mut &str) -> WResult<(Value, Value)> {
     (
         parse_leaf_pt_modifier_value,
         literal('/'),
@@ -61,9 +59,7 @@ pub(crate) fn parse_leaf_pt_modifier_values(input: &mut &str) -> WResult<(Value,
         .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_pt_modifier_values_complete(
-    raw: &str,
-) -> Result<(Value, Value), CardTextError> {
+pub fn parse_leaf_pt_modifier_values_complete(raw: &str) -> Result<(Value, Value), CardTextError> {
     finish_text_parse(
         raw,
         parse_leaf_pt_modifier_values,

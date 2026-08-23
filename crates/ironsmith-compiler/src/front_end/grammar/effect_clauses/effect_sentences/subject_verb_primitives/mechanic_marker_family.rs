@@ -6,7 +6,7 @@ macro_rules! primitive {
     };
 }
 
-pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
+pub const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
     primitive!(
         "implicit-become-clause",
         10,
@@ -294,7 +294,7 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
     ),
 ];
 
-pub(crate) static PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX: LazyLock<LexRuleHintIndex> =
+pub static PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX: LazyLock<LexRuleHintIndex> =
     LazyLock::new(|| {
         build_lex_rule_hint_index(PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES.len(), |idx| {
             PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES[idx]
@@ -303,7 +303,7 @@ pub(crate) static PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX: LazyLock<LexRule
         })
     });
 
-pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
+pub const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
     primitive!(
         "exile-target-creature-with-greatest-power",
         10,
@@ -869,7 +869,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
     ),
 ];
 
-pub(crate) static POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX: LazyLock<LexRuleHintIndex> =
+pub static POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX: LazyLock<LexRuleHintIndex> =
     LazyLock::new(|| {
         build_lex_rule_hint_index(POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES.len(), |idx| {
             POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES[idx]

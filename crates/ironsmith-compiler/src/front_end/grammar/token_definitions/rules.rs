@@ -56,19 +56,19 @@ fn unsigned_amount_after(words: &[&str], marker: &str) -> Option<u32> {
     leaf::parse_number_complete(amount_word).ok()
 }
 
-pub(crate) fn parse_token_crew_shape_words(words: &[&str]) -> Option<TokenCrewShape> {
+pub fn parse_token_crew_shape_words(words: &[&str]) -> Option<TokenCrewShape> {
     Some(TokenCrewShape {
         amount: unsigned_amount_after(words, "crew")?,
     })
 }
 
-pub(crate) fn parse_token_equip_shape_words(words: &[&str]) -> Option<TokenEquipShape> {
+pub fn parse_token_equip_shape_words(words: &[&str]) -> Option<TokenEquipShape> {
     Some(TokenEquipShape {
         amount: unsigned_amount_after(words, "equip")?,
     })
 }
 
-pub(crate) fn parse_token_power_as_though_greater_shape_words(
+pub fn parse_token_power_as_though_greater_shape_words(
     words: &[&str],
 ) -> Option<TokenPowerAsThoughGreaterShape> {
     let were_idx = common::first_word_offset(words, "were")?;
@@ -92,7 +92,7 @@ fn parse_token_power_as_though_greater_shape_lexed<'a>(
     Ok(TokenPowerAsThoughGreaterShape { amount })
 }
 
-pub(crate) fn parse_token_power_as_though_greater_shape_tokens(
+pub fn parse_token_power_as_though_greater_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenPowerAsThoughGreaterShape> {
     primitives::parse_all(
@@ -109,8 +109,8 @@ pub(crate) fn parse_token_power_as_though_greater_shape_tokens(
 
 #[path = "rules/embedded_rules.rs"]
 mod embedded_rules;
-pub(crate) use embedded_rules::parse_embedded_token_rule_tokens;
-pub(crate) use embedded_rules::parse_inline_noncreature_spell_damage_tokens;
+pub use embedded_rules::parse_embedded_token_rule_tokens;
+pub use embedded_rules::parse_inline_noncreature_spell_damage_tokens;
 
 fn trimmed_render(tokens: &[OwnedLexToken]) -> String {
     render_token_slice(tokens).trim().to_string()
@@ -220,7 +220,7 @@ fn parse_tap_add_mana_head<'a>(
     Ok(mana)
 }
 
-pub(crate) fn parse_token_tap_mana_ability_tokens(
+pub fn parse_token_tap_mana_ability_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenTapManaAbilityShape> {
     let rule_tokens = first_double_quoted_tokens(tokens).or_else(|| inline_rules_tokens(tokens))?;
@@ -296,11 +296,11 @@ fn pronoun_rules_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     (!tail.is_empty()).then_some(tail)
 }
 
-pub(crate) fn parse_token_rules_surfaces_tokens(tokens: &[OwnedLexToken]) -> TokenRulesSurfaces {
+pub fn parse_token_rules_surfaces_tokens(tokens: &[OwnedLexToken]) -> TokenRulesSurfaces {
     parse_token_rules_surfaces_for_named_token(tokens, None)
 }
 
-pub(crate) fn parse_token_rules_surfaces_for_named_token(
+pub fn parse_token_rules_surfaces_for_named_token(
     tokens: &[OwnedLexToken],
     named_token: Option<&str>,
 ) -> TokenRulesSurfaces {

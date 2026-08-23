@@ -17,13 +17,13 @@ const DELAY_REFERENCE_WORDS: &[&str] =
     &["token", "tokens", "permanent", "permanents", "it", "them"];
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct NextEndStepDelayFacts {
-    pub(crate) sacrifice_reference: bool,
-    pub(crate) exile_reference: bool,
-    pub(crate) player: PlayerFilter,
+pub struct NextEndStepDelayFacts {
+    pub sacrifice_reference: bool,
+    pub exile_reference: bool,
+    pub player: PlayerFilter,
 }
 
-pub(crate) fn parse_next_end_step_delay_words(words: &[&str]) -> Option<NextEndStepDelayFacts> {
+pub fn parse_next_end_step_delay_words(words: &[&str]) -> Option<NextEndStepDelayFacts> {
     let matched_end_step = END_STEP_PHRASES
         .iter()
         .copied()

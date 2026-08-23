@@ -9,9 +9,9 @@ use crate::object::CounterType;
 use crate::types::Subtype;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CounterLinkedLandSubtypeFollowupShape {
-    pub(crate) subtype: Subtype,
-    pub(crate) counter_type: CounterType,
+pub struct CounterLinkedLandSubtypeFollowupShape {
+    pub subtype: Subtype,
+    pub counter_type: CounterType,
 }
 
 fn parse_counter_linked_land_subtype_followup_lexed(
@@ -48,7 +48,7 @@ fn parse_counter_linked_land_subtype_followup_lexed(
     })
 }
 
-pub(crate) fn parse_counter_linked_land_subtype_followup(
+pub fn parse_counter_linked_land_subtype_followup(
     tokens: &[OwnedLexToken],
 ) -> Option<CounterLinkedLandSubtypeFollowupShape> {
     primitives::parse_all(

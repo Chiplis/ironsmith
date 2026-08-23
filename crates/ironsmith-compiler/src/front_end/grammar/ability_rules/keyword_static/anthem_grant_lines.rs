@@ -153,7 +153,7 @@ fn triggered_grant_effects_and_condition(
     Ok((effects.to_vec(), None))
 }
 
-pub(crate) fn parse_subject_cant_be_blocked_line(
+pub fn parse_subject_cant_be_blocked_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let Some(parsed) = parse_cant_be_blocked_clause(tokens) else {
@@ -194,7 +194,7 @@ pub(crate) fn parse_subject_cant_be_blocked_line(
     )))
 }
 
-pub(crate) fn parse_subject_has_keywords_and_cant_be_blocked_line(
+pub fn parse_subject_has_keywords_and_cant_be_blocked_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -261,7 +261,7 @@ pub(crate) fn parse_subject_has_keywords_and_cant_be_blocked_line(
     Ok(Some(granted))
 }
 
-pub(crate) fn parse_subject_has_keywords_and_cant_be_blocked_by_more_than_line(
+pub fn parse_subject_has_keywords_and_cant_be_blocked_by_more_than_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(parsed) = parse_keywords_and_cant_be_blocked_by_more_than_clause(tokens) else {
@@ -325,7 +325,7 @@ pub(crate) fn parse_subject_has_keywords_and_cant_be_blocked_by_more_than_line(
     Ok(Some(granted))
 }
 
-pub(crate) fn parse_subject_cant_be_blocked_and_has_keywords_line(
+pub fn parse_subject_cant_be_blocked_and_has_keywords_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(parsed) = parse_cant_be_blocked_and_has_keywords_clause(tokens) else {
@@ -362,7 +362,7 @@ pub(crate) fn parse_subject_cant_be_blocked_and_has_keywords_line(
     Ok(Some(granted))
 }
 
-pub(crate) fn parse_landwalk_as_though_block_override_line(
+pub fn parse_landwalk_as_though_block_override_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let Some(parsed) = parse_landwalk_block_override_clause(tokens) else {
@@ -389,7 +389,7 @@ fn is_landwalk_ability_word(word: &str) -> bool {
     )
 }
 
-pub(crate) fn parse_subject_cant_be_blocked_as_long_as_condition_line(
+pub fn parse_subject_cant_be_blocked_as_long_as_condition_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let Some(parsed) = parse_cant_be_blocked_as_long_as_clause(tokens) else {
@@ -418,7 +418,7 @@ pub(crate) fn parse_subject_cant_be_blocked_as_long_as_condition_line(
     )))
 }
 
-pub(crate) fn parse_subject_cant_be_blocked_while_defending_player_controls_most_creatures_line(
+pub fn parse_subject_cant_be_blocked_while_defending_player_controls_most_creatures_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let Some(parsed) = parse_cant_be_blocked_as_long_as_clause(tokens) else {
@@ -513,7 +513,7 @@ fn defending_player_controlled_card_types_from_condition_tokens(
     simple_card_types_from_control_filter(condition.filter)
 }
 
-pub(crate) fn parse_subject_cant_be_blocked_as_long_as_defending_player_controls_card_type_line(
+pub fn parse_subject_cant_be_blocked_as_long_as_defending_player_controls_card_type_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let Some(parsed) = parse_cant_be_blocked_as_long_as_clause(tokens) else {
@@ -816,7 +816,7 @@ fn parse_union_subject_keyword_grants(
     Ok(Some(compiled))
 }
 
-pub(crate) fn parse_granted_keyword_static_line(
+pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     fn extract_grant_spec_from_subject(
@@ -1357,7 +1357,7 @@ pub(crate) fn parse_granted_keyword_static_line(
     ))
 }
 
-pub(crate) fn parse_all_creatures_lose_flying_line(
+pub fn parse_all_creatures_lose_flying_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     if anthem_grant_grammar::parse_all_creatures_lose_flying(tokens) {
@@ -1370,7 +1370,7 @@ pub(crate) fn parse_all_creatures_lose_flying_line(
     Ok(None)
 }
 
-pub(crate) fn parse_subject_loses_keywords_line(
+pub fn parse_subject_loses_keywords_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(parsed) = anthem_grant_grammar::parse_subject_loses_keywords_clause(tokens) else {
@@ -1431,7 +1431,7 @@ pub(crate) fn parse_subject_loses_keywords_line(
     Ok(Some(result))
 }
 
-pub(crate) fn parse_each_creature_cant_be_blocked_by_more_than_line(
+pub fn parse_each_creature_cant_be_blocked_by_more_than_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let Some(parsed) = parse_cant_be_blocked_by_more_than_clause(tokens) else {
@@ -1477,7 +1477,7 @@ pub(crate) fn parse_each_creature_cant_be_blocked_by_more_than_line(
     }))
 }
 
-pub(crate) fn parse_each_creature_can_block_additional_creature_each_combat_line(
+pub fn parse_each_creature_can_block_additional_creature_each_combat_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     // High Ground: "Each creature can block an additional creature each combat."
@@ -1515,7 +1515,7 @@ pub(crate) fn parse_each_creature_can_block_additional_creature_each_combat_line
     }))
 }
 
-pub(crate) fn parse_lose_all_abilities_and_transform_base_pt_line(
+pub fn parse_lose_all_abilities_and_transform_base_pt_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     fn title_case_words(words: &[&str]) -> String {
@@ -1674,7 +1674,7 @@ pub(crate) fn parse_lose_all_abilities_and_transform_base_pt_line(
     Ok(Some(abilities))
 }
 
-pub(crate) fn parse_lose_all_abilities_and_doesnt_untap_line(
+pub fn parse_lose_all_abilities_and_doesnt_untap_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let clauses = split_lexed_slices_on_and(tokens);
@@ -1734,7 +1734,7 @@ pub(crate) fn parse_lose_all_abilities_and_doesnt_untap_line(
     ]))
 }
 
-pub(crate) fn parse_lose_all_abilities_and_base_pt_line(
+pub fn parse_lose_all_abilities_and_base_pt_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let word_view = TokenWordView::new(tokens);
@@ -1868,7 +1868,7 @@ pub(crate) fn parse_lose_all_abilities_and_base_pt_line(
     Ok(Some(abilities))
 }
 
-pub(crate) fn parse_all_have_indestructible_line(
+pub fn parse_all_have_indestructible_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let words = crate::lexer::token_word_refs(tokens);
@@ -1896,49 +1896,49 @@ pub(crate) fn parse_all_have_indestructible_line(
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum AnthemSubjectAst {
+pub enum AnthemSubjectAst {
     Source,
     Filter(ObjectFilter),
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ParsedAnthemClause {
-    pub(crate) subject: AnthemSubjectAst,
-    pub(crate) power: AnthemValue,
-    pub(crate) toughness: AnthemValue,
-    pub(crate) condition: Option<crate::ConditionExpr>,
-    pub(crate) set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
+pub struct ParsedAnthemClause {
+    pub subject: AnthemSubjectAst,
+    pub power: AnthemValue,
+    pub toughness: AnthemValue,
+    pub condition: Option<crate::ConditionExpr>,
+    pub set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
     /// Whether the scaling count was written as "where X is …" (vs "for each …")
     /// in the original oracle text. Surface hint preserved for rendering.
-    pub(crate) count_uses_where_x: bool,
+    pub count_uses_where_x: bool,
     /// Whether the fixed modifier was authored as "an additional P/T".
-    pub(crate) additional_surface: bool,
+    pub additional_surface: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AnimationSubtypeMode {
+pub enum AnimationSubtypeMode {
     Add,
     ReplaceCreatureTypes,
 }
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct ParsedGrantedTailAst {
-    pub(crate) granted_static: Vec<StaticAbilityAst>,
-    pub(crate) granted_keyword_actions: Vec<KeywordAction>,
-    pub(crate) granted_object_abilities: Vec<(ParsedAbility, String)>,
-    pub(crate) removes_all_other_abilities: bool,
-    pub(crate) type_color_additions: Vec<TypeColorAdditionClause>,
+pub struct ParsedGrantedTailAst {
+    pub granted_static: Vec<StaticAbilityAst>,
+    pub granted_keyword_actions: Vec<KeywordAction>,
+    pub granted_object_abilities: Vec<(ParsedAbility, String)>,
+    pub removes_all_other_abilities: bool,
+    pub type_color_additions: Vec<TypeColorAdditionClause>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct StaticAnimationBundleAst {
-    pub(crate) subject: AnthemSubjectAst,
-    pub(crate) condition: Option<crate::ConditionExpr>,
-    pub(crate) ensure_creature_type: bool,
-    pub(crate) subtypes: Vec<Subtype>,
-    pub(crate) subtype_mode: AnimationSubtypeMode,
-    pub(crate) base_power_toughness: Option<(Value, Value)>,
-    pub(crate) granted_tail: ParsedGrantedTailAst,
+pub struct StaticAnimationBundleAst {
+    pub subject: AnthemSubjectAst,
+    pub condition: Option<crate::ConditionExpr>,
+    pub ensure_creature_type: bool,
+    pub subtypes: Vec<Subtype>,
+    pub subtype_mode: AnimationSubtypeMode,
+    pub base_power_toughness: Option<(Value, Value)>,
+    pub granted_tail: ParsedGrantedTailAst,
 }
 
 fn is_granted_blitz_cost_tail(trailing_tokens: &[OwnedLexToken]) -> bool {
@@ -2139,7 +2139,7 @@ fn conditional_static_ability(
     }
 }
 
-pub(crate) fn parse_source_counter_threshold_keyword_and_subtype_line(
+pub fn parse_source_counter_threshold_keyword_and_subtype_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(head) = anthem_grant_grammar::parse_source_counter_threshold_head(tokens) else {
@@ -2198,7 +2198,7 @@ pub(crate) fn parse_source_counter_threshold_keyword_and_subtype_line(
     Ok((!compiled.is_empty()).then_some(compiled))
 }
 
-pub(crate) fn find_source_reference_start(tokens: &[OwnedLexToken]) -> Option<usize> {
+pub fn find_source_reference_start(tokens: &[OwnedLexToken]) -> Option<usize> {
     let mut token_indices = Vec::new();
     let mut token_words = Vec::new();
     for (idx, token) in tokens.iter().enumerate() {
@@ -2216,7 +2216,7 @@ pub(crate) fn find_source_reference_start(tokens: &[OwnedLexToken]) -> Option<us
     None
 }
 
-pub(crate) fn parse_best_object_filter_suffix(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+pub fn parse_best_object_filter_suffix(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let mut best: Option<(usize, usize, ObjectFilter)> = None;
     for start in 0..tokens.len() {
         if tokens[start].as_word().is_none() {
@@ -2261,7 +2261,7 @@ pub(crate) fn parse_best_object_filter_suffix(tokens: &[OwnedLexToken]) -> Optio
     })
 }
 
-pub(crate) fn parse_anthem_subject(
+pub fn parse_anthem_subject(
     tokens: &[OwnedLexToken],
 ) -> Result<AnthemSubjectAst, CardTextError> {
     let subject_words = crate::lexer::parser_token_word_refs(tokens);
@@ -2464,14 +2464,14 @@ fn bind_attachment_condition_to_subject(
     }
 }
 
-pub(crate) fn parse_static_quantity_prefix(
+pub fn parse_static_quantity_prefix(
     tokens: &[OwnedLexToken],
     allow_default_one: bool,
 ) -> Result<(crate::effect::Comparison, usize), CardTextError> {
     parse_quantity_comparison_prefix(tokens, allow_default_one, true, "static condition")
 }
 
-pub(crate) fn parse_permanent_card_count_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+pub fn parse_permanent_card_count_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let facts = anthem_grant_grammar::parse_permanent_card_count_facts(tokens)?;
 
     let mut filter = ObjectFilter::default();
@@ -2537,7 +2537,7 @@ fn parse_negated_subject_descriptor_condition(
     )))
 }
 
-pub(crate) fn parse_static_condition_clause(
+pub fn parse_static_condition_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<crate::ConditionExpr, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
@@ -3279,7 +3279,7 @@ fn parse_sticker_count_expression(tokens: &[OwnedLexToken]) -> Option<AnthemCoun
     })
 }
 
-pub(crate) fn parse_anthem_for_each_expression(
+pub fn parse_anthem_for_each_expression(
     tokens: &[OwnedLexToken],
 ) -> Result<AnthemCountExpression, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
@@ -3426,7 +3426,7 @@ fn parse_compound_anthem_count_filter(tokens: &[OwnedLexToken]) -> Option<Object
     Some(combined)
 }
 
-pub(crate) fn parse_anthem_prefix_condition(
+pub fn parse_anthem_prefix_condition(
     tokens: &[OwnedLexToken],
     get_idx: usize,
 ) -> Result<(Option<crate::ConditionExpr>, usize), CardTextError> {
@@ -3533,7 +3533,7 @@ fn bind_unique_count_condition_anthem_subject(
     );
 }
 
-pub(crate) fn parse_anthem_clause(
+pub fn parse_anthem_clause(
     tokens: &[OwnedLexToken],
     get_idx: usize,
     tail_end: usize,
@@ -3926,7 +3926,7 @@ fn promote_counters_on_affected(value: &mut AnthemValue) {
     }
 }
 
-pub(crate) fn build_anthem_static_ability(clause: &ParsedAnthemClause) -> StaticAbility {
+pub fn build_anthem_static_ability(clause: &ParsedAnthemClause) -> StaticAbility {
     StaticAbility::new(build_anthem(clause))
 }
 
@@ -3948,14 +3948,14 @@ fn build_anthem(clause: &ParsedAnthemClause) -> Anthem {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct TypeColorAdditionClause {
-    pub(crate) added_colors: ColorSet,
-    pub(crate) set_colors: ColorSet,
-    pub(crate) card_types: Vec<CardType>,
-    pub(crate) subtypes: Vec<Subtype>,
+pub struct TypeColorAdditionClause {
+    pub added_colors: ColorSet,
+    pub set_colors: ColorSet,
+    pub card_types: Vec<CardType>,
+    pub subtypes: Vec<Subtype>,
 }
 
-pub(crate) fn parse_type_color_addition_clause(
+pub fn parse_type_color_addition_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TypeColorAdditionClause>, CardTextError> {
     let Some(shape) = anthem_grant_grammar::parse_type_color_addition_shape(tokens) else {
@@ -4104,7 +4104,7 @@ pub(crate) fn parse_type_color_addition_clause(
     }))
 }
 
-pub(crate) fn is_type_scope_qualifier_word(word: &str) -> bool {
+pub fn is_type_scope_qualifier_word(word: &str) -> bool {
     parse_card_type(word).is_some()
         || matches!(
             word,
@@ -4112,7 +4112,7 @@ pub(crate) fn is_type_scope_qualifier_word(word: &str) -> bool {
         )
 }
 
-pub(crate) fn parse_soulbond_shared_line(
+pub fn parse_soulbond_shared_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -4202,7 +4202,7 @@ pub(crate) fn parse_soulbond_shared_line(
     Ok(None)
 }
 
-pub(crate) fn parse_anthem_and_type_color_addition_line(
+pub fn parse_anthem_and_type_color_addition_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let words = crate::lexer::token_word_refs(tokens);
@@ -4252,7 +4252,7 @@ pub(crate) fn parse_anthem_and_type_color_addition_line(
     Ok(Some(result))
 }
 
-pub(crate) fn parse_carried_subject_type_addition_line(
+pub fn parse_carried_subject_type_addition_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(shape) = anthem_grant_grammar::parse_carried_subject_type_addition(tokens) else {
@@ -4836,15 +4836,18 @@ mod dynamic_anthem_tests {
                 ),
             ),
         );
-        let value = Value::CountersOn(Box::new(source), Some(crate::CounterType::Named("rev")))
+        let value = Value::CountersOn(
+            Box::new(source),
+            Some(crate::CounterType::Named("rev".into())),
+        )
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo);
 
         assert!(matches!(
             anthem_count_expression_from_value(value),
             Some(AnthemCountExpression::CountersOnSourceWithSurface {
-                counter_type: crate::CounterType::Named("rev"),
+                counter_type: crate::CounterType::Named(counter_name),
                 surface: crate::target::SourceReferenceSurface::ThisPermanentType(surface),
-            }) if surface == "this Equipment"
+            }) if counter_name.as_str() == "rev" && surface == "this Equipment"
         ));
     }
 

@@ -5,27 +5,27 @@ use winnow::error::ModalResult as WResult;
 use winnow::token::any;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TapThenReturnShape<'a> {
-    pub(crate) tap_tokens: &'a [OwnedLexToken],
-    pub(crate) return_tokens: &'a [OwnedLexToken],
+pub struct TapThenReturnShape<'a> {
+    pub tap_tokens: &'a [OwnedLexToken],
+    pub return_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TapOrUntapAllShape<'a> {
-    pub(crate) tap_filter_tokens: &'a [OwnedLexToken],
-    pub(crate) untap_filter_tokens: &'a [OwnedLexToken],
+pub struct TapOrUntapAllShape<'a> {
+    pub tap_filter_tokens: &'a [OwnedLexToken],
+    pub untap_filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TapControlRelation {
+pub enum TapControlRelation {
     TargetPlayer,
     ThatPlayer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TapTypeChoiceShape<'a> {
-    pub(crate) before_tokens: &'a [OwnedLexToken],
-    pub(crate) after_tokens: &'a [OwnedLexToken],
+pub struct TapTypeChoiceShape<'a> {
+    pub before_tokens: &'a [OwnedLexToken],
+    pub after_tokens: &'a [OwnedLexToken],
 }
 
 fn tap_quantifier<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -56,7 +56,7 @@ fn parse_tap_or_untap_all_lexed<'a>(input: &mut LexStream<'a>) -> WResult<TapOrU
     })
 }
 
-pub(crate) fn parse_tap_or_untap_all_shape_tokens(
+pub fn parse_tap_or_untap_all_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TapOrUntapAllShape<'_>> {
     primitives::parse_all(tokens, parse_tap_or_untap_all_lexed, "tap or untap all").ok()
@@ -74,9 +74,7 @@ fn parse_tap_quantified_filter_lexed<'a>(
     Ok(super::super::super::lexer::trim_lexed_commas(filter_tokens))
 }
 
-pub(crate) fn parse_tap_quantified_filter_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<&[OwnedLexToken]> {
+pub fn parse_tap_quantified_filter_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     primitives::parse_all(
         tokens,
         parse_tap_quantified_filter_lexed,
@@ -95,9 +93,7 @@ fn parse_tap_or_untap_target_lexed<'a>(input: &mut LexStream<'a>) -> WResult<&'a
     Ok(super::super::super::lexer::trim_lexed_commas(target_tokens))
 }
 
-pub(crate) fn parse_tap_or_untap_target_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<&[OwnedLexToken]> {
+pub fn parse_tap_or_untap_target_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     primitives::parse_all(
         tokens,
         parse_tap_or_untap_target_lexed,
@@ -114,10 +110,10 @@ pub(crate) fn parse_tap_or_untap_target_tokens(
 /// lower the two captured operands to one non-target object union and preserve
 /// the result as the antecedent of the `then` clause.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TapObjectUnionThenShape<'a> {
-    pub(crate) first_target_tokens: &'a [OwnedLexToken],
-    pub(crate) all_filter_tokens: &'a [OwnedLexToken],
-    pub(crate) followup_tokens: &'a [OwnedLexToken],
+pub struct TapObjectUnionThenShape<'a> {
+    pub first_target_tokens: &'a [OwnedLexToken],
+    pub all_filter_tokens: &'a [OwnedLexToken],
+    pub followup_tokens: &'a [OwnedLexToken],
 }
 
 fn parse_tap_object_union_then_lexed<'a>(
@@ -154,7 +150,7 @@ fn parse_tap_object_union_then_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_tap_object_union_then_tokens(
+pub fn parse_tap_object_union_then_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TapObjectUnionThenShape<'_>> {
     primitives::parse_all(
@@ -185,15 +181,13 @@ fn parse_tap_then_return_lexed<'a>(input: &mut LexStream<'a>) -> WResult<TapThen
     })
 }
 
-pub(crate) fn parse_tap_then_return_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<TapThenReturnShape<'_>> {
+pub fn parse_tap_then_return_tokens(tokens: &[OwnedLexToken]) -> Option<TapThenReturnShape<'_>> {
     primitives::parse_all(tokens, parse_tap_then_return_lexed, "tap-then-return").ok()
 }
 
 #[path = "tap_shapes/control_and_type.rs"]
 mod control_and_type;
-pub(crate) use control_and_type::*;
+pub use control_and_type::*;
 
 #[cfg(test)]
 #[path = "tap_shapes/tests.rs"]

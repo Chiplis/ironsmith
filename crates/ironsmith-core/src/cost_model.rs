@@ -1,6 +1,7 @@
 use crate::types::CardType;
 use crate::{ColorSet, CounterType, ManaCost, ObjectFilter, Value};
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DynamicManaDisplayHint {
     Default,
@@ -13,6 +14,7 @@ impl Default for DynamicManaDisplayHint {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct DynamicManaCost {
     pub base: ManaCost,
@@ -121,6 +123,7 @@ impl DynamicManaCost {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
     clippy::large_enum_variant,
@@ -526,12 +529,14 @@ pub trait CoreCostComponent: CostComponent {
     fn tap_cost() -> Self;
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum TotalCostKind<C> {
     All(Vec<C>),
     OneOf(Vec<TotalCost<C>>),
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TotalCost<C> {
     kind: TotalCostKind<C>,
@@ -785,6 +790,7 @@ mod tests {
 
 /// Which authored reference to a verified alternative casting method should
 /// be used when describing a later "that cost was paid" condition.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AlternativeCostReferenceSurface {
     ManaCost,
@@ -797,6 +803,7 @@ pub enum AlternativeCostReferenceSurface {
 ///
 /// The mana string is canonicalized from a typed `ManaCost` at construction;
 /// callers cannot smuggle arbitrary oracle text into this executable key.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AlternativeCostReference {
     method_name: String,
@@ -879,6 +886,7 @@ impl AlternativeCostReference {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum OptionalCostKind {
     Kicker,
@@ -1005,6 +1013,7 @@ impl OptionalCostKind {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OptionalCostRef {
     pub kind: OptionalCostKind,
@@ -1177,6 +1186,7 @@ impl PartialEq<str> for OptionalCostRef {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct OptionalCost<C> {
     pub kind: OptionalCostKind,
@@ -1267,6 +1277,7 @@ impl<C> OptionalCost<C> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct OptionalCostsPaid {
     pub costs: Vec<(OptionalCostRef, u32)>,

@@ -7,20 +7,20 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EtbReferenceValueKind {
+pub enum EtbReferenceValueKind {
     SacrificedCreaturePower,
     SacrificedCreatureToughness,
     TaggedCreatureManaValue,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WhereXFixedPlusReferenceSpec<'a> {
-    pub(crate) fixed_tokens: &'a [OwnedLexToken],
-    pub(crate) reference_kind: EtbReferenceValueKind,
+pub struct WhereXFixedPlusReferenceSpec<'a> {
+    pub fixed_tokens: &'a [OwnedLexToken],
+    pub reference_kind: EtbReferenceValueKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum WhereXPlayerMetric {
+pub enum WhereXPlayerMetric {
     LifeGainedByYouThisTurn,
     LifeLostByYouThisTurn,
     LifeLostByOpponentsThisTurn,
@@ -29,75 +29,73 @@ pub(crate) enum WhereXPlayerMetric {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EtbAggregateKind {
+pub enum EtbAggregateKind {
     Total,
     Greatest,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EtbAggregateValueKind {
+pub enum EtbAggregateValueKind {
     Power,
     Toughness,
     ManaValue,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WhereXAggregateFilterSpec<'a> {
-    pub(crate) aggregate: EtbAggregateKind,
-    pub(crate) value_kind: EtbAggregateValueKind,
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
+pub struct WhereXAggregateFilterSpec<'a> {
+    pub aggregate: EtbAggregateKind,
+    pub value_kind: EtbAggregateValueKind,
+    pub filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WhereXNumberOfFilterSpec<'a> {
-    pub(crate) multiplier: i32,
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
+pub struct WhereXNumberOfFilterSpec<'a> {
+    pub multiplier: i32,
+    pub filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WhereXFixedPlusNumberOfFilterSpec<'a> {
-    pub(crate) fixed_tokens: &'a [OwnedLexToken],
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
+pub struct WhereXFixedPlusNumberOfFilterSpec<'a> {
+    pub fixed_tokens: &'a [OwnedLexToken],
+    pub filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EtbNumberOffsetOperator {
+pub enum EtbNumberOffsetOperator {
     Plus,
     Minus,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WhereXNumberOfFilterOffsetSpec<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) operator: EtbNumberOffsetOperator,
-    pub(crate) offset_tokens: &'a [OwnedLexToken],
+pub struct WhereXNumberOfFilterOffsetSpec<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub operator: EtbNumberOffsetOperator,
+    pub offset_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EtbSourceStatKind {
+pub enum EtbSourceStatKind {
     Power,
     Toughness,
     ManaValue,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EtbSourceStatFallback {
+pub enum EtbSourceStatFallback {
     Source,
     TaggedObject,
     TriggeringSpell,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WhereXSourceStatSpec<'a> {
-    pub(crate) kind: EtbSourceStatKind,
-    pub(crate) reference_tokens: &'a [OwnedLexToken],
-    pub(crate) fallback: Option<EtbSourceStatFallback>,
-    pub(crate) as_this_ability_resolves: bool,
+pub struct WhereXSourceStatSpec<'a> {
+    pub kind: EtbSourceStatKind,
+    pub reference_tokens: &'a [OwnedLexToken],
+    pub fallback: Option<EtbSourceStatFallback>,
+    pub as_this_ability_resolves: bool,
 }
 
-pub(crate) fn parse_equal_to_value_body_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<&[OwnedLexToken]> {
+pub fn parse_equal_to_value_body_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     primitives::parse_all(
         tokens,
         parse_equal_to_value_body_lexed,
@@ -106,7 +104,7 @@ pub(crate) fn parse_equal_to_value_body_tokens(
     .ok()
 }
 
-pub(crate) fn parse_equal_to_mana_spent_to_cast_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_equal_to_mana_spent_to_cast_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,
         parse_equal_to_mana_spent_to_cast_lexed,
@@ -115,9 +113,7 @@ pub(crate) fn parse_equal_to_mana_spent_to_cast_tokens(tokens: &[OwnedLexToken])
     .is_ok()
 }
 
-pub(crate) fn parse_equal_to_greatest_cards_drawn_this_turn_tokens(
-    tokens: &[OwnedLexToken],
-) -> bool {
+pub fn parse_equal_to_greatest_cards_drawn_this_turn_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,
         parse_equal_to_greatest_cards_drawn_this_turn_lexed,
@@ -126,11 +122,11 @@ pub(crate) fn parse_equal_to_greatest_cards_drawn_this_turn_tokens(
     .is_ok()
 }
 
-pub(crate) fn parse_where_x_prefix_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_where_x_prefix_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, primitives::phrase(&["where", "x", "is"])).is_some()
 }
 
-pub(crate) fn parse_where_x_fixed_plus_reference_tokens(
+pub fn parse_where_x_fixed_plus_reference_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<WhereXFixedPlusReferenceSpec<'_>> {
     primitives::parse_all(
@@ -141,9 +137,7 @@ pub(crate) fn parse_where_x_fixed_plus_reference_tokens(
     .ok()
 }
 
-pub(crate) fn parse_where_x_player_metric_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<WhereXPlayerMetric> {
+pub fn parse_where_x_player_metric_tokens(tokens: &[OwnedLexToken]) -> Option<WhereXPlayerMetric> {
     primitives::parse_all(
         tokens,
         parse_where_x_player_metric_lexed,
@@ -152,7 +146,7 @@ pub(crate) fn parse_where_x_player_metric_tokens(
     .ok()
 }
 
-pub(crate) fn parse_where_x_aggregate_filter_tokens(
+pub fn parse_where_x_aggregate_filter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<WhereXAggregateFilterSpec<'_>> {
     primitives::parse_all(
@@ -163,7 +157,7 @@ pub(crate) fn parse_where_x_aggregate_filter_tokens(
     .ok()
 }
 
-pub(crate) fn parse_commander_battlefield_or_command_zone_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_commander_battlefield_or_command_zone_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,
         parse_commander_battlefield_or_command_zone_lexed,
@@ -172,7 +166,7 @@ pub(crate) fn parse_commander_battlefield_or_command_zone_tokens(tokens: &[Owned
     .is_ok()
 }
 
-pub(crate) fn parse_where_x_differently_named_filter_tokens(
+pub fn parse_where_x_differently_named_filter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     primitives::parse_all(
@@ -183,7 +177,7 @@ pub(crate) fn parse_where_x_differently_named_filter_tokens(
     .ok()
 }
 
-pub(crate) fn parse_where_x_different_powers_filter_tokens(
+pub fn parse_where_x_different_powers_filter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     primitives::parse_all(
@@ -194,7 +188,7 @@ pub(crate) fn parse_where_x_different_powers_filter_tokens(
     .ok()
 }
 
-pub(crate) fn parse_where_x_greatest_number_filter_tokens(
+pub fn parse_where_x_greatest_number_filter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     primitives::parse_all(
@@ -205,7 +199,7 @@ pub(crate) fn parse_where_x_greatest_number_filter_tokens(
     .ok()
 }
 
-pub(crate) fn parse_where_x_number_of_filter_tokens(
+pub fn parse_where_x_number_of_filter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<WhereXNumberOfFilterSpec<'_>> {
     primitives::parse_all(
@@ -216,7 +210,7 @@ pub(crate) fn parse_where_x_number_of_filter_tokens(
     .ok()
 }
 
-pub(crate) fn parse_where_x_fixed_plus_number_of_filter_tokens(
+pub fn parse_where_x_fixed_plus_number_of_filter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<WhereXFixedPlusNumberOfFilterSpec<'_>> {
     primitives::parse_all(
@@ -227,7 +221,7 @@ pub(crate) fn parse_where_x_fixed_plus_number_of_filter_tokens(
     .ok()
 }
 
-pub(crate) fn parse_where_x_number_of_filter_offset_tokens(
+pub fn parse_where_x_number_of_filter_offset_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<WhereXNumberOfFilterOffsetSpec<'_>> {
     primitives::parse_all(
@@ -238,7 +232,7 @@ pub(crate) fn parse_where_x_number_of_filter_offset_tokens(
     .ok()
 }
 
-pub(crate) fn parse_where_x_source_stat_tokens(
+pub fn parse_where_x_source_stat_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<WhereXSourceStatSpec<'_>> {
     primitives::parse_all(

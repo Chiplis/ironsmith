@@ -9,65 +9,63 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BasePowerToughnessConditionShape<'a> {
+pub enum BasePowerToughnessConditionShape<'a> {
     None,
     Tokens(&'a [OwnedLexToken]),
     YourTurn,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BasePowerToughnessShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) condition: BasePowerToughnessConditionShape<'a>,
-    pub(crate) power: i32,
-    pub(crate) toughness: i32,
+pub struct BasePowerToughnessShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub condition: BasePowerToughnessConditionShape<'a>,
+    pub power: i32,
+    pub toughness: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BasePowerToughnessGrantShape<'a> {
-    pub(crate) has_token: usize,
-    pub(crate) power: i32,
-    pub(crate) toughness: i32,
-    pub(crate) ability_tokens: &'a [OwnedLexToken],
+pub struct BasePowerToughnessGrantShape<'a> {
+    pub has_token: usize,
+    pub power: i32,
+    pub toughness: i32,
+    pub ability_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BasePowerToughnessTypeAdditionShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) power: i32,
-    pub(crate) toughness: i32,
-    pub(crate) addition_tokens: &'a [OwnedLexToken],
+pub struct BasePowerToughnessTypeAdditionShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub power: i32,
+    pub toughness: i32,
+    pub addition_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BasePowerGrantShape<'a> {
-    pub(crate) has_token: usize,
-    pub(crate) power: i32,
-    pub(crate) ability_tokens: &'a [OwnedLexToken],
+pub struct BasePowerGrantShape<'a> {
+    pub has_token: usize,
+    pub power: i32,
+    pub ability_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PersistentAnthemSubjectFacts {
-    pub(crate) accepted: bool,
-    pub(crate) is_this_creature: bool,
+pub struct PersistentAnthemSubjectFacts {
+    pub accepted: bool,
+    pub is_this_creature: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct IsntCreatureShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) leading_condition_tokens: Option<&'a [OwnedLexToken]>,
-    pub(crate) unless_condition_tokens: Option<&'a [OwnedLexToken]>,
+pub struct IsntCreatureShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub leading_condition_tokens: Option<&'a [OwnedLexToken]>,
+    pub unless_condition_tokens: Option<&'a [OwnedLexToken]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum IsntCreatureShapeError {
+pub enum IsntCreatureShapeError {
     MissingLeadingCondition,
     MissingUnlessCondition,
 }
 
-pub(crate) fn parse_multi_subject_segments(
-    tokens: &[OwnedLexToken],
-) -> Option<Vec<&[OwnedLexToken]>> {
+pub fn parse_multi_subject_segments(tokens: &[OwnedLexToken]) -> Option<Vec<&[OwnedLexToken]>> {
     let tokens = trim_lexed_commas(tokens);
     primitives::parse_all(
         tokens,
@@ -77,7 +75,7 @@ pub(crate) fn parse_multi_subject_segments(
     .ok()
 }
 
-pub(crate) fn parse_base_power_toughness_shape(
+pub fn parse_base_power_toughness_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<BasePowerToughnessShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
@@ -92,7 +90,7 @@ pub(crate) fn parse_base_power_toughness_shape(
     Some(shape)
 }
 
-pub(crate) fn parse_base_power_toughness_grant_shape(
+pub fn parse_base_power_toughness_grant_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<BasePowerToughnessGrantShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
@@ -108,7 +106,7 @@ pub(crate) fn parse_base_power_toughness_grant_shape(
     })
 }
 
-pub(crate) fn parse_base_power_toughness_type_addition_shape(
+pub fn parse_base_power_toughness_type_addition_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<BasePowerToughnessTypeAdditionShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
@@ -122,16 +120,12 @@ pub(crate) fn parse_base_power_toughness_type_addition_shape(
     Some(shape)
 }
 
-pub(crate) fn parse_base_power_grant_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<BasePowerGrantShape<'_>> {
+pub fn parse_base_power_grant_shape(tokens: &[OwnedLexToken]) -> Option<BasePowerGrantShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
     primitives::parse_all(tokens, parse_base_power_grant_lexed, "base-power grant").ok()
 }
 
-pub(crate) fn persistent_anthem_subject_facts(
-    tokens: &[OwnedLexToken],
-) -> PersistentAnthemSubjectFacts {
+pub fn persistent_anthem_subject_facts(tokens: &[OwnedLexToken]) -> PersistentAnthemSubjectFacts {
     let tokens = trim_lexed_commas(tokens);
     let accepted = !contains_parser(tokens, || primitives::kw("target").void())
         && !has_prefix(tokens, &["until", "end", "of", "turn"])
@@ -143,7 +137,7 @@ pub(crate) fn persistent_anthem_subject_facts(
     }
 }
 
-pub(crate) fn parse_isnt_creature_shape(
+pub fn parse_isnt_creature_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<IsntCreatureShape<'_>>, IsntCreatureShapeError> {
     let tokens = super::trim_anthem_clause_tokens(tokens);

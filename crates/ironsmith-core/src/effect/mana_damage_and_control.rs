@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddManaOfChosenColorEffect {
     pub amount: Value,
@@ -29,6 +30,7 @@ impl AddManaOfChosenColorEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddManaOfImprintedColorsEffect;
 
@@ -44,6 +46,7 @@ impl Default for AddManaOfImprintedColorsEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddManaOfColorsAmongEffect {
     pub filter: ObjectFilter,
@@ -65,6 +68,7 @@ impl AddManaOfColorsAmongEffect {
 ///
 /// This is distinct from [`AddManaOfColorsAmongEffect`], which adds one mana
 /// of *each* represented color.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddOneManaOfAnyColorAmongEffect {
     pub filter: ObjectFilter,
@@ -93,6 +97,7 @@ impl AddOneManaOfAnyColorAmongEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddScaledManaEffect {
     pub mana: Vec<crate::mana::ManaSymbol>,
@@ -110,6 +115,7 @@ impl AddScaledManaEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PayEnergyEffect {
     pub amount: Value,
@@ -130,6 +136,7 @@ impl PayEnergyEffect {
 /// This is deliberately distinct from [`LoseLifeEffect`]: paying life is only
 /// legal when the player has enough life and no rule or effect forbids the
 /// payment, while ordinary life loss can reduce a player below zero.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PayLifeEffect {
     pub amount: Value,
@@ -153,6 +160,7 @@ impl PayLifeEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PayAnyEnergyEffect {
     pub player: ChooseSpec,
@@ -165,6 +173,7 @@ impl PayAnyEnergyEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PayAnyLifeEffect {
     pub player: ChooseSpec,
@@ -177,6 +186,7 @@ impl PayAnyLifeEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
     clippy::large_enum_variant,
@@ -187,6 +197,7 @@ pub enum ConsultTopOfLibraryStopRule {
     MatchCount(Value),
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct DestroyEffect {
     pub spec: ChooseSpec,
@@ -204,6 +215,7 @@ impl DestroyEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct DestroyNoRegenerationEffect {
     pub filter: Option<ObjectFilter>,
@@ -234,6 +246,7 @@ impl DestroyNoRegenerationEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SacrificeEffect {
     pub filter: ObjectFilter,
@@ -254,6 +267,7 @@ impl SacrificeEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct DiscardEffect {
     pub count: Value,
@@ -292,6 +306,7 @@ impl DiscardEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RemoveAnyCountersFromSourceEffect {
     pub counter_type: Option<crate::counter::CounterType>,
@@ -299,6 +314,7 @@ pub struct RemoveAnyCountersFromSourceEffect {
     pub remove_all: bool,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DamageDistributionMode {
     /// The casting player assigns the total among the announced targets.
@@ -308,6 +324,7 @@ pub enum DamageDistributionMode {
     EvenRoundedDown,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct DealDistributedDamageEffect {
     pub amount: Value,
@@ -344,6 +361,7 @@ impl DealDistributedDamageEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForEachCounterKindPutOrRemoveEffect {
     pub target: ChooseSpec,
@@ -385,6 +403,7 @@ impl ForEachCounterKindPutOrRemoveEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PutCounterOfChosenKindEffect {
     pub target: ChooseSpec,
@@ -397,6 +416,7 @@ impl PutCounterOfChosenKindEffect {
 }
 
 /// How long an effect keeps a permanent phased out.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PhaseOutDuration {
     /// The normal phasing rule: phase in during its controller's next untap step.
@@ -406,6 +426,7 @@ pub enum PhaseOutDuration {
     UntilSourceLeaves,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PhaseOutEffect {
     pub target: ChooseSpec,
@@ -435,6 +456,7 @@ impl PhaseOutEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PhaseInEffect {
     pub target: ChooseSpec,
@@ -446,6 +468,7 @@ impl PhaseInEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RemoveFromCombatEffect {
     pub target: ChooseSpec,
@@ -457,6 +480,7 @@ impl RemoveFromCombatEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct DrawForEachTaggedMatchingEffect {
     pub tag: crate::tag::TagKey,
@@ -479,11 +503,13 @@ impl DrawForEachTaggedMatchingEffect {
 /// The library owner remains semantic in `player`; this only distinguishes
 /// “Target opponent exiles … from their library” from the imperative
 /// “Exile … from target opponent's library” surface.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExileTopLibrarySurface {
     LibraryOwnerAsActor,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExileTopOfLibraryEffect {
     pub count: Value,
@@ -528,6 +554,7 @@ impl ExileTopOfLibraryEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PreventDamageEffect<E> {
     pub amount: Value,
@@ -566,6 +593,7 @@ impl<E> PreventDamageEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PreventAllDamageToTargetEffect<E> {
     pub target: ChooseSpec,
@@ -588,6 +616,7 @@ impl<E> PreventAllDamageToTargetEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PreventNextTimeDamageEffect<E = ()> {
     pub source: PreventNextTimeDamageSource,
@@ -619,6 +648,7 @@ impl<E> PreventNextTimeDamageEffect<E> {
 
 /// Register a one-shot replacement that performs typed effects instead of the
 /// next damage event to the chosen target this turn.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReplaceNextDamageToTargetEffect<E> {
     pub target: ChooseSpec,
@@ -634,12 +664,14 @@ impl<E> ReplaceNextDamageToTargetEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum RedirectNextDamageDestination {
     Controller,
     TargetObject,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RedirectNextDamageToTargetEffect {
     pub amount: Option<Value>,
@@ -668,6 +700,7 @@ impl RedirectNextDamageToTargetEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RedirectNextTimeDamageToSourceEffect {
     pub source: RedirectNextTimeDamageSource,
@@ -722,6 +755,7 @@ impl RedirectNextTimeDamageToSourceEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RedirectAllDamageThisTurnToTargetEffect {
     pub player_filter: PlayerFilter,
@@ -743,6 +777,7 @@ impl RedirectAllDamageThisTurnToTargetEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct GrantPlayTaggedEffect {
     pub tag: crate::tag::TagKey,
@@ -853,6 +888,7 @@ impl GrantPlayTaggedEffect {
 
 /// Where a zone-change replacement puts an object when the replacement
 /// destination is its owner's library.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ZoneReplacementLibraryPlacement {
     Top,
@@ -862,6 +898,7 @@ pub enum ZoneReplacementLibraryPlacement {
 
 /// A follow-up that is created only when a concrete zone replacement actually
 /// exiles its watched object.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LinkedExileFollowUp {
     /// Return that exact exiled object to its owner's hand at the beginning of
@@ -869,6 +906,7 @@ pub enum LinkedExileFollowUp {
     ReturnToHandAtNextEndStep,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RegisterZoneReplacementEffect {
     pub target: ChooseSpec,
@@ -927,6 +965,7 @@ impl RegisterZoneReplacementEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RegisterFutureZoneReplacementEffect {
     pub filter: crate::filter_model::ObjectFilter,
@@ -939,6 +978,7 @@ pub struct RegisterFutureZoneReplacementEffect {
     pub link_exiled_to_source: bool,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RegisterDrawReplacementEffect<E = ()> {
     pub player: PlayerFilter,
@@ -946,6 +986,7 @@ pub struct RegisterDrawReplacementEffect<E = ()> {
     pub mode: ReplacementApplyMode,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RegisterManaReplacementEffect {
     pub source_filter: crate::filter_model::ObjectFilter,
@@ -953,6 +994,7 @@ pub struct RegisterManaReplacementEffect {
     pub mode: ReplacementApplyMode,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RegisterDamagedBySourceZoneReplacementEffect {
     pub filter: crate::filter_model::ObjectFilter,
@@ -962,6 +1004,7 @@ pub struct RegisterDamagedBySourceZoneReplacementEffect {
     pub mode: ReplacementApplyMode,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RegisterEnterUnderControlReplacementEffect {
     pub filter: crate::filter_model::ObjectFilter,
@@ -969,6 +1012,7 @@ pub struct RegisterEnterUnderControlReplacementEffect {
 }
 
 /// Registers a temporary replacement that makes matching permanents enter tapped.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RegisterEnterTappedReplacementEffect {
     pub filter: crate::filter_model::ObjectFilter,
@@ -979,6 +1023,7 @@ pub struct RegisterEnterTappedReplacementEffect {
 /// which one or more matching permanents would enter. Every matching member
 /// of that batch enters with the additional counters, then the replacement is
 /// consumed. If no matching batch occurs, it expires during cleanup.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RegisterNextBatchEnterWithCountersEffect {
     pub filter: crate::filter_model::ObjectFilter,
@@ -1103,6 +1148,7 @@ impl RegisterDamagedBySourceZoneReplacementEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct LearnEffect;
 
@@ -1112,6 +1158,7 @@ impl LearnEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct InvestigateEffect {
     pub count: Value,
@@ -1124,6 +1171,7 @@ impl InvestigateEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct GainLifeEffect {
     pub amount: Value,
@@ -1151,6 +1199,7 @@ impl GainLifeEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct IncreaseSpeedEffect {
     pub amount: Value,
@@ -1170,6 +1219,7 @@ impl IncreaseSpeedEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReduceSpeedEffect {
     pub amount: Value,
@@ -1187,6 +1237,7 @@ impl ReduceSpeedEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CipherEffect;
 
@@ -1196,6 +1247,7 @@ impl CipherEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct UnearthEffect;
 
@@ -1205,6 +1257,7 @@ impl UnearthEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct NinjutsuCostEffect;
 
@@ -1214,6 +1267,7 @@ impl NinjutsuCostEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SneakCostEffect;
 
@@ -1223,6 +1277,7 @@ impl SneakCostEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ConspireCostEffect;
 
@@ -1232,6 +1287,7 @@ impl ConspireCostEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct NinjutsuEffect;
 
@@ -1241,6 +1297,7 @@ impl NinjutsuEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RegenerateEffect<E = ()> {
     pub target: ChooseSpec,
@@ -1271,6 +1328,7 @@ impl<E> RegenerateEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddManaFromCommanderColorIdentityEffect {
     pub amount: Value,
@@ -1290,6 +1348,7 @@ impl AddManaFromCommanderColorIdentityEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddManaOfAnyColorEffect {
     pub amount: Value,
@@ -1360,6 +1419,7 @@ impl AddManaOfAnyColorEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddManaOfAnyOneColorEffect {
     pub amount: Value,
@@ -1379,6 +1439,7 @@ impl AddManaOfAnyOneColorEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddManaEffect {
     pub mana: Vec<ManaSymbol>,
@@ -1395,6 +1456,7 @@ impl AddManaEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenownEffect {
     pub amount: u32,
@@ -1406,6 +1468,7 @@ impl RenownEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SolveCaseEffect;
 
@@ -1415,6 +1478,7 @@ impl SolveCaseEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct BolsterEffect {
     pub amount: u32,
@@ -1426,6 +1490,7 @@ impl BolsterEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlipEffect {
     pub target: ChooseSpec,
@@ -1441,6 +1506,7 @@ impl FlipEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct LoseTheGameEffect {
     pub player: PlayerFilter,
@@ -1460,6 +1526,7 @@ impl LoseTheGameEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChooseColorEffect {
     pub chooser: PlayerFilter,
@@ -1471,6 +1538,7 @@ impl ChooseColorEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChooseLandTypeEffect {
     pub chooser: PlayerFilter,
@@ -1486,6 +1554,7 @@ impl ChooseLandTypeEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChooseCreatureTypeEffect {
     pub chooser: PlayerFilter,
@@ -1511,18 +1580,21 @@ impl ChooseCreatureTypeEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CoinFace {
     Heads,
     Tails,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CoinFlipKind {
     Called,
     FaceOnly,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlipCoinEffect {
     pub player: PlayerFilter,
@@ -1569,6 +1641,7 @@ impl FlipCoinEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SetLifeTotalEffect {
     pub amount: Value,
@@ -1588,6 +1661,7 @@ impl SetLifeTotalEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExchangeLifeTotalsEffect {
     pub player1: PlayerFilter,
@@ -1600,6 +1674,7 @@ impl ExchangeLifeTotalsEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct DoubleManaPoolEffect {
     pub player: PlayerFilter,
@@ -1611,6 +1686,7 @@ impl DoubleManaPoolEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct EmptyManaPoolEffect {
     pub player: PlayerFilter,
@@ -1622,6 +1698,7 @@ impl EmptyManaPoolEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct EndTurnEffect {
     pub player: PlayerFilter,
@@ -1638,6 +1715,7 @@ impl EndTurnEffect {
 }
 
 /// Ends the current combat phase using the ordered CR 724.2 procedure.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct EndCombatPhaseEffect;
 
@@ -1653,6 +1731,7 @@ impl EndCombatPhaseEffect {
 /// in the game is returned to its appropriate new-game starting zone. The
 /// effect reports the exempt cards as its affected objects so a following
 /// tagged instruction can continue to act on them after the restart.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RestartGameEffect {
     pub cards_left_in_exile: Option<ChooseSpec>,
@@ -1681,6 +1760,7 @@ impl RestartGameEffect {
 /// Turn advancement and priority ordering derive from the shared turn-order
 /// sequence, so this single state transition applies to multiplayer games and
 /// remains a no-op in practice for one- and two-player games.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ReverseTurnOrderEffect;
 
@@ -1695,6 +1775,7 @@ impl ReverseTurnOrderEffect {
 /// `nonwinner_effects` are continuation effects executed in the resumed parent
 /// once for each participant who did not win the child game. They are part of
 /// the creating instruction, rather than effects that exist inside the child.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct PlaySubgameEffect<E> {
     pub nonwinner_effects: Vec<E>,
@@ -1706,6 +1787,7 @@ impl<E> PlaySubgameEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SkipTurnEffect {
     pub player: PlayerFilter,
@@ -1721,6 +1803,7 @@ impl SkipTurnEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SkipDrawStepEffect {
     pub player: PlayerFilter,
@@ -1736,6 +1819,7 @@ impl SkipDrawStepEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SkipNextCombatPhaseThisTurnEffect {
     pub player: PlayerFilter,
@@ -1747,6 +1831,7 @@ impl SkipNextCombatPhaseThisTurnEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct AdditionalLandPlaysEffect {
     pub count: Value,
@@ -1764,6 +1849,7 @@ impl AdditionalLandPlaysEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct BecomeMonarchEffect {
     pub player: PlayerFilter,
@@ -1779,6 +1865,7 @@ impl BecomeMonarchEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RingTemptsYouEffect {
     pub player: PlayerFilter,
@@ -1794,6 +1881,7 @@ impl RingTemptsYouEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct VentureIntoDungeonEffect {
     pub player: PlayerFilter,
@@ -1816,6 +1904,7 @@ impl VentureIntoDungeonEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TakeInitiativeEffect {
     pub player: PlayerFilter,
@@ -1831,6 +1920,7 @@ impl TakeInitiativeEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PoisonCountersEffect {
     pub count: Value,
@@ -1850,6 +1940,7 @@ impl PoisonCountersEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ControlCombatChoicesThisTurnEffect {
     pub attackers: bool,
@@ -1871,6 +1962,7 @@ impl ControlCombatChoicesThisTurnEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RollDieEffect {
     pub player: PlayerFilter,
@@ -1896,6 +1988,7 @@ impl RollDieEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RollDiceChooseResultEffect {
     pub player: PlayerFilter,
@@ -1929,6 +2022,7 @@ impl RollDiceChooseResultEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct EmitGiftGivenEffect {
     pub recipient: PlayerFilter,
@@ -1940,6 +2034,7 @@ impl EmitGiftGivenEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChooseNamedOptionEffect {
     pub chooser: PlayerFilter,
@@ -1952,6 +2047,7 @@ impl ChooseNamedOptionEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SkipCombatPhasesEffect {
     pub player: PlayerFilter,
@@ -1963,6 +2059,7 @@ impl SkipCombatPhasesEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SkipMainPhasesThisTurnEffect {
     pub player: PlayerFilter,
@@ -1974,6 +2071,7 @@ impl SkipMainPhasesThisTurnEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SkipCombatPhasesThisTurnEffect {
     pub player: PlayerFilter,
@@ -1985,6 +2083,7 @@ impl SkipCombatPhasesThisTurnEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExchangeZonesEffect {
     pub player: PlayerFilter,
@@ -2002,6 +2101,7 @@ impl ExchangeZonesEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct AuraSwapEffect;
 
@@ -2011,6 +2111,7 @@ impl AuraSwapEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExchangeValuesEffect {
     pub left: ExchangeValueOperand,
@@ -2033,6 +2134,7 @@ impl ExchangeValuesEffect {
 /// `MatchingLandsCouldProduce` is prospective. `TriggeringEventProduced`
 /// consumes the mana symbols captured by the event that caused the ability to
 /// trigger instead of recalculating the source's current capabilities.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ManaTypeSource {
     #[default]
@@ -2040,6 +2142,7 @@ pub enum ManaTypeSource {
     TriggeringEventProduced,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddManaOfLandProducedTypesEffect {
     pub amount: Value,
@@ -2086,6 +2189,7 @@ impl AddManaOfLandProducedTypesEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TagTriggeringDamageTargetEffect {
     pub tag: TagKey,
@@ -2097,6 +2201,7 @@ impl TagTriggeringDamageTargetEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConvertEffect {
     pub target: ChooseSpec,
@@ -2108,6 +2213,7 @@ impl ConvertEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PutStickerEffect {
     pub target: ChooseSpec,
@@ -2115,6 +2221,7 @@ pub struct PutStickerEffect {
 }
 
 /// Unlock a locked door of a Room matching `room_filter` during resolution.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnlockRoomDoorEffect {
     pub player: PlayerFilter,
@@ -2136,6 +2243,7 @@ impl PutStickerEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReorderGraveyardEffect {
     pub player: PlayerFilter,
@@ -2151,6 +2259,7 @@ impl ReorderGraveyardEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExtraTurnEffect {
     pub player: PlayerFilter,
@@ -2166,6 +2275,7 @@ impl ExtraTurnEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExtraTurnAfterNextTurnEffect {
     pub player: PlayerFilter,
@@ -2177,12 +2287,14 @@ impl ExtraTurnAfterNextTurnEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AdditionalPhase {
     Combat,
     Main,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdditionalPhasesEffect {
     pub phases: Vec<AdditionalPhase>,
@@ -2202,6 +2314,7 @@ impl AdditionalPhasesEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TagTriggeringObjectEffect {
     pub tag: TagKey,
@@ -2213,6 +2326,7 @@ impl TagTriggeringObjectEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TagTriggeringSourceEffect {
     pub tag: TagKey,
@@ -2224,6 +2338,7 @@ impl TagTriggeringSourceEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TagTriggeringBlockersEffect {
     pub tag: TagKey,
@@ -2244,6 +2359,7 @@ impl TagTriggeringBlockersEffect {
 /// This is the attacking-participant counterpart to
 /// [`TagTriggeringBlockersEffect`]. It preserves the exact event identity even
 /// when combat state changes before the triggered ability resolves.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TagTriggeringAttackerEffect {
     pub tag: TagKey,
@@ -2265,6 +2381,7 @@ impl TagTriggeringAttackerEffect {
 /// attacking, this tags the blocker or blockers. This gives an `Either`
 /// trigger such as "this creature blocks or becomes blocked" one stable
 /// referent for its shared "that creature" body.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TagOtherBlockParticipantEffect {
     pub tag: TagKey,
@@ -2280,6 +2397,7 @@ impl TagOtherBlockParticipantEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TagAttachedToSourceEffect {
     pub tag: TagKey,
@@ -2291,6 +2409,7 @@ impl TagAttachedToSourceEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct MoveAllCountersEffect {
     pub from: ChooseSpec,
@@ -2307,6 +2426,7 @@ impl MoveAllCountersEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct MoveOneCounterEffect {
     pub from: ChooseSpec,
@@ -2319,6 +2439,7 @@ impl MoveOneCounterEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct MoveCountersEffect {
     pub counter_type: crate::counter::CounterType,
@@ -2352,6 +2473,7 @@ impl MoveCountersEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProliferateEffect {
     pub count: Value,
@@ -2371,6 +2493,7 @@ impl Default for ProliferateEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct WinTheGameEffect {
     pub player: PlayerFilter,
@@ -2387,9 +2510,11 @@ impl WinTheGameEffect {
 }
 
 /// An effect that states that the game is a draw.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DrawTheGameEffect;
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CastSourceEffect {
     pub without_paying_mana_cost: bool,
@@ -2436,6 +2561,7 @@ impl Default for CastSourceEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct EmitKeywordActionObjectTag {
     pub effect_id: EffectId,
@@ -2461,6 +2587,7 @@ impl EmitKeywordActionObjectTag {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct EmitKeywordActionEffect {
     pub action: crate::event_model::KeywordActionKind,
@@ -2498,6 +2625,7 @@ impl EmitKeywordActionEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct DiscardHandEffect {
     pub player: PlayerFilter,
@@ -2517,6 +2645,7 @@ impl DiscardHandEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChooseCardTypeEffect {
     pub chooser: PlayerFilter,
@@ -2551,6 +2680,7 @@ impl ChooseCardTypeEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChooseCardNameEffect {
     pub chooser: PlayerFilter,
@@ -2573,6 +2703,7 @@ impl ChooseCardNameEffect {
 }
 
 /// When a player-control effect starts.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlayerControlStart {
     /// Starts immediately when the effect resolves.
@@ -2582,6 +2713,7 @@ pub enum PlayerControlStart {
 }
 
 /// How long a player-control effect lasts.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlayerControlDuration {
     /// Until end of the current turn.
@@ -2593,6 +2725,7 @@ pub enum PlayerControlDuration {
 }
 
 /// Effect that lets a player control another player's decisions.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ControlPlayerEffect {
     /// Which player is controlled.
@@ -2654,6 +2787,7 @@ impl ControlPlayerEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
     clippy::large_enum_variant,
@@ -2670,6 +2804,7 @@ pub enum CombatDamagePreventionTarget {
 ///
 /// This is an assignment rule, not prevention: no damage event is created, so
 /// effects that make damage unpreventable do not override it.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct AssignNoCombatDamageEffect {
     pub source: ChooseSpec,
@@ -2682,6 +2817,7 @@ impl AssignNoCombatDamageEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PreventAllCombatDamageEffect {
     pub target: CombatDamagePreventionTarget,
@@ -2706,6 +2842,7 @@ impl PreventAllCombatDamageEffect {
 }
 
 /// What a prevention shield protects.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum PreventionTarget {
     /// Protects a specific player.
@@ -2727,6 +2864,7 @@ pub enum PreventionTarget {
 }
 
 /// Filter for what kind of damage a prevention shield applies to.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct DamageFilter {
     /// Only prevent combat damage.
@@ -2822,6 +2960,7 @@ impl DamageFilter {
 }
 
 /// Effect that prevents all damage until a duration expires.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PreventAllDamageEffect {
     /// What this shield protects.
@@ -2929,6 +3068,7 @@ impl PreventAllDamageEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CreateEmblemEffect<E> {
     pub emblem: E,
@@ -2940,6 +3080,7 @@ impl<E> CreateEmblemEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct GrantEffect<G, D> {
     pub grantable: G,
@@ -2957,6 +3098,7 @@ impl<G, D> GrantEffect<G, D> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct GrantBySpecEffect<S, D> {
     pub spec: S,
@@ -2974,6 +3116,7 @@ impl<S, D> GrantBySpecEffect<S, D> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShuffleObjectsIntoLibraryEffect {
     pub target: ChooseSpec,
@@ -3011,6 +3154,7 @@ impl ShuffleObjectsIntoLibraryEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExchangeTextBoxesEffect {
     pub target: ChooseSpec,
@@ -3022,6 +3166,7 @@ impl ExchangeTextBoxesEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnergyCountersEffect {
     pub count: Value,
@@ -3041,6 +3186,7 @@ impl EnergyCountersEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExperienceCountersEffect {
     pub count: Value,
@@ -3060,6 +3206,7 @@ impl ExperienceCountersEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TicketCountersEffect {
     pub count: Value,
@@ -3079,6 +3226,7 @@ impl TicketCountersEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct DiscoverEffect {
     pub count: Value,
@@ -3098,6 +3246,7 @@ impl DiscoverEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SetBasePowerToughnessEffect {
     pub target: ChooseSpec,
@@ -3122,6 +3271,7 @@ impl SetBasePowerToughnessEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum RestrictionStart {
     #[default]
@@ -3133,6 +3283,7 @@ pub enum RestrictionStart {
 ///
 /// This affects compiled text only; runtime expiration is still governed by
 /// `CantEffect::duration`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RestrictionDurationSurface {
     #[default]
@@ -3141,6 +3292,7 @@ pub enum RestrictionDurationSurface {
     LeadingUntilYourNextTurn,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CantEffect {
     pub restriction: Restriction,
@@ -3186,6 +3338,7 @@ impl CantEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModifyPowerToughnessForEachEffect {
     pub target: ChooseSpec,
@@ -3217,6 +3370,7 @@ impl ModifyPowerToughnessForEachEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RemoveUpToAnyCountersEffect {
     pub max_count: Value,
@@ -3243,6 +3397,7 @@ impl RemoveUpToAnyCountersEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RemoveUpToCountersEffect {
     pub counter_type: crate::counter::CounterType,
@@ -3264,6 +3419,7 @@ impl RemoveUpToCountersEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct AttachToEffect {
     pub target: ChooseSpec,
@@ -3275,6 +3431,7 @@ impl AttachToEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReconfigureEffect {
     pub target: ChooseSpec,
@@ -3286,6 +3443,7 @@ impl ReconfigureEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct AttachObjectsEffect {
     pub objects: ChooseSpec,
@@ -3313,6 +3471,7 @@ impl AttachObjectsEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnattachObjectsEffect {
     pub objects: ChooseSpec,
@@ -3324,6 +3483,7 @@ impl UnattachObjectsEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RevealTopEffect {
     pub player: PlayerFilter,
@@ -3340,6 +3500,7 @@ impl RevealTopEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReturnAsAuraOptions {
     pub attachment_filter: ObjectFilter,
@@ -3360,6 +3521,7 @@ impl ReturnAsAuraOptions {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReturnFromGraveyardToBattlefieldEffect {
     pub target: ChooseSpec,
@@ -3372,6 +3534,7 @@ pub struct ReturnFromGraveyardToBattlefieldEffect {
 /// Return the resolving ability's source from either its owner's graveyard or
 /// exile to the battlefield. This is intentionally source-only: the two-zone
 /// origin is what makes the ability functional outside the battlefield.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReturnFromGraveyardOrExileToBattlefieldEffect {
     pub tapped: bool,
@@ -3434,6 +3597,7 @@ impl ReturnFromGraveyardToBattlefieldEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReturnFromGraveyardToHandEffect {
     pub target: ChooseSpec,
@@ -3484,6 +3648,7 @@ impl ReturnFromGraveyardToHandEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PutOntoBattlefieldEffect {
     pub target: ChooseSpec,
@@ -3517,6 +3682,7 @@ impl PutOntoBattlefieldEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShuffleLibraryEffect {
     pub player: PlayerFilter,
@@ -3542,6 +3708,7 @@ impl ShuffleLibraryEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct MayMoveToZoneEffect {
     pub target: ChooseSpec,
@@ -3559,6 +3726,7 @@ impl MayMoveToZoneEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct LookAtTopCardsEffect {
     /// The player whose library supplies the cards.
@@ -3605,6 +3773,7 @@ impl LookAtTopCardsEffect {
 /// Look at the top `count` cards of a planar deck and choose exactly one of
 /// them to move to that planar deck's bottom. The other cards keep their
 /// relative order on top.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReorderTopPlanarDeckEffect {
     pub player: PlayerFilter,
@@ -3626,6 +3795,7 @@ impl ReorderTopPlanarDeckEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct MonstrosityEffect {
     pub n: Value,
@@ -3637,6 +3807,7 @@ impl MonstrosityEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct EvolveEffect;
 
@@ -3646,6 +3817,7 @@ impl EvolveEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SoulbondPairEffect;
 
@@ -3655,6 +3827,7 @@ impl SoulbondPairEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TransformEffect {
     pub target: ChooseSpec,
@@ -3674,6 +3847,7 @@ impl TransformEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CopyInstructionSurface {
     /// `Copy it. You may cast the copy.`
@@ -3687,6 +3861,7 @@ pub enum CopyInstructionSurface {
     SeparateItThenPermanentCopyReminder,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone)]
 pub struct CastTaggedEffect {
     pub tag: TagKey,
@@ -3779,6 +3954,7 @@ impl CastTaggedEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LibraryBottomOrder {
     Random,
@@ -3789,6 +3965,7 @@ pub enum LibraryBottomOrder {
 /// looked/revealed collection. Execution is identical for both variants, but
 /// retaining the surface lets compiled text distinguish a terse "the rest"
 /// instruction from an explicit revealed-card complement.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LibraryRemainderSurface {
     Rest,
@@ -3804,12 +3981,14 @@ pub enum LibraryRemainderSurface {
     RevealedCardsNotPutOntoBattlefield,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LibraryConsultMode {
     Reveal,
     Exile,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PutTaggedRemainderOnLibraryBottomEffect {
     pub tag: TagKey,
@@ -3841,6 +4020,7 @@ impl PutTaggedRemainderOnLibraryBottomEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RemoveAnyCountersAmongEffect {
     pub count: u32,
@@ -3892,6 +4072,7 @@ impl RemoveAnyCountersAmongEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SacrificePlayerEffect {
     pub filter: ObjectFilter,
@@ -3909,6 +4090,7 @@ impl SacrificePlayerEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RearrangeLookedCardsInLibraryEffect {
     pub tag: TagKey,
@@ -3926,6 +4108,7 @@ impl RearrangeLookedCardsInLibraryEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChooseNewTargetsEffect {
     pub from_effect: EffectId,
@@ -3974,6 +4157,7 @@ impl ChooseNewTargetsEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExileInsteadOfGraveyardEffect {
     pub player: PlayerFilter,
@@ -3989,6 +4173,7 @@ impl ExileInsteadOfGraveyardEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConsultTopOfLibraryEffect {
     pub player: PlayerFilter,
@@ -4028,6 +4213,7 @@ impl ConsultTopOfLibraryEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RepeatProcessEffect<E> {
     pub effects: Vec<E>,
@@ -4036,6 +4222,7 @@ pub struct RepeatProcessEffect<E> {
 }
 
 /// Grants a repeatable mana-payment special action through end of turn.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct GrantRepeatableManaPaymentActionUntilEndOfTurnEffect<E> {
     pub player: PlayerFilter,
@@ -4063,6 +4250,7 @@ impl<E> RepeatProcessEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RepeatEffectsEffect<E> {
     pub count: Value,
@@ -4078,11 +4266,13 @@ impl<E> RepeatEffectsEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LifeBidStart {
     Fixed(u32),
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct BidLifeEffect<E> {
     pub target: ChooseSpec,
@@ -4100,6 +4290,7 @@ impl<E> BidLifeEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct LoseLifeEffect {
     pub amount: Value,
@@ -4112,6 +4303,7 @@ impl LoseLifeEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RepeatProcessPromptKind {
     MayRepeatAnyNumberOfTimes,
@@ -4125,6 +4317,7 @@ impl RepeatProcessPromptKind {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RepeatProcessPromptEffect {
     pub kind: RepeatProcessPromptKind,
@@ -4136,6 +4329,7 @@ impl RepeatProcessPromptEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChoosePlayerEffect {
     pub chooser: PlayerFilter,
@@ -4187,6 +4381,7 @@ impl ChoosePlayerEffect {
 /// narrower grammar-confirmed form created for an explicit "If/When you do"
 /// result body; it lets that wrapper restore the source conjunction without
 /// overriding older coordinated specialist surfaces.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SequenceSurface {
     #[default]
@@ -4224,6 +4419,7 @@ impl SequenceSurface {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SequenceEffect<E> {
     pub effects: Vec<E>,
@@ -4298,6 +4494,7 @@ impl<E> SequenceEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ManaRestrictedEffect<E> {
     pub effects: Vec<E>,
@@ -4315,6 +4512,7 @@ impl<E> ManaRestrictedEffect<E> {
 
 /// How long mana produced by a wrapped effect is retained in its owner's mana
 /// pool as steps and phases end.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ManaRetentionDuration {
     EndOfCombat,
@@ -4326,6 +4524,7 @@ pub enum ManaRetentionDuration {
 ///
 /// Retention is carried by the individual mana units rather than by a player
 /// or color, so unrelated mana in the same pool still empties normally.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ManaRetainedEffect<E> {
     pub effects: Vec<E>,
@@ -4342,12 +4541,14 @@ impl<E> ManaRetainedEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct MayEffect<E> {
     pub decider: Option<PlayerFilter>,
     pub effects: Vec<E>,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnlessPaysEffect<E> {
     pub player: PlayerFilter,
@@ -4362,6 +4563,7 @@ pub struct UnlessPaysEffect<E> {
     pub before_delayed_step: bool,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CumulativeUpkeepEffect<E> {
     pub player: PlayerFilter,
@@ -4379,6 +4581,7 @@ impl<E> CumulativeUpkeepEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnlessActionEffect<E> {
     pub player: PlayerFilter,
@@ -4386,6 +4589,7 @@ pub struct UnlessActionEffect<E> {
     pub alternative: Vec<E>,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForPlayersEffect<E> {
     pub filter: PlayerFilter,
@@ -4394,6 +4598,7 @@ pub struct ForPlayersEffect<E> {
     pub stop_after_first_happened: bool,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForEachTaggedEffect<E> {
     pub tag: crate::tag::TagKey,
@@ -4405,18 +4610,21 @@ pub struct ForEachTaggedEffect<E> {
     pub controller_at_last_blocked_by: Option<crate::tag::TagKey>,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForEachControllerOfTaggedEffect<E> {
     pub tag: crate::tag::TagKey,
     pub effects: Vec<E>,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForEachTaggedPlayerEffect<E> {
     pub tag: crate::tag::TagKey,
     pub effects: Vec<E>,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReflexiveTriggerEffect<E> {
     pub condition: EffectId,

@@ -30,7 +30,7 @@ fn parse_next_spell_grant_ability(
     action.lowers_to_static_ability().then(|| action.into())
 }
 
-pub(crate) fn parse_next_spell_grant_sentence_lexed(
+pub fn parse_next_spell_grant_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if let Some(shape) = parse_next_spell_grant_tokens(tokens)?

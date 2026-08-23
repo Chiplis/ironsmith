@@ -8,31 +8,29 @@ use crate::util::join_sentences_with_period;
 use super::document_shapes;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StatementGroupBoundaryKind {
+pub enum StatementGroupBoundaryKind {
     NonPrefixInstead,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct StatementGroupBoundary {
-    pub(crate) sentence_index: usize,
-    pub(crate) kind: StatementGroupBoundaryKind,
+pub struct StatementGroupBoundary {
+    pub sentence_index: usize,
+    pub kind: StatementGroupBoundaryKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct StatementSentencesShape {
-    pub(crate) sentences: Vec<Vec<OwnedLexToken>>,
+pub struct StatementSentencesShape {
+    pub sentences: Vec<Vec<OwnedLexToken>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct StatementGroupingShape {
-    pub(crate) sentences: Vec<Vec<OwnedLexToken>>,
-    pub(crate) groups: Vec<Vec<OwnedLexToken>>,
-    pub(crate) boundary: Option<StatementGroupBoundary>,
+pub struct StatementGroupingShape {
+    pub sentences: Vec<Vec<OwnedLexToken>>,
+    pub groups: Vec<Vec<OwnedLexToken>>,
+    pub boundary: Option<StatementGroupBoundary>,
 }
 
-pub(crate) fn parse_statement_sentences_tokens(
-    tokens: &[OwnedLexToken],
-) -> StatementSentencesShape {
+pub fn parse_statement_sentences_tokens(tokens: &[OwnedLexToken]) -> StatementSentencesShape {
     let sentences = split_lexed_sentences(tokens)
         .into_iter()
         .filter(|sentence_tokens| !sentence_tokens.is_empty())
@@ -46,7 +44,7 @@ pub(crate) fn parse_statement_sentences_tokens(
     StatementSentencesShape { sentences }
 }
 
-pub(crate) fn parse_statement_group_boundary(
+pub fn parse_statement_group_boundary(
     sentences: &[Vec<OwnedLexToken>],
 ) -> Option<StatementGroupBoundary> {
     sentences
@@ -61,7 +59,7 @@ pub(crate) fn parse_statement_group_boundary(
         })
 }
 
-pub(crate) fn parse_statement_grouping_tokens(tokens: &[OwnedLexToken]) -> StatementGroupingShape {
+pub fn parse_statement_grouping_tokens(tokens: &[OwnedLexToken]) -> StatementGroupingShape {
     let StatementSentencesShape { sentences } = parse_statement_sentences_tokens(tokens);
     let boundary = parse_statement_group_boundary(&sentences);
     let groups = match (sentences.as_slice(), boundary) {

@@ -1,0 +1,15 @@
+[package]
+name = "ironsmith-compiler-syntax"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ironsmith-compiler-api = { path = "../ironsmith-compiler-api", default-features = false }
+logos = "0.16.1"
+winnow = { version = "1.0.1", default-features = false, features = ["std", "ascii"] }
+
+[features]
+default = []
+
+[lib]
+path = "src/lib.rs"

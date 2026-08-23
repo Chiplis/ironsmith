@@ -7,7 +7,7 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StickerCountKind {
+pub enum StickerCountKind {
     Any,
     PowerToughness,
     Name,
@@ -16,15 +16,15 @@ pub(crate) enum StickerCountKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct StickerCountShape<'a> {
-    pub(crate) kind: StickerCountKind,
-    pub(crate) source_tokens: &'a [OwnedLexToken],
-    pub(crate) min_name_letters: Option<u32>,
-    pub(crate) max_name_letters: Option<u32>,
+pub struct StickerCountShape<'a> {
+    pub kind: StickerCountKind,
+    pub source_tokens: &'a [OwnedLexToken],
+    pub min_name_letters: Option<u32>,
+    pub max_name_letters: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ForEachSpecialShape<'a> {
+pub enum ForEachSpecialShape<'a> {
     AffectedAttackedThisTurn,
     ColorsOfAffected,
     CreatureTypesOfAffected,
@@ -34,15 +34,13 @@ pub(crate) enum ForEachSpecialShape<'a> {
     UnspentGreenManaYouHave,
 }
 
-pub(crate) fn parse_for_each_rest(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn parse_for_each_rest(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
     let (_, rest) = primitives::parse_prefix(tokens, primitives::phrase(&["for", "each"]))?;
     Some(rest)
 }
 
-pub(crate) fn parse_for_each_special_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<ForEachSpecialShape<'_>> {
+pub fn parse_for_each_special_shape(tokens: &[OwnedLexToken]) -> Option<ForEachSpecialShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
     if let Ok(minimum_cards) = primitives::parse_all(
         tokens,
@@ -116,14 +114,12 @@ fn parse_graveyard_card_threshold(input: &mut LexStream<'_>) -> WResult<u32> {
     Ok(minimum_cards)
 }
 
-pub(crate) fn parse_sticker_count_shape(tokens: &[OwnedLexToken]) -> Option<StickerCountShape<'_>> {
+pub fn parse_sticker_count_shape(tokens: &[OwnedLexToken]) -> Option<StickerCountShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
     primitives::parse_all(tokens, parse_sticker_count_lexed, "sticker count shape").ok()
 }
 
-pub(crate) fn parse_compound_count_segments(
-    tokens: &[OwnedLexToken],
-) -> Option<Vec<&[OwnedLexToken]>> {
+pub fn parse_compound_count_segments(tokens: &[OwnedLexToken]) -> Option<Vec<&[OwnedLexToken]>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
     if !contains_word(tokens, || primitives::kw("and").void()) {
         return None;
@@ -162,7 +158,7 @@ pub(crate) fn parse_compound_count_segments(
     Some(segments)
 }
 
-pub(crate) fn strip_each_or_every(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+pub fn strip_each_or_every(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     primitives::parse_prefix(tokens, parse_each_or_every)
         .map(|(_, rest)| rest)
         .unwrap_or(tokens)

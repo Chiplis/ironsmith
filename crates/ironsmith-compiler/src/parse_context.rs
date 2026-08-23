@@ -1,6 +1,5 @@
 use std::cell::{Cell, Ref, RefCell, RefMut};
 
-use crate::cards::builders::CardDefinitionBuilder;
 use crate::diagnostics::TextSpan;
 use crate::model::provenance::{ProvenanceId, ProvenanceStore};
 use crate::model::symbols::{
@@ -147,36 +146,6 @@ impl ParseContext {
         }
     }
 
-    pub(crate) fn for_builder(
-        builder: &CardDefinitionBuilder,
-        text: &str,
-        allow_unsupported: bool,
-    ) -> Self {
-        let mut context = Self::new(
-            SourceIdentity {
-                unit: SourceUnitId(0),
-                card_name: builder.card_builder.name_ref().trim().to_string(),
-                face_index: 0,
-                source_len: text.len(),
-                source_line_count: text.lines().count(),
-            },
-            CardFaceMetadata {
-                supertypes: builder.card_builder.supertypes_ref().to_vec(),
-                card_types: builder.card_builder.card_types_ref().to_vec(),
-                subtypes: builder.card_builder.subtypes_ref().to_vec(),
-                other_face_name: None,
-            },
-            ParseFeatures {
-                allow_unsupported,
-                preserve_reminder_text: false,
-                capture_trace: crate::parse_trace::is_enabled(),
-            },
-        );
-        context.provenance =
-            ProvenanceStore::capture(context.source.unit, text, &context.source.card_name);
-        context
-    }
-
     pub fn source(&self) -> &SourceIdentity {
         &self.source
     }
@@ -201,7 +170,7 @@ impl ParseContext {
         &self.provenance
     }
 
-    pub(crate) fn replace_provenance(&mut self, provenance: ProvenanceStore) {
+    pub fn replace_provenance(&mut self, provenance: ProvenanceStore) {
         self.provenance = provenance;
     }
 

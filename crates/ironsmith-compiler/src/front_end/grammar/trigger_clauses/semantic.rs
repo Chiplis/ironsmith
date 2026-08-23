@@ -1657,7 +1657,7 @@ fn parse_passive_damage_source_filter(
     Ok(source)
 }
 
-pub(crate) fn strip_leading_trigger_intro(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+pub fn strip_leading_trigger_intro(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     if token_slice_at_is_any(tokens, 0, &["when", "whenever", "at"]) {
         &tokens[1..]
     } else {
@@ -1822,15 +1822,15 @@ fn transform_destination_name_after_into(
     trigger_destination_name_from_tokens(&tokens[span.first..])
 }
 
-pub(crate) fn split_trigger_or_index(tokens: &[OwnedLexToken]) -> Option<usize> {
+pub fn split_trigger_or_index(tokens: &[OwnedLexToken]) -> Option<usize> {
     trigger_grammar::parse_trigger_or_split(tokens).map(|split| split.separator)
 }
 
-pub(crate) fn has_leading_one_or_more(tokens: &[OwnedLexToken]) -> bool {
+pub fn has_leading_one_or_more(tokens: &[OwnedLexToken]) -> bool {
     leading_one_or_more_prefix_len(tokens).is_some()
 }
 
-pub(crate) fn leading_one_or_more_prefix_len(tokens: &[OwnedLexToken]) -> Option<usize> {
+pub fn leading_one_or_more_prefix_len(tokens: &[OwnedLexToken]) -> Option<usize> {
     let (count, used) =
         parse_greater_than_or_equal_quantity_prefix(tokens, false, false, "trigger subject")
             .ok()
@@ -1838,7 +1838,7 @@ pub(crate) fn leading_one_or_more_prefix_len(tokens: &[OwnedLexToken]) -> Option
     (count == 1).then_some(used)
 }
 
-pub(crate) fn parse_leading_or_more_quantifier(
+pub fn parse_leading_or_more_quantifier(
     tokens: &[OwnedLexToken],
 ) -> Option<(u32, &[OwnedLexToken])> {
     let (count, used) =
@@ -1848,7 +1848,7 @@ pub(crate) fn parse_leading_or_more_quantifier(
     Some((count, &tokens[used..]))
 }
 
-pub(crate) fn parse_leading_exactly_quantifier(
+pub fn parse_leading_exactly_quantifier(
     tokens: &[OwnedLexToken],
 ) -> Option<(u32, &[OwnedLexToken])> {
     if !tokens.first()?.is_word("exactly") {
@@ -1862,7 +1862,7 @@ pub(crate) fn parse_leading_exactly_quantifier(
 /// moved-or-cast origin condition ("it entered from your graveyard or you
 /// cast it from your graveyard"). Such clauses scope the trigger event itself
 /// and must stay with the trigger instead of becoming a standalone predicate.
-pub(crate) fn clause_words_are_moved_or_cast_origin_condition(words: &[&str]) -> bool {
+pub fn clause_words_are_moved_or_cast_origin_condition(words: &[&str]) -> bool {
     let mut prefixed = Vec::with_capacity(words.len() + 1);
     prefixed.push("if");
     prefixed.extend_from_slice(words);
@@ -1871,7 +1871,7 @@ pub(crate) fn clause_words_are_moved_or_cast_origin_condition(words: &[&str]) ->
 
 /// Whether a parsed trigger spec carries a moved-or-cast origin condition
 /// (possibly nested under an intro surface or an either-union).
-pub(crate) fn trigger_spec_has_moved_or_cast_origin_condition(trigger: &TriggerSpec) -> bool {
+pub fn trigger_spec_has_moved_or_cast_origin_condition(trigger: &TriggerSpec) -> bool {
     use ironsmith_core::trigger_model::ZoneChangeOriginCondition;
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => {
@@ -1958,10 +1958,8 @@ fn parse_moved_or_cast_origin_condition(
     )
 }
 
-pub(crate) fn parse_trigger_clause_lexed(
-    tokens: &[OwnedLexToken],
-) -> Result<TriggerSpec, CardTextError> {
-    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+pub fn parse_trigger_clause_lexed(tokens: &[OwnedLexToken]) -> Result<TriggerSpec, CardTextError> {
+    crate::stack::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
         // `... while <condition>` qualifies the event itself. Preserve it as
         // a typed matcher wrapper before union parsing or the broad attack/
         // cast routes can accept only the event prefix and silently discard

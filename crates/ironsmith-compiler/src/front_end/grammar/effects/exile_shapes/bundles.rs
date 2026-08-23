@@ -7,13 +7,13 @@ use crate::lexer::{LexStream, OwnedLexToken};
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AttachedObjectExileShape {
-    pub(crate) target: Vec<OwnedLexToken>,
-    pub(crate) attachment_filter: Vec<OwnedLexToken>,
+pub struct AttachedObjectExileShape {
+    pub target: Vec<OwnedLexToken>,
+    pub attachment_filter: Vec<OwnedLexToken>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SameNameExileOwnerShape {
+pub enum SameNameExileOwnerShape {
     TargetPlayer,
     TargetOpponent,
     ThatPlayer,
@@ -23,17 +23,17 @@ pub(crate) enum SameNameExileOwnerShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SameNameHandGraveyardExileShape {
-    pub(crate) owner: SameNameExileOwnerShape,
+pub struct SameNameHandGraveyardExileShape {
+    pub owner: SameNameExileOwnerShape,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ExileFaceDownSuffixShape<'a> {
-    pub(crate) core: &'a [OwnedLexToken],
-    pub(crate) face_down: bool,
+pub struct ExileFaceDownSuffixShape<'a> {
+    pub core: &'a [OwnedLexToken],
+    pub face_down: bool,
 }
 
-pub(crate) fn parse_attached_object_exile_shape(
+pub fn parse_attached_object_exile_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedObjectExileShape> {
     let (target, attached) =
@@ -95,7 +95,7 @@ fn hand_or_graveyard(input: &mut LexStream<'_>) -> WResult<Zone> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_same_name_hand_graveyard_exile_shape(
+pub fn parse_same_name_hand_graveyard_exile_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SameNameHandGraveyardExileShape> {
     primitives::parse_prefix(
@@ -126,7 +126,7 @@ pub(crate) fn parse_same_name_hand_graveyard_exile_shape(
     })
 }
 
-pub(crate) fn parse_exile_face_down_suffix_shape(
+pub fn parse_exile_face_down_suffix_shape(
     tokens: &[OwnedLexToken],
 ) -> ExileFaceDownSuffixShape<'_> {
     let before_instead =
@@ -145,12 +145,12 @@ pub(crate) fn parse_exile_face_down_suffix_shape(
     }
 }
 
-pub(crate) fn strip_exile_all_or_each_shape(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn strip_exile_all_or_each_shape(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     primitives::parse_prefix(tokens, alt((primitives::kw("all"), primitives::kw("each"))))
         .map(|(_, rest)| rest)
 }
 
-pub(crate) fn starts_exile_multi_target_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn starts_exile_multi_target_shape(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, primitives::kw("target")).is_some()
         || (primitives::parse_prefix(tokens, primitives::phrase(&["up", "to"])).is_some()
             && permission_shapes::contains_tokens(tokens, &["target"]))

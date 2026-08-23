@@ -9,13 +9,13 @@ use crate::mana::ManaCost;
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct FlashbackKeywordLineSpec<'a> {
-    pub(crate) cost: ManaCost,
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
+pub struct FlashbackKeywordLineSpec<'a> {
+    pub cost: ManaCost,
+    pub tail_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FlashbackCostClause<'a> {
+pub enum FlashbackCostClause<'a> {
     Missing,
     UnsupportedCostsClause(&'a [OwnedLexToken]),
     Cost(&'a [OwnedLexToken]),
@@ -33,7 +33,7 @@ fn parse_flashback_keyword_line_spec<'a>(
     Ok(FlashbackKeywordLineSpec { cost, tail_tokens })
 }
 
-pub(crate) fn parse_flashback_keyword_line_spec_lexed(
+pub fn parse_flashback_keyword_line_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<FlashbackKeywordLineSpec<'_>> {
     primitives::parse_all(
@@ -44,7 +44,7 @@ pub(crate) fn parse_flashback_keyword_line_spec_lexed(
     .ok()
 }
 
-pub(crate) fn parse_flashback_cost_clause_tokens(
+pub fn parse_flashback_cost_clause_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<FlashbackCostClause<'_>> {
     primitives::parse_all(tokens, parse_flashback_cost_clause, "flashback-cost-clause").ok()

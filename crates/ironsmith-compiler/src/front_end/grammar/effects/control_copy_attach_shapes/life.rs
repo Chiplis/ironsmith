@@ -5,18 +5,18 @@ use crate::grammar::{leaf, permission_shapes, primitives};
 use crate::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ExactLifeSurface {
+pub enum ExactLifeSurface {
     Fixed(u32),
     LoseGame,
     NoLifePrevention,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct LifeSurfaceShape<'a> {
-    pub(crate) exact: Option<ExactLifeSurface>,
-    pub(crate) remap_its_source_stat: bool,
-    pub(crate) unsupported_shuffle_graveyard: bool,
-    pub(crate) unless_tail: Option<&'a [OwnedLexToken]>,
+pub struct LifeSurfaceShape<'a> {
+    pub exact: Option<ExactLifeSurface>,
+    pub remap_its_source_stat: bool,
+    pub unsupported_shuffle_graveyard: bool,
+    pub unless_tail: Option<&'a [OwnedLexToken]>,
 }
 
 fn exact_no_life(input: &mut LexStream<'_>) -> winnow::error::ModalResult<()> {
@@ -48,7 +48,7 @@ fn parse_exact_life_surface(tokens: &[OwnedLexToken]) -> Option<ExactLifeSurface
     Some(ExactLifeSurface::Fixed(amount))
 }
 
-pub(crate) fn parse_life_surface_shape(tokens: &[OwnedLexToken]) -> LifeSurfaceShape<'_> {
+pub fn parse_life_surface_shape(tokens: &[OwnedLexToken]) -> LifeSurfaceShape<'_> {
     let unless_tail =
         primitives::parse_prefix(trim_lexed_commas(tokens), primitives::kw("unless").void())
             .map(|(_, rest)| trim_lexed_commas(rest));

@@ -23,9 +23,9 @@ const MEMORY_ACTION_WORDS: &[&str] = &[
 ];
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TopCardsViewShape {
-    pub(crate) revealed: bool,
-    pub(crate) count: Value,
+pub struct TopCardsViewShape {
+    pub revealed: bool,
+    pub count: Value,
 }
 
 fn top_cards_view_head(input: &mut LexStream<'_>) -> WResult<bool> {
@@ -90,7 +90,7 @@ fn parse_prior_effect_count_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     })
 }
 
-pub(crate) fn parse_where_x_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_where_x_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     if let Some((value, used)) = parse_value_prefix_lexed(tokens)
         && trim_lexed_commas(tokens.get(used..)?).is_empty()
     {
@@ -112,7 +112,7 @@ pub(crate) fn parse_where_x_value(tokens: &[OwnedLexToken]) -> Option<Value> {
         .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
 }
 
-pub(crate) fn parse_top_cards_view_shape(tokens: &[OwnedLexToken]) -> Option<TopCardsViewShape> {
+pub fn parse_top_cards_view_shape(tokens: &[OwnedLexToken]) -> Option<TopCardsViewShape> {
     let tokens = trim_lexed_commas(tokens);
     if let Some((revealed, remainder)) =
         primitives::parse_prefix(tokens, that_many_cards_from_top_head)

@@ -151,7 +151,7 @@ fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
     false
 }
 
-pub(crate) fn payment_effect_to_cost(effect: crate::effect::Effect) -> Result<Cost, String> {
+pub fn payment_effect_to_cost(effect: crate::effect::Effect) -> Result<Cost, String> {
     let payload_type = effect.payload_type_name();
     if is_payment_effect(&effect) || payload_type.contains("TaggedEffect") {
         Ok(Cost::effect(effect))
@@ -163,7 +163,7 @@ pub(crate) fn payment_effect_to_cost(effect: crate::effect::Effect) -> Result<Co
     }
 }
 
-pub(crate) fn is_tagged_type_marker_effect(effect: &crate::effect::Effect) -> bool {
+pub fn is_tagged_type_marker_effect(effect: &crate::effect::Effect) -> bool {
     let debug = format!("{effect:?}");
     if debug.contains("TaggedEffect")
         && debug.contains("typed_")
@@ -188,7 +188,7 @@ pub(crate) fn is_tagged_type_marker_effect(effect: &crate::effect::Effect) -> bo
         })
 }
 
-pub(crate) fn payment_effects_to_total_cost(
+pub fn payment_effects_to_total_cost(
     effects: impl IntoIterator<Item = crate::effect::Effect>,
 ) -> Result<crate::cost::TotalCost, String> {
     effects
@@ -309,7 +309,7 @@ pub(crate) fn cost_to_payment_effect(cost: &Cost) -> Option<crate::effect::Effec
     }
 }
 
-pub(crate) fn total_cost_to_payment_effects(
+pub fn total_cost_to_payment_effects(
     total_cost: &crate::cost::TotalCost,
 ) -> Vec<crate::effect::Effect> {
     match total_cost.kind() {

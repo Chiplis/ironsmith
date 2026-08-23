@@ -12,7 +12,7 @@ use super::super::{
 use crate::lexer::{OwnedLexToken, TokenWordView};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum UnsupportedRewriteLineKind {
+pub enum UnsupportedRewriteLineKind {
     FirstSpellCostModifier,
     StaticClause,
     TrailingPreventNextDamage,
@@ -45,7 +45,7 @@ pub(crate) enum UnsupportedRewriteLineKind {
 }
 
 impl UnsupportedRewriteLineKind {
-    pub(crate) fn diagnostic(self) -> &'static str {
+    pub fn diagnostic(self) -> &'static str {
         match self {
             Self::FirstSpellCostModifier => "unsupported first-spell cost modifier mechanic",
             Self::StaticClause => "unsupported static clause",
@@ -313,7 +313,7 @@ const RULES: &[UnsupportedRule] = &[
     },
 ];
 
-pub(crate) fn parse_unsupported_rewrite_line_kind(
+pub fn parse_unsupported_rewrite_line_kind(
     tokens: &[OwnedLexToken],
 ) -> Option<UnsupportedRewriteLineKind> {
     if supported_static_loses_abilities_becomes_line(tokens) {

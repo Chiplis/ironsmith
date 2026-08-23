@@ -15,26 +15,26 @@ use super::{leaf, primitives};
 
 #[path = "keyword_action_costs/semantic_shapes.rs"]
 mod semantic_shapes;
-pub(crate) use semantic_shapes::*;
+pub use semantic_shapes::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum KeywordUntapRestriction {
+pub enum KeywordUntapRestriction {
     Bare,
     DuringStep,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PaymentAlternativeSplit {
-    pub(crate) delimiter: usize,
+pub struct PaymentAlternativeSplit {
+    pub delimiter: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct KeywordPaymentLead {
-    pub(crate) payload_first: usize,
+pub struct KeywordPaymentLead {
+    pub payload_first: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum KeywordDynamicPaymentShape {
+pub enum KeywordDynamicPaymentShape {
     Energy {
         value: Range<usize>,
     },
@@ -46,7 +46,7 @@ pub(crate) enum KeywordDynamicPaymentShape {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum KeywordDynamicManaTail {
+pub enum KeywordDynamicManaTail {
     Life { value: Option<Range<usize>> },
     WhereX { same_name_in_graveyard: bool },
     ForEach,
@@ -54,7 +54,7 @@ pub(crate) enum KeywordDynamicManaTail {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum KeywordAbilityHead {
+pub enum KeywordAbilityHead {
     Other,
     CumulativeUpkeep { cost: Range<usize> },
     Crew,
@@ -80,29 +80,29 @@ pub(crate) enum KeywordAbilityHead {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct KeywordAbilitySurface {
-    pub(crate) phrase_first: usize,
-    pub(crate) word_count: usize,
-    pub(crate) head: KeywordAbilityHead,
-    pub(crate) sorcery_speed_reminder: bool,
-    pub(crate) once_per_turn_reminder: bool,
-    pub(crate) conjoined: bool,
-    pub(crate) unblockable_tail: bool,
+pub struct KeywordAbilitySurface {
+    pub phrase_first: usize,
+    pub word_count: usize,
+    pub head: KeywordAbilityHead,
+    pub sorcery_speed_reminder: bool,
+    pub once_per_turn_reminder: bool,
+    pub conjoined: bool,
+    pub unblockable_tail: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum KeywordTriggerObjectHead {
+pub enum KeywordTriggerObjectHead {
     CardType(CardType),
     Subtype(Subtype),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct DynamicSoulshiftShape {
-    pub(crate) count_filter: ObjectFilter,
+pub struct DynamicSoulshiftShape {
+    pub count_filter: ObjectFilter,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SpecialAbilityPhraseKind {
+pub enum SpecialAbilityPhraseKind {
     VariableCasualtyPlaneswalkerCopy,
     StartYourEngines,
     AnyLandwalk,
@@ -110,7 +110,7 @@ pub(crate) enum SpecialAbilityPhraseKind {
     ArtifactLandwalk,
 }
 
-pub(crate) fn parse_dynamic_soulshift_words(words: &[&str]) -> Option<DynamicSoulshiftShape> {
+pub fn parse_dynamic_soulshift_words(words: &[&str]) -> Option<DynamicSoulshiftShape> {
     let mut input: primitives::WordSliceInput<'_> = words;
     parse_dynamic_soulshift_word_slice
         .parse_next(&mut input)
@@ -123,9 +123,7 @@ pub(crate) fn parse_dynamic_soulshift_words(words: &[&str]) -> Option<DynamicSou
     })
 }
 
-pub(crate) fn parse_dynamic_soulshift_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<DynamicSoulshiftShape> {
+pub fn parse_dynamic_soulshift_tokens(tokens: &[OwnedLexToken]) -> Option<DynamicSoulshiftShape> {
     primitives::parse_prefix(tokens, parse_dynamic_soulshift_lexed)?;
     Some(DynamicSoulshiftShape {
         count_filter: ObjectFilter::default()
@@ -135,9 +133,7 @@ pub(crate) fn parse_dynamic_soulshift_tokens(
     })
 }
 
-pub(crate) fn parse_special_ability_phrase_words(
-    words: &[&str],
-) -> Option<SpecialAbilityPhraseKind> {
+pub fn parse_special_ability_phrase_words(words: &[&str]) -> Option<SpecialAbilityPhraseKind> {
     let mut variable: primitives::WordSliceInput<'_> = words;
     if parse_variable_casualty_planeswalker_copy_words
         .parse_next(&mut variable)
@@ -224,9 +220,7 @@ fn parse_exact_special_ability_phrase_words(
     .parse_next(input)
 }
 
-pub(crate) fn parse_keyword_untap_restriction_words(
-    words: &[&str],
-) -> Option<KeywordUntapRestriction> {
+pub fn parse_keyword_untap_restriction_words(words: &[&str]) -> Option<KeywordUntapRestriction> {
     let mut input: primitives::WordSliceInput<'_> = words;
     parse_keyword_untap_restriction_lexed_words
         .parse_next(&mut input)
@@ -234,13 +228,13 @@ pub(crate) fn parse_keyword_untap_restriction_words(
         .filter(|_| input.is_empty())
 }
 
-pub(crate) fn parse_payment_alternative_split_tokens(
+pub fn parse_payment_alternative_split_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PaymentAlternativeSplit> {
     primitives::parse_prefix(tokens, parse_payment_alternative_split_lexed).map(|(split, _)| split)
 }
 
-pub(crate) fn parse_keyword_payment_lead_tokens(tokens: &[OwnedLexToken]) -> KeywordPaymentLead {
+pub fn parse_keyword_payment_lead_tokens(tokens: &[OwnedLexToken]) -> KeywordPaymentLead {
     let payload_first = primitives::parse_prefix(
         tokens,
         alt((
@@ -253,7 +247,7 @@ pub(crate) fn parse_keyword_payment_lead_tokens(tokens: &[OwnedLexToken]) -> Key
     KeywordPaymentLead { payload_first }
 }
 
-pub(crate) fn parse_keyword_dynamic_payment_tokens(
+pub fn parse_keyword_dynamic_payment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<KeywordDynamicPaymentShape> {
     if let Some((value_first, rest)) =
@@ -281,9 +275,7 @@ pub(crate) fn parse_keyword_dynamic_payment_tokens(
     })
 }
 
-pub(crate) fn parse_keyword_dynamic_mana_tail_tokens(
-    tokens: &[OwnedLexToken],
-) -> KeywordDynamicManaTail {
+pub fn parse_keyword_dynamic_mana_tail_tokens(tokens: &[OwnedLexToken]) -> KeywordDynamicManaTail {
     if let Some(value) = parse_keyword_dynamic_life_tail_tokens(tokens) {
         return KeywordDynamicManaTail::Life { value: Some(value) };
     }
@@ -310,7 +302,7 @@ pub(crate) fn parse_keyword_dynamic_mana_tail_tokens(
     KeywordDynamicManaTail::Modifier
 }
 
-pub(crate) fn parse_keyword_ability_surface_tokens(
+pub fn parse_keyword_ability_surface_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<KeywordAbilitySurface> {
     let (phrase_first, phrase_tokens) =
@@ -384,7 +376,7 @@ pub(crate) fn parse_keyword_ability_surface_tokens(
     })
 }
 
-pub(crate) fn parse_keyword_trigger_object_head(word: &str) -> Option<KeywordTriggerObjectHead> {
+pub fn parse_keyword_trigger_object_head(word: &str) -> Option<KeywordTriggerObjectHead> {
     if let Ok(card_type) = leaf::parse_leaf_card_type_complete(word) {
         return Some(KeywordTriggerObjectHead::CardType(card_type));
     }

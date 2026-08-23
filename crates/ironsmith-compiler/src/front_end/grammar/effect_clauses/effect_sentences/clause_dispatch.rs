@@ -1,4 +1,4 @@
-pub(crate) use self::become_clause::parse_become_clause;
+pub use self::become_clause::parse_become_clause;
 use self::helpers::{parse_controller_or_owner_of_target_subject, render_lower_words};
 use self::next_turn_cant::parse_next_turn_cant_clause;
 use super::super::activation_and_restrictions::{
@@ -638,7 +638,7 @@ fn parse_mana_any_type_cast_tagged_this_way_clause(tokens: &[OwnedLexToken]) -> 
     })
 }
 
-pub(crate) fn parse_for_each_prevent_damage_clause(
+pub fn parse_for_each_prevent_damage_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = clause_grammar::parse_for_each_prevent_shape(tokens) else {
@@ -668,7 +668,7 @@ pub(crate) fn parse_for_each_prevent_damage_clause(
     Ok(Some(EffectAst::ForEachObject { filter, effects }))
 }
 
-pub(crate) fn parse_for_each_counter_group_removed_this_way_clause(
+pub fn parse_for_each_counter_group_removed_this_way_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = clause_grammar::parse_counter_group_removed_shape(tokens) else {
@@ -1370,13 +1370,13 @@ fn lower_direct_clause_shape(
     }
 }
 
-pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+pub fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     // Clause parsing is a public compiler boundary as well as an internal
     // sentence-parser stage. Lower-level callers and focused tests can enter
     // here without passing through the stack guards on the sentence and chain
     // dispatchers, while the clause alternatives still recurse through the
     // same deeply nested object-filter grammar.
-    stacker::maybe_grow(128 * 1024 * 1024, 256 * 1024 * 1024, || {
+    crate::stack::maybe_grow(128 * 1024 * 1024, 256 * 1024 * 1024, || {
         parse_effect_clause_unstacked(tokens)
     })
 }
@@ -2446,7 +2446,7 @@ fn parse_effect_clause_unstacked(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
 /// creature if it's a Vehicle".  The ordinary trailing-if splitter cannot
 /// consume this shape because the first predicate is followed by another
 /// effect rather than the end of the clause.
-pub(crate) fn parse_conditional_become_pair(
+pub fn parse_conditional_become_pair(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some((verb, _)) = find_verb(tokens) else {
@@ -2583,7 +2583,7 @@ pub(super) fn parse_hexproof_targeting_override_clause(
     )))
 }
 
-pub(crate) fn parse_targeting_as_though_no_ability_spec(
+pub fn parse_targeting_as_though_no_ability_spec(
     tokens: &[OwnedLexToken],
 ) -> Result<
     Option<ironsmith_core::static_ability_model::TargetingAsThoughNoAbilitySpec>,
@@ -2667,9 +2667,7 @@ pub(crate) fn parse_targeting_as_though_no_ability_spec(
     ))
 }
 
-pub(crate) fn parse_effect_clause_lexed(
-    tokens: &[OwnedLexToken],
-) -> Result<EffectAst, CardTextError> {
+pub fn parse_effect_clause_lexed(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     parse_effect_clause(tokens)
 }
 
@@ -3257,7 +3255,7 @@ mod tests {
 
     #[test]
     fn explicit_target_damage_subject_owns_its_characteristic_and_controller() {
-        stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+        crate::stack::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
             let tokens = lex_line(
                 "target enchantment deals damage equal to its mana value to its controller",
                 0,

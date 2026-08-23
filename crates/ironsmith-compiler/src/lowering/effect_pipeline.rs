@@ -18,7 +18,7 @@ use crate::model::reference_state::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum EffectPreludeTag {
+pub enum EffectPreludeTag {
     AttachedSource(TagKey),
     TriggeringObject(TagKey),
     TriggeringAttacker(TagKey, crate::target::ObjectFilter),
@@ -29,42 +29,42 @@ pub(crate) enum EffectPreludeTag {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct PreparedPredicateForLowering {
-    pub(crate) predicate: PredicateAst,
-    pub(crate) reference_env: ReferenceEnv,
-    pub(crate) saved_last_object_tag: Option<TagKey>,
+pub struct PreparedPredicateForLowering {
+    pub predicate: PredicateAst,
+    pub reference_env: ReferenceEnv,
+    pub saved_last_object_tag: Option<TagKey>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct SourceSentenceSegment {
-    pub(crate) effect_count: usize,
-    pub(crate) leading_then: bool,
-    pub(crate) starting_with_controller: bool,
+pub struct SourceSentenceSegment {
+    pub effect_count: usize,
+    pub leading_then: bool,
+    pub starting_with_controller: bool,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct PreparedEffectsForLowering {
-    pub(crate) effects: Vec<EffectAst>,
+pub struct PreparedEffectsForLowering {
+    pub effects: Vec<EffectAst>,
     /// Top-level semantic-effect span and typed leading connective for each
     /// authored source sentence. Empty means the source did not carry an
     /// independently verified multi-sentence boundary into preparation.
-    pub(crate) source_sentence_segments: Vec<SourceSentenceSegment>,
-    pub(crate) imports: ReferenceImports,
-    pub(crate) initial_env: ReferenceEnv,
-    pub(crate) annotated: AnnotatedEffectSequence,
-    pub(crate) exports: ReferenceExports,
-    pub(crate) prelude: Vec<EffectPreludeTag>,
-    pub(crate) force_auto_tag_object_targets: bool,
+    pub source_sentence_segments: Vec<SourceSentenceSegment>,
+    pub imports: ReferenceImports,
+    pub initial_env: ReferenceEnv,
+    pub annotated: AnnotatedEffectSequence,
+    pub exports: ReferenceExports,
+    pub prelude: Vec<EffectPreludeTag>,
+    pub force_auto_tag_object_targets: bool,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct PreparedTriggeredEffectsForLowering {
-    pub(crate) prepared: PreparedEffectsForLowering,
-    pub(crate) intervening_if: Option<PreparedPredicateForLowering>,
+pub struct PreparedTriggeredEffectsForLowering {
+    pub prepared: PreparedEffectsForLowering,
+    pub intervening_if: Option<PreparedPredicateForLowering>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum NormalizedPreparedAbility {
+pub enum NormalizedPreparedAbility {
     Activated(PreparedEffectsForLowering),
     Triggered {
         trigger: TriggerSpec,
@@ -73,37 +73,37 @@ pub(crate) enum NormalizedPreparedAbility {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct NormalizedParsedAbility {
-    pub(crate) parsed: ParsedAbility,
-    pub(crate) prepared: Option<NormalizedPreparedAbility>,
+pub struct NormalizedParsedAbility {
+    pub parsed: ParsedAbility,
+    pub prepared: Option<NormalizedPreparedAbility>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct NormalizedAdditionalCostChoiceOptionAst {
-    pub(crate) description: String,
-    pub(crate) effects_ast: Vec<EffectAst>,
-    pub(crate) prepared: PreparedEffectsForLowering,
+pub struct NormalizedAdditionalCostChoiceOptionAst {
+    pub description: String,
+    pub effects_ast: Vec<EffectAst>,
+    pub prepared: PreparedEffectsForLowering,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct NormalizedModalModeAst {
-    pub(crate) info: LineInfo,
-    pub(crate) description: String,
-    pub(crate) point_cost: Option<u32>,
-    pub(crate) additional_mana_cost: Option<crate::mana::ManaCost>,
-    pub(crate) prepared: PreparedEffectsForLowering,
+pub struct NormalizedModalModeAst {
+    pub info: LineInfo,
+    pub description: String,
+    pub point_cost: Option<u32>,
+    pub additional_mana_cost: Option<crate::mana::ManaCost>,
+    pub prepared: PreparedEffectsForLowering,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct NormalizedModalAst {
-    pub(crate) header: ParsedModalHeader,
-    pub(crate) prepared_prefix: Option<PreparedEffectsForLowering>,
-    pub(crate) prepared_common_prefix: Option<PreparedEffectsForLowering>,
-    pub(crate) modes: Vec<NormalizedModalModeAst>,
+pub struct NormalizedModalAst {
+    pub header: ParsedModalHeader,
+    pub prepared_prefix: Option<PreparedEffectsForLowering>,
+    pub prepared_common_prefix: Option<PreparedEffectsForLowering>,
+    pub modes: Vec<NormalizedModalModeAst>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum NormalizedLineChunk {
+pub enum NormalizedLineChunk {
     Abilities(Vec<KeywordAction>),
     StaticAbility(StaticAbilityAst),
     StaticAbilities(Vec<StaticAbilityAst>),
@@ -140,44 +140,44 @@ pub(crate) enum NormalizedLineChunk {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct NormalizedLineAst {
-    pub(crate) info: LineInfo,
-    pub(crate) chunks: Vec<NormalizedLineChunk>,
-    pub(crate) restrictions: ParsedRestrictions,
-    pub(crate) semantic_facts: LineSemanticFacts,
+pub struct NormalizedLineAst {
+    pub info: LineInfo,
+    pub chunks: Vec<NormalizedLineChunk>,
+    pub restrictions: ParsedRestrictions,
+    pub semantic_facts: LineSemanticFacts,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum NormalizedCardItem {
+pub enum NormalizedCardItem {
     Line(NormalizedLineAst),
     Modal(NormalizedModalAst),
     LevelAbility(ParsedLevelAbilityAst),
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct NormalizedOverloadBranch {
-    pub(crate) items: Vec<NormalizedCardItem>,
+pub struct NormalizedOverloadBranch {
+    pub items: Vec<NormalizedCardItem>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct NormalizedCleaveBranch {
-    pub(crate) items: Vec<NormalizedCardItem>,
+pub struct NormalizedCleaveBranch {
+    pub items: Vec<NormalizedCardItem>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct NormalizedCardAst {
-    pub(crate) builder: CardDefinitionBuilder,
-    pub(crate) annotations: ParseAnnotations,
-    pub(crate) provenance: ProvenanceStore,
-    pub(crate) symbols: SymbolTable,
-    pub(crate) items: Vec<NormalizedCardItem>,
-    pub(crate) overload_branch: Option<NormalizedOverloadBranch>,
-    pub(crate) cleave_branch: Option<NormalizedCleaveBranch>,
-    pub(crate) allow_unsupported: bool,
+pub struct NormalizedCardAst {
+    pub builder: CardDefinitionBuilder,
+    pub annotations: ParseAnnotations,
+    pub provenance: ProvenanceStore,
+    pub symbols: SymbolTable,
+    pub items: Vec<NormalizedCardItem>,
+    pub overload_branch: Option<NormalizedOverloadBranch>,
+    pub cleave_branch: Option<NormalizedCleaveBranch>,
+    pub allow_unsupported: bool,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct LoweredCardDocument {
-    pub(crate) definition: CardDefinition,
-    pub(crate) annotations: ParseAnnotations,
+pub struct LoweredCardDocument {
+    pub definition: CardDefinition,
+    pub annotations: ParseAnnotations,
 }

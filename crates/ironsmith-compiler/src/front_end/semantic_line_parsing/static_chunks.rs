@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) fn parse_compound_buff_and_unblockable_static_chunk(
+pub fn parse_compound_buff_and_unblockable_static_chunk(
     parse_tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {
     let Some(parsed) = effect_grammar::parse_compound_buff_unblockable_tokens(parse_tokens) else {
@@ -27,7 +27,7 @@ pub(crate) fn parse_compound_buff_and_unblockable_static_chunk(
     Ok(Some(LineAst::StaticAbilities(abilities)))
 }
 
-pub(crate) fn parse_split_static_chunk(
+pub fn parse_split_static_chunk(
     line: &RewriteStaticLine,
     parse_tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {

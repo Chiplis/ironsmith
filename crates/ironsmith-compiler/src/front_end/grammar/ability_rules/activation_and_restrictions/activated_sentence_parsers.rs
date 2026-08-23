@@ -212,13 +212,11 @@ pub(super) fn tokens_are_exhaust_once_restriction(tokens: &[OwnedLexToken]) -> b
     activated_line_grammar::parse_exhaust_once_restriction_tokens(tokens).is_some()
 }
 
-pub(crate) fn parse_activate_only_timing_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<ActivationTiming> {
+pub fn parse_activate_only_timing_lexed(tokens: &[OwnedLexToken]) -> Option<ActivationTiming> {
     ability_grammar::parse_activate_only_timing_lexed(tokens)
 }
 
-pub(crate) fn normalize_activate_only_restriction(
+pub fn normalize_activate_only_restriction(
     tokens: &[OwnedLexToken],
     timing: &ActivationTiming,
 ) -> Option<String> {
@@ -234,41 +232,39 @@ pub(crate) fn normalize_activate_only_restriction(
     }
 }
 
-pub(crate) fn is_activate_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_activate_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
     ability_grammar::is_activate_only_restriction_sentence_lexed(tokens)
 }
 
-pub(crate) fn is_spend_mana_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_spend_mana_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
     ability_grammar::is_spend_mana_restriction_sentence_lexed(tokens)
 }
 
-pub(crate) fn parse_mana_usage_restriction_sentence_lexed(
+pub fn parse_mana_usage_restriction_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::ability::ManaUsageRestriction> {
     ability_grammar::parse_mana_usage_restriction_sentence_lexed(tokens)
 }
 
-pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
+pub fn parse_mana_spend_bonus_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::ability::ManaUsageRestriction> {
     ability_grammar::parse_mana_spend_bonus_sentence_lexed(tokens)
 }
 
-pub(crate) fn is_any_player_may_activate_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_any_player_may_activate_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
     ability_grammar::is_any_player_may_activate_sentence_lexed(tokens)
 }
 
-pub(crate) fn is_trigger_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_trigger_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
     ability_grammar::is_trigger_only_restriction_sentence_lexed(tokens)
 }
 
-pub(crate) fn parse_triggered_times_each_turn_lexed(tokens: &[OwnedLexToken]) -> Option<u32> {
+pub fn parse_triggered_times_each_turn_lexed(tokens: &[OwnedLexToken]) -> Option<u32> {
     ability_grammar::parse_triggered_times_each_turn_lexed(tokens)
 }
 
-pub(crate) fn parse_activation_condition_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<crate::ConditionExpr> {
+pub fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Option<crate::ConditionExpr> {
     ability_grammar::parse_activation_condition_lexed(tokens)
 }
 

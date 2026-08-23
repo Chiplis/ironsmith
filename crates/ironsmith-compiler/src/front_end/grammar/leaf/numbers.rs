@@ -12,13 +12,13 @@ use super::super::primitives;
 use super::common::{finish_text_parse, word_boundary};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LeafNumber {
+pub enum LeafNumber {
     Fixed(u32),
     X,
 }
 
 impl LeafNumber {
-    pub(crate) fn into_value(self) -> Option<Value> {
+    pub fn into_value(self) -> Option<Value> {
         match self {
             Self::Fixed(value) => match i32::try_from(value) {
                 Ok(value) => Some(Value::Fixed(value)),
@@ -30,25 +30,25 @@ impl LeafNumber {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LeafNumberPrefix {
-    pub(crate) number: LeafNumber,
-    pub(crate) consumed: usize,
+pub struct LeafNumberPrefix {
+    pub number: LeafNumber,
+    pub consumed: usize,
 }
 
 impl LeafNumberPrefix {
-    pub(crate) fn into_fixed(self) -> Option<(u32, usize)> {
+    pub fn into_fixed(self) -> Option<(u32, usize)> {
         let LeafNumber::Fixed(value) = self.number else {
             return None;
         };
         Some((value, self.consumed))
     }
 
-    pub(crate) fn into_value(self) -> Option<(Value, usize)> {
+    pub fn into_value(self) -> Option<(Value, usize)> {
         Some((self.number.into_value()?, self.consumed))
     }
 }
 
-pub(crate) fn parse_unsigned_number(input: &mut &str) -> WResult<u32> {
+pub fn parse_unsigned_number(input: &mut &str) -> WResult<u32> {
     terminated(
         digit1.try_map(|digits: &str| digits.parse::<u32>()),
         word_boundary,
@@ -60,7 +60,7 @@ pub(crate) fn parse_unsigned_number(input: &mut &str) -> WResult<u32> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_article_number(input: &mut &str) -> WResult<u32> {
+pub fn parse_article_number(input: &mut &str) -> WResult<u32> {
     terminated(alt(("an".value(1), "a".value(1))), word_boundary)
         .context(StrContext::Label("article number"))
         .context(StrContext::Expected(StrContextValue::Description(
@@ -69,7 +69,7 @@ pub(crate) fn parse_article_number(input: &mut &str) -> WResult<u32> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_word_number(input: &mut &str) -> WResult<u32> {
+pub fn parse_word_number(input: &mut &str) -> WResult<u32> {
     let checkpoint = *input;
     let word = parse_number_word.parse_next(input)?;
     let normalized = word.to_ascii_lowercase();
@@ -84,7 +84,7 @@ pub(crate) fn parse_word_number(input: &mut &str) -> WResult<u32> {
     ))
 }
 
-pub(crate) fn parse_number(input: &mut &str) -> WResult<u32> {
+pub fn parse_number(input: &mut &str) -> WResult<u32> {
     alt((
         parse_unsigned_number,
         parse_word_number,
@@ -97,7 +97,7 @@ pub(crate) fn parse_number(input: &mut &str) -> WResult<u32> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_number_i32(input: &mut &str) -> WResult<i32> {
+pub fn parse_number_i32(input: &mut &str) -> WResult<i32> {
     alt((
         terminated(dec_int, word_boundary),
         parse_number.try_map(i32::try_from),
@@ -109,7 +109,7 @@ pub(crate) fn parse_number_i32(input: &mut &str) -> WResult<i32> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_die_sides_complete(raw: &str) -> Result<u32, CardTextError> {
+pub fn parse_leaf_die_sides_complete(raw: &str) -> Result<u32, CardTextError> {
     finish_text_parse(raw, parse_leaf_die_sides, "leaf-die-sides")
 }
 
@@ -122,8 +122,8 @@ fn parse_leaf_die_sides(input: &mut &str) -> WResult<u32> {
     .parse_next(input)
 }
 
-#[cfg(test)]
-pub(crate) fn parse_number_or_x(input: &mut &str) -> WResult<LeafNumber> {
+#[cfg(any(test, feature = "test-support"))]
+pub fn parse_number_or_x(input: &mut &str) -> WResult<LeafNumber> {
     alt((
         terminated("x", word_boundary).value(LeafNumber::X),
         parse_number.map(LeafNumber::Fixed),
@@ -135,19 +135,19 @@ pub(crate) fn parse_number_or_x(input: &mut &str) -> WResult<LeafNumber> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_number_token_lexed<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
+pub fn parse_leaf_number_token_lexed<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
     let word = primitives::word_parser_text.parse_next(input)?;
     parse_number_complete(word)
         .map_err(|_| primitives::backtrack_err("number", "numeric or counted quantity"))
 }
 
-pub(crate) fn parse_leaf_count_token<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
+pub fn parse_leaf_count_token<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
     parse_leaf_number_token_lexed
         .context(StrContext::Label("count"))
         .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_number_prefix_lexed<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
+pub fn parse_leaf_number_prefix_lexed<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
     let mut probe = input.clone();
     let first = primitives::word_parser_text.parse_next(&mut probe)?;
     if let Some(value) = repetition_adverb_number_value(first) {
@@ -158,9 +158,7 @@ pub(crate) fn parse_leaf_number_prefix_lexed<'a>(input: &mut LexStream<'a>) -> W
     parse_leaf_cardinal_number_prefix_lexed.parse_next(input)
 }
 
-pub(crate) fn parse_leaf_number_or_x_prefix_lexed<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<LeafNumber> {
+pub fn parse_leaf_number_or_x_prefix_lexed<'a>(input: &mut LexStream<'a>) -> WResult<LeafNumber> {
     let mut probe = input.clone();
     let first = primitives::word_parser_text.parse_next(&mut probe)?;
     if first == "x" {
@@ -173,22 +171,18 @@ pub(crate) fn parse_leaf_number_or_x_prefix_lexed<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_number_prefix_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<LeafNumberPrefix> {
+pub fn parse_leaf_number_prefix_tokens(tokens: &[OwnedLexToken]) -> Option<LeafNumberPrefix> {
     parse_leaf_number_prefix_tokens_with(
         tokens,
         parse_leaf_number_prefix_lexed.map(LeafNumber::Fixed),
     )
 }
 
-pub(crate) fn parse_leaf_number_or_x_prefix_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<LeafNumberPrefix> {
+pub fn parse_leaf_number_or_x_prefix_tokens(tokens: &[OwnedLexToken]) -> Option<LeafNumberPrefix> {
     parse_leaf_number_prefix_tokens_with(tokens, parse_leaf_number_or_x_prefix_lexed)
 }
 
-pub(crate) fn parse_leaf_number_prefix_words(words: &[&str]) -> Option<LeafNumberPrefix> {
+pub fn parse_leaf_number_prefix_words(words: &[&str]) -> Option<LeafNumberPrefix> {
     let mut input = words;
     let Ok(number) = parse_leaf_number_prefix_word_slice
         .map(LeafNumber::Fixed)
@@ -272,16 +266,16 @@ fn parse_leaf_number_prefix_tokens_with<'a>(
     })
 }
 
-pub(crate) fn parse_number_complete(raw: &str) -> Result<u32, CardTextError> {
+pub fn parse_number_complete(raw: &str) -> Result<u32, CardTextError> {
     finish_text_parse(raw, parse_number, "leaf-number")
 }
 
-pub(crate) fn parse_number_i32_complete(raw: &str) -> Result<i32, CardTextError> {
+pub fn parse_number_i32_complete(raw: &str) -> Result<i32, CardTextError> {
     finish_text_parse(raw, parse_number_i32, "leaf-number-i32")
 }
 
-#[cfg(test)]
-pub(crate) fn parse_number_or_x_complete(raw: &str) -> Result<LeafNumber, CardTextError> {
+#[cfg(any(test, feature = "test-support"))]
+pub fn parse_number_or_x_complete(raw: &str) -> Result<LeafNumber, CardTextError> {
     finish_text_parse(raw, parse_number_or_x, "leaf-number-or-x")
 }
 
@@ -325,7 +319,7 @@ fn parse_number_word<'a>(input: &mut &'a str) -> WResult<&'a str> {
     .parse_next(input)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 mod tests {
     use super::*;
     use crate::lexer::lex_line;

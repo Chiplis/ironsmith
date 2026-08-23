@@ -1,0 +1,16 @@
+[package]
+name = "ironsmith-runtime-catalog"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ironsmith = { package = "ironsmith-engine", path = "../ironsmith-engine", default-features = false, features = ["serialization", "effect-model-interpreter"] }
+ironsmith-compiled-artifact = { path = "../ironsmith-compiled-artifact", default-features = false }
+ironsmith-artifact-effect-decoder = { path = "../ironsmith-artifact-effect-decoder", default-features = false }
+
+[features]
+default = []
+
+[lib]
+path = "src/lib.rs"
+doctest = false

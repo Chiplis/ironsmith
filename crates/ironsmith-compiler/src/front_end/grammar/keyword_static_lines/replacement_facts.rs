@@ -8,7 +8,7 @@ use super::super::{filters, leaf, primitives};
 use super::nearby_primitives::{semantic_all, semantic_kw, semantic_noise, semantic_phrase};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CounterReplacementShape<'a> {
+pub enum CounterReplacementShape<'a> {
     GenericUnderYourControl,
     EnergyYouGet,
     PlusOneAdd {
@@ -25,7 +25,7 @@ pub(crate) enum CounterReplacementShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TokenCreationReplacementShape<'a> {
+pub enum TokenCreationReplacementShape<'a> {
     GenericUnderYourControl,
     AddTreasure {
         descriptor_tokens: &'a [OwnedLexToken],
@@ -33,7 +33,7 @@ pub(crate) enum TokenCreationReplacementShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum KeywordActionReplacementShape<'a> {
+pub enum KeywordActionReplacementShape<'a> {
     ProliferateYouTwice,
     ProliferateOpponentTwice,
     ExploreTwice,
@@ -43,9 +43,7 @@ pub(crate) enum KeywordActionReplacementShape<'a> {
     LearnReturnThisFromGraveyard,
 }
 
-pub(crate) fn parse_noncombat_damage_minus_counter_replacement_tokens(
-    tokens: &[OwnedLexToken],
-) -> bool {
+pub fn parse_noncombat_damage_minus_counter_replacement_tokens(tokens: &[OwnedLexToken]) -> bool {
     semantic_all(
         tokens,
         semantic_phrase(&[
@@ -75,7 +73,7 @@ pub(crate) fn parse_noncombat_damage_minus_counter_replacement_tokens(
     )
 }
 
-pub(crate) fn parse_counter_replacement_tokens(
+pub fn parse_counter_replacement_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CounterReplacementShape<'_>> {
     if parse_generic_counter_replacement(tokens) {
@@ -96,7 +94,7 @@ pub(crate) fn parse_counter_replacement_tokens(
     .ok()
 }
 
-pub(crate) fn parse_token_creation_replacement_tokens(
+pub fn parse_token_creation_replacement_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenCreationReplacementShape<'_>> {
     if parse_generic_token_replacement(tokens) {
@@ -110,7 +108,7 @@ pub(crate) fn parse_token_creation_replacement_tokens(
     .ok()
 }
 
-pub(crate) fn parse_keyword_action_replacement_tokens(
+pub fn parse_keyword_action_replacement_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<KeywordActionReplacementShape<'_>> {
     primitives::parse_all(

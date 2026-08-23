@@ -45,7 +45,7 @@ struct ExileHandCardShape {
     color_filter: Option<ColorSet>,
 }
 
-pub(crate) fn parse_exile_segment_tokens(
+pub fn parse_exile_segment_tokens(
     tokens: &[OwnedLexToken],
     contextual_source_reference: impl Fn(&[&str]) -> bool,
 ) -> Result<ActivationCostSegmentCst, CardTextError> {

@@ -1,7 +1,7 @@
 use super::*;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum PredicateAst {
+pub enum PredicateAst {
     ItIsNight,
     FirstCombatPhaseOfTurn,
     SourceControllersMainPhase,
@@ -317,7 +317,7 @@ pub(crate) enum PredicateAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum TurnHistoryPredicateAst {
+pub enum TurnHistoryPredicateAst {
     SpellsCastLastTurnAtLeast(u32),
     SourceCrewedByAtLeast {
         count: u32,
@@ -379,14 +379,14 @@ pub(crate) enum TurnHistoryPredicateAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PredicateReferenceAntecedent {
+pub enum PredicateReferenceAntecedent {
     SourceObject,
 }
 
 impl PredicateAst {
     /// Whether this predicate evaluates the object denoted by an implicit
     /// `it`/`that object` reference supplied by the surrounding effect.
-    pub(crate) fn uses_implicit_object_reference(&self) -> bool {
+    pub fn uses_implicit_object_reference(&self) -> bool {
         match self {
             PredicateAst::ItIsLandCard
             | PredicateAst::ItIsSoulbondPaired
@@ -401,7 +401,7 @@ impl PredicateAst {
         }
     }
 
-    pub(crate) fn reference_antecedent(&self) -> Option<PredicateReferenceAntecedent> {
+    pub fn reference_antecedent(&self) -> Option<PredicateReferenceAntecedent> {
         match self {
             PredicateAst::SourceChosenOption(_)
             | PredicateAst::SourceIsTapped
@@ -446,7 +446,7 @@ impl PredicateAst {
         }
     }
 
-    pub(crate) fn establishes_source_object_antecedent(&self) -> bool {
+    pub fn establishes_source_object_antecedent(&self) -> bool {
         matches!(
             self.reference_antecedent(),
             Some(PredicateReferenceAntecedent::SourceObject)

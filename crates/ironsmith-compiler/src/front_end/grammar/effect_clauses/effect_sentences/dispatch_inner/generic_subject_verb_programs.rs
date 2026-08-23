@@ -1226,7 +1226,7 @@ fn has_where_x_value_binding(tokens: &[OwnedLexToken]) -> bool {
             .is_some()
 }
 
-pub(crate) fn parse_any_player_may_have_source_deal_damage(
+pub fn parse_any_player_may_have_source_deal_damage(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_any_player_source_damage(tokens) else {
@@ -1311,7 +1311,7 @@ fn parse_branch_scoped_collection_subject_verb(
     is_conjunctive_collection(&effect).then_some((route, vec![effect]))
 }
 
-pub(crate) fn parse_top_level_subject_verb_recognition(
+pub fn parse_top_level_subject_verb_recognition(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(&'static str, Vec<EffectAst>)>, CardTextError> {
     if let Some(effect) = parse_triggering_object_had_counters_create_tokens(tokens)? {
@@ -1599,7 +1599,7 @@ fn parse_generic_mana_any_type_cast_tagged_this_way(tokens: &[OwnedLexToken]) ->
     })
 }
 
-pub(crate) fn parse_source_gets_unblockable_subject_verb(
+pub fn parse_source_gets_unblockable_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause = LexedClause::new(tokens).trimmed();
@@ -1727,7 +1727,7 @@ fn parse_destroy_attached_object_then_source_damage_to_controller(
     }]))
 }
 
-pub(crate) fn parse_target_gets_unblockable_subject_verb(
+pub fn parse_target_gets_unblockable_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     // The public lexer keeps a signed P/T modifier as one token, but quote
@@ -2255,7 +2255,7 @@ fn put_counted_top_cards_owner(
     }
 }
 
-pub(crate) fn parse_generic_top_cards_put_counted_into_hand_rest_graveyard_subject_verb(
+pub fn parse_generic_top_cards_put_counted_into_hand_rest_graveyard_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
     let clause_tokens = trim_commas(tokens);
@@ -2724,7 +2724,7 @@ fn parse_generic_meld_subject_verb(
     )))
 }
 
-pub(crate) fn parse_generic_control_combat_choices_subject_verb(
+pub fn parse_generic_control_combat_choices_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause = LexedClause::new(tokens).trimmed();
@@ -2778,7 +2778,7 @@ pub(crate) fn parse_generic_control_combat_choices_subject_verb(
     }
 }
 
-pub(crate) fn parse_generic_damage_replacement_counters_subject_verb(
+pub fn parse_generic_damage_replacement_counters_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
@@ -2877,7 +2877,7 @@ fn without_deferred_mana_value_clause(tokens: &[OwnedLexToken]) -> Vec<OwnedLexT
     trim_commas(&tokens[..effect_end]).to_vec()
 }
 
-pub(crate) fn parse_play_permission_subject_verb(
+pub fn parse_play_permission_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause = LexedClause::new(tokens).trimmed();
@@ -2911,7 +2911,7 @@ pub(crate) fn parse_play_permission_subject_verb(
     ))
 }
 
-pub(crate) fn parse_zone_replacement_subject_verb(
+pub fn parse_zone_replacement_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause = LexedClause::new(tokens).trimmed();
@@ -2957,7 +2957,7 @@ pub(crate) fn parse_zone_replacement_subject_verb(
     ))
 }
 
-pub(crate) fn parse_choice_complement_subject_verb(
+pub fn parse_choice_complement_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     if let Some(shape) = effect_grammar::parse_party_choice_complement_shape(tokens) {
@@ -3124,7 +3124,7 @@ pub(crate) fn parse_choice_complement_subject_verb(
 /// slot, not one object from the union.  Preserve those independent slots here
 /// so the later cross-sentence correlation pass can link the chosen set to the
 /// complement action.
-pub(crate) fn parse_for_each_type_slot_choice_clause(
+pub fn parse_for_each_type_slot_choice_clause(
     tokens: &[OwnedLexToken],
     chooser: PlayerAst,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -3195,7 +3195,7 @@ pub(crate) fn parse_for_each_type_slot_choice_clause(
     Ok(Some(choices))
 }
 
-pub(crate) fn parse_triggered_spell_opponent_damage_subject_verb(
+pub fn parse_triggered_spell_opponent_damage_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = effect_grammar::parse_triggered_spell_opponent_damage_shape(tokens) else {
@@ -3217,7 +3217,7 @@ fn choice_complement_choice_clause_from_word_order<'a>(
     effect_grammar::parse_choice_complement_clause(clause.tokens())
 }
 
-pub(crate) fn parse_vote_affinity_subject_verb(
+pub fn parse_vote_affinity_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if let Some(shape) = effect_grammar::parse_voted_against_you_effects_shape(tokens) {
@@ -3231,7 +3231,7 @@ pub(crate) fn parse_vote_affinity_subject_verb(
     parse_you_and_each_opponent_voted_with_you_sentence(tokens)
 }
 
-pub(crate) fn parse_vote_subject_verb(
+pub fn parse_vote_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     if let Some(effect) = parse_secret_number_choice_vote_start(tokens)? {
@@ -3682,7 +3682,7 @@ const EXILE_FACE_DOWN_COUNTER_MODIFIER_PATTERN: effect_grammar::EffectSequence<'
         effect_grammar::EffectSequence::tail("remainder", effect_grammar::EffectCaptureKind::Rest),
     ]);
 
-pub(crate) fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
+pub fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
     let sentence_tokens = trim_commas(tokens);
@@ -4097,7 +4097,7 @@ mod generic_subject_verb_program_tests {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
                     SubjectVerbActionAst::PutCounters {
-                        counter_type: CounterType::Named("hatching"),
+                        counter_type: CounterType::Named(counter_name),
                         count: Value::Fixed(1),
                         target: TargetAst::Tagged(counter_tag, _),
                         ..
@@ -4117,6 +4117,7 @@ mod generic_subject_verb_program_tests {
         else {
             panic!("unexpected face-down counter partition AST: {effects:#?}");
         };
+        assert_eq!(counter_name.as_str(), "hatching");
 
         assert_eq!(exile_tag, selected_tag);
         assert_eq!(counter_tag, selected_tag);

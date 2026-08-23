@@ -7,23 +7,23 @@ use winnow::token::any;
 
 #[path = "followup_shapes/regeneration.rs"]
 mod regeneration;
-pub(crate) use regeneration::*;
+pub use regeneration::*;
 #[path = "followup_shapes/player_and_library.rs"]
 mod player_and_library;
-pub(crate) use player_and_library::*;
+pub use player_and_library::*;
 #[path = "followup_shapes/counter_linked_land.rs"]
 mod counter_linked_land;
-pub(crate) use counter_linked_land::*;
+pub use counter_linked_land::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CreateMorePriorTokensShape<'a> {
-    pub(crate) predicate_tokens: &'a [OwnedLexToken],
-    pub(crate) count: u32,
-    pub(crate) instead: bool,
+pub struct CreateMorePriorTokensShape<'a> {
+    pub predicate_tokens: &'a [OwnedLexToken],
+    pub count: u32,
+    pub instead: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ConditionalFollowupKind {
+pub enum ConditionalFollowupKind {
     WhenMilledThisWay,
     IfNoOneDoes,
     IfYouWin,
@@ -32,24 +32,24 @@ pub(crate) enum ConditionalFollowupKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ConditionalFollowupShape<'a> {
-    pub(crate) kind: ConditionalFollowupKind,
-    pub(crate) continuation_tokens: &'a [OwnedLexToken],
+pub struct ConditionalFollowupShape<'a> {
+    pub kind: ConditionalFollowupKind,
+    pub continuation_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) struct TokenReminderFollowupFacts {
-    pub(crate) lifecycle_head: bool,
-    pub(crate) delayed_pronoun_lifecycle: bool,
-    pub(crate) pronoun_trigger_prefix: bool,
+pub struct TokenReminderFollowupFacts {
+    pub lifecycle_head: bool,
+    pub delayed_pronoun_lifecycle: bool,
+    pub pronoun_trigger_prefix: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct MovedObjectEntryFollowupShape {
+pub struct MovedObjectEntryFollowupShape {
     /// Index in the original token slice of the authored `gains` verb.  The
     /// caller can prepend the leading object pronoun and feed the resulting
     /// clause through the ordinary typed ability-grant parser.
-    pub(crate) grant_verb_token_idx: usize,
+    pub grant_verb_token_idx: usize,
 }
 
 /// Recognize a result sentence that modifies the exact object just moved to
@@ -57,7 +57,7 @@ pub(crate) struct MovedObjectEntryFollowupShape {
 /// of turn.`  This is deliberately only the grammatical boundary; the
 /// follow-up dispatcher still has to prove an immediately preceding optional
 /// single-object battlefield move before it may bind the pronoun.
-pub(crate) fn parse_moved_object_entry_followup_shape(
+pub fn parse_moved_object_entry_followup_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<MovedObjectEntryFollowupShape> {
     let words_with_indices = tokens
@@ -92,9 +92,9 @@ where
 
 #[path = "followup_shapes/turn_skip.rs"]
 mod turn_skip;
-pub(crate) use turn_skip::*;
+pub use turn_skip::*;
 
-pub(crate) fn is_temporary_land_animation_sentence(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_temporary_land_animation_sentence(tokens: &[OwnedLexToken]) -> bool {
     marker_anywhere(
         tokens,
         alt((primitives::kw("become"), primitives::kw("becomes"))),
@@ -142,7 +142,7 @@ fn parse_create_more_prior_tokens_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_create_more_prior_tokens(
+pub fn parse_create_more_prior_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CreateMorePriorTokensShape<'_>> {
     primitives::parse_all(
@@ -203,7 +203,7 @@ fn parse_conditional_followup_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_conditional_followup(
+pub fn parse_conditional_followup(
     tokens: &[OwnedLexToken],
 ) -> Option<ConditionalFollowupShape<'_>> {
     primitives::parse_all(
@@ -214,7 +214,7 @@ pub(crate) fn parse_conditional_followup(
     .ok()
 }
 
-pub(crate) fn is_anaphoric_damage_self_replacement(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_anaphoric_damage_self_replacement(tokens: &[OwnedLexToken]) -> bool {
     let words = token_word_refs(tokens);
     if !words.starts_with(&["it", "deals"]) || !words.contains(&"instead") {
         return false;
@@ -254,9 +254,7 @@ fn pronoun_trigger_prefix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn token_reminder_followup_facts(
-    tokens: &[OwnedLexToken],
-) -> TokenReminderFollowupFacts {
+pub fn token_reminder_followup_facts(tokens: &[OwnedLexToken]) -> TokenReminderFollowupFacts {
     let lifecycle_head = primitives::parse_prefix(tokens, lifecycle_head).is_some();
     let has_pronoun = marker_anywhere(tokens, alt((primitives::kw("it"), primitives::kw("them"))));
     TokenReminderFollowupFacts {

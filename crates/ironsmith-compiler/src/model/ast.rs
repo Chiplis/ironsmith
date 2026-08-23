@@ -29,22 +29,22 @@ use crate::model::compiler_semantic::ParsedAbility;
 
 #[path = "ast/predicates.rs"]
 mod predicates;
-pub(crate) use predicates::*;
+pub use predicates::*;
 
 #[path = "ast/actions.rs"]
 mod actions;
-pub(crate) use actions::*;
+pub use actions::*;
 
 #[path = "ast/effects.rs"]
 mod effects;
-pub(crate) use effects::*;
+pub use effects::*;
 
 #[path = "ast/nodes.rs"]
 mod nodes;
 pub use nodes::*;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum StaticAbilityAst {
+pub enum StaticAbilityAst {
     Static(StaticAbility),
     KeywordAction(KeywordAction),
     PregameRevealFromOpeningHand {
@@ -142,14 +142,14 @@ impl From<StaticAbility> for StaticAbilityAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TriggerIntroSurfaceAst {
+pub enum TriggerIntroSurfaceAst {
     When,
     Whenever,
     At,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum TriggerSpec {
+pub enum TriggerSpec {
     WithIntro {
         intro: TriggerIntroSurfaceAst,
         trigger: Box<TriggerSpec>,

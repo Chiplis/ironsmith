@@ -397,9 +397,7 @@ fn parse_generic_disjunction_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFi
     Some(filter)
 }
 
-pub(crate) fn parse_looked_card_reveal_filter_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<ObjectFilter> {
+pub fn parse_looked_card_reveal_filter_shape(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let (filter_tokens, same_name) = split_same_name_suffix(tokens);
     let all_words = parser_token_word_refs(filter_tokens);
     let words = non_article_word_refs(&all_words);
@@ -462,9 +460,7 @@ pub(crate) fn parse_looked_card_reveal_filter_shape(
     Some(apply_same_name(filter, same_name))
 }
 
-pub(crate) fn strip_up_to_one_looked_card_choice_tokens(
-    tokens: &[OwnedLexToken],
-) -> Vec<OwnedLexToken> {
+pub fn strip_up_to_one_looked_card_choice_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let tokens = trim_lexed_commas(tokens);
     let Some((count, used)) = parse_choice_count_token_prefix_consumed(tokens) else {
         return tokens.to_vec();

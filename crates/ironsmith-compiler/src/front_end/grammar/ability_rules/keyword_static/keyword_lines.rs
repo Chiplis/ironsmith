@@ -1,4 +1,4 @@
-pub(crate) fn parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
+pub fn parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     if let Some(actions) = parse_flashback_keyword_line(tokens) {
         return Some(actions);
     }
@@ -68,7 +68,7 @@ pub(crate) fn parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec<Keyword
     }
 }
 
-pub(crate) fn parse_dynamic_firebending(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
+pub fn parse_dynamic_firebending(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
     let view = crate::grammar::primitives::TokenWordView::new(tokens);
     let words = view.to_word_refs();
     if words.first().copied() != Some("firebending") || words.get(1).copied() != Some("x") {
@@ -86,13 +86,13 @@ pub(crate) fn parse_dynamic_firebending(tokens: &[OwnedLexToken]) -> Option<Keyw
     Some(KeywordAction::FirebendingValue { amount, surface })
 }
 
-pub(crate) fn reject_unimplemented_keyword_actions(
+pub fn reject_unimplemented_keyword_actions(
     _actions: &[KeywordAction],
     _clause: &str,
 ) -> Result<(), CardTextError> {
     Ok(())
 }
 
-pub(crate) fn keyword_action_to_static_ability(action: KeywordAction) -> Option<StaticAbility> {
+pub fn keyword_action_to_static_ability(action: KeywordAction) -> Option<StaticAbility> {
     static_ability_for_keyword_action(action)
 }

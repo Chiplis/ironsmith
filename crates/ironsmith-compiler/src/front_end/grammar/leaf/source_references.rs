@@ -14,13 +14,13 @@ use super::filter_atoms::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LeafSourceReferenceAlias {
-    pub(crate) words: Vec<String>,
-    pub(crate) surface: SourceReferenceSurface,
+pub struct LeafSourceReferenceAlias {
+    pub words: Vec<String>,
+    pub surface: SourceReferenceSurface,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum LeafSourceAnaphor {
+pub enum LeafSourceAnaphor {
     It,
     Its,
     This(SourceReferenceSurface),
@@ -36,9 +36,7 @@ enum LeafThisSourceNoun {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct LeafRomanNumeral;
 
-pub(crate) fn parse_leaf_source_reference_aliases_for_name(
-    name: &str,
-) -> Vec<LeafSourceReferenceAlias> {
+pub fn parse_leaf_source_reference_aliases_for_name(name: &str) -> Vec<LeafSourceReferenceAlias> {
     let mut aliases = Vec::new();
     let trimmed = name.trim();
     if trimmed.is_empty() {
@@ -113,7 +111,7 @@ pub(crate) fn parse_leaf_source_reference_aliases_for_name(
     aliases
 }
 
-pub(crate) fn push_leaf_source_reference_alias(
+pub fn push_leaf_source_reference_alias(
     aliases: &mut Vec<LeafSourceReferenceAlias>,
     raw: &str,
     surface: SourceReferenceSurface,
@@ -123,7 +121,7 @@ pub(crate) fn push_leaf_source_reference_alias(
     }
 }
 
-pub(crate) fn push_leaf_source_reference_alias_words(
+pub fn push_leaf_source_reference_alias_words(
     aliases: &mut Vec<LeafSourceReferenceAlias>,
     words: Vec<String>,
     surface: SourceReferenceSurface,
@@ -133,18 +131,18 @@ pub(crate) fn push_leaf_source_reference_alias_words(
     }
 }
 
-pub(crate) fn sort_leaf_source_reference_aliases(aliases: &mut [LeafSourceReferenceAlias]) {
+pub fn sort_leaf_source_reference_aliases(aliases: &mut [LeafSourceReferenceAlias]) {
     aliases.sort_by_key(|alias| std::cmp::Reverse(alias.words.len()));
 }
 
-pub(crate) fn parse_leaf_source_reference_alias_words(
+pub fn parse_leaf_source_reference_alias_words(
     aliases: &[LeafSourceReferenceAlias],
     words: &[&str],
 ) -> Option<SourceReferenceSurface> {
     parse_leaf_source_reference_alias_words_with_mode(aliases, words, false)
 }
 
-pub(crate) fn parse_leaf_source_reference_possessive_alias_words(
+pub fn parse_leaf_source_reference_possessive_alias_words(
     aliases: &[LeafSourceReferenceAlias],
     words: &[&str],
 ) -> Option<SourceReferenceSurface> {
@@ -196,7 +194,7 @@ fn parse_dynamic_alias(
     Ok(alias.surface.clone())
 }
 
-pub(crate) fn parse_leaf_this_source_reference_surface(
+pub fn parse_leaf_this_source_reference_surface(
     permanent_type: &str,
 ) -> Option<SourceReferenceSurface> {
     let permanent_type = permanent_type.trim();
@@ -214,15 +212,13 @@ pub(crate) fn parse_leaf_this_source_reference_surface(
     )))
 }
 
-pub(crate) fn parse_leaf_this_source_reference_words(
-    words: &[&str],
-) -> Option<SourceReferenceSurface> {
+pub fn parse_leaf_this_source_reference_words(words: &[&str]) -> Option<SourceReferenceSurface> {
     let normalized = words.join(" ");
     let mut input = normalized.as_str();
     parse_this_source_reference(&mut input, words).ok()
 }
 
-pub(crate) fn parse_leaf_source_anaphor_words(words: &[&str]) -> Option<LeafSourceAnaphor> {
+pub fn parse_leaf_source_anaphor_words(words: &[&str]) -> Option<LeafSourceAnaphor> {
     let normalized = words.join(" ");
     let mut input = normalized.as_str();
     alt((
@@ -318,7 +314,7 @@ fn canonical_this_source_word(index: usize, word: &str) -> String {
     stripped.to_string()
 }
 
-pub(crate) fn strip_leaf_source_possessive_suffix(word: &str) -> &str {
+pub fn strip_leaf_source_possessive_suffix(word: &str) -> &str {
     word.strip_suffix("'s")
         .or_else(|| word.strip_suffix("’s"))
         .or_else(|| word.strip_suffix("s'"))

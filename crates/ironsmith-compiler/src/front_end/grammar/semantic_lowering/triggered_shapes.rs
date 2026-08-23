@@ -15,30 +15,30 @@ use super::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) struct TriggeredTextFacts {
-    pub(crate) has_if_you_do: bool,
-    pub(crate) has_if_you_dont: bool,
-    pub(crate) has_full_party_instead: bool,
-    pub(crate) has_full_party_condition: bool,
-    pub(crate) starts_with_if: bool,
+pub struct TriggeredTextFacts {
+    pub has_if_you_do: bool,
+    pub has_if_you_dont: bool,
+    pub has_full_party_instead: bool,
+    pub has_full_party_condition: bool,
+    pub starts_with_if: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TriggerLabelSplit<'a> {
-    pub(crate) label_tokens: &'a [OwnedLexToken],
-    pub(crate) body_tokens: &'a [OwnedLexToken],
+pub struct TriggerLabelSplit<'a> {
+    pub label_tokens: &'a [OwnedLexToken],
+    pub body_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CombatDeathBlockedDamage {
-    pub(crate) amount_surface: String,
+pub struct CombatDeathBlockedDamage {
+    pub amount_surface: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SpellOrActivatedAbilityXCostTrigger;
+pub struct SpellOrActivatedAbilityXCostTrigger;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BlocksOrBecomesBlockedFirstStrike;
+pub struct BlocksOrBecomesBlockedFirstStrike;
 
 const TRIGGER_CAP_SUFFIXES: &[&[&str]] = &[
     &[
@@ -51,7 +51,7 @@ const TRIGGER_CAP_SUFFIXES: &[&[&str]] = &[
     &["do", "this", "only", "twice", "each", "turn"],
 ];
 
-pub(crate) fn parse_triggered_text_facts_tokens(tokens: &[OwnedLexToken]) -> TriggeredTextFacts {
+pub fn parse_triggered_text_facts_tokens(tokens: &[OwnedLexToken]) -> TriggeredTextFacts {
     let words = parser_token_word_refs(tokens);
     let full_party = &["if", "you", "have", "a", "full", "party"];
     TriggeredTextFacts {
@@ -69,9 +69,7 @@ pub(crate) fn parse_triggered_text_facts_tokens(tokens: &[OwnedLexToken]) -> Tri
     }
 }
 
-pub(crate) fn parse_next_draw_replacement_player_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<PlayerFilter> {
+pub fn parse_next_draw_replacement_player_tokens(tokens: &[OwnedLexToken]) -> Option<PlayerFilter> {
     let words = parser_token_word_refs(tokens);
     if !every_phrase_is_present(
         &words,
@@ -140,13 +138,11 @@ fn parse_trigger_label_split<'a>(input: &mut LexStream<'a>) -> WResult<TriggerLa
     })
 }
 
-pub(crate) fn parse_trigger_label_split_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<TriggerLabelSplit<'_>> {
+pub fn parse_trigger_label_split_tokens(tokens: &[OwnedLexToken]) -> Option<TriggerLabelSplit<'_>> {
     primitives::parse_all(tokens, parse_trigger_label_split, "trigger-label-split").ok()
 }
 
-pub(crate) fn normalized_trigger_source_words_tokens(tokens: &[OwnedLexToken]) -> Vec<String> {
+pub fn normalized_trigger_source_words_tokens(tokens: &[OwnedLexToken]) -> Vec<String> {
     let words = parser_token_word_refs(tokens);
     let stem = TRIGGER_CAP_SUFFIXES
         .iter()
@@ -158,7 +154,7 @@ pub(crate) fn normalized_trigger_source_words_tokens(tokens: &[OwnedLexToken]) -
     stem.iter().map(|word| (*word).to_string()).collect()
 }
 
-pub(crate) fn parse_combat_death_blocked_damage_tokens(
+pub fn parse_combat_death_blocked_damage_tokens(
     trigger_tokens: &[OwnedLexToken],
     effect_tokens: &[OwnedLexToken],
 ) -> Option<CombatDeathBlockedDamage> {
@@ -187,7 +183,7 @@ pub(crate) fn parse_combat_death_blocked_damage_tokens(
     })
 }
 
-pub(crate) fn parse_spell_or_activated_ability_x_cost_trigger_tokens(
+pub fn parse_spell_or_activated_ability_x_cost_trigger_tokens(
     full_tokens: &[OwnedLexToken],
     trigger_tokens: &[OwnedLexToken],
     effect_tokens: &[OwnedLexToken],
@@ -222,7 +218,7 @@ pub(crate) fn parse_spell_or_activated_ability_x_cost_trigger_tokens(
     .then_some(SpellOrActivatedAbilityXCostTrigger)
 }
 
-pub(crate) fn parse_blocks_or_becomes_blocked_first_strike_tokens(
+pub fn parse_blocks_or_becomes_blocked_first_strike_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<BlocksOrBecomesBlockedFirstStrike> {
     let words = parser_token_word_refs(tokens);

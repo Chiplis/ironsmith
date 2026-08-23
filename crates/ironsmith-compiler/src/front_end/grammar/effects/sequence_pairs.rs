@@ -7,22 +7,22 @@ use super::super::primitives;
 
 #[path = "sequence_pairs/copy.rs"]
 mod copy;
-pub(crate) use copy::*;
+pub use copy::*;
 #[path = "sequence_pairs/library.rs"]
 mod library;
-pub(crate) use library::*;
+pub use library::*;
 #[path = "sequence_pairs/misc.rs"]
 mod misc;
-pub(crate) use misc::*;
+pub use misc::*;
 #[path = "sequence_pairs/residual.rs"]
 mod residual;
-pub(crate) use residual::*;
+pub use residual::*;
 #[path = "sequence_pairs/consult.rs"]
 mod consult;
-pub(crate) use consult::*;
+pub use consult::*;
 #[path = "sequence_pairs/cloak.rs"]
 mod cloak;
-pub(crate) use cloak::*;
+pub use cloak::*;
 
 fn next_word<'a>(input: &mut LexStream<'a>) -> WResult<&'a OwnedLexToken> {
     while !input.is_empty() {

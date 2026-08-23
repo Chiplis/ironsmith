@@ -24,21 +24,21 @@ mod spell_countered_trigger;
 mod static_shapes;
 mod surface;
 
-pub(crate) use activation_conditions::{
+pub use activation_conditions::{
     is_activate_only_restriction_sentence_lexed, is_any_player_may_activate_sentence_lexed,
     is_trigger_only_restriction_sentence_lexed, parse_activate_only_timing_lexed,
     parse_activation_condition_lexed, parse_triggered_times_each_turn_lexed,
 };
-pub(crate) use flashback::{
+pub use flashback::{
     FlashbackCostClause, parse_flashback_cost_clause_tokens,
     parse_flashback_keyword_line_spec_lexed,
 };
-pub(crate) use mana_usage::{
+pub use mana_usage::{
     is_mana_spend_bonus_sentence_lexed, is_spend_mana_restriction_sentence_lexed,
     parse_mana_spend_bonus_sentence_lexed, parse_mana_usage_restriction_sentence_lexed,
 };
-pub(crate) use spell_countered_trigger::parse_spell_countered_trigger_spec_lexed;
-pub(crate) use static_shapes::{
+pub use spell_countered_trigger::parse_spell_countered_trigger_spec_lexed;
+pub use static_shapes::{
     is_draw_replacement_double_line_lexed, is_draw_replacement_skip_empty_library_line_lexed,
     is_draw_replacement_win_empty_library_line_lexed, is_land_reveal_enters_static_line_lexed,
     is_opening_hand_begin_game_static_line_lexed,
@@ -49,26 +49,26 @@ pub(crate) use static_shapes::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct UntapEachOtherPlayersUntapStepSpec<'a> {
-    pub(crate) untap_all: bool,
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
+pub struct UntapEachOtherPlayersUntapStepSpec<'a> {
+    pub untap_all: bool,
+    pub subject_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum CombatDamageUsingToughnessSubject {
+pub enum CombatDamageUsingToughnessSubject {
     ThisCreature,
     EachCreature,
     EachCreatureYouControl,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FlyingBlockRestrictionKind {
+pub enum FlyingBlockRestrictionKind {
     FlyingOnly,
     FlyingOrReach,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum DoesntUntapDuringUntapStepSpec<'a> {
+pub enum DoesntUntapDuringUntapStepSpec<'a> {
     Source {
         tail_tokens: &'a [OwnedLexToken],
     },
@@ -79,9 +79,9 @@ pub(crate) enum DoesntUntapDuringUntapStepSpec<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ActivatedAbilitiesCantBeActivatedSpec<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) non_mana_only: bool,
+pub struct ActivatedAbilitiesCantBeActivatedSpec<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub non_mana_only: bool,
 }
 
 fn ability_token_kind_index(tokens: &[OwnedLexToken], kind: TokenKind) -> Option<usize> {
@@ -96,33 +96,33 @@ fn ability_token_kind_index(tokens: &[OwnedLexToken], kind: TokenKind) -> Option
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TriggerSuppressionSpec<'a> {
-    pub(crate) cause_tokens: &'a [OwnedLexToken],
-    pub(crate) source_filter_tokens: Option<&'a [OwnedLexToken]>,
+pub struct TriggerSuppressionSpec<'a> {
+    pub cause_tokens: &'a [OwnedLexToken],
+    pub source_filter_tokens: Option<&'a [OwnedLexToken]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RevealFirstCardYouDrawEachTurnSpec {
-    pub(crate) optional: bool,
-    pub(crate) your_turns_only: bool,
+pub struct RevealFirstCardYouDrawEachTurnSpec {
+    pub optional: bool,
+    pub your_turns_only: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ExileToCounteredExileInsteadOfGraveyardSpec {
-    pub(crate) player: PlayerFilter,
-    pub(crate) counter_type: CounterType,
+pub struct ExileToCounteredExileInsteadOfGraveyardSpec {
+    pub player: PlayerFilter,
+    pub counter_type: CounterType,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AsLongAsConditionPrefixSpec<'a> {
-    pub(crate) condition_tokens: &'a [OwnedLexToken],
-    pub(crate) remainder_tokens: &'a [OwnedLexToken],
+pub struct AsLongAsConditionPrefixSpec<'a> {
+    pub condition_tokens: &'a [OwnedLexToken],
+    pub remainder_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct IfThisSpellCostsSplitSpec<'a> {
-    pub(crate) condition_tokens: &'a [OwnedLexToken],
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
+pub struct IfThisSpellCostsSplitSpec<'a> {
+    pub condition_tokens: &'a [OwnedLexToken],
+    pub tail_tokens: &'a [OwnedLexToken],
 }
 
 const WHENEVER_WORD: &str = "whenever";
@@ -152,7 +152,7 @@ fn parse_krrik_black_mana_life_payment_line<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn is_krrik_black_mana_life_payment_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_krrik_black_mana_life_payment_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, parse_krrik_black_mana_life_payment_line).is_some()
 }
 
@@ -175,7 +175,7 @@ fn parse_each_other_players_untap_step_suffix<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn split_untap_each_other_players_untap_step_line_lexed(
+pub fn split_untap_each_other_players_untap_step_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<UntapEachOtherPlayersUntapStepSpec<'_>> {
     let ((_, untap_all), remainder) = primitives::parse_prefix(
@@ -213,7 +213,7 @@ fn parse_activated_abilities_cant_be_activated_suffix<'a>(
     .parse_next(input)
 }
 
-pub(crate) fn parse_activated_abilities_cant_be_activated_spec_lexed(
+pub fn parse_activated_abilities_cant_be_activated_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivatedAbilitiesCantBeActivatedSpec<'_>> {
     let (_, remainder) = primitives::parse_prefix(
@@ -282,7 +282,7 @@ fn parse_trigger_suppression_filter_suffix<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn parse_trigger_suppression_spec_lexed(
+pub fn parse_trigger_suppression_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<TriggerSuppressionSpec<'_>> {
     if let Some((cause_tokens, ())) = primitives::split_lexed_once_before_suffix(tokens, 1, || {
@@ -353,7 +353,7 @@ fn parse_reveal_first_card_you_draw_on_your_turns_suffix<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn parse_reveal_first_card_you_draw_each_turn_spec_lexed(
+pub fn parse_reveal_first_card_you_draw_each_turn_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<RevealFirstCardYouDrawEachTurnSpec> {
     for optional in [false, true] {
@@ -442,7 +442,7 @@ fn parse_exile_to_countered_exile_instead_of_graveyard_suffix<'a>(
     .parse_next(input)
 }
 
-pub(crate) fn parse_exile_to_countered_exile_instead_of_graveyard_spec_lexed(
+pub fn parse_exile_to_countered_exile_instead_of_graveyard_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ExileToCounteredExileInsteadOfGraveyardSpec> {
     let (_, remainder) = primitives::parse_prefix(tokens, primitives::kw("if"))?;
@@ -458,7 +458,7 @@ fn parse_dont_word<'a>(input: &mut LexStream<'a>) -> Result<(), ErrMode<ContextE
         .parse_next(input)
 }
 
-pub(crate) fn split_nested_combat_whenever_clause_lexed(
+pub fn split_nested_combat_whenever_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     let (_, after_intro) = primitives::parse_prefix(
@@ -475,7 +475,7 @@ pub(crate) fn split_nested_combat_whenever_clause_lexed(
         .then_some(nested_trigger_tokens)
 }
 
-pub(crate) fn is_activate_only_once_each_turn_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_activate_only_once_each_turn_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     let Some((_, rest)) = primitives::parse_prefix(
         tokens,
         primitives::phrase(&["activate", "only", "once", "each", "turn"]),
@@ -486,7 +486,7 @@ pub(crate) fn is_activate_only_once_each_turn_line_lexed(tokens: &[OwnedLexToken
         .is_some_and(|(_, remainder)| remainder.is_empty())
 }
 
-pub(crate) fn is_doesnt_untap_during_your_untap_step_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_doesnt_untap_during_your_untap_step_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     let Some((_, head_tokens)) = primitives::strip_lexed_suffix_phrases(
         tokens,
         &[&["untap", "during", "your", "untap", "step"]],
@@ -512,7 +512,7 @@ pub(crate) fn is_doesnt_untap_during_your_untap_step_line_lexed(tokens: &[OwnedL
     .is_some()
 }
 
-pub(crate) fn is_ward_or_echo_static_prefix_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_ward_or_echo_static_prefix_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(
         tokens,
         winnow::combinator::alt((primitives::kw("ward"), primitives::kw("echo"))),
@@ -520,7 +520,7 @@ pub(crate) fn is_ward_or_echo_static_prefix_line_lexed(tokens: &[OwnedLexToken])
     .is_some()
 }
 
-pub(crate) fn is_land_reveal_enters_tapped_followup_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_land_reveal_enters_tapped_followup_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, |input: &mut LexStream<'_>| {
         (
             primitives::phrase(&["if", "you"]),
@@ -537,7 +537,7 @@ pub(crate) fn is_land_reveal_enters_tapped_followup_line_lexed(tokens: &[OwnedLe
     .is_some()
 }
 
-pub(crate) fn is_standard_gift_keyword_tokens_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_standard_gift_keyword_tokens_lexed(tokens: &[OwnedLexToken]) -> bool {
     let head_tokens = ability_token_kind_index(tokens, TokenKind::LParen)
         .map(|idx| &tokens[..idx])
         .unwrap_or(tokens);
@@ -556,9 +556,7 @@ pub(crate) fn is_standard_gift_keyword_tokens_lexed(tokens: &[OwnedLexToken]) ->
     surface::matches_any_prefix_tokens(head_tokens, STANDARD_GIFT_KEYWORD_PHRASES)
 }
 
-pub(crate) fn additional_cost_tail_tokens_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<&[OwnedLexToken]> {
+pub fn additional_cost_tail_tokens_lexed(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let comma_idx = locate_token_kind(tokens, TokenKind::Comma);
     let effect_start = if let Some(idx) = comma_idx {
         idx + 1
@@ -571,7 +569,7 @@ pub(crate) fn additional_cost_tail_tokens_lexed(
     (!effect_tokens.is_empty()).then_some(effect_tokens)
 }
 
-pub(crate) fn is_additional_cost_choice_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_additional_cost_choice_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(
         tokens,
         primitives::phrase(&[
@@ -697,7 +695,7 @@ fn parser_text_contains_char(text: &str, expected: char) -> bool {
     crate::string_primitives::contains_char(text, expected)
 }
 
-pub(crate) fn is_draw_replace_exile_top_face_down_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_draw_replace_exile_top_face_down_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     if primitives::parse_prefix(
         tokens,
         primitives::phrase(&["if", "you", "would", "draw", "a", "card"]),
@@ -714,9 +712,7 @@ pub(crate) fn is_draw_replace_exile_top_face_down_line_lexed(tokens: &[OwnedLexT
         && contains_token_word(tokens, "instead")
 }
 
-pub(crate) fn is_effect_discard_to_library_replacement_line_lexed(
-    tokens: &[OwnedLexToken],
-) -> bool {
+pub fn is_effect_discard_to_library_replacement_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     contains_token_word_sequence(tokens, &["effect", "causes", "you"])
         && contains_token_word(tokens, "discard")
         && contains_token_word(tokens, "top")
@@ -725,7 +721,7 @@ pub(crate) fn is_effect_discard_to_library_replacement_line_lexed(
         && contains_token_word(tokens, "graveyard")
 }
 
-pub(crate) fn is_shuffle_into_library_from_graveyard_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_shuffle_into_library_from_graveyard_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     contains_token_word_sequence(tokens, &["would", "be", "put"])
         && contains_token_word(tokens, "graveyard")
         && contains_token_word(tokens, "anywhere")
@@ -744,7 +740,7 @@ fn parse_unsigned_integer_token<'a>(
         .map_err(|_| primitives::backtrack_err("unsigned integer", "unsigned integer token"))
 }
 
-pub(crate) fn is_protection_mana_value_marker_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_protection_mana_value_marker_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(
         tokens,
         winnow::combinator::alt((
@@ -766,9 +762,7 @@ pub(crate) fn is_protection_mana_value_marker_line_lexed(tokens: &[OwnedLexToken
     .is_some()
 }
 
-pub(crate) fn is_once_each_turn_play_from_exile_marker_guard_lexed(
-    tokens: &[OwnedLexToken],
-) -> bool {
+pub fn is_once_each_turn_play_from_exile_marker_guard_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(
         tokens,
         primitives::phrase(&["once", "each", "turn", "you", "may", "play"]),
@@ -782,7 +776,7 @@ pub(crate) fn is_once_each_turn_play_from_exile_marker_guard_lexed(
         && contains_token_word_sequence(tokens, &["any", "color", "to"])
 }
 
-pub(crate) fn is_doctors_companion_marker_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_doctors_companion_marker_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(
         tokens,
         winnow::combinator::alt((
@@ -793,11 +787,11 @@ pub(crate) fn is_doctors_companion_marker_line_lexed(tokens: &[OwnedLexToken]) -
     .is_some()
 }
 
-pub(crate) fn is_companion_marker_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_companion_marker_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, primitives::kw("companion")).is_some()
 }
 
-pub(crate) fn is_more_than_meets_the_eye_marker_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_more_than_meets_the_eye_marker_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(
         tokens,
         primitives::phrase(&["more", "than", "meets", "the", "eye"]),
@@ -805,7 +799,7 @@ pub(crate) fn is_more_than_meets_the_eye_marker_line_lexed(tokens: &[OwnedLexTok
     .is_some()
 }
 
-pub(crate) fn is_mana_group_slash_marker_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_mana_group_slash_marker_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     tokens
         .iter()
         .any(|token| token.kind == TokenKind::ManaGroup)
@@ -814,14 +808,12 @@ pub(crate) fn is_mana_group_slash_marker_line_lexed(tokens: &[OwnedLexToken]) ->
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PrototypeKeywordSpec {
-    pub(crate) cost: ManaCost,
-    pub(crate) power_toughness: PowerToughness,
+pub struct PrototypeKeywordSpec {
+    pub cost: ManaCost,
+    pub power_toughness: PowerToughness,
 }
 
-pub(crate) fn parse_prototype_keyword_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<PrototypeKeywordSpec> {
+pub fn parse_prototype_keyword_tokens(tokens: &[OwnedLexToken]) -> Option<PrototypeKeywordSpec> {
     let (_, rest) = primitives::parse_prefix(tokens, primitives::kw("prototype"))?;
     let cost = super::leaf::parse_leaf_mana_cost_prefix_tokens(rest)?;
     let tail = trim_edge_punctuation_tokens(rest.get(cost.consumed..)?);
@@ -837,7 +829,7 @@ pub(crate) fn parse_prototype_keyword_tokens(
     })
 }
 
-pub(crate) fn parse_ward_pay_life_amount_lexed(tokens: &[OwnedLexToken]) -> Option<u32> {
+pub fn parse_ward_pay_life_amount_lexed(tokens: &[OwnedLexToken]) -> Option<u32> {
     primitives::parse_prefix(
         tokens,
         seq!(
@@ -851,16 +843,14 @@ pub(crate) fn parse_ward_pay_life_amount_lexed(tokens: &[OwnedLexToken]) -> Opti
     .map(|((amount,), _)| amount)
 }
 
-pub(crate) fn is_as_long_as_power_odd_or_even_flash_marker_line_lexed(
-    tokens: &[OwnedLexToken],
-) -> bool {
+pub fn is_as_long_as_power_odd_or_even_flash_marker_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, primitives::phrase(&["as", "long", "as"])).is_some()
         && contains_token_word(tokens, "power")
         && contains_token_any_word(tokens, &["odd", "even"])
         && contains_token_word(tokens, "flash")
 }
 
-pub(crate) fn is_if_source_you_control_with_mana_value_double_instead_marker_line_lexed(
+pub fn is_if_source_you_control_with_mana_value_double_instead_marker_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
     primitives::parse_prefix(
@@ -874,7 +864,7 @@ pub(crate) fn is_if_source_you_control_with_mana_value_double_instead_marker_lin
         && last_parser_word_text_lexed(tokens) == Some("instead")
 }
 
-pub(crate) fn is_attack_as_haste_unless_entered_this_turn_marker_line_lexed(
+pub fn is_attack_as_haste_unless_entered_this_turn_marker_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
     primitives::parse_prefix(
@@ -891,9 +881,7 @@ pub(crate) fn is_attack_as_haste_unless_entered_this_turn_marker_line_lexed(
     .is_some()
 }
 
-pub(crate) fn is_sab_sunen_cant_attack_or_block_unless_line_lexed(
-    tokens: &[OwnedLexToken],
-) -> bool {
+pub fn is_sab_sunen_cant_attack_or_block_unless_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(
         tokens,
         winnow::combinator::alt((
@@ -904,7 +892,7 @@ pub(crate) fn is_sab_sunen_cant_attack_or_block_unless_line_lexed(
     .is_some()
 }
 
-pub(crate) fn split_as_long_as_condition_prefix_lexed(
+pub fn split_as_long_as_condition_prefix_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<AsLongAsConditionPrefixSpec<'_>> {
     let parsed = super::leaf::parse_leaf_condition_intro_prefix_tokens(tokens)?;
@@ -924,7 +912,7 @@ pub(crate) fn split_as_long_as_condition_prefix_lexed(
     })
 }
 
-pub(crate) fn split_if_this_spell_costs_line_lexed(
+pub fn split_if_this_spell_costs_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<IfThisSpellCostsSplitSpec<'_>> {
     let parsed = super::leaf::parse_leaf_condition_intro_prefix_tokens(tokens)?;
@@ -971,7 +959,7 @@ fn parse_players_cant_pay_life_or_sacrifice_line<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn is_players_cant_pay_life_or_sacrifice_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_players_cant_pay_life_or_sacrifice_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, parse_players_cant_pay_life_or_sacrifice_line).is_some()
 }
 
@@ -995,7 +983,7 @@ fn parse_minimum_spell_total_mana_three_line<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn is_minimum_spell_total_mana_three_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_minimum_spell_total_mana_three_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, parse_minimum_spell_total_mana_three_line).is_some()
 }
 
@@ -1012,7 +1000,7 @@ fn parse_permanents_enter_tapped_line<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn is_permanents_enter_tapped_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_permanents_enter_tapped_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, parse_permanents_enter_tapped_line).is_some()
 }
 
@@ -1030,7 +1018,7 @@ fn parse_creatures_entering_dont_cause_abilities_to_trigger_line<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn is_creatures_entering_dont_cause_abilities_to_trigger_line_lexed(
+pub fn is_creatures_entering_dont_cause_abilities_to_trigger_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
     primitives::parse_prefix(
@@ -1063,7 +1051,7 @@ fn parse_assign_combat_damage_using_toughness_suffix<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn parse_creatures_assign_combat_damage_using_toughness_line_lexed(
+pub fn parse_creatures_assign_combat_damage_using_toughness_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<CombatDamageUsingToughnessSubject> {
     if let Some((((), ()), remainder)) = primitives::parse_prefix(
@@ -1102,7 +1090,7 @@ pub(crate) fn parse_creatures_assign_combat_damage_using_toughness_line_lexed(
     None
 }
 
-pub(crate) fn is_you_assign_combat_damage_of_creatures_attacking_you_line_lexed(
+pub fn is_you_assign_combat_damage_of_creatures_attacking_you_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
     let words = crate::lexer::token_word_refs(tokens);
@@ -1147,7 +1135,7 @@ pub(crate) fn is_you_assign_combat_damage_of_creatures_attacking_you_line_lexed(
             .all(|(actual, expected)| actual.eq_ignore_ascii_case(expected))
 }
 
-pub(crate) fn is_lethal_damage_to_creatures_you_control_uses_power_line_lexed(
+pub fn is_lethal_damage_to_creatures_you_control_uses_power_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
     primitives::parse_prefix(
@@ -1190,7 +1178,7 @@ fn parse_players_cant_cycle_line<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn is_players_cant_cycle_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_players_cant_cycle_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, parse_players_cant_cycle_line).is_some()
 }
 
@@ -1215,27 +1203,27 @@ fn matches_any_exact_phrase_line_lexed(
         .any(|phrase| matches_exact_phrase_line_lexed(tokens, phrase))
 }
 
-pub(crate) fn is_players_skip_upkeep_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_players_skip_upkeep_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_exact_phrase_line_lexed(tokens, &["players", "skip", "their", "upkeep", "steps"])
 }
 
-pub(crate) fn is_skip_your_draw_step_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_skip_your_draw_step_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_exact_phrase_line_lexed(tokens, &["skip", "your", "draw", "step"])
 }
 
-pub(crate) fn is_all_permanents_colorless_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_all_permanents_colorless_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_exact_phrase_line_lexed(tokens, &["all", "permanents", "are", "colorless"])
 }
 
-pub(crate) fn is_remove_snow_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_remove_snow_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_exact_phrase_line_lexed(tokens, &["all", "lands", "are", "no", "longer", "snow"])
 }
 
-pub(crate) fn is_no_maximum_hand_size_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_no_maximum_hand_size_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_exact_phrase_line_lexed(tokens, &["you", "have", "no", "maximum", "hand", "size"])
 }
 
-pub(crate) fn is_can_be_your_commander_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_can_be_your_commander_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_exact_phrase_line_lexed(tokens, &["this", "can", "be", "your", "commander"])
 }
 
@@ -1252,11 +1240,11 @@ fn parse_creatures_cant_block_line<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn is_creatures_cant_block_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_creatures_cant_block_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, parse_creatures_cant_block_line).is_some()
 }
 
-pub(crate) fn is_you_have_shroud_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_you_have_shroud_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_exact_phrase_line_lexed(tokens, &["you", "have", "shroud"])
 }
 
@@ -1273,7 +1261,7 @@ fn parse_creatures_without_flying_cant_attack_line<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn is_creatures_without_flying_cant_attack_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_creatures_without_flying_cant_attack_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, parse_creatures_without_flying_cant_attack_line).is_some()
 }
 
@@ -1290,7 +1278,7 @@ fn parse_this_creature_cant_attack_alone_line<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn is_this_creature_cant_attack_alone_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_this_creature_cant_attack_alone_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, parse_this_creature_cant_attack_alone_line).is_some()
 }
 
@@ -1307,7 +1295,7 @@ fn parse_this_creature_cant_attack_its_owner_line<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn is_this_creature_cant_attack_its_owner_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_this_creature_cant_attack_its_owner_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, parse_this_creature_cant_attack_its_owner_line).is_some()
 }
 
@@ -1332,7 +1320,7 @@ fn parse_lands_dont_untap_during_their_controllers_untap_steps_line<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn is_lands_dont_untap_during_their_controllers_untap_steps_line_lexed(
+pub fn is_lands_dont_untap_during_their_controllers_untap_steps_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
     primitives::parse_prefix(
@@ -1365,7 +1353,7 @@ fn parse_may_assign_damage_as_unblocked_line<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn is_may_assign_damage_as_unblocked_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_may_assign_damage_as_unblocked_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, parse_may_assign_damage_as_unblocked_line).is_some()
 }
 
@@ -1448,7 +1436,7 @@ fn parse_dependent_cant_become_untapped<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn is_dependent_doesnt_untap_during_controller_untap_step_line_lexed(
+pub fn is_dependent_doesnt_untap_during_controller_untap_step_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
     primitives::parse_all(
@@ -1459,7 +1447,7 @@ pub(crate) fn is_dependent_doesnt_untap_during_controller_untap_step_line_lexed(
     .is_ok()
 }
 
-pub(crate) fn is_dependent_cant_become_untapped_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_dependent_cant_become_untapped_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         trim_edge_punctuation_tokens(tokens),
         parse_dependent_cant_become_untapped,
@@ -1468,7 +1456,7 @@ pub(crate) fn is_dependent_cant_become_untapped_line_lexed(tokens: &[OwnedLexTok
     .is_ok()
 }
 
-pub(crate) fn parse_doesnt_untap_during_untap_step_spec_lexed(
+pub fn parse_doesnt_untap_during_untap_step_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<DoesntUntapDuringUntapStepSpec<'_>> {
     if let Some(((), tail_tokens)) = primitives::parse_prefix(
@@ -1497,7 +1485,7 @@ pub(crate) fn parse_doesnt_untap_during_untap_step_spec_lexed(
     None
 }
 
-pub(crate) fn parse_flying_block_restriction_line_lexed(
+pub fn parse_flying_block_restriction_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<FlyingBlockRestrictionKind> {
     [
@@ -1630,7 +1618,7 @@ pub(crate) fn parse_flying_block_restriction_line_lexed(
     .find_map(|(phrase, kind)| matches_exact_phrase_line_lexed(tokens, phrase).then_some(kind))
 }
 
-pub(crate) fn is_can_block_only_flying_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_can_block_only_flying_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_any_exact_phrase_line_lexed(
         tokens,
         &[
@@ -1662,7 +1650,7 @@ pub(crate) fn is_can_block_only_flying_line_lexed(tokens: &[OwnedLexToken]) -> b
     )
 }
 
-pub(crate) fn is_skulk_rules_text_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_skulk_rules_text_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_any_exact_phrase_line_lexed(
         tokens,
         &[
@@ -1724,9 +1712,7 @@ pub(crate) fn is_skulk_rules_text_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     )
 }
 
-pub(crate) fn is_prevent_all_damage_dealt_to_creatures_line_lexed(
-    tokens: &[OwnedLexToken],
-) -> bool {
+pub fn is_prevent_all_damage_dealt_to_creatures_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_exact_phrase_line_lexed(
         tokens,
         &[
@@ -1743,7 +1729,7 @@ pub(crate) fn is_prevent_all_damage_dealt_to_creatures_line_lexed(
     )
 }
 
-pub(crate) fn is_prevent_damage_to_other_creature_you_control_put_counters_line_lexed(
+pub fn is_prevent_damage_to_other_creature_you_control_put_counters_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
     primitives::parse_prefix(
@@ -1778,7 +1764,7 @@ pub(crate) fn is_prevent_damage_to_other_creature_you_control_put_counters_line_
     .is_some()
 }
 
-pub(crate) fn is_prevent_all_combat_damage_to_source_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_prevent_all_combat_damage_to_source_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_any_exact_phrase_line_lexed(
         tokens,
         &[
@@ -1806,7 +1792,7 @@ pub(crate) fn is_prevent_all_combat_damage_to_source_line_lexed(tokens: &[OwnedL
     )
 }
 
-pub(crate) fn is_during_your_turn_prevent_all_damage_to_source_line_lexed(
+pub fn is_during_your_turn_prevent_all_damage_to_source_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
     primitives::parse_prefix(
@@ -1850,7 +1836,7 @@ pub(crate) fn is_during_your_turn_prevent_all_damage_to_source_line_lexed(
         .is_some()
 }
 
-pub(crate) fn is_prevent_all_noncombat_damage_to_other_creatures_you_control_line_lexed(
+pub fn is_prevent_all_noncombat_damage_to_other_creatures_you_control_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
     matches_exact_phrase_line_lexed(
@@ -1873,9 +1859,7 @@ pub(crate) fn is_prevent_all_noncombat_damage_to_other_creatures_you_control_lin
     )
 }
 
-pub(crate) fn is_prevent_all_damage_to_source_by_creatures_line_lexed(
-    tokens: &[OwnedLexToken],
-) -> bool {
+pub fn is_prevent_all_damage_to_source_by_creatures_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_any_exact_phrase_line_lexed(
         tokens,
         &[
@@ -1911,7 +1895,7 @@ pub(crate) fn is_prevent_all_damage_to_source_by_creatures_line_lexed(
     )
 }
 
-pub(crate) fn is_you_may_look_top_card_any_time_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_you_may_look_top_card_any_time_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_any_exact_phrase_line_lexed(
         tokens,
         &[
@@ -1926,7 +1910,7 @@ pub(crate) fn is_you_may_look_top_card_any_time_line_lexed(tokens: &[OwnedLexTok
     )
 }
 
-pub(crate) fn is_you_may_look_face_down_creatures_you_dont_control_any_time_line_lexed(
+pub fn is_you_may_look_face_down_creatures_you_dont_control_any_time_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
     matches_any_exact_phrase_line_lexed(
@@ -1962,9 +1946,7 @@ pub(crate) fn is_you_may_look_face_down_creatures_you_dont_control_any_time_line
     )
 }
 
-pub(crate) fn is_players_play_top_card_libraries_revealed_line_lexed(
-    tokens: &[OwnedLexToken],
-) -> bool {
+pub fn is_players_play_top_card_libraries_revealed_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_any_exact_phrase_line_lexed(
         tokens,
         &[&[
@@ -1982,7 +1964,7 @@ pub(crate) fn is_players_play_top_card_libraries_revealed_line_lexed(
     )
 }
 
-pub(crate) fn is_play_top_card_your_library_revealed_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_play_top_card_your_library_revealed_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_any_exact_phrase_line_lexed(
         tokens,
         &[&[
@@ -1991,9 +1973,7 @@ pub(crate) fn is_play_top_card_your_library_revealed_line_lexed(tokens: &[OwnedL
     )
 }
 
-pub(crate) fn is_your_opponents_play_with_hands_revealed_line_lexed(
-    tokens: &[OwnedLexToken],
-) -> bool {
+pub fn is_your_opponents_play_with_hands_revealed_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_any_exact_phrase_line_lexed(
         tokens,
         &[&[
@@ -2008,9 +1988,7 @@ pub(crate) fn is_your_opponents_play_with_hands_revealed_line_lexed(
     )
 }
 
-pub(crate) fn is_cast_this_spell_as_though_it_had_flash_line_lexed(
-    tokens: &[OwnedLexToken],
-) -> bool {
+pub fn is_cast_this_spell_as_though_it_had_flash_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_any_exact_phrase_line_lexed(
         tokens,
         &[
@@ -2028,7 +2006,7 @@ pub(crate) fn is_cast_this_spell_as_though_it_had_flash_line_lexed(
 /// Lightning Reflexes. Keep this as a grammar-owned shape rather than a
 /// card-name exception: the second sentence is meaningful spell-resolution
 /// text coupled to the flash permission in the first sentence.
-pub(crate) fn is_cast_as_though_flash_with_next_cleanup_sacrifice_line_lexed(
+pub fn is_cast_as_though_flash_with_next_cleanup_sacrifice_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
     let sentences = super::structure::split_lexed_sentences(tokens);
@@ -2070,20 +2048,18 @@ pub(crate) fn is_cast_as_though_flash_with_next_cleanup_sacrifice_line_lexed(
         .is_some()
 }
 
-pub(crate) fn is_play_lands_from_graveyard_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_play_lands_from_graveyard_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_exact_phrase_line_lexed(
         tokens,
         &["you", "may", "play", "lands", "from", "your", "graveyard"],
     )
 }
 
-pub(crate) fn is_this_subject_reference_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_this_subject_reference_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_any_exact_phrase_line_lexed(tokens, &[&["this"], &["this's"], &["thiss"]])
 }
 
-pub(crate) fn parse_source_tap_status_condition_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<ConditionExpr> {
+pub fn parse_source_tap_status_condition_lexed(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
     let condition = super::conditions::parse_subject_status_condition(tokens)?;
     if matches!(
         condition.state,
@@ -2096,7 +2072,7 @@ pub(crate) fn parse_source_tap_status_condition_lexed(
     }
 }
 
-pub(crate) fn is_enchanted_land_is_chosen_type_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_enchanted_land_is_chosen_type_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_any_exact_phrase_line_lexed(
         tokens,
         &[
@@ -2106,7 +2082,7 @@ pub(crate) fn is_enchanted_land_is_chosen_type_line_lexed(tokens: &[OwnedLexToke
     )
 }
 
-pub(crate) fn parse_source_is_chosen_type_in_addition_line_lexed(
+pub fn parse_source_is_chosen_type_in_addition_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<&'static str> {
     [
@@ -2148,7 +2124,7 @@ pub(crate) fn parse_source_is_chosen_type_in_addition_line_lexed(
     })
 }
 
-pub(crate) fn is_double_damage_from_sources_you_control_of_chosen_type_line_lexed(
+pub fn is_double_damage_from_sources_you_control_of_chosen_type_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
     matches_exact_phrase_line_lexed(

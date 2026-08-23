@@ -2,6 +2,7 @@ use crate::{
     CardType, ChooseSpec, ColorSet, ObjectFilter, Subtype, SubtypeFamily, Supertype, Value,
 };
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
     clippy::large_enum_variant,
@@ -22,11 +23,13 @@ impl From<ChooseSpec> for CompiledContinuousEffectTarget {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompiledPtSublayer {
     Setting,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
     clippy::large_enum_variant,

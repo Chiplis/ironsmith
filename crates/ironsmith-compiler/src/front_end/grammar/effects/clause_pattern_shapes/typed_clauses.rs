@@ -8,20 +8,20 @@ use winnow::prelude::*;
 use winnow::token::any;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChooseTargetVerbShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) action_tokens: &'a [OwnedLexToken],
+pub struct ChooseTargetVerbShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
+    pub action_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PreventAllDamageSourceShape<'a> {
+pub enum PreventAllDamageSourceShape<'a> {
     Choice,
     ChoiceSharingActivationManaColor,
     Filter(&'a [OwnedLexToken]),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PreventAllDamageShape<'a> {
+pub enum PreventAllDamageShape<'a> {
     FromSource {
         source_tokens: &'a [OwnedLexToken],
     },
@@ -35,8 +35,8 @@ pub(crate) enum PreventAllDamageShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChooseTargetPreludeShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct ChooseTargetPreludeShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
 fn effect_verb<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -188,7 +188,7 @@ fn parse_choose_target_verb_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_choose_target_verb_shape_tokens(
+pub fn parse_choose_target_verb_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ChooseTargetVerbShape<'_>> {
     primitives::parse_all(
@@ -339,7 +339,7 @@ fn parse_target_first<'a>(input: &mut LexStream<'a>) -> WResult<PreventAllDamage
     })
 }
 
-pub(crate) fn parse_prevent_all_damage_shape_tokens(
+pub fn parse_prevent_all_damage_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PreventAllDamageShape<'_>> {
     primitives::parse_all(
@@ -419,7 +419,7 @@ fn parse_can_attack_no_defender_lexed<'a>(
     Ok(trim_lexed_commas(subject_tokens))
 }
 
-pub(crate) fn parse_can_attack_no_defender_subject_tokens(
+pub fn parse_can_attack_no_defender_subject_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     primitives::parse_all(
@@ -483,7 +483,7 @@ fn parse_choose_target_prelude_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_choose_target_prelude_shape_tokens(
+pub fn parse_choose_target_prelude_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ChooseTargetPreludeShape<'_>> {
     primitives::parse_all(

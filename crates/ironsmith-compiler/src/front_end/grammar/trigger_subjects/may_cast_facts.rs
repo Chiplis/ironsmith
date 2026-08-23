@@ -3,19 +3,19 @@ use std::ops::Range;
 use super::{word_slice_has_prefix, word_slice_is};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum MayCastSurfaceSubject {
+pub enum MayCastSurfaceSubject {
     You,
     ExiledCardsOwner,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum MayCastSurfaceVerb {
+pub enum MayCastSurfaceVerb {
     Cast,
     Play,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum MayCastSurfaceReference {
+pub enum MayCastSurfaceReference {
     It,
     ThatCard,
     ExiledCard,
@@ -24,13 +24,13 @@ pub(crate) enum MayCastSurfaceReference {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum MayCastManaValueParity {
+pub enum MayCastManaValueParity {
     Odd,
     Even,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum MayCastTailSurface {
+pub enum MayCastTailSurface {
     None,
     WithoutPayingManaCost,
     ManaValueAtMost { value_words: Range<usize> },
@@ -38,14 +38,14 @@ pub(crate) enum MayCastTailSurface {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct MayCastSentenceFacts {
-    pub(crate) subject: MayCastSurfaceSubject,
-    pub(crate) verb: MayCastSurfaceVerb,
-    pub(crate) reference: MayCastSurfaceReference,
-    pub(crate) tail: MayCastTailSurface,
+pub struct MayCastSentenceFacts {
+    pub subject: MayCastSurfaceSubject,
+    pub verb: MayCastSurfaceVerb,
+    pub reference: MayCastSurfaceReference,
+    pub tail: MayCastTailSurface,
 }
 
-pub(crate) fn parse_may_cast_sentence_facts(words: &[&str]) -> Option<MayCastSentenceFacts> {
+pub fn parse_may_cast_sentence_facts(words: &[&str]) -> Option<MayCastSentenceFacts> {
     let mut start = skip_leading_connectors(words, 0);
     if word_slice_has_prefix(&words[start..], &["if", "you", "do"]) {
         start += 3;

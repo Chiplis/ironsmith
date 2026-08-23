@@ -4,18 +4,18 @@ use winnow::token::any;
 
 #[path = "return_exchange/return_shapes.rs"]
 mod return_shapes;
-pub(crate) use return_shapes::*;
+pub use return_shapes::*;
 #[path = "return_exchange/exchange_shapes.rs"]
 mod exchange_shapes;
-pub(crate) use exchange_shapes::*;
+pub use exchange_shapes::*;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CycledOrDiscardedThisTurnFilterTail {
-    pub(crate) base_tokens: Vec<OwnedLexToken>,
-    pub(crate) player_filter: PlayerFilter,
+pub struct CycledOrDiscardedThisTurnFilterTail {
+    pub base_tokens: Vec<OwnedLexToken>,
+    pub player_filter: PlayerFilter,
 }
 
-pub(crate) fn parse_cycled_or_discarded_this_turn_filter_tail_tokens(
+pub fn parse_cycled_or_discarded_this_turn_filter_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<CycledOrDiscardedThisTurnFilterTail>, CardTextError> {
     primitives::parse_all_or_none(

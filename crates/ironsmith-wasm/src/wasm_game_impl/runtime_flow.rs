@@ -2688,7 +2688,7 @@ mod live_action_rollback_tests {
         wasm.game.turn.step = None;
         wasm.runner_awaiting_priority = true;
 
-        let mystical_tutor = ironsmith_registry::compile_to_runtime_definition(
+        let mystical_tutor = ironsmith_registry_test::compile_to_runtime_definition(
             "Mystical Tutor",
             "Mana Cost: {U}\nType: Instant\nSearch your library for an instant or sorcery card, reveal it, then shuffle and put that card on top.",
             false,
@@ -2767,7 +2767,7 @@ mod live_action_rollback_tests {
         wasm.runner_awaiting_priority = true;
         wasm.priority_state.restore_priority_tracker_for_sync(0, 2);
 
-        let skeleton_def = ironsmith_registry::compile_to_runtime_definition(
+        let skeleton_def = ironsmith_registry_test::compile_to_runtime_definition(
             "Probe Skeleton",
             "Type: Creature — Skeleton\nPower/Toughness: 1/1\n{0}: Regenerate this creature.",
             false,
@@ -2782,7 +2782,7 @@ mod live_action_rollback_tests {
             .expect("skeleton should exist")
             .stable_id;
 
-        let bolt_def = ironsmith_registry::compile_to_runtime_definition(
+        let bolt_def = ironsmith_registry_test::compile_to_runtime_definition(
             "Probe Bolt",
             "Mana Cost: {0}\nType: Instant\nProbe Bolt deals 3 damage to any target.",
             false,

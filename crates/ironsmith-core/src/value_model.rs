@@ -12,6 +12,7 @@ use crate::{
 
 /// Selects the object whose attachments are counted by an attachment
 /// relationship condition.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
     clippy::large_enum_variant,
@@ -28,6 +29,7 @@ pub enum AttachmentConditionHost {
     Matching(ObjectFilter),
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EffectMetricSource {
     Outcome,
@@ -35,6 +37,7 @@ pub enum EffectMetricSource {
     AffectedObjects,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EffectMetric {
     Count,
@@ -70,6 +73,7 @@ pub enum EffectMetric {
 /// This is presentation metadata for phrases such as "creatures destroyed
 /// this way". Runtime identity comes from the exact producer [`EffectId`], not
 /// from guessing an action from a generated tag name.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PriorEffectAction {
     Cast,
@@ -102,6 +106,7 @@ pub enum PriorEffectAction {
 /// `filter` is evaluated against captured object memory rather than live game
 /// objects. `player` optionally selects a per-player memory partition before
 /// the filter and aggregate are applied.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PriorEffectMetricQuery {
     pub source: EffectMetricSource,
@@ -148,6 +153,7 @@ impl PriorEffectMetricQuery {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ValueSurfaceHint {
     /// Preserve an unbounded choice with a minimum of one, such as
@@ -336,6 +342,7 @@ pub enum ValueSurfaceHint {
 ///
 /// This is presentation metadata only; all variants resolve against the
 /// current spell's recorded mana payment.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ManaSpentCastReferenceSurface {
     It,
@@ -359,6 +366,7 @@ impl ManaSpentCastReferenceSurface {
 /// filters used by the rest of the engine: a creature which died, a spell
 /// which left the stack, or a token which no longer exists must still be
 /// counted from its event snapshot rather than from the current zone state.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DeathHistoryControllerSurface {
     /// Oracle placed the controller after the event:
@@ -370,6 +378,7 @@ pub enum DeathHistoryControllerSurface {
     ControlledThenDied,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum TurnHistoryCount {
     /// Objects matching the filter which moved from the battlefield to a
@@ -473,6 +482,7 @@ impl TurnHistoryCount {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     SurfaceHinted {
@@ -819,6 +829,7 @@ impl From<u32> for Value {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Restriction {
     AdditionalLandPlays(PlayerFilter, u32),
@@ -901,6 +912,7 @@ pub enum Restriction {
 /// "Any color" permits mana to satisfy any colored symbol, but does not let
 /// colored mana satisfy a colorless `{C}` symbol. "Any type" includes
 /// colorless, so it permits either conversion.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum ManaSpendMode {
     #[default]
@@ -933,6 +945,7 @@ impl From<bool> for ManaSpendMode {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ManaSpendPermission {
     pub player: PlayerFilter,
@@ -1051,6 +1064,7 @@ impl ManaSpendPermission {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum ManaSpendScope {
     AllCosts,
@@ -1304,6 +1318,7 @@ impl Restriction {
 /// described the source as having counters or used an existential
 /// "there are ... counters on ..." clause, including that clause's source
 /// reference.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum SourceCounterThresholdSurface {
     #[default]
@@ -1316,6 +1331,7 @@ pub enum SourceCounterThresholdSurface {
 ///
 /// Both variants have identical event-history semantics. This only preserves
 /// whether Oracle used "left ... under your control" or "you controlled left".
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PermanentLeftBattlefieldControlSurface {
     #[default]
@@ -1328,6 +1344,7 @@ pub enum PermanentLeftBattlefieldControlSurface {
 /// under one condition family so intervening-if clauses can retain actor,
 /// origin-zone, source-reference, and grouped-event semantics without falling
 /// back to untyped text.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
     clippy::large_enum_variant,
@@ -1402,6 +1419,7 @@ pub enum TurnHistoryCondition {
 /// control predicates such as "if you controlled that permanent" must instead
 /// inspect the snapshot even when the moved object still exists in its new
 /// zone.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TaggedObjectMatchMode {
     #[default]
@@ -1409,6 +1427,7 @@ pub enum TaggedObjectMatchMode {
     LastKnown,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Condition {
     YouControl(ObjectFilter),
@@ -1801,7 +1820,7 @@ pub enum Condition {
         count: usize,
     },
     XValueAtLeast(u32),
-    Custom(&'static str),
+    Custom(crate::InternedStr),
     Not(Box<Condition>),
     And(Box<Condition>, Box<Condition>),
     Or(Box<Condition>, Box<Condition>),

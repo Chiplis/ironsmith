@@ -7,13 +7,13 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WhereXYBindingsShape<'a> {
-    pub(crate) x_tokens: &'a [OwnedLexToken],
-    pub(crate) y_tokens: &'a [OwnedLexToken],
+pub struct WhereXYBindingsShape<'a> {
+    pub x_tokens: &'a [OwnedLexToken],
+    pub y_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TypeColorScope<'a> {
+pub enum TypeColorScope<'a> {
     Colors,
     Types {
         qualifier_tokens: &'a [OwnedLexToken],
@@ -24,20 +24,20 @@ pub(crate) enum TypeColorScope<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TypeColorAdditionShape<'a> {
-    pub(crate) descriptor_tokens: &'a [OwnedLexToken],
-    pub(crate) scopes: Vec<TypeColorScope<'a>>,
+pub struct TypeColorAdditionShape<'a> {
+    pub descriptor_tokens: &'a [OwnedLexToken],
+    pub scopes: Vec<TypeColorScope<'a>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AnthemAndAdditionShape<'a> {
-    pub(crate) get_token: usize,
-    pub(crate) and_token: usize,
-    pub(crate) addition_tokens: &'a [OwnedLexToken],
-    pub(crate) temporary: bool,
+pub struct AnthemAndAdditionShape<'a> {
+    pub get_token: usize,
+    pub and_token: usize,
+    pub addition_tokens: &'a [OwnedLexToken],
+    pub temporary: bool,
 }
 
-pub(crate) fn parse_where_x_y_bindings_shape(
+pub fn parse_where_x_y_bindings_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<WhereXYBindingsShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
@@ -51,7 +51,7 @@ pub(crate) fn parse_where_x_y_bindings_shape(
         .then_some(WhereXYBindingsShape { x_tokens, y_tokens })
 }
 
-pub(crate) fn parse_type_color_addition_shape(
+pub fn parse_type_color_addition_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<TypeColorAdditionShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
@@ -85,7 +85,7 @@ pub(crate) fn parse_type_color_addition_shape(
     })
 }
 
-pub(crate) fn parse_anthem_and_addition_shape(
+pub fn parse_anthem_and_addition_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<AnthemAndAdditionShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);

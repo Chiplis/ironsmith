@@ -107,6 +107,7 @@ pub const CAST_CONTROLLED_OBJECTS_TAG: &str = "__cast_controlled_objects__";
 ///
 /// Using an owned key instead of `&'static str` enables tags built at runtime
 /// while keeping convenient string-based APIs.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct TagKey(String);
 

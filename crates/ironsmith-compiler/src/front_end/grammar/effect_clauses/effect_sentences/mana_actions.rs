@@ -7,9 +7,7 @@ const STRIKE_COUNTER_PREFIXES: &[(&str, CounterType)] = &[
     ("first", CounterType::FirstStrike),
 ];
 
-pub(crate) fn parse_counter_type_from_descriptor_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<CounterType> {
+pub fn parse_counter_type_from_descriptor_tokens(tokens: &[OwnedLexToken]) -> Option<CounterType> {
     let words = crate::lexer::token_word_refs(tokens);
     let last = *words.last()?;
     if let Some(counter_type) = parse_counter_type_word(last) {
@@ -25,7 +23,7 @@ pub(crate) fn parse_counter_type_from_descriptor_tokens(
         .chars()
         .all(|character| character.is_ascii_alphabetic())
     {
-        return Some(CounterType::Named(intern_counter_name(last)));
+        return Some(CounterType::Named(intern_counter_name(last).into()));
     }
     None
 }

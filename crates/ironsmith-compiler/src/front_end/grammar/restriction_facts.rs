@@ -13,14 +13,14 @@ use super::restriction_normalization::{
     parse_text_only_activation_restriction_tokens,
 };
 
-pub(crate) fn parse_activation_restriction_tokens(
+pub fn parse_activation_restriction_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ParsedActivationRestriction> {
     abilities::is_activate_only_restriction_sentence_lexed(tokens)
         .then(|| parse_activation_restriction_surface_tokens(tokens))
 }
 
-pub(crate) fn parse_activation_restriction_surface_tokens(
+pub fn parse_activation_restriction_surface_tokens(
     tokens: &[OwnedLexToken],
 ) -> ParsedActivationRestriction {
     let timing = abilities::parse_activate_only_timing_lexed(tokens);
@@ -79,7 +79,7 @@ fn strip_redundant_once_per_turn_condition(
     }
 }
 
-pub(crate) fn parse_trigger_restriction_tokens(
+pub fn parse_trigger_restriction_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ParsedTriggerRestriction> {
     abilities::is_trigger_only_restriction_sentence_lexed(tokens).then(|| {
@@ -90,9 +90,7 @@ pub(crate) fn parse_trigger_restriction_tokens(
     })
 }
 
-pub(crate) fn parse_mana_restriction_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<ParsedManaRestriction> {
+pub fn parse_mana_restriction_tokens(tokens: &[OwnedLexToken]) -> Option<ParsedManaRestriction> {
     let usage_restriction = abilities::parse_mana_usage_restriction_sentence_lexed(tokens)
         .or_else(|| abilities::parse_mana_spend_bonus_sentence_lexed(tokens));
     let recognized = usage_restriction.is_some()
@@ -101,9 +99,7 @@ pub(crate) fn parse_mana_restriction_tokens(
     recognized.then(|| parse_mana_restriction_surface_tokens(tokens))
 }
 
-pub(crate) fn parse_mana_restriction_surface_tokens(
-    tokens: &[OwnedLexToken],
-) -> ParsedManaRestriction {
+pub fn parse_mana_restriction_surface_tokens(tokens: &[OwnedLexToken]) -> ParsedManaRestriction {
     ParsedManaRestriction {
         presentation_text: normalized_surface(tokens),
         timing: abilities::parse_activate_only_timing_lexed(tokens).unwrap_or_default(),

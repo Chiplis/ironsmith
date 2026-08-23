@@ -13,7 +13,7 @@ use super::super::shared_util::value_expr;
 use super::{common, equipment, rules, surface};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TokenReminderSentenceKind {
+pub enum TokenReminderSentenceKind {
     GrantedAbility,
     PronounTrigger,
     PowerToughness,
@@ -89,7 +89,7 @@ fn contains_delayed_lifecycle_timing(tokens: &[OwnedLexToken]) -> bool {
         .any(|phrase| primitives::find_prefix(tokens, || primitives::phrase(phrase)).is_some())
 }
 
-pub(crate) fn parse_token_reminder_sentence_kind_tokens(
+pub fn parse_token_reminder_sentence_kind_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenReminderSentenceKind> {
     let (kind, _) = primitives::parse_prefix(tokens, token_reminder_sentence_head)?;
@@ -104,7 +104,7 @@ pub(crate) fn parse_token_reminder_sentence_kind_tokens(
 /// Distinguish the authored outer grant verb from words inside a quoted token
 /// ability. For example, `They have "When this token dies, you gain 1 life"`
 /// uses `have` even though the quoted rule contains `gain`.
-pub(crate) fn token_ability_sentence_uses_gain_verb(tokens: &[OwnedLexToken]) -> bool {
+pub fn token_ability_sentence_uses_gain_verb(tokens: &[OwnedLexToken]) -> bool {
     let words = parser_token_word_refs(tokens);
     words.starts_with(&["it", "gains"])
         || words.starts_with(&["they", "gain"])
@@ -113,14 +113,14 @@ pub(crate) fn token_ability_sentence_uses_gain_verb(tokens: &[OwnedLexToken]) ->
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TokenReminderFacts {
-    pub(crate) dynamic_power_toughness: Option<(Value, Value)>,
-    pub(crate) has_haste: bool,
-    pub(crate) exile_at_end_of_combat: bool,
-    pub(crate) sacrifice_at_end_of_combat: bool,
-    pub(crate) sacrifice_at_next_end_step: bool,
-    pub(crate) exile_at_next_end_step: bool,
-    pub(crate) next_end_step_player: PlayerFilter,
+pub struct TokenReminderFacts {
+    pub dynamic_power_toughness: Option<(Value, Value)>,
+    pub has_haste: bool,
+    pub exile_at_end_of_combat: bool,
+    pub sacrifice_at_end_of_combat: bool,
+    pub sacrifice_at_next_end_step: bool,
+    pub exile_at_next_end_step: bool,
+    pub next_end_step_player: PlayerFilter,
     pub(super) definition: TokenDefinitionReminderFacts,
 }
 
@@ -128,7 +128,7 @@ impl TokenReminderFacts {
     /// Expose only the intrinsic creature-combat slot needed to distinguish
     /// two independently quoted token rules. The rest of the parsed reminder
     /// definition remains owned by the token-definition merge layer.
-    pub(crate) fn creature_combat_restriction(
+    pub fn creature_combat_restriction(
         &self,
     ) -> Option<&crate::model::token_definition::TokenCombatRestrictionShape> {
         self.definition.creature_rules.combat_restriction.as_ref()
@@ -147,10 +147,10 @@ pub(super) struct TokenDefinitionReminderFacts {
 
 #[path = "reminder/dynamic_power_toughness.rs"]
 mod dynamic_power_toughness;
-pub(crate) use dynamic_power_toughness::parse_token_dynamic_power_toughness_tokens;
+pub use dynamic_power_toughness::parse_token_dynamic_power_toughness_tokens;
 use dynamic_power_toughness::{normalized_reminder_words, parse_dynamic_power_toughness};
 
-pub(crate) fn parse_token_reminder_facts_tokens(tokens: &[OwnedLexToken]) -> TokenReminderFacts {
+pub fn parse_token_reminder_facts_tokens(tokens: &[OwnedLexToken]) -> TokenReminderFacts {
     let raw_words = parser_token_word_refs(tokens);
     let words = normalized_reminder_words(&raw_words);
     let delay = effects::parse_next_end_step_delay_words(&words);

@@ -10,7 +10,7 @@ use super::super::super::primitives::{self, WordSliceInput};
 use super::surface;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum WinnowCaptureRole {
+pub enum WinnowCaptureRole {
     Subject,
     Action,
     Object,
@@ -21,7 +21,7 @@ pub(crate) enum WinnowCaptureRole {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum WinnowCaptureKind<'p> {
+pub enum WinnowCaptureKind<'p> {
     Rest,
     WordCount(usize),
     OneOf(&'p [&'p str]),
@@ -34,7 +34,7 @@ pub(crate) enum WinnowCaptureKind<'p> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum WinnowAtom<'p> {
+pub enum WinnowAtom<'p> {
     Word(&'p str),
     AnyWord(&'p [&'p str]),
     Phrase(&'p [&'p str]),
@@ -45,40 +45,40 @@ pub(crate) enum WinnowAtom<'p> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WinnowSequence<'p> {
+pub struct WinnowSequence<'p> {
     atoms: &'p [WinnowAtom<'p>],
 }
 
 impl<'p> WinnowSequence<'p> {
-    pub(crate) const fn new(atoms: &'p [WinnowAtom<'p>]) -> Self {
+    pub const fn new(atoms: &'p [WinnowAtom<'p>]) -> Self {
         Self { atoms }
     }
 
-    pub(crate) const fn word(word: &'p str) -> WinnowAtom<'p> {
+    pub const fn word(word: &'p str) -> WinnowAtom<'p> {
         WinnowAtom::Word(word)
     }
 
-    pub(crate) const fn any_word(words: &'p [&'p str]) -> WinnowAtom<'p> {
+    pub const fn any_word(words: &'p [&'p str]) -> WinnowAtom<'p> {
         WinnowAtom::AnyWord(words)
     }
 
-    pub(crate) const fn phrase(words: &'p [&'p str]) -> WinnowAtom<'p> {
+    pub const fn phrase(words: &'p [&'p str]) -> WinnowAtom<'p> {
         WinnowAtom::Phrase(words)
     }
 
-    pub(crate) const fn any_phrase(phrases: &'p [&'p [&'p str]]) -> WinnowAtom<'p> {
+    pub const fn any_phrase(phrases: &'p [&'p [&'p str]]) -> WinnowAtom<'p> {
         WinnowAtom::AnyPhrase(phrases)
     }
 
-    pub(crate) const fn optional(atoms: &'p [WinnowAtom<'p>]) -> WinnowAtom<'p> {
+    pub const fn optional(atoms: &'p [WinnowAtom<'p>]) -> WinnowAtom<'p> {
         WinnowAtom::Optional(atoms)
     }
 
-    pub(crate) const fn capture(name: &'p str, kind: WinnowCaptureKind<'p>) -> WinnowAtom<'p> {
+    pub const fn capture(name: &'p str, kind: WinnowCaptureKind<'p>) -> WinnowAtom<'p> {
         WinnowAtom::Capture(name, kind)
     }
 
-    pub(crate) const fn role_capture(
+    pub const fn role_capture(
         name: &'p str,
         role: WinnowCaptureRole,
         kind: WinnowCaptureKind<'p>,
@@ -86,50 +86,47 @@ impl<'p> WinnowSequence<'p> {
         WinnowAtom::RoleCapture(name, role, kind)
     }
 
-    pub(crate) const fn subject(name: &'p str, kind: WinnowCaptureKind<'p>) -> WinnowAtom<'p> {
+    pub const fn subject(name: &'p str, kind: WinnowCaptureKind<'p>) -> WinnowAtom<'p> {
         Self::role_capture(name, WinnowCaptureRole::Subject, kind)
     }
 
-    pub(crate) const fn action(name: &'p str, kind: WinnowCaptureKind<'p>) -> WinnowAtom<'p> {
+    pub const fn action(name: &'p str, kind: WinnowCaptureKind<'p>) -> WinnowAtom<'p> {
         Self::role_capture(name, WinnowCaptureRole::Action, kind)
     }
 
-    pub(crate) const fn object(name: &'p str, kind: WinnowCaptureKind<'p>) -> WinnowAtom<'p> {
+    pub const fn object(name: &'p str, kind: WinnowCaptureKind<'p>) -> WinnowAtom<'p> {
         Self::role_capture(name, WinnowCaptureRole::Object, kind)
     }
 
-    pub(crate) const fn amount(name: &'p str, kind: WinnowCaptureKind<'p>) -> WinnowAtom<'p> {
+    pub const fn amount(name: &'p str, kind: WinnowCaptureKind<'p>) -> WinnowAtom<'p> {
         Self::role_capture(name, WinnowCaptureRole::Amount, kind)
     }
 
-    pub(crate) const fn modifier(name: &'p str, kind: WinnowCaptureKind<'p>) -> WinnowAtom<'p> {
+    pub const fn modifier(name: &'p str, kind: WinnowCaptureKind<'p>) -> WinnowAtom<'p> {
         Self::role_capture(name, WinnowCaptureRole::Modifier, kind)
     }
 
-    pub(crate) const fn condition(name: &'p str, kind: WinnowCaptureKind<'p>) -> WinnowAtom<'p> {
+    pub const fn condition(name: &'p str, kind: WinnowCaptureKind<'p>) -> WinnowAtom<'p> {
         Self::role_capture(name, WinnowCaptureRole::Condition, kind)
     }
 
-    pub(crate) const fn tail(name: &'p str, kind: WinnowCaptureKind<'p>) -> WinnowAtom<'p> {
+    pub const fn tail(name: &'p str, kind: WinnowCaptureKind<'p>) -> WinnowAtom<'p> {
         Self::role_capture(name, WinnowCaptureRole::Tail, kind)
     }
 
-    pub(crate) fn accepts_full(self, clause: LexedClause<'_>) -> bool {
+    pub fn accepts_full(self, clause: LexedClause<'_>) -> bool {
         self.parse_full(clause).is_some()
     }
 
-    pub(crate) fn parse_full<'a>(self, clause: LexedClause<'a>) -> Option<WinnowSequenceMatch<'p>> {
+    pub fn parse_full<'a>(self, clause: LexedClause<'a>) -> Option<WinnowSequenceMatch<'p>> {
         self.parse_from(clause, 0, true)
     }
 
-    pub(crate) fn parse_prefix<'a>(
-        self,
-        clause: LexedClause<'a>,
-    ) -> Option<WinnowSequenceMatch<'p>> {
+    pub fn parse_prefix<'a>(self, clause: LexedClause<'a>) -> Option<WinnowSequenceMatch<'p>> {
         self.parse_from(clause, 0, false)
     }
 
-    pub(crate) fn locate_in<'a>(self, clause: LexedClause<'a>) -> Option<WinnowSequenceMatch<'p>> {
+    pub fn locate_in<'a>(self, clause: LexedClause<'a>) -> Option<WinnowSequenceMatch<'p>> {
         let words = clause.word_refs();
         for start in 0..=words.len() {
             if let Some(parsed) = self.parse_from_words(&words, start, false) {
@@ -403,34 +400,31 @@ fn one_of_words(word: &str, expected: &[&str]) -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct WinnowSequenceMatch<'p> {
-    pub(crate) word_range: Range<usize>,
+pub struct WinnowSequenceMatch<'p> {
+    pub word_range: Range<usize>,
     captures: Vec<WinnowSequenceCapture<'p>>,
 }
 
 impl<'p> WinnowSequenceMatch<'p> {
-    pub(crate) fn capture(&self, name: &str) -> Option<&WinnowSequenceCapture<'p>> {
+    pub fn capture(&self, name: &str) -> Option<&WinnowSequenceCapture<'p>> {
         self.captures
             .iter()
             .find(|&capture| capture.name == name)
             .map(|v| v as _)
     }
 
-    pub(crate) fn capture_by_role(
-        &self,
-        role: WinnowCaptureRole,
-    ) -> Option<&WinnowSequenceCapture<'p>> {
+    pub fn capture_by_role(&self, role: WinnowCaptureRole) -> Option<&WinnowSequenceCapture<'p>> {
         self.captures
             .iter()
             .find(|&capture| capture.role == Some(role))
             .map(|v| v as _)
     }
 
-    pub(crate) fn capture_word_range(&self, name: &str) -> Option<Range<usize>> {
+    pub fn capture_word_range(&self, name: &str) -> Option<Range<usize>> {
         self.capture(name).map(|capture| capture.word_range.clone())
     }
 
-    pub(crate) fn capture_clause<'a>(
+    pub fn capture_clause<'a>(
         &self,
         name: &str,
         clause: LexedClause<'a>,
@@ -439,7 +433,7 @@ impl<'p> WinnowSequenceMatch<'p> {
             .and_then(|capture| capture.clause(clause))
     }
 
-    pub(crate) fn capture_clause_by_role<'a>(
+    pub fn capture_clause_by_role<'a>(
         &self,
         role: WinnowCaptureRole,
         clause: LexedClause<'a>,
@@ -450,14 +444,14 @@ impl<'p> WinnowSequenceMatch<'p> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct WinnowSequenceCapture<'p> {
-    pub(crate) name: &'p str,
-    pub(crate) role: Option<WinnowCaptureRole>,
-    pub(crate) word_range: Range<usize>,
+pub struct WinnowSequenceCapture<'p> {
+    pub name: &'p str,
+    pub role: Option<WinnowCaptureRole>,
+    pub word_range: Range<usize>,
 }
 
 impl WinnowSequenceCapture<'_> {
-    pub(crate) fn clause<'a>(&self, clause: LexedClause<'a>) -> Option<LexedClause<'a>> {
+    pub fn clause<'a>(&self, clause: LexedClause<'a>) -> Option<LexedClause<'a>> {
         clause.between_word_range(self.word_range.start, self.word_range.end)
     }
 }

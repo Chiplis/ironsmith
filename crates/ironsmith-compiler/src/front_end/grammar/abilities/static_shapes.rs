@@ -49,33 +49,33 @@ const OPPONENT_DISCARD_THIS_TO_BATTLEFIELD_REPLACEMENT: &[&str] = &[
     "graveyard",
 ];
 
-pub(crate) fn is_land_reveal_enters_static_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_land_reveal_enters_static_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     parse_land_reveal_enters_shape(tokens).is_some()
 }
 
-pub(crate) fn is_opening_hand_begin_game_static_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_opening_hand_begin_game_static_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     parse_opening_hand_begin_game_shape(tokens).is_some()
 }
 
-pub(crate) fn is_draw_replacement_double_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_draw_replacement_double_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_exact_tokens(tokens, DRAW_REPLACEMENT_DOUBLE)
 }
 
-pub(crate) fn is_draw_replacement_skip_empty_library_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_draw_replacement_skip_empty_library_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_exact_tokens(tokens, DRAW_REPLACEMENT_SKIP_EMPTY_LIBRARY)
 }
 
-pub(crate) fn is_draw_replacement_win_empty_library_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_draw_replacement_win_empty_library_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_exact_tokens(tokens, DRAW_REPLACEMENT_WIN_EMPTY_LIBRARY)
 }
 
-pub(crate) fn is_opponent_effect_discard_this_to_battlefield_replacement_line_lexed(
+pub fn is_opponent_effect_discard_this_to_battlefield_replacement_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
     matches_exact_tokens(tokens, OPPONENT_DISCARD_THIS_TO_BATTLEFIELD_REPLACEMENT)
 }
 
-pub(crate) fn parse_can_block_subtype_as_though_reach_line_lexed(
+pub fn parse_can_block_subtype_as_though_reach_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Subtype> {
     let words = TokenWordView::new(tokens).word_refs();
@@ -85,13 +85,13 @@ pub(crate) fn parse_can_block_subtype_as_though_reach_line_lexed(
     Some(subtype)
 }
 
-pub(crate) fn is_prevent_all_noncombat_damage_to_matching_permanents_line_lexed(
+pub fn is_prevent_all_noncombat_damage_to_matching_permanents_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
     parse_prevent_matching_permanents_shape(tokens, true)
 }
 
-pub(crate) fn is_prevent_all_combat_damage_to_matching_permanents_line_lexed(
+pub fn is_prevent_all_combat_damage_to_matching_permanents_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
     parse_prevent_matching_permanents_shape(tokens, false)

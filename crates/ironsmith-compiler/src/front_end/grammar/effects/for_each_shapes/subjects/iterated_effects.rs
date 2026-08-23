@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) fn parse_for_each_mana_symbol_spent_effect_shape(
+pub fn parse_for_each_mana_symbol_spent_effect_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ForEachManaSymbolSpentEffectShape<'_>> {
     let (subject_tokens, effect_tokens) =
@@ -55,7 +55,7 @@ pub(crate) fn parse_for_each_mana_symbol_spent_effect_shape(
     })
 }
 
-pub(crate) fn parse_for_each_spent_mana_effect_shape(
+pub fn parse_for_each_spent_mana_effect_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ForEachSpentManaEffectShape<'_>> {
     let (subject_tokens, effect_tokens) =
@@ -91,7 +91,7 @@ pub(crate) fn parse_for_each_spent_mana_effect_shape(
     )
 }
 
-pub(crate) fn parse_for_each_dynamic_target_effect_shape(
+pub fn parse_for_each_dynamic_target_effect_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ForEachDynamicTargetEffectShape<'_>> {
     let (subject_tokens, effect_tokens) =

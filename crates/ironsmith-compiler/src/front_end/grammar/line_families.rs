@@ -10,44 +10,44 @@ use super::structure;
 use crate::lexer::{LexStream, OwnedLexToken, TokenKind, TokenWordView};
 
 mod statement_shapes;
-pub(crate) use statement_shapes::*;
+pub use statement_shapes::*;
 mod document_dispatch;
-pub(crate) use document_dispatch::*;
+pub use document_dispatch::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TokenSplitShape<'a> {
-    pub(crate) before: &'a [OwnedLexToken],
-    pub(crate) after: &'a [OwnedLexToken],
+pub struct TokenSplitShape<'a> {
+    pub before: &'a [OwnedLexToken],
+    pub after: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct MaxSpeedBodyShape<'a> {
-    pub(crate) body_tokens: &'a [OwnedLexToken],
+pub struct MaxSpeedBodyShape<'a> {
+    pub body_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct StationThresholdShape<'a> {
-    pub(crate) threshold: i32,
-    pub(crate) body_tokens: &'a [OwnedLexToken],
+pub struct StationThresholdShape<'a> {
+    pub threshold: i32,
+    pub body_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct KickerBranchShape<'a> {
-    pub(crate) first_cost: &'a [OwnedLexToken],
-    pub(crate) second_cost: &'a [OwnedLexToken],
+pub struct KickerBranchShape<'a> {
+    pub first_cost: &'a [OwnedLexToken],
+    pub second_cost: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct StickerTicketMarkerShape;
+pub struct StickerTicketMarkerShape;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RemoveCounterPreventionThenTriggerShape<'a> {
-    pub(crate) prevention_tokens: &'a [OwnedLexToken],
-    pub(crate) prevention: attached_object_static_lines::RemoveCounterPreventionSpec<'a>,
-    pub(crate) trigger_tokens: &'a [OwnedLexToken],
+pub struct RemoveCounterPreventionThenTriggerShape<'a> {
+    pub prevention_tokens: &'a [OwnedLexToken],
+    pub prevention: attached_object_static_lines::RemoveCounterPreventionSpec<'a>,
+    pub trigger_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_comma_split(tokens: &[OwnedLexToken]) -> Option<TokenSplitShape<'_>> {
+pub fn parse_comma_split(tokens: &[OwnedLexToken]) -> Option<TokenSplitShape<'_>> {
     let (index, _, _) = primitives::find_prefix(tokens, || primitives::comma().void())?;
     Some(TokenSplitShape {
         before: tokens.get(..index)?,
@@ -55,7 +55,7 @@ pub(crate) fn parse_comma_split(tokens: &[OwnedLexToken]) -> Option<TokenSplitSh
     })
 }
 
-pub(crate) fn parse_max_speed_body(tokens: &[OwnedLexToken]) -> Option<MaxSpeedBodyShape<'_>> {
+pub fn parse_max_speed_body(tokens: &[OwnedLexToken]) -> Option<MaxSpeedBodyShape<'_>> {
     let (index, _, _) = primitives::find_prefix(tokens, || {
         alt((
             primitives::token_kind(TokenKind::Dash),
@@ -68,7 +68,7 @@ pub(crate) fn parse_max_speed_body(tokens: &[OwnedLexToken]) -> Option<MaxSpeedB
     (!TokenWordView::new(body_tokens).is_empty()).then_some(MaxSpeedBodyShape { body_tokens })
 }
 
-pub(crate) fn parse_visible_line_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+pub fn parse_visible_line_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     let mut inside_double_quotes = false;
     let mut inside_single_quotes = false;
 
@@ -88,9 +88,7 @@ pub(crate) fn parse_visible_line_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexT
     tokens
 }
 
-pub(crate) fn parse_max_speed_trigger_split(
-    tokens: &[OwnedLexToken],
-) -> Option<TokenSplitShape<'_>> {
+pub fn parse_max_speed_trigger_split(tokens: &[OwnedLexToken]) -> Option<TokenSplitShape<'_>> {
     let visible = parse_visible_max_speed_tokens(tokens);
     let visible = if visible
         .last()
@@ -108,14 +106,12 @@ pub(crate) fn parse_max_speed_trigger_split(
     parse_comma_split(visible)
 }
 
-pub(crate) fn parse_visible_max_speed_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+pub fn parse_visible_max_speed_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     let mut input = LexStream::new(tokens);
     visible_max_speed_tokens(&mut input).unwrap_or(tokens)
 }
 
-pub(crate) fn parse_station_threshold(
-    tokens: &[OwnedLexToken],
-) -> Option<StationThresholdShape<'_>> {
+pub fn parse_station_threshold(tokens: &[OwnedLexToken]) -> Option<StationThresholdShape<'_>> {
     let (pipe, _, _) =
         primitives::find_prefix(tokens, || primitives::token_kind(TokenKind::Pipe).void())?;
     let [threshold_token, plus_token] = tokens.get(..pipe)? else {
@@ -134,14 +130,12 @@ pub(crate) fn parse_station_threshold(
     })
 }
 
-pub(crate) fn parse_station_creature_threshold(tokens: &[OwnedLexToken]) -> Option<i32> {
+pub fn parse_station_creature_threshold(tokens: &[OwnedLexToken]) -> Option<i32> {
     primitives::find_prefix(tokens, || station_creature_threshold)
         .map(|(_, threshold, _)| threshold)
 }
 
-pub(crate) fn parse_sticker_ticket_marker(
-    tokens: &[OwnedLexToken],
-) -> Option<StickerTicketMarkerShape> {
+pub fn parse_sticker_ticket_marker(tokens: &[OwnedLexToken]) -> Option<StickerTicketMarkerShape> {
     let (dash, _, _) =
         primitives::find_prefix(tokens, || primitives::token_kind(TokenKind::EmDash).void())?;
     let cost_tokens = tokens.get(..dash)?;
@@ -158,13 +152,13 @@ pub(crate) fn parse_sticker_ticket_marker(
     Some(StickerTicketMarkerShape)
 }
 
-pub(crate) fn parse_partner_variant(
+pub fn parse_partner_variant(
     tokens: &[OwnedLexToken],
 ) -> Option<super::semantic_lowering::PartnerVariantLabel> {
     super::semantic_lowering::parse_partner_variant_label_tokens(tokens)
 }
 
-pub(crate) fn parse_kicker_branches(tokens: &[OwnedLexToken]) -> Option<KickerBranchShape<'_>> {
+pub fn parse_kicker_branches(tokens: &[OwnedLexToken]) -> Option<KickerBranchShape<'_>> {
     let (_, mut tail) = primitives::parse_prefix(tokens, primitives::kw("kicker"))?;
     if tail
         .first()
@@ -187,7 +181,7 @@ pub(crate) fn parse_kicker_branches(tokens: &[OwnedLexToken]) -> Option<KickerBr
     })
 }
 
-pub(crate) fn parse_remove_counter_prevention_then_trigger(
+pub fn parse_remove_counter_prevention_then_trigger(
     tokens: &[OwnedLexToken],
 ) -> Option<RemoveCounterPreventionThenTriggerShape<'_>> {
     let sentences = structure::split_lexed_sentences(tokens)

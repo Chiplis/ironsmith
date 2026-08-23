@@ -9,59 +9,59 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, TokenKind};
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum VillainousChoiceTarget {
+pub enum VillainousChoiceTarget {
     CreaturesYouDontControl,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum VillainousChoiceIteration {
+pub enum VillainousChoiceIteration {
     EachOfThem,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum VillainousChoiceChooser {
+pub enum VillainousChoiceChooser {
     IteratedCreaturesController,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct VillainousChoiceSharedSubjectPair<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) first_action_tokens: &'a [OwnedLexToken],
-    pub(crate) second_action_tokens: &'a [OwnedLexToken],
+pub struct VillainousChoiceSharedSubjectPair<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub first_action_tokens: &'a [OwnedLexToken],
+    pub second_action_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum VillainousChoiceModeProgram<'a> {
+pub enum VillainousChoiceModeProgram<'a> {
     Direct(&'a [OwnedLexToken]),
     SharedSubjectPair(VillainousChoiceSharedSubjectPair<'a>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct VillainousChoiceStatementShape<'a> {
-    pub(crate) count: ChoiceCount,
-    pub(crate) target: VillainousChoiceTarget,
-    pub(crate) iteration: VillainousChoiceIteration,
-    pub(crate) chooser: VillainousChoiceChooser,
-    pub(crate) chooser_tokens: &'a [OwnedLexToken],
-    pub(crate) first_mode_tokens: &'a [OwnedLexToken],
-    pub(crate) second_mode_tokens: &'a [OwnedLexToken],
-    pub(crate) first_mode_program: VillainousChoiceModeProgram<'a>,
-    pub(crate) second_mode_program: VillainousChoiceModeProgram<'a>,
+pub struct VillainousChoiceStatementShape<'a> {
+    pub count: ChoiceCount,
+    pub target: VillainousChoiceTarget,
+    pub iteration: VillainousChoiceIteration,
+    pub chooser: VillainousChoiceChooser,
+    pub chooser_tokens: &'a [OwnedLexToken],
+    pub first_mode_tokens: &'a [OwnedLexToken],
+    pub second_mode_tokens: &'a [OwnedLexToken],
+    pub first_mode_program: VillainousChoiceModeProgram<'a>,
+    pub second_mode_program: VillainousChoiceModeProgram<'a>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum VillainousChoicePlayerIteration {
+pub enum VillainousChoicePlayerIteration {
     EachOpponent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct VillainousChoicePlayerStatementShape<'a> {
-    pub(crate) iteration: VillainousChoicePlayerIteration,
-    pub(crate) chooser_tokens: &'a [OwnedLexToken],
-    pub(crate) first_mode_tokens: &'a [OwnedLexToken],
-    pub(crate) second_mode_tokens: &'a [OwnedLexToken],
-    pub(crate) first_mode_program: VillainousChoiceModeProgram<'a>,
-    pub(crate) second_mode_program: VillainousChoiceModeProgram<'a>,
+pub struct VillainousChoicePlayerStatementShape<'a> {
+    pub iteration: VillainousChoicePlayerIteration,
+    pub chooser_tokens: &'a [OwnedLexToken],
+    pub first_mode_tokens: &'a [OwnedLexToken],
+    pub second_mode_tokens: &'a [OwnedLexToken],
+    pub first_mode_program: VillainousChoiceModeProgram<'a>,
+    pub second_mode_program: VillainousChoiceModeProgram<'a>,
 }
 
 fn parse_creature_or_creatures<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -260,7 +260,7 @@ fn parse_villainous_choice_player_statement_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_villainous_choice_statement_tokens(
+pub fn parse_villainous_choice_statement_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<VillainousChoiceStatementShape<'_>> {
     primitives::parse_all(
@@ -271,7 +271,7 @@ pub(crate) fn parse_villainous_choice_statement_tokens(
     .ok()
 }
 
-pub(crate) fn parse_villainous_choice_player_statement_tokens(
+pub fn parse_villainous_choice_player_statement_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<VillainousChoicePlayerStatementShape<'_>> {
     primitives::parse_all(

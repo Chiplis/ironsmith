@@ -4,14 +4,14 @@
 //! lowering pipeline still lives elsewhere, but lexing and token-view utilities
 //! now have a real home in `ironsmith-compiler`.
 
-pub mod cst_primitives;
-pub mod document_cst;
-pub mod document_structure;
-pub mod lexer;
+pub use ironsmith_compiler_source::cst_primitives;
+pub use ironsmith_compiler_source::document_cst;
+pub use ironsmith_compiler_source::document_structure;
+pub use ironsmith_compiler_syntax::lexer;
 pub mod parser_support;
-pub mod preprocess;
-pub mod source_model;
-pub mod token_utils;
+pub use ironsmith_compiler_source::preprocess;
+pub use ironsmith_compiler_source::source_model;
+pub use ironsmith_compiler_syntax::token_utils;
 
 pub(crate) use crate::grammar;
 pub(crate) mod semantic_domain_migration;

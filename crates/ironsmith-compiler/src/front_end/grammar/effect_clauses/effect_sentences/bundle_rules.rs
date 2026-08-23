@@ -36,7 +36,7 @@ use crate::target::{
 use crate::types::CardType;
 use crate::zone::Zone;
 
-pub(crate) fn parse_same_sentence_copy_and_may_cast_copy(
+pub fn parse_same_sentence_copy_and_may_cast_copy(
     tokens: &[OwnedLexToken],
 ) -> Result<
     Option<crate::activation_and_restrictions::trigger_subject_filters::MayCastTaggedSpec>,
@@ -2036,7 +2036,7 @@ fn parse_untap_then_phase_out_until_source_leaves_bundle(
     ])
 }
 
-pub(crate) fn parse_typed_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+pub fn parse_typed_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let sentences = split_lexed_sentences(tokens);
     if sentences.len() == 2 {
         let sentence_inputs = sentences

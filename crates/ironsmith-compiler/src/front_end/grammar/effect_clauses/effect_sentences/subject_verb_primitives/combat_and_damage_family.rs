@@ -11,7 +11,7 @@ fn token_is_word(token: &OwnedLexToken, expected: &str) -> bool {
     token.as_word() == Some(expected)
 }
 
-pub(crate) fn parse_sentence_destroy_creature_type_of_choice(
+pub fn parse_sentence_destroy_creature_type_of_choice(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if combat_shapes::parse_destroy_creature_type_choice_shape(clause.tokens()).is_none() {
@@ -24,7 +24,7 @@ pub(crate) fn parse_sentence_destroy_creature_type_of_choice(
     ]))
 }
 
-pub(crate) fn parse_sentence_pump_creature_type_of_choice(
+pub fn parse_sentence_pump_creature_type_of_choice(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = combat_shapes::parse_pump_creature_type_choice_shape(clause.tokens()) else {
@@ -127,7 +127,7 @@ pub(crate) fn parse_sentence_pump_creature_type_of_choice(
     ]))
 }
 
-pub(crate) fn parse_sentence_must_attack_creature_type_of_choice(
+pub fn parse_sentence_must_attack_creature_type_of_choice(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = combat_shapes::parse_must_attack_creature_type_choice_shape(clause.tokens())
@@ -169,7 +169,7 @@ pub(crate) fn parse_sentence_must_attack_creature_type_of_choice(
     ]))
 }
 
-pub(crate) fn parse_sentence_put_sticker_on(
+pub fn parse_sentence_put_sticker_on(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = combat_shapes::parse_put_sticker_shape(clause.tokens()) else {
@@ -225,7 +225,7 @@ fn parse_put_sticker_then_becomes_aura(
     )))
 }
 
-pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
+pub fn parse_sentence_return_targets_of_creature_type_of_choice(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = combat_shapes::parse_return_creature_type_choice_shape(clause.tokens())
@@ -280,7 +280,7 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_sentence_choose_all_from_battlefield_and_graveyard_to_hand(
+pub fn parse_sentence_choose_all_from_battlefield_and_graveyard_to_hand(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_text = clause.text();
@@ -307,7 +307,7 @@ pub(crate) fn parse_sentence_choose_all_from_battlefield_and_graveyard_to_hand(
     ]))
 }
 
-pub(crate) fn parse_sentence_return_multiple_targets(
+pub fn parse_sentence_return_multiple_targets(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     // A single printed "return" can coordinate objects with different
@@ -431,7 +431,7 @@ pub(crate) fn parse_sentence_return_multiple_targets(
     }]))
 }
 
-pub(crate) fn parse_sentence_for_each_of_target_objects(
+pub fn parse_sentence_for_each_of_target_objects(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = combat_shapes::parse_for_each_target_objects_shape(clause.tokens()) else {
@@ -486,7 +486,7 @@ pub(crate) fn parse_sentence_for_each_of_target_objects(
     ]))
 }
 
-pub(crate) fn parse_distribute_counters_sentence(
+pub fn parse_distribute_counters_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<EffectAst>, CardTextError> {
     if clause
@@ -548,7 +548,7 @@ pub(crate) fn parse_distribute_counters_sentence(
     )))
 }
 
-pub(crate) fn parse_sentence_distribute_counters(
+pub fn parse_sentence_distribute_counters(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let (head_clause, tail_clause) = if let Some((head, tail)) = clause.split_once_on_then_trimmed()
@@ -572,7 +572,7 @@ pub(crate) fn parse_sentence_distribute_counters(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_sentence_transform_with_followup(
+pub fn parse_sentence_transform_with_followup(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(first) = clause.token(0) else {
@@ -623,19 +623,19 @@ pub(crate) fn parse_sentence_transform_with_followup(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_sentence_cant_effect(
+pub fn parse_sentence_cant_effect(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(parse_cant_effect_sentence)
 }
 
-pub(crate) fn parse_sentence_gain_x_plus_life(
+pub fn parse_sentence_gain_x_plus_life(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(parse_gain_x_plus_life_sentence)
 }
 
-pub(crate) fn parse_sentence_for_each_exiled_this_way(
+pub fn parse_sentence_for_each_exiled_this_way(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = combat_shapes::parse_for_each_this_way_shape(clause.tokens()) else {
@@ -647,7 +647,7 @@ pub(crate) fn parse_sentence_for_each_exiled_this_way(
     clause.parse_with_lexed(parse_for_each_exiled_this_way_sentence)
 }
 
-pub(crate) fn parse_sentence_for_each_put_into_graveyard_this_way(
+pub fn parse_sentence_for_each_put_into_graveyard_this_way(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = combat_shapes::parse_for_each_this_way_shape(clause.tokens()) else {
@@ -659,13 +659,13 @@ pub(crate) fn parse_sentence_for_each_put_into_graveyard_this_way(
     clause.parse_with_lexed(parse_for_each_put_into_graveyard_this_way_sentence)
 }
 
-pub(crate) fn parse_sentence_each_player_put_permanent_cards_exiled_with_source(
+pub fn parse_sentence_each_player_put_permanent_cards_exiled_with_source(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(parse_each_player_put_permanent_cards_exiled_with_source_sentence)
 }
 
-pub(crate) fn parse_sentence_for_each_destroyed_this_way(
+pub fn parse_sentence_for_each_destroyed_this_way(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = combat_shapes::parse_for_each_this_way_shape(clause.tokens()) else {
@@ -677,55 +677,55 @@ pub(crate) fn parse_sentence_for_each_destroyed_this_way(
     clause.parse_with_lexed(parse_for_each_destroyed_this_way_sentence)
 }
 
-pub(crate) fn parse_sentence_search_library(
+pub fn parse_sentence_search_library(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(parse_search_library_sentence)
 }
 
-pub(crate) fn parse_sentence_shuffle_graveyard_into_library(
+pub fn parse_sentence_shuffle_graveyard_into_library(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(parse_shuffle_graveyard_into_library_sentence)
 }
 
-pub(crate) fn parse_sentence_shuffle_object_into_library(
+pub fn parse_sentence_shuffle_object_into_library(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(parse_shuffle_object_into_library_sentence)
 }
 
-pub(crate) fn parse_sentence_exile_hand_and_graveyard_bundle(
+pub fn parse_sentence_exile_hand_and_graveyard_bundle(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(parse_exile_hand_and_graveyard_bundle_sentence)
 }
 
-pub(crate) fn parse_sentence_target_player_exiles_creature_and_graveyard(
+pub fn parse_sentence_target_player_exiles_creature_and_graveyard(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(parse_target_player_exiles_creature_and_graveyard_sentence)
 }
 
-pub(crate) fn parse_sentence_look_at_hand(
+pub fn parse_sentence_look_at_hand(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(parse_look_at_hand_sentence)
 }
 
-pub(crate) fn parse_sentence_look_at_top_then_exile_one(
+pub fn parse_sentence_look_at_top_then_exile_one(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(parse_look_at_top_then_exile_one_sentence)
 }
 
-pub(crate) fn parse_sentence_gain_life_equal_to_age(
+pub fn parse_sentence_gain_life_equal_to_age(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(parse_gain_life_equal_to_age_sentence)
 }
 
-pub(crate) fn parse_sentence_for_each_player_doesnt(
+pub fn parse_sentence_for_each_player_doesnt(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_one_with_lexed(parse_for_each_player_doesnt)

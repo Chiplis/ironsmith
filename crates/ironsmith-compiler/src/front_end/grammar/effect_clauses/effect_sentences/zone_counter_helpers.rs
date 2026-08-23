@@ -102,11 +102,11 @@ fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value
     affected_this_way_fallback.then(this_way_object_count_value)
 }
 
-pub(crate) fn describe_counter_type_for_mode(counter_type: CounterType) -> String {
+pub fn describe_counter_type_for_mode(counter_type: CounterType) -> String {
     counter_type.description().into_owned()
 }
 
-pub(crate) fn describe_counter_phrase_for_mode(count: u32, counter_type: CounterType) -> String {
+pub fn describe_counter_phrase_for_mode(count: u32, counter_type: CounterType) -> String {
     let counter_name = describe_counter_type_for_mode(counter_type);
     if count == 1 {
         format!("a {counter_name} counter")
@@ -115,7 +115,7 @@ pub(crate) fn describe_counter_phrase_for_mode(count: u32, counter_type: Counter
     }
 }
 
-pub(crate) fn sentence_case_mode_text(text: &str) -> String {
+pub fn sentence_case_mode_text(text: &str) -> String {
     let mut chars = text.chars();
     let Some(first) = chars.next() else {
         return String::new();
@@ -126,7 +126,7 @@ pub(crate) fn sentence_case_mode_text(text: &str) -> String {
     out
 }
 
-pub(crate) fn parse_counter_descriptor(
+pub fn parse_counter_descriptor(
     tokens: &[OwnedLexToken],
 ) -> Result<(u32, CounterType), CardTextError> {
     let descriptor = shapes::parse_counter_descriptor_shape(tokens).ok_or_else(|| {
@@ -241,7 +241,7 @@ fn target_from_counter_source_spec(spec: &ChooseSpec, span: Option<TextSpan>) ->
     }
 }
 
-pub(crate) fn target_object_filter_mut(target: &mut TargetAst) -> Option<&mut ObjectFilter> {
+pub fn target_object_filter_mut(target: &mut TargetAst) -> Option<&mut ObjectFilter> {
     match target {
         TargetAst::Object(filter, _, _) => Some(filter),
         TargetAst::WithCount(inner, _) => target_object_filter_mut(inner),
@@ -249,10 +249,7 @@ pub(crate) fn target_object_filter_mut(target: &mut TargetAst) -> Option<&mut Ob
     }
 }
 
-pub(crate) fn merge_it_match_filter_into_target(
-    target: &mut TargetAst,
-    it_filter: &ObjectFilter,
-) -> bool {
+pub fn merge_it_match_filter_into_target(target: &mut TargetAst, it_filter: &ObjectFilter) -> bool {
     if let TargetAst::Tagged(tag, span) = target {
         let mut filter = ObjectFilter::default();
         filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -292,7 +289,7 @@ fn parse_counter_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, Ca
     parse_target_phrase(tokens)
 }
 
-pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let tokens = shapes::strip_optional_put_prefix(tokens);
     let (mut count_value, used) = parse_put_counter_count_value(tokens)?;
     let rest = &tokens[used..];
@@ -492,7 +489,7 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
     })
 }
 
-pub(crate) fn parse_sentence_put_multiple_counters_on_target(
+pub fn parse_sentence_put_multiple_counters_on_target(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = shapes::parse_shared_counter_target_shape(tokens) else {
@@ -573,29 +570,29 @@ fn parse_put_or_remove_counter_choice(
     )))
 }
 
-pub(crate) fn parse_counter_target_count_prefix(
+pub fn parse_counter_target_count_prefix(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(ChoiceCount, usize)>, CardTextError> {
     Ok(shapes::parse_counter_target_count_shape(tokens))
 }
 
-pub(crate) fn split_until_source_leaves_tail(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], bool) {
+pub fn split_until_source_leaves_tail(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], bool) {
     shapes::split_until_source_leaves_shape(tokens)
 }
 
-pub(crate) fn split_until_opponent_becomes_monarch_tail(
+pub fn split_until_opponent_becomes_monarch_tail(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     shapes::split_until_opponent_becomes_monarch_shape(tokens)
 }
 
-pub(crate) fn split_until_target_leaves_tail(
+pub fn split_until_target_leaves_tail(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
     shapes::split_until_target_leaves_shape(tokens)
 }
 
-pub(crate) fn parse_half_starting_life_total_value(
+pub fn parse_half_starting_life_total_value(
     tokens: &[OwnedLexToken],
     player: PlayerAst,
 ) -> Option<Value> {
@@ -649,22 +646,19 @@ fn parse_transform_like(
     }
 }
 
-pub(crate) fn parse_transform(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+pub fn parse_transform(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     parse_transform_like(tokens, EffectAst::subject_verb_transform)
 }
 
-pub(crate) fn parse_convert(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+pub fn parse_convert(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     parse_transform_like(tokens, EffectAst::subject_verb_convert)
 }
 
-pub(crate) fn exile_subject_owner_filter(subject: Option<SubjectAst>) -> Option<PlayerFilter> {
+pub fn exile_subject_owner_filter(subject: Option<SubjectAst>) -> Option<PlayerFilter> {
     extract_subject_player(subject).and_then(controller_filter_for_token_player)
 }
 
-pub(crate) fn apply_exile_subject_owner_context(
-    filter: &mut ObjectFilter,
-    subject: Option<SubjectAst>,
-) {
+pub fn apply_exile_subject_owner_context(filter: &mut ObjectFilter, subject: Option<SubjectAst>) {
     let Some(owner_filter) = exile_subject_owner_filter(subject) else {
         return;
     };
@@ -689,10 +683,7 @@ pub(crate) fn apply_exile_subject_owner_context(
     }
 }
 
-pub(crate) fn apply_exile_subject_hand_owner_context(
-    target: &mut TargetAst,
-    subject: Option<SubjectAst>,
-) {
+pub fn apply_exile_subject_hand_owner_context(target: &mut TargetAst, subject: Option<SubjectAst>) {
     let Some(filter) = target_object_filter_mut(target) else {
         return;
     };
@@ -702,10 +693,7 @@ pub(crate) fn apply_exile_subject_hand_owner_context(
     apply_exile_subject_owner_context(filter, subject);
 }
 
-pub(crate) fn apply_shuffle_subject_graveyard_owner_context(
-    target: &mut TargetAst,
-    subject: SubjectAst,
-) {
+pub fn apply_shuffle_subject_graveyard_owner_context(target: &mut TargetAst, subject: SubjectAst) {
     let Some(filter) = target_object_filter_mut(target) else {
         return;
     };
@@ -796,9 +784,10 @@ mod filtered_prior_action_counter_tests {
         let value = parse_create_for_each_dynamic_count(&tokens)
             .expect("named counters on a source should be a dynamic count");
 
-        let Value::CountersOn(spec, Some(CounterType::Named("invasion"))) = value else {
+        let Value::CountersOn(spec, Some(CounterType::Named(counter_name))) = value else {
             panic!("expected invasion counters on source, got {value:?}");
         };
+        assert_eq!(counter_name.as_str(), "invasion");
         assert!(matches!(spec.unhinted(), ChooseSpec::Source));
         assert_eq!(
             spec.source_reference_surface()

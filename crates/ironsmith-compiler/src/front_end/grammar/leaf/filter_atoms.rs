@@ -11,7 +11,7 @@ use super::super::primitives;
 use super::common::finish_text_parse;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LeafDemonstrativeObjectHead {
+pub enum LeafDemonstrativeObjectHead {
     CardType(CardType),
     Permanent,
     Card,
@@ -21,12 +21,12 @@ pub(crate) enum LeafDemonstrativeObjectHead {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LeafObjectReferenceHead {
+pub enum LeafObjectReferenceHead {
     Demonstrative(LeafDemonstrativeObjectHead),
     Subtype(Subtype),
 }
 
-pub(crate) fn parse_leaf_card_type(input: &mut &str) -> WResult<CardType> {
+pub fn parse_leaf_card_type(input: &mut &str) -> WResult<CardType> {
     let raw = rest.parse_next(input)?;
     classify_card_type(raw).ok_or_else(|| {
         primitives::backtrack_err(
@@ -36,53 +36,53 @@ pub(crate) fn parse_leaf_card_type(input: &mut &str) -> WResult<CardType> {
     })
 }
 
-pub(crate) fn parse_leaf_card_type_complete(raw: &str) -> Result<CardType, CardTextError> {
+pub fn parse_leaf_card_type_complete(raw: &str) -> Result<CardType, CardTextError> {
     finish_text_parse(raw, parse_leaf_card_type, "leaf-card-type")
 }
 
-pub(crate) fn parse_leaf_supertype(input: &mut &str) -> WResult<Supertype> {
+pub fn parse_leaf_supertype(input: &mut &str) -> WResult<Supertype> {
     let raw = rest.parse_next(input)?;
     classify_supertype(raw)
         .ok_or_else(|| primitives::backtrack_err("supertype", "basic, legendary, snow, or world"))
 }
 
-pub(crate) fn parse_leaf_supertype_complete(raw: &str) -> Result<Supertype, CardTextError> {
+pub fn parse_leaf_supertype_complete(raw: &str) -> Result<Supertype, CardTextError> {
     finish_text_parse(raw, parse_leaf_supertype, "leaf-supertype")
 }
 
-pub(crate) fn parse_leaf_subtype(input: &mut &str) -> WResult<Subtype> {
+pub fn parse_leaf_subtype(input: &mut &str) -> WResult<Subtype> {
     let raw = rest.parse_next(input)?;
     classify_subtype_word(raw)
         .ok_or_else(|| primitives::backtrack_err("subtype", "known Magic subtype"))
 }
 
-pub(crate) fn parse_leaf_subtype_complete(raw: &str) -> Result<Subtype, CardTextError> {
+pub fn parse_leaf_subtype_complete(raw: &str) -> Result<Subtype, CardTextError> {
     finish_text_parse(raw, parse_leaf_subtype, "leaf-subtype")
 }
 
-pub(crate) fn parse_leaf_subtype_flexible(input: &mut &str) -> WResult<Subtype> {
+pub fn parse_leaf_subtype_flexible(input: &mut &str) -> WResult<Subtype> {
     let raw = rest.parse_next(input)?;
     classify_flexible_subtype(raw).ok_or_else(|| {
         primitives::backtrack_err("flexible subtype", "known singular or plural subtype")
     })
 }
 
-pub(crate) fn parse_leaf_subtype_flexible_complete(raw: &str) -> Result<Subtype, CardTextError> {
+pub fn parse_leaf_subtype_flexible_complete(raw: &str) -> Result<Subtype, CardTextError> {
     finish_text_parse(raw, parse_leaf_subtype_flexible, "leaf-flexible-subtype")
 }
 
-pub(crate) fn parse_leaf_color(input: &mut &str) -> WResult<ColorSet> {
+pub fn parse_leaf_color(input: &mut &str) -> WResult<ColorSet> {
     let raw = rest.parse_next(input)?;
     Color::from_name(raw)
         .map(ColorSet::from_color)
         .ok_or_else(|| primitives::backtrack_err("color", "white, blue, black, red, or green"))
 }
 
-pub(crate) fn parse_leaf_color_complete(raw: &str) -> Result<ColorSet, CardTextError> {
+pub fn parse_leaf_color_complete(raw: &str) -> Result<ColorSet, CardTextError> {
     finish_text_parse(raw, parse_leaf_color, "leaf-color")
 }
 
-pub(crate) fn parse_leaf_non_card_type(input: &mut &str) -> WResult<CardType> {
+pub fn parse_leaf_non_card_type(input: &mut &str) -> WResult<CardType> {
     literal("non").parse_next(input)?;
     parse_leaf_card_type
         .context(StrContext::Label("non-card-type descriptor"))
@@ -92,53 +92,53 @@ pub(crate) fn parse_leaf_non_card_type(input: &mut &str) -> WResult<CardType> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_non_card_type_complete(raw: &str) -> Result<CardType, CardTextError> {
+pub fn parse_leaf_non_card_type_complete(raw: &str) -> Result<CardType, CardTextError> {
     finish_text_parse(raw, parse_leaf_non_card_type, "leaf-non-card-type")
 }
 
-pub(crate) fn parse_leaf_non_supertype(input: &mut &str) -> WResult<Supertype> {
+pub fn parse_leaf_non_supertype(input: &mut &str) -> WResult<Supertype> {
     literal("non").parse_next(input)?;
     parse_leaf_supertype
         .context(StrContext::Label("non-supertype descriptor"))
         .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_non_supertype_complete(raw: &str) -> Result<Supertype, CardTextError> {
+pub fn parse_leaf_non_supertype_complete(raw: &str) -> Result<Supertype, CardTextError> {
     finish_text_parse(raw, parse_leaf_non_supertype, "leaf-non-supertype")
 }
 
-pub(crate) fn parse_leaf_non_color(input: &mut &str) -> WResult<ColorSet> {
+pub fn parse_leaf_non_color(input: &mut &str) -> WResult<ColorSet> {
     literal("non").parse_next(input)?;
     parse_leaf_color
         .context(StrContext::Label("non-color descriptor"))
         .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_non_color_complete(raw: &str) -> Result<ColorSet, CardTextError> {
+pub fn parse_leaf_non_color_complete(raw: &str) -> Result<ColorSet, CardTextError> {
     finish_text_parse(raw, parse_leaf_non_color, "leaf-non-color")
 }
 
-pub(crate) fn parse_leaf_non_subtype(input: &mut &str) -> WResult<Subtype> {
+pub fn parse_leaf_non_subtype(input: &mut &str) -> WResult<Subtype> {
     literal("non").parse_next(input)?;
     parse_leaf_subtype_flexible
         .context(StrContext::Label("non-subtype descriptor"))
         .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_non_subtype_complete(raw: &str) -> Result<Subtype, CardTextError> {
+pub fn parse_leaf_non_subtype_complete(raw: &str) -> Result<Subtype, CardTextError> {
     finish_text_parse(raw, parse_leaf_non_subtype, "leaf-non-subtype")
 }
 
-pub(crate) fn parse_leaf_zone(input: &mut &str) -> WResult<Zone> {
+pub fn parse_leaf_zone(input: &mut &str) -> WResult<Zone> {
     let raw = rest.parse_next(input)?;
     classify_zone(raw).ok_or_else(|| primitives::backtrack_err("zone", "named game zone"))
 }
 
-pub(crate) fn parse_leaf_zone_complete(raw: &str) -> Result<Zone, CardTextError> {
+pub fn parse_leaf_zone_complete(raw: &str) -> Result<Zone, CardTextError> {
     finish_text_parse(raw, parse_leaf_zone, "leaf-zone")
 }
 
-pub(crate) fn parse_leaf_demonstrative_object_head(
+pub fn parse_leaf_demonstrative_object_head(
     input: &mut &str,
 ) -> WResult<LeafDemonstrativeObjectHead> {
     let raw = rest.parse_next(input)?;
@@ -150,7 +150,7 @@ pub(crate) fn parse_leaf_demonstrative_object_head(
     })
 }
 
-pub(crate) fn parse_leaf_demonstrative_object_head_complete(
+pub fn parse_leaf_demonstrative_object_head_complete(
     raw: &str,
 ) -> Result<LeafDemonstrativeObjectHead, CardTextError> {
     finish_text_parse(
@@ -160,9 +160,7 @@ pub(crate) fn parse_leaf_demonstrative_object_head_complete(
     )
 }
 
-pub(crate) fn parse_leaf_object_reference_head(
-    input: &mut &str,
-) -> WResult<LeafObjectReferenceHead> {
+pub fn parse_leaf_object_reference_head(input: &mut &str) -> WResult<LeafObjectReferenceHead> {
     let raw = rest.parse_next(input)?;
     if let Some(head) = classify_demonstrative_object_head(raw) {
         return Ok(LeafObjectReferenceHead::Demonstrative(head));
@@ -177,7 +175,7 @@ pub(crate) fn parse_leaf_object_reference_head(
         })
 }
 
-pub(crate) fn parse_leaf_object_reference_head_complete(
+pub fn parse_leaf_object_reference_head_complete(
     raw: &str,
 ) -> Result<LeafObjectReferenceHead, CardTextError> {
     finish_text_parse(
@@ -302,7 +300,7 @@ fn classify_flexible_subtype(raw: &str) -> Option<Subtype> {
 /// such as "Sand" should retain their Magic subtype meaning there even though
 /// the broad rules-text filter parser intentionally rejects them as ordinary
 /// English nouns.
-pub(crate) fn classify_token_definition_subtype(raw: &str) -> Option<Subtype> {
+pub fn classify_token_definition_subtype(raw: &str) -> Option<Subtype> {
     let candidate = normalized_atom_word(raw);
     for family in [
         SubtypeFamily::Land,

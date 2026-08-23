@@ -7,31 +7,29 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, TokenKind, trim_lexed
 use super::super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DontUntapDuringControllersStepSpec<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) singular_subject: bool,
+pub struct DontUntapDuringControllersStepSpec<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub singular_subject: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GraveyardMetricKind {
+pub enum GraveyardMetricKind {
     CardTypes,
     ManaValues,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WardCostSpec<'a> {
-    pub(crate) cost_tokens: &'a [OwnedLexToken],
+pub struct WardCostSpec<'a> {
+    pub cost_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AdditionalVoteKind {
+pub enum AdditionalVoteKind {
     OptionalTime,
     MandatoryVote,
 }
 
-pub(crate) fn parse_dungeon_room_trigger_duplication_marker_tokens(
-    tokens: &[OwnedLexToken],
-) -> bool {
+pub fn parse_dungeon_room_trigger_duplication_marker_tokens(tokens: &[OwnedLexToken]) -> bool {
     semantic_all(
         tokens,
         semantic_phrase(&[
@@ -49,7 +47,7 @@ pub(crate) fn parse_dungeon_room_trigger_duplication_marker_tokens(
     )
 }
 
-pub(crate) fn parse_ward_abilities_dont_trigger_marker_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_ward_abilities_dont_trigger_marker_tokens(tokens: &[OwnedLexToken]) -> bool {
     semantic_all(
         tokens,
         (
@@ -62,11 +60,11 @@ pub(crate) fn parse_ward_abilities_dont_trigger_marker_tokens(tokens: &[OwnedLex
     )
 }
 
-pub(crate) fn parse_ward_cost_tokens(tokens: &[OwnedLexToken]) -> Option<WardCostSpec<'_>> {
+pub fn parse_ward_cost_tokens(tokens: &[OwnedLexToken]) -> Option<WardCostSpec<'_>> {
     primitives::parse_all(tokens, parse_ward_cost_lexed, "ward cost").ok()
 }
 
-pub(crate) fn parse_additional_vote_tokens(tokens: &[OwnedLexToken]) -> Option<AdditionalVoteKind> {
+pub fn parse_additional_vote_tokens(tokens: &[OwnedLexToken]) -> Option<AdditionalVoteKind> {
     primitives::parse_all(
         tokens,
         parse_additional_vote_lexed,
@@ -75,7 +73,7 @@ pub(crate) fn parse_additional_vote_tokens(tokens: &[OwnedLexToken]) -> Option<A
     .ok()
 }
 
-pub(crate) fn parse_dont_untap_during_controllers_step_tokens(
+pub fn parse_dont_untap_during_controllers_step_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DontUntapDuringControllersStepSpec<'_>> {
     primitives::parse_all(
@@ -86,7 +84,7 @@ pub(crate) fn parse_dont_untap_during_controllers_step_tokens(
     .ok()
 }
 
-pub(crate) fn parse_there_is_or_are_quantified_tokens(
+pub fn parse_there_is_or_are_quantified_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     primitives::parse_prefix(
@@ -99,13 +97,11 @@ pub(crate) fn parse_there_is_or_are_quantified_tokens(
     .map(|(_, rest)| trim_lexed_commas(rest))
 }
 
-pub(crate) fn parse_graveyard_metric_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<GraveyardMetricKind> {
+pub fn parse_graveyard_metric_tokens(tokens: &[OwnedLexToken]) -> Option<GraveyardMetricKind> {
     primitives::parse_all(tokens, parse_graveyard_metric_lexed, "graveyard metric").ok()
 }
 
-pub(crate) fn parse_damage_not_removed_cleanup_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_damage_not_removed_cleanup_tokens(tokens: &[OwnedLexToken]) -> bool {
     semantic_all(
         tokens,
         (

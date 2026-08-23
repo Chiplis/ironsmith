@@ -9,8 +9,8 @@ mod power;
 #[path = "for_each_shapes/subjects.rs"]
 mod subjects;
 
-pub(crate) use facts::*;
-pub(crate) use modifier::*;
-pub(crate) use participants::*;
-pub(crate) use power::*;
-pub(crate) use subjects::*;
+pub use facts::*;
+pub use modifier::*;
+pub use participants::*;
+pub use power::*;
+pub use subjects::*;

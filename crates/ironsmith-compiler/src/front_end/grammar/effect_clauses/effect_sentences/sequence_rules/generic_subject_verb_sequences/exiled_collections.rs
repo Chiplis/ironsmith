@@ -106,7 +106,7 @@ fn has_owner_hands_destination(tokens: &[OwnedLexToken]) -> bool {
 /// their owners' hands; exile this spell". Parsing the middle instruction in
 /// isolation updates the ordinary last-object tag, so the later "exiled this
 /// way" reference must be bound to the first instruction explicitly.
-pub(crate) fn parse_exile_each_player_put_return_exiled_then_exile_source(
+pub fn parse_exile_each_player_put_return_exiled_then_exile_source(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -177,7 +177,7 @@ pub(crate) fn parse_exile_each_player_put_return_exiled_then_exile_source(
 
 /// Composes "exile the top N ...; put <count/filter> from among them onto the
 /// battlefield" while keeping the selection scoped to the exact exiled set.
-pub(crate) fn parse_exile_top_then_put_from_among_tokens(
+pub fn parse_exile_top_then_put_from_among_tokens(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -252,7 +252,7 @@ pub(crate) fn parse_exile_top_then_put_from_among_tokens(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_exile_top_then_put_from_among_onto_battlefield(
+pub fn parse_exile_top_then_put_from_among_onto_battlefield(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -336,7 +336,7 @@ fn build_exile_top_then_cast_collection(
 
 /// Composes "exile the top N ...; you may cast <count/filter> ... from among
 /// them" using the exact moved-object tag minted by the exile effect.
-pub(crate) fn parse_exile_top_then_cast_collection_free(
+pub fn parse_exile_top_then_cast_collection_free(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -463,7 +463,7 @@ fn parse_remaining_exiled_partition(
 /// Three-sentence collection cast with a cleanup/partition instruction.  This
 /// must outrank the two-sentence rule so cleanup references are bound to both
 /// the original exiled set and the actually selected cast subset.
-pub(crate) fn parse_exile_top_cast_collection_then_partition(
+pub fn parse_exile_top_cast_collection_then_partition(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -487,7 +487,7 @@ pub(crate) fn parse_exile_top_cast_collection_then_partition(
 /// Composes "exile cards at random; choose a card from among them and copy
 /// it; you may cast the copy". The copied spell permission remains bound to
 /// the chosen member of the tagged exile collection.
-pub(crate) fn parse_random_graveyard_exile_choose_copy_then_cast_copy(
+pub fn parse_random_graveyard_exile_choose_copy_then_cast_copy(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

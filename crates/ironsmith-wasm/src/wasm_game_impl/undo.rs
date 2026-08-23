@@ -797,16 +797,25 @@ impl WasmGame {
         }
     }
 
+    #[cfg(feature = "dynamic-compile")]
     fn compile_definition_from_parse_source(
         source_name: &str,
         parse_block: &str,
     ) -> Result<CardDefinition, String> {
-        ironsmith_registry::compile_to_runtime_definition(
+        ironsmith_dynamic_compile::compile_to_runtime_definition(
             source_name,
             parse_block.to_string(),
             false,
         )
         .map_err(|err| err.to_string())
+    }
+
+    #[cfg(not(feature = "dynamic-compile"))]
+    fn compile_definition_from_parse_source(
+        _source_name: &str,
+        _parse_block: &str,
+    ) -> Result<CardDefinition, String> {
+        Err("source compilation is provided by ironsmith-compiler-wasm; register compiled artifacts with the lean engine".to_string())
     }
 
     fn card_lookup_error_for_query(query: &str, err: String) -> String {
@@ -832,7 +841,7 @@ impl WasmGame {
                         let effects = if triggered.effects.is_empty() {
                             String::new()
                         } else {
-                            ironsmith::compiled_text::compile_effect_list(&triggered.effects)
+                            ironsmith::runtime_display::compile_effect_list(&triggered.effects)
                         };
                         if effects.trim().is_empty() {
                             trigger
@@ -844,7 +853,7 @@ impl WasmGame {
                         let cost = activated.mana_cost.display();
                         let resolution = if let Some(mana) = &activated.mana_output {
                             if mana.is_empty() {
-                                ironsmith::compiled_text::compile_effect_list(&activated.effects)
+                                ironsmith::runtime_display::compile_effect_list(&activated.effects)
                             } else {
                                 format!(
                                     "Add {}",
@@ -853,7 +862,7 @@ impl WasmGame {
                                 )
                             }
                         } else {
-                            ironsmith::compiled_text::compile_effect_list(&activated.effects)
+                            ironsmith::runtime_display::compile_effect_list(&activated.effects)
                         };
 
                         match (cost.trim().is_empty(), resolution.trim().is_empty()) {
@@ -997,6 +1006,7 @@ impl WasmGame {
         Ok(lines.join("\n"))
     }
 
+    #[cfg(feature = "dynamic-compile")]
     fn compile_custom_card_faces(
         &self,
         draft: &CustomCardInput,
@@ -1024,13 +1034,13 @@ impl WasmGame {
                 )));
             }
 
-            let mut builder = ironsmith_compiler::CardDefinitionBuilder::new(CardId::new(), name);
+            let mut builder = ironsmith_dynamic_compile::CompilerCardDefinitionBuilder::new(CardId::new(), name);
             if let Some(colors) = Self::parse_custom_color_indicator(&face.color_indicator)? {
                 builder = builder.color_indicator(colors);
             }
 
             let parse_block = Self::build_custom_face_parse_block(face)?;
-            let mut definition = ironsmith_registry::compile_builder_to_runtime_definition(
+            let mut definition = ironsmith_dynamic_compile::compile_builder_to_runtime_definition(
                 builder,
                 parse_block,
                 false,
@@ -1057,6 +1067,16 @@ impl WasmGame {
         }
 
         Ok(definitions)
+    }
+
+    #[cfg(not(feature = "dynamic-compile"))]
+    fn compile_custom_card_faces(
+        &self,
+        _draft: &CustomCardInput,
+    ) -> Result<Vec<CardDefinition>, JsValue> {
+        Err(JsValue::from_str(
+            "custom source compilation is provided by ironsmith-compiler-wasm; register compiled artifacts with the lean engine",
+        ))
     }
 
     fn definition_to_custom_face_input(definition: &CardDefinition) -> CustomCardFaceInput {
@@ -1097,7 +1117,7 @@ impl WasmGame {
     }
 
     fn definition_display_oracle_text(definition: &CardDefinition) -> String {
-        ironsmith::compiled_text::compiled_text_lines(definition).join("\n")
+        ironsmith::runtime_display::compiled_text_lines(definition).join("\n")
     }
 
     fn definition_type_line(definition: &CardDefinition) -> String {
@@ -1155,7 +1175,7 @@ impl WasmGame {
                 .map(|value| value.toughness.to_string()),
             loyalty: definition.card.loyalty,
             defense: definition.card.defense,
-            compiled_text: ironsmith::compiled_text::compiled_text_lines(definition),
+            compiled_text: ironsmith::runtime_display::compiled_text_lines(definition),
             compiled_abilities: Self::compiled_ability_lines(definition),
             raw_compilation: format!("{:#?}", definition),
         }
@@ -1364,7 +1384,7 @@ impl WasmGame {
             });
         let compiled_text = compiled_definition
             .as_ref()
-            .map(ironsmith::compiled_text::compiled_text_lines)
+            .map(ironsmith::runtime_display::compiled_text_lines)
             .unwrap_or_default();
         let compiled_abilities = compiled_definition
             .as_ref()

@@ -7,19 +7,19 @@ use crate::grammar::primitives;
 use crate::lexer::{LexStream, OwnedLexToken};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct EachOpponentExileChoiceShape {
-    pub(crate) choice: Vec<OwnedLexToken>,
+pub struct EachOpponentExileChoiceShape {
+    pub choice: Vec<OwnedLexToken>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EachPlayerExileGroup {
+pub enum EachPlayerExileGroup {
     Player,
     Opponent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EachPlayerExileCountedHandPermanentShape {
-    pub(crate) group: EachPlayerExileGroup,
+pub struct EachPlayerExileCountedHandPermanentShape {
+    pub group: EachPlayerExileGroup,
 }
 
 fn hand_owner(input: &mut LexStream<'_>) -> WResult<()> {
@@ -122,7 +122,7 @@ fn counted_permanents_and_or_hand_cards(input: &mut LexStream<'_>) -> WResult<()
     finish_non_words(input)
 }
 
-pub(crate) fn is_exile_hand_or_permanent_choice_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_exile_hand_or_permanent_choice_shape(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,
         hand_or_permanent_choice,
@@ -131,7 +131,7 @@ pub(crate) fn is_exile_hand_or_permanent_choice_shape(tokens: &[OwnedLexToken]) 
     .is_ok()
 }
 
-pub(crate) fn parse_each_opponent_exile_choice_shape(
+pub fn parse_each_opponent_exile_choice_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<EachOpponentExileChoiceShape> {
     let ((), choice) = primitives::parse_prefix(tokens, each_opponent_exiles)?;
@@ -140,7 +140,7 @@ pub(crate) fn parse_each_opponent_exile_choice_shape(
     })
 }
 
-pub(crate) fn parse_each_player_exile_counted_hand_permanent_shape(
+pub fn parse_each_player_exile_counted_hand_permanent_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<EachPlayerExileCountedHandPermanentShape> {
     let mut input = LexStream::new(tokens);

@@ -12,16 +12,16 @@ use super::effect_ast_traversal::for_each_nested_effects_mut;
 /// their choice").  Reference tracking deliberately does not export this tag
 /// until the consuming action runs, so an earlier subject such as "that
 /// creature's controller" still resolves against the trigger object.
-pub(crate) const CONDITION_COLLECTION_CHOICE_TAG: &str = "__condition_collection_choice";
+pub const CONDITION_COLLECTION_CHOICE_TAG: &str = "__condition_collection_choice";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ConditionAntecedentBinding {
+pub enum ConditionAntecedentBinding {
     TaggedItOnly,
     IncludeRandomWithCountObjects,
     RandomWithCountObjectsOnly,
 }
 
-pub(crate) fn predicate_object_filter_antecedent(predicate: &PredicateAst) -> Option<ObjectFilter> {
+pub fn predicate_object_filter_antecedent(predicate: &PredicateAst) -> Option<ObjectFilter> {
     match predicate {
         // "if enchanted creature is untapped, tap it": the tagged condition
         // subject is the antecedent for "it" in the body effects.
@@ -86,7 +86,7 @@ fn predicate_random_count_object_filter_antecedent(
     }
 }
 
-pub(crate) fn predicate_source_counter_antecedent(predicate: &PredicateAst) -> Option<CounterType> {
+pub fn predicate_source_counter_antecedent(predicate: &PredicateAst) -> Option<CounterType> {
     match predicate {
         PredicateAst::SourceHasCounterAtLeast { counter_type, .. } => Some(*counter_type),
         PredicateAst::And(left, right) => match (
@@ -130,10 +130,7 @@ fn merge_filter_overlay(base: &mut ObjectFilter, overlay: ObjectFilter) {
     }
 }
 
-pub(crate) fn bind_condition_filter_antecedent(
-    filter: &mut ObjectFilter,
-    antecedent: &ObjectFilter,
-) {
+pub fn bind_condition_filter_antecedent(filter: &mut ObjectFilter, antecedent: &ObjectFilter) {
     let references_it = filter.tagged_constraints.iter().any(|constraint| {
         constraint.tag.as_str() == IT_TAG
             && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
@@ -340,7 +337,7 @@ fn bind_condition_antecedent_in_effects_internal(
     false
 }
 
-pub(crate) fn bind_condition_antecedent_in_effects(
+pub fn bind_condition_antecedent_in_effects(
     effects: &mut [EffectAst],
     antecedent: &ObjectFilter,
     mode: ConditionAntecedentBinding,
@@ -353,7 +350,7 @@ pub(crate) fn bind_condition_antecedent_in_effects(
 /// This is intentionally narrower than the ordinary object-antecedent binder:
 /// an existential condition alone does not make a bare `it` unambiguous, but
 /// the parser's tagged collection constraint records an authored `those`.
-pub(crate) fn bind_condition_collection_antecedent_in_effects(
+pub fn bind_condition_collection_antecedent_in_effects(
     effects: &mut [EffectAst],
     predicate: &PredicateAst,
 ) {
@@ -504,7 +501,7 @@ pub(crate) fn bind_condition_collection_antecedent_in_effects(
     }
 }
 
-pub(crate) fn bind_random_count_condition_antecedent_in_effects(
+pub fn bind_random_count_condition_antecedent_in_effects(
     effects: &mut [EffectAst],
     predicate: &PredicateAst,
 ) {
@@ -656,7 +653,7 @@ fn bind_trigger_antecedent_after_observation_in_effects(
 /// it a permanent, however, so such an action still refers to the persistent
 /// object supplied by the trigger. Once the observed card moves, subsequent
 /// references follow the moved result instead.
-pub(crate) fn bind_trigger_antecedent_after_top_library_observation(
+pub fn bind_trigger_antecedent_after_top_library_observation(
     effects: &mut [EffectAst],
     antecedent_tag: &crate::tag::TagKey,
 ) {
@@ -716,7 +713,7 @@ fn retarget_source_damage_attack_followups_to_source_internal(effects: &mut [Eff
     }
 }
 
-pub(crate) fn retarget_source_damage_attack_followups_to_source(effects: &mut [EffectAst]) {
+pub fn retarget_source_damage_attack_followups_to_source(effects: &mut [EffectAst]) {
     retarget_source_damage_attack_followups_to_source_internal(effects);
 }
 
@@ -743,7 +740,7 @@ fn bind_condition_counter_antecedent_in_effect(effect: &mut EffectAst, counter_t
     });
 }
 
-pub(crate) fn bind_condition_counter_antecedent_in_effects(
+pub fn bind_condition_counter_antecedent_in_effects(
     effects: &mut [EffectAst],
     counter_type: CounterType,
 ) {
@@ -800,7 +797,7 @@ fn retarget_it_animations_to_source_internal(effects: &mut [EffectAst]) -> bool 
     false
 }
 
-pub(crate) fn retarget_it_animations_to_source(effects: &mut [EffectAst]) {
+pub fn retarget_it_animations_to_source(effects: &mut [EffectAst]) {
     let _ = retarget_it_animations_to_source_internal(effects);
 }
 
@@ -850,7 +847,7 @@ mod tests {
     #[test]
     fn existential_collection_choice_materializes_one_of_those_objects() {
         let mut contested_lands =
-            ObjectFilter::land().with_counter_type(CounterType::Named("contested"));
+            ObjectFilter::land().with_counter_type(CounterType::Named("contested".into()));
         contested_lands.union_surface = contested_lands
             .union_surface
             .with_counter_requirement_surface(false, true, true);

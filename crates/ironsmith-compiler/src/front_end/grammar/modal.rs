@@ -6,18 +6,16 @@ use super::super::lexer::{LexStream, OwnedLexToken, TokenKind};
 use super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ModalPointHeaderShape;
+pub struct ModalPointHeaderShape;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ModalPointLabelShape {
-    pub(crate) count: u32,
-    pub(crate) delimiter_token: usize,
-    pub(crate) body_first: usize,
+pub struct ModalPointLabelShape {
+    pub count: u32,
+    pub delimiter_token: usize,
+    pub body_first: usize,
 }
 
-pub(crate) fn parse_modal_point_header_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<ModalPointHeaderShape> {
+pub fn parse_modal_point_header_tokens(tokens: &[OwnedLexToken]) -> Option<ModalPointHeaderShape> {
     if !tokens
         .iter()
         .any(|token| leaf::parse_leaf_pawprint_label_count_token(token).is_some())
@@ -29,9 +27,7 @@ pub(crate) fn parse_modal_point_header_tokens(
     Some(ModalPointHeaderShape)
 }
 
-pub(crate) fn parse_modal_point_label_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<ModalPointLabelShape> {
+pub fn parse_modal_point_label_tokens(tokens: &[OwnedLexToken]) -> Option<ModalPointLabelShape> {
     let mut index = 0usize;
     if tokens
         .get(index)

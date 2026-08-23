@@ -35,18 +35,18 @@ const CREATURE_OR_PLAYER_PHRASES: &[&[&str]] = &[
 ];
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ChosenObjectTarget<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
+pub struct ChosenObjectTarget<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EnchantedObjectTargetKind {
+pub enum EnchantedObjectTargetKind {
     Creature,
     Other,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TargetUnionShape {
+pub enum TargetUnionShape {
     PriorPlayerOrPlaneswalker,
     AttackedPlayerOrPlaneswalker,
     BattleOrOpponent,
@@ -55,26 +55,24 @@ pub(crate) enum TargetUnionShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TrailingPlayerTargetKind {
+pub enum TrailingPlayerTargetKind {
     Any,
     Opponent,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ObjectOrPlayerUnionTarget<'a> {
-    pub(crate) object_tokens: &'a [OwnedLexToken],
-    pub(crate) player_kind: TrailingPlayerTargetKind,
+pub struct ObjectOrPlayerUnionTarget<'a> {
+    pub object_tokens: &'a [OwnedLexToken],
+    pub player_kind: TrailingPlayerTargetKind,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct TargetForEachSuffix<'a> {
-    pub(crate) object_tokens: &'a [OwnedLexToken],
-    pub(crate) count_words: Vec<&'a str>,
+pub struct TargetForEachSuffix<'a> {
+    pub object_tokens: &'a [OwnedLexToken],
+    pub count_words: Vec<&'a str>,
 }
 
-pub(crate) fn parse_chosen_object_target(
-    tokens: &[OwnedLexToken],
-) -> Option<ChosenObjectTarget<'_>> {
+pub fn parse_chosen_object_target(tokens: &[OwnedLexToken]) -> Option<ChosenObjectTarget<'_>> {
     let view = TokenWordView::new(tokens);
     let words = view.to_word_refs();
     // Postpositive oracle surface: "creature(s) chosen this way". Keep the
@@ -116,9 +114,7 @@ pub(crate) fn parse_chosen_object_target(
     (!filter_tokens.is_empty()).then_some(ChosenObjectTarget { filter_tokens })
 }
 
-pub(crate) fn parse_enchanted_object_target_kind(
-    words: &[&str],
-) -> Option<EnchantedObjectTargetKind> {
+pub fn parse_enchanted_object_target_kind(words: &[&str]) -> Option<EnchantedObjectTargetKind> {
     primitives::parse_full_word_slice(
         words,
         alt((
@@ -139,7 +135,7 @@ pub(crate) fn parse_enchanted_object_target_kind(
     )
 }
 
-pub(crate) fn parse_target_union_shape(words: &[&str]) -> Option<TargetUnionShape> {
+pub fn parse_target_union_shape(words: &[&str]) -> Option<TargetUnionShape> {
     if [
         &["that", "player", "or", "planeswalker"][..],
         &["that", "planeswalker", "or", "player"][..],
@@ -188,7 +184,7 @@ pub(crate) fn parse_target_union_shape(words: &[&str]) -> Option<TargetUnionShap
 /// object-filter arm. That matters for phrases such as "artifact, creature,
 /// planeswalker, or opponent", where collapsing the phrase to a fixed union
 /// shape would discard two of the legal permanent types.
-pub(crate) fn parse_object_or_player_union_target(
+pub fn parse_object_or_player_union_target(
     tokens: &[OwnedLexToken],
 ) -> Option<ObjectOrPlayerUnionTarget<'_>> {
     let view = TokenWordView::new(tokens);
@@ -219,9 +215,7 @@ fn exact_phrase(words: &[&str], expected: &[&str]) -> bool {
     parse_dynamic_phrase(&mut input, expected).is_ok() && input.is_empty()
 }
 
-pub(crate) fn parse_target_for_each_suffix(
-    tokens: &[OwnedLexToken],
-) -> Option<TargetForEachSuffix<'_>> {
+pub fn parse_target_for_each_suffix(tokens: &[OwnedLexToken]) -> Option<TargetForEachSuffix<'_>> {
     let view = TokenWordView::new(tokens);
     let words = view.to_word_refs();
     let span = phrase_range(&words, &["for", "each"])?;

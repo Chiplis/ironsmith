@@ -2,7 +2,6 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-WASM_CRATE_DIR="$ROOT_DIR/crates/ironsmith-wasm"
 PKG_DIR="$ROOT_DIR/pkg"
 DEMO_PKG_DIR="$ROOT_DIR/web/wasm_demo/pkg"
 DEFAULT_CARDS_FILE="$ROOT_DIR/cards.json"
@@ -26,6 +25,7 @@ FRONTEND_SCORES_FILE="${IRONSMITH_FRONTEND_SEMANTIC_SCORES_FILE:-$DEFAULT_FRONTE
 FRONTEND_CARDS_DIR="${IRONSMITH_FRONTEND_CARDS_DIR:-$DEFAULT_FRONTEND_CARDS_DIR}"
 SYNC_SCRYFALL_CARDS="${IRONSMITH_SYNC_SCRYFALL_CARDS:-1}"
 NO_DEFAULT_FEATURES=1
+WASM_OPT_LEVEL="${IRONSMITH_WASM_OPT_LEVEL:--O1}"
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -61,7 +61,9 @@ Notes:
   - Frontend cache file defaults to $DEFAULT_FRONTEND_SCORES_FILE and stores only compact threshold stats.
   - Frontend card assets default to $DEFAULT_FRONTEND_CARDS_DIR and are copied by Vite into dist/cards/.
   - Frontend JSON assets are skipped when their checksum manifest matches the registry DB and generator inputs.
-  - Default features are "wasm-lean" with crate default features disabled, so card source data is loaded from dist/cards/ instead of being embedded in ironsmith_bg.wasm.
+  - Default features are "wasm-lean" with crate default features disabled, so card source data is loaded from dist/cards/ instead of being embedded in engine_bg.wasm.
+  - The package contains separate engine, compiler, and verifier modules behind one JavaScript facade.
+  - IRONSMITH_WASM_OPT_LEVEL selects the shipped optimizer level (-O1, -O2, -Os, or -Oz; default -O1).
 USAGE
 }
 
@@ -90,6 +92,7 @@ inputs = [
     ("rebuild-wasm.sh", root / "rebuild-wasm.sh"),
     ("scripts/generate_baked_registry.py", root / "scripts" / "generate_baked_registry.py"),
     ("scripts/stream_scryfall_blocks.py", root / "scripts" / "stream_scryfall_blocks.py"),
+    ("artifact-baker", root / "crates" / "ironsmith-artifact-baker" / "src" / "main.rs"),
     ("registry-db", db_path),
 ]
 
@@ -281,7 +284,7 @@ sync_scryfall_cards_for_rebuild() {
   esac
 
   echo "[INFO] syncing registry DB with cards not already present..."
-  cargo run --release -p ironsmith-tools --bin sync_registry_db -- \
+  cargo run --release -p ironsmith-registry-sync --bin sync_registry_db -- \
     --cards "$CARDS_FILE" \
     --db-path "$DB_PATH" \
     --insert-missing-only \
@@ -371,9 +374,14 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+case "$WASM_OPT_LEVEL" in
+  -O1|-O2|-Os|-Oz) ;;
+  *) echo "IRONSMITH_WASM_OPT_LEVEL must be -O1, -O2, -Os, or -Oz" >&2; exit 1 ;;
+esac
+
 cd "$ROOT_DIR"
 require_cmd cargo
-require_cmd wasm-pack
+require_cmd wasm-bindgen
 require_cmd python3
 
 mkdir -p "$ROOT_DIR/target"
@@ -384,7 +392,7 @@ if [[ ! -f "$DB_PATH" ]]; then
 [ERROR] registry DB not found: $DB_PATH
 
 Run the registry sync first, for example:
-  cargo run --release -p ironsmith-tools --bin sync_registry_db -- --cards cards.json --db-path $DB_PATH
+  cargo run --release -p ironsmith-registry-sync --bin sync_registry_db -- --cards cards.json --db-path "$DB_PATH"
 
 Or let this script do the missing-card preflight by omitting --skip-scryfall-sync.
 EOF
@@ -465,6 +473,8 @@ PY
     --db-path "$DB_PATH" \
     --out "$ROOT_DIR/target/generated_registry_for_frontend_assets.rs" \
     --frontend-cards-dir "$FRONTEND_CARDS_DIR"
+  cargo run --release -p ironsmith-artifact-baker --bin bake_card_artifacts -- \
+    --cards-dir "$FRONTEND_CARDS_DIR"
   mkdir -p "$FRONTEND_CARDS_DIR"
   mv -f "$PENDING_FRONTEND_CARDS_CACHE_MANIFEST" "$FRONTEND_CARDS_CACHE_MANIFEST"
   echo "[INFO] synced frontend card compilation assets: $FRONTEND_CARDS_DIR"
@@ -488,63 +498,6 @@ else
   echo "[INFO] wasm-opt: disabled (--no-opt)"
 fi
 
-WASM_OUT_DIR="$(
-  python3 - "$PKG_DIR" "$WASM_CRATE_DIR" <<'PY'
-import os
-import sys
-
-print(os.path.relpath(sys.argv[1], sys.argv[2]))
-PY
-)"
-
-WASM_PACK_ARGS=(
-  build "$WASM_CRATE_DIR"
-  --target web
-  --release
-  --out-dir "$WASM_OUT_DIR"
-  --out-name ironsmith
-)
-if [[ "$OPTIMIZE_WASM" -eq 0 ]]; then
-  WASM_PACK_ARGS+=(--no-opt)
-fi
-if [[ "$NO_DEFAULT_FEATURES" -eq 1 ]]; then
-  WASM_PACK_ARGS+=(--no-default-features)
-fi
-WASM_PACK_ARGS+=(--features "$FEATURES")
-
-find_cached_wasm_bindgen() {
-  local cache_root="${WASM_PACK_CACHE:-$HOME/Library/Caches/.wasm-pack}"
-  local candidate
-  local required_version
-  if [[ ! -d "$cache_root" ]]; then
-    return 1
-  fi
-  required_version="$(
-    awk '
-      /^name = "wasm-bindgen"$/ { found = 1; next }
-      found && /^version = / {
-        gsub(/"/, "", $3)
-        print $3
-        exit
-      }
-    ' "$ROOT_DIR/Cargo.lock"
-  )"
-  while IFS= read -r candidate; do
-    if [[ -x "$candidate" && -n "$required_version" ]] \
-      && "$candidate" --version 2>/dev/null | grep -q "wasm-bindgen $required_version"; then
-      printf '%s\n' "$candidate"
-      return 0
-    fi
-  done < <(find "$cache_root" -maxdepth 2 -type f -name wasm-bindgen | sort -r)
-  while IFS= read -r candidate; do
-    if [[ -x "$candidate" ]]; then
-      printf '%s\n' "$candidate"
-      return 0
-    fi
-  done < <(find "$cache_root" -maxdepth 2 -type f -name wasm-bindgen | sort -r)
-  return 1
-}
-
 find_cached_wasm_opt() {
   local cache_root="${WASM_PACK_CACHE:-$HOME/Library/Caches/.wasm-pack}"
   local candidate
@@ -560,62 +513,93 @@ find_cached_wasm_opt() {
   return 1
 }
 
-build_wasm_with_cached_bindgen() {
-  local bindgen
+build_split_wasm_package() {
+  local engine_features
   local wasm_opt
   local cargo_args
-  bindgen="$(find_cached_wasm_bindgen)" || {
-    echo "[ERROR] wasm-pack failed and no cached wasm-bindgen binary was found" >&2
-    return 1
-  }
+  local cargo_packages
+  local raw_wasm_files
+  local artifact_names
+  local generated_wasm
+  local artifact
+  local artifact_name
+  local index
+  local engine_opt_pid
+  local compiler_opt_pid
+  local verifier_opt_pid
 
-  echo "[WARN] wasm-pack failed; falling back to cargo build with cached wasm-bindgen: $bindgen" >&2
+  engine_features="$(printf '%s' "$FEATURES" | sed 's/[[:space:]]//g; s/,/,ironsmith-engine-wasm\//g; s/^/ironsmith-engine-wasm\//')"
+  cargo_packages=(
+    -p ironsmith-engine-wasm
+    -p ironsmith-compiler-wasm
+    -p ironsmith-verifier-wasm
+  )
   cargo_args=(
     build
-    -p ironsmith-wasm
+    "${cargo_packages[@]}"
     --target wasm32-unknown-unknown
     --release
   )
   if [[ "$NO_DEFAULT_FEATURES" -eq 1 ]]; then
     cargo_args+=(--no-default-features)
   fi
-  cargo_args+=(--features "$FEATURES")
+  cargo_args+=(--features "$engine_features")
   cargo "${cargo_args[@]}"
 
+  raw_wasm_files=(
+    "$ROOT_DIR/target/wasm32-unknown-unknown/release/ironsmith_engine_wasm.wasm"
+    "$ROOT_DIR/target/wasm32-unknown-unknown/release/ironsmith_compiler_wasm.wasm"
+    "$ROOT_DIR/target/wasm32-unknown-unknown/release/ironsmith_verifier_wasm.wasm"
+  )
+  artifact_names=(engine compiler verifier)
+  for artifact in "${raw_wasm_files[@]}"; do
+    [[ -f "$artifact" ]] || { echo "[ERROR] missing split wasm artifact: $artifact" >&2; return 1; }
+  done
+
+  rm -rf -- "$PKG_DIR"
   mkdir -p "$PKG_DIR"
-  "$bindgen" \
-    "$ROOT_DIR/target/wasm32-unknown-unknown/release/ironsmith_wasm.wasm" \
-    --target web \
-    --out-dir "$PKG_DIR" \
-    --out-name ironsmith
+  for ((index = 0; index < ${#raw_wasm_files[@]}; index += 1)); do
+    wasm-bindgen "${raw_wasm_files[$index]}" \
+      --target web \
+      --out-dir "$PKG_DIR" \
+      --out-name "${artifact_names[$index]}"
+  done
+
+  generated_wasm=()
+  for artifact_name in "${artifact_names[@]}"; do
+    generated_wasm+=("$PKG_DIR/${artifact_name}_bg.wasm")
+  done
 
   if [[ "$OPTIMIZE_WASM" -eq 1 ]]; then
-    if wasm_opt="$(find_cached_wasm_opt)"; then
-      echo "[INFO] optimizing fallback WASM with cached wasm-opt: $wasm_opt"
-      "$wasm_opt" -Oz "$PKG_DIR/ironsmith_bg.wasm" -o "$PKG_DIR/ironsmith_bg.wasm"
-    else
-      echo "[WARN] wasm-pack failed and no cached wasm-opt binary was found; fallback WASM is unoptimized" >&2
-    fi
+    wasm_opt="$(find_cached_wasm_opt)" || {
+      echo "[ERROR] release packaging requires wasm-opt" >&2
+      return 1
+    }
+    echo "[INFO] optimizing split artifacts with $WASM_OPT_LEVEL and at most two wasm-opt processes"
+    "$wasm_opt" "$WASM_OPT_LEVEL" "${generated_wasm[0]}" -o "${generated_wasm[0]}.optimized" &
+    engine_opt_pid="$!"
+    "$wasm_opt" "$WASM_OPT_LEVEL" "${generated_wasm[1]}" -o "${generated_wasm[1]}.optimized" &
+    compiler_opt_pid="$!"
+    wait "$compiler_opt_pid"
+    "$wasm_opt" "$WASM_OPT_LEVEL" "${generated_wasm[2]}" -o "${generated_wasm[2]}.optimized" &
+    verifier_opt_pid="$!"
+    wait "$engine_opt_pid"
+    wait "$verifier_opt_pid"
+    for artifact in "${generated_wasm[@]}"; do
+      mv -f "$artifact.optimized" "$artifact"
+    done
   fi
 
-  if [[ -f "$DEMO_PKG_DIR/package.json" ]]; then
-    cp -f "$DEMO_PKG_DIR/package.json" "$PKG_DIR/package.json"
-  elif [[ ! -f "$PKG_DIR/package.json" ]]; then
-    cat > "$PKG_DIR/package.json" <<'JSON'
-{"name":"ironsmith","type":"module","files":["ironsmith.js","ironsmith_bg.wasm","ironsmith.d.ts","ironsmith_bg.wasm.d.ts"]}
-JSON
+  cp -f "$ROOT_DIR/npm/ironsmith-wasm/split-facade.js" "$PKG_DIR/ironsmith.js"
+  cp -f "$ROOT_DIR/npm/ironsmith-wasm/split-facade.d.ts" "$PKG_DIR/ironsmith.d.ts"
+  cp -f "$ROOT_DIR/npm/ironsmith-wasm/package.template.json" "$PKG_DIR/package.json"
+  if [[ -f "$ROOT_DIR/npm/ironsmith-wasm/README.md" ]]; then
+    cp -f "$ROOT_DIR/npm/ironsmith-wasm/README.md" "$PKG_DIR/README.md"
   fi
 }
 
-if ! wasm-pack "${WASM_PACK_ARGS[@]}"; then
-  build_wasm_with_cached_bindgen
-fi
+build_split_wasm_package
 
+rm -rf -- "$DEMO_PKG_DIR"
 mkdir -p "$DEMO_PKG_DIR"
-cp -f \
-  "$PKG_DIR/ironsmith.js" \
-  "$PKG_DIR/ironsmith_bg.wasm" \
-  "$PKG_DIR/ironsmith.d.ts" \
-  "$PKG_DIR/ironsmith_bg.wasm.d.ts" \
-  "$PKG_DIR/package.json" \
-  "$DEMO_PKG_DIR/"
+cp -Rf "$PKG_DIR/." "$DEMO_PKG_DIR/"

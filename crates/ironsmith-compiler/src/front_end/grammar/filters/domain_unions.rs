@@ -17,7 +17,7 @@ use super::{
 /// the ordinary object-filter grammar intersects the subtype and color,
 /// incorrectly counting only green Forests. Keep the qualities as `any_of`
 /// arms while preserving the authored conjunctive presentation surface.
-pub(crate) fn parse_subtype_color_shared_card_union_lexed(
+pub fn parse_subtype_color_shared_card_union_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Option<ObjectFilter> {
@@ -485,7 +485,7 @@ fn contains_current_block_partner_relation(tokens: &[OwnedLexToken]) -> bool {
 /// branch-scoped controllers and combat states. Keep independently nouned
 /// branches as `any_of` selectors, while factoring a genuinely shared
 /// trailing controller/owner scope onto the outer filter.
-pub(crate) fn parse_branch_scoped_object_filter_union_lexed(
+pub fn parse_branch_scoped_object_filter_union_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Option<ObjectFilter> {
@@ -761,7 +761,7 @@ fn flatten_elided_shared_characteristic_selector(
 /// Keep the shared owner/type facts on the outer filter and represent only the
 /// two disjoint locations as union arms. This uses the existing `ObjectFilter`
 /// union semantics and remains generic for other selectors and zone pairs.
-pub(crate) fn parse_elided_shared_domain_union(
+pub fn parse_elided_shared_domain_union(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Option<ObjectFilter> {
@@ -833,7 +833,7 @@ pub(crate) fn parse_elided_shared_domain_union(
 /// Parses a conjunction of independently scoped instances of the same object
 /// selector. This keeps battlefield/controller and card-zone/owner facts on
 /// separate `any_of` arms instead of collapsing them onto one filter.
-pub(crate) fn parse_domain_union_object_filter_lexed(
+pub fn parse_domain_union_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Option<ObjectFilter> {
@@ -911,7 +911,7 @@ pub(crate) fn parse_domain_union_object_filter_lexed(
 /// `creatures you control and creature cards in your graveyard` from a
 /// characteristic list with one shared terminal noun such as
 /// `instant and sorcery cards in your graveyard`.
-pub(crate) fn parse_repeated_selector_domain_union_lexed(
+pub fn parse_repeated_selector_domain_union_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Option<ObjectFilter> {

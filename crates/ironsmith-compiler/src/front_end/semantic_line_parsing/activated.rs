@@ -778,12 +778,12 @@ fn normalize_mana_replacement_effects(effects: Vec<EffectAst>) -> Vec<EffectAst>
         .collect()
 }
 
-pub(crate) struct ParsedActivatedLine {
-    pub(crate) chunk: LineAst,
-    pub(crate) restrictions: ParsedRestrictions,
+pub struct ParsedActivatedLine {
+    pub chunk: LineAst,
+    pub restrictions: ParsedRestrictions,
 }
 
-pub(crate) fn parse_activated_line(
+pub fn parse_activated_line(
     info: LineInfo,
     cost: TotalCost,
     compiler_cost: crate::model::CompilerTotalCost,

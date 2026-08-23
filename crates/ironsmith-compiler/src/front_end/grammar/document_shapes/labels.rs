@@ -6,33 +6,33 @@ use crate::lexer::{LexStream, OwnedLexToken, TokenKind};
 use crate::token_primitives::split_em_dash_label_prefix_tokens;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PreservedKeywordLabelKind {
+pub enum PreservedKeywordLabelKind {
     CostOrCasting,
     Activated,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LabelPrefixKind {
+pub enum LabelPrefixKind {
     PreservedKeyword(PreservedKeywordLabelKind),
     CouncilChoice,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct NumericResultPrefixShape;
+pub struct NumericResultPrefixShape;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct StatementLabelSplitShape<'a> {
-    pub(crate) label_tokens: &'a [OwnedLexToken],
-    pub(crate) body_tokens: &'a [OwnedLexToken],
+pub struct StatementLabelSplitShape<'a> {
+    pub label_tokens: &'a [OwnedLexToken],
+    pub body_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct StatementLabelStripShape<'a> {
-    pub(crate) body_tokens: &'a [OwnedLexToken],
-    pub(crate) stripped_labels: usize,
+pub struct StatementLabelStripShape<'a> {
+    pub body_tokens: &'a [OwnedLexToken],
+    pub stripped_labels: usize,
 }
 
-pub(crate) fn parse_label_prefix_kind_tokens(tokens: &[OwnedLexToken]) -> Option<LabelPrefixKind> {
+pub fn parse_label_prefix_kind_tokens(tokens: &[OwnedLexToken]) -> Option<LabelPrefixKind> {
     primitives::parse_prefix(tokens, council_choice_label)
         .map(|((), _)| LabelPrefixKind::CouncilChoice)
         .or_else(|| {
@@ -41,7 +41,7 @@ pub(crate) fn parse_label_prefix_kind_tokens(tokens: &[OwnedLexToken]) -> Option
         })
 }
 
-pub(crate) fn parse_preserved_keyword_label_tokens(
+pub fn parse_preserved_keyword_label_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PreservedKeywordLabelKind> {
     match parse_label_prefix_kind_tokens(tokens)? {
@@ -50,7 +50,7 @@ pub(crate) fn parse_preserved_keyword_label_tokens(
     }
 }
 
-pub(crate) fn parse_numeric_result_prefix_tokens(
+pub fn parse_numeric_result_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<NumericResultPrefixShape> {
     if matches!(tokens, [number, pipe, ..]
@@ -92,7 +92,7 @@ fn token_is_compact_ascii_numeric_range(token: &OwnedLexToken) -> bool {
     )
 }
 
-pub(crate) fn parse_statement_label_split_tokens(
+pub fn parse_statement_label_split_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<StatementLabelSplitShape<'_>> {
     if parse_numeric_result_prefix_tokens(tokens).is_some() {
@@ -105,7 +105,7 @@ pub(crate) fn parse_statement_label_split_tokens(
     })
 }
 
-pub(crate) fn parse_statement_label_strip_tokens(
+pub fn parse_statement_label_strip_tokens(
     mut tokens: &[OwnedLexToken],
 ) -> StatementLabelStripShape<'_> {
     let mut stripped_labels = 0;

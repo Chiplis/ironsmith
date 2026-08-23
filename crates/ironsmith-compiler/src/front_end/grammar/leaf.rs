@@ -1,44 +1,60 @@
+#[path = "leaf/activation_heads.rs"]
 mod activation_heads;
+#[path = "leaf/articles.rs"]
 mod articles;
+#[path = "leaf/casting.rs"]
 mod casting;
+#[path = "leaf/common.rs"]
 mod common;
+#[path = "leaf/condition_prefixes.rs"]
 mod condition_prefixes;
+#[path = "leaf/counts.rs"]
 mod counts;
+#[path = "leaf/durations.rs"]
 mod durations;
+#[path = "leaf/filter_atoms.rs"]
 mod filter_atoms;
+#[path = "leaf/mana.rs"]
 mod mana;
+#[path = "leaf/numbers.rs"]
 mod numbers;
+#[path = "leaf/outcomes.rs"]
 mod outcomes;
+#[path = "leaf/player_subjects.rs"]
 mod player_subjects;
+#[path = "leaf/power_toughness.rs"]
 mod power_toughness;
+#[path = "leaf/references.rs"]
 mod references;
+#[path = "leaf/source_references.rs"]
 mod source_references;
+#[path = "leaf/targets.rs"]
 mod targets;
 
-pub(crate) use activation_heads::{LeafActivationCostHead, parse_leaf_activation_cost_head_lexed};
-pub(crate) use articles::{
+pub use activation_heads::{LeafActivationCostHead, parse_leaf_activation_cost_head_lexed};
+pub use articles::{
     parse_leaf_article_complete, parse_leaf_leading_articles_tokens,
     parse_leaf_leading_articles_words, parse_leaf_leading_indefinite_article_tokens,
     parse_leaf_leading_selected_tokens,
 };
-pub(crate) use casting::parse_leaf_alternative_cast_prefix_words;
-#[cfg(test)]
-pub(crate) use condition_prefixes::parse_condition_intro_complete;
-pub(crate) use condition_prefixes::{
+pub use casting::parse_leaf_alternative_cast_prefix_words;
+#[cfg(any(test, feature = "test-support"))]
+pub use condition_prefixes::parse_condition_intro_complete;
+pub use condition_prefixes::{
     ConditionIntro, parse_leaf_condition_intro_prefix_tokens,
     parse_leaf_static_condition_intro_prefix_tokens,
 };
-#[cfg(test)]
-pub(crate) use counts::parse_leaf_count_range_prefix_lexed;
-pub(crate) use counts::{
+#[cfg(any(test, feature = "test-support"))]
+pub use counts::parse_leaf_count_range_prefix_lexed;
+pub use counts::{
     parse_leaf_another_event_count_comparison_tokens, parse_leaf_choice_count_prefix_lexed,
     parse_leaf_choice_count_prefix_tokens, parse_leaf_choice_count_prefix_words,
     parse_leaf_modal_choose_range_tokens, parse_leaf_modal_value_token,
     parse_leaf_target_count_range_prefix_lexed,
 };
-#[cfg(test)]
-pub(crate) use durations::parse_duration_phrase_complete;
-pub(crate) use durations::{
+#[cfg(any(test, feature = "test-support"))]
+pub use durations::parse_duration_phrase_complete;
+pub use durations::{
     LeafConditionalDurationKind, LeafDurationPhrase, LeafTurnDurationPhrase,
     parse_leaf_conditional_duration_kind_tokens, parse_leaf_conditional_duration_prefix_tokens,
     parse_leaf_duration_phrase_lexed, parse_leaf_restriction_duration_prefix_tokens,
@@ -46,7 +62,7 @@ pub(crate) use durations::{
     parse_leaf_turn_duration_prefix_tokens, parse_leaf_turn_duration_suffix_tokens,
     strip_leaf_this_turn_tokens,
 };
-pub(crate) use filter_atoms::{
+pub use filter_atoms::{
     LeafDemonstrativeObjectHead, classify_token_definition_subtype, parse_leaf_card_type_complete,
     parse_leaf_color_complete, parse_leaf_demonstrative_object_head_complete,
     parse_leaf_non_card_type_complete, parse_leaf_non_color_complete,
@@ -54,9 +70,8 @@ pub(crate) use filter_atoms::{
     parse_leaf_object_reference_head_complete, parse_leaf_subtype_complete,
     parse_leaf_subtype_flexible_complete, parse_leaf_supertype_complete, parse_leaf_zone_complete,
 };
-#[cfg(test)]
-pub(crate) use mana::parse_leaf_mana_symbol_group_tokens;
-pub(crate) use mana::{
+pub use mana::parse_leaf_mana_symbol_group_tokens;
+pub use mana::{
     LeafManaCostPrefix, LeafManaPipToken, parse_leaf_bare_mana_symbol_complete,
     parse_leaf_fixed_mana_cost_prefix_lexed, parse_leaf_fixed_mana_cost_prefix_tokens,
     parse_leaf_fixed_mana_output_lexed, parse_leaf_fixed_mana_output_tokens,
@@ -66,45 +81,44 @@ pub(crate) use mana::{
     parse_leaf_spelled_mana_word_complete, parse_leaf_surface_mana_pip_lexed,
     parse_leaf_surface_mana_pip_token,
 };
-#[cfg(test)]
-pub(crate) use numbers::parse_number_or_x_complete;
-pub(crate) use numbers::{
+#[cfg(any(test, feature = "test-support"))]
+pub use numbers::parse_number_or_x_complete;
+pub use numbers::{
     LeafNumber, LeafNumberPrefix, parse_leaf_count_token, parse_leaf_die_sides_complete,
     parse_leaf_number_or_x_prefix_lexed, parse_leaf_number_or_x_prefix_tokens,
     parse_leaf_number_prefix_lexed, parse_leaf_number_prefix_tokens,
     parse_leaf_number_prefix_words, parse_leaf_number_token_lexed, parse_number_complete,
     parse_number_i32_complete,
 };
-pub(crate) use outcomes::{recognize_activation_cost_head, recognize_target_head};
-pub(crate) use player_subjects::{
+pub use outcomes::{recognize_activation_cost_head, recognize_target_head};
+pub use player_subjects::{
     LeafPlayerReferenceMode, parse_leaf_player_reference_tokens, parse_leaf_player_reference_words,
 };
-pub(crate) use power_toughness::{
+pub use power_toughness::{
     parse_leaf_power_toughness_complete, parse_leaf_pt_modifier_values_complete,
     parse_leaf_unsigned_pt_complete,
 };
-pub(crate) use references::LeafPlayerReference;
-#[cfg(test)]
-pub(crate) use references::parse_player_reference_complete;
-pub(crate) use source_references::{
+pub use references::LeafPlayerReference;
+#[cfg(any(test, feature = "test-support"))]
+pub use references::parse_player_reference_complete;
+pub use source_references::{
     LeafSourceAnaphor, parse_leaf_source_anaphor_words, parse_leaf_this_source_reference_words,
     strip_leaf_source_possessive_suffix,
 };
-#[cfg(test)]
-pub(crate) use source_references::{
+pub use source_references::{
     LeafSourceReferenceAlias, parse_leaf_source_reference_aliases_for_name,
 };
-pub(crate) use targets::parse_leaf_target_head_tokens;
+pub use targets::parse_leaf_target_head_tokens;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use crate::effect::{Comparison, Value};
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use crate::mana::ManaSymbol;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use super::primitives;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 mod tests {
     use super::*;
 

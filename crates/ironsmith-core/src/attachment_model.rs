@@ -1,5 +1,6 @@
 use crate::{ChooseSpec, ObjectFilter, PlayerFilter};
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
     clippy::large_enum_variant,

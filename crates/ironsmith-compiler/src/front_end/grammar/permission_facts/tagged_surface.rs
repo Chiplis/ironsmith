@@ -14,7 +14,7 @@ use winnow::token::any;
 use super::super::{effects, leaf, primitives, values};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PermissionActor {
+pub enum PermissionActor {
     You,
     AnyPlayer,
     ItsOwner,
@@ -22,33 +22,33 @@ pub(crate) enum PermissionActor {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PermissionVerb {
+pub enum PermissionVerb {
     Cast,
     Play,
 }
 
 impl PermissionVerb {
-    pub(crate) fn allows_land(self) -> bool {
+    pub fn allows_land(self) -> bool {
         self == Self::Play
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PermissionLeadFact<'a> {
-    pub(crate) actor: PermissionActor,
-    pub(crate) verb: PermissionVerb,
-    pub(crate) rest_tokens: &'a [OwnedLexToken],
+pub struct PermissionLeadFact<'a> {
+    pub actor: PermissionActor,
+    pub verb: PermissionVerb,
+    pub rest_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TaggedPermissionReference {
+pub enum TaggedPermissionReference {
     LastTagged,
     SourceExiled,
     LastRevealed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TaggedPermissionTargetSurface {
+pub enum TaggedPermissionTargetSurface {
     It,
     ThatCard,
     ThatSpell,
@@ -61,28 +61,28 @@ pub(crate) enum TaggedPermissionTargetSurface {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TaggedPermissionTargetFact<'a> {
-    pub(crate) reference: TaggedPermissionReference,
-    pub(crate) as_copy: bool,
-    pub(crate) surface: TaggedPermissionTargetSurface,
+pub struct TaggedPermissionTargetFact<'a> {
+    pub reference: TaggedPermissionReference,
+    pub as_copy: bool,
+    pub surface: TaggedPermissionTargetSurface,
     /// Total uses shared by the tagged collection. This preserves deferred
     /// choices such as "play one of those cards" without selecting a card
     /// when the permission is created.
-    pub(crate) max_plays: Option<u32>,
-    pub(crate) rest_tokens: &'a [OwnedLexToken],
+    pub max_plays: Option<u32>,
+    pub rest_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct UntilSourceExilesAnotherPermissionFact<'a> {
-    pub(crate) actor: PermissionActor,
-    pub(crate) verb: PermissionVerb,
-    pub(crate) reference: TaggedPermissionReference,
-    pub(crate) target_surface: TaggedPermissionTargetSurface,
-    pub(crate) source_reference_tokens: &'a [OwnedLexToken],
+pub struct UntilSourceExilesAnotherPermissionFact<'a> {
+    pub actor: PermissionActor,
+    pub verb: PermissionVerb,
+    pub reference: TaggedPermissionReference,
+    pub target_surface: TaggedPermissionTargetSurface,
+    pub source_reference_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PermissionLifetimeFact {
+pub enum PermissionLifetimeFact {
     Immediate,
     ThisTurn,
     UntilEndOfTurn,
@@ -94,13 +94,13 @@ pub(crate) enum PermissionLifetimeFact {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PermissionLifetimePrefixFact<'a> {
-    pub(crate) lifetime: PermissionLifetimeFact,
-    pub(crate) rest_tokens: &'a [OwnedLexToken],
+pub struct PermissionLifetimePrefixFact<'a> {
+    pub lifetime: PermissionLifetimeFact,
+    pub rest_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ManaSpendCastReference {
+pub enum ManaSpendCastReference {
     It,
     ThatSpell,
     Them,
@@ -108,56 +108,56 @@ pub(crate) enum ManaSpendCastReference {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AllowAnyColorForCastSuffixFact<'a> {
-    pub(crate) body_tokens: &'a [OwnedLexToken],
-    pub(crate) mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
-    pub(crate) reference: ManaSpendCastReference,
+pub struct AllowAnyColorForCastSuffixFact<'a> {
+    pub body_tokens: &'a [OwnedLexToken],
+    pub mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
+    pub reference: ManaSpendCastReference,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PermissionTailFact {
-    pub(crate) lifetime: PermissionLifetimeFact,
-    pub(crate) without_paying_mana_cost: bool,
-    pub(crate) allow_any_color_for_cast: bool,
+pub struct PermissionTailFact {
+    pub lifetime: PermissionLifetimeFact,
+    pub without_paying_mana_cost: bool,
+    pub allow_any_color_for_cast: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TaggedPermissionTailFact<'a> {
-    pub(crate) from_exile: bool,
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
+pub struct TaggedPermissionTailFact<'a> {
+    pub from_exile: bool,
+    pub tail_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ConditionalTaggedFreeCastTailFact<'a> {
-    pub(crate) lifetime: PermissionLifetimeFact,
-    pub(crate) condition_tokens: &'a [OwnedLexToken],
+pub struct ConditionalTaggedFreeCastTailFact<'a> {
+    pub lifetime: PermissionLifetimeFact,
+    pub condition_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TaggedManaValueConditionFact {
-    pub(crate) operator: ValueComparisonOperator,
-    pub(crate) right: Value,
+pub struct TaggedManaValueConditionFact {
+    pub operator: ValueComparisonOperator,
+    pub right: Value,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum UnsupportedPermissionFact {
+pub enum UnsupportedPermissionFact {
     AdditionalLandEachTurn,
     ForAsLongAsPlayCast,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct AdditionalLandPlayFact<'a> {
-    pub(crate) count: Value,
-    pub(crate) count_tokens: &'a [OwnedLexToken],
+pub struct AdditionalLandPlayFact<'a> {
+    pub count: Value,
+    pub count_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RevealedTopLibraryPermissionFact<'a> {
-    pub(crate) permission_tokens: &'a [OwnedLexToken],
+pub struct RevealedTopLibraryPermissionFact<'a> {
+    pub permission_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TaggedLookReference {
+pub enum TaggedLookReference {
     It,
     ThatCard,
     Them,
@@ -165,25 +165,23 @@ pub(crate) enum TaggedLookReference {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ForAsLongAsLookAtTaggedFact<'a> {
-    pub(crate) lifetime: PermissionLifetimeFact,
-    pub(crate) reference: TaggedLookReference,
-    pub(crate) permission_tokens: &'a [OwnedLexToken],
+pub struct ForAsLongAsLookAtTaggedFact<'a> {
+    pub lifetime: PermissionLifetimeFact,
+    pub reference: TaggedLookReference,
+    pub permission_tokens: &'a [OwnedLexToken],
 }
 
 /// A spell-subject-qualified reference to the collection tagged by a preceding
 /// action, such as "noncreature spells from among those cards".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SpellsFromTaggedFact<'a> {
-    pub(crate) reference: TaggedPermissionReference,
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) surface: TaggedPermissionTargetSurface,
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
+pub struct SpellsFromTaggedFact<'a> {
+    pub reference: TaggedPermissionReference,
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub surface: TaggedPermissionTargetSurface,
+    pub tail_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_permission_lead_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<PermissionLeadFact<'_>> {
+pub fn parse_permission_lead_tokens(tokens: &[OwnedLexToken]) -> Option<PermissionLeadFact<'_>> {
     let ((actor, verb), rest_tokens) =
         primitives::parse_prefix(tokens, parse_permission_lead_lexed)?;
     Some(PermissionLeadFact {
@@ -193,7 +191,7 @@ pub(crate) fn parse_permission_lead_tokens(
     })
 }
 
-pub(crate) fn parse_tagged_permission_target_tokens(
+pub fn parse_tagged_permission_target_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TaggedPermissionTargetFact<'_>> {
     let ((reference, as_copy, surface, max_plays), rest_tokens) =
@@ -207,7 +205,7 @@ pub(crate) fn parse_tagged_permission_target_tokens(
     })
 }
 
-pub(crate) fn parse_tagged_permission_target_surface_tokens(
+pub fn parse_tagged_permission_target_surface_tokens(
     tokens: &[OwnedLexToken],
 ) -> TaggedPermissionTargetSurface {
     primitives::parse_all(
@@ -218,7 +216,7 @@ pub(crate) fn parse_tagged_permission_target_surface_tokens(
     .unwrap_or(TaggedPermissionTargetSurface::Other)
 }
 
-pub(crate) fn parse_until_source_exiles_another_permission_tokens(
+pub fn parse_until_source_exiles_another_permission_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<UntilSourceExilesAnotherPermissionFact<'_>> {
     primitives::parse_all(
@@ -229,7 +227,7 @@ pub(crate) fn parse_until_source_exiles_another_permission_tokens(
     .ok()
 }
 
-pub(crate) fn parse_permission_lifetime_prefix_tokens(
+pub fn parse_permission_lifetime_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PermissionLifetimePrefixFact<'_>> {
     let (lifetime, rest_tokens) =
@@ -240,7 +238,7 @@ pub(crate) fn parse_permission_lifetime_prefix_tokens(
     })
 }
 
-pub(crate) fn parse_permission_duration_prefix_tokens(
+pub fn parse_permission_duration_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PermissionLifetimePrefixFact<'_>> {
     if let Some((lifetime, rest_tokens)) =
@@ -255,7 +253,7 @@ pub(crate) fn parse_permission_duration_prefix_tokens(
     (parsed.lifetime == PermissionLifetimeFact::ForAsLongAsExiled).then_some(parsed)
 }
 
-pub(crate) fn parse_allow_any_color_for_cast_suffix_tokens(
+pub fn parse_allow_any_color_for_cast_suffix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AllowAnyColorForCastSuffixFact<'_>> {
     primitives::parse_all(
@@ -266,7 +264,7 @@ pub(crate) fn parse_allow_any_color_for_cast_suffix_tokens(
     .ok()
 }
 
-pub(crate) fn parse_permission_tail_tokens(
+pub fn parse_permission_tail_tokens(
     tokens: &[OwnedLexToken],
     default_lifetime: PermissionLifetimeFact,
 ) -> Option<PermissionTailFact> {
@@ -289,7 +287,7 @@ pub(crate) fn parse_permission_tail_tokens(
     })
 }
 
-pub(crate) fn parse_tagged_permission_tail_tokens(
+pub fn parse_tagged_permission_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> TaggedPermissionTailFact<'_> {
     if let Some(((), tail_tokens)) =
@@ -306,7 +304,7 @@ pub(crate) fn parse_tagged_permission_tail_tokens(
     }
 }
 
-pub(crate) fn parse_conditional_tagged_free_cast_tail_tokens(
+pub fn parse_conditional_tagged_free_cast_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ConditionalTaggedFreeCastTailFact<'_>> {
     primitives::parse_all(
@@ -317,7 +315,7 @@ pub(crate) fn parse_conditional_tagged_free_cast_tail_tokens(
     .ok()
 }
 
-pub(crate) fn parse_tagged_mana_value_condition_tokens(
+pub fn parse_tagged_mana_value_condition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TaggedManaValueConditionFact> {
     let (_, comparison_tokens) =
@@ -327,7 +325,7 @@ pub(crate) fn parse_tagged_mana_value_condition_tokens(
     Some(TaggedManaValueConditionFact { operator, right })
 }
 
-pub(crate) fn parse_additional_land_play_tokens(
+pub fn parse_additional_land_play_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AdditionalLandPlayFact<'_>> {
     primitives::parse_all(
@@ -338,7 +336,7 @@ pub(crate) fn parse_additional_land_play_tokens(
     .ok()
 }
 
-pub(crate) fn parse_unsupported_permission_tokens(
+pub fn parse_unsupported_permission_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<UnsupportedPermissionFact> {
     primitives::parse_all(
@@ -349,7 +347,7 @@ pub(crate) fn parse_unsupported_permission_tokens(
     .ok()
 }
 
-pub(crate) fn parse_revealed_top_library_permission_tokens(
+pub fn parse_revealed_top_library_permission_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<RevealedTopLibraryPermissionFact<'_>> {
     primitives::parse_all(
@@ -360,7 +358,7 @@ pub(crate) fn parse_revealed_top_library_permission_tokens(
     .ok()
 }
 
-pub(crate) fn parse_for_as_long_as_look_at_tagged_tokens(
+pub fn parse_for_as_long_as_look_at_tagged_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ForAsLongAsLookAtTaggedFact<'_>> {
     primitives::parse_all(
@@ -371,7 +369,7 @@ pub(crate) fn parse_for_as_long_as_look_at_tagged_tokens(
     .ok()
 }
 
-pub(crate) fn parse_spells_from_tagged_tokens(
+pub fn parse_spells_from_tagged_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SpellsFromTaggedFact<'_>> {
     let (scope_start, surface, tail_tokens) = primitives::find_prefix(tokens, || {

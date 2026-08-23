@@ -7,39 +7,39 @@ use crate::lexer::{LexStream, OwnedLexToken, TokenKind};
 use crate::util::parse_subtype_flexible;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GraveyardCastControlCondition {
+pub enum GraveyardCastControlCondition {
     Subtype(crate::types::Subtype),
     ColorPair(crate::color::Color, crate::color::Color),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AdditionalCombatRewriteKind {
+pub enum AdditionalCombatRewriteKind {
     ConditionalAfterThisPhase,
     AfterThisPhase,
     AlreadyCanonical,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AdditionalCombatRewriteShape<'a> {
-    pub(crate) before_tokens: &'a [OwnedLexToken],
-    pub(crate) after_tokens: &'a [OwnedLexToken],
-    pub(crate) kind: AdditionalCombatRewriteKind,
+pub struct AdditionalCombatRewriteShape<'a> {
+    pub before_tokens: &'a [OwnedLexToken],
+    pub after_tokens: &'a [OwnedLexToken],
+    pub kind: AdditionalCombatRewriteKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct NonTurnConditionalUntapShape<'a> {
-    pub(crate) first_sentence_tokens: &'a [OwnedLexToken],
-    pub(crate) untap_sentence_tokens: &'a [OwnedLexToken],
+pub struct NonTurnConditionalUntapShape<'a> {
+    pub first_sentence_tokens: &'a [OwnedLexToken],
+    pub untap_sentence_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CountThatNumberLifeTotalRewriteShape<'a> {
-    pub(crate) trigger_tokens: &'a [OwnedLexToken],
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) count_value_tokens: &'a [OwnedLexToken],
+pub struct CountThatNumberLifeTotalRewriteShape<'a> {
+    pub trigger_tokens: &'a [OwnedLexToken],
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub count_value_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_additional_combat_rewrite_tokens(
+pub fn parse_additional_combat_rewrite_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AdditionalCombatRewriteShape<'_>> {
     let (start, kind, after_tokens) =
@@ -51,7 +51,7 @@ pub(crate) fn parse_additional_combat_rewrite_tokens(
     })
 }
 
-pub(crate) fn parse_non_turn_conditional_untap_tokens(
+pub fn parse_non_turn_conditional_untap_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<NonTurnConditionalUntapShape<'_>> {
     let (delimiter, (), after) = primitives::find_prefix(tokens, || non_turn_untap_suffix)?;
@@ -69,7 +69,7 @@ pub(crate) fn parse_non_turn_conditional_untap_tokens(
     })
 }
 
-pub(crate) fn parse_graveyard_cast_control_condition_tokens(
+pub fn parse_graveyard_cast_control_condition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<GraveyardCastControlCondition> {
     let mut input = LexStream::new(tokens);
@@ -79,7 +79,7 @@ pub(crate) fn parse_graveyard_cast_control_condition_tokens(
     input.is_empty().then_some(condition)
 }
 
-pub(crate) fn parse_count_that_number_life_total_rewrite_tokens(
+pub fn parse_count_that_number_life_total_rewrite_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CountThatNumberLifeTotalRewriteShape<'_>> {
     let (comma, _, effect_tokens) =

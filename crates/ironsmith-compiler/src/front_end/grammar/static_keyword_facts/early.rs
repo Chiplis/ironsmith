@@ -5,61 +5,61 @@ use crate::lexer::{OwnedLexToken, TokenWordView};
 use crate::grammar::{keyword_static_lines, primitives, static_keyword_line_shapes};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LifeTotalCostConditionShape {
-    pub(crate) quantity_tokens: Range<usize>,
-    pub(crate) quantity_words: usize,
+pub struct LifeTotalCostConditionShape {
+    pub quantity_tokens: Range<usize>,
+    pub quantity_words: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EarlyKeywordMarkerKind {
+pub enum EarlyKeywordMarkerKind {
     ToughnessCrewsVehicles,
     GreaterPowerCrewsVehicles,
     LoyaltyCounterPaysCrewCost,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DamageDoublingManaValueMarker;
+pub struct DamageDoublingManaValueMarker;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PregameMulliganRedraw;
+pub struct PregameMulliganRedraw;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WardDiscardHandTail;
+pub struct WardDiscardHandTail;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EntersTappedChoiceShape {
-    pub(crate) tapped_token: usize,
+pub struct EntersTappedChoiceShape {
+    pub tapped_token: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChooseCardNameTail;
+pub struct ChooseCardNameTail;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct NoteLifeTotalTail;
+pub struct NoteLifeTotalTail;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct NamedChoiceAlternativesShape {
-    pub(crate) choice_word: usize,
+pub struct NamedChoiceAlternativesShape {
+    pub choice_word: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CountAsCardNamedShape {
-    pub(crate) spell_name_words: Range<usize>,
-    pub(crate) counted_name_words: Range<usize>,
+pub struct CountAsCardNamedShape {
+    pub spell_name_words: Range<usize>,
+    pub counted_name_words: Range<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TriggerDuplicationSourceOrOwnedEmblem;
+pub struct TriggerDuplicationSourceOrOwnedEmblem;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TriggerDuplicationPlayerSubject {
+pub enum TriggerDuplicationPlayerSubject {
     Any,
     You,
     Opponent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TriggerDuplicationEventKind {
+pub enum TriggerDuplicationEventKind {
     DealsCombatDamageToPlayer,
     BecomesTargeted,
     IsDealtDamage,
@@ -72,7 +72,7 @@ pub(crate) enum TriggerDuplicationEventKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum TriggerDuplicationEventShape {
+pub enum TriggerDuplicationEventShape {
     TurningFaceUp {
         subject_tokens: Range<usize>,
     },
@@ -86,13 +86,13 @@ pub(crate) enum TriggerDuplicationEventShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TriggerDuplicationEventSyntaxError {
+pub enum TriggerDuplicationEventSyntaxError {
     MissingTurnedFaceUpSubject,
     MissingSpellSubject,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TriggerDuplicationCoreShape<'a> {
+pub enum TriggerDuplicationCoreShape<'a> {
     AbilityTriggers {
         source_tokens: &'a [OwnedLexToken],
         condition_tokens: Option<&'a [OwnedLexToken]>,
@@ -103,7 +103,7 @@ pub(crate) enum TriggerDuplicationCoreShape<'a> {
     },
 }
 
-pub(crate) fn parse_life_total_cost_condition_shape_tokens(
+pub fn parse_life_total_cost_condition_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LifeTotalCostConditionShape> {
     let view = TokenWordView::new(tokens);
@@ -124,7 +124,7 @@ pub(crate) fn parse_life_total_cost_condition_shape_tokens(
     })
 }
 
-pub(crate) fn parse_early_keyword_marker_tokens(
+pub fn parse_early_keyword_marker_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EarlyKeywordMarkerKind> {
     let words = TokenWordView::new(tokens).word_refs();
@@ -205,9 +205,7 @@ pub(crate) fn parse_early_keyword_marker_tokens(
     .then_some(EarlyKeywordMarkerKind::LoyaltyCounterPaysCrewCost)
 }
 
-pub(crate) fn parse_count_as_card_named_shape_words(
-    words: &[&str],
-) -> Option<CountAsCardNamedShape> {
+pub fn parse_count_as_card_named_shape_words(words: &[&str]) -> Option<CountAsCardNamedShape> {
     if !prefix_any(
         words,
         &[
@@ -239,7 +237,7 @@ pub(crate) fn parse_count_as_card_named_shape_words(
     })
 }
 
-pub(crate) fn parse_damage_doubling_mana_value_marker_tokens(
+pub fn parse_damage_doubling_mana_value_marker_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DamageDoublingManaValueMarker> {
     let words = TokenWordView::new(tokens).word_refs();
@@ -253,7 +251,7 @@ pub(crate) fn parse_damage_doubling_mana_value_marker_tokens(
     .then_some(DamageDoublingManaValueMarker)
 }
 
-pub(crate) fn parse_pregame_mulligan_redraw_tokens(
+pub fn parse_pregame_mulligan_redraw_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PregameMulliganRedraw> {
     let words = TokenWordView::new(tokens).word_refs();
@@ -270,14 +268,14 @@ pub(crate) fn parse_pregame_mulligan_redraw_tokens(
     .then_some(PregameMulliganRedraw)
 }
 
-pub(crate) fn parse_ward_discard_hand_tail_tokens(
+pub fn parse_ward_discard_hand_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<WardDiscardHandTail> {
     let words = TokenWordView::new(tokens).word_refs();
     exact(&words, &["your", "hand"]).then_some(WardDiscardHandTail)
 }
 
-pub(crate) fn parse_enters_tapped_choice_shape_tokens(
+pub fn parse_enters_tapped_choice_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EntersTappedChoiceShape> {
     let view = TokenWordView::new(tokens);
@@ -294,21 +292,17 @@ pub(crate) fn parse_enters_tapped_choice_shape_tokens(
     })
 }
 
-pub(crate) fn parse_choose_card_name_tail_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<ChooseCardNameTail> {
+pub fn parse_choose_card_name_tail_tokens(tokens: &[OwnedLexToken]) -> Option<ChooseCardNameTail> {
     let words = TokenWordView::new(tokens).word_refs();
     exact(&words, &["choose", "a", "card", "name"]).then_some(ChooseCardNameTail)
 }
 
-pub(crate) fn parse_note_life_total_tail_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<NoteLifeTotalTail> {
+pub fn parse_note_life_total_tail_tokens(tokens: &[OwnedLexToken]) -> Option<NoteLifeTotalTail> {
     let words = TokenWordView::new(tokens).word_refs();
     exact(&words, &["note", "your", "life", "total"]).then_some(NoteLifeTotalTail)
 }
 
-pub(crate) fn parse_named_choice_alternatives_shape_words(
+pub fn parse_named_choice_alternatives_shape_words(
     words: &[&str],
 ) -> Option<NamedChoiceAlternativesShape> {
     let choice_word = static_keyword_line_shapes::parse_choice_word(words)?.word;
@@ -317,7 +311,7 @@ pub(crate) fn parse_named_choice_alternatives_shape_words(
         .then_some(NamedChoiceAlternativesShape { choice_word })
 }
 
-pub(crate) fn parse_trigger_duplication_source_or_owned_emblem_tokens(
+pub fn parse_trigger_duplication_source_or_owned_emblem_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TriggerDuplicationSourceOrOwnedEmblem> {
     let words = TokenWordView::new(trim_punctuation_edges(tokens)).word_refs();
@@ -331,7 +325,7 @@ pub(crate) fn parse_trigger_duplication_source_or_owned_emblem_tokens(
     .then_some(TriggerDuplicationSourceOrOwnedEmblem)
 }
 
-pub(crate) fn parse_trigger_duplication_event_shape_tokens(
+pub fn parse_trigger_duplication_event_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TriggerDuplicationEventShape>, TriggerDuplicationEventSyntaxError> {
     let tokens = trim_punctuation_edges(tokens);
@@ -416,7 +410,7 @@ pub(crate) fn parse_trigger_duplication_event_shape_tokens(
     Ok(None)
 }
 
-pub(crate) fn parse_trigger_duplication_core_shape_tokens(
+pub fn parse_trigger_duplication_core_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TriggerDuplicationCoreShape<'_>> {
     let tokens = trim_punctuation_edges(tokens);

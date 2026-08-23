@@ -201,7 +201,7 @@ pub(super) fn parse_dynamic_power_toughness(words: &[&str]) -> Option<(Value, Va
     Some((power, toughness))
 }
 
-pub(crate) fn parse_token_dynamic_power_toughness_tokens(
+pub fn parse_token_dynamic_power_toughness_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<(Value, Value)> {
     let raw_words = parser_token_word_refs(tokens);

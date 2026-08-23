@@ -7,7 +7,7 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::{leaf, primitives, static_keyword_cost_shapes};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CostPrefixCondition<'a> {
+pub enum CostPrefixCondition<'a> {
     DuringTurnsOtherThanYours {
         subject_start: usize,
     },
@@ -21,20 +21,20 @@ pub(crate) enum CostPrefixCondition<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EquipCostPayer {
+pub enum EquipCostPayer {
     Unspecified,
     You,
     Opponent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EquipCostModifierHead {
-    pub(crate) cost_token: usize,
-    pub(crate) payer: EquipCostPayer,
-    pub(crate) source_relative_equipment: bool,
+pub struct EquipCostModifierHead {
+    pub cost_token: usize,
+    pub payer: EquipCostPayer,
+    pub source_relative_equipment: bool,
 }
 
-pub(crate) fn parse_starting_life_bonus_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
+pub fn parse_starting_life_bonus_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
     primitives::parse_all(
         tokens,
         parse_starting_life_bonus_lexed,
@@ -43,7 +43,7 @@ pub(crate) fn parse_starting_life_bonus_tokens(tokens: &[OwnedLexToken]) -> Opti
     .ok()
 }
 
-pub(crate) fn parse_buyback_cost_reduction_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
+pub fn parse_buyback_cost_reduction_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
     primitives::parse_all(
         tokens,
         parse_buyback_cost_reduction_lexed,
@@ -52,7 +52,7 @@ pub(crate) fn parse_buyback_cost_reduction_tokens(tokens: &[OwnedLexToken]) -> O
     .ok()
 }
 
-pub(crate) fn parse_cost_increase_per_target_marker_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_cost_increase_per_target_marker_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::find_prefix(tokens, || {
         primitives::phrase(&["target", "beyond", "the", "first"]).void()
     })
@@ -60,11 +60,11 @@ pub(crate) fn parse_cost_increase_per_target_marker_tokens(tokens: &[OwnedLexTok
         && primitives::find_prefix(tokens, || primitives::kw("more").void()).is_some()
 }
 
-pub(crate) fn parse_more_cost_tail_prefix_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_more_cost_tail_prefix_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, primitives::kw("more")).is_some()
 }
 
-pub(crate) fn parse_cost_prefix_condition_tokens(
+pub fn parse_cost_prefix_condition_tokens(
     tokens: &[OwnedLexToken],
     spells_token_idx: usize,
 ) -> Option<CostPrefixCondition<'_>> {
@@ -97,7 +97,7 @@ pub(crate) fn parse_cost_prefix_condition_tokens(
     None
 }
 
-pub(crate) fn parse_equip_cost_modifier_head_tokens(
+pub fn parse_equip_cost_modifier_head_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EquipCostModifierHead> {
     let words =
@@ -150,19 +150,19 @@ pub(crate) fn parse_equip_cost_modifier_head_tokens(
     })
 }
 
-pub(crate) fn parse_that_much_value_marker_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_that_much_value_marker_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, primitives::phrase(&["that", "much"])).is_some()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LegendRuleScopeShape {
+pub enum LegendRuleScopeShape {
     Global,
     Controller,
     ControllerCreatures,
     ControllerTokens,
 }
 
-pub(crate) fn parse_legend_rule_doesnt_apply_tokens(
+pub fn parse_legend_rule_doesnt_apply_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LegendRuleScopeShape> {
     let has_negative = primitives::find_prefix(tokens, || {
@@ -199,7 +199,7 @@ pub(crate) fn parse_legend_rule_doesnt_apply_tokens(
     })
 }
 
-pub(crate) fn parse_all_cards_spells_permanents_colorless_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_all_cards_spells_permanents_colorless_tokens(tokens: &[OwnedLexToken]) -> bool {
     let words = tokens
         .iter()
         .filter_map(OwnedLexToken::as_word)

@@ -16,36 +16,36 @@ use super::primitives;
 
 #[path = "targets/shapes.rs"]
 mod shapes;
-pub(crate) use shapes::*;
+pub use shapes::*;
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct TargetRecoveryCandidate<'a> {
-    pub(crate) tokens: &'a [OwnedLexToken],
+pub struct TargetRecoveryCandidate<'a> {
+    pub tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct TargetParseEnvelope<'a> {
-    pub(crate) counted_any_target: Option<ChoiceCount>,
-    pub(crate) recovery_candidates: Vec<TargetRecoveryCandidate<'a>>,
+pub struct TargetParseEnvelope<'a> {
+    pub counted_any_target: Option<ChoiceCount>,
+    pub recovery_candidates: Vec<TargetRecoveryCandidate<'a>>,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ReferencedTargetPrefix<'a> {
-    pub(crate) count: u32,
-    pub(crate) object_tokens: &'a [OwnedLexToken],
-    pub(crate) other: bool,
+pub struct ReferencedTargetPrefix<'a> {
+    pub count: u32,
+    pub object_tokens: &'a [OwnedLexToken],
+    pub other: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct TargetPreparationFacts {
-    pub(crate) clear_source_linked_exile: bool,
+pub struct TargetPreparationFacts {
+    pub clear_source_linked_exile: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct DynamicTargetCountPrefix<'a> {
-    pub(crate) count: ChoiceCount,
-    pub(crate) value: Value,
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct DynamicTargetCountPrefix<'a> {
+    pub count: ChoiceCount,
+    pub value: Value,
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
 fn parse_dynamic_target_count_prefix_lexed<'a>(
@@ -106,7 +106,7 @@ fn parse_that_many_target_count_prefix_lexed<'a>(
     ))
 }
 
-pub(crate) fn parse_dynamic_target_count_prefix(
+pub fn parse_dynamic_target_count_prefix(
     tokens: &[OwnedLexToken],
 ) -> Option<DynamicTargetCountPrefix<'_>> {
     let ((count, value), target_tokens) = primitives::parse_prefix(
@@ -124,26 +124,26 @@ pub(crate) fn parse_dynamic_target_count_prefix(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TargetControllerSetConstraint {
+pub enum TargetControllerSetConstraint {
     None,
     SameController,
     DifferentControllers,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct TargetControllerSetSplit {
-    pub(crate) core_tokens: Vec<OwnedLexToken>,
-    pub(crate) constraint: TargetControllerSetConstraint,
+pub struct TargetControllerSetSplit {
+    pub core_tokens: Vec<OwnedLexToken>,
+    pub constraint: TargetControllerSetConstraint,
 }
 
-pub(crate) fn parse_target_envelope(tokens: &[OwnedLexToken]) -> TargetParseEnvelope<'_> {
+pub fn parse_target_envelope(tokens: &[OwnedLexToken]) -> TargetParseEnvelope<'_> {
     TargetParseEnvelope {
         counted_any_target: parse_counted_any_target(tokens),
         recovery_candidates: parse_target_recovery_candidates(tokens),
     }
 }
 
-pub(crate) fn parse_referenced_target_prefix(
+pub fn parse_referenced_target_prefix(
     tokens: &[OwnedLexToken],
 ) -> Option<ReferencedTargetPrefix<'_>> {
     if TokenWordView::new(tokens).len() < 4 {
@@ -175,7 +175,7 @@ pub(crate) fn parse_referenced_target_prefix(
     })
 }
 
-pub(crate) fn parse_target_preparation_facts(
+pub fn parse_target_preparation_facts(
     tokens: &[OwnedLexToken],
     explicit_target: bool,
 ) -> TargetPreparationFacts {
@@ -191,9 +191,7 @@ pub(crate) fn parse_target_preparation_facts(
     }
 }
 
-pub(crate) fn parse_target_controller_set_suffix(
-    tokens: &[OwnedLexToken],
-) -> TargetControllerSetSplit {
+pub fn parse_target_controller_set_suffix(tokens: &[OwnedLexToken]) -> TargetControllerSetSplit {
     let view = TokenWordView::new(tokens);
     let words = view.to_word_refs();
     for tail_words in [5usize, 4] {

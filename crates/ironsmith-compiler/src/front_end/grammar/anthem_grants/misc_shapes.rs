@@ -6,25 +6,23 @@ use super::super::super::lexer::{OwnedLexToken, TokenKind, trim_lexed_commas};
 use super::super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct KeywordIfColorShape<'a> {
-    pub(crate) keyword_tokens: &'a [OwnedLexToken],
-    pub(crate) color_tail_tokens: &'a [OwnedLexToken],
+pub struct KeywordIfColorShape<'a> {
+    pub keyword_tokens: &'a [OwnedLexToken],
+    pub color_tail_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EquipmentEquipShape<'a> {
-    pub(crate) cost_tokens: &'a [OwnedLexToken],
-    pub(crate) condition_tokens: &'a [OwnedLexToken],
+pub struct EquipmentEquipShape<'a> {
+    pub cost_tokens: &'a [OwnedLexToken],
+    pub condition_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TrailingGrantSegmentShape<'a> {
-    pub(crate) body_tokens: &'a [OwnedLexToken],
+pub struct TrailingGrantSegmentShape<'a> {
+    pub body_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_keyword_if_color_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<KeywordIfColorShape<'_>> {
+pub fn parse_keyword_if_color_shape(tokens: &[OwnedLexToken]) -> Option<KeywordIfColorShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
     let (keyword_tokens, color_tail_tokens) =
         primitives::split_lexed_once_on_separator(tokens, || primitives::kw("if").void())?;
@@ -36,7 +34,7 @@ pub(crate) fn parse_keyword_if_color_shape(
     })
 }
 
-pub(crate) fn split_keyword_if_color_segments(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
+pub fn split_keyword_if_color_segments(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
     primitives::split_lexed_slices_on_comma(tokens)
         .into_iter()
         .map(super::trim_anthem_clause_tokens)
@@ -45,9 +43,7 @@ pub(crate) fn split_keyword_if_color_segments(tokens: &[OwnedLexToken]) -> Vec<&
         .collect()
 }
 
-pub(crate) fn parse_equipment_equip_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<EquipmentEquipShape<'_>> {
+pub fn parse_equipment_equip_shape(tokens: &[OwnedLexToken]) -> Option<EquipmentEquipShape<'_>> {
     let tokens = strip_metalcraft_label(tokens).unwrap_or(tokens);
     let tokens = super::trim_anthem_clause_tokens(tokens);
     let (_, after_prefix) = primitives::parse_prefix(
@@ -66,7 +62,7 @@ pub(crate) fn parse_equipment_equip_shape(
     })
 }
 
-pub(crate) fn split_trailing_grant_segments(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {
+pub fn split_trailing_grant_segments(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {
     let mut segments = Vec::new();
     let mut current = Vec::new();
     let mut preserve_commas = false;
@@ -127,7 +123,7 @@ pub(crate) fn split_trailing_grant_segments(tokens: &[OwnedLexToken]) -> Vec<Vec
     segments
 }
 
-pub(crate) fn parse_trailing_grant_segment(
+pub fn parse_trailing_grant_segment(
     tokens: &[OwnedLexToken],
 ) -> Option<TrailingGrantSegmentShape<'_>> {
     let mut body_tokens = trim_grant_segment_edges(tokens);

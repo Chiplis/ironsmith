@@ -2,16 +2,16 @@ use winnow::combinator::alt;
 use winnow::error::{ModalResult as WResult, StrContext, StrContextValue};
 use winnow::prelude::*;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use crate::cards::builders::CardTextError;
 
 use super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::primitives;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use super::common::{finish_text_parse, phrase};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ConditionIntro {
+pub enum ConditionIntro {
     If,
     Unless,
     AsLongAs,
@@ -19,32 +19,32 @@ pub(crate) enum ConditionIntro {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LeafConditionIntroPrefix<'a> {
-    pub(crate) intro: ConditionIntro,
-    pub(crate) rest: &'a [OwnedLexToken],
+pub struct LeafConditionIntroPrefix<'a> {
+    pub intro: ConditionIntro,
+    pub rest: &'a [OwnedLexToken],
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LeafConditionIntroWordPrefix {
-    pub(crate) intro: ConditionIntro,
-    pub(crate) consumed: usize,
+pub struct LeafConditionIntroWordPrefix {
+    pub intro: ConditionIntro,
+    pub consumed: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LeafStaticConditionIntro {
+pub enum LeafStaticConditionIntro {
     AsLongAs,
     LegacyAs,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LeafStaticConditionIntroPrefix<'a> {
-    pub(crate) intro: LeafStaticConditionIntro,
-    pub(crate) rest: &'a [OwnedLexToken],
+pub struct LeafStaticConditionIntroPrefix<'a> {
+    pub intro: LeafStaticConditionIntro,
+    pub rest: &'a [OwnedLexToken],
 }
 
-#[cfg(test)]
-pub(crate) fn parse_condition_intro(input: &mut &str) -> WResult<ConditionIntro> {
+#[cfg(any(test, feature = "test-support"))]
+pub fn parse_condition_intro(input: &mut &str) -> WResult<ConditionIntro> {
     alt((
         phrase("for as long as").value(ConditionIntro::ForAsLongAs),
         phrase("as long as").value(ConditionIntro::AsLongAs),
@@ -58,9 +58,7 @@ pub(crate) fn parse_condition_intro(input: &mut &str) -> WResult<ConditionIntro>
     .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_condition_intro_lexed<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<ConditionIntro> {
+pub fn parse_leaf_condition_intro_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ConditionIntro> {
     alt((
         primitives::phrase(&["for", "as", "long", "as"]).value(ConditionIntro::ForAsLongAs),
         primitives::phrase(&["as", "long", "as"]).value(ConditionIntro::AsLongAs),
@@ -74,15 +72,15 @@ pub(crate) fn parse_leaf_condition_intro_lexed<'a>(
     .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_condition_intro_prefix_tokens(
+pub fn parse_leaf_condition_intro_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LeafConditionIntroPrefix<'_>> {
     let (intro, rest) = primitives::parse_prefix(tokens, parse_leaf_condition_intro_lexed)?;
     Some(LeafConditionIntroPrefix { intro, rest })
 }
 
-#[cfg(test)]
-pub(crate) fn parse_leaf_condition_intro_prefix_words(
+#[cfg(any(test, feature = "test-support"))]
+pub fn parse_leaf_condition_intro_prefix_words(
     words: &[&str],
 ) -> Option<LeafConditionIntroWordPrefix> {
     let mut input: primitives::WordSliceInput<'_> = words;
@@ -95,7 +93,7 @@ pub(crate) fn parse_leaf_condition_intro_prefix_words(
     })
 }
 
-pub(crate) fn parse_leaf_static_condition_intro_prefix_tokens(
+pub fn parse_leaf_static_condition_intro_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LeafStaticConditionIntroPrefix<'_>> {
     let (intro, rest) = primitives::parse_prefix(tokens, |input: &mut LexStream<'_>| {
@@ -108,12 +106,12 @@ pub(crate) fn parse_leaf_static_condition_intro_prefix_tokens(
     Some(LeafStaticConditionIntroPrefix { intro, rest })
 }
 
-#[cfg(test)]
-pub(crate) fn parse_condition_intro_complete(raw: &str) -> Result<ConditionIntro, CardTextError> {
+#[cfg(any(test, feature = "test-support"))]
+pub fn parse_condition_intro_complete(raw: &str) -> Result<ConditionIntro, CardTextError> {
     finish_text_parse(raw, parse_condition_intro, "leaf-condition-intro")
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn parse_leaf_condition_intro_word_slice(
     input: &mut primitives::WordSliceInput<'_>,
 ) -> WResult<ConditionIntro> {
@@ -137,7 +135,7 @@ fn parse_leaf_condition_intro_word_slice(
     .parse_next(input)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 mod tests {
     use super::*;
     use crate::lexer::lex_line;

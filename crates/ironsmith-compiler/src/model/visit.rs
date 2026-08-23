@@ -46,12 +46,12 @@ use crate::target::ObjectFilter;
 /// wrappers such as `May` deliberately stop this query because their own
 /// outcome, not the nested action's outcome, controls a result follow-up.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TerminalResultProducer {
+pub enum TerminalResultProducer {
     Clash,
     FlipCoin,
 }
 
-pub(crate) fn terminal_result_producer(effect: &EffectAst) -> Option<TerminalResultProducer> {
+pub fn terminal_result_producer(effect: &EffectAst) -> Option<TerminalResultProducer> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
             SubjectVerbActionAst::Clash { .. } => Some(TerminalResultProducer::Clash),
@@ -259,7 +259,7 @@ macro_rules! nested_effects_variants {
     };
 }
 
-pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
+pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
     match effect {
         EffectAst::Clause(_) => {}
         EffectAst::Coordination(_) => {}
@@ -346,7 +346,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
     }
 }
 
-pub(crate) fn for_each_nested_effects(
+pub fn for_each_nested_effects(
     effect: &EffectAst,
     include_unless_action_alternative: bool,
     mut visit: impl FnMut(&[EffectAst]),
@@ -413,7 +413,7 @@ pub(crate) fn for_each_nested_effects(
     }
 }
 
-pub(crate) fn for_each_nested_effects_mut(
+pub fn for_each_nested_effects_mut(
     effect: &mut EffectAst,
     include_unless_action_alternative: bool,
     mut visit: impl FnMut(&mut [EffectAst]),
@@ -486,7 +486,7 @@ pub(crate) fn for_each_nested_effects_mut(
 /// Most traversal only needs slices. Presentation provenance occasionally
 /// needs to replace a whole child program with one typed wrapper, which
 /// requires access to the owning `Vec`.
-pub(crate) fn for_each_nested_effect_vec_mut(
+pub fn for_each_nested_effect_vec_mut(
     effect: &mut EffectAst,
     include_unless_action_alternative: bool,
     mut visit: impl FnMut(&mut Vec<EffectAst>),
@@ -561,7 +561,7 @@ pub(crate) fn for_each_nested_effect_vec_mut(
     walk(effect, include_unless_action_alternative, &mut visit);
 }
 
-pub(crate) fn try_for_each_nested_effects_mut<E>(
+pub fn try_for_each_nested_effects_mut<E>(
     effect: &mut EffectAst,
     include_unless_action_alternative: bool,
     mut visit: impl FnMut(&mut [EffectAst]) -> Result<(), E>,
@@ -632,7 +632,7 @@ pub(crate) fn try_for_each_nested_effects_mut<E>(
 /// One traversal contract shared by recognition, reference resolution,
 /// normalization, and lowering. Each semantic domain has a dedicated hook so
 /// a pass does not need to invent another parallel recursion API.
-pub(crate) trait SemanticVisitor {
+pub trait SemanticVisitor {
     type Break;
 
     fn visit_effect(&mut self, _effect: &EffectAst) -> ControlFlow<Self::Break> {
@@ -687,7 +687,7 @@ pub(crate) trait SemanticVisitor {
     }
 }
 
-pub(crate) fn visit_clause_tree<V: SemanticVisitor + ?Sized>(
+pub fn visit_clause_tree<V: SemanticVisitor + ?Sized>(
     visitor: &mut V,
     clause: &CompilerClauseAst,
 ) -> ControlFlow<V::Break> {
@@ -1284,7 +1284,7 @@ fn visit_compiler_value_tree<V: SemanticVisitor + ?Sized>(
     }
 }
 
-pub(crate) fn visit_effect_tree<V: SemanticVisitor + ?Sized>(
+pub fn visit_effect_tree<V: SemanticVisitor + ?Sized>(
     visitor: &mut V,
     effect: &EffectAst,
 ) -> ControlFlow<V::Break> {
@@ -1349,7 +1349,7 @@ pub(crate) fn visit_effect_tree<V: SemanticVisitor + ?Sized>(
 /// descending into child programs. Control-flow-sensitive passes use this to
 /// share the canonical semantic visitor while applying their own branch/join
 /// rules to child edges.
-pub(crate) fn visit_effect_node<V: SemanticVisitor + ?Sized>(
+pub fn visit_effect_node<V: SemanticVisitor + ?Sized>(
     visitor: &mut V,
     effect: &EffectAst,
 ) -> ControlFlow<V::Break> {
@@ -1514,7 +1514,7 @@ fn visit_compiler_duration<V: SemanticVisitor + ?Sized>(
     }
 }
 
-pub(crate) fn visit_predicate_tree<V: SemanticVisitor + ?Sized>(
+pub fn visit_predicate_tree<V: SemanticVisitor + ?Sized>(
     visitor: &mut V,
     predicate: &PredicateAst,
 ) -> ControlFlow<V::Break> {
@@ -1535,7 +1535,7 @@ pub(crate) fn visit_predicate_tree<V: SemanticVisitor + ?Sized>(
 
 /// Owning counterpart to `SemanticVisitor`. Defaults are identity folds so a
 /// pass overrides only the domains it transforms.
-pub(crate) trait SemanticFolder {
+pub trait SemanticFolder {
     fn fold_effect(&mut self, effect: EffectAst) -> EffectAst {
         effect
     }
@@ -1581,7 +1581,7 @@ pub(crate) trait SemanticFolder {
     }
 }
 
-pub(crate) fn fold_clause_tree<F: SemanticFolder + ?Sized>(
+pub fn fold_clause_tree<F: SemanticFolder + ?Sized>(
     folder: &mut F,
     mut clause: CompilerClauseAst,
 ) -> CompilerClauseAst {
@@ -2261,7 +2261,7 @@ fn fold_compiler_value_tree<F: SemanticFolder + ?Sized>(
     folder.fold_compiler_value(value)
 }
 
-pub(crate) fn fold_effect_tree<F: SemanticFolder + ?Sized>(
+pub fn fold_effect_tree<F: SemanticFolder + ?Sized>(
     folder: &mut F,
     mut effect: EffectAst,
 ) -> EffectAst {
@@ -2460,7 +2460,7 @@ fn fold_compiler_duration<F: SemanticFolder + ?Sized>(
     };
 }
 
-pub(crate) fn fold_predicate_tree<F: SemanticFolder + ?Sized>(
+pub fn fold_predicate_tree<F: SemanticFolder + ?Sized>(
     folder: &mut F,
     predicate: PredicateAst,
 ) -> PredicateAst {

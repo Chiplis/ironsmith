@@ -10,7 +10,7 @@ use ironsmith_core::TurnHistoryCount;
 
 use crate::model::reference_state::ReferenceEnv;
 
-pub(crate) fn is_sacrificed_object_reference_tag(tag: &str) -> bool {
+pub fn is_sacrificed_object_reference_tag(tag: &str) -> bool {
     tag == "sacrificed"
         || tag.starts_with("sacrificed_")
         || tag.starts_with("sacrifice_cost_")
@@ -21,7 +21,7 @@ fn is_exiled_collection_reference_tag(tag: &str) -> bool {
     tag == "exiled" || tag.starts_with("exiled_") || tag.starts_with("__sentence_helper_exiled")
 }
 
-pub(crate) fn is_you_player_filter(filter: &PlayerFilter) -> bool {
+pub fn is_you_player_filter(filter: &PlayerFilter) -> bool {
     match filter {
         PlayerFilter::You => true,
         PlayerFilter::Target(inner) | PlayerFilter::AliasedTarget(inner) => {
@@ -35,7 +35,7 @@ pub(crate) fn is_you_player_filter(filter: &PlayerFilter) -> bool {
 /// antecedent for a later "that player"/"they" reference. The aliased forms
 /// resolve identically at runtime but keep that player surface distinct from
 /// an explicit later "its controller" or "its owner" reference.
-pub(crate) fn as_followup_player_alias(filter: PlayerFilter) -> PlayerFilter {
+pub fn as_followup_player_alias(filter: PlayerFilter) -> PlayerFilter {
     match filter {
         PlayerFilter::Target(inner) => PlayerFilter::AliasedTarget(inner),
         PlayerFilter::ControllerOf(reference) => PlayerFilter::AliasedControllerOf(reference),
@@ -53,7 +53,7 @@ fn contextual_chosen_player_filter(refs: &ReferenceEnv) -> PlayerFilter {
     }
 }
 
-pub(crate) fn resolve_unless_player_filter(
+pub fn resolve_unless_player_filter(
     player: PlayerAst,
     refs: &ReferenceEnv,
     previous_last_player_filter: Option<PlayerFilter>,
@@ -77,7 +77,7 @@ pub(crate) fn resolve_unless_player_filter(
     resolve_non_target_player_filter(player, refs)
 }
 
-pub(crate) fn resolve_non_target_player_filter(
+pub fn resolve_non_target_player_filter(
     player: PlayerAst,
     refs: &ReferenceEnv,
 ) -> Result<PlayerFilter, CardTextError> {
@@ -176,9 +176,7 @@ pub(crate) fn resolve_non_target_player_filter(
     }
 }
 
-pub(crate) fn infer_player_filter_from_object_filter(
-    filter: &ObjectFilter,
-) -> Option<PlayerFilter> {
+pub fn infer_player_filter_from_object_filter(filter: &ObjectFilter) -> Option<PlayerFilter> {
     if let Some(owner) = &filter.owner {
         return Some(owner.clone());
     }
@@ -650,7 +648,7 @@ fn resolve_object_filter_player_refs(
     Ok(resolved)
 }
 
-pub(crate) fn resolve_it_tag(
+pub fn resolve_it_tag(
     filter: &ObjectFilter,
     refs: &ReferenceEnv,
 ) -> Result<ObjectFilter, CardTextError> {
@@ -883,10 +881,7 @@ fn clear_redundant_live_combat_role_for_event_tag(filter: &mut ObjectFilter) {
     }
 }
 
-pub(crate) fn resolve_it_tag_key(
-    tag: &TagKey,
-    refs: &ReferenceEnv,
-) -> Result<TagKey, CardTextError> {
+pub fn resolve_it_tag_key(tag: &TagKey, refs: &ReferenceEnv) -> Result<TagKey, CardTextError> {
     if let Some((_, concrete)) = refs
         .snapshot_tag_aliases
         .iter()
@@ -929,7 +924,7 @@ pub(crate) fn resolve_it_tag_key(
     Ok(TagKey::new(resolved.as_str()))
 }
 
-pub(crate) fn object_filter_as_tagged_reference(filter: &ObjectFilter) -> Option<TagKey> {
+pub fn object_filter_as_tagged_reference(filter: &ObjectFilter) -> Option<TagKey> {
     if filter.tagged_constraints.len() != 1 {
         return None;
     }
@@ -949,7 +944,7 @@ pub(crate) fn object_filter_as_tagged_reference(filter: &ObjectFilter) -> Option
     }
 }
 
-pub(crate) fn watch_tag_from_filter(filter: &ObjectFilter) -> Option<TagKey> {
+pub fn watch_tag_from_filter(filter: &ObjectFilter) -> Option<TagKey> {
     let mut tag: Option<TagKey> = None;
     for constraint in &filter.tagged_constraints {
         if !matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject) {
@@ -964,7 +959,7 @@ pub(crate) fn watch_tag_from_filter(filter: &ObjectFilter) -> Option<TagKey> {
     tag
 }
 
-pub(crate) fn resolve_restriction_it_tag(
+pub fn resolve_restriction_it_tag(
     restriction: &Restriction,
     refs: &ReferenceEnv,
 ) -> Result<Restriction, CardTextError> {
@@ -1094,7 +1089,7 @@ pub(crate) fn resolve_restriction_it_tag(
     Ok(resolved)
 }
 
-pub(crate) fn resolve_choose_spec_it_tag(
+pub fn resolve_choose_spec_it_tag(
     spec: &ChooseSpec,
     refs: &ReferenceEnv,
 ) -> Result<ChooseSpec, CardTextError> {
@@ -1190,10 +1185,7 @@ pub(crate) fn resolve_choose_spec_it_tag(
     }
 }
 
-pub(crate) fn resolve_value_it_tag(
-    value: &Value,
-    refs: &ReferenceEnv,
-) -> Result<Value, CardTextError> {
+pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value, CardTextError> {
     match value {
         Value::X if refs.bind_unbound_x_to_last_effect => {
             if let Some(id) = refs.known_last_effect_id() {
@@ -1466,7 +1458,7 @@ pub(crate) fn resolve_value_it_tag(
     }
 }
 
-pub(crate) fn resolve_total_cost_it_tags(
+pub fn resolve_total_cost_it_tags(
     cost: &crate::cost::TotalCost,
     refs: &ReferenceEnv,
 ) -> Result<crate::cost::TotalCost, CardTextError> {
@@ -1526,7 +1518,7 @@ pub(crate) fn resolve_total_cost_it_tags(
     }
 }
 
-pub(crate) fn choose_spec_targets_object(spec: &ChooseSpec) -> bool {
+pub fn choose_spec_targets_object(spec: &ChooseSpec) -> bool {
     matches!(
         spec.base(),
         ChooseSpec::Object(_)
@@ -1537,10 +1529,7 @@ pub(crate) fn choose_spec_targets_object(spec: &ChooseSpec) -> bool {
     )
 }
 
-pub(crate) fn with_target_reference_surface_hint(
-    spec: ChooseSpec,
-    target: &TargetAst,
-) -> ChooseSpec {
+pub fn with_target_reference_surface_hint(spec: ChooseSpec, target: &TargetAst) -> ChooseSpec {
     let span = match target {
         TargetAst::Source(span)
         | TargetAst::Tagged(_, span)
@@ -1592,7 +1581,7 @@ fn implicit_source_pronoun_surface(
     span.map(|_| SourceReferenceSurface::ThisPermanentType("it".to_string()))
 }
 
-pub(crate) fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
+pub fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
     match target {
         TargetAst::Source(span) => target_reference_hinted_spec(ChooseSpec::Source, *span),
         TargetAst::AnyTarget(_) => ChooseSpec::AnyTarget,
@@ -1642,7 +1631,7 @@ pub(crate) fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
     }
 }
 
-pub(crate) fn resolve_target_spec_with_choices(
+pub fn resolve_target_spec_with_choices(
     target: &TargetAst,
     refs: &ReferenceEnv,
 ) -> Result<(ChooseSpec, Vec<ChooseSpec>), CardTextError> {
@@ -1713,7 +1702,7 @@ pub(crate) fn resolve_target_spec_with_choices(
     Ok((spec, choices))
 }
 
-pub(crate) fn resolve_attach_object_spec(
+pub fn resolve_attach_object_spec(
     object: &TargetAst,
     refs: &ReferenceEnv,
 ) -> Result<(ChooseSpec, Vec<ChooseSpec>), CardTextError> {

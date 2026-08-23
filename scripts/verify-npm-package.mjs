@@ -26,8 +26,12 @@ if (manifest.name !== "ironsmith-wasm" || !manifest.version) {
 }
 
 const module = await import(pathToFileURL(resolve(packageDir, "ironsmith.js")));
-const wasmBytes = await readFile(resolve(packageDir, "ironsmith_bg.wasm"));
-await module.default({ module_or_path: wasmBytes });
+const [engineBytes, compilerBytes, verifierBytes] = await Promise.all([
+  readFile(resolve(packageDir, "engine_bg.wasm")),
+  readFile(resolve(packageDir, "compiler_bg.wasm")),
+  readFile(resolve(packageDir, "verifier_bg.wasm")),
+]);
+await module.default({ engine: engineBytes, compiler: compilerBytes, verifier: verifierBytes });
 const engine = new module.WasmGame();
 if (engine.registrySize() !== 0) {
   throw new Error("npm artifact is not lean: registry should be empty before card loading");
@@ -78,8 +82,12 @@ for (const file of [
   "README.md",
   "ironsmith.js",
   "ironsmith.d.ts",
-  "ironsmith_bg.wasm",
-  "ironsmith_bg.wasm.d.ts"
+  "engine.js",
+  "engine_bg.wasm",
+  "compiler.js",
+  "compiler_bg.wasm",
+  "verifier.js",
+  "verifier_bg.wasm"
 ]) {
   if (!packedFiles.has(file)) {
     throw new Error(`npm tarball is missing ${file}`);

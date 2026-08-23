@@ -3442,7 +3442,7 @@ fn parse_predicate_source_counters_use_shared_capture_parser() -> Result<(), Car
         ),
         (
             "If there are no more scream counters on it",
-            PredicateAst::SourceHasNoCounter(CounterType::Named("scream")),
+            PredicateAst::SourceHasNoCounter(CounterType::Named("scream".into())),
         ),
         (
             "If there are two counters on this creature",

@@ -8,14 +8,14 @@ use crate::model::symbols::SymbolReference;
 use crate::object::CounterType;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerDamageDivisionAst {
+pub enum CompilerDamageDivisionAst {
     None,
     Evenly,
     AsChosen,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerDamageClauseAst {
+pub struct CompilerDamageClauseAst {
     pub source: CompilerObjectOperandAst,
     pub recipients: CompilerObjectOperandAst,
     pub amount: CompilerValueAst,
@@ -27,7 +27,7 @@ pub(crate) struct CompilerDamageClauseAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerPreventionKindAst {
+pub enum CompilerPreventionKindAst {
     Amount,
     All,
     NextEvent,
@@ -36,7 +36,7 @@ pub(crate) enum CompilerPreventionKindAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerPreventionClauseAst {
+pub struct CompilerPreventionClauseAst {
     pub kind: CompilerPreventionKindAst,
     pub source: Option<CompilerObjectOperandAst>,
     pub recipient: Option<CompilerObjectOperandAst>,
@@ -47,7 +47,7 @@ pub(crate) struct CompilerPreventionClauseAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerCounterOperationAst {
+pub enum CompilerCounterOperationAst {
     Add,
     Remove,
     Move,
@@ -55,14 +55,14 @@ pub(crate) enum CompilerCounterOperationAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerCounterAmountAst {
+pub enum CompilerCounterAmountAst {
     Value(CompilerValueAst),
     All,
     Existing,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerCounterClauseAst {
+pub struct CompilerCounterClauseAst {
     pub operation: CompilerCounterOperationAst,
     pub counter_type: Option<CounterType>,
     pub amount: CompilerCounterAmountAst,
@@ -73,7 +73,7 @@ pub(crate) struct CompilerCounterClauseAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerCombatOperationAst {
+pub enum CompilerCombatOperationAst {
     Fight,
     Goad,
     Detain,
@@ -83,7 +83,7 @@ pub(crate) enum CompilerCombatOperationAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerCombatRoleAst {
+pub enum CompilerCombatRoleAst {
     Fighter,
     Attacker,
     Blocker,
@@ -91,7 +91,7 @@ pub(crate) enum CompilerCombatRoleAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerCombatClauseAst {
+pub struct CompilerCombatClauseAst {
     pub operation: CompilerCombatOperationAst,
     pub primary: CompilerObjectOperandAst,
     pub primary_role: CompilerCombatRoleAst,
@@ -101,13 +101,13 @@ pub(crate) struct CompilerCombatClauseAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerModificationModeAst {
+pub enum CompilerModificationModeAst {
     OneShot,
     Continuous,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerCharacteristicOperationAst {
+pub enum CompilerCharacteristicOperationAst {
     AddPowerToughness,
     SetPowerToughness,
     SetPower,
@@ -116,7 +116,7 @@ pub(crate) enum CompilerCharacteristicOperationAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerCharacteristicClauseAst {
+pub struct CompilerCharacteristicClauseAst {
     pub mode: CompilerModificationModeAst,
     pub layer: ContinuousLayerAst,
     pub operation: CompilerCharacteristicOperationAst,
@@ -128,7 +128,7 @@ pub(crate) struct CompilerCharacteristicClauseAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerInteractionClauseAst {
+pub enum CompilerInteractionClauseAst {
     Damage(CompilerDamageClauseAst),
     Prevention(CompilerPreventionClauseAst),
     Counter(CompilerCounterClauseAst),

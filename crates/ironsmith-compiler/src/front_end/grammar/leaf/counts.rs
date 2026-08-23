@@ -14,59 +14,59 @@ use super::numbers::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct LeafCountRange {
-    pub(crate) min: Option<Value>,
-    pub(crate) max: Option<Value>,
+pub struct LeafCountRange {
+    pub min: Option<Value>,
+    pub max: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LeafChoiceCountPrefix {
-    pub(crate) count: ChoiceCount,
-    pub(crate) consumed: usize,
+pub struct LeafChoiceCountPrefix {
+    pub count: ChoiceCount,
+    pub consumed: usize,
 }
 
 impl LeafCountRange {
-    pub(crate) fn exact(value: Value) -> Self {
+    pub fn exact(value: Value) -> Self {
         Self {
             min: Some(value.clone()),
             max: Some(value),
         }
     }
 
-    pub(crate) fn between(min: Value, max: Value) -> Self {
+    pub fn between(min: Value, max: Value) -> Self {
         Self {
             min: Some(min),
             max: Some(max),
         }
     }
 
-    pub(crate) fn at_least(min: Value) -> Self {
+    pub fn at_least(min: Value) -> Self {
         Self {
             min: Some(min),
             max: None,
         }
     }
 
-    pub(crate) fn up_to(max: Value) -> Self {
+    pub fn up_to(max: Value) -> Self {
         Self {
             min: Some(Value::Fixed(0)),
             max: Some(max),
         }
     }
 
-    pub(crate) fn any_number() -> Self {
+    pub fn any_number() -> Self {
         Self {
             min: Some(Value::Fixed(0)),
             max: None,
         }
     }
 
-    pub(crate) fn into_min_max(self) -> (Option<Value>, Option<Value>) {
+    pub fn into_min_max(self) -> (Option<Value>, Option<Value>) {
         (self.min, self.max)
     }
 }
 
-pub(crate) fn parse_leaf_modal_value_token<'a>(input: &mut LexStream<'a>) -> WResult<Value> {
+pub fn parse_leaf_modal_value_token<'a>(input: &mut LexStream<'a>) -> WResult<Value> {
     let checkpoint = input.checkpoint();
     let number = parse_leaf_number_or_x_prefix_lexed.parse_next(input)?;
     if let Some(value) = number.into_value() {
@@ -80,7 +80,7 @@ pub(crate) fn parse_leaf_modal_value_token<'a>(input: &mut LexStream<'a>) -> WRe
     ))
 }
 
-pub(crate) fn parse_leaf_count_range_prefix_lexed<'a>(
+pub fn parse_leaf_count_range_prefix_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<LeafCountRange> {
     dispatch! {peek(primitives::word_parser_text);
@@ -106,7 +106,7 @@ pub(crate) fn parse_leaf_count_range_prefix_lexed<'a>(
     .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_target_count_range_prefix_lexed<'a>(
+pub fn parse_leaf_target_count_range_prefix_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<ChoiceCount> {
     let checkpoint = input.checkpoint();
@@ -150,7 +150,7 @@ pub(crate) fn parse_leaf_target_count_range_prefix_lexed<'a>(
     ))
 }
 
-pub(crate) fn parse_leaf_another_event_count_comparison_lexed<'a>(
+pub fn parse_leaf_another_event_count_comparison_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<Comparison> {
     primitives::kw("another")
@@ -162,9 +162,7 @@ pub(crate) fn parse_leaf_another_event_count_comparison_lexed<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_choice_count_prefix_lexed<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<ChoiceCount> {
+pub fn parse_leaf_choice_count_prefix_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ChoiceCount> {
     alt((
         primitives::phrase(&["one", "or", "more"]).value(ChoiceCount::at_least(1)),
         (
@@ -194,7 +192,7 @@ pub(crate) fn parse_leaf_choice_count_prefix_lexed<'a>(
     .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_choice_count_prefix_tokens(
+pub fn parse_leaf_choice_count_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LeafChoiceCountPrefix> {
     let (count, rest) = primitives::parse_prefix(tokens, parse_leaf_choice_count_prefix_lexed)?;
@@ -204,9 +202,7 @@ pub(crate) fn parse_leaf_choice_count_prefix_tokens(
     })
 }
 
-pub(crate) fn parse_leaf_choice_count_prefix_words(
-    words: &[&str],
-) -> Option<LeafChoiceCountPrefix> {
+pub fn parse_leaf_choice_count_prefix_words(words: &[&str]) -> Option<LeafChoiceCountPrefix> {
     let mut input: primitives::WordSliceInput<'_> = words;
     let Ok(count) = parse_leaf_choice_count_prefix_word_slice.parse_next(&mut input) else {
         return None;
@@ -217,7 +213,7 @@ pub(crate) fn parse_leaf_choice_count_prefix_words(
     })
 }
 
-pub(crate) fn parse_leaf_another_event_count_comparison_tokens(
+pub fn parse_leaf_another_event_count_comparison_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Comparison>, CardTextError> {
     primitives::parse_all_or_none(
@@ -227,7 +223,7 @@ pub(crate) fn parse_leaf_another_event_count_comparison_tokens(
     )
 }
 
-pub(crate) fn parse_leaf_modal_choose_range_tokens(
+pub fn parse_leaf_modal_choose_range_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<LeafCountRange>, CardTextError> {
     if primitives::parse_prefix(tokens, primitives::phrase(&["any", "number"])).is_some() {

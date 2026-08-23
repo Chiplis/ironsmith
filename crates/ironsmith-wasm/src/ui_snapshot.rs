@@ -2073,7 +2073,7 @@ pub(super) fn build_object_details_snapshot(
         (obj.power(), obj.toughness())
     };
     let counters = counter_snapshots_for_object(obj);
-    let compiled_text = ironsmith::compiled_text::compiled_text_lines(&obj.to_card_definition());
+    let compiled_text = ironsmith::runtime_display::compiled_text_lines(&obj.to_card_definition());
 
     let type_line =
         format_type_line_parts(&current_supertypes, &current_card_types, &current_subtypes);
@@ -2088,7 +2088,7 @@ pub(super) fn build_object_details_snapshot(
         .current_abilities(id)
         .unwrap_or_else(|| obj.abilities_vec())
         .iter()
-        .map(ironsmith::compiled_text::ability_surface_text)
+        .map(ironsmith::runtime_display::ability_surface_text)
         .collect();
 
     Some(ObjectDetailsSnapshot {

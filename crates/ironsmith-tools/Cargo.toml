@@ -5,9 +5,9 @@ edition = "2024"
 autobins = false
 
 [dependencies]
-ironsmith = { package = "ironsmith-runtime", path = "../ironsmith-runtime" }
-ironsmith-registry = { path = "../ironsmith-registry" }
-ironsmith-compiler = { path = "../ironsmith-compiler" }
+ironsmith = { package = "ironsmith-runtime", path = "../ironsmith-runtime", default-features = false, features = ["serialization", "analysis", "compiler-bridge"] }
+ironsmith-registry = { path = "../ironsmith-registry", default-features = false }
+ironsmith-compiler = { path = "../ironsmith-compiler", default-features = false }
 rayon = "1.12"
 csv = "1.4"
 reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "brotli", "cookies", "gzip", "json", "rustls"] }

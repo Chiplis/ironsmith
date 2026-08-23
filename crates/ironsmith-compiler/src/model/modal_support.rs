@@ -129,7 +129,7 @@ fn parse_modal_common_prefix_effects(
     parse_effect_sentences_lexed(effect_tokens)
 }
 
-pub(crate) fn parse_modal_header(
+pub fn parse_modal_header(
     info: &LineInfo,
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ModalHeader>, CardTextError> {
@@ -451,7 +451,7 @@ fn parse_x_is_value_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
         .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
 }
 
-pub(crate) fn replace_modal_header_x_in_effects_ast(
+pub fn replace_modal_header_x_in_effects_ast(
     effects: &mut [EffectAst],
     replacement: &Value,
     clause: &str,

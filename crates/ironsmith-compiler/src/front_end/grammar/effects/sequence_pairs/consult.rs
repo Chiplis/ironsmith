@@ -16,22 +16,22 @@ use super::{
 
 #[path = "consult/cast.rs"]
 mod cast;
-pub(crate) use cast::*;
+pub use cast::*;
 #[path = "consult/remainder.rs"]
 mod remainder;
-pub(crate) use remainder::*;
+pub use remainder::*;
 #[path = "consult/traversal.rs"]
 mod traversal;
-pub(crate) use traversal::*;
+pub use traversal::*;
 #[path = "consult/values.rs"]
 mod values;
-pub(crate) use values::*;
+pub use values::*;
 #[path = "consult/dispositions.rs"]
 mod dispositions;
-pub(crate) use dispositions::*;
+pub use dispositions::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ConsultMoveBottomShape {
+pub enum ConsultMoveBottomShape {
     MatchedToBattlefieldAndShuffle,
     MoveMatchAndBottom {
         zone: Zone,
@@ -41,14 +41,14 @@ pub(crate) enum ConsultMoveBottomShape {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ConditionalConsultShape {
-    pub(crate) predicate: Range<usize>,
-    pub(crate) effect: Range<usize>,
-    pub(crate) if_result: bool,
+pub struct ConditionalConsultShape {
+    pub predicate: Range<usize>,
+    pub effect: Range<usize>,
+    pub if_result: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ConsultBattlefieldGraveyardShape {
+pub enum ConsultBattlefieldGraveyardShape {
     Combined,
     RemainderThenMatch { controller_you: bool },
 }
@@ -136,9 +136,7 @@ fn is_put_those_cards_then_shuffle_revealed_remainder(tokens: &[OwnedLexToken]) 
         .is_ok()
 }
 
-pub(crate) fn parse_consult_move_bottom_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<ConsultMoveBottomShape> {
+pub fn parse_consult_move_bottom_shape(tokens: &[OwnedLexToken]) -> Option<ConsultMoveBottomShape> {
     let special = is_put_those_cards_then_shuffle_revealed_remainder(tokens)
         || (starts_sequence(tokens, &[&["put", "all"]])
             && contains_sequence_phrase(tokens, &[&["cards", "revealed", "this", "way"]])
@@ -170,7 +168,7 @@ pub(crate) fn parse_consult_move_bottom_shape(
     })
 }
 
-pub(crate) fn parse_conditional_consult_shape(
+pub fn parse_conditional_consult_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ConditionalConsultShape> {
     let mut input = LexStream::new(tokens);
@@ -207,7 +205,7 @@ pub(crate) fn parse_conditional_consult_shape(
     })
 }
 
-pub(crate) fn is_consult_move_all_to_graveyard_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_consult_move_all_to_graveyard_shape(tokens: &[OwnedLexToken]) -> bool {
     starts_sequence(
         tokens,
         &[
@@ -219,7 +217,7 @@ pub(crate) fn is_consult_move_all_to_graveyard_shape(tokens: &[OwnedLexToken]) -
         && contains_sequence_word(tokens, "graveyard")
 }
 
-pub(crate) fn is_consult_hand_others_graveyard_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_consult_hand_others_graveyard_shape(tokens: &[OwnedLexToken]) -> bool {
     starts_sequence(tokens, HAND_PREFIXES)
         && (contains_sequence_phrase(tokens, &[&["other", "cards"]])
             || contains_sequence_phrase(tokens, &[&["all", "other"]])
@@ -283,7 +281,7 @@ fn matched_to_battlefield(tokens: &[OwnedLexToken]) -> bool {
     starts_sequence(tokens, MATCH_BATTLEFIELD_PREFIXES)
 }
 
-pub(crate) fn parse_consult_battlefield_graveyard_shape(
+pub fn parse_consult_battlefield_graveyard_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ConsultBattlefieldGraveyardShape> {
     let mut input = LexStream::new(tokens);

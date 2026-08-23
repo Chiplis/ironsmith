@@ -6,7 +6,7 @@ use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum StaticSubjectAst {
+pub enum StaticSubjectAst {
     Source,
     Objects(ObjectFilter),
     Player(PlayerFilter),
@@ -15,7 +15,7 @@ pub(crate) enum StaticSubjectAst {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct StaticScopeAst {
+pub struct StaticScopeAst {
     pub source_zones: Vec<Zone>,
     pub affected_zones: Vec<Zone>,
     pub controller_only: bool,
@@ -38,7 +38,7 @@ impl Default for StaticScopeAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum ContinuousLayerAst {
+pub enum ContinuousLayerAst {
     Copy,
     Control,
     Text,
@@ -53,14 +53,14 @@ pub(crate) enum ContinuousLayerAst {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum CharacteristicValueAst<T> {
+pub enum CharacteristicValueAst<T> {
     Set(T),
     Add(T),
     Remove(T),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CharacteristicChangeAst {
+pub struct CharacteristicChangeAst {
     pub supertypes: Vec<CharacteristicValueAst<Supertype>>,
     pub card_types: Vec<CharacteristicValueAst<CardType>>,
     pub subtypes: Vec<CharacteristicValueAst<Subtype>>,
@@ -69,7 +69,7 @@ pub(crate) struct CharacteristicChangeAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum StaticRestrictionAst {
+pub enum StaticRestrictionAst {
     CantAttack,
     CantBlock,
     CantActivate,
@@ -82,7 +82,7 @@ pub(crate) enum StaticRestrictionAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerGrantedAbilityAst {
+pub enum CompilerGrantedAbilityAst {
     Keyword(crate::model::CompilerKeywordAbilityAst),
     Static(Box<CompilerStaticAbilityAst>),
     Activated(Box<crate::model::CompilerActivatedAbilityAst>),
@@ -90,7 +90,7 @@ pub(crate) enum CompilerGrantedAbilityAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum StaticOperationAst {
+pub enum StaticOperationAst {
     Characteristics(CharacteristicChangeAst),
     Grant {
         abilities: Vec<CompilerGrantedAbilityAst>,
@@ -104,7 +104,7 @@ pub(crate) enum StaticOperationAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerStaticAbilityAst {
+pub struct CompilerStaticAbilityAst {
     pub subject: StaticSubjectAst,
     pub scope: StaticScopeAst,
     pub condition: Option<PredicateAst>,
@@ -114,7 +114,7 @@ pub(crate) struct CompilerStaticAbilityAst {
 }
 
 impl CompilerStaticAbilityAst {
-    pub(crate) fn granted_abilities(&self) -> &[CompilerGrantedAbilityAst] {
+    pub fn granted_abilities(&self) -> &[CompilerGrantedAbilityAst] {
         match &self.operation {
             StaticOperationAst::Grant { abilities, .. } => abilities,
             _ => &[],

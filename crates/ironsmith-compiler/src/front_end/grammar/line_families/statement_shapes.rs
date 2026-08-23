@@ -8,14 +8,14 @@ use crate::lexer::{LexStream, OwnedLexToken, TokenKind, TokenWordView};
 use crate::util::starts_filter_keyword_list_continuation_words;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum MultiSentenceEffectHead {
+pub enum MultiSentenceEffectHead {
     StatementFamily,
     PlayerPermission,
     EffectVerb,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StatementStaticPreference {
+pub enum StatementStaticPreference {
     DrawReplacement,
     TokenCreationReplacement,
     DiscardOrRedirectReplacement,
@@ -25,9 +25,9 @@ pub(crate) enum StatementStaticPreference {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct FilterListContinuationShape;
+pub struct FilterListContinuationShape;
 
-pub(crate) fn parse_multi_sentence_effect_head(
+pub fn parse_multi_sentence_effect_head(
     tokens: &[OwnedLexToken],
 ) -> Option<MultiSentenceEffectHead> {
     let sentences = structure::split_lexed_sentences(tokens)
@@ -49,7 +49,7 @@ pub(crate) fn parse_multi_sentence_effect_head(
     primitives::parse_prefix(first, effect_head).map(|_| MultiSentenceEffectHead::EffectVerb)
 }
 
-pub(crate) fn parse_statement_static_preference(
+pub fn parse_statement_static_preference(
     tokens: &[OwnedLexToken],
 ) -> Option<StatementStaticPreference> {
     if super::super::static_keyword_replacement_shapes::parse_discard_or_redirect_replacement(
@@ -168,7 +168,7 @@ where
         .parse_next(&mut probe)
 }
 
-pub(crate) fn parse_filter_list_continuation(
+pub fn parse_filter_list_continuation(
     tokens: &[OwnedLexToken],
 ) -> Option<FilterListContinuationShape> {
     let keyword_words = TokenWordView::new(tokens).to_word_refs();

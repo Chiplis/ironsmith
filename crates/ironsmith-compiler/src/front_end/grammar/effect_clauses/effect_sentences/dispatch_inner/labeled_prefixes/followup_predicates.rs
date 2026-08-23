@@ -1,16 +1,16 @@
 use super::*;
 
-pub(crate) fn is_negated_untap_clause(words: &[&str]) -> bool {
+pub fn is_negated_untap_clause(words: &[&str]) -> bool {
     effect_grammar::is_negated_untap_clause_words(words)
 }
 
-pub(crate) fn parse_token_copy_modifier_sentence(
+pub fn parse_token_copy_modifier_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenCopyFollowup> {
     parse_token_copy_modifier_sentence_lexed(tokens)
 }
 
-pub(crate) fn parse_token_copy_modifier_sentence_lexed(
+pub fn parse_token_copy_modifier_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenCopyFollowup> {
     use effect_grammar::labeled_dispatch::TokenCopyModifierKind as Kind;
@@ -74,14 +74,14 @@ fn token_copy_reference_surface_at(
     }
 }
 
-pub(crate) fn token_copy_leading_reference_surface(
+pub fn token_copy_leading_reference_surface(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::effect::TokenCopyReferenceSurface> {
     let words = crate::lexer::parser_token_word_refs(tokens);
     token_copy_reference_surface_at(&words, 0)
 }
 
-pub(crate) fn token_copy_action_reference_surface(
+pub fn token_copy_action_reference_surface(
     tokens: &[OwnedLexToken],
     action: &str,
 ) -> Option<crate::effect::TokenCopyReferenceSurface> {

@@ -91,11 +91,11 @@ enum ManaUsageSpecShape {
     Other,
 }
 
-pub(crate) fn is_spend_mana_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_spend_mana_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_any_prefix_tokens(tokens, SPEND_MANA_RESTRICTION_PREFIXES)
 }
 
-pub(crate) fn parse_mana_usage_restriction_sentence_lexed(
+pub fn parse_mana_usage_restriction_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaUsageRestriction> {
     parse_generic_mana_transaction(tokens)
@@ -198,7 +198,7 @@ fn parse_activate_any_ability_or_cast(tokens: &[OwnedLexToken]) -> Option<ManaUs
     ))
 }
 
-pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
+pub fn parse_mana_spend_bonus_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaUsageRestriction> {
     if let Some(transaction) = parse_generic_mana_transaction(tokens)
@@ -458,7 +458,7 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
     })
 }
 
-pub(crate) fn is_mana_spend_bonus_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_mana_spend_bonus_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
     parse_mana_spend_bonus_sentence_lexed(tokens).is_some()
 }
 

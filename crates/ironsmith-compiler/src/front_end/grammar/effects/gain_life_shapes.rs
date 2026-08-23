@@ -4,15 +4,15 @@ use winnow::combinator::{alt, eof, peek, repeat, repeat_till};
 use winnow::token::any;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct GainLifeEqualPowerShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
+pub struct GainLifeEqualPowerShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct GainXPlusLifeShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) bonus: u32,
-    pub(crate) trailing_tokens: &'a [OwnedLexToken],
+pub struct GainXPlusLifeShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub bonus: u32,
+    pub trailing_tokens: &'a [OwnedLexToken],
 }
 
 fn gain_word<'a>(input: &mut LexStream<'a>) -> winnow::error::ModalResult<()> {
@@ -43,7 +43,7 @@ fn parse_gain_life_equal_power_lexed<'a>(
     Ok(GainLifeEqualPowerShape { subject_tokens })
 }
 
-pub(crate) fn parse_gain_life_equal_power_tokens(
+pub fn parse_gain_life_equal_power_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<GainLifeEqualPowerShape<'_>> {
     primitives::parse_all(
@@ -85,9 +85,7 @@ fn parse_gain_x_plus_life_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_gain_x_plus_life_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<GainXPlusLifeShape<'_>> {
+pub fn parse_gain_x_plus_life_tokens(tokens: &[OwnedLexToken]) -> Option<GainXPlusLifeShape<'_>> {
     primitives::parse_all(tokens, parse_gain_x_plus_life_lexed, "gain-x-plus-life").ok()
 }
 

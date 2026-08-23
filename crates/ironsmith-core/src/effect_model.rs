@@ -1,10 +1,11 @@
 /// Comparison operations for numeric values.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Comparison {
     GreaterThan(i32),
     GreaterThanOrEqual(i32),
     Equal(i32),
-    OneOf(&'static [i32]),
+    OneOf(crate::InternedI32Slice),
     LessThan(i32),
     LessThanOrEqual(i32),
     NotEqual(i32),
@@ -27,6 +28,7 @@ impl Comparison {
 }
 
 /// Comparison operations between two runtime-resolved values.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValueComparisonOperator {
     GreaterThan,
@@ -51,6 +53,7 @@ impl ValueComparisonOperator {
 }
 
 /// Event payload fields that can be referenced by effect values.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EventValueSpec {
     Amount,
@@ -66,7 +69,7 @@ mod tests {
     fn comparison_evaluates_values() {
         assert!(Comparison::GreaterThan(2).evaluate(3));
         assert!(Comparison::BetweenInclusive(2, 4).evaluate(4));
-        assert!(Comparison::OneOf(&[1, 3, 5]).evaluate(3));
+        assert!(Comparison::OneOf((&[1, 3, 5][..]).into()).evaluate(3));
         assert!(!Comparison::LessThanOrEqual(1).evaluate(2));
     }
 

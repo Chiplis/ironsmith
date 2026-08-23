@@ -493,9 +493,7 @@ fn parse_direct_prior_effect_result_surface(
     ))
 }
 
-pub(crate) fn parse_if_result_predicate_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<IfResultPredicate> {
+pub fn parse_if_result_predicate_tokens(tokens: &[OwnedLexToken]) -> Option<IfResultPredicate> {
     let normalized = normalized_word_tokens(tokens);
     match parse_modal_result_shape(&normalized)? {
         ModalResultShape::ThisWay {
@@ -513,7 +511,7 @@ pub(crate) fn parse_if_result_predicate_tokens(
     }
 }
 
-pub(crate) fn parse_if_result_predicate_lexed_tokens(
+pub fn parse_if_result_predicate_lexed_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<IfResultPredicate> {
     // The broad direct-result recognizer also accepts counted passive clauses,

@@ -14,8 +14,8 @@ use super::parser_support::split_tokens_for_parse;
 use super::util::join_sentences_with_period;
 
 #[path = "cst_lowering/activation_costs.rs"]
-pub(crate) mod activation_costs;
-pub(crate) use activation_costs::{lower_activation_cost_cst, recognize_activation_cost_cst};
+pub mod activation_costs;
+pub use activation_costs::{lower_activation_cost_cst, recognize_activation_cost_cst};
 
 fn parsed_line_item(
     info: crate::model::facts::LineInfo,
@@ -53,7 +53,7 @@ fn activation_cost_cst_is_loyalty(cost: &ActivationCostCst) -> bool {
     })
 }
 
-pub(crate) fn lower_non_metadata_rewrite_line_cst(
+pub fn lower_non_metadata_rewrite_line_cst(
     line: RewriteLineCst,
     allow_unsupported: bool,
 ) -> Result<RewriteSemanticItem, CardTextError> {

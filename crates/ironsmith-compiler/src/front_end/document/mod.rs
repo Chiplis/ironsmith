@@ -790,7 +790,7 @@ fn parse_segment_len_until_colon_outside_quotes<'a>(input: &mut LexStream<'a>) -
     Err(grammar::backtrack_err("colon", "colon outside quotes"))
 }
 
-pub(crate) fn split_lexed_once_on_colon_outside_quotes(
+pub fn split_lexed_once_on_colon_outside_quotes(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
     let (left_len, rest) =
@@ -3037,7 +3037,7 @@ fn rewrite_cleave_bracket_document(
     Ok(rewritten)
 }
 
-pub(crate) fn parse_text_to_semantic_document_with_context(
+pub fn parse_text_to_semantic_document_with_context(
     context: &mut ParseContext,
     builder: CardDefinitionBuilder,
     text: String,
@@ -3156,7 +3156,7 @@ pub(crate) fn parse_text_to_semantic_document_with_context(
     Ok((semantic, annotations))
 }
 
-pub(crate) fn parse_document_cst_with_context(
+pub fn parse_document_cst_with_context(
     context: ParseContextView<'_>,
     preprocessed: &PreprocessedDocument,
 ) -> Result<RewriteDocumentCst, CardTextError> {
@@ -3468,7 +3468,7 @@ pub(crate) fn parse_document_cst_with_context(
 
 /// Parse a prepared document at the public grammar boundary with fresh,
 /// request-scoped compiler state.
-pub(crate) fn parse_document_cst(
+pub fn parse_document_cst(
     preprocessed: &PreprocessedDocument,
     allow_unsupported: bool,
 ) -> Result<RewriteDocumentCst, CardTextError> {
@@ -3481,7 +3481,8 @@ pub(crate) fn parse_document_cst(
         })
         .collect::<Vec<_>>()
         .join("\n");
-    let context = ParseContext::for_builder(&preprocessed.builder, &source_text, allow_unsupported);
+    let context =
+        crate::parse_context_for_builder(&preprocessed.builder, &source_text, allow_unsupported);
     parse_document_cst_with_context(context.view().child(ParseScopeKind::Document), preprocessed)
 }
 
@@ -3554,7 +3555,7 @@ fn lower_document_cst_with_symbols(
     for line in cst.lines {
         match line {
             RewriteLineCst::Metadata(MetadataLineCst { value }) => {
-                builder = builder.apply_metadata(value.clone())?;
+                builder = builder.apply_compiler_metadata(value)?;
                 items.push(RewriteSemanticItem::Metadata);
             }
             other => items.push(lower_non_metadata_rewrite_line_cst(
@@ -3645,7 +3646,7 @@ fn rewrite_line_cst_source_index(line: &RewriteLineCst) -> Option<usize> {
     }
 }
 
-pub(crate) fn metadata_line_cst(
+pub fn metadata_line_cst(
     info: crate::cards::builders::LineInfo,
     value: crate::cards::builders::MetadataLine,
 ) -> Result<MetadataLineCst, CardTextError> {
@@ -3702,8 +3703,7 @@ mod tests {
         ),
         CardTextError,
     > {
-        let mut context =
-            crate::parse_context::ParseContext::for_builder(&builder, &text, allow_unsupported);
+        let mut context = crate::parse_context_for_builder(&builder, &text, allow_unsupported);
         super::parse_text_to_semantic_document_with_context(&mut context, builder, text)
     }
 

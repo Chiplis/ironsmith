@@ -9,18 +9,18 @@ use super::super::lexer::{LexStream, OwnedLexToken, TokenKind};
 use super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SpliceSubject {
+pub enum SpliceSubject {
     Arcane,
     InstantOrSorcery,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SpliceKeywordLineShape<'a> {
-    pub(crate) subject: SpliceSubject,
-    pub(crate) cost_tokens: &'a [OwnedLexToken],
+pub struct SpliceKeywordLineShape<'a> {
+    pub subject: SpliceSubject,
+    pub cost_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_splice_keyword_line_tokens<'a>(
+pub fn parse_splice_keyword_line_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Result<Option<SpliceKeywordLineShape<'a>>, CardTextError> {
     primitives::parse_all_or_none(

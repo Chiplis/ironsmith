@@ -9,7 +9,7 @@ use winnow::token::{any, literal, take_till};
 use crate::cards::builders::{CardTextError, TextSpan};
 use crate::mana::ManaSymbol;
 
-pub(crate) use super::super::lexer::TokenWordView;
+pub use super::super::lexer::TokenWordView;
 use super::super::lexer::{LexStream, LexToken, TokenKind};
 
 const POWER_AXIS_SUFFIXES: &[&[&str]] = &[&["power"], &["total", "power"], &["base", "power"]];
@@ -19,7 +19,7 @@ const COMPARISON_OR_TAIL_WORDS: &[&str] = &["less", "greater", "more", "fewer"];
 const THAN_WORD: &str = "than";
 const EQUAL_WORD: &str = "equal";
 
-pub(crate) struct MaybeTrace<P, D> {
+pub struct MaybeTrace<P, D> {
     parser: P,
     name: D,
 }
@@ -77,7 +77,7 @@ where
     }
 }
 
-pub(crate) fn maybe_trace<P, D>(name: D, parser: P) -> MaybeTrace<P, D> {
+pub fn maybe_trace<P, D>(name: D, parser: P) -> MaybeTrace<P, D> {
     MaybeTrace::new(name, parser)
 }
 
@@ -188,7 +188,7 @@ fn format_parse_error(
     ))
 }
 
-pub(crate) fn parse_all<'a, O>(
+pub fn parse_all<'a, O>(
     tokens: &'a [LexToken],
     parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
     label: &str,
@@ -199,7 +199,7 @@ pub(crate) fn parse_all<'a, O>(
         .map_err(|err| format_parse_error(label, err, None))
 }
 
-pub(crate) fn parse_all_with_display_line<'a, O>(
+pub fn parse_all_with_display_line<'a, O>(
     tokens: &'a [LexToken],
     parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
     label: &str,
@@ -211,7 +211,7 @@ pub(crate) fn parse_all_with_display_line<'a, O>(
         .map_err(|err| format_parse_error(label, err, Some(display_line_index)))
 }
 
-pub(crate) fn parse_prefix<'a, O>(
+pub fn parse_prefix<'a, O>(
     tokens: &'a [LexToken],
     mut parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
 ) -> Option<(O, &'a [LexToken])> {
@@ -220,7 +220,7 @@ pub(crate) fn parse_prefix<'a, O>(
     Some((parsed, remaining))
 }
 
-pub(crate) fn parse_all_or_none<'a, O>(
+pub fn parse_all_or_none<'a, O>(
     tokens: &'a [LexToken],
     parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
     label: &str,
@@ -264,7 +264,7 @@ pub(crate) fn parse_all_or_none<'a, O>(
 /// - Winnow cut (hard parse error) → `Err(CardTextError)`
 /// - Winnow success with trailing tokens → `Err(CardTextError)`
 /// - Winnow success consuming all input → `Ok(Some(value))`
-pub(crate) fn try_parse_all<'a, O>(
+pub fn try_parse_all<'a, O>(
     tokens: &'a [LexToken],
     parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
     label: &str,
@@ -272,7 +272,7 @@ pub(crate) fn try_parse_all<'a, O>(
     parse_all_or_none(tokens, parser, label)
 }
 
-pub(crate) fn find_prefix<'a, O, P, F>(
+pub fn find_prefix<'a, O, P, F>(
     tokens: &'a [LexToken],
     make_parser: F,
 ) -> Option<(usize, O, &'a [LexToken])>
@@ -292,7 +292,7 @@ where
     }
 }
 
-pub(crate) fn locate_token_index(
+pub fn locate_token_index(
     tokens: &[LexToken],
     mut predicate: impl FnMut(&LexToken) -> bool,
 ) -> Option<usize> {
@@ -306,35 +306,28 @@ pub(crate) fn locate_token_index(
     None
 }
 
-pub(crate) fn contains_word(tokens: &[LexToken], expected: &'static str) -> bool {
+pub fn contains_word(tokens: &[LexToken], expected: &'static str) -> bool {
     find_prefix(tokens, || kw(expected)).is_some()
 }
 
-pub(crate) fn has_phrase(tokens: &[LexToken], expected: &'static [&'static str]) -> bool {
+pub fn has_phrase(tokens: &[LexToken], expected: &'static [&'static str]) -> bool {
     find_phrase_start(tokens, expected).is_some()
 }
 
-#[cfg(test)]
-pub(crate) fn has_any_phrase(
-    tokens: &[LexToken],
-    phrases: &'static [&'static [&'static str]],
-) -> bool {
+pub fn has_any_phrase(tokens: &[LexToken], phrases: &'static [&'static [&'static str]]) -> bool {
     phrases
         .iter()
         .any(|phrase_words| has_phrase(tokens, phrase_words))
 }
 
-pub(crate) fn find_phrase_start(
-    tokens: &[LexToken],
-    expected: &'static [&'static str],
-) -> Option<usize> {
+pub fn find_phrase_start(tokens: &[LexToken], expected: &'static [&'static str]) -> Option<usize> {
     find_prefix(tokens, || phrase(expected)).map(|(idx, _, _)| idx)
 }
 
 /// Constructs a `Backtrack` error with a label and expected description.
 ///
 /// Use this instead of manually constructing `ContextError` + `ErrMode::Backtrack`.
-pub(crate) fn backtrack_err(label: &'static str, expected: &'static str) -> ErrMode<ContextError> {
+pub fn backtrack_err(label: &'static str, expected: &'static str) -> ErrMode<ContextError> {
     let mut err = ContextError::new();
     err.push(StrContext::Label(label));
     err.push(StrContext::Expected(StrContextValue::Description(expected)));
@@ -342,14 +335,14 @@ pub(crate) fn backtrack_err(label: &'static str, expected: &'static str) -> ErrM
 }
 
 /// Constructs a `Cut` error with a label and expected description.
-pub(crate) fn cut_err_ctx(label: &'static str, expected: &'static str) -> ErrMode<ContextError> {
+pub fn cut_err_ctx(label: &'static str, expected: &'static str) -> ErrMode<ContextError> {
     let mut err = ContextError::new();
     err.push(StrContext::Label(label));
     err.push(StrContext::Expected(StrContextValue::Description(expected)));
     ErrMode::Cut(err)
 }
 
-pub(crate) fn token_slice_span(tokens: &[LexToken]) -> Option<TextSpan> {
+pub fn token_slice_span(tokens: &[LexToken]) -> Option<TextSpan> {
     let line = tokens.first()?.span().line;
     let (_, span) =
         take_till::<_, LexStream<'_>, ErrMode<ContextError>>(0.., |_token: &LexToken| false)
@@ -363,7 +356,7 @@ pub(crate) fn token_slice_span(tokens: &[LexToken]) -> Option<TextSpan> {
     })
 }
 
-pub(crate) fn token_kind<'a>(
+pub fn token_kind<'a>(
     expected: TokenKind,
 ) -> impl Parser<LexStream<'a>, &'a LexToken, ErrMode<ContextError>> {
     literal(expected)
@@ -386,7 +379,7 @@ fn punctuation<'a>(
     )
 }
 
-pub(crate) fn word_text<'a>(input: &mut LexStream<'a>) -> Result<&'a str, ErrMode<ContextError>> {
+pub fn word_text<'a>(input: &mut LexStream<'a>) -> Result<&'a str, ErrMode<ContextError>> {
     let token: &'a LexToken = any.parse_next(input)?;
     token.as_word().ok_or_else(|| backtrack_err("word", "word"))
 }
@@ -395,9 +388,7 @@ pub(crate) fn word_text<'a>(input: &mut LexStream<'a>) -> Result<&'a str, ErrMod
 /// apostrophe-normalized) instead of the original slice.  Use this as the
 /// discriminant inside `dispatch!` so that branch labels can be written in
 /// lowercase regardless of how the source text was capitalized.
-pub(crate) fn word_parser_text<'a>(
-    input: &mut LexStream<'a>,
-) -> Result<&'a str, ErrMode<ContextError>> {
+pub fn word_parser_text<'a>(input: &mut LexStream<'a>) -> Result<&'a str, ErrMode<ContextError>> {
     let token: &'a LexToken = any.parse_next(input)?;
     if matches!(
         token.kind,
@@ -411,7 +402,7 @@ pub(crate) fn word_parser_text<'a>(
     }
 }
 
-pub(crate) fn kw<'a>(
+pub fn kw<'a>(
     expected: &'static str,
 ) -> impl Parser<LexStream<'a>, &'a LexToken, ErrMode<ContextError>> {
     maybe_trace(
@@ -425,51 +416,49 @@ pub(crate) fn kw<'a>(
     )
 }
 
-pub(crate) fn comma<'a>() -> impl Parser<LexStream<'a>, &'a LexToken, ErrMode<ContextError>> {
+pub fn comma<'a>() -> impl Parser<LexStream<'a>, &'a LexToken, ErrMode<ContextError>> {
     punctuation(TokenKind::Comma, "comma")
 }
 
-pub(crate) fn period<'a>() -> impl Parser<LexStream<'a>, &'a LexToken, ErrMode<ContextError>> {
+pub fn period<'a>() -> impl Parser<LexStream<'a>, &'a LexToken, ErrMode<ContextError>> {
     punctuation(TokenKind::Period, "period")
 }
 
-pub(crate) fn colon<'a>() -> impl Parser<LexStream<'a>, &'a LexToken, ErrMode<ContextError>> {
+pub fn colon<'a>() -> impl Parser<LexStream<'a>, &'a LexToken, ErrMode<ContextError>> {
     punctuation(TokenKind::Colon, "colon")
 }
 
-pub(crate) fn semicolon<'a>() -> impl Parser<LexStream<'a>, &'a LexToken, ErrMode<ContextError>> {
+pub fn semicolon<'a>() -> impl Parser<LexStream<'a>, &'a LexToken, ErrMode<ContextError>> {
     punctuation(TokenKind::Semicolon, "semicolon")
 }
 
-#[cfg(test)]
-pub(crate) fn lparen<'a>() -> impl Parser<LexStream<'a>, &'a LexToken, ErrMode<ContextError>> {
+pub fn lparen<'a>() -> impl Parser<LexStream<'a>, &'a LexToken, ErrMode<ContextError>> {
     punctuation(TokenKind::LParen, "left parenthesis")
 }
 
-#[cfg(test)]
-pub(crate) fn rparen<'a>() -> impl Parser<LexStream<'a>, &'a LexToken, ErrMode<ContextError>> {
+pub fn rparen<'a>() -> impl Parser<LexStream<'a>, &'a LexToken, ErrMode<ContextError>> {
     punctuation(TokenKind::RParen, "right parenthesis")
 }
 
-pub(crate) fn quote<'a>() -> impl Parser<LexStream<'a>, &'a LexToken, ErrMode<ContextError>> {
+pub fn quote<'a>() -> impl Parser<LexStream<'a>, &'a LexToken, ErrMode<ContextError>> {
     punctuation(TokenKind::Quote, "quote")
 }
 
 /// Matches an optional period followed by end-of-input.
 ///
 /// This is the standard trailing pattern for sentence/block parsers.
-pub(crate) fn sentence_end<'a>() -> impl Parser<LexStream<'a>, (), ErrMode<ContextError>> {
+pub fn sentence_end<'a>() -> impl Parser<LexStream<'a>, (), ErrMode<ContextError>> {
     (opt(period()), eof).void()
 }
 
-pub(crate) fn end_of_sentence<'a>() -> impl Parser<LexStream<'a>, (), ErrMode<ContextError>> {
+pub fn end_of_sentence<'a>() -> impl Parser<LexStream<'a>, (), ErrMode<ContextError>> {
     period()
         .void()
         .context(StrContext::Label("end of sentence"))
         .context(StrContext::Expected(StrContextValue::Description("period")))
 }
 
-pub(crate) fn end_of_block<'a>() -> impl Parser<LexStream<'a>, (), ErrMode<ContextError>> {
+pub fn end_of_block<'a>() -> impl Parser<LexStream<'a>, (), ErrMode<ContextError>> {
     eof.value(())
         .context(StrContext::Label("end of block"))
         .context(StrContext::Expected(StrContextValue::Description(
@@ -477,8 +466,7 @@ pub(crate) fn end_of_block<'a>() -> impl Parser<LexStream<'a>, (), ErrMode<Conte
         )))
 }
 
-pub(crate) fn end_of_sentence_or_block<'a>() -> impl Parser<LexStream<'a>, (), ErrMode<ContextError>>
-{
+pub fn end_of_sentence_or_block<'a>() -> impl Parser<LexStream<'a>, (), ErrMode<ContextError>> {
     alt((end_of_sentence(), end_of_block()))
         .context(StrContext::Label("end of sentence or block"))
         .context(StrContext::Expected(StrContextValue::Description(
@@ -495,14 +483,14 @@ pub(crate) fn end_of_sentence_or_block<'a>() -> impl Parser<LexStream<'a>, (), E
 
 /// Parse a numeric word token (digit or english word like "three") and return
 /// its `u32` value.  Consumes exactly one token on success.
-pub(crate) fn number_token<'a>(input: &mut LexStream<'a>) -> Result<u32, ErrMode<ContextError>> {
+pub fn number_token<'a>(input: &mut LexStream<'a>) -> Result<u32, ErrMode<ContextError>> {
     super::leaf::parse_leaf_number_token_lexed.parse_next(input)
 }
 
 /// Parse a single mana symbol from the next token (word, number, or
 /// `{…}` mana-group).  Returns the individual `ManaSymbol` values found
 /// in that token.
-pub(crate) fn mana_pips_token<'a>(
+pub fn mana_pips_token<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<Vec<ManaSymbol>, ErrMode<ContextError>> {
     super::leaf::parse_leaf_surface_mana_pip_lexed
@@ -512,9 +500,7 @@ pub(crate) fn mana_pips_token<'a>(
 
 /// Skip one or more tokens that are commas and/or the keyword "or".
 /// Suitable as the separator argument to `separated()`.
-pub(crate) fn comma_or_separator<'a>(
-    input: &mut LexStream<'a>,
-) -> Result<(), ErrMode<ContextError>> {
+pub fn comma_or_separator<'a>(input: &mut LexStream<'a>) -> Result<(), ErrMode<ContextError>> {
     // At least one comma (optionally followed by "or" and more commas),
     // or just "or" (optionally followed by commas).
     let skip_commas = || repeat::<_, _, (), _, _>(0.., comma().void());
@@ -536,7 +522,7 @@ pub(crate) fn comma_or_separator<'a>(
 
 /// Skip tokens that are noise words in mana clauses
 /// ("mana", "to", "your", "their", "its", "pool", articles).
-pub(crate) fn skip_mana_noise<'a>(input: &mut LexStream<'a>) -> Result<(), ErrMode<ContextError>> {
+pub fn skip_mana_noise<'a>(input: &mut LexStream<'a>) -> Result<(), ErrMode<ContextError>> {
     any.verify(|token: &&LexToken| {
         token.as_word().is_some_and(|word| {
             matches!(
@@ -555,7 +541,7 @@ pub(crate) fn skip_mana_noise<'a>(input: &mut LexStream<'a>) -> Result<(), ErrMo
 
 /// Collect mana pips from a token stream, skipping noise words and commas.
 /// Returns a flat `Vec<ManaSymbol>`.
-pub(crate) fn collect_mana_symbols<'a>(
+pub fn collect_mana_symbols<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<Vec<ManaSymbol>, ErrMode<ContextError>> {
     let skip_noise =
@@ -571,7 +557,7 @@ pub(crate) fn collect_mana_symbols<'a>(
 
 /// Collect mana pip groups (each group is a Vec<ManaSymbol>) from a token
 /// stream, skipping noise words.  Returns `Vec<Vec<ManaSymbol>>`.
-pub(crate) fn collect_mana_pip_groups<'a>(
+pub fn collect_mana_pip_groups<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<Vec<Vec<ManaSymbol>>, ErrMode<ContextError>> {
     let skip_noise = repeat::<_, _, (), _, _>(0.., alt((skip_mana_noise, comma().void())));
@@ -583,7 +569,7 @@ pub(crate) fn collect_mana_pip_groups<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn phrase<'a>(
+pub fn phrase<'a>(
     expected: &'static [&'static str],
 ) -> impl Parser<LexStream<'a>, (), ErrMode<ContextError>> {
     maybe_trace(
@@ -605,7 +591,7 @@ pub(crate) fn phrase<'a>(
     )
 }
 
-pub(crate) fn any_phrase<'a, 'b>(
+pub fn any_phrase<'a, 'b>(
     phrases: &'b [&'static [&'static str]],
 ) -> impl Parser<LexStream<'a>, &'static [&'static str], ErrMode<ContextError>> + 'b {
     move |input: &mut LexStream<'a>| {
@@ -704,7 +690,7 @@ where
     Ok(segment)
 }
 
-pub(crate) fn split_lexed_once_on_separator<'a, P, F>(
+pub fn split_lexed_once_on_separator<'a, P, F>(
     tokens: &'a [LexToken],
     make_separator: F,
 ) -> Option<(&'a [LexToken], &'a [LexToken])>
@@ -718,7 +704,7 @@ where
     (head.len() + rest.len() < tokens.len()).then_some((head, rest))
 }
 
-pub(crate) fn split_lexed_once_before_suffix<'a, O, P, F>(
+pub fn split_lexed_once_before_suffix<'a, O, P, F>(
     tokens: &'a [LexToken],
     min_prefix_len: usize,
     make_suffix_parser: F,
@@ -735,7 +721,7 @@ where
     Some((&tokens[..split_idx], parsed))
 }
 
-pub(crate) fn split_lexed_once_on_delimiter(
+pub fn split_lexed_once_on_delimiter(
     tokens: &[LexToken],
     delimiter: TokenKind,
 ) -> Option<(&[LexToken], &[LexToken])> {
@@ -747,7 +733,7 @@ pub(crate) fn split_lexed_once_on_delimiter(
     Some((head, remaining))
 }
 
-pub(crate) fn split_lexed_once_on_comma(tokens: &[LexToken]) -> Option<(&[LexToken], &[LexToken])> {
+pub fn split_lexed_once_on_comma(tokens: &[LexToken]) -> Option<(&[LexToken], &[LexToken])> {
     split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
 }
 
@@ -763,7 +749,7 @@ fn should_keep_and_for_power_toughness_axis<'a>(
         && parse_word_sequence_prefix(&remaining_words, &[TOUGHNESS_WORD]).is_some()
 }
 
-pub(crate) fn split_lexed_slices_on_and(tokens: &[LexToken]) -> Vec<&[LexToken]> {
+pub fn split_lexed_slices_on_and(tokens: &[LexToken]) -> Vec<&[LexToken]> {
     let raw = split_lexed_slices_on_separator(tokens, || phrase(&["and"]));
     let mut merged = Vec::new();
     let mut idx = 0usize;
@@ -796,7 +782,7 @@ pub(crate) fn split_lexed_slices_on_and(tokens: &[LexToken]) -> Vec<&[LexToken]>
 /// preserving the power-and-toughness axis as one phrase.  The latter is a
 /// single lexical word, so callers that only split on `and` otherwise leave a
 /// leading `and/or` attached to the final list item.
-pub(crate) fn split_lexed_slices_on_list_conjunction(tokens: &[LexToken]) -> Vec<&[LexToken]> {
+pub fn split_lexed_slices_on_list_conjunction(tokens: &[LexToken]) -> Vec<&[LexToken]> {
     let raw = split_lexed_slices_on_separator(tokens, || alt((kw("and"), kw("and/or"))).void());
     let mut merged = Vec::new();
     let mut idx = 0usize;
@@ -825,7 +811,7 @@ pub(crate) fn split_lexed_slices_on_list_conjunction(tokens: &[LexToken]) -> Vec
     merged
 }
 
-pub(crate) fn split_lexed_slices_on_comma(tokens: &[LexToken]) -> Vec<&[LexToken]> {
+pub fn split_lexed_slices_on_comma(tokens: &[LexToken]) -> Vec<&[LexToken]> {
     split_lexed_slices_on_separator(tokens, || comma().void())
 }
 
@@ -837,15 +823,15 @@ fn is_comparison_or_delimiter(previous_word: Option<&str>, next_word: Option<&st
     previous_word == Some(THAN_WORD) && next_word == Some(EQUAL_WORD)
 }
 
-pub(crate) fn split_lexed_slices_on_or(tokens: &[LexToken]) -> Vec<&[LexToken]> {
+pub fn split_lexed_slices_on_or(tokens: &[LexToken]) -> Vec<&[LexToken]> {
     split_lexed_slices_with_parser(tokens, || parse_segment_until_or_separator)
 }
 
-pub(crate) fn split_lexed_slices_on_commas_or_semicolons(tokens: &[LexToken]) -> Vec<&[LexToken]> {
+pub fn split_lexed_slices_on_commas_or_semicolons(tokens: &[LexToken]) -> Vec<&[LexToken]> {
     split_lexed_slices_on_separator(tokens, || alt((comma().void(), semicolon().void())))
 }
 
-pub(crate) fn split_lexed_slices_on_period(tokens: &[LexToken]) -> Vec<&[LexToken]> {
+pub fn split_lexed_slices_on_period(tokens: &[LexToken]) -> Vec<&[LexToken]> {
     split_lexed_slices_with_parser(tokens, || parse_segment_until_period)
 }
 
@@ -923,28 +909,25 @@ fn parse_segment_until_period<'a>(
     Ok(segment)
 }
 
-pub(crate) fn strip_lexed_prefix_phrase<'a>(
+pub fn strip_lexed_prefix_phrase<'a>(
     tokens: &'a [LexToken],
     phrase_words: &'static [&'static str],
 ) -> Option<&'a [LexToken]> {
     parse_prefix(tokens, phrase(phrase_words)).map(|(_, rest)| rest)
 }
 
-pub(crate) fn strip_lexed_prefix_phrases<'a>(
+pub fn strip_lexed_prefix_phrases<'a>(
     tokens: &'a [LexToken],
     phrases: &[&'static [&'static str]],
 ) -> Option<(&'static [&'static str], &'a [LexToken])> {
     parse_prefix(tokens, any_phrase(phrases))
 }
 
-pub(crate) fn starts_with_any_phrase(
-    tokens: &[LexToken],
-    phrases: &[&'static [&'static str]],
-) -> bool {
+pub fn starts_with_any_phrase(tokens: &[LexToken], phrases: &[&'static [&'static str]]) -> bool {
     parse_prefix(tokens, any_phrase(phrases)).is_some()
 }
 
-pub(crate) fn strip_lexed_suffix_phrase<'a>(
+pub fn strip_lexed_suffix_phrase<'a>(
     tokens: &'a [LexToken],
     phrase: &[&str],
 ) -> Option<&'a [LexToken]> {
@@ -964,7 +947,7 @@ pub(crate) fn strip_lexed_suffix_phrase<'a>(
     Some(&tokens[..suffix_range.start])
 }
 
-pub(crate) fn strip_lexed_suffix_phrases<'a, 'b>(
+pub fn strip_lexed_suffix_phrases<'a, 'b>(
     tokens: &'a [LexToken],
     phrases: &'b [&'b [&'b str]],
 ) -> Option<(&'b [&'b str], &'a [LexToken])> {
@@ -986,10 +969,7 @@ pub(crate) fn strip_lexed_suffix_phrases<'a, 'b>(
 /// using `TokenWordView` for proper multi-word token splitting (e.g.,
 /// hyphenated words like "life-gaining" → ["life", "gaining"]).
 /// Returns the token slice after the matched prefix.
-pub(crate) fn match_word_prefix<'a>(
-    tokens: &'a [LexToken],
-    expected: &[&str],
-) -> Option<&'a [LexToken]> {
+pub fn match_word_prefix<'a>(tokens: &'a [LexToken], expected: &[&str]) -> Option<&'a [LexToken]> {
     if expected.is_empty() {
         return Some(tokens);
     }
@@ -1001,7 +981,7 @@ pub(crate) fn match_word_prefix<'a>(
     Some(&tokens[token_end..])
 }
 
-pub(crate) fn match_any_word_prefix<'a>(
+pub fn match_any_word_prefix<'a>(
     tokens: &'a [LexToken],
     phrases: &[&'static [&'static str]],
 ) -> Option<(&'static [&'static str], &'a [LexToken])> {
@@ -1013,10 +993,7 @@ pub(crate) fn match_any_word_prefix<'a>(
 /// Checks whether the word pieces at the end of `tokens` match `expected`,
 /// using `TokenWordView` for proper multi-word token splitting.
 /// Returns the token slice before the matched suffix.
-pub(crate) fn match_word_suffix<'a>(
-    tokens: &'a [LexToken],
-    expected: &[&str],
-) -> Option<&'a [LexToken]> {
+pub fn match_word_suffix<'a>(tokens: &'a [LexToken], expected: &[&str]) -> Option<&'a [LexToken]> {
     if expected.is_empty() {
         return Some(tokens);
     }
@@ -1043,12 +1020,12 @@ pub(crate) fn match_word_suffix<'a>(
 // ---------------------------------------------------------------------------
 
 /// Input type for word-slice parsers.
-pub(crate) type WordSliceInput<'a> = &'a [&'a str];
+pub type WordSliceInput<'a> = &'a [&'a str];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WordSequenceSpan {
-    pub(crate) start: usize,
-    pub(crate) len: usize,
+pub struct WordSequenceSpan {
+    pub start: usize,
+    pub len: usize,
 }
 
 fn dynamic_word_sequence<'a, 'p>(
@@ -1068,7 +1045,7 @@ fn dynamic_word_sequence<'a, 'p>(
     }
 }
 
-pub(crate) fn parse_word_sequence_complete(words: &[&str], expected: &[&str]) -> Option<()> {
+pub fn parse_word_sequence_complete(words: &[&str], expected: &[&str]) -> Option<()> {
     let mut input: WordSliceInput<'_> = words;
     (dynamic_word_sequence(expected), word_slice_eof)
         .void()
@@ -1076,7 +1053,7 @@ pub(crate) fn parse_word_sequence_complete(words: &[&str], expected: &[&str]) ->
         .ok()
 }
 
-pub(crate) fn parse_word_sequence_prefix<'a>(
+pub fn parse_word_sequence_prefix<'a>(
     words: &'a [&'a str],
     expected: &[&str],
 ) -> Option<&'a [&'a str]> {
@@ -1087,7 +1064,7 @@ pub(crate) fn parse_word_sequence_prefix<'a>(
     Some(input)
 }
 
-pub(crate) fn parse_word_sequence_suffix<'a>(
+pub fn parse_word_sequence_suffix<'a>(
     words: &'a [&'a str],
     expected: &[&str],
 ) -> Option<&'a [&'a str]> {
@@ -1096,10 +1073,7 @@ pub(crate) fn parse_word_sequence_suffix<'a>(
     Some(&words[..split])
 }
 
-pub(crate) fn parse_word_sequence_span(
-    words: &[&str],
-    expected: &[&str],
-) -> Option<WordSequenceSpan> {
+pub fn parse_word_sequence_span(words: &[&str], expected: &[&str]) -> Option<WordSequenceSpan> {
     if expected.is_empty() {
         return None;
     }
@@ -1116,7 +1090,7 @@ pub(crate) fn parse_word_sequence_span(
 
 /// Matches a single word (exact, case-sensitive) and consumes it, returning
 /// the matched `&str`.
-pub(crate) fn word_slice_exact<'a>(
+pub fn word_slice_exact<'a>(
     expected: &'static str,
 ) -> impl Parser<WordSliceInput<'a>, &'a str, ErrMode<ContextError>> {
     move |input: &mut WordSliceInput<'a>| {
@@ -1133,9 +1107,7 @@ pub(crate) fn word_slice_exact<'a>(
 }
 
 /// Succeeds only when the word-slice input is fully consumed.
-pub(crate) fn word_slice_eof<'a>(
-    input: &mut WordSliceInput<'a>,
-) -> Result<(), ErrMode<ContextError>> {
+pub fn word_slice_eof<'a>(input: &mut WordSliceInput<'a>) -> Result<(), ErrMode<ContextError>> {
     if input.is_empty() {
         Ok(())
     } else {
@@ -1144,7 +1116,7 @@ pub(crate) fn word_slice_eof<'a>(
 }
 
 /// Runs `parser` on `words`, succeeding only if the entire slice is consumed.
-pub(crate) fn parse_full_word_slice<'a, O>(
+pub fn parse_full_word_slice<'a, O>(
     words: &'a [&'a str],
     parser: impl Parser<WordSliceInput<'a>, O, ErrMode<ContextError>>,
 ) -> Option<O> {

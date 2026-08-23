@@ -5,7 +5,7 @@ use crate::model::{CompilerActivationLegalityAst, CompilerTotalCost, TargetAst};
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActivationTimingAst {
+pub enum ActivationTimingAst {
     AnyTime,
     SorcerySpeed,
     DuringYourTurn,
@@ -14,7 +14,7 @@ pub(crate) enum ActivationTimingAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActivationUsePeriodAst {
+pub enum ActivationUsePeriodAst {
     Turn,
     Round,
     Combat,
@@ -22,13 +22,13 @@ pub(crate) enum ActivationUsePeriodAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ActivationUseLimitAst {
+pub struct ActivationUseLimitAst {
     pub count: u32,
     pub period: ActivationUsePeriodAst,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ActivationRestrictionAst {
+pub struct ActivationRestrictionAst {
     pub timing: Option<ActivationTimingAst>,
     pub condition: Option<PredicateAst>,
     pub use_limit: Option<ActivationUseLimitAst>,
@@ -36,7 +36,7 @@ pub(crate) struct ActivationRestrictionAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum LoyaltyCostAst {
+pub enum LoyaltyCostAst {
     Add(i32),
     Remove(i32),
     SetToZero,
@@ -44,7 +44,7 @@ pub(crate) enum LoyaltyCostAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ManaAbilityFacts {
+pub struct ManaAbilityFacts {
     pub produces_mana: bool,
     pub targets: bool,
     pub loyalty_ability: bool,
@@ -52,7 +52,7 @@ pub(crate) struct ManaAbilityFacts {
 }
 
 impl ManaAbilityFacts {
-    pub(crate) fn is_mana_ability(self) -> bool {
+    pub fn is_mana_ability(self) -> bool {
         self.produces_mana
             && !self.targets
             && !self.loyalty_ability
@@ -61,7 +61,7 @@ impl ManaAbilityFacts {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ActivatedLineBoundaryAst {
+pub struct ActivatedLineBoundaryAst {
     pub line: Option<SemanticProvenance>,
     pub cost: Option<SemanticProvenance>,
     pub colon: Option<SemanticProvenance>,
@@ -69,7 +69,7 @@ pub(crate) struct ActivatedLineBoundaryAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerActivatedAbilityAst {
+pub struct CompilerActivatedAbilityAst {
     pub cost: CompilerTotalCost,
     pub effects: Vec<EffectAst>,
     pub targets: Vec<TargetAst>,

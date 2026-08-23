@@ -9,20 +9,20 @@ use crate::grammar::{primitives, values};
 use crate::lexer::{LexStream, LexedClause, OwnedLexToken, TokenWordView};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ResourceLookObjectKind {
+pub enum ResourceLookObjectKind {
     FaceDownCreature,
     FaceDownPermanent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ResourceLookHandFollowup {
+pub enum ResourceLookHandFollowup {
     None,
     TopCard,
     TopCardAndFaceDownCreatures,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ResourceLookShape<'a> {
+pub enum ResourceLookShape<'a> {
     PlayTaggedWhileExiled,
     Hand {
         player: PlayerAst,
@@ -44,16 +44,16 @@ pub(crate) enum ResourceLookShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ResourceShuffleShape {
+pub enum ResourceShuffleShape {
     TaggedIntoLibrary { player: PlayerAst, to_bottom: bool },
     ShuffleLibrary { player: PlayerAst },
     SimpleLibrary,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ResourceChosenNameTargetShape<'a> {
-    pub(crate) base_tokens: &'a [OwnedLexToken],
-    pub(crate) chosen_name_source: ironsmith_core::ChosenNameSourceSurface,
+pub struct ResourceChosenNameTargetShape<'a> {
+    pub base_tokens: &'a [OwnedLexToken],
+    pub chosen_name_source: ironsmith_core::ChosenNameSourceSurface,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,7 +79,7 @@ fn sentence_finished(tokens: &[OwnedLexToken]) -> bool {
 /// Matches the global game action authored as “reverse the game's turn
 /// order.” Apostrophe tokenization can expose the possessive as either
 /// `game s` or `games`, so both normalized forms are accepted exactly.
-pub(crate) fn parse_resource_reverse_turn_order_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_resource_reverse_turn_order_shape(tokens: &[OwnedLexToken]) -> bool {
     matches!(
         TokenWordView::new(trimmed(tokens)).word_refs().as_slice(),
         ["the", "game", "s", "turn", "order"]
@@ -202,7 +202,7 @@ fn all_abilities<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_resource_all_abilities_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_resource_all_abilities_shape(tokens: &[OwnedLexToken]) -> bool {
     exact_unit(tokens, all_abilities)
 }
 
@@ -212,7 +212,7 @@ fn all_unspent_mana<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_resource_all_unspent_mana_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_resource_all_unspent_mana_shape(tokens: &[OwnedLexToken]) -> bool {
     exact_unit(tokens, all_unspent_mana)
 }
 
@@ -222,7 +222,7 @@ fn note_life_total<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_resource_note_life_total_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_resource_note_life_total_shape(tokens: &[OwnedLexToken]) -> bool {
     exact_unit(tokens, note_life_total)
 }
 
@@ -232,7 +232,7 @@ fn take_extra_turn<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_resource_take_extra_turn_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_resource_take_extra_turn_shape(tokens: &[OwnedLexToken]) -> bool {
     exact_unit(tokens, take_extra_turn)
 }
 
@@ -248,7 +248,7 @@ fn proliferate_tail<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_resource_proliferate_tail_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_resource_proliferate_tail_shape(tokens: &[OwnedLexToken]) -> bool {
     trimmed(tokens).is_empty() || exact_unit(tokens, proliferate_tail)
 }
 
@@ -258,7 +258,7 @@ fn reorder_tail<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_resource_reorder_tail_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_resource_reorder_tail_shape(tokens: &[OwnedLexToken]) -> bool {
     trimmed(tokens).is_empty() || exact_unit(tokens, reorder_tail)
 }
 
@@ -268,7 +268,7 @@ fn it_or_them<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_resource_tagged_reference_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_resource_tagged_reference_shape(tokens: &[OwnedLexToken]) -> bool {
     exact_unit(tokens, it_or_them)
 }
 
@@ -452,7 +452,7 @@ fn parse_top_count<'a>(
     Some((value, trimmed(rest)))
 }
 
-pub(crate) fn parse_resource_look_shape<'a>(
+pub fn parse_resource_look_shape<'a>(
     tokens: &'a [OwnedLexToken],
     subject_player: Option<PlayerAst>,
 ) -> Option<ResourceLookShape<'a>> {
@@ -552,7 +552,7 @@ fn that_library_tail<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_resource_library_position_shape(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_resource_library_position_shape(tokens: &[OwnedLexToken]) -> Option<Value> {
     let (_, (), after_library) = primitives::find_prefix(tokens, || library_noun)?;
     let normalized = without_articles(trimmed(after_library));
     if normalized.is_empty() {
@@ -705,7 +705,7 @@ fn tagged_into_their_library<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_resource_shuffle_shape(
+pub fn parse_resource_shuffle_shape(
     tokens: &[OwnedLexToken],
     default_player: PlayerAst,
 ) -> Option<ResourceShuffleShape> {
@@ -768,7 +768,7 @@ fn chosen_name_tail<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_resource_chosen_name_target_shape(
+pub fn parse_resource_chosen_name_target_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ResourceChosenNameTargetShape<'_>> {
     let tokens = trimmed(tokens);

@@ -9,16 +9,16 @@ use crate::target::ObjectFilter;
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ProliferateChoosePhaseOutShape {
-    pub(crate) count: ChoiceCount,
-    pub(crate) filter: ObjectFilter,
+pub struct ProliferateChoosePhaseOutShape {
+    pub count: ChoiceCount,
+    pub filter: ObjectFilter,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EachGraveyardOwnerShuffleShape;
+pub struct EachGraveyardOwnerShuffleShape;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CollectionScopedEachUpkeepReturnShape;
+pub struct CollectionScopedEachUpkeepReturnShape;
 
 fn commas<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     repeat::<_, _, (), _, _>(0.., primitives::comma().void()).parse_next(input)
@@ -39,7 +39,7 @@ fn selected_cards_owner_shuffle<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     primitives::sentence_end().parse_next(input)
 }
 
-pub(crate) fn parse_each_graveyard_owner_shuffle_shape(
+pub fn parse_each_graveyard_owner_shuffle_shape(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
 ) -> Option<EachGraveyardOwnerShuffleShape> {
@@ -104,7 +104,7 @@ fn collection_scoped_each_upkeep_return<'a>(input: &mut LexStream<'a>) -> WResul
     primitives::sentence_end().parse_next(input)
 }
 
-pub(crate) fn parse_collection_scoped_each_upkeep_return_shape(
+pub fn parse_collection_scoped_each_upkeep_return_shape(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
 ) -> Option<CollectionScopedEachUpkeepReturnShape> {
@@ -158,7 +158,7 @@ fn chosen_objects_phase_out<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_proliferate_choose_phase_out_tokens(
+pub fn parse_proliferate_choose_phase_out_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ProliferateChoosePhaseOutShape> {
     let sentences = split_lexed_sentences(tokens);

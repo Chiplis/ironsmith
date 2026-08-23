@@ -41,21 +41,21 @@ use crate::model::reference_state::{
 
 #[cfg(test)]
 #[derive(Debug, Clone)]
-pub(crate) struct BoundEffectsAst {
-    pub(crate) effects: Vec<EffectAst>,
-    pub(crate) imports: ReferenceImports,
-    pub(crate) unresolved_it_before: usize,
-    pub(crate) unresolved_it_after: usize,
+pub struct BoundEffectsAst {
+    pub effects: Vec<EffectAst>,
+    pub imports: ReferenceImports,
+    pub unresolved_it_before: usize,
+    pub unresolved_it_after: usize,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct EffectReferenceResolutionConfig {
-    pub(crate) allow_life_event_value: bool,
-    pub(crate) bind_unbound_x_to_last_effect: bool,
-    pub(crate) initial_last_effect_id: Option<EffectId>,
-    pub(crate) initial_iterated_player: bool,
-    pub(crate) force_auto_tag_object_targets: bool,
-    pub(crate) force_export_last_memory_effect_id: bool,
+pub struct EffectReferenceResolutionConfig {
+    pub allow_life_event_value: bool,
+    pub bind_unbound_x_to_last_effect: bool,
+    pub initial_last_effect_id: Option<EffectId>,
+    pub initial_iterated_player: bool,
+    pub force_auto_tag_object_targets: bool,
+    pub force_export_last_memory_effect_id: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -147,7 +147,7 @@ fn spell_cast_filter_binds_target_count(filter: &ObjectFilter) -> bool {
         || filter.target_count.is_some()
 }
 
-pub(crate) fn annotate_effect_sequence(
+pub fn annotate_effect_sequence(
     effects: &[EffectAst],
     imports: &ReferenceImports,
     config: EffectReferenceResolutionConfig,
@@ -1566,7 +1566,7 @@ fn advance_reference_frame_for_effect(
                     chosen_tag.as_str(),
                 )));
             }
-            if tag.as_str() != crate::condition_antecedent::CONDITION_COLLECTION_CHOICE_TAG {
+            if tag.as_str() != "__condition_collection_choice" {
                 frame.last_object_tag = Some(chosen_tag);
             }
             frame.last_it_choice_is_set = tag.as_str() == IT_TAG;
@@ -2122,7 +2122,7 @@ fn resolve_direct_choice_filter_references(
     Ok(())
 }
 
-pub(crate) fn preserves_existing_it_for_power_self_damage_followup(
+pub fn preserves_existing_it_for_power_self_damage_followup(
     effect: &EffectAst,
     next_effect: Option<&EffectAst>,
 ) -> bool {
@@ -2305,7 +2305,7 @@ fn result_gate_exports_outcome_to_fallback(effect: &EffectAst, next: Option<&Eff
     is_result_gate && is_fallback
 }
 
-pub(crate) fn if_result_predicate_is_searched_library(predicate: &IfResultPredicate) -> bool {
+pub fn if_result_predicate_is_searched_library(predicate: &IfResultPredicate) -> bool {
     matches!(predicate, IfResultPredicate::SearchedLibrary)
         || matches!(
             predicate,
@@ -2524,7 +2524,7 @@ fn effect_references_pending_metric_action(effect: &EffectAst, action: PriorEffe
     references_pending_action
 }
 
-pub(crate) fn effect_references_typed_removed_counter_metric(effect: &EffectAst) -> bool {
+pub fn effect_references_typed_removed_counter_metric(effect: &EffectAst) -> bool {
     let mut references_removed_count = false;
     visit_effect_values(effect, &mut |value| {
         let query = match value.unhinted() {
@@ -2578,7 +2578,7 @@ fn effect_is_player_or_object_fanout(effect: &EffectAst) -> bool {
 /// Whether an effect consumes the numeric amount of damage produced by an
 /// earlier prevention effect. Reference resolution may represent this either
 /// as a pending/prior metric or as the legacy typed `Value::Count` surface.
-pub(crate) fn effect_references_prior_prevention_amount(effect: &EffectAst) -> bool {
+pub fn effect_references_prior_prevention_amount(effect: &EffectAst) -> bool {
     fn value_references_prevention(value: &Value) -> bool {
         match value {
             Value::PendingPriorEffectMetric(query) | Value::PriorEffectMetric { query, .. } => {
@@ -4211,7 +4211,7 @@ fn resolve_exile_cost_tagged_metric(
 }
 
 #[cfg(test)]
-pub(crate) fn bind_unresolved_it_references_with_imports(
+pub fn bind_unresolved_it_references_with_imports(
     effects: &[EffectAst],
     seed_last_object_tag: Option<&str>,
 ) -> BoundEffectsAst {
@@ -5374,7 +5374,7 @@ fn bind_unresolved_it_in_restriction(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "compiler-internal-tests"))]
 mod tests {
     use super::*;
     use crate::cards::TextSpan;

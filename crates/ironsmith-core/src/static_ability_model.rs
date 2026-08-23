@@ -18,12 +18,14 @@ type AbilityModel<T, E, C, Cond> = Ability<StaticAbility<T, E, C, Cond>, T, E, C
 type LevelAbilityModel<T, E, C, Cond> = crate::LevelAbility<StaticAbility<T, E, C, Cond>>;
 type GrantSpecModel<T, E, C, Cond> = GrantSpec<StaticAbility<T, E, C, Cond>, E, C, Cond>;
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConditionalSpellKeywordKind {
     Flash,
     Cascade,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum StaticDamageSourceRelation {
     #[default]
@@ -32,6 +34,7 @@ pub enum StaticDamageSourceRelation {
     BlockingStaticSource,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PreventAllDamageToSelfFromSourcesMatchingSpec {
     pub source_filter: ObjectFilter,
@@ -42,6 +45,7 @@ pub struct PreventAllDamageToSelfFromSourcesMatchingSpec {
 
 /// A scoped rule permission to ignore one targeting-protection ability.
 /// The permission changes targeting legality; it does not remove the ability.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TargetingAsThoughNoAbilitySpec {
     pub objects: Option<ObjectFilter>,
@@ -52,6 +56,7 @@ pub struct TargetingAsThoughNoAbilitySpec {
 }
 
 /// The quality of spell onto which a card's splice ability may be applied.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpliceQuality {
     Arcane,
@@ -68,6 +73,7 @@ impl SpliceQuality {
 }
 
 /// Typed CR 702.47 splice ability payload.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SpliceSpec<C> {
     pub quality: SpliceQuality,
@@ -80,6 +86,7 @@ pub struct SpliceSpec<C> {
 }
 
 /// Typed CR 702.120 escalate ability payload.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct EscalateSpec<C> {
     /// The additional cost paid once for each mode chosen beyond the first.
@@ -88,12 +95,14 @@ pub struct EscalateSpec<C> {
     pub cost_surface: Option<String>,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GraveyardCountMetric {
     CardTypes,
     ManaValues,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConditionalSpellKeywordSpec {
     pub keyword: ConditionalSpellKeywordKind,
@@ -102,6 +111,7 @@ pub struct ConditionalSpellKeywordSpec {
 }
 
 /// A linked action performed after a damage-prevention replacement removes counters.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CounterRemovalFollowUp {
     /// Give every player counters for each counter the replacement actually removed.
@@ -114,6 +124,7 @@ pub enum CounterRemovalFollowUp {
 /// Authored punctuation joining damage prevention to its linked counter
 /// removal. This affects only Oracle-facing text; replacement semantics are
 /// identical for both surfaces.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CounterRemovalPreventionSurface {
     #[default]
@@ -121,11 +132,13 @@ pub enum CounterRemovalPreventionSurface {
     SeparateSentences,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AdditionalTokenKind {
     Treasure,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PregameActionKind {
     BeginOnBattlefield(PregameBeginOnBattlefieldSpec),
@@ -134,6 +147,7 @@ pub enum PregameActionKind {
     RevealFromOpeningHand(PregameRevealFromOpeningHandSpec),
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PregameBeginOnBattlefieldSpec {
     pub require_not_starting_player: bool,
@@ -141,6 +155,7 @@ pub struct PregameBeginOnBattlefieldSpec {
     pub exile_cards_from_hand: usize,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PregameRevealFromOpeningHandSpec {
     /// Oracle places the consequence before its timing clause (for example,
@@ -152,6 +167,7 @@ pub struct PregameRevealFromOpeningHandSpec {
 ///
 /// The variants describe reusable card/deck properties rather than named
 /// companion cards, so setup validation is independent of a card's identity.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompanionDeckCondition {
     OnlyManaValueParity { even: bool, lands_are_exempt: bool },
@@ -166,6 +182,7 @@ pub enum CompanionDeckCondition {
 }
 
 /// Immutable facts used to validate a companion against one starting-deck card.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompanionDeckCardFacts {
     pub name: String,
@@ -258,6 +275,7 @@ impl CompanionDeckCondition {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ThisSpellCastRestrictionKind {
     pub label: String,
@@ -355,6 +373,7 @@ impl ThisSpellCastRestrictionKind {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct StaticAbility<T, E, C, Cond> {
     pub id: Option<StaticAbilityId>,
@@ -386,6 +405,7 @@ pub const AS_LONG_AS_ITS_YOUR_TURN_STATIC_LABEL_PREFIX: &str =
 /// Ordinary "lose" effects remain timestamp ordered in layer 6. The two
 /// prohibition modes additionally prevent the affected object from regaining
 /// the removed ability while the effect applies.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AbilityLossMode {
     #[default]
@@ -400,6 +420,7 @@ impl AbilityLossMode {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowerToughnessChoiceOption<T, E, C, Cond> {
     pub power: i32,
@@ -429,6 +450,7 @@ impl<T, E, C, Cond> PowerToughnessChoiceOption<T, E, C, Cond> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum StaticAbilityPayload<T, E, C, Cond> {
     #[default]
@@ -1003,6 +1025,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     },
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct DieRollResultAdjustment {
     pub player: PlayerFilter,

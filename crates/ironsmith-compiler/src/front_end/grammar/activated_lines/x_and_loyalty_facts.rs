@@ -10,18 +10,18 @@ use super::super::primitives::{self, TokenWordView, WordSliceInput};
 use super::{word_phrase, word_phrase_present, word_present};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActivatedCostXFact {
+pub enum ActivatedCostXFact {
     Mentioned,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct ActivatedManaXClauseSpec<'a> {
-    pub(crate) where_clause_tokens: Option<&'a [OwnedLexToken]>,
-    pub(crate) removed_counters_this_way: bool,
+pub struct ActivatedManaXClauseSpec<'a> {
+    pub where_clause_tokens: Option<&'a [OwnedLexToken]>,
+    pub removed_counters_this_way: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActivatedLoyaltyShorthand {
+pub enum ActivatedLoyaltyShorthand {
     Add(u32),
     Remove(u32),
     RemoveX,
@@ -67,9 +67,7 @@ fn parse_segmented_x_surface(input: &mut &str) -> WResult<ActivatedCostXFact> {
     ))
 }
 
-pub(crate) fn parse_activation_cost_x_fact_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<ActivatedCostXFact> {
+pub fn parse_activation_cost_x_fact_tokens(tokens: &[OwnedLexToken]) -> Option<ActivatedCostXFact> {
     for token in tokens {
         if token.as_word().is_none() {
             continue;
@@ -82,7 +80,7 @@ pub(crate) fn parse_activation_cost_x_fact_tokens(
     None
 }
 
-pub(crate) fn parse_activated_mana_x_clause_tokens(
+pub fn parse_activated_mana_x_clause_tokens(
     tokens: &[OwnedLexToken],
 ) -> ActivatedManaXClauseSpec<'_> {
     let view = TokenWordView::new(tokens);
@@ -161,7 +159,7 @@ fn trim_loyalty_brackets(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     &tokens[first..end]
 }
 
-pub(crate) fn parse_loyalty_shorthand_activation_tokens(
+pub fn parse_loyalty_shorthand_activation_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivatedLoyaltyShorthand> {
     let tokens = trim_loyalty_brackets(tokens);

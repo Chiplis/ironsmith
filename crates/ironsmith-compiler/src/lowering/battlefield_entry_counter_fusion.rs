@@ -816,7 +816,7 @@ fn fuse_across_segment_boundaries(segments: &mut Vec<crate::resolution::Resoluti
     }
 }
 
-pub(crate) fn fuse_program(program: &mut ResolutionProgram) {
+pub fn fuse_program(program: &mut ResolutionProgram) {
     let mut segments = program.segments.clone();
     for segment in &mut segments {
         fuse_effect_list(&mut segment.default_effects);

@@ -1,31 +1,31 @@
 use super::super::super::lexer::{OwnedLexToken, trim_lexed_commas};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum OptionalCompanionJoin {
+pub enum OptionalCompanionJoin {
     Each,
     Both,
     Plain,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SharedSubjectOptionalCompanionShape<'a> {
-    pub(crate) first_subject_tokens: &'a [OwnedLexToken],
-    pub(crate) companion_tokens: &'a [OwnedLexToken],
-    pub(crate) action_tokens: &'a [OwnedLexToken],
-    pub(crate) join: OptionalCompanionJoin,
+pub struct SharedSubjectOptionalCompanionShape<'a> {
+    pub first_subject_tokens: &'a [OwnedLexToken],
+    pub companion_tokens: &'a [OwnedLexToken],
+    pub action_tokens: &'a [OwnedLexToken],
+    pub join: OptionalCompanionJoin,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LeadingOptionalCompanionVerb {
+pub enum LeadingOptionalCompanionVerb {
     Destroy,
     Tap,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LeadingOptionalCompanionShape<'a> {
-    pub(crate) verb: LeadingOptionalCompanionVerb,
-    pub(crate) first_target_tokens: &'a [OwnedLexToken],
-    pub(crate) companion_tokens: &'a [OwnedLexToken],
+pub struct LeadingOptionalCompanionShape<'a> {
+    pub verb: LeadingOptionalCompanionVerb,
+    pub first_target_tokens: &'a [OwnedLexToken],
+    pub companion_tokens: &'a [OwnedLexToken],
 }
 
 fn word(token: &OwnedLexToken) -> Option<&str> {
@@ -59,7 +59,7 @@ fn explicit_target_phrase_count(tokens: &[OwnedLexToken]) -> usize {
 /// The shape deliberately owns only coordination. Target counts, `other`,
 /// controller restrictions, the action, and the duration stay delegated to
 /// their existing semantic parsers.
-pub(crate) fn parse_shared_subject_optional_companion_shape(
+pub fn parse_shared_subject_optional_companion_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SharedSubjectOptionalCompanionShape<'_>> {
     let tokens = trim_lexed_commas(tokens);
@@ -109,7 +109,7 @@ pub(crate) fn parse_shared_subject_optional_companion_shape(
 /// Captures a leading action applied to one required/source object and one
 /// independently optional target, such as `tap it and up to one target ...`
 /// or `destroy target artifact and up to one other target artifact`.
-pub(crate) fn parse_leading_optional_companion_shape(
+pub fn parse_leading_optional_companion_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LeadingOptionalCompanionShape<'_>> {
     let tokens = trim_lexed_commas(tokens);

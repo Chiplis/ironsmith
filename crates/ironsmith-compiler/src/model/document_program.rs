@@ -8,10 +8,10 @@ use crate::model::ast::EffectAst;
 use crate::model::symbols::{SymbolReference, SymbolScopeId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct CompilerStatementId(pub(crate) u32);
+pub struct CompilerStatementId(pub u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerStatementEdgeKindAst {
+pub enum CompilerStatementEdgeKindAst {
     Ordered,
     Then,
     Reference,
@@ -19,7 +19,7 @@ pub(crate) enum CompilerStatementEdgeKindAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerDocumentStatementAst {
+pub struct CompilerDocumentStatementAst {
     pub id: CompilerStatementId,
     pub scope: SymbolScopeId,
     pub parent_scope: SymbolScopeId,
@@ -31,7 +31,7 @@ pub(crate) struct CompilerDocumentStatementAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerStatementEdgeAst {
+pub struct CompilerStatementEdgeAst {
     pub from: CompilerStatementId,
     pub to: CompilerStatementId,
     pub kind: CompilerStatementEdgeKindAst,
@@ -39,7 +39,7 @@ pub(crate) struct CompilerStatementEdgeAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerDocumentProgramAst {
+pub struct CompilerDocumentProgramAst {
     pub scope: SymbolScopeId,
     pub parent_scope: SymbolScopeId,
     pub statements: Vec<CompilerDocumentStatementAst>,

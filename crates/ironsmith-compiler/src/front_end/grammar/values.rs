@@ -349,10 +349,10 @@ fn parse_value_mana_value_segment(clause: LexedClause<'_>) -> Option<Value> {
 
 #[cfg(test)]
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TypeLineCst {
-    pub(crate) supertypes: Vec<Supertype>,
-    pub(crate) card_types: Vec<CardType>,
-    pub(crate) subtypes: Vec<Subtype>,
+pub struct TypeLineCst {
+    pub supertypes: Vec<Supertype>,
+    pub card_types: Vec<CardType>,
+    pub subtypes: Vec<Subtype>,
 }
 
 fn finish_lexed_parse<'a, O>(
@@ -370,7 +370,7 @@ fn matches_exact_value_phrase_lexed(
     primitives::parse_prefix(tokens, (primitives::phrase(phrase), eof)).is_some()
 }
 
-pub(crate) fn parse_max_cards_in_hand_value_lexed(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_max_cards_in_hand_value_lexed(tokens: &[OwnedLexToken]) -> Option<Value> {
     let tokens = trim_edge_punctuation_tokens(tokens);
     [
         (
@@ -399,7 +399,7 @@ pub(crate) fn parse_max_cards_in_hand_value_lexed(tokens: &[OwnedLexToken]) -> O
     .find_map(|(phrase, value)| matches_exact_value_phrase_lexed(tokens, phrase).then_some(value))
 }
 
-pub(crate) fn parse_players_who_control_more_than_you_value_lexed(
+pub fn parse_players_who_control_more_than_you_value_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     let shape = parse_players_who_control_more_value_shape(tokens)?;
@@ -420,16 +420,16 @@ pub(crate) fn parse_players_who_control_more_than_you_value_lexed(
     })
 }
 
-pub(crate) fn parse_mana_symbol(raw: &str) -> Result<ManaSymbol, CardTextError> {
+pub fn parse_mana_symbol(raw: &str) -> Result<ManaSymbol, CardTextError> {
     super::leaf::parse_leaf_mana_symbol_complete(raw)
 }
 
-pub(crate) fn parse_mana_symbol_group(raw: &str) -> Result<Vec<ManaSymbol>, CardTextError> {
+pub fn parse_mana_symbol_group(raw: &str) -> Result<Vec<ManaSymbol>, CardTextError> {
     super::leaf::parse_leaf_mana_symbol_group_complete(raw)
 }
 
 #[cfg(test)]
-pub(crate) fn parse_mana_symbol_group_rewrite(raw: &str) -> Result<Vec<ManaSymbol>, CardTextError> {
+pub fn parse_mana_symbol_group_rewrite(raw: &str) -> Result<Vec<ManaSymbol>, CardTextError> {
     let tokens = lex_line(raw.trim(), 0)?;
     parse_mana_symbol_group_tokens(&tokens)
 }
@@ -448,27 +448,27 @@ fn is_empty_scryfall_mana_cost_text(trimmed: &str) -> bool {
     trimmed.is_empty() || SCRYFALL_EMPTY_MANA_COST_MARKERS.contains(&trimmed)
 }
 
-pub(crate) fn parse_scryfall_mana_cost(raw: &str) -> Result<ManaCost, CardTextError> {
+pub fn parse_scryfall_mana_cost(raw: &str) -> Result<ManaCost, CardTextError> {
     parse_mana_cost_tokens_text(raw, true)
 }
 
 #[cfg(test)]
-pub(crate) fn parse_mana_cost_rewrite(raw: &str) -> Result<ManaCost, CardTextError> {
+pub fn parse_mana_cost_rewrite(raw: &str) -> Result<ManaCost, CardTextError> {
     parse_mana_cost_tokens_text(raw, false)
 }
 
 #[cfg(test)]
-pub(crate) fn parse_mana_symbol_group_tokens(
+pub fn parse_mana_symbol_group_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<ManaSymbol>, CardTextError> {
     super::leaf::parse_leaf_mana_symbol_group_tokens(tokens)
 }
 
-pub(crate) fn parse_mana_cost_tokens(tokens: &[OwnedLexToken]) -> Result<ManaCost, CardTextError> {
+pub fn parse_mana_cost_tokens(tokens: &[OwnedLexToken]) -> Result<ManaCost, CardTextError> {
     super::leaf::parse_leaf_mana_cost_tokens(tokens)
 }
 
-pub(crate) fn parse_value_comparison_tokens(
+pub fn parse_value_comparison_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<(ValueComparisonOperator, &[OwnedLexToken])> {
     for (phrase, operator) in [
@@ -554,7 +554,7 @@ pub(crate) fn parse_value_comparison_tokens(
     None
 }
 
-pub(crate) fn parse_value_comparison_words<'a>(
+pub fn parse_value_comparison_words<'a>(
     words: &'a [&'a str],
 ) -> Option<(ValueComparisonOperator, &'a [&'a str], usize)> {
     for (phrase, operator) in [
@@ -664,7 +664,7 @@ fn parse_type_line_tokens<'a>(input: &mut LexedInput<'a>) -> WResult<(Vec<&'a st
     Ok((left, right))
 }
 
-pub(crate) fn parse_type_line_with(
+pub fn parse_type_line_with(
     raw: &str,
     mut parse_supertype: impl FnMut(&str) -> Option<Supertype>,
     mut parse_card_type: impl FnMut(&str) -> Option<CardType>,
@@ -718,7 +718,7 @@ fn parse_supertype_word_for_rewrite(word: &str) -> Option<Supertype> {
 }
 
 #[cfg(test)]
-pub(crate) fn parse_type_line_rewrite(raw: &str) -> Result<TypeLineCst, CardTextError> {
+pub fn parse_type_line_rewrite(raw: &str) -> Result<TypeLineCst, CardTextError> {
     let (supertypes, card_types, subtypes) = parse_type_line_with(
         raw,
         parse_supertype_word_for_rewrite,
@@ -733,7 +733,7 @@ pub(crate) fn parse_type_line_rewrite(raw: &str) -> Result<TypeLineCst, CardText
     })
 }
 
-pub(crate) fn parse_modal_choose_range(
+pub fn parse_modal_choose_range(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(Option<Value>, Option<Value>)>, CardTextError> {
     Ok(
@@ -742,14 +742,14 @@ pub(crate) fn parse_modal_choose_range(
     )
 }
 
-pub(crate) fn parse_number_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<(u32, usize)> {
+pub fn parse_number_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<(u32, usize)> {
     let trimmed = trim_edge_punctuation_tokens(tokens);
     let (value, rest) = primitives::parse_prefix(trimmed, leaf::parse_leaf_number_prefix_lexed)?;
     let used_tokens = trimmed.len().saturating_sub(rest.len());
     Some((value, used_tokens))
 }
 
-pub(crate) fn parse_value_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
+pub fn parse_value_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
     let trimmed = trim_edge_punctuation_tokens(tokens);
     let clause = LexedClause::new(trimmed);
     let word_refs = parser_token_word_refs(trimmed);
@@ -760,7 +760,7 @@ pub(crate) fn parse_value_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<(Valu
     Some((value, used_tokens))
 }
 
-pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) -> Option<Value> {
     fn canonical_add_mana_equal_amount_value(value: Value) -> Value {
         match value {
             Value::SourcePower => Value::PowerOf(Box::new(ChooseSpec::Source)),

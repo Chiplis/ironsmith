@@ -14,7 +14,7 @@ use super::lexer::{LexStream, OwnedLexToken, TokenKind, TokenWordView, split_lex
 
 /// Splits an already-lexed line into semantic sentences and typed restriction
 /// facts without rendering and lexing the source a second time.
-pub(crate) fn split_tokens_for_parse(
+pub fn split_tokens_for_parse(
     tokens: &[OwnedLexToken],
 ) -> (Vec<Vec<OwnedLexToken>>, ParsedRestrictions) {
     let mut restrictions = ParsedRestrictions::default();
@@ -65,7 +65,7 @@ fn parenthetical_token_slices(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]>
     slices
 }
 
-pub(crate) fn spell_card_prefers_resolution_line_merge(builder: &CardDefinitionBuilder) -> bool {
+pub fn spell_card_prefers_resolution_line_merge(builder: &CardDefinitionBuilder) -> bool {
     builder
         .card_builder
         .card_types_ref()
@@ -73,12 +73,12 @@ pub(crate) fn spell_card_prefers_resolution_line_merge(builder: &CardDefinitionB
         .any(|card_type| matches!(card_type, CardType::Instant | CardType::Sorcery))
 }
 
-pub(crate) fn looks_like_spell_resolution_followup_intro_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn looks_like_spell_resolution_followup_intro_lexed(tokens: &[OwnedLexToken]) -> bool {
     looks_like_delayed_next_turn_intro_lexed(tokens)
         || looks_like_reflexive_followup_intro_lexed(tokens)
 }
 
-pub(crate) fn looks_like_reflexive_followup_intro_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn looks_like_reflexive_followup_intro_lexed(tokens: &[OwnedLexToken]) -> bool {
     looks_like_when_one_or_more_this_way_followup_lexed(tokens)
         || looks_like_when_it_connives_this_way_followup_lexed(tokens)
         || looks_like_when_you_pay_this_cost_followup_lexed(tokens)
@@ -114,7 +114,7 @@ fn starts_with_lexed_parser<'a>(
         .is_some_and(|tail| grammar::parse_prefix(tail, parser).is_some())
 }
 
-pub(crate) fn is_at_trigger_intro_lexed(tokens: &[OwnedLexToken], idx: usize) -> bool {
+pub fn is_at_trigger_intro_lexed(tokens: &[OwnedLexToken], idx: usize) -> bool {
     starts_with_lexed_parser(tokens, idx, parse_at_trigger_intro_inner)
 }
 

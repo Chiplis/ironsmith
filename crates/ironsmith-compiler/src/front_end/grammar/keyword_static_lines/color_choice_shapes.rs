@@ -7,7 +7,7 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, TokenWordView, trim_l
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ChosenColorSubjectSurface {
+pub enum ChosenColorSubjectSurface {
     ThisCreature,
     ThisPermanent,
     ThisCard,
@@ -17,7 +17,7 @@ pub(crate) enum ChosenColorSubjectSurface {
 }
 
 impl ChosenColorSubjectSurface {
-    pub(crate) fn display(self) -> &'static str {
+    pub fn display(self) -> &'static str {
         match self {
             Self::ThisCreature => "This creature",
             Self::ThisPermanent => "This permanent",
@@ -29,7 +29,7 @@ impl ChosenColorSubjectSurface {
     }
 }
 
-pub(crate) fn parse_pregame_choose_color_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_pregame_choose_color_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,
         parse_pregame_choose_color_lexed,
@@ -38,7 +38,7 @@ pub(crate) fn parse_pregame_choose_color_tokens(tokens: &[OwnedLexToken]) -> boo
     .is_ok()
 }
 
-pub(crate) fn parse_source_is_chosen_color_tokens(
+pub fn parse_source_is_chosen_color_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<(ChosenColorSubjectSurface, bool)> {
     primitives::parse_all(

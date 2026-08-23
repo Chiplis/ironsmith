@@ -6,30 +6,30 @@ use winnow::error::{ContextError, ErrMode};
 use winnow::token::any;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SacrificeChoiceShape<'a> {
-    pub(crate) count: ChoiceCount,
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) tail_tokens: Option<&'a [OwnedLexToken]>,
+pub struct SacrificeChoiceShape<'a> {
+    pub count: ChoiceCount,
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub tail_tokens: Option<&'a [OwnedLexToken]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ExileSourceCounterShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) descriptor_tokens: &'a [OwnedLexToken],
-    pub(crate) source_reference: bool,
-    pub(crate) it_reference: bool,
+pub struct ExileSourceCounterShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
+    pub descriptor_tokens: &'a [OwnedLexToken],
+    pub source_reference: bool,
+    pub it_reference: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DestroyAttachedShape<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct DestroyAttachedShape<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChoicePhraseSpan {
-    pub(crate) start: usize,
-    pub(crate) len: usize,
+pub struct ChoicePhraseSpan {
+    pub start: usize,
+    pub len: usize,
 }
 
 fn split_then(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], Option<&[OwnedLexToken]>) {
@@ -43,9 +43,7 @@ fn split_then(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], Option<&[OwnedLexT
         .unwrap_or((trim_lexed_commas(tokens), None))
 }
 
-pub(crate) fn parse_sacrifice_choice_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<SacrificeChoiceShape<'_>> {
+pub fn parse_sacrifice_choice_shape(tokens: &[OwnedLexToken]) -> Option<SacrificeChoiceShape<'_>> {
     let (_, body) = primitives::parse_prefix(tokens, primitives::kw("sacrifice"))?;
     let choice = leaf::parse_leaf_choice_count_prefix_tokens(body)?;
     if choice.count != ChoiceCount::any_number() && choice.count != ChoiceCount::at_least(1) {
@@ -169,7 +167,7 @@ fn source_surface_supported(tokens: &[OwnedLexToken]) -> bool {
     exact_source_reference(tokens) || plausible_named_source(tokens)
 }
 
-pub(crate) fn parse_exile_source_counter_shape(
+pub fn parse_exile_source_counter_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ExileSourceCounterShape<'_>> {
     let (_, body) = primitives::parse_prefix(tokens, primitives::kw("exile"))?;
@@ -265,9 +263,7 @@ fn has_timing_surface(tokens: &[OwnedLexToken]) -> bool {
     )
 }
 
-pub(crate) fn parse_destroy_attached_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<DestroyAttachedShape<'_>> {
+pub fn parse_destroy_attached_shape(tokens: &[OwnedLexToken]) -> Option<DestroyAttachedShape<'_>> {
     let (_, body) = primitives::parse_prefix(
         tokens,
         (
@@ -294,7 +290,7 @@ pub(crate) fn parse_destroy_attached_shape(
     })
 }
 
-pub(crate) fn parse_color_choice_phrase_span(tokens: &[OwnedLexToken]) -> Option<ChoicePhraseSpan> {
+pub fn parse_color_choice_phrase_span(tokens: &[OwnedLexToken]) -> Option<ChoicePhraseSpan> {
     let phrases: &'static [&'static [&'static str]] = &[
         &["of", "the", "color", "of", "your", "choice"],
         &["of", "the", "color", "of", "their", "choice"],

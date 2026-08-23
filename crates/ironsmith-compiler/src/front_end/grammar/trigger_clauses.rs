@@ -16,7 +16,7 @@ use super::{filters, leaf, primitives};
 
 #[path = "trigger_clauses/surface_patterns.rs"]
 mod surface_patterns;
-pub(crate) use surface_patterns::*;
+pub use surface_patterns::*;
 
 #[path = "trigger_clauses/token_helpers.rs"]
 mod token_helpers;
@@ -24,20 +24,20 @@ use token_helpers::*;
 
 #[path = "trigger_clauses/life_loss.rs"]
 mod life_loss;
-pub(crate) use life_loss::*;
+pub use life_loss::*;
 
 #[cfg(test)]
 #[path = "trigger_clauses/tests.rs"]
 mod tests;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TriggerClauseTokenSpan {
-    pub(crate) first: usize,
-    pub(crate) end: usize,
+pub struct TriggerClauseTokenSpan {
+    pub first: usize,
+    pub end: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TriggerClauseAtom {
+pub enum TriggerClauseAtom {
     Ability,
     Activate,
     And,
@@ -79,93 +79,93 @@ pub(crate) enum TriggerClauseAtom {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ActivationCostTapCondition {
-    pub(crate) required: bool,
-    pub(crate) condition_word: usize,
-    pub(crate) condition_token: usize,
+pub struct ActivationCostTapCondition {
+    pub required: bool,
+    pub condition_word: usize,
+    pub condition_token: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CounterDescriptorSpans {
-    pub(crate) descriptor: Range<usize>,
-    pub(crate) with_counter: Range<usize>,
+pub struct CounterDescriptorSpans {
+    pub descriptor: Range<usize>,
+    pub with_counter: Range<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CounterRecipientSpan {
-    pub(crate) tokens: Range<usize>,
+pub struct CounterRecipientSpan {
+    pub tokens: Range<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TriggerOrSplit {
-    pub(crate) separator: usize,
+pub struct TriggerOrSplit {
+    pub separator: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LoyaltyAbilityTail {
-    pub(crate) owner: Range<usize>,
+pub struct LoyaltyAbilityTail {
+    pub owner: Range<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PossessiveAbilityTail {
-    pub(crate) owner: Range<usize>,
-    pub(crate) marker: Option<String>,
+pub struct PossessiveAbilityTail {
+    pub owner: Range<usize>,
+    pub marker: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct NamedAbilityTail {
-    pub(crate) marker: String,
+pub struct NamedAbilityTail {
+    pub marker: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AbilityOfObjectTail {
-    pub(crate) filter: Range<usize>,
-    pub(crate) non_mana_only: bool,
-    pub(crate) chosen_type_reference: bool,
+pub struct AbilityOfObjectTail {
+    pub filter: Range<usize>,
+    pub non_mana_only: bool,
+    pub chosen_type_reference: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PlayersAttackedClause {
-    pub(crate) player: Range<usize>,
+pub struct PlayersAttackedClause {
+    pub player: Range<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct FullyUnlockRoomTrigger {
-    pub(crate) action: KeywordActionKind,
-    pub(crate) player: PlayerFilter,
-    pub(crate) source_filter: ObjectFilter,
+pub struct FullyUnlockRoomTrigger {
+    pub action: KeywordActionKind,
+    pub player: PlayerFilter,
+    pub source_filter: ObjectFilter,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct EntersOriginClause {
-    pub(crate) zone: Zone,
-    pub(crate) owner: Option<PlayerFilter>,
+pub struct EntersOriginClause {
+    pub zone: Zone,
+    pub owner: Option<PlayerFilter>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SourceTriggerSubjectShape {
-    pub(crate) filter: ObjectFilter,
+pub struct SourceTriggerSubjectShape {
+    pub filter: ObjectFilter,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct YouOrControlledObjectSubject {
-    pub(crate) player: PlayerFilter,
-    pub(crate) filter: ObjectFilter,
+pub struct YouOrControlledObjectSubject {
+    pub player: PlayerFilter,
+    pub filter: ObjectFilter,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RollResultShape {
+pub enum RollResultShape {
     HighestNatural,
     Fixed(u32),
     UnspecifiedDie,
     OneOrMoreDice,
 }
 
-pub(crate) fn parse_not_during_turn_draw_suffix_words(words: &[&str]) -> Option<PlayerFilter> {
+pub fn parse_not_during_turn_draw_suffix_words(words: &[&str]) -> Option<PlayerFilter> {
     primitives::parse_full_word_slice(words, parse_not_during_turn_draw_suffix_word_slice)
 }
 
-pub(crate) fn parse_enters_origin_clause_words(words: &[&str]) -> Option<EntersOriginClause> {
+pub fn parse_enters_origin_clause_words(words: &[&str]) -> Option<EntersOriginClause> {
     let normalized = words
         .iter()
         .copied()
@@ -174,7 +174,7 @@ pub(crate) fn parse_enters_origin_clause_words(words: &[&str]) -> Option<EntersO
     primitives::parse_full_word_slice(&normalized, parse_enters_origin_clause_word_slice)
 }
 
-pub(crate) fn parse_source_trigger_subject_words(words: &[&str]) -> SourceTriggerSubjectShape {
+pub fn parse_source_trigger_subject_words(words: &[&str]) -> SourceTriggerSubjectShape {
     let mut input: primitives::WordSliceInput<'_> = words;
     let facts = parse_source_trigger_subject_facts
         .parse_next(&mut input)
@@ -186,7 +186,7 @@ pub(crate) fn parse_source_trigger_subject_words(words: &[&str]) -> SourceTrigge
     SourceTriggerSubjectShape { filter }
 }
 
-pub(crate) fn parse_you_or_controlled_object_subject_words(
+pub fn parse_you_or_controlled_object_subject_words(
     words: &[&str],
 ) -> Option<YouOrControlledObjectSubject> {
     let normalized = words
@@ -204,11 +204,11 @@ pub(crate) fn parse_you_or_controlled_object_subject_words(
     })
 }
 
-pub(crate) fn parse_opponents_each_lose_exact_life_words(words: &[&str]) -> Option<u32> {
+pub fn parse_opponents_each_lose_exact_life_words(words: &[&str]) -> Option<u32> {
     primitives::parse_full_word_slice(words, parse_opponents_each_lose_exact_life_word_slice)
 }
 
-pub(crate) fn parse_roll_result_words(words: &[&str]) -> Option<RollResultShape> {
+pub fn parse_roll_result_words(words: &[&str]) -> Option<RollResultShape> {
     primitives::parse_full_word_slice(words, parse_roll_result_word_slice)
 }
 
@@ -461,7 +461,7 @@ fn parse_fixed_number_word_slice(input: &mut primitives::WordSliceInput<'_>) -> 
     Ok(parsed.0)
 }
 
-pub(crate) fn parse_trigger_clause_atom_token(
+pub fn parse_trigger_clause_atom_token(
     tokens: &[OwnedLexToken],
     atom: TriggerClauseAtom,
 ) -> Option<usize> {
@@ -469,9 +469,7 @@ pub(crate) fn parse_trigger_clause_atom_token(
     parse_atom_token_lexed(&mut input, atom).ok()
 }
 
-pub(crate) fn parse_players_attacked_clause(
-    tokens: &[OwnedLexToken],
-) -> Option<PlayersAttackedClause> {
+pub fn parse_players_attacked_clause(tokens: &[OwnedLexToken]) -> Option<PlayersAttackedClause> {
     let view = primitives::TokenWordView::new(tokens);
     let words = view.word_refs();
     let mut input: primitives::WordSliceInput<'_> = &words;
@@ -482,9 +480,7 @@ pub(crate) fn parse_players_attacked_clause(
     })
 }
 
-pub(crate) fn parse_fully_unlock_room_trigger(
-    tokens: &[OwnedLexToken],
-) -> Option<FullyUnlockRoomTrigger> {
+pub fn parse_fully_unlock_room_trigger(tokens: &[OwnedLexToken]) -> Option<FullyUnlockRoomTrigger> {
     let words = primitives::TokenWordView::new(tokens).word_refs();
     primitives::parse_full_word_slice(&words, parse_fully_unlock_room_words)?;
     Some(FullyUnlockRoomTrigger {
@@ -494,15 +490,12 @@ pub(crate) fn parse_fully_unlock_room_trigger(
     })
 }
 
-pub(crate) fn parse_trigger_clause_atom_word(
-    words: &[&str],
-    atom: TriggerClauseAtom,
-) -> Option<usize> {
+pub fn parse_trigger_clause_atom_word(words: &[&str], atom: TriggerClauseAtom) -> Option<usize> {
     let mut input: primitives::WordSliceInput<'_> = words;
     parse_atom_word_slice(&mut input, atom).ok()
 }
 
-pub(crate) fn parse_trigger_keyword_action_word(
+pub fn parse_trigger_keyword_action_word(
     words: &[&str],
     action: KeywordActionKind,
 ) -> Option<usize> {
@@ -510,7 +503,7 @@ pub(crate) fn parse_trigger_keyword_action_word(
     parse_keyword_action_word_slice(&mut input, action).ok()
 }
 
-pub(crate) fn parse_trigger_word_span_tokens(
+pub fn parse_trigger_word_span_tokens(
     tokens: &[OwnedLexToken],
     word_index: usize,
 ) -> Option<TriggerClauseTokenSpan> {
@@ -520,7 +513,7 @@ pub(crate) fn parse_trigger_word_span_tokens(
     Some(TriggerClauseTokenSpan { first, end })
 }
 
-pub(crate) fn parse_activation_cost_tap_condition(
+pub fn parse_activation_cost_tap_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivationCostTapCondition> {
     let view = primitives::TokenWordView::new(tokens);
@@ -535,7 +528,7 @@ pub(crate) fn parse_activation_cost_tap_condition(
     })
 }
 
-pub(crate) fn parse_subject_before_suffix_span(
+pub fn parse_subject_before_suffix_span(
     tokens: &[OwnedLexToken],
     total_word_len: usize,
     suffix_word_len: usize,
@@ -547,7 +540,7 @@ pub(crate) fn parse_subject_before_suffix_span(
     TriggerClauseTokenSpan { first: 0, end }
 }
 
-pub(crate) fn parse_counter_descriptor_spans(
+pub fn parse_counter_descriptor_spans(
     tokens: &[OwnedLexToken],
     start_word_idx: usize,
     counter_word_idx: usize,
@@ -563,7 +556,7 @@ pub(crate) fn parse_counter_descriptor_spans(
     })
 }
 
-pub(crate) fn parse_trigger_counter_type(tokens: &[OwnedLexToken]) -> Option<CounterType> {
+pub fn parse_trigger_counter_type(tokens: &[OwnedLexToken]) -> Option<CounterType> {
     let view = primitives::TokenWordView::new(tokens);
     let words = view.word_refs();
     let quantifier_words = parse_counter_quantifier_word_count(&words);
@@ -579,7 +572,7 @@ pub(crate) fn parse_trigger_counter_type(tokens: &[OwnedLexToken]) -> Option<Cou
     })
 }
 
-pub(crate) fn parse_counter_recipient_span(
+pub fn parse_counter_recipient_span(
     tokens: &[OwnedLexToken],
     object_word_start: usize,
 ) -> Option<CounterRecipientSpan> {
@@ -593,19 +586,19 @@ pub(crate) fn parse_counter_recipient_span(
     (range.start < range.end).then_some(CounterRecipientSpan { tokens: range })
 }
 
-pub(crate) fn parse_transform_destination_span(
+pub fn parse_transform_destination_span(
     tokens: &[OwnedLexToken],
     transforms_word_idx: usize,
 ) -> Option<TriggerClauseTokenSpan> {
     parse_trigger_word_span_tokens(tokens, transforms_word_idx.checked_add(2)?)
 }
 
-pub(crate) fn parse_trigger_or_split(tokens: &[OwnedLexToken]) -> Option<TriggerOrSplit> {
+pub fn parse_trigger_or_split(tokens: &[OwnedLexToken]) -> Option<TriggerOrSplit> {
     let mut input = LexStream::new(tokens);
     parse_trigger_or_split_lexed(&mut input, tokens).ok()
 }
 
-pub(crate) fn parse_loyalty_ability_tail(tokens: &[OwnedLexToken]) -> Option<LoyaltyAbilityTail> {
+pub fn parse_loyalty_ability_tail(tokens: &[OwnedLexToken]) -> Option<LoyaltyAbilityTail> {
     let view = primitives::TokenWordView::new(tokens);
     let words = view.word_refs();
     let ability = parse_trigger_clause_atom_word(&words, TriggerClauseAtom::Ability)?;
@@ -618,7 +611,7 @@ pub(crate) fn parse_loyalty_ability_tail(tokens: &[OwnedLexToken]) -> Option<Loy
     (owner.start < owner.end).then_some(LoyaltyAbilityTail { owner })
 }
 
-pub(crate) fn parse_named_ability_tail(tokens: &[OwnedLexToken]) -> Option<NamedAbilityTail> {
+pub fn parse_named_ability_tail(tokens: &[OwnedLexToken]) -> Option<NamedAbilityTail> {
     let words = primitives::TokenWordView::new(tokens).word_refs();
     let ability = parse_trigger_clause_atom_word(&words, TriggerClauseAtom::Ability)?;
     if ability + 1 != words.len() {
@@ -644,9 +637,7 @@ pub(crate) fn parse_named_ability_tail(tokens: &[OwnedLexToken]) -> Option<Named
     })
 }
 
-pub(crate) fn parse_possessive_ability_tail(
-    tokens: &[OwnedLexToken],
-) -> Option<PossessiveAbilityTail> {
+pub fn parse_possessive_ability_tail(tokens: &[OwnedLexToken]) -> Option<PossessiveAbilityTail> {
     let ability_token = parse_trigger_clause_atom_token(tokens, TriggerClauseAtom::Ability)?;
     if ability_token == 0 || ability_token + 1 != tokens.len() {
         return None;
@@ -666,9 +657,7 @@ pub(crate) fn parse_possessive_ability_tail(
     })
 }
 
-pub(crate) fn parse_ability_of_object_tail(
-    tokens: &[OwnedLexToken],
-) -> Option<AbilityOfObjectTail> {
+pub fn parse_ability_of_object_tail(tokens: &[OwnedLexToken]) -> Option<AbilityOfObjectTail> {
     let view = primitives::TokenWordView::new(tokens);
     let words = view.word_refs();
     let ability = parse_trigger_clause_atom_word(&words, TriggerClauseAtom::Ability)?;

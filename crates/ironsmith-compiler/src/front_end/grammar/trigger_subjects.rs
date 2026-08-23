@@ -17,63 +17,63 @@ use reference_words::{
 
 #[path = "trigger_subjects/subject_facts.rs"]
 mod subject_facts;
-pub(crate) use subject_facts::*;
+pub use subject_facts::*;
 
 #[path = "trigger_subjects/spell_activity_facts.rs"]
 mod spell_activity_facts;
-pub(crate) use spell_activity_facts::*;
+pub use spell_activity_facts::*;
 
 #[path = "trigger_subjects/may_cast_facts.rs"]
 mod may_cast_facts;
-pub(crate) use may_cast_facts::*;
+pub use may_cast_facts::*;
 
 #[path = "trigger_subjects/sentence_facts.rs"]
 mod sentence_facts;
-pub(crate) use sentence_facts::*;
+pub use sentence_facts::*;
 
 #[cfg(test)]
 #[path = "trigger_subjects/tests.rs"]
 mod tests;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TriggerTokenSpan {
-    pub(crate) first: usize,
-    pub(crate) end: usize,
+pub struct TriggerTokenSpan {
+    pub first: usize,
+    pub end: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct DiscardTriggerEnvelope<'a> {
-    pub(crate) qualifier: &'a [OwnedLexToken],
-    pub(crate) trailing: &'a [OwnedLexToken],
+pub struct DiscardTriggerEnvelope<'a> {
+    pub qualifier: &'a [OwnedLexToken],
+    pub trailing: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SourceOrAnotherShape {
-    pub(crate) source_word_end: usize,
-    pub(crate) other_word: usize,
+pub struct SourceOrAnotherShape {
+    pub source_word_end: usize,
+    pub other_word: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SourceOrFilterShape {
-    pub(crate) source_word_end: usize,
-    pub(crate) connector_word: usize,
-    pub(crate) filter_word: usize,
+pub struct SourceOrFilterShape {
+    pub source_word_end: usize,
+    pub connector_word: usize,
+    pub filter_word: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SpellActivityVerbFacts {
-    pub(crate) cast: Option<usize>,
-    pub(crate) copy: Option<usize>,
+pub struct SpellActivityVerbFacts {
+    pub cast: Option<usize>,
+    pub copy: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AttachedControllerSubject {
+pub enum AttachedControllerSubject {
     Enchanted,
     Equipped,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PossessivePlayerReference {
+pub enum PossessivePlayerReference {
     EnchantedPlayer,
     AttachedController(AttachedControllerSubject),
     ChosenPlayer,
@@ -83,8 +83,8 @@ pub(crate) enum PossessivePlayerReference {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SpellFilterEnvelope {
-    pub(crate) end: usize,
+pub struct SpellFilterEnvelope {
+    pub end: usize,
 }
 
 fn comma_continues_spell_color_list(tokens: &[OwnedLexToken]) -> bool {
@@ -99,7 +99,7 @@ fn comma_continues_spell_color_list(tokens: &[OwnedLexToken]) -> bool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TriggerControllerReference {
+pub enum TriggerControllerReference {
     You,
     NotYou,
     ChosenPlayer,
@@ -110,30 +110,30 @@ pub(crate) enum TriggerControllerReference {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TriggerControlSuffix {
-    pub(crate) controller: TriggerControllerReference,
-    pub(crate) subject_end: usize,
+pub struct TriggerControlSuffix {
+    pub controller: TriggerControllerReference,
+    pub subject_end: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TriggerControlPhrase {
-    pub(crate) controller: TriggerControllerReference,
-    pub(crate) start: usize,
-    pub(crate) words: usize,
+pub struct TriggerControlPhrase {
+    pub controller: TriggerControllerReference,
+    pub start: usize,
+    pub words: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TriggerSourceSubject {
+pub enum TriggerSourceSubject {
     AnySource,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CopyReferenceCostReductionShape {
-    pub(crate) reduction_tokens: Range<usize>,
+pub struct CopyReferenceCostReductionShape {
+    pub reduction_tokens: Range<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SimpleCopyReferenceKind {
+pub enum SimpleCopyReferenceKind {
     It,
     This,
     That,
@@ -142,16 +142,16 @@ pub(crate) enum SimpleCopyReferenceKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TokenLifecycleSentenceKind {
+pub enum TokenLifecycleSentenceKind {
     ExileCreatedTokenWhenSourceLeaves,
     SacrificeSourceWhenCreatedTokenLeaves,
 }
 
-pub(crate) fn parse_trigger_source_subject_words(words: &[&str]) -> Option<TriggerSourceSubject> {
+pub fn parse_trigger_source_subject_words(words: &[&str]) -> Option<TriggerSourceSubject> {
     primitives::parse_full_word_slice(words, parse_trigger_source_subject_word_slice)
 }
 
-pub(crate) fn parse_copy_reference_cost_reduction_shape_tokens(
+pub fn parse_copy_reference_cost_reduction_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CopyReferenceCostReductionShape> {
     let (_, after_costs) = primitives::parse_prefix(
@@ -172,29 +172,26 @@ pub(crate) fn parse_copy_reference_cost_reduction_shape_tokens(
     Some(CopyReferenceCostReductionShape { reduction_tokens })
 }
 
-pub(crate) fn parse_simple_copy_reference_tokens(
+pub fn parse_simple_copy_reference_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SimpleCopyReferenceKind> {
     let words = primitives::TokenWordView::new(tokens).word_refs();
     primitives::parse_full_word_slice(&words, parse_simple_copy_reference_words)
 }
 
-pub(crate) fn parse_token_lifecycle_sentence_tokens(
+pub fn parse_token_lifecycle_sentence_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenLifecycleSentenceKind> {
     let words = primitives::TokenWordView::new(tokens).word_refs();
     primitives::parse_full_word_slice(&words, parse_token_lifecycle_sentence_words)
 }
 
-pub(crate) fn parse_trigger_word_token(
-    tokens: &[OwnedLexToken],
-    expected: &[&str],
-) -> Option<usize> {
+pub fn parse_trigger_word_token(tokens: &[OwnedLexToken], expected: &[&str]) -> Option<usize> {
     let mut input = LexStream::new(tokens);
     parse_word_token_lexed(&mut input, expected).ok()
 }
 
-pub(crate) fn parse_trigger_word_span(
+pub fn parse_trigger_word_span(
     tokens: &[OwnedLexToken],
     word_index: usize,
 ) -> Option<TriggerTokenSpan> {
@@ -204,7 +201,7 @@ pub(crate) fn parse_trigger_word_span(
     Some(TriggerTokenSpan { first, end })
 }
 
-pub(crate) fn parse_discard_trigger_envelope(
+pub fn parse_discard_trigger_envelope(
     tokens: &[OwnedLexToken],
 ) -> Option<DiscardTriggerEnvelope<'_>> {
     let trimmed = trim_commas_ref(tokens);
@@ -227,7 +224,7 @@ pub(crate) fn parse_discard_trigger_envelope(
     })
 }
 
-pub(crate) fn parse_source_or_another_shape(words: &[&str]) -> Option<SourceOrAnotherShape> {
+pub fn parse_source_or_another_shape(words: &[&str]) -> Option<SourceOrAnotherShape> {
     let shape = parse_source_or_filter_shape(words)?;
     let other_word = shape.filter_word;
     if !words
@@ -248,7 +245,7 @@ pub(crate) fn parse_source_or_another_shape(words: &[&str]) -> Option<SourceOrAn
 /// The caller validates that the left arm is actually a source reference.
 /// Keeping this shape broader than `source or another ...` is important for
 /// authored alternatives such as `this creature or an instant spell`.
-pub(crate) fn parse_source_or_filter_shape(words: &[&str]) -> Option<SourceOrFilterShape> {
+pub fn parse_source_or_filter_shape(words: &[&str]) -> Option<SourceOrFilterShape> {
     let connector_word = parse_word_slice_index(words, &["and", "or", "and/or"])?;
     let filter_word = connector_word + 1;
     words.get(filter_word)?;
@@ -259,14 +256,14 @@ pub(crate) fn parse_source_or_filter_shape(words: &[&str]) -> Option<SourceOrFil
     })
 }
 
-pub(crate) fn parse_spell_activity_verb_facts(tokens: &[OwnedLexToken]) -> SpellActivityVerbFacts {
+pub fn parse_spell_activity_verb_facts(tokens: &[OwnedLexToken]) -> SpellActivityVerbFacts {
     SpellActivityVerbFacts {
         cast: parse_trigger_word_token(tokens, &["cast", "casts"]),
         copy: parse_trigger_word_token(tokens, &["copy", "copies"]),
     }
 }
 
-pub(crate) fn parse_possessive_player_reference(words: &[&str]) -> PossessivePlayerReference {
+pub fn parse_possessive_player_reference(words: &[&str]) -> PossessivePlayerReference {
     if normalized_phrase_occurs(words, &["enchanted", "player"])
         || normalized_phrase_occurs(words, &["enchanted", "players"])
         || normalized_phrase_occurs(words, &["enchanted", "opponent"])
@@ -297,7 +294,7 @@ pub(crate) fn parse_possessive_player_reference(words: &[&str]) -> PossessivePla
     PossessivePlayerReference::Any
 }
 
-pub(crate) fn parse_trigger_control_suffix(words: &[&str]) -> Option<TriggerControlSuffix> {
+pub fn parse_trigger_control_suffix(words: &[&str]) -> Option<TriggerControlSuffix> {
     for suffix_words in [3usize, 2usize] {
         if words.len() < suffix_words {
             continue;
@@ -313,7 +310,7 @@ pub(crate) fn parse_trigger_control_suffix(words: &[&str]) -> Option<TriggerCont
     None
 }
 
-pub(crate) fn parse_trigger_control_phrase(words: &[&str]) -> Option<TriggerControlPhrase> {
+pub fn parse_trigger_control_phrase(words: &[&str]) -> Option<TriggerControlPhrase> {
     let mut input: primitives::WordSliceInput<'_> = words;
     let initial_len = input.len();
     loop {
@@ -334,7 +331,7 @@ pub(crate) fn parse_trigger_control_phrase(words: &[&str]) -> Option<TriggerCont
     }
 }
 
-pub(crate) fn parse_damage_source_surface(
+pub fn parse_damage_source_surface(
     tokens: &[OwnedLexToken],
 ) -> crate::triggers::DamageSourceSurface {
     let words = primitives::TokenWordView::new(tokens).word_refs();
@@ -357,7 +354,7 @@ pub(crate) fn parse_damage_source_surface(
     }
 }
 
-pub(crate) fn parse_spell_or_ability_controller_tail(
+pub fn parse_spell_or_ability_controller_tail(
     words: &[&str],
 ) -> Option<TriggerControllerReference> {
     let prefix_words = if word_slice_has_prefix(words, &["a", "spell", "or", "ability"]) {
@@ -370,7 +367,7 @@ pub(crate) fn parse_spell_or_ability_controller_tail(
     parse_trigger_control_tail(&words[prefix_words..])
 }
 
-pub(crate) fn parse_spell_controller_tail(words: &[&str]) -> Option<TriggerControllerReference> {
+pub fn parse_spell_controller_tail(words: &[&str]) -> Option<TriggerControllerReference> {
     let prefix_words = if word_slice_has_prefix(words, &["a", "spell"]) {
         2
     } else if word_slice_has_prefix(words, &["spell"]) {
@@ -381,7 +378,7 @@ pub(crate) fn parse_spell_controller_tail(words: &[&str]) -> Option<TriggerContr
     parse_trigger_control_tail(&words[prefix_words..])
 }
 
-pub(crate) fn parse_spell_filter_envelope(tokens: &[OwnedLexToken]) -> SpellFilterEnvelope {
+pub fn parse_spell_filter_envelope(tokens: &[OwnedLexToken]) -> SpellFilterEnvelope {
     let mut input = LexStream::new(tokens);
     let initial_len = input.len();
     let mut checked_from = false;
@@ -426,7 +423,7 @@ pub(crate) fn parse_spell_filter_envelope(tokens: &[OwnedLexToken]) -> SpellFilt
     }
 }
 
-pub(crate) fn parse_clause_before_first_comma(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+pub fn parse_clause_before_first_comma(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let trimmed = trim_commas_ref(tokens);
     let mut input = LexStream::new(trimmed);
     let first_comma = parse_comma_offset_lexed(&mut input).ok();

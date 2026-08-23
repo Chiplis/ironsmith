@@ -69,30 +69,30 @@ const SOURCE_POWER_TOUGHNESS: &[&[&str]] = &[
 ];
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct BecomeCopyExceptionShape {
-    pub(crate) preserve_source_abilities: bool,
-    pub(crate) name_override: Option<String>,
-    pub(crate) name_override_surface: Option<SourceReferenceSurface>,
-    pub(crate) add_supertypes: Vec<Supertype>,
-    pub(crate) remove_supertypes: Vec<Supertype>,
-    pub(crate) add_card_types: Vec<CardType>,
-    pub(crate) set_card_types: Vec<CardType>,
-    pub(crate) add_subtypes: Vec<Subtype>,
-    pub(crate) set_subtypes: Vec<Subtype>,
-    pub(crate) granted_ability_tokens: Option<Vec<OwnedLexToken>>,
-    pub(crate) set_base_power_toughness: Option<(i32, i32)>,
-    pub(crate) surface: Option<String>,
+pub struct BecomeCopyExceptionShape {
+    pub preserve_source_abilities: bool,
+    pub name_override: Option<String>,
+    pub name_override_surface: Option<SourceReferenceSurface>,
+    pub add_supertypes: Vec<Supertype>,
+    pub remove_supertypes: Vec<Supertype>,
+    pub add_card_types: Vec<CardType>,
+    pub set_card_types: Vec<CardType>,
+    pub add_subtypes: Vec<Subtype>,
+    pub set_subtypes: Vec<Subtype>,
+    pub granted_ability_tokens: Option<Vec<OwnedLexToken>>,
+    pub set_base_power_toughness: Option<(i32, i32)>,
+    pub surface: Option<String>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct BecomeRestShape {
-    pub(crate) rest_tokens: Vec<OwnedLexToken>,
-    pub(crate) body_tokens: Vec<OwnedLexToken>,
-    pub(crate) copy_exception: Option<BecomeCopyExceptionShape>,
+pub struct BecomeRestShape {
+    pub rest_tokens: Vec<OwnedLexToken>,
+    pub body_tokens: Vec<OwnedLexToken>,
+    pub copy_exception: Option<BecomeCopyExceptionShape>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BecomeExactKind {
+pub enum BecomeExactKind {
     Monarch,
     BasicLandTypeChoice,
     BasicLandType(Subtype),
@@ -103,24 +103,24 @@ pub(crate) enum BecomeExactKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BecomeCopySourceShape<'a> {
+pub enum BecomeCopySourceShape<'a> {
     NotCopy,
     Missing,
     Source(&'a [OwnedLexToken]),
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct BecomeAuraShape {
-    pub(crate) attachment_you_control: bool,
+pub struct BecomeAuraShape {
+    pub attachment_you_control: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct BecomeBodySurfaceShape<'a> {
-    pub(crate) body_tokens: &'a [OwnedLexToken],
-    pub(crate) exact_kind: Option<BecomeExactKind>,
-    pub(crate) copy_source: BecomeCopySourceShape<'a>,
-    pub(crate) aura: Option<BecomeAuraShape>,
-    pub(crate) equal_to_source_power_toughness: bool,
+pub struct BecomeBodySurfaceShape<'a> {
+    pub body_tokens: &'a [OwnedLexToken],
+    pub exact_kind: Option<BecomeExactKind>,
+    pub copy_source: BecomeCopySourceShape<'a>,
+    pub aura: Option<BecomeAuraShape>,
+    pub equal_to_source_power_toughness: bool,
 }
 
 fn split_last_except(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
@@ -366,7 +366,7 @@ fn parse_structured_become_copy_exception_shape(
     has_typed_exception.then_some(parsed)
 }
 
-pub(crate) fn parse_become_copy_exception_shape(
+pub fn parse_become_copy_exception_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<BecomeCopyExceptionShape> {
     let tokens = trim_lexed_commas(tokens);
@@ -498,7 +498,7 @@ pub(crate) fn parse_become_copy_exception_shape(
     Some(parsed)
 }
 
-pub(crate) fn parse_become_rest_shape(tokens: &[OwnedLexToken]) -> BecomeRestShape {
+pub fn parse_become_rest_shape(tokens: &[OwnedLexToken]) -> BecomeRestShape {
     let tokens = trim_lexed_commas(tokens);
     let rest_tokens = primitives::parse_prefix(
         tokens,
@@ -538,9 +538,7 @@ fn basic_land_type(words: &[&str]) -> Option<Subtype> {
     .then_some(subtype)
 }
 
-pub(crate) fn parse_become_body_surface_shape(
-    tokens: &[OwnedLexToken],
-) -> BecomeBodySurfaceShape<'_> {
+pub fn parse_become_body_surface_shape(tokens: &[OwnedLexToken]) -> BecomeBodySurfaceShape<'_> {
     let tokens = trim_lexed_commas(tokens);
     let body_tokens = primitives::parse_prefix(
         tokens,
@@ -626,7 +624,7 @@ pub(crate) fn parse_become_body_surface_shape(
     }
 }
 
-pub(crate) fn parse_become_attack_color(words: &[&str]) -> Option<ColorSet> {
+pub fn parse_become_attack_color(words: &[&str]) -> Option<ColorSet> {
     let [
         color_word,
         "until",

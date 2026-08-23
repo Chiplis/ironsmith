@@ -179,26 +179,6 @@ function summarizePriorityAdvance(perf) {
   };
 }
 
-function summarizeManaPipPayment(perf) {
-  if (!perf) return null;
-  return {
-    pendingKind: metric(perf, "pendingKind") ?? null,
-    remainingPipsBefore: metric(perf, "remainingPipsBefore") ?? null,
-    remainingPipsAfter: metric(perf, "remainingPipsAfter") ?? null,
-    cachedOptionCount: metric(perf, "cachedOptionCount") ?? null,
-    builtOptionCount: metric(perf, "builtOptionCount") ?? null,
-    usedCachedOptions: Boolean(metric(perf, "usedCachedOptions")),
-    buildOptionsMs: numberMetric(perf, "buildOptionsMs"),
-    executePaymentMs: numberMetric(perf, "executePaymentMs"),
-    queueManaEventMs: numberMetric(perf, "queueManaEventMs"),
-    drainTriggersMs: numberMetric(perf, "drainTriggersMs"),
-    continueCastMs: numberMetric(perf, "continueCastMs"),
-    continueActivationMs: numberMetric(perf, "continueActivationMs"),
-    pipPaid: Boolean(metric(perf, "pipPaid")),
-    resultKind: metric(perf, "resultKind") ?? null,
-  };
-}
-
 function summarizePriorityAction(perf) {
   if (!perf) return null;
   return {
@@ -210,7 +190,6 @@ function summarizePriorityAction(perf) {
     advancePriorityMs: numberMetric(perf, "advancePriorityMs"),
     resolveStackEntryMs: numberMetric(perf, "resolveStackEntryMs"),
     resetPriorityMs: numberMetric(perf, "resetPriorityMs"),
-    manaPipPayment: summarizeManaPipPayment(metric(perf, "manaPipPayment")),
     nestedPriorityAdvance: summarizePriorityAdvance(metric(perf, "nestedPriorityAdvance")),
   };
 }
@@ -435,40 +414,42 @@ function driveToAliceFirstMain(game, initialState, records) {
   throw new Error(`Did not reach Alice's first main phase: ${JSON.stringify(stateSummary(state))}`);
 }
 
-function isManaPipPaymentDecision(state) {
-  if (state?.decision?.kind !== "select_options") return false;
-  const description = String(state.decision.description || "");
-  return description.startsWith("Pay mana pip")
-    || description.startsWith("Choose how to pay pip");
+function isManaPaymentDecision(state) {
+  return state?.decision?.kind === "mana_payment" && state?.mana_payment != null;
 }
 
-function llanowarPaymentOptions(state) {
-  return (state?.decision?.options || []).filter(
-    (option) =>
-      option.legal !== false
-      && String(option.description || "").includes("Llanowar Elves"),
+function llanowarPaymentSources(state) {
+  return (state?.mana_payment?.available_sources || []).filter(
+    (source) => String(source.source_name || "").includes("Llanowar Elves"),
   );
 }
 
-function payOnePipWithLlanowar(game, state, records, spellSlug) {
+function confirmManaPayment(game, state, records, spellSlug) {
   assertCondition(
-    isManaPipPaymentDecision(state),
-    `Expected ${spellSlug} mana-pip payment decision`,
+    isManaPaymentDecision(state),
+    `Expected ${spellSlug} whole-cost mana payment decision`,
     {
       state: stateSummary(state),
-      description: state?.decision?.description ?? null,
+      decision: state?.decision ?? null,
     },
   );
-  const paymentOptions = llanowarPaymentOptions(state);
+  const paymentSources = llanowarPaymentSources(state);
   assertCondition(
-    paymentOptions.length === 250,
-    `Expected 250 Llanowar Elves payment options for ${spellSlug}, got ${paymentOptions.length}`,
-    (state.decision.options || []).slice(0, 5),
+    paymentSources.length === 250,
+    `Expected 250 available Llanowar Elves sources for ${spellSlug}, got ${paymentSources.length}`,
+    (state.mana_payment.available_sources || []).slice(0, 5),
   );
   const payment = timedCall(
     game,
-    `mana_payment:${spellSlug}_pip_1_via_llanowar_elves`,
-    () => game.dispatch({ type: "select_options", option_indices: [paymentOptions[0].index] }),
+    `mana_payment:${spellSlug}_confirm_whole_cost_plan`,
+    () => game.dispatch({
+      type: "mana_payment",
+      response: {
+        action: "confirm",
+        plan_id: String(state.decision.plan_id),
+        request_hash: String(state.decision.request_hash),
+      },
+    }),
   );
   records.push(payment);
   return payment.result;
@@ -513,7 +494,7 @@ function runCastManaScenario(game, initialState, records, spellId) {
   records.push(cast);
   state = cast.result;
 
-  state = payOnePipWithLlanowar(game, state, records, "llanowar_elves");
+  state = confirmManaPayment(game, state, records, "llanowar_elves");
   return resolveCastSpell(game, state, records, "llanowar_elves");
 }
 
@@ -555,7 +536,7 @@ function runCastTargetedScenario(game, initialState, records, spellId) {
   records.push(selection);
   state = selection.result;
 
-  state = payOnePipWithLlanowar(game, state, records, "giant_growth");
+  state = confirmManaPayment(game, state, records, "giant_growth");
   return resolveCastSpell(game, state, records, "giant_growth");
 }
 

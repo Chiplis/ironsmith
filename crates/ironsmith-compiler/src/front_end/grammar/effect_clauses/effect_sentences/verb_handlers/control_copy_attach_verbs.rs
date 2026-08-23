@@ -97,7 +97,7 @@ fn compose_put_filtered_looked_cards_to_zone(
     ]
 }
 
-pub(crate) fn parse_lose_life(
+pub fn parse_lose_life(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -201,7 +201,7 @@ pub(crate) fn parse_lose_life(
     ))
 }
 
-pub(crate) fn parse_gain_life(
+pub fn parse_gain_life(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -292,7 +292,7 @@ pub(crate) fn parse_gain_life(
     ))
 }
 
-pub(crate) fn parse_gain_control(
+pub fn parse_gain_control(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -437,7 +437,7 @@ pub(crate) fn parse_gain_control(
     Ok(effect)
 }
 
-pub(crate) fn parse_control_duration(
+pub fn parse_control_duration(
     tokens: &[OwnedLexToken],
 ) -> Result<ControlDurationAst, CardTextError> {
     cca_shapes::parse_control_duration_shape(tokens)
@@ -467,7 +467,7 @@ fn parse_permanent_gain_control_duration(
     Ok((shape.until, shape.condition, shape.source_surface))
 }
 
-pub(crate) fn parse_exiled_with_source_move_surface(
+pub fn parse_exiled_with_source_move_surface(
     tokens: &[OwnedLexToken],
 ) -> Option<ironsmith_core::ExiledWithSourceMoveSurface> {
     parse_exiled_with_source_move_surface_inner(tokens, None)
@@ -477,7 +477,7 @@ pub(crate) fn parse_exiled_with_source_move_surface(
 /// subject/verb dispatcher has already consumed the authored `return` verb.
 /// Keep this separate from the full-clause entry point so arbitrary verbless
 /// fragments cannot be mistaken for source-linked zone moves.
-pub(crate) fn parse_exiled_with_source_return_tail_surface(
+pub fn parse_exiled_with_source_return_tail_surface(
     tokens: &[OwnedLexToken],
 ) -> Option<ironsmith_core::ExiledWithSourceMoveSurface> {
     parse_exiled_with_source_move_surface_inner(
@@ -702,7 +702,7 @@ fn parse_put_destination_choice(
     )))
 }
 
-pub(crate) fn parse_put_into_hand(
+pub fn parse_put_into_hand(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {

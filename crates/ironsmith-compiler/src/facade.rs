@@ -327,7 +327,8 @@ impl CompilerFacade {
         text: impl Into<String>,
         policy: CompilePolicy,
     ) -> Result<CompiledCardText<crate::cards::CardDefinition>, CardTextError> {
-        let compiled = crate::compile_card_text(builder, text, policy.allow_unsupported)?;
+        let compiled =
+            crate::compile_card_text_with_policy(builder, text, policy.allow_unsupported)?;
         reject_compiled_parser_fallbacks(&compiled.definition)?;
         Ok(CompiledCardText {
             definition: compiled.definition,

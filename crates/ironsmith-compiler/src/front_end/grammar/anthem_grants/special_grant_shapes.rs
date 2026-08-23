@@ -10,32 +10,32 @@ use super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CommanderCreatureSubject;
+pub struct CommanderCreatureSubject;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AnthemGoadedShape {
-    pub(crate) get_token: usize,
-    pub(crate) and_token: usize,
+pub struct AnthemGoadedShape {
+    pub get_token: usize,
+    pub and_token: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ColoredSpellProtectionShape;
+pub struct ColoredSpellProtectionShape;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SubjectColorAndGrantShape<'a> {
-    pub(crate) condition_tokens: Option<&'a [OwnedLexToken]>,
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) color: ColorSet,
-    pub(crate) ability_tokens: &'a [OwnedLexToken],
+pub struct SubjectColorAndGrantShape<'a> {
+    pub condition_tokens: Option<&'a [OwnedLexToken]>,
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub color: ColorSet,
+    pub ability_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AnthemNoDefenderGrantShape {
-    pub(crate) get_token: usize,
-    pub(crate) anthem_end: usize,
+pub struct AnthemNoDefenderGrantShape {
+    pub get_token: usize,
+    pub anthem_end: usize,
 }
 
-pub(crate) fn parse_commander_creature_subject_tokens(
+pub fn parse_commander_creature_subject_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CommanderCreatureSubject> {
     primitives::parse_all(
@@ -52,11 +52,11 @@ pub(crate) fn parse_commander_creature_subject_tokens(
     .map(|()| CommanderCreatureSubject)
 }
 
-pub(crate) fn parse_anthem_goaded_shape(tokens: &[OwnedLexToken]) -> Option<AnthemGoadedShape> {
+pub fn parse_anthem_goaded_shape(tokens: &[OwnedLexToken]) -> Option<AnthemGoadedShape> {
     primitives::parse_all(tokens, parse_anthem_goaded_lexed, "anthem and goaded line").ok()
 }
 
-pub(crate) fn parse_colored_spell_protection_tokens(
+pub fn parse_colored_spell_protection_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ColoredSpellProtectionShape> {
     primitives::parse_all(
@@ -81,7 +81,7 @@ pub(crate) fn parse_colored_spell_protection_tokens(
     .map(|_| ColoredSpellProtectionShape)
 }
 
-pub(crate) fn parse_subject_color_and_grant_tokens(
+pub fn parse_subject_color_and_grant_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SubjectColorAndGrantShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
@@ -111,7 +111,7 @@ pub(crate) fn parse_subject_color_and_grant_tokens(
     )
 }
 
-pub(crate) fn parse_anthem_no_defender_grant_tokens(
+pub fn parse_anthem_no_defender_grant_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AnthemNoDefenderGrantShape> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
@@ -139,7 +139,7 @@ pub(crate) fn parse_anthem_no_defender_grant_tokens(
     })
 }
 
-pub(crate) fn parse_no_defender_granted_fragment_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_no_defender_granted_fragment_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,
         (
@@ -157,7 +157,7 @@ pub(crate) fn parse_no_defender_granted_fragment_tokens(tokens: &[OwnedLexToken]
     .is_ok()
 }
 
-pub(crate) fn parse_unblockable_keyword_fragment_tokens(
+pub fn parse_unblockable_keyword_fragment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<KeywordAction> {
     primitives::parse_all(

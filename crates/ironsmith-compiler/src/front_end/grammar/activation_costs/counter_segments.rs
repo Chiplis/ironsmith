@@ -32,7 +32,7 @@ struct RemovalDescriptorShape {
     counter_first: usize,
 }
 
-pub(crate) fn parse_optional_activation_counter_type_tokens(
+pub fn parse_optional_activation_counter_type_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<CounterType>, CardTextError> {
     if tokens.is_empty()
@@ -55,7 +55,7 @@ pub(crate) fn parse_optional_activation_counter_type_tokens(
         })
 }
 
-pub(crate) fn parse_put_counter_segment_tokens(
+pub fn parse_put_counter_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     if primitives::parse_all(
@@ -88,7 +88,7 @@ pub(crate) fn parse_put_counter_segment_tokens(
     }
 }
 
-pub(crate) fn parse_remove_counter_segment_tokens(
+pub fn parse_remove_counter_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     let clause = primitives::parse_all(

@@ -1,27 +1,27 @@
 use super::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CantBeRegeneratedSubject {
+pub enum CantBeRegeneratedSubject {
     It,
     They,
     CreatureDestroyedThisWay,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CantBeRegeneratedFollowupShape {
-    pub(crate) subject: CantBeRegeneratedSubject,
-    pub(crate) this_turn: bool,
+pub struct CantBeRegeneratedFollowupShape {
+    pub subject: CantBeRegeneratedSubject,
+    pub this_turn: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DamageRegenerationExileGate {
+pub enum DamageRegenerationExileGate {
     DamagedObjectIsCreature,
     ThisSpellWasKicked,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DamageRegenerationExileFollowupShape {
-    pub(crate) gate: DamageRegenerationExileGate,
+pub struct DamageRegenerationExileFollowupShape {
+    pub gate: DamageRegenerationExileGate,
 }
 
 fn regeneration_subject<'a>(input: &mut LexStream<'a>) -> WResult<CantBeRegeneratedSubject> {
@@ -62,7 +62,7 @@ fn parse_cant_be_regenerated_followup_lexed<'a>(
     Ok(CantBeRegeneratedFollowupShape { subject, this_turn })
 }
 
-pub(crate) fn parse_cant_be_regenerated_followup(
+pub fn parse_cant_be_regenerated_followup(
     tokens: &[OwnedLexToken],
 ) -> Option<CantBeRegeneratedFollowupShape> {
     primitives::parse_all(
@@ -121,7 +121,7 @@ fn parse_damage_regeneration_exile_followup_lexed<'a>(
     Ok(DamageRegenerationExileFollowupShape { gate })
 }
 
-pub(crate) fn parse_damage_regeneration_exile_followup(
+pub fn parse_damage_regeneration_exile_followup(
     tokens: &[OwnedLexToken],
 ) -> Option<DamageRegenerationExileFollowupShape> {
     primitives::parse_all(

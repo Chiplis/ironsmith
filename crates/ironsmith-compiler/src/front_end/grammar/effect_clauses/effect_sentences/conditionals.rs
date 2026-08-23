@@ -21,7 +21,7 @@ use crate::mana::{ManaCost, ManaSymbol};
 use crate::types::{CardType, Subtype, Supertype};
 
 #[cfg(test)]
-pub(crate) fn parse_conditional_sentence_lexed(
+pub fn parse_conditional_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     super::super::grammar::effects::parse_conditional_sentence_with_grammar_entrypoint_lexed(
@@ -30,15 +30,15 @@ pub(crate) fn parse_conditional_sentence_lexed(
     )
 }
 
-pub(crate) fn parse_scryfall_mana_cost(raw: &str) -> Result<ManaCost, CardTextError> {
+pub fn parse_scryfall_mana_cost(raw: &str) -> Result<ManaCost, CardTextError> {
     shared_values::parse_scryfall_mana_cost(raw)
 }
 
-pub(crate) fn parse_mana_symbol_group(raw: &str) -> Result<Vec<ManaSymbol>, CardTextError> {
+pub fn parse_mana_symbol_group(raw: &str) -> Result<Vec<ManaSymbol>, CardTextError> {
     shared_values::parse_mana_symbol_group(raw)
 }
 
-pub(crate) fn parse_type_line(
+pub fn parse_type_line(
     raw: &str,
 ) -> Result<(Vec<Supertype>, Vec<CardType>, Vec<Subtype>), CardTextError> {
     shared_values::parse_type_line_with(
@@ -49,15 +49,15 @@ pub(crate) fn parse_type_line(
     )
 }
 
-pub(crate) fn parse_supertype_word(word: &str) -> Option<Supertype> {
+pub fn parse_supertype_word(word: &str) -> Option<Supertype> {
     parse_shared_supertype_word(word)
 }
 
-pub(crate) fn parse_subtype_word(word: &str) -> Option<Subtype> {
+pub fn parse_subtype_word(word: &str) -> Option<Subtype> {
     parse_shared_subtype_word(word)
 }
 
-pub(crate) fn parse_for_each_opponent_doesnt(
+pub fn parse_for_each_opponent_doesnt(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -82,7 +82,7 @@ pub(crate) fn parse_for_each_opponent_doesnt(
     }))
 }
 
-pub(crate) fn parse_for_each_player_doesnt(
+pub fn parse_for_each_player_doesnt(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -104,7 +104,7 @@ pub(crate) fn parse_for_each_player_doesnt(
     Ok(Some(EffectAst::ForEachPlayerDoesNot { effects, predicate }))
 }
 
-pub(crate) fn parse_for_each_doesnt_control_lose_game(
+pub fn parse_for_each_doesnt_control_lose_game(
     tokens: &[OwnedLexToken],
     opponent: bool,
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -165,7 +165,7 @@ fn parse_negated_who_this_way_predicate(
     }))
 }
 
-pub(crate) fn parse_sentence_counter_target_spell_if_it_was_kicked(
+pub fn parse_sentence_counter_target_spell_if_it_was_kicked(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_counter_spell_conditional_tokens(tokens) else {
@@ -185,7 +185,7 @@ pub(crate) fn parse_sentence_counter_target_spell_if_it_was_kicked(
     Ok(Some(vec![effect]))
 }
 
-pub(crate) fn parse_sentence_counter_target_spell_thats_second_cast_this_turn(
+pub fn parse_sentence_counter_target_spell_thats_second_cast_this_turn(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_counter_spell_conditional_tokens(tokens) else {
@@ -205,7 +205,7 @@ pub(crate) fn parse_sentence_counter_target_spell_thats_second_cast_this_turn(
     Ok(Some(vec![effect]))
 }
 
-pub(crate) fn parse_sentence_exile_target_creature_with_greatest_power(
+pub fn parse_sentence_exile_target_creature_with_greatest_power(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_exile_greatest_power_creature_tokens(tokens) else {

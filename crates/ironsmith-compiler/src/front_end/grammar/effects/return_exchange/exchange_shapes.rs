@@ -7,19 +7,19 @@ use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::token::any;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ExchangeSharedTypeShape {
+pub enum ExchangeSharedTypeShape {
     PermanentType,
     CardType,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ExchangeValueKindShape {
+pub enum ExchangeValueKindShape {
     Power,
     Toughness,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ExchangeValueOperandShape<'a> {
+pub enum ExchangeValueOperandShape<'a> {
     LifeTotal(PlayerAst),
     SourceStat {
         source_tokens: &'a [OwnedLexToken],
@@ -32,16 +32,16 @@ pub(crate) enum ExchangeValueOperandShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ExchangeControlShape<'a> {
-    pub(crate) heterogeneous: Option<(&'a [OwnedLexToken], &'a [OwnedLexToken])>,
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) count: u32,
-    pub(crate) shared_type: Option<ExchangeSharedTypeShape>,
-    pub(crate) invalid_shared_type: bool,
+pub struct ExchangeControlShape<'a> {
+    pub heterogeneous: Option<(&'a [OwnedLexToken], &'a [OwnedLexToken])>,
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub count: u32,
+    pub shared_type: Option<ExchangeSharedTypeShape>,
+    pub invalid_shared_type: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ExchangeClauseShape<'a> {
+pub enum ExchangeClauseShape<'a> {
     LifeTotalsOnly,
     LifeTotalsWith(PlayerAst),
     TextBoxes {
@@ -341,7 +341,7 @@ fn classify_value_operand(tokens: &[OwnedLexToken]) -> Option<ExchangeValueOpera
     target_stat_operand(tokens)
 }
 
-pub(crate) fn parse_exchange_value_operands(
+pub fn parse_exchange_value_operands(
     tokens: &[OwnedLexToken],
 ) -> Option<(ExchangeValueOperandShape<'_>, ExchangeValueOperandShape<'_>)> {
     let (left, right) = split_on(tokens, &["with"]).or_else(|| split_on(tokens, &["and"]))?;
@@ -351,9 +351,7 @@ pub(crate) fn parse_exchange_value_operands(
     ))
 }
 
-pub(crate) fn parse_exchange_clause_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<ExchangeClauseShape<'_>> {
+pub fn parse_exchange_clause_shape(tokens: &[OwnedLexToken]) -> Option<ExchangeClauseShape<'_>> {
     let tokens = primitives::parse_prefix(tokens, exchange_verb)
         .map(|(_, rest)| rest)
         .unwrap_or(tokens);

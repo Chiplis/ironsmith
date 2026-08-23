@@ -7,7 +7,7 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AttachedSubject {
+pub enum AttachedSubject {
     EnchantedCreature,
     EnchantedPermanent,
     EnchantedLand,
@@ -18,7 +18,7 @@ pub(crate) enum AttachedSubject {
 }
 
 impl AttachedSubject {
-    pub(crate) fn display(self) -> &'static str {
+    pub fn display(self) -> &'static str {
         match self {
             Self::EnchantedCreature => "enchanted creature",
             Self::EnchantedPermanent => "enchanted permanent",
@@ -30,21 +30,21 @@ impl AttachedSubject {
         }
     }
 
-    pub(crate) fn is_equipped(self) -> bool {
+    pub fn is_equipped(self) -> bool {
         matches!(self, Self::EquippedCreature | Self::EquippedPermanent)
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AttachedHasSpec<'a> {
-    pub(crate) subject: AttachedSubject,
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) ability_tokens: &'a [OwnedLexToken],
-    pub(crate) has_token: usize,
+pub struct AttachedHasSpec<'a> {
+    pub subject: AttachedSubject,
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub ability_tokens: &'a [OwnedLexToken],
+    pub has_token: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AttachedConditionSuffix<'a> {
+pub enum AttachedConditionSuffix<'a> {
     None {
         ability_tokens: &'a [OwnedLexToken],
     },
@@ -61,7 +61,7 @@ pub(crate) enum AttachedConditionSuffix<'a> {
 }
 
 impl<'a> AttachedConditionSuffix<'a> {
-    pub(crate) fn ability_tokens(self) -> &'a [OwnedLexToken] {
+    pub fn ability_tokens(self) -> &'a [OwnedLexToken] {
         match self {
             Self::None { ability_tokens }
             | Self::Clause { ability_tokens, .. }
@@ -71,7 +71,7 @@ impl<'a> AttachedConditionSuffix<'a> {
     }
 }
 
-pub(crate) fn parse_attached_has_tokens(tokens: &[OwnedLexToken]) -> Option<AttachedHasSpec<'_>> {
+pub fn parse_attached_has_tokens(tokens: &[OwnedLexToken]) -> Option<AttachedHasSpec<'_>> {
     let initial_len = tokens.len();
     let mut input = LexStream::new(tokens);
     let subject = parse_attached_subject_lexed(&mut input).ok()?;
@@ -90,14 +90,12 @@ pub(crate) fn parse_attached_has_tokens(tokens: &[OwnedLexToken]) -> Option<Atta
     })
 }
 
-pub(crate) fn parse_equipped_creature_has_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<AttachedHasSpec<'_>> {
+pub fn parse_equipped_creature_has_tokens(tokens: &[OwnedLexToken]) -> Option<AttachedHasSpec<'_>> {
     let parsed = parse_attached_has_tokens(tokens)?;
     (parsed.subject == AttachedSubject::EquippedCreature).then_some(parsed)
 }
 
-pub(crate) fn parse_enchanted_has_tokens(tokens: &[OwnedLexToken]) -> Option<AttachedHasSpec<'_>> {
+pub fn parse_enchanted_has_tokens(tokens: &[OwnedLexToken]) -> Option<AttachedHasSpec<'_>> {
     let parsed = parse_attached_has_tokens(tokens)?;
     matches!(
         parsed.subject,
@@ -106,7 +104,7 @@ pub(crate) fn parse_enchanted_has_tokens(tokens: &[OwnedLexToken]) -> Option<Att
     .then_some(parsed)
 }
 
-pub(crate) fn parse_chosen_landwalk_tokens(tokens: &[OwnedLexToken]) -> Option<bool> {
+pub fn parse_chosen_landwalk_tokens(tokens: &[OwnedLexToken]) -> Option<bool> {
     primitives::parse_all(
         tokens,
         (
@@ -123,7 +121,7 @@ pub(crate) fn parse_chosen_landwalk_tokens(tokens: &[OwnedLexToken]) -> Option<b
     .ok()
 }
 
-pub(crate) fn split_attached_condition_suffix_tokens(
+pub fn split_attached_condition_suffix_tokens(
     tokens: &[OwnedLexToken],
 ) -> AttachedConditionSuffix<'_> {
     if let Ok((ability_tokens, condition_tokens)) = primitives::parse_all(

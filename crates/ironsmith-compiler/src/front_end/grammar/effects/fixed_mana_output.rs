@@ -8,8 +8,8 @@ use crate::mana::ManaSymbol;
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct FixedManaOutputClauseSpec {
-    pub(crate) mana: Vec<ManaSymbol>,
+pub struct FixedManaOutputClauseSpec {
+    pub mana: Vec<ManaSymbol>,
 }
 
 fn commas<'a>(input: &mut LexStream<'a>) -> Result<(), ErrMode<ContextError>> {
@@ -29,7 +29,7 @@ fn parse_fixed_mana_output_clause<'a>(
     Ok(FixedManaOutputClauseSpec { mana })
 }
 
-pub(crate) fn parse_fixed_mana_output_clause_spec_lexed(
+pub fn parse_fixed_mana_output_clause_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<FixedManaOutputClauseSpec> {
     primitives::parse_all(

@@ -8,7 +8,7 @@ use super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GrantedAlternativeCastKeyword {
+pub enum GrantedAlternativeCastKeyword {
     Flashback,
     Blitz,
     Emerge,
@@ -17,14 +17,14 @@ pub(crate) enum GrantedAlternativeCastKeyword {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct FirstSpellEachTurnSubject;
+pub struct FirstSpellEachTurnSubject;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StaticGrantDurationFact {
+pub enum StaticGrantDurationFact {
     UntilEndOfTurn,
 }
 
-pub(crate) fn parse_granted_alternative_cast_keyword_tokens(
+pub fn parse_granted_alternative_cast_keyword_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<GrantedAlternativeCastKeyword> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
@@ -36,7 +36,7 @@ pub(crate) fn parse_granted_alternative_cast_keyword_tokens(
     .ok()
 }
 
-pub(crate) fn parse_first_spell_each_turn_subject_tokens(
+pub fn parse_first_spell_each_turn_subject_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<FirstSpellEachTurnSubject> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
@@ -48,12 +48,12 @@ pub(crate) fn parse_first_spell_each_turn_subject_tokens(
     .ok()
 }
 
-pub(crate) fn parse_every_subtype_family_tokens(tokens: &[OwnedLexToken]) -> Option<SubtypeFamily> {
+pub fn parse_every_subtype_family_tokens(tokens: &[OwnedLexToken]) -> Option<SubtypeFamily> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
     primitives::parse_all(tokens, every_subtype_family, "every-subtype-family").ok()
 }
 
-pub(crate) fn parse_static_grant_duration_fact(
+pub fn parse_static_grant_duration_fact(
     tokens: &[OwnedLexToken],
 ) -> Option<StaticGrantDurationFact> {
     primitives::find_prefix(tokens, || {

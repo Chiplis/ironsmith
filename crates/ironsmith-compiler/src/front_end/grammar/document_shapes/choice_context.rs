@@ -6,18 +6,16 @@ use crate::ir::ChosenOptionContext;
 use crate::lexer::{LexStream, OwnedLexToken};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CaseLabelKind {
+pub enum CaseLabelKind {
     ToSolve,
     Solved,
 }
 
-pub(crate) fn parse_case_label_tokens(tokens: &[OwnedLexToken]) -> Option<CaseLabelKind> {
+pub fn parse_case_label_tokens(tokens: &[OwnedLexToken]) -> Option<CaseLabelKind> {
     primitives::parse_all(tokens, case_label, "case-label").ok()
 }
 
-pub(crate) fn parse_chosen_option_context_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<ChosenOptionContext> {
+pub fn parse_chosen_option_context_tokens(tokens: &[OwnedLexToken]) -> Option<ChosenOptionContext> {
     primitives::parse_all(tokens, chosen_option_context, "chosen-option-label").ok()
 }
 

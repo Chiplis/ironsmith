@@ -6,25 +6,25 @@ use crate::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use crate::zone::Zone;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct ReturnDestinationShape {
-    pub(crate) zone: Zone,
-    pub(crate) tapped: bool,
+pub struct ReturnDestinationShape {
+    pub zone: Zone,
+    pub tapped: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ReturnMultipleTargetsShape<'a> {
-    pub(crate) targets_tokens: &'a [OwnedLexToken],
-    pub(crate) destination: ReturnDestinationShape,
+pub struct ReturnMultipleTargetsShape<'a> {
+    pub targets_tokens: &'a [OwnedLexToken],
+    pub destination: ReturnDestinationShape,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ReturnQuantifier {
+pub enum ReturnQuantifier {
     All,
     Each,
 }
 
 impl ReturnQuantifier {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::All => "all",
             Self::Each => "each",
@@ -33,19 +33,19 @@ impl ReturnQuantifier {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct ReturnSegmentFacts {
-    pub(crate) starts_new_target: bool,
-    pub(crate) mentions_target: bool,
-    pub(crate) starts_like_zone_suffix: bool,
-    pub(crate) starts_like_target_reference: bool,
-    pub(crate) quantifier: Option<ReturnQuantifier>,
-    pub(crate) mentions_zone: bool,
+pub struct ReturnSegmentFacts {
+    pub starts_new_target: bool,
+    pub mentions_target: bool,
+    pub starts_like_zone_suffix: bool,
+    pub starts_like_target_reference: bool,
+    pub quantifier: Option<ReturnQuantifier>,
+    pub mentions_zone: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ChooseAllZonesToHandShape<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) zones: [Zone; 2],
+pub struct ChooseAllZonesToHandShape<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub zones: [Zone; 2],
 }
 
 fn marker_anywhere<'a, P, F>(tokens: &'a [OwnedLexToken], make_parser: F) -> bool
@@ -68,9 +68,7 @@ fn last_keyword_index(tokens: &[OwnedLexToken], keyword: &'static str) -> Option
         .or(Some(index))
 }
 
-pub(crate) fn parse_return_destination_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<ReturnDestinationShape> {
+pub fn parse_return_destination_shape(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape> {
     let zone = if marker_anywhere(tokens, || {
         alt((primitives::kw("hand"), primitives::kw("hands"))).void()
     }) {
@@ -86,7 +84,7 @@ pub(crate) fn parse_return_destination_shape(
     })
 }
 
-pub(crate) fn parse_return_multiple_targets_shape(
+pub fn parse_return_multiple_targets_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ReturnMultipleTargetsShape<'_>> {
     let (_, body) = primitives::parse_prefix(tokens, primitives::kw("return").void())?;
@@ -118,7 +116,7 @@ pub(crate) fn parse_return_multiple_targets_shape(
     })
 }
 
-pub(crate) fn parse_return_segment_facts(tokens: &[OwnedLexToken]) -> ReturnSegmentFacts {
+pub fn parse_return_segment_facts(tokens: &[OwnedLexToken]) -> ReturnSegmentFacts {
     let quantifier = if starts_any(tokens, &[&["all"]]) {
         Some(ReturnQuantifier::All)
     } else if starts_any(tokens, &[&["each"]]) {
@@ -176,7 +174,7 @@ pub(crate) fn parse_return_segment_facts(tokens: &[OwnedLexToken]) -> ReturnSegm
     }
 }
 
-pub(crate) fn return_zone_suffix_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn return_zone_suffix_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let (index, (), _) = primitives::find_prefix(tokens, || primitives::kw("from").void())?;
     tokens.get(index..)
 }
@@ -251,7 +249,7 @@ fn ends_in_hand_destination(tokens: &[OwnedLexToken]) -> bool {
     })
 }
 
-pub(crate) fn parse_choose_all_zones_to_hand_shape(
+pub fn parse_choose_all_zones_to_hand_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ChooseAllZonesToHandShape<'_>> {
     let (starts_with_choose, body) = if let Some(((), body)) =

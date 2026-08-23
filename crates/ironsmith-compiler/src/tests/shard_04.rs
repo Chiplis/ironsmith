@@ -2008,7 +2008,7 @@ pub(super) fn rewrite_source_exiled_counter_play_and_cast_permission_static_line
             && candidate.excluded_card_types.contains(&CardType::Land)
             && candidate.with_counter
                 == Some(crate::filter::CounterConstraint::Typed(CounterType::Named(
-                    "fetch",
+                    "fetch".into(),
                 )))
     }));
     assert_eq!(

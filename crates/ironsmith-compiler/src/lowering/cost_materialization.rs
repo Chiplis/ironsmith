@@ -142,7 +142,7 @@ fn apply_activation_cost_default_battlefield_scope(filter: &mut ObjectFilter) {
 }
 
 /// The sole runtime allocation boundary for compiler-owned activation costs.
-pub(crate) fn materialize_compiler_total_cost(
+pub fn materialize_compiler_total_cost(
     cost: &CompilerTotalCost,
 ) -> Result<TotalCost, CardTextError> {
     let mut materialized = Vec::with_capacity(cost.branches.len());

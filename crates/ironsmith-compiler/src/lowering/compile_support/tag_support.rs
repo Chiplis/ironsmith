@@ -20,29 +20,29 @@ fn tag_str_has_prefix(tag: &str, prefix: &str) -> bool {
     tag.strip_prefix(prefix).is_some()
 }
 
-pub(crate) fn is_revealed_collection_tag(tag: &str) -> bool {
+pub fn is_revealed_collection_tag(tag: &str) -> bool {
     tag_str_has_prefix(tag, REVEALED_COLLECTION_TAG_PREFIX)
         || tag_str_has_prefix(tag, SENTENCE_HELPER_REVEALED_TAG_PREFIX)
         || tag == crate::tag::REVEALED_THIS_WAY_TAG
 }
 
-pub(crate) fn is_searched_collection_tag(tag: &str) -> bool {
+pub fn is_searched_collection_tag(tag: &str) -> bool {
     tag_str_has_prefix(tag, SEARCHED_COLLECTION_TAG_PREFIX)
 }
 
-pub(crate) fn is_exile_cost_collection_tag(tag: &str) -> bool {
+pub fn is_exile_cost_collection_tag(tag: &str) -> bool {
     tag_str_has_prefix(tag, EXILE_COST_TAG_PREFIX)
 }
 
-pub(crate) fn is_sentence_helper_exiled_collection_tag(tag: &str) -> bool {
+pub fn is_sentence_helper_exiled_collection_tag(tag: &str) -> bool {
     tag_str_has_prefix(tag, SENTENCE_HELPER_EXILED_TAG_PREFIX)
 }
 
-pub(crate) fn is_sentence_helper_consult_match_tag(tag: &str) -> bool {
+pub fn is_sentence_helper_consult_match_tag(tag: &str) -> bool {
     tag_str_has_prefix(tag, SENTENCE_HELPER_CONSULT_MATCH_TAG_PREFIX)
 }
 
-pub(crate) fn is_exiled_collection_tag(tag: &str) -> bool {
+pub fn is_exiled_collection_tag(tag: &str) -> bool {
     tag_str_has_prefix(tag, EXILED_COLLECTION_TAG_PREFIX)
         || is_sentence_helper_exiled_collection_tag(tag)
         || tag == crate::tag::SOURCE_EXILED_TAG
@@ -79,7 +79,7 @@ fn cost_component_values_any(
     }
 }
 
-pub(crate) fn effects_reference_tag(effects: &[EffectAst], tag: &str) -> bool {
+pub fn effects_reference_tag(effects: &[EffectAst], tag: &str) -> bool {
     effects
         .iter()
         .any(|effect| effect_references_tag(effect, tag))
@@ -146,7 +146,7 @@ fn collect_effect_produced_tags(effect: &EffectAst, tags: &mut Vec<TagKey>) {
 /// Whether a later sibling consumes an explicit tag produced by an earlier
 /// sibling. Such siblings are a semantic pipeline, not independent display
 /// arms, and must remain flat for reference flow and specialist lowering.
-pub(crate) fn effects_have_cross_arm_tag_dependency(effects: &[EffectAst]) -> bool {
+pub fn effects_have_cross_arm_tag_dependency(effects: &[EffectAst]) -> bool {
     let mut prior_tags = Vec::<TagKey>::new();
     for effect in effects {
         if prior_tags
@@ -160,7 +160,7 @@ pub(crate) fn effects_have_cross_arm_tag_dependency(effects: &[EffectAst]) -> bo
     false
 }
 
-pub(crate) fn effects_reference_tag_in_object_position(effects: &[EffectAst], tag: &str) -> bool {
+pub fn effects_reference_tag_in_object_position(effects: &[EffectAst], tag: &str) -> bool {
     effects
         .iter()
         .any(|effect| effect_references_tag_in_object_position(effect, tag))
@@ -422,7 +422,7 @@ fn effect_references_tag_in_object_position(effect: &EffectAst, tag: &str) -> bo
     }
 }
 
-pub(crate) fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
+pub fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
     let comparison_references_tag = |comparison: &crate::filter::Comparison| match comparison {
         crate::filter::Comparison::EqualExpr(value)
         | crate::filter::Comparison::NotEqualExpr(value)
@@ -559,7 +559,7 @@ fn effect_tagged_filter(effect: &EffectAst) -> Option<&ObjectFilter> {
     }
 }
 
-pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
+pub fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
     assert_effect_ast_variant_coverage(effect);
     if tag == "triggering_source"
         && matches!(
@@ -695,7 +695,7 @@ pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
     }
 }
 
-pub(crate) fn value_references_tag(value: &Value, tag: &str) -> bool {
+pub fn value_references_tag(value: &Value, tag: &str) -> bool {
     match value {
         Value::SurfaceHinted { value, .. } => value_references_tag(value, tag),
         Value::Add(left, right) | Value::Min(left, right) => {
@@ -753,7 +753,7 @@ pub(crate) fn value_references_tag(value: &Value, tag: &str) -> bool {
     }
 }
 
-pub(crate) fn predicate_references_tag(predicate: &PredicateAst, tag: &str) -> bool {
+pub fn predicate_references_tag(predicate: &PredicateAst, tag: &str) -> bool {
     match predicate {
         PredicateAst::ItMatches(filter)
         | PredicateAst::ItMatchedLastKnown(filter)
@@ -807,7 +807,7 @@ pub(crate) fn predicate_references_tag(predicate: &PredicateAst, tag: &str) -> b
     }
 }
 
-pub(crate) fn choose_spec_references_tag(spec: &ChooseSpec, tag: &str) -> bool {
+pub fn choose_spec_references_tag(spec: &ChooseSpec, tag: &str) -> bool {
     match spec {
         ChooseSpec::Tagged(t) => t.as_str() == tag,
         ChooseSpec::SurfaceHinted { spec: inner, .. }
@@ -822,7 +822,7 @@ pub(crate) fn choose_spec_references_tag(spec: &ChooseSpec, tag: &str) -> bool {
     }
 }
 
-pub(crate) fn choose_spec_references_exiled_tag(spec: &ChooseSpec) -> bool {
+pub fn choose_spec_references_exiled_tag(spec: &ChooseSpec) -> bool {
     fn is_exiled_tag(tag: &TagKey) -> bool {
         is_exiled_collection_tag(tag.as_str())
     }
@@ -842,11 +842,11 @@ pub(crate) fn choose_spec_references_exiled_tag(spec: &ChooseSpec) -> bool {
     }
 }
 
-pub(crate) fn object_ref_references_tag(reference: &ObjectRef, tag: &str) -> bool {
+pub fn object_ref_references_tag(reference: &ObjectRef, tag: &str) -> bool {
     matches!(reference, ObjectRef::Tagged(found) if found.as_str() == tag)
 }
 
-pub(crate) fn player_filter_references_tag(filter: &PlayerFilter, tag: &str) -> bool {
+pub fn player_filter_references_tag(filter: &PlayerFilter, tag: &str) -> bool {
     match filter {
         PlayerFilter::Target(inner)
         | PlayerFilter::AliasedTarget(inner)
@@ -871,7 +871,7 @@ pub(crate) fn player_filter_references_tag(filter: &PlayerFilter, tag: &str) -> 
     }
 }
 
-pub(crate) fn target_references_tag(target: &TargetAst, tag: &str) -> bool {
+pub fn target_references_tag(target: &TargetAst, tag: &str) -> bool {
     match target {
         TargetAst::Tagged(found, _) => found.as_str() == tag,
         TargetAst::Object(filter, _, _) => filter_references_tag(filter, tag),
@@ -893,15 +893,15 @@ pub(crate) fn target_references_tag(target: &TargetAst, tag: &str) -> bool {
     }
 }
 
-pub(crate) fn effects_reference_it_tag(effects: &[EffectAst]) -> bool {
+pub fn effects_reference_it_tag(effects: &[EffectAst]) -> bool {
     effects.iter().any(effect_references_it_tag)
 }
 
-pub(crate) fn effects_reference_its_controller(effects: &[EffectAst]) -> bool {
+pub fn effects_reference_its_controller(effects: &[EffectAst]) -> bool {
     effects.iter().any(effect_references_its_controller)
 }
 
-pub(crate) fn value_references_event_derived_amount(value: &Value) -> bool {
+pub fn value_references_event_derived_amount(value: &Value) -> bool {
     match value {
         Value::EventValue(EventValueSpec::Amount)
         | Value::EventValue(EventValueSpec::LifeAmount)
@@ -1274,7 +1274,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
     }
 }
 
-pub(crate) fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
+pub fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
     assert_effect_ast_variant_coverage(effect);
     let mut target_references = false;
     with_direct_effect_targets(effect, |target| {
@@ -1401,7 +1401,7 @@ pub(crate) fn effect_references_event_derived_amount(effect: &EffectAst) -> bool
     }
 }
 
-pub(crate) fn effect_references_its_controller(effect: &EffectAst) -> bool {
+pub fn effect_references_its_controller(effect: &EffectAst) -> bool {
     assert_effect_ast_variant_coverage(effect);
     match effect {
         EffectAst::SubjectVerb(subject_verb) => {
@@ -1467,7 +1467,7 @@ pub(crate) fn effect_references_its_controller(effect: &EffectAst) -> bool {
     }
 }
 
-pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
+pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
     assert_effect_ast_variant_coverage(effect);
     if direct_effect_targets_reference_tag(effect, IT_TAG) {
         return true;
@@ -1701,10 +1701,7 @@ fn predicate_uses_implicit_it_reference(predicate: &PredicateAst) -> bool {
     }
 }
 
-pub(crate) fn restriction_references_tag(
-    restriction: &crate::effect::Restriction,
-    tag: &str,
-) -> bool {
+pub fn restriction_references_tag(restriction: &crate::effect::Restriction, tag: &str) -> bool {
     use crate::effect::Restriction;
 
     let maybe_filter = match restriction {
@@ -1770,7 +1767,7 @@ pub(crate) fn restriction_references_tag(
     false
 }
 
-pub(crate) fn collect_tag_spans_from_effects_with_context(
+pub fn collect_tag_spans_from_effects_with_context(
     effects: &[EffectAst],
     annotations: &mut ParseAnnotations,
     ctx: &NormalizedLine,
@@ -1793,7 +1790,7 @@ fn collect_direct_effect_target_spans(
     collected
 }
 
-pub(crate) fn collect_tag_spans_from_effect(
+pub fn collect_tag_spans_from_effect(
     effect: &EffectAst,
     annotations: &mut ParseAnnotations,
     ctx: &NormalizedLine,
@@ -1808,7 +1805,7 @@ pub(crate) fn collect_tag_spans_from_effect(
     });
 }
 
-pub(crate) fn collect_tag_spans_from_target(
+pub fn collect_tag_spans_from_target(
     target: &TargetAst,
     annotations: &mut ParseAnnotations,
     ctx: &NormalizedLine,

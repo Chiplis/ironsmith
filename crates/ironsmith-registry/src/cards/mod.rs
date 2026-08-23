@@ -1,12 +1,12 @@
 pub mod builders;
 
-#[cfg(not(test))]
+#[cfg(all(not(test), feature = "handwritten-parse-support"))]
 #[allow(dead_code)]
-#[path = "../../../ironsmith-runtime/src/cards/definitions/mod.rs"]
+#[path = "../../../ironsmith-engine/src/cards/definitions/mod.rs"]
 pub mod definitions;
 
-#[cfg(not(test))]
-#[path = "../../../ironsmith-runtime/src/cards/tokens/mod.rs"]
+#[cfg(all(not(test), feature = "handwritten-parse-support"))]
+#[path = "../../../ironsmith-engine/src/cards/tokens/mod.rs"]
 pub mod tokens;
 
 pub type CardDefinition = ironsmith::cards::CardDefinition;

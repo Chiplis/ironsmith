@@ -43,7 +43,7 @@ fn parse_text_to_semantic_document(
     text: String,
     allow_unsupported: bool,
 ) -> Result<(RewriteSemanticDocument, crate::cards::ParseAnnotations), CardTextError> {
-    let mut context = ParseContext::for_builder(&builder, &text, allow_unsupported);
+    let mut context = crate::parse_context_for_builder(&builder, &text, allow_unsupported);
     crate::compiler_pipeline::parse_text_to_semantic_document_with_context(
         &mut context,
         builder,

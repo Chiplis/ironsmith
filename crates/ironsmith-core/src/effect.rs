@@ -22,6 +22,7 @@ pub use mana_damage_and_control::*;
 ///
 /// Used to reference effects for conditional logic ("if you do" patterns).
 /// Effects are labeled with `Effect::WithId` and referenced by `Effect::If`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EffectId(pub u32);
 
@@ -41,6 +42,7 @@ impl From<u32> for EffectId {
 ///
 /// Used for effects like "Exile any number of target spells" (Mindbreak Trap)
 /// or "Choose up to two target creatures".
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChoiceCount {
     /// Minimum number to choose (0 for "any number" or "up to").
@@ -59,6 +61,7 @@ pub struct ChoiceCount {
 }
 
 /// Distinguishes exact, optional, and "all matching" search instructions.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SearchSelectionMode {
     /// "a card", "three cards", or other exact-count search phrasing.
@@ -74,6 +77,7 @@ pub enum SearchSelectionMode {
 /// Unlike an [`ObjectFilter`], this applies to the selection as a whole. For
 /// example, "choose any number of creatures with total power 4 or less" uses
 /// `Power` with a maximum of 4.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChoiceAggregateMetric {
     Power,
@@ -82,6 +86,7 @@ pub enum ChoiceAggregateMetric {
 }
 
 /// Upper bound on an aggregate characteristic of a group of chosen objects.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChoiceAggregateConstraint {
     pub metric: ChoiceAggregateMetric,
@@ -127,6 +132,7 @@ impl ChoiceAggregateConstraint {
 /// Semantic references are materialized to `Specific` when the resolving
 /// spell or ability creates its continuous effect. This keeps the duration's
 /// operands distinct from both the effect source and the fixed affected set.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ContinuousDurationObject {
     Source,
@@ -136,6 +142,7 @@ pub enum ContinuousDurationObject {
 }
 
 /// Player identity used by a predicate-bearing resolution duration.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ContinuousDurationPlayer {
     EffectController,
@@ -149,6 +156,7 @@ pub enum ContinuousDurationPlayer {
 /// These predicates are evaluated against current game state, but their
 /// duration is latched: a false initial value starts no effect, and a false
 /// value after the effect starts expires it permanently.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum ContinuousDurationPredicate {
     All(Vec<ContinuousDurationPredicate>),
@@ -189,6 +197,7 @@ impl ContinuousDurationPredicate {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
 #[expect(
     clippy::large_enum_variant,
@@ -220,6 +229,7 @@ pub enum Until {
     TurnsPass(crate::value_model::Value),
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
     clippy::large_enum_variant,
@@ -262,6 +272,7 @@ pub enum EffectPredicate {
 }
 
 /// Authored grammatical subject for a prior-result predicate.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PriorEffectResultActor {
     /// Passive surface such as "a creature card is exiled this way."
@@ -275,6 +286,7 @@ pub enum PriorEffectResultActor {
 }
 
 /// Authored cardinality for a prior-result predicate.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PriorEffectResultQuantifier {
     /// An ordinary singular result ("a creature card").
@@ -286,6 +298,7 @@ pub enum PriorEffectResultQuantifier {
 }
 
 /// Typed presentation and filtering data for a `... this way` result gate.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PriorEffectResultSurface {
     pub action: PriorEffectAction,
@@ -331,6 +344,7 @@ impl PriorEffectResultSurface {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GrantPlayTaggedDuration {
     UntilEndOfTurn,
@@ -346,6 +360,7 @@ pub enum GrantPlayTaggedDuration {
 /// Oracle-facing noun phrase for a temporary permission over a tagged card
 /// collection. Runtime identity remains carried by the grant's `tag`; this
 /// only preserves distinctions that cannot be recovered from that tag.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GrantPlayTaggedObjectSurface {
     It,
@@ -365,6 +380,7 @@ pub enum GrantPlayTaggedObjectSurface {
 
 /// Oracle-facing reference used by a flexible-mana suffix on a temporary
 /// tagged-card permission.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GrantPlayTaggedManaReferenceSurface {
     It,
@@ -377,6 +393,7 @@ pub enum GrantPlayTaggedManaReferenceSurface {
 ///
 /// The duration and playable set remain typed by `GrantPlayTaggedEffect`.
 /// These fields preserve only authored placement and reference wording.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct GrantPlayTaggedSurface {
     pub leading_duration: bool,
@@ -419,6 +436,7 @@ impl GrantPlayTaggedSurface {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReplacementApplyMode {
     OneShot,
@@ -426,6 +444,7 @@ pub enum ReplacementApplyMode {
     Resolution,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum PreventNextTimeDamageSource {
     Choice,
@@ -434,6 +453,7 @@ pub enum PreventNextTimeDamageSource {
     Filter(crate::filter_model::ObjectFilter),
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
     clippy::large_enum_variant,
@@ -446,6 +466,7 @@ pub enum PreventNextTimeDamageTarget {
     Target(ChooseSpec),
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum RedirectNextTimeDamageSource {
     Choice,
@@ -453,6 +474,7 @@ pub enum RedirectNextTimeDamageSource {
     Target(crate::target_model::ChooseSpec),
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RedirectNextTimeDamageDestination {
     SourceObject,
@@ -461,6 +483,7 @@ pub enum RedirectNextTimeDamageDestination {
     TargetObject,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
     clippy::large_enum_variant,
@@ -471,6 +494,7 @@ pub enum RetargetMode {
     OneToFixed(crate::target_model::ChooseSpec),
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum DelayedTriggerSpec {
     AsPermanentsUntap {
@@ -569,6 +593,7 @@ pub enum DelayedTriggerSpec {
 ///
 /// The runtime anchors turn-relative variants when the scheduling effect
 /// resolves, so intervening extra turns do not change their meaning.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DelayedTriggerDuration {
     #[default]
@@ -585,6 +610,7 @@ pub enum DelayedTriggerDuration {
 /// The runtime resolves `player` when the delayed trigger is registered so the
 /// payment window remains valid even after the originating source changes
 /// zones.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct DelayedTriggerPrepayment<E> {
     pub player: PlayerFilter,
@@ -600,6 +626,7 @@ impl<E> DelayedTriggerPrepayment<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScheduleDelayedTriggerEffect<E> {
     pub trigger: DelayedTriggerSpec,
@@ -756,6 +783,7 @@ impl<E> ScheduleDelayedTriggerEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SetQuantifierSurface {
     All,
@@ -776,6 +804,7 @@ pub enum SetQuantifierSurface {
 /// Oracle surface used when a type-changing effect preserves an object's
 /// existing types. Both variants have the same rules meaning, but they render
 /// differently and must remain distinguishable after lowering.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeRetentionSurface {
     InAdditionToOtherTypes,
@@ -795,6 +824,7 @@ pub enum TypeRetentionSurface {
 /// but authored leading P/T ("a 4/4 Angel creature") must not be rewritten as
 /// an explicit base-P/T clause ("an Angel creature with base power and
 /// toughness 4/4").
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnimationPtSurface {
     LeadingPowerToughness,
@@ -804,11 +834,13 @@ pub enum AnimationPtSurface {
 /// Oracle placement of an animation effect's duration. Absence retains the
 /// legacy trailing-duration surface, while this marker preserves authored
 /// leading durations such as "Until end of turn, target land becomes ...".
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnimationDurationSurface {
     Leading,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ApplyContinuousEffect<
     Target,
@@ -999,6 +1031,7 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
     clippy::large_enum_variant,
@@ -1009,12 +1042,14 @@ pub enum NewTargetRestriction {
     Object(ObjectFilter),
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SharedTypeConstraint {
     CardType,
     PermanentType,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExchangeValueOperand {
     LifeTotal(crate::filter_model::PlayerFilter),
@@ -1152,6 +1187,7 @@ impl From<i32> for ChoiceCount {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct DealDamageEffect {
     pub amount: Value,
@@ -1186,6 +1222,7 @@ impl DealDamageEffect {
 ///
 /// `amount == None` represents the CR 701.69a surface "damage ... is healed,"
 /// which removes all marked damage from the permanent.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct HealDamageEffect {
     pub target: ChooseSpec,
@@ -1208,6 +1245,7 @@ impl HealDamageEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct DrawCardsEffect {
     pub count: Value,
@@ -1227,9 +1265,11 @@ impl DrawCardsEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct NoteLifeTotalEffect;
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TargetOnlyEffect {
     pub target: ChooseSpec,
@@ -1265,6 +1305,7 @@ impl TargetOnlyEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TapEffect {
     pub target: ChooseSpec,
@@ -1300,6 +1341,7 @@ impl TapEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct UntapEffect {
     pub target: ChooseSpec,
@@ -1329,6 +1371,7 @@ impl UntapEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PutCountersEffect {
     pub counter_type: crate::counter::CounterType,
@@ -1338,6 +1381,7 @@ pub struct PutCountersEffect {
     pub distributed: bool,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct DoubleCountersEffect {
     pub counter_type: Option<crate::counter::CounterType>,
@@ -1391,6 +1435,7 @@ impl PutCountersEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RemoveCountersEffect {
     pub counter_type: crate::counter::CounterType,
@@ -1420,6 +1465,7 @@ impl RemoveCountersEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CounterEffect {
     pub target: ChooseSpec,
@@ -1435,6 +1481,7 @@ impl CounterEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConditionalSurface {
     #[default]
@@ -1443,6 +1490,7 @@ pub enum ConditionalSurface {
     TrailingUnless,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConditionalEffect<E> {
     pub condition: crate::value_model::Condition,
@@ -1498,6 +1546,7 @@ impl<E> ConditionalEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct IfEffect<E> {
     pub condition: EffectId,
@@ -1547,6 +1596,7 @@ impl<E> IfEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct WithIdEffect<E> {
     pub id: EffectId,
@@ -1562,6 +1612,7 @@ impl<E> WithIdEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaggedEffect<E> {
     pub tag: crate::tag::TagKey,
@@ -1577,6 +1628,7 @@ impl<E> TaggedEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct EffectMode<E> {
     pub source_text: String,
@@ -1588,6 +1640,7 @@ pub struct EffectMode<E> {
 /// CR 601.4 allows an earlier mode choice to consider an optional cost that
 /// will be chosen later in the same proposal (for example, kicker enabling
 /// "choose any number instead").
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConditionalModeRange {
     pub required_optional_cost: crate::cost_model::OptionalCostRef,
@@ -1618,6 +1671,7 @@ impl<E> EffectMode<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChooseModeEffect<E> {
     pub modes: Vec<EffectMode<E>>,
@@ -1787,6 +1841,7 @@ impl<E> ChooseModeEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct VillainousChoiceEffect<E> {
     pub player: PlayerFilter,
@@ -1809,6 +1864,7 @@ impl<E> VillainousChoiceEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct HauntExileEffect<E> {
     pub haunt_effects: Vec<E>,
@@ -1824,6 +1880,7 @@ impl<E> HauntExileEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SearchLibrarySlot {
     pub filter: ObjectFilter,
@@ -1833,6 +1890,7 @@ pub struct SearchLibrarySlot {
 /// Oracle-facing wording used to refer back to cards found by a library
 /// search. This is presentation-only metadata; the searched objects are still
 /// identified by the effect's typed tag.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SearchResultReferenceSurface {
     #[default]
@@ -1871,6 +1929,7 @@ impl SearchLibrarySlot {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SearchLibraryEffect {
     pub filter: ObjectFilter,
@@ -1949,6 +2008,7 @@ impl SearchLibraryEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SearchLibrarySlotsEffect {
     pub slots: Vec<SearchLibrarySlot>,
@@ -1995,6 +2055,7 @@ impl SearchLibrarySlotsEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct LookAtHandEffect {
     pub target: ChooseSpec,
@@ -2017,6 +2078,7 @@ impl LookAtHandEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct LookAtObjectsEffect {
     pub filter: ObjectFilter,
@@ -2034,6 +2096,7 @@ impl LookAtObjectsEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RevealTaggedEffect {
     pub tag: crate::tag::TagKey,
@@ -2045,6 +2108,7 @@ impl RevealTaggedEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RevealSourceFromHandDuration {
     #[default]
@@ -2052,6 +2116,7 @@ pub enum RevealSourceFromHandDuration {
     UntilUpkeepEndsOrLeavesHand,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RevealSourceFromHandEffect {
     pub duration: RevealSourceFromHandDuration,
@@ -2071,6 +2136,7 @@ impl RevealSourceFromHandEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RevealFromHandEffect {
     pub count: Value,
@@ -2134,6 +2200,7 @@ impl RevealFromHandEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChooseSpellCastHistoryEffect {
     pub chooser: PlayerFilter,
@@ -2165,6 +2232,7 @@ impl ChooseSpellCastHistoryEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScryEffect {
     pub count: Value,
@@ -2184,6 +2252,7 @@ impl ScryEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SurveilEffect {
     pub count: Value,
@@ -2203,6 +2272,7 @@ impl SurveilEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct FatesealEffect {
     pub count: Value,
@@ -2222,6 +2292,7 @@ impl FatesealEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct EachPlayerScryEffect {
     pub count: Value,
@@ -2237,6 +2308,7 @@ impl EachPlayerScryEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CrewCostEffect {
     pub required_power: u32,
@@ -2248,6 +2320,7 @@ impl CrewCostEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct BecomeSaddledUntilEotEffect;
 
@@ -2257,6 +2330,7 @@ impl BecomeSaddledUntilEotEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct MillEffect {
     pub count: Value,
@@ -2276,6 +2350,7 @@ impl MillEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShuffleGraveyardIntoLibraryEffect {
     pub player: PlayerFilter,
@@ -2299,6 +2374,7 @@ impl ShuffleGraveyardIntoLibraryEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShuffleHandAndGraveyardIntoLibraryEffect {
     pub player: PlayerFilter,
@@ -2325,6 +2401,7 @@ impl ShuffleHandAndGraveyardIntoLibraryEffect {
 /// Oracle-facing cardinality for a zone move of cards linked to the source
 /// that exiled them. The runtime selection remains a `ChooseSpec`; this only
 /// preserves distinctions that an aggregate selection cannot recover.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExiledWithSourceSubjectSurface {
     AllCards,
@@ -2343,6 +2420,7 @@ pub enum ExiledWithSourceSubjectSurface {
 }
 
 /// Oracle-facing reference to the object that exiled the moved cards.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExiledWithSourceReferenceSurface {
     Source(SourceReferenceSurface),
@@ -2351,6 +2429,7 @@ pub enum ExiledWithSourceReferenceSurface {
 }
 
 /// Oracle-facing agreement for an owner-relative zone destination.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExiledWithSourceDestinationSurface {
     ContextualPlayer,
@@ -2360,6 +2439,7 @@ pub enum ExiledWithSourceDestinationSurface {
 }
 
 /// Oracle-facing verb used for a zone move of cards linked to the source.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExiledWithSourceMoveVerbSurface {
     Put,
@@ -2369,6 +2449,7 @@ pub enum ExiledWithSourceMoveVerbSurface {
 /// Presentation metadata for a `put ... exiled with ... into ...` clause.
 /// Object identity, source linkage, and the destination zone continue to live
 /// in the ordinary filter and zone-move fields.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExiledWithSourceMoveSurface {
     pub verb: ExiledWithSourceMoveVerbSurface,
@@ -2377,6 +2458,7 @@ pub struct ExiledWithSourceMoveSurface {
     pub destination: ExiledWithSourceDestinationSurface,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReturnToHandEffect {
     pub spec: ChooseSpec,
@@ -2484,6 +2566,7 @@ impl ReturnToHandEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct MoveToLibraryNthFromTopEffect {
     pub target: ChooseSpec,
@@ -2496,6 +2579,7 @@ impl MoveToLibraryNthFromTopEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct MoveToLibraryTopOrBottomChoiceEffect {
     pub target: ChooseSpec,
@@ -2517,6 +2601,7 @@ impl MoveToLibraryTopOrBottomChoiceEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExchangeControlEffect {
     pub permanent1: ChooseSpec,
@@ -2554,6 +2639,7 @@ impl ExchangeControlEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct DirectionalAdjacentPlayerControlEffect {
     pub filter: ObjectFilter,
@@ -2575,6 +2661,7 @@ impl DirectionalAdjacentPlayerControlEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BattlefieldController {
     Preserve,
@@ -2585,6 +2672,7 @@ pub enum BattlefieldController {
 /// Oracle wording used for a possessive player reference on a zone
 /// destination. This is presentation-only; the associated player filter
 /// remains the semantic destination antecedent.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DestinationPlayerReferenceSurface {
     Pronoun,
@@ -2597,6 +2685,7 @@ pub enum DestinationPlayerReferenceSurface {
 /// destination zones. Parser-produced moves use `Put` or `Return` so a tagged
 /// object does not silently change an oracle `put` into `return` (or vice
 /// versa). This is presentation-only; zone-change execution is unchanged.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MoveToZoneVerbSurface {
     Canonical,
@@ -2611,6 +2700,7 @@ pub enum MoveToZoneVerbSurface {
 /// to ETB replacement processing before the object changes zones. The surface
 /// only records how the originating sentence related the entry condition to
 /// the move.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BattlefieldEntryCounterSurface {
     /// "It enters with ..."
@@ -2632,6 +2722,7 @@ pub enum BattlefieldEntryCounterSurface {
 /// This is distinct from [`PutCountersEffect`]: these counters exist on the
 /// enter event itself, so replacement effects such as Doubling Season see and
 /// modify them at the correct time.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct BattlefieldEntryCounterSpec {
     pub counter_type: crate::counter::CounterType,
@@ -2675,12 +2766,14 @@ impl BattlefieldEntryCounterSpec {
 /// The choosing player is explicit because the player performing the
 /// instruction is not necessarily the controller of the effect (for example,
 /// "that player puts the cards ... in any order").
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum LibraryPlacementOrder {
     Random,
     ChosenBy(PlayerFilter),
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct MoveToZoneEffect {
     pub target: ChooseSpec,
@@ -2727,6 +2820,7 @@ pub struct MoveToZoneEffect {
     pub transfer_exiled_with_source_links: bool,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum MoveToZoneAttackTargetMode {
     PlayerOrPlaneswalkerControlledBy(PlayerFilter),
@@ -2878,6 +2972,7 @@ impl MoveToZoneEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReturnAllToBattlefieldEffect {
     pub filter: ObjectFilter,
@@ -2932,6 +3027,7 @@ impl ReturnAllToBattlefieldEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExecuteWithSourceEffect<E> {
     pub source: ChooseSpec,
@@ -2947,12 +3043,14 @@ impl<E> ExecuteWithSourceEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RetainManaUntilEndOfTurnEffect {
     pub player: PlayerFilter,
 }
 
 /// "Turn the exiled card face up." / "Turn it face up."
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TurnFaceUpEffect {
     pub target: ChooseSpec,
@@ -2965,6 +3063,7 @@ impl TurnFaceUpEffect {
 }
 
 /// "It becomes foretold. Its foretell cost is its mana cost reduced by {N}."
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct BecomeForetoldEffect {
     pub target: ChooseSpec,
@@ -2992,6 +3091,7 @@ impl RetainManaUntilEndOfTurnEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MeldEffect {
     pub result_name: String,
@@ -3019,6 +3119,7 @@ impl MeldEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReorderLibraryTopEffect {
     pub tag: crate::tag::TagKey,
@@ -3039,6 +3140,7 @@ impl ReorderLibraryTopEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExertCostEffect {
     pub display_text: String,
@@ -3052,6 +3154,7 @@ impl ExertCostEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForEachObject<E> {
     pub filter: ObjectFilter,
@@ -3072,6 +3175,7 @@ impl<E> ForEachObject<E> {
 /// create ..." followed by "each of those ... [acts on] a different one of
 /// those ...". The explicit binding tags keep the consumer composable without
 /// overloading the ordinary `__it__` iterator reference.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForEachObjectCorrelatedResultEffect<E> {
     pub filter: ObjectFilter,
@@ -3102,6 +3206,7 @@ impl<E> ForEachObjectCorrelatedResultEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChooseObjectsEffect {
     pub filter: ObjectFilter,
@@ -3270,6 +3375,7 @@ impl ChooseObjectsEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PopulateEffect {
     pub count: Value,
@@ -3339,6 +3445,7 @@ impl PopulateEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct BecomeBasicLandTypeChoiceEffect {
     pub target: ChooseSpec,
@@ -3372,6 +3479,7 @@ impl BecomeBasicLandTypeChoiceEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct BecomeCreatureTypeChoiceEffect {
     pub target: ChooseSpec,
@@ -3404,6 +3512,7 @@ impl BecomeCreatureTypeChoiceEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct BecomeColorChoiceEffect {
     pub target: ChooseSpec,
@@ -3433,6 +3542,7 @@ impl BecomeColorChoiceEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PayManaEffect {
     pub cost: crate::mana::ManaCost,
@@ -3466,6 +3576,7 @@ impl PayManaEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct AmassEffect {
     pub subtype: Option<crate::types::Subtype>,
@@ -3481,6 +3592,7 @@ impl AmassEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct GrantNextSpellCostReductionEffect {
     pub player: PlayerFilter,
@@ -3554,6 +3666,7 @@ impl GrantNextSpellCostReductionEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct GrantAbilitiesTargetEffect<A> {
     pub target: ChooseSpec,
@@ -3575,6 +3688,7 @@ impl<A> GrantAbilitiesTargetEffect<A> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModifyPowerToughnessEffect {
     pub target: ChooseSpec,
@@ -3612,6 +3726,7 @@ impl ModifyPowerToughnessEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct FightEffect {
     pub creature1: ChooseSpec,
@@ -3631,6 +3746,7 @@ impl FightEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExploreEffect {
     pub target: ChooseSpec,
@@ -3642,6 +3758,7 @@ impl ExploreEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ManifestDreadEffect;
 
@@ -3651,6 +3768,7 @@ impl ManifestDreadEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ManifestTopCardOfLibraryEffect {
     pub player: PlayerFilter,
@@ -3661,6 +3779,7 @@ pub struct ManifestTopCardOfLibraryEffect {
 
 /// Put an arbitrary collection of cards onto the battlefield face down as
 /// manifested or cloaked creatures.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ManifestObjectsEffect {
     pub target: ChooseSpec,
@@ -3713,6 +3832,7 @@ impl ManifestTopCardOfLibraryEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ManifestCardFromHandEffect;
 
@@ -3722,6 +3842,7 @@ impl ManifestCardFromHandEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SupportEffect {
     pub amount: u32,
@@ -3733,6 +3854,7 @@ impl SupportEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct AmplifyEffect {
     pub amount: u32,
@@ -3744,6 +3866,7 @@ impl AmplifyEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct DevourEffect {
     pub multiplier: u32,
@@ -3755,6 +3878,7 @@ impl DevourEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConniveEffect {
     pub target: ChooseSpec,
@@ -3774,6 +3898,7 @@ impl ConniveEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct DetainEffect {
     pub target: ChooseSpec,
@@ -3785,6 +3910,7 @@ impl DetainEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct GoadEffect {
     pub target: ChooseSpec,
@@ -3801,6 +3927,7 @@ impl GoadEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SuspectEffect {
     pub target: ChooseSpec,
@@ -3812,6 +3939,7 @@ impl SuspectEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClearSuspectedEffect {
     pub target: Option<ChooseSpec>,
@@ -3829,6 +3957,7 @@ impl ClearSuspectedEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct OpenAttractionEffect {
     pub reminder: bool,
@@ -3845,6 +3974,7 @@ impl OpenAttractionEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct AdaptEffect {
     pub amount: u32,
@@ -3856,6 +3986,7 @@ impl AdaptEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct BackupEffect<A> {
     pub amount: u32,
@@ -3871,6 +4002,7 @@ impl<A> BackupEffect<A> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct BeholdEffect {
     pub subtype: Subtype,
@@ -3892,6 +4024,7 @@ impl BeholdEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClashOpponentMode {
     AnyOpponent,
@@ -3899,6 +4032,7 @@ pub enum ClashOpponentMode {
     DefendingPlayer,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClashEffect {
     pub opponent_mode: ClashOpponentMode,
@@ -3922,6 +4056,7 @@ impl ClashEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct EarthbendEffect {
     pub target: ChooseSpec,
@@ -3934,6 +4069,7 @@ impl EarthbendEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct LocalRewriteEffect<E> {
     pub effect: Box<E>,
@@ -3949,12 +4085,14 @@ impl<E> LocalRewriteEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaggedLeavesAbilitySource {
     WatchedObject,
     CurrentSource,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScheduleEffectsWhenTaggedLeavesEffect<E> {
     pub tag: crate::tag::TagKey,
@@ -3988,6 +4126,7 @@ impl<E> ScheduleEffectsWhenTaggedLeavesEffect<E> {
 /// Token characteristics alone cannot distinguish `with "..."` from a later
 /// `It has "..."` sentence, so the compiler carries that surface choice to the
 /// renderer explicitly.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenAbilityPresentation {
     InlineWith,
@@ -4086,6 +4225,7 @@ impl TokenAbilityPresentation {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CreateTokenEffect<D> {
     pub token: D,
@@ -4236,6 +4376,7 @@ impl<D> CreateTokenEffect<D> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct IncubateEffect {
     pub amount: Value,
@@ -4269,11 +4410,13 @@ impl IncubateEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum CopyPtAdjustment {
     HalfRoundUp,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum CopyAttackTargetMode {
     Player(PlayerFilter),
@@ -4285,6 +4428,7 @@ pub enum CopyAttackTargetMode {
 /// `They` is grammatical-role aware: renderers use `they` as a subject and
 /// `them` as an object. Keeping this typed lets the semantic model continue to
 /// fold token follow-ups into the copy effect without losing their surface.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenCopyReferenceSurface {
     It,
@@ -4306,6 +4450,7 @@ impl TokenCopyReferenceSurface {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CreateTokenCopyEffect<A> {
     pub target: ChooseSpec,
@@ -4582,6 +4727,7 @@ impl<A> CreateTokenCopyEffect<A> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct GrantNextSpellAbilityEffect<A> {
     pub player: PlayerFilter,
@@ -4599,6 +4745,7 @@ impl<A> GrantNextSpellAbilityEffect<A> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RetargetStackObjectEffect {
     pub target: ChooseSpec,
@@ -4653,6 +4800,7 @@ impl RetargetStackObjectEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExileEffect {
     pub spec: ChooseSpec,
@@ -4719,6 +4867,7 @@ impl ExileEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, PartialEq)]
 pub struct TagMatchingObjectsEffect {
     pub filter: ObjectFilter,
@@ -4788,6 +4937,7 @@ impl TagMatchingObjectsEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SacrificeTargetEffect {
     pub target: ChooseSpec,
@@ -4803,6 +4953,7 @@ impl SacrificeTargetEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExileTaggedWhenSourceLeavesEffect {
     pub tag: crate::tag::TagKey,
@@ -4818,6 +4969,7 @@ impl ExileTaggedWhenSourceLeavesEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExileUntilDuration {
     SourceLeavesBattlefield,
@@ -4828,6 +4980,7 @@ pub enum ExileUntilDuration {
     EndOfCombat,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExileUntilEffect {
     pub spec: ChooseSpec,
@@ -4876,11 +5029,13 @@ impl ExileUntilEffect {
 
 /// Authored presentation of a spell-copy amount whose executable value is
 /// stored independently in [`CopySpellEffect::count`].
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CopyCountSurface {
     OncePlusAdditionalPerOpponentWhoCopiedThisWay,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CopySpellEffect {
     pub target: ChooseSpec,
@@ -5033,6 +5188,7 @@ impl CopySpellEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CopySpellForEachTargetEffect {
     pub target: ChooseSpec,
@@ -5090,6 +5246,7 @@ impl CopySpellForEachTargetEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct VariableCasualtyPlaneswalkerCopyEffect;
 
@@ -5105,6 +5262,7 @@ impl Default for VariableCasualtyPlaneswalkerCopyEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct VoteOption<E> {
     pub name: String,
@@ -5120,6 +5278,7 @@ impl<E> VoteOption<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 #[expect(
     clippy::large_enum_variant,
@@ -5137,6 +5296,7 @@ pub enum VoteChoice<E> {
     },
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct VoteEffect<E> {
     pub choice: VoteChoice<E>,
@@ -5274,6 +5434,7 @@ impl<E> VoteEffect<E> {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SecretObjectChoice {
     /// Objects each participant may choose. Relative player filters such as
@@ -5288,6 +5449,7 @@ pub struct SecretObjectChoice {
     pub reveal_after_choice: bool,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SecretChoiceEffect {
     pub options: Vec<String>,
@@ -5330,6 +5492,7 @@ impl SecretChoiceEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
     pub tag: crate::tag::TagKey,
@@ -5366,6 +5529,7 @@ impl GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct GrantTaggedSpellLifeCostByManaValueEffect {
     pub tag: crate::tag::TagKey,
@@ -5381,12 +5545,14 @@ impl GrantTaggedSpellLifeCostByManaValueEffect {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum MayCastMatchingSpellPayment {
     WithoutPayingManaCost,
     AlternativeCost(AlternativeCastKind),
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct MayCastMatchingSpellWithoutPayingManaCostEffect {
     pub player: PlayerFilter,

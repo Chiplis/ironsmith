@@ -15,7 +15,7 @@ use super::reference_state::ReferenceEnv;
 const SENTENCE_HELPER_TAG_PREFIX: &str = "__sentence_helper_";
 
 #[derive(Debug, Clone)]
-pub(crate) enum MetadataLine {
+pub enum MetadataLine {
     ManaCost(String),
     TypeLine(String),
     FirstPrintedSet(String),
@@ -26,59 +26,56 @@ pub(crate) enum MetadataLine {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct NormalizedLine {
-    pub(crate) original: String,
-    pub(crate) normalized: String,
-    pub(crate) char_map: Vec<usize>,
+pub struct NormalizedLine {
+    pub original: String,
+    pub normalized: String,
+    pub char_map: Vec<usize>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct LineSemanticFacts {
-    pub(crate) static_ability: StaticLineSemanticFacts,
-    pub(crate) statement: StatementLineSemanticFacts,
-    pub(crate) triggered_ability: TriggeredLineSemanticFacts,
+pub struct LineSemanticFacts {
+    pub static_ability: StaticLineSemanticFacts,
+    pub statement: StatementLineSemanticFacts,
+    pub triggered_ability: TriggeredLineSemanticFacts,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
-pub(crate) struct StatementLineSemanticFacts {
-    pub(crate) instead_followup: InsteadFollowupFacts,
-    pub(crate) trailing_instead_if_predicate: Option<PredicateAst>,
-    pub(crate) replacement_surfaces: Vec<StatementReplacementSurfaceKind>,
-    pub(crate) as_enters_effect_program: Option<AsEntersEffectProgramFacts>,
-    pub(crate) as_transforms_effect_program: Option<AsTransformsEffectProgramFacts>,
-    pub(crate) presentation_label: Option<crate::ability::PresentationLabel>,
-    pub(crate) creature_type_choice_buff: bool,
-    pub(crate) leading_condition_intro: Option<StatementConditionIntro>,
+pub struct StatementLineSemanticFacts {
+    pub instead_followup: InsteadFollowupFacts,
+    pub trailing_instead_if_predicate: Option<PredicateAst>,
+    pub replacement_surfaces: Vec<StatementReplacementSurfaceKind>,
+    pub as_enters_effect_program: Option<AsEntersEffectProgramFacts>,
+    pub as_transforms_effect_program: Option<AsTransformsEffectProgramFacts>,
+    pub presentation_label: Option<crate::ability::PresentationLabel>,
+    pub creature_type_choice_buff: bool,
+    pub leading_condition_intro: Option<StatementConditionIntro>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AsEntersEffectProgramFacts {
-    pub(crate) subject: String,
-    pub(crate) also_turns_face_up: bool,
-    pub(crate) turns_face_up_only: bool,
-    pub(crate) uses_enters_with_counter_surface: bool,
+pub struct AsEntersEffectProgramFacts {
+    pub subject: String,
+    pub also_turns_face_up: bool,
+    pub turns_face_up_only: bool,
+    pub uses_enters_with_counter_surface: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AsTransformsEffectProgramFacts {
-    pub(crate) subject: String,
-    pub(crate) destination: String,
+pub struct AsTransformsEffectProgramFacts {
+    pub subject: String,
+    pub destination: String,
 }
 
 impl StatementLineSemanticFacts {
-    pub(crate) fn has_replacement_surface(
-        &self,
-        expected: StatementReplacementSurfaceKind,
-    ) -> bool {
+    pub fn has_replacement_surface(&self, expected: StatementReplacementSurfaceKind) -> bool {
         self.replacement_surfaces.contains(&expected)
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct InsteadFollowupFacts {
-    pub(crate) semantics: crate::cards::builders::InsteadSemantics,
-    pub(crate) conditional_intro: bool,
-    pub(crate) leading_instead_surface: bool,
+pub struct InsteadFollowupFacts {
+    pub semantics: crate::cards::builders::InsteadSemantics,
+    pub conditional_intro: bool,
+    pub leading_instead_surface: bool,
 }
 
 impl Default for InsteadFollowupFacts {
@@ -92,7 +89,7 @@ impl Default for InsteadFollowupFacts {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StatementConditionIntro {
+pub enum StatementConditionIntro {
     If,
     Unless,
     AsLongAs,
@@ -100,7 +97,7 @@ pub(crate) enum StatementConditionIntro {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StatementReplacementSurfaceKind {
+pub enum StatementReplacementSurfaceKind {
     BargainedReturnToBattlefield,
     KickedCountOverride,
     KickedMultiZoneToBattlefield,
@@ -109,133 +106,133 @@ pub(crate) enum StatementReplacementSurfaceKind {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct StaticLineSemanticFacts {
-    pub(crate) explicit_functional_zones: Option<Vec<Zone>>,
-    pub(crate) references_this_ability_cost: bool,
-    pub(crate) this_spell_cost: Option<ThisSpellCostFacts>,
-    pub(crate) presentation_label: Option<crate::ability::PresentationLabel>,
+pub struct StaticLineSemanticFacts {
+    pub explicit_functional_zones: Option<Vec<Zone>>,
+    pub references_this_ability_cost: bool,
+    pub this_spell_cost: Option<ThisSpellCostFacts>,
+    pub presentation_label: Option<crate::ability::PresentationLabel>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ThisSpellCostFacts {
-    pub(crate) reduction_cap: Option<i32>,
+pub struct ThisSpellCostFacts {
+    pub reduction_cap: Option<i32>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct TriggeredLineSemanticFacts {
-    pub(crate) compiler_ability: Option<super::CompilerTriggeredAbilityAst>,
-    pub(crate) intro_surface: Option<super::ast::TriggerIntroSurfaceAst>,
-    pub(crate) presentation_label: Option<crate::ability::PresentationLabel>,
-    pub(crate) functional_zones: TriggerFunctionalZoneFacts,
-    pub(crate) becomes_tapped_during_your_turn: bool,
-    pub(crate) frequency: TriggerFrequencyFacts,
-    pub(crate) leading_unless_surface: bool,
+pub struct TriggeredLineSemanticFacts {
+    pub compiler_ability: Option<super::CompilerTriggeredAbilityAst>,
+    pub intro_surface: Option<super::ast::TriggerIntroSurfaceAst>,
+    pub presentation_label: Option<crate::ability::PresentationLabel>,
+    pub functional_zones: TriggerFunctionalZoneFacts,
+    pub becomes_tapped_during_your_turn: bool,
+    pub frequency: TriggerFrequencyFacts,
+    pub leading_unless_surface: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct TriggerFunctionalZoneFacts {
-    pub(crate) explicit_zone: Option<Zone>,
-    pub(crate) returns_self_from_graveyard: bool,
-    pub(crate) discards_this_card: bool,
+pub struct TriggerFunctionalZoneFacts {
+    pub explicit_zone: Option<Zone>,
+    pub returns_self_from_graveyard: bool,
+    pub discards_this_card: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct TriggerFrequencyFacts {
-    pub(crate) first_time_each_or_this_turn: bool,
-    pub(crate) first_time_during_each_of_your_turns: bool,
-    pub(crate) becomes_crewed: bool,
-    pub(crate) do_this_limit_each_turn: Option<u32>,
+pub struct TriggerFrequencyFacts {
+    pub first_time_each_or_this_turn: bool,
+    pub first_time_during_each_of_your_turns: bool,
+    pub becomes_crewed: bool,
+    pub do_this_limit_each_turn: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct LineInfo {
-    pub(crate) line_index: usize,
-    pub(crate) display_line_index: usize,
-    pub(crate) raw_line: String,
+pub struct LineInfo {
+    pub line_index: usize,
+    pub display_line_index: usize,
+    pub raw_line: String,
     /// Tokens for the original source line, retained by the front end so later
     /// stages never need to lex presentation text again.
-    pub(crate) source_tokens: Vec<OwnedLexToken>,
-    pub(crate) normalized: NormalizedLine,
-    pub(crate) semantic_facts: LineSemanticFacts,
+    pub source_tokens: Vec<OwnedLexToken>,
+    pub normalized: NormalizedLine,
+    pub semantic_facts: LineSemanticFacts,
 }
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct IdGenContext {
-    pub(crate) next_effect_id: u32,
-    pub(crate) next_tag_id: u32,
+pub struct IdGenContext {
+    pub next_effect_id: u32,
+    pub next_tag_id: u32,
 }
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct LoweringFrame {
-    pub(crate) last_effect_id: Option<EffectId>,
-    pub(crate) last_library_search_effect_id: Option<EffectId>,
-    pub(crate) last_object_tag: Option<String>,
-    pub(crate) last_it_choice_is_set: bool,
+pub struct LoweringFrame {
+    pub last_effect_id: Option<EffectId>,
+    pub last_library_search_effect_id: Option<EffectId>,
+    pub last_object_tag: Option<String>,
+    pub last_it_choice_is_set: bool,
     /// Parse-time tag aliases bound by `SnapshotLastObjectTag`, mapping a
     /// stable parse-time placeholder tag to the concrete runtime tag that was
     /// in `last_object_tag` at snapshot time. Consulted during tag/filter
     /// resolution so composed effects can reference an earlier looked-at pool
     /// even after a later `ChooseObjects` clobbers `last_object_tag`.
-    pub(crate) snapshot_tag_aliases: Vec<(String, String)>,
-    pub(crate) last_revealed_tag: Option<String>,
-    pub(crate) last_revealed_zone: Option<Zone>,
-    pub(crate) last_revealed_player_filter: Option<PlayerFilter>,
-    pub(crate) last_exiled_collection_tag: Option<String>,
+    pub snapshot_tag_aliases: Vec<(String, String)>,
+    pub last_revealed_tag: Option<String>,
+    pub last_revealed_zone: Option<Zone>,
+    pub last_revealed_player_filter: Option<PlayerFilter>,
+    pub last_exiled_collection_tag: Option<String>,
     /// True when the most recent exile/choose that bound an exiled-collection
     /// tag set aside more than one card (a dynamic or fixed >1 count). Drives
     /// "those exiled cards" (plural) vs "that card" cast-permission wording.
-    pub(crate) last_exiled_collection_is_plural: bool,
-    pub(crate) last_player_filter: Option<PlayerFilter>,
-    pub(crate) source_object_antecedent: bool,
-    pub(crate) recent_player_choice_tags: Vec<String>,
-    pub(crate) iterated_player: bool,
+    pub last_exiled_collection_is_plural: bool,
+    pub last_player_filter: Option<PlayerFilter>,
+    pub source_object_antecedent: bool,
+    pub recent_player_choice_tags: Vec<String>,
+    pub iterated_player: bool,
     /// True while lowering the body of an object iteration. Kept separate from
     /// `iterated_player` so `__it__` can lower to `ChooseSpec::Iterated`
     /// without rebinding an outer "that player" antecedent.
-    pub(crate) iterated_object: bool,
-    pub(crate) auto_tag_object_targets: bool,
-    pub(crate) force_auto_tag_object_targets: bool,
-    pub(crate) allow_life_event_value: bool,
-    pub(crate) bind_unbound_x_to_last_effect: bool,
+    pub iterated_object: bool,
+    pub auto_tag_object_targets: bool,
+    pub force_auto_tag_object_targets: bool,
+    pub allow_life_event_value: bool,
+    pub bind_unbound_x_to_last_effect: bool,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct CompileContext {
-    pub(crate) next_effect_id: u32,
-    pub(crate) next_tag_id: u32,
+pub struct CompileContext {
+    pub next_effect_id: u32,
+    pub next_tag_id: u32,
 }
 
 impl CompileContext {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::from_id_gen(IdGenContext::default())
     }
 
-    pub(crate) fn from_id_gen(id_gen: IdGenContext) -> Self {
+    pub fn from_id_gen(id_gen: IdGenContext) -> Self {
         Self {
             next_effect_id: id_gen.next_effect_id,
             next_tag_id: id_gen.next_tag_id,
         }
     }
 
-    pub(crate) fn id_gen_context(&self) -> IdGenContext {
+    pub fn id_gen_context(&self) -> IdGenContext {
         IdGenContext {
             next_effect_id: self.next_effect_id,
             next_tag_id: self.next_tag_id,
         }
     }
 
-    pub(crate) fn apply_id_gen_context(&mut self, id_gen: IdGenContext) {
+    pub fn apply_id_gen_context(&mut self, id_gen: IdGenContext) {
         self.next_effect_id = id_gen.next_effect_id;
         self.next_tag_id = id_gen.next_tag_id;
     }
 
-    pub(crate) fn next_effect_id(&mut self) -> EffectId {
+    pub fn next_effect_id(&mut self) -> EffectId {
         let id = EffectId(self.next_effect_id);
         self.next_effect_id += 1;
         id
     }
 
-    pub(crate) fn next_tag(&mut self, prefix: &str) -> String {
+    pub fn next_tag(&mut self, prefix: &str) -> String {
         let tag = if matches!(prefix, "exiled" | "looked" | "chosen" | "revealed") {
             format!(
                 "{SENTENCE_HELPER_TAG_PREFIX}{prefix}_l0_s0_e{}",
@@ -250,7 +247,7 @@ impl CompileContext {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct EffectLoweringContext {
+pub struct EffectLoweringContext {
     ids: CompileContext,
     frame: LoweringFrame,
     reserved_object_result_tag: Option<String>,
@@ -271,7 +268,7 @@ impl DerefMut for EffectLoweringContext {
 }
 
 impl EffectLoweringContext {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             ids: CompileContext::new(),
             frame: LoweringFrame::default(),
@@ -279,7 +276,7 @@ impl EffectLoweringContext {
         }
     }
 
-    pub(crate) fn from_parts(id_gen: IdGenContext, frame: LoweringFrame) -> Self {
+    pub fn from_parts(id_gen: IdGenContext, frame: LoweringFrame) -> Self {
         Self {
             ids: CompileContext::from_id_gen(id_gen),
             frame,
@@ -287,27 +284,27 @@ impl EffectLoweringContext {
         }
     }
 
-    pub(crate) fn id_gen_context(&self) -> IdGenContext {
+    pub fn id_gen_context(&self) -> IdGenContext {
         self.ids.id_gen_context()
     }
 
-    pub(crate) fn apply_id_gen_context(&mut self, id_gen: IdGenContext) {
+    pub fn apply_id_gen_context(&mut self, id_gen: IdGenContext) {
         self.ids.apply_id_gen_context(id_gen);
     }
 
-    pub(crate) fn lowering_frame(&self) -> LoweringFrame {
+    pub fn lowering_frame(&self) -> LoweringFrame {
         self.frame.clone()
     }
 
-    pub(crate) fn reference_env(&self) -> ReferenceEnv {
+    pub fn reference_env(&self) -> ReferenceEnv {
         ReferenceEnv::from_lowering_frame(&self.frame)
     }
 
-    pub(crate) fn apply_reference_env(&mut self, env: &ReferenceEnv) {
+    pub fn apply_reference_env(&mut self, env: &ReferenceEnv) {
         self.apply_reference_frame(env.to_lowering_frame(false, false));
     }
 
-    pub(crate) fn apply_reference_frame(&mut self, frame: LoweringFrame) {
+    pub fn apply_reference_frame(&mut self, frame: LoweringFrame) {
         self.last_effect_id = frame.last_effect_id;
         self.last_library_search_effect_id = frame.last_library_search_effect_id;
         self.last_object_tag = frame.last_object_tag;
@@ -322,23 +319,23 @@ impl EffectLoweringContext {
         self.bind_unbound_x_to_last_effect = frame.bind_unbound_x_to_last_effect;
     }
 
-    pub(crate) fn apply_lowering_frame(&mut self, frame: LoweringFrame) {
+    pub fn apply_lowering_frame(&mut self, frame: LoweringFrame) {
         self.frame = frame;
     }
 
-    pub(crate) fn next_effect_id(&mut self) -> EffectId {
+    pub fn next_effect_id(&mut self) -> EffectId {
         self.ids.next_effect_id()
     }
 
-    pub(crate) fn next_tag(&mut self, prefix: &str) -> String {
+    pub fn next_tag(&mut self, prefix: &str) -> String {
         self.ids.next_tag(prefix)
     }
 
-    pub(crate) fn reserve_object_result_tag(&mut self, tag: Option<String>) {
+    pub fn reserve_object_result_tag(&mut self, tag: Option<String>) {
         self.reserved_object_result_tag = tag;
     }
 
-    pub(crate) fn take_reserved_object_result_tag(&mut self, prefix: &str) -> Option<String> {
+    pub fn take_reserved_object_result_tag(&mut self, prefix: &str) -> Option<String> {
         let prefix = format!("{prefix}_");
         self.reserved_object_result_tag
             .as_ref()

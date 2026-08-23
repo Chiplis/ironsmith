@@ -367,7 +367,7 @@ fn parse_target_relative_combat_set_sentence(
     Ok(None)
 }
 
-pub(crate) fn lower_where_x_shape(
+pub fn lower_where_x_shape(
     shape: sentence_shapes::WhereXValueShape,
 ) -> Option<(Option<EffectAst>, Value)> {
     use sentence_shapes::{WhereXMetricShape as Metric, WhereXReferenceShape as Reference};
@@ -1198,7 +1198,7 @@ fn parse_explicit_assign_no_combat_damage_followup(
     Ok(None)
 }
 
-pub(crate) fn parse_effect_sentence_lexed(
+pub fn parse_effect_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     // A coordinated zone-pair declaration also contains the words
@@ -1235,7 +1235,7 @@ pub(crate) fn parse_effect_sentence_lexed(
     } else {
         tokens
     };
-    let mut effects = stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+    let mut effects = crate::stack::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
         if let Some(effects) = parse_prefix_then_look_at_top_exile_one(parse_tokens)? {
             Ok(effects)
         } else if let Some(effects) = parse_bounded_x_mana_payment_sentence(parse_tokens) {
@@ -1327,7 +1327,7 @@ fn parse_manifest_dread_graveyard_card_to_hand(tokens: &[OwnedLexToken]) -> Opti
 fn parse_effect_sentence_lexed_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+    crate::stack::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
         parse_effect_sentence_lexed_inner_unstacked(tokens)
     })
 }

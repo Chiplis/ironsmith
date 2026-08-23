@@ -52,6 +52,7 @@ use ironsmith::targeting::{normalize_targets_for_requirements, validate_flat_tar
 use ironsmith::triggers::TriggerQueue;
 use ironsmith::types::{CardType, Supertype};
 use ironsmith::zone::Zone;
+use ironsmith_compiled_artifact::CompiledCardArtifact;
 
 mod stack_snapshots;
 use stack_snapshots::{
@@ -2057,7 +2058,7 @@ fn stack_display_lines_from_abilities(
         .filter_map(|ability| match (&ability.kind, wants_triggered) {
             (ironsmith::ability::AbilityKind::Triggered(triggered), true) => {
                 let trigger = triggered.trigger.display();
-                let effects = ironsmith::compiled_text::compile_effect_list(&triggered.effects);
+                let effects = ironsmith::runtime_display::compile_effect_list(&triggered.effects);
                 if effects.trim().is_empty() {
                     Some(trigger)
                 } else {
@@ -2065,7 +2066,7 @@ fn stack_display_lines_from_abilities(
                 }
             }
             (ironsmith::ability::AbilityKind::Activated(_), false) => {
-                let text = ironsmith::compiled_text::ability_surface_text(ability);
+                let text = ironsmith::runtime_display::ability_surface_text(ability);
                 if text.trim().is_empty() {
                     Some("Activated ability".to_string())
                 } else {
@@ -2085,7 +2086,7 @@ fn fallback_stack_entry_ability_text(
 
     if let Some(source_obj) = obj {
         let compiled_lines =
-            ironsmith::compiled_text::compiled_text_lines(&source_obj.to_card_definition());
+            ironsmith::runtime_display::compiled_text_lines(&source_obj.to_card_definition());
         if let Some(text) = first_matching_stack_line(&compiled_lines, wants_triggered) {
             return Some(text);
         }
@@ -2118,7 +2119,7 @@ fn stack_entry_ability_text(
     entry
         .ability_effects
         .as_ref()
-        .map(|effects| ironsmith::compiled_text::compile_effect_list(effects))
+        .map(|effects| ironsmith::runtime_display::compile_effect_list(effects))
         .and_then(|text| normalize_stack_display_text(&text))
         .or_else(|| fallback_stack_entry_ability_text(entry, obj))
 }
@@ -4619,181 +4620,6 @@ struct HiddenCardOpeningExport {
     public_commitment: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ZiffleEntropyInput {
-    deck_count: usize,
-    context: String,
-    entropy_hex: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ZiffleKeygenOutput {
-    deck_count: usize,
-    public_key_hex: String,
-    secret_key_hex: String,
-    ownership_proof_hex: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ZifflePublicKeyInput {
-    player: u8,
-    public_key_hex: String,
-    ownership_proof_hex: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ZiffleShuffleStepInput {
-    shuffler: u8,
-    deck_hex: String,
-    proof_hex: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ZiffleShuffleStepOutput {
-    shuffler: u8,
-    deck_hex: String,
-    proof_hex: String,
-    deck_hash: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ZiffleBuildShuffleStepInput {
-    deck_count: usize,
-    context: String,
-    #[serde(default)]
-    key_context: String,
-    keys: Vec<ZifflePublicKeyInput>,
-    steps: Vec<ZiffleShuffleStepInput>,
-    shuffler: u8,
-    entropy_hex: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ZiffleVerifyShuffleInput {
-    deck_count: usize,
-    context: String,
-    #[serde(default)]
-    key_context: String,
-    keys: Vec<ZifflePublicKeyInput>,
-    steps: Vec<ZiffleShuffleStepInput>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ZiffleVerifyShuffleOutput {
-    deck_count: usize,
-    deck_hex: String,
-    deck_hash: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ZiffleBuildRevealTokenInput {
-    deck_count: usize,
-    context: String,
-    #[serde(default)]
-    key_context: String,
-    keys: Vec<ZifflePublicKeyInput>,
-    steps: Vec<ZiffleShuffleStepInput>,
-    card_position: usize,
-    public_key_hex: String,
-    secret_key_hex: String,
-    entropy_hex: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ZiffleBuildRevealTokensInput {
-    deck_count: usize,
-    context: String,
-    #[serde(default)]
-    key_context: String,
-    keys: Vec<ZifflePublicKeyInput>,
-    steps: Vec<ZiffleShuffleStepInput>,
-    card_positions: Vec<usize>,
-    public_key_hex: String,
-    secret_key_hex: String,
-    entropy_hex: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ZiffleRevealTokenInput {
-    player: u8,
-    public_key_hex: String,
-    token_hex: String,
-    proof_hex: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ZiffleRevealTokenBatchInput {
-    card_position: usize,
-    player: u8,
-    public_key_hex: String,
-    token_hex: String,
-    proof_hex: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ZiffleRevealTokenOutput {
-    player: u8,
-    public_key_hex: String,
-    token_hex: String,
-    proof_hex: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ZiffleRevealTokenBatchOutput {
-    card_position: usize,
-    player: u8,
-    public_key_hex: String,
-    token_hex: String,
-    proof_hex: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ZiffleRevealCardInput {
-    deck_count: usize,
-    context: String,
-    #[serde(default)]
-    key_context: String,
-    keys: Vec<ZifflePublicKeyInput>,
-    steps: Vec<ZiffleShuffleStepInput>,
-    card_position: usize,
-    tokens: Vec<ZiffleRevealTokenInput>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ZiffleRevealCardsInput {
-    deck_count: usize,
-    context: String,
-    #[serde(default)]
-    key_context: String,
-    keys: Vec<ZifflePublicKeyInput>,
-    steps: Vec<ZiffleShuffleStepInput>,
-    card_positions: Vec<usize>,
-    tokens: Vec<ZiffleRevealTokenBatchInput>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ZiffleRevealCardOutput {
-    card_position: usize,
-    original_slot: usize,
-}
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct MatchValidationIssue {
@@ -5055,7 +4881,7 @@ mod native_tests {
 
     #[test]
     fn phyrexian_tower_action_surface_uses_compiled_cost_text() {
-        let definition = ironsmith_registry::cards::definitions::phyrexian_tower();
+        let definition = ironsmith_registry_test::cards::definitions::phyrexian_tower();
         let lines = stack_display_lines_from_abilities(&definition.abilities, false);
 
         assert!(
@@ -5092,7 +4918,7 @@ mod native_tests {
         let mut wasm = WasmGame::new();
         let alice = PlayerId::from_index(0);
         let object_id = wasm.game.create_object_from_definition(
-            &ironsmith_registry::cards::definitions::basic_forest(),
+            &ironsmith_registry_test::cards::definitions::basic_forest(),
             alice,
             Zone::Battlefield,
         );
@@ -5193,7 +5019,7 @@ mod native_tests {
         let mut wasm = WasmGame::new();
         let alice = PlayerId::from_index(0);
         let public_object = wasm.game.create_object_from_definition(
-            &ironsmith_registry::cards::definitions::basic_forest(),
+            &ironsmith_registry_test::cards::definitions::basic_forest(),
             alice,
             Zone::Battlefield,
         );
@@ -5416,7 +5242,7 @@ mod native_tests {
             3,
             "alice-hidden-hand-commitment".to_string(),
         );
-        let definition = ironsmith_registry::cards::definitions::ornithopter();
+        let definition = ironsmith_registry_test::cards::definitions::ornithopter();
         wasm.game
             .reveal_hidden_card_with_definition(hidden_hand_card, &definition)
             .expect("hidden hand card should reveal locally");
@@ -5449,7 +5275,7 @@ mod native_tests {
             5,
             "bob-hidden-hand-commitment".to_string(),
         );
-        let definition = ironsmith_registry::cards::definitions::ornithopter();
+        let definition = ironsmith_registry_test::cards::definitions::ornithopter();
         wasm.game
             .reveal_hidden_card_with_definition(hidden_hand_card, &definition)
             .expect("hidden hand card should reveal locally");
@@ -6050,7 +5876,7 @@ mod determinism_tests {
     use super::*;
     use ironsmith::ids::{IdCountersSnapshot, restore_id_counters};
     use ironsmith::zone::Zone;
-    use ironsmith_registry::cards::definitions::{grizzly_bears, ornithopter};
+    use ironsmith_registry_test::cards::definitions::{grizzly_bears, ornithopter};
 
     fn scripted_checkpoint_bytes() -> (Vec<u8>, Vec<HiddenInfoOperation>) {
         restore_id_counters(IdCountersSnapshot {

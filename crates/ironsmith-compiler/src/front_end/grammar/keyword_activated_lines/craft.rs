@@ -7,7 +7,7 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, TokenKind};
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CraftMaterialKind {
+pub enum CraftMaterialKind {
     Artifact,
     Creature,
     OneOrMore,
@@ -16,13 +16,13 @@ pub(crate) enum CraftMaterialKind {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CraftLineSpec<'a> {
-    pub(crate) material: CraftMaterialKind,
-    pub(crate) material_tokens: &'a [OwnedLexToken],
-    pub(crate) cost_tokens: &'a [OwnedLexToken],
+pub struct CraftLineSpec<'a> {
+    pub material: CraftMaterialKind,
+    pub material_tokens: &'a [OwnedLexToken],
+    pub cost_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_craft_line_spec_tokens(tokens: &[OwnedLexToken]) -> Option<CraftLineSpec<'_>> {
+pub fn parse_craft_line_spec_tokens(tokens: &[OwnedLexToken]) -> Option<CraftLineSpec<'_>> {
     primitives::parse_prefix(tokens, parse_craft_line_spec_lexed).map(|(spec, _)| spec)
 }
 

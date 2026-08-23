@@ -21,7 +21,7 @@ use crate::types::CardType;
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PermissionLifetime {
+pub enum PermissionLifetime {
     Immediate,
     ThisTurn,
     UntilEndOfTurn,
@@ -33,7 +33,7 @@ pub(crate) enum PermissionLifetime {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum PermissionClauseSpec {
+pub enum PermissionClauseSpec {
     Tagged {
         tag: TagKey,
         player: PlayerAst,
@@ -834,13 +834,13 @@ fn parse_static_hand_free_cast_grant_spec_from_rest(
     parse_hand_free_cast_grant_spec_from_rest(rest_tokens, false)
 }
 
-pub(crate) fn parse_permission_clause_spec(
+pub fn parse_permission_clause_spec(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PermissionClauseSpec>, CardTextError> {
     parse_permission_clause_spec_lexed(tokens)
 }
 
-pub(crate) fn parse_unsupported_play_cast_permission_clause(
+pub fn parse_unsupported_play_cast_permission_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     parse_unsupported_play_cast_permission_clause_lexed(tokens)
@@ -964,7 +964,7 @@ fn parse_once_each_turn_top_library_cast_shares_source_exiled_type_permission(
     })
 }
 
-pub(crate) fn parse_permission_clause_spec_lexed(
+pub fn parse_permission_clause_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PermissionClauseSpec>, CardTextError> {
     let mut tokens = trim_lexed_commas(tokens);
@@ -1406,7 +1406,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
     Ok(None)
 }
 
-pub(crate) fn parse_unsupported_play_cast_permission_clause_lexed(
+pub fn parse_unsupported_play_cast_permission_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause_refs = token_word_refs(tokens);
@@ -1437,7 +1437,7 @@ pub(crate) fn parse_unsupported_play_cast_permission_clause_lexed(
     Ok(None)
 }
 
-pub(crate) fn parse_until_end_of_turn_may_play_tagged_clause(
+pub fn parse_until_end_of_turn_may_play_tagged_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let trimmed = trim_commas(tokens);
@@ -1472,7 +1472,7 @@ pub(crate) fn parse_until_end_of_turn_may_play_tagged_clause(
     }
 }
 
-pub(crate) fn parse_until_your_next_turn_may_play_tagged_clause(
+pub fn parse_until_your_next_turn_may_play_tagged_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let trimmed = trim_commas(tokens);
@@ -1518,13 +1518,13 @@ pub(crate) fn parse_until_your_next_turn_may_play_tagged_clause(
     }
 }
 
-pub(crate) fn parse_additional_land_plays_clause(
+pub fn parse_additional_land_plays_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     parse_additional_land_plays_clause_lexed(tokens)
 }
 
-pub(crate) fn parse_additional_land_plays_clause_lexed(
+pub fn parse_additional_land_plays_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(parsed) = parse_additional_land_play_clause(tokens) else {
@@ -1547,7 +1547,7 @@ pub(crate) fn parse_additional_land_plays_clause_lexed(
     )))
 }
 
-pub(crate) fn parse_cast_spells_as_though_they_had_flash_clause(
+pub fn parse_cast_spells_as_though_they_had_flash_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     match parse_permission_clause_spec(tokens)? {
@@ -1957,7 +1957,7 @@ fn parse_cast_with_tagged_mana_value_limit_clause_impl(
     ))
 }
 
-pub(crate) fn parse_cast_or_play_tagged_clause(
+pub fn parse_cast_or_play_tagged_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let trimmed_tokens = trim_commas(tokens);

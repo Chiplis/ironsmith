@@ -6,15 +6,15 @@ use winnow::error::ModalResult;
 use winnow::token::any;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct OrderedChooseAllShape<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) repeated_filter_tokens: &'a [OwnedLexToken],
+pub struct OrderedChooseAllShape<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub repeated_filter_tokens: &'a [OwnedLexToken],
 }
 
 /// Parse "choose <objects> one at a time until each <object> has been chosen".
 /// Both object descriptions are retained so semantic lowering can validate
 /// that the stopping condition names the same set as the choice itself.
-pub(crate) fn parse_ordered_choose_all_shape(
+pub fn parse_ordered_choose_all_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<OrderedChooseAllShape<'_>> {
     let (_, after_choose) =
@@ -43,8 +43,8 @@ pub(crate) fn parse_ordered_choose_all_shape(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TaggedSharesCardTypeConditionShape<'a> {
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct TaggedSharesCardTypeConditionShape<'a> {
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 fn tagged_shares_card_type_condition<'a>(
@@ -63,7 +63,7 @@ fn tagged_shares_card_type_condition<'a>(
     })
 }
 
-pub(crate) fn parse_tagged_shares_card_type_condition_tokens(
+pub fn parse_tagged_shares_card_type_condition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TaggedSharesCardTypeConditionShape<'_>> {
     primitives::parse_all(
@@ -75,12 +75,12 @@ pub(crate) fn parse_tagged_shares_card_type_condition_tokens(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CopularAnimationShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) animation_tokens: &'a [OwnedLexToken],
+pub struct CopularAnimationShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub animation_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_copular_animation_shape(
+pub fn parse_copular_animation_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<CopularAnimationShape<'_>> {
     let (subject_tokens, animation_tokens) = if tokens
@@ -142,11 +142,11 @@ pub(crate) fn parse_copular_animation_shape(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PassiveSacrificeShape<'a> {
-    pub(crate) object_tokens: &'a [OwnedLexToken],
+pub struct PassiveSacrificeShape<'a> {
+    pub object_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_passive_sacrifice_shape(
+pub fn parse_passive_sacrifice_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PassiveSacrificeShape<'_>> {
     let (subject_tokens, ()) = primitives::split_lexed_once_before_suffix(tokens, 2, || {
@@ -171,18 +171,18 @@ pub(crate) fn parse_passive_sacrifice_shape(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GoadTargetShape<'a> {
+pub enum GoadTargetShape<'a> {
     TaggedToken,
     Target(&'a [OwnedLexToken]),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PassiveGoadShape<'a> {
-    pub(crate) target: GoadTargetShape<'a>,
-    pub(crate) for_rest_of_game: bool,
+pub struct PassiveGoadShape<'a> {
+    pub target: GoadTargetShape<'a>,
+    pub for_rest_of_game: bool,
 }
 
-pub(crate) fn parse_passive_goad_shape(tokens: &[OwnedLexToken]) -> Option<PassiveGoadShape<'_>> {
+pub fn parse_passive_goad_shape(tokens: &[OwnedLexToken]) -> Option<PassiveGoadShape<'_>> {
     let (subject_tokens, tail_tokens) =
         primitives::split_lexed_once_on_separator(tokens, || primitives::kw("is").void())?;
     let for_rest_of_game = primitives::parse_all(
@@ -225,11 +225,11 @@ pub(crate) fn parse_passive_goad_shape(tokens: &[OwnedLexToken]) -> Option<Passi
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct HexproofTargetingOverrideShape<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
+pub struct HexproofTargetingOverrideShape<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_hexproof_targeting_override_shape(
+pub fn parse_hexproof_targeting_override_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<HexproofTargetingOverrideShape<'_>> {
     primitives::find_prefix(tokens, || {
@@ -249,15 +249,13 @@ pub(crate) fn parse_hexproof_targeting_override_shape(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ControlPlayerShape<'a> {
-    pub(crate) player: PlayerAst,
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) duration_tokens: &'a [OwnedLexToken],
+pub struct ControlPlayerShape<'a> {
+    pub player: PlayerAst,
+    pub target_tokens: &'a [OwnedLexToken],
+    pub duration_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_control_player_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<ControlPlayerShape<'_>> {
+pub fn parse_control_player_shape(tokens: &[OwnedLexToken]) -> Option<ControlPlayerShape<'_>> {
     let (control, _, after_control) = primitives::find_prefix(tokens, || {
         alt((primitives::kw("control"), primitives::kw("controls")))
     })?;
@@ -287,12 +285,12 @@ pub(crate) fn parse_control_player_shape(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DiscardedThisWayModifierShape {
-    pub(crate) power: i32,
-    pub(crate) toughness: i32,
+pub struct DiscardedThisWayModifierShape {
+    pub power: i32,
+    pub toughness: i32,
 }
 
-pub(crate) fn parse_discarded_this_way_modifier_shape(
+pub fn parse_discarded_this_way_modifier_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DiscardedThisWayModifierShape> {
     let first = tokens.first()?.parser_text();
@@ -324,7 +322,7 @@ pub(crate) fn parse_discarded_this_way_modifier_shape(
     Some(DiscardedThisWayModifierShape { power, toughness })
 }
 
-pub(crate) fn parse_modifier_duration_for_each_tokens(
+pub fn parse_modifier_duration_for_each_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     let after_modifier = tokens.get(1..)?;
@@ -336,7 +334,7 @@ pub(crate) fn parse_modifier_duration_for_each_tokens(
     Some(rest)
 }
 
-pub(crate) fn is_pronoun_library_choice_put_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_pronoun_library_choice_put_shape(tokens: &[OwnedLexToken]) -> bool {
     let pronoun =
         primitives::parse_prefix(tokens, alt((primitives::kw("it"), primitives::kw("them"))))
             .is_some();

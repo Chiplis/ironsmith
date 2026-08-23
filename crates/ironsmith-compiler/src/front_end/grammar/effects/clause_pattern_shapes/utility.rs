@@ -6,7 +6,7 @@ use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::token::any;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum DoubleCounterHolderShape<'a> {
+pub enum DoubleCounterHolderShape<'a> {
     You,
     Source {
         tokens: &'a [OwnedLexToken],
@@ -17,34 +17,34 @@ pub(crate) enum DoubleCounterHolderShape<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct DoubleCountersShape<'a> {
-    pub(crate) counter_type: Option<crate::object::CounterType>,
-    pub(crate) holder: DoubleCounterHolderShape<'a>,
+pub struct DoubleCountersShape<'a> {
+    pub counter_type: Option<crate::object::CounterType>,
+    pub holder: DoubleCounterHolderShape<'a>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) struct CopyTailShape {
-    pub(crate) retarget_split: Option<usize>,
-    pub(crate) retarget_may: bool,
-    pub(crate) retarget_single_target: bool,
-    pub(crate) exception_split: Option<usize>,
-    pub(crate) then_split: Option<usize>,
-    pub(crate) for_each_split: Option<usize>,
+pub struct CopyTailShape {
+    pub retarget_split: Option<usize>,
+    pub retarget_may: bool,
+    pub retarget_single_target: bool,
+    pub exception_split: Option<usize>,
+    pub then_split: Option<usize>,
+    pub for_each_split: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CopyClauseShape {
-    pub(crate) copy_word: usize,
-    pub(crate) exception_word: Option<usize>,
-    pub(crate) emblem_with: bool,
-    pub(crate) simple_reference: bool,
-    pub(crate) mentions_spell_or_ability: bool,
-    pub(crate) removed_legendary: bool,
-    pub(crate) tail: CopyTailShape,
+pub struct CopyClauseShape {
+    pub copy_word: usize,
+    pub exception_word: Option<usize>,
+    pub emblem_with: bool,
+    pub simple_reference: bool,
+    pub mentions_spell_or_ability: bool,
+    pub removed_legendary: bool,
+    pub tail: CopyTailShape,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CopyTargetShape<'a> {
+pub enum CopyTargetShape<'a> {
     Source,
     Triggering,
     TriggeringSource,
@@ -54,41 +54,41 @@ pub(crate) enum CopyTargetShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CopyRetargetShape {
-    pub(crate) may_choose: bool,
-    pub(crate) has_new: bool,
-    pub(crate) single_target: bool,
+pub struct CopyRetargetShape {
+    pub may_choose: bool,
+    pub has_new: bool,
+    pub single_target: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CanBlockAdditionalShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) additional: u32,
+pub struct CanBlockAdditionalShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub additional: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum WinGameShape<'a> {
+pub enum WinGameShape<'a> {
     Simple,
     ConditionalTail,
     NamedZones { name_tokens: &'a [OwnedLexToken] },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct KickedAdditionalTargetsShape<'a> {
-    pub(crate) first_target_tokens: &'a [OwnedLexToken],
-    pub(crate) additional_target_tokens: &'a [OwnedLexToken],
+pub struct KickedAdditionalTargetsShape<'a> {
+    pub first_target_tokens: &'a [OwnedLexToken],
+    pub additional_target_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ConniveSubjectShape<'a> {
+pub enum ConniveSubjectShape<'a> {
     ConvokedThisSpell,
     Target(&'a [OwnedLexToken]),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ConniveClauseShape<'a> {
-    pub(crate) subject: ConniveSubjectShape<'a>,
-    pub(crate) count_tokens: &'a [OwnedLexToken],
+pub struct ConniveClauseShape<'a> {
+    pub subject: ConniveSubjectShape<'a>,
+    pub count_tokens: &'a [OwnedLexToken],
 }
 
 fn marker_anywhere<'a, O, P>(tokens: &'a [OwnedLexToken], parser: P) -> bool
@@ -210,17 +210,15 @@ fn parse_double_counters_lexed<'a>(input: &mut LexStream<'a>) -> WResult<DoubleC
     })
 }
 
-pub(crate) fn parse_double_counters_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<DoubleCountersShape<'_>> {
+pub fn parse_double_counters_tokens(tokens: &[OwnedLexToken]) -> Option<DoubleCountersShape<'_>> {
     primitives::parse_all(tokens, parse_double_counters_lexed, "double counters").ok()
 }
 
 #[path = "utility/copy_shapes.rs"]
 mod copy_shapes;
-pub(crate) use copy_shapes::*;
+pub use copy_shapes::*;
 
-pub(crate) fn has_counter_ability_markers_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn has_counter_ability_markers_tokens(tokens: &[OwnedLexToken]) -> bool {
     marker_anywhere(tokens, primitives::kw("ability"))
         && marker_anywhere(
             tokens,
@@ -285,7 +283,7 @@ fn parse_can_block_additional_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_can_block_additional_tokens(
+pub fn parse_can_block_additional_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CanBlockAdditionalShape<'_>> {
     primitives::parse_all(
@@ -351,7 +349,7 @@ fn parse_win_game_lexed<'a>(input: &mut LexStream<'a>) -> WResult<WinGameShape<'
         .ok_or_else(|| primitives::backtrack_err("win-game condition", "condition"))
 }
 
-pub(crate) fn parse_win_game_shape_tokens(tokens: &[OwnedLexToken]) -> Option<WinGameShape<'_>> {
+pub fn parse_win_game_shape_tokens(tokens: &[OwnedLexToken]) -> Option<WinGameShape<'_>> {
     primitives::parse_all(tokens, parse_win_game_lexed, "win the game").ok()
 }
 
@@ -401,7 +399,7 @@ fn parse_kicked_targets_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_kicked_additional_targets_tokens(
+pub fn parse_kicked_additional_targets_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<KickedAdditionalTargetsShape<'_>> {
     primitives::parse_all(
@@ -459,7 +457,7 @@ fn parse_connive_clause_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ConniveC
     })
 }
 
-pub(crate) fn parse_connive_clause_shape_tokens(
+pub fn parse_connive_clause_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ConniveClauseShape<'_>> {
     primitives::parse_all(tokens, parse_connive_clause_lexed, "connive clause").ok()

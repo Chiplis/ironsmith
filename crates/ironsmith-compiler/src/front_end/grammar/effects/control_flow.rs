@@ -21,7 +21,7 @@ use super::typed_clause_heads::{
 const CONTROL_FLOW_RULE: RuleId = RuleId::new("typed-effect-control-flow");
 
 #[derive(Debug, Clone)]
-pub(crate) enum RecognizedControlFlowAst {
+pub enum RecognizedControlFlowAst {
     Condition {
         condition: ControlConditionAst,
         reflexive: bool,
@@ -40,7 +40,7 @@ pub(crate) enum RecognizedControlFlowAst {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ControlFlowPlan<'a> {
+pub struct ControlFlowPlan<'a> {
     pub structure: RecognizedControlFlowAst,
     pub body_tokens: &'a [OwnedLexToken],
     pub parse_original_with_legacy: bool,
@@ -48,7 +48,7 @@ pub(crate) struct ControlFlowPlan<'a> {
 }
 
 impl ControlFlowPlan<'_> {
-    pub(crate) fn into_ast(
+    pub fn into_ast(
         self,
         effects: Vec<crate::cards::builders::EffectAst>,
     ) -> Option<CompilerControlFlowAst> {
@@ -122,9 +122,7 @@ impl ControlFlowPlan<'_> {
     }
 }
 
-pub(crate) fn recognize_control_flow(
-    tokens: &[OwnedLexToken],
-) -> ParseOutcome<ControlFlowPlan<'_>> {
+pub fn recognize_control_flow(tokens: &[OwnedLexToken]) -> ParseOutcome<ControlFlowPlan<'_>> {
     let tokens = trim_lexed_commas(tokens);
     if tokens.is_empty() {
         return ParseOutcome::NoMatch;

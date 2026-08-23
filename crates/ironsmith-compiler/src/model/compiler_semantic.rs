@@ -11,13 +11,13 @@ use super::reference_state::ReferenceImports;
 use crate::{KeywordAction, TotalCost};
 
 #[derive(Debug, Clone)]
-pub(crate) enum GiftTimingAst {
+pub enum GiftTimingAst {
     SpellResolution,
     PermanentEtb,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum LineAst {
+pub enum LineAst {
     Multiple(Vec<LineAst>),
     Abilities(Vec<KeywordAction>),
     StaticAbility(StaticAbilityAst),
@@ -53,51 +53,51 @@ pub(crate) enum LineAst {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct AdditionalCostChoiceOptionAst<Effect = EffectAst> {
-    pub(crate) description: String,
-    pub(crate) effects: Vec<Effect>,
+pub struct AdditionalCostChoiceOptionAst<Effect = EffectAst> {
+    pub description: String,
+    pub effects: Vec<Effect>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ParsedAbility {
-    pub(crate) ability:
+pub struct ParsedAbility {
+    pub ability:
         crate::model::CompilerAbilityPayload<Ability, EffectAst, ReferenceImports, TriggerSpec>,
-    pub(crate) text: Option<String>,
-    pub(crate) effects_ast: Option<Vec<EffectAst>>,
-    pub(crate) reference_imports: ReferenceImports,
-    pub(crate) trigger_spec: Option<TriggerSpec>,
+    pub text: Option<String>,
+    pub effects_ast: Option<Vec<EffectAst>>,
+    pub reference_imports: ReferenceImports,
+    pub trigger_spec: Option<TriggerSpec>,
 }
 
 impl ParsedAbility {
-    pub(crate) fn runtime(&self) -> &Ability {
+    pub fn runtime(&self) -> &Ability {
         self.ability.legacy()
     }
 
-    pub(crate) fn runtime_mut(&mut self) -> &mut Ability {
+    pub fn runtime_mut(&mut self) -> &mut Ability {
         self.ability.legacy_mut()
     }
 
-    pub(crate) fn into_runtime(self) -> Ability {
+    pub fn into_runtime(self) -> Ability {
         self.ability.into_legacy()
     }
 
-    pub(crate) fn kind(&self) -> &AbilityKind {
+    pub fn kind(&self) -> &AbilityKind {
         &self.runtime().kind
     }
 
-    pub(crate) fn kind_mut(&mut self) -> &mut AbilityKind {
+    pub fn kind_mut(&mut self) -> &mut AbilityKind {
         &mut self.runtime_mut().kind
     }
 
-    pub(crate) fn text(&self) -> &Option<String> {
+    pub fn text(&self) -> &Option<String> {
         &self.text
     }
 
-    pub(crate) fn text_mut(&mut self) -> &mut Option<String> {
+    pub fn text_mut(&mut self) -> &mut Option<String> {
         &mut self.text
     }
 
-    pub(crate) fn functional_zones_mut(&mut self) -> &mut Vec<Zone> {
+    pub fn functional_zones_mut(&mut self) -> &mut Vec<Zone> {
         &mut self.runtime_mut().functional_zones
     }
 }
@@ -111,16 +111,16 @@ impl From<Ability>
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ParsedOptionalCostAst {
+pub struct ParsedOptionalCostAst {
     runtime: OptionalCost,
 }
 
 impl ParsedOptionalCostAst {
-    pub(crate) fn new(runtime: OptionalCost) -> Self {
+    pub fn new(runtime: OptionalCost) -> Self {
         Self { runtime }
     }
 
-    pub(crate) fn into_runtime(self) -> OptionalCost {
+    pub fn into_runtime(self) -> OptionalCost {
         self.runtime
     }
 }
@@ -132,21 +132,20 @@ impl From<OptionalCost> for ParsedOptionalCostAst {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ParsedAlternativeCastingMethodAst {
+pub struct ParsedAlternativeCastingMethodAst {
     runtime: AlternativeCastingMethod,
 }
 
 impl ParsedAlternativeCastingMethodAst {
-    pub(crate) fn new(runtime: AlternativeCastingMethod) -> Self {
+    pub fn new(runtime: AlternativeCastingMethod) -> Self {
         Self { runtime }
     }
 
-    #[cfg(test)]
-    pub(crate) fn as_runtime(&self) -> &AlternativeCastingMethod {
+    pub fn as_runtime(&self) -> &AlternativeCastingMethod {
         &self.runtime
     }
 
-    pub(crate) fn into_runtime(self) -> AlternativeCastingMethod {
+    pub fn into_runtime(self) -> AlternativeCastingMethod {
         self.runtime
     }
 }
@@ -158,102 +157,102 @@ impl From<AlternativeCastingMethod> for ParsedAlternativeCastingMethodAst {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum ParsedCardItem {
+pub enum ParsedCardItem {
     Line(ParsedLineAst),
     Modal(ParsedModalAst),
     LevelAbility(ParsedLevelAbilityAst),
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ParsedLineAst {
-    pub(crate) info: LineInfo,
-    pub(crate) chunks: Vec<LineAst>,
-    pub(crate) restrictions: ParsedRestrictions,
-    pub(crate) semantic_facts: LineSemanticFacts,
+pub struct ParsedLineAst {
+    pub info: LineInfo,
+    pub chunks: Vec<LineAst>,
+    pub restrictions: ParsedRestrictions,
+    pub semantic_facts: LineSemanticFacts,
 }
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct ParsedRestrictions {
-    pub(crate) activation: Vec<ParsedActivationRestriction>,
-    pub(crate) trigger: Vec<ParsedTriggerRestriction>,
+pub struct ParsedRestrictions {
+    pub activation: Vec<ParsedActivationRestriction>,
+    pub trigger: Vec<ParsedTriggerRestriction>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ActivationRestrictionNormalizationFact {
+pub enum ActivationRestrictionNormalizationFact {
     Preserve,
     Redundant,
     Residual(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ParsedActivationRestriction {
+pub struct ParsedActivationRestriction {
     /// Normalized Oracle surface retained only for presentation/fallback behavior.
-    pub(crate) presentation_text: String,
-    pub(crate) timing: Option<ActivationTiming>,
-    pub(crate) condition: Option<ConditionExpr>,
-    pub(crate) text_only_condition: Option<ConditionExpr>,
-    pub(crate) normalization: ActivationRestrictionNormalizationFact,
-    pub(crate) mana_usage_restriction: Option<ManaUsageRestriction>,
+    pub presentation_text: String,
+    pub timing: Option<ActivationTiming>,
+    pub condition: Option<ConditionExpr>,
+    pub text_only_condition: Option<ConditionExpr>,
+    pub normalization: ActivationRestrictionNormalizationFact,
+    pub mana_usage_restriction: Option<ManaUsageRestriction>,
     /// Oracle placed the once-per-turn clause after another activation
     /// restriction (for example, "... only if ... and only once each turn").
-    pub(crate) once_per_turn_after_other_restrictions: bool,
+    pub once_per_turn_after_other_restrictions: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ParsedTriggerRestriction {
-    pub(crate) presentation_text: String,
-    pub(crate) max_times_each_turn: Option<u32>,
+pub struct ParsedTriggerRestriction {
+    pub presentation_text: String,
+    pub max_times_each_turn: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ParsedManaRestriction {
+pub struct ParsedManaRestriction {
     /// Normalized Oracle surface retained for diagnostics and unsupported fallback behavior.
-    pub(crate) presentation_text: String,
-    pub(crate) timing: ActivationTiming,
-    pub(crate) condition: Option<ConditionExpr>,
-    pub(crate) usage_restriction: Option<ManaUsageRestriction>,
+    pub presentation_text: String,
+    pub timing: ActivationTiming,
+    pub condition: Option<ConditionExpr>,
+    pub usage_restriction: Option<ManaUsageRestriction>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ParsedModalAst {
-    pub(crate) header: ParsedModalHeader,
-    pub(crate) modes: Vec<ParsedModalModeAst>,
+pub struct ParsedModalAst {
+    pub header: ParsedModalHeader,
+    pub modes: Vec<ParsedModalModeAst>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ParsedModalHeader {
-    pub(crate) min: Value,
-    pub(crate) max: Option<Value>,
-    pub(crate) spree: bool,
-    pub(crate) tiered: bool,
-    pub(crate) weighted_mode_points: bool,
-    pub(crate) random: bool,
-    pub(crate) same_mode_more_than_once: bool,
-    pub(crate) mode_must_be_unchosen: bool,
-    pub(crate) mode_must_be_unchosen_this_turn: bool,
-    pub(crate) distinct_player_targets_per_mode: bool,
-    pub(crate) if_kicked_choose_any_number: bool,
-    pub(crate) conditional_mode_change: Option<ParsedConditionalModeChange>,
-    pub(crate) presentation_label: Option<crate::ability::PresentationLabel>,
-    pub(crate) commander_allows_both: bool,
-    pub(crate) choose_both_control_card_types: Vec<crate::types::CardType>,
-    pub(crate) choose_both_exact_life_total: Option<i32>,
-    pub(crate) trigger: Option<TriggerSpec>,
-    pub(crate) activated: Option<ParsedModalActivatedHeader>,
-    pub(crate) x_replacement: Option<Value>,
-    pub(crate) prefix_effects_ast: Vec<EffectAst>,
+pub struct ParsedModalHeader {
+    pub min: Value,
+    pub max: Option<Value>,
+    pub spree: bool,
+    pub tiered: bool,
+    pub weighted_mode_points: bool,
+    pub random: bool,
+    pub same_mode_more_than_once: bool,
+    pub mode_must_be_unchosen: bool,
+    pub mode_must_be_unchosen_this_turn: bool,
+    pub distinct_player_targets_per_mode: bool,
+    pub if_kicked_choose_any_number: bool,
+    pub conditional_mode_change: Option<ParsedConditionalModeChange>,
+    pub presentation_label: Option<crate::ability::PresentationLabel>,
+    pub commander_allows_both: bool,
+    pub choose_both_control_card_types: Vec<crate::types::CardType>,
+    pub choose_both_exact_life_total: Option<i32>,
+    pub trigger: Option<TriggerSpec>,
+    pub activated: Option<ParsedModalActivatedHeader>,
+    pub x_replacement: Option<Value>,
+    pub prefix_effects_ast: Vec<EffectAst>,
     /// Typed effects authored after `choose ... and` and before the mode list.
-    pub(crate) common_prefix_effects_ast: Vec<EffectAst>,
+    pub common_prefix_effects_ast: Vec<EffectAst>,
     /// Typed effects authored after the modal choice sentence but before the
     /// bullet list. Semantic lowering specializes target-dependent suffixes
     /// into every mode while retaining their shared presentation boundary.
-    pub(crate) common_suffix_effects_ast: Vec<EffectAst>,
-    pub(crate) modal_gate: Option<ParsedModalGate>,
-    pub(crate) line_text: String,
+    pub common_suffix_effects_ast: Vec<EffectAst>,
+    pub modal_gate: Option<ParsedModalGate>,
+    pub line_text: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ConditionalModeSelection {
+pub enum ConditionalModeSelection {
     BothOrTwo,
     AnyNumber,
     OneOrMore,
@@ -261,54 +260,54 @@ pub(crate) enum ConditionalModeSelection {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ParsedConditionalModeChange {
-    pub(crate) condition: crate::cards::builders::PredicateAst,
-    pub(crate) selection: ConditionalModeSelection,
+pub struct ParsedConditionalModeChange {
+    pub condition: crate::cards::builders::PredicateAst,
+    pub selection: ConditionalModeSelection,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ParsedModalActivatedHeader {
-    pub(crate) mana_cost: TotalCost,
-    pub(crate) functional_zones: Vec<Zone>,
-    pub(crate) timing: ActivationTiming,
-    pub(crate) is_loyalty_ability: bool,
-    pub(crate) additional_restrictions: Vec<String>,
-    pub(crate) activation_restrictions: Vec<ConditionExpr>,
+pub struct ParsedModalActivatedHeader {
+    pub mana_cost: TotalCost,
+    pub functional_zones: Vec<Zone>,
+    pub timing: ActivationTiming,
+    pub is_loyalty_ability: bool,
+    pub additional_restrictions: Vec<String>,
+    pub activation_restrictions: Vec<ConditionExpr>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ParsedModalModeAst {
-    pub(crate) info: LineInfo,
-    pub(crate) description: String,
-    pub(crate) point_cost: Option<u32>,
-    pub(crate) additional_mana_cost: Option<crate::mana::ManaCost>,
-    pub(crate) effects_ast: Vec<EffectAst>,
+pub struct ParsedModalModeAst {
+    pub info: LineInfo,
+    pub description: String,
+    pub point_cost: Option<u32>,
+    pub additional_mana_cost: Option<crate::mana::ManaCost>,
+    pub effects_ast: Vec<EffectAst>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ParsedModalGate {
-    pub(crate) predicate: EffectPredicate,
-    pub(crate) remove_mode_only: bool,
-    pub(crate) reflexive: bool,
+pub struct ParsedModalGate {
+    pub predicate: EffectPredicate,
+    pub remove_mode_only: bool,
+    pub reflexive: bool,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ParsedLevelAbilityAst {
-    pub(crate) min_level: u32,
-    pub(crate) max_level: Option<u32>,
-    pub(crate) pt: Option<(i32, i32)>,
-    pub(crate) items: Vec<ParsedLevelAbilityItemAst>,
+pub struct ParsedLevelAbilityAst {
+    pub min_level: u32,
+    pub max_level: Option<u32>,
+    pub pt: Option<(i32, i32)>,
+    pub items: Vec<ParsedLevelAbilityItemAst>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ParsedLevelActivatedAbilityAst {
-    pub(crate) info: LineInfo,
-    pub(crate) chunk: LineAst,
-    pub(crate) restrictions: ParsedRestrictions,
+pub struct ParsedLevelActivatedAbilityAst {
+    pub info: LineInfo,
+    pub chunk: LineAst,
+    pub restrictions: ParsedRestrictions,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum ParsedLevelAbilityItemAst {
+pub enum ParsedLevelAbilityItemAst {
     StaticAbilities(Vec<StaticAbilityAst>),
     KeywordActions(Vec<KeywordAction>),
     ActivatedAbility(ParsedLevelActivatedAbilityAst),

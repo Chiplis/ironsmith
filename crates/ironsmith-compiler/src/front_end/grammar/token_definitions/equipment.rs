@@ -61,9 +61,7 @@ fn granted_ability_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> 
 mod scaled_grants;
 use scaled_grants::scaled_equipment_grant_tokens;
 
-pub(crate) fn parse_equipment_rules_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<EquipmentRulesShape> {
+pub fn parse_equipment_rules_tokens(tokens: &[OwnedLexToken]) -> Option<EquipmentRulesShape> {
     let words = parser_token_word_refs(tokens);
     if !common::phrase_present(&words, &["equipped", "creature"]) {
         return None;
@@ -205,7 +203,7 @@ pub(super) fn first_generic_mana(tokens: &[OwnedLexToken]) -> Option<u32> {
     None
 }
 
-pub(crate) fn parse_equipment_damage_grant_tokens(
+pub fn parse_equipment_damage_grant_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EquipmentDamageGrantShape> {
     let (colon_idx, _, effect_tokens) =

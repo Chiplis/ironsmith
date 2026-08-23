@@ -8,7 +8,7 @@ use super::recognition::{
     then_followup_facts,
 };
 
-pub(crate) fn split_effect_chain_on_and_tokens(
+pub fn split_effect_chain_on_and_tokens(
     tokens: &[OwnedLexToken],
     extended: bool,
 ) -> Vec<&[OwnedLexToken]> {
@@ -49,7 +49,7 @@ pub(crate) fn split_effect_chain_on_and_tokens(
     segments
 }
 
-pub(crate) fn split_segments_on_comma_then_tokens(
+pub fn split_segments_on_comma_then_tokens(
     segments: Vec<&[OwnedLexToken]>,
     mut is_ability_head: impl FnMut(&[OwnedLexToken]) -> bool,
 ) -> Vec<&[OwnedLexToken]> {
@@ -82,7 +82,7 @@ pub(crate) fn split_segments_on_comma_then_tokens(
 /// Return whether the generic chain grammar accepts an authored `, then`
 /// boundary. A bare same-sentence `then`, sentence-leading `Then`, and quoted
 /// text remain distinct surfaces.
-pub(crate) fn has_explicit_comma_then_boundary_tokens(
+pub fn has_explicit_comma_then_boundary_tokens(
     tokens: &[OwnedLexToken],
     mut is_ability_head: impl FnMut(&[OwnedLexToken]) -> bool,
 ) -> bool {
@@ -97,7 +97,7 @@ pub(crate) fn has_explicit_comma_then_boundary_tokens(
 /// the clauses before parsing, so it rejects some pronoun-bearing tails. Once
 /// a specialist has already produced multiple typed effects, those safety
 /// heuristics must not erase the connective's presentation provenance.
-pub(crate) fn has_authored_comma_then_surface_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn has_authored_comma_then_surface_tokens(tokens: &[OwnedLexToken]) -> bool {
     let mut inside_quotes = false;
     for (idx, token) in tokens.iter().enumerate() {
         if token.kind == TokenKind::Quote {
@@ -168,7 +168,7 @@ fn find_then_split(
     None
 }
 
-pub(crate) fn split_segments_on_comma_effect_head_tokens(
+pub fn split_segments_on_comma_effect_head_tokens(
     segments: Vec<&[OwnedLexToken]>,
 ) -> Vec<&[OwnedLexToken]> {
     let mut result = Vec::new();

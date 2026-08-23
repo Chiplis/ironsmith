@@ -13,14 +13,14 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, TokenWordView, trim_l
 use super::super::{filters, leaf, primitives, token_definitions};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ReplacementPlayerKind {
+pub enum ReplacementPlayerKind {
     Any,
     You,
     Opponent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SimpleSourceReplacementKind {
+pub enum SimpleSourceReplacementKind {
     Any,
     Creature,
     Artifact,
@@ -29,13 +29,13 @@ pub(crate) enum SimpleSourceReplacementKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ExileWouldDieVictimKind {
+pub enum ExileWouldDieVictimKind {
     Creature,
     Permanent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ExileGraveyardFilterKind {
+pub enum ExileGraveyardFilterKind {
     Source,
     AnyCard,
     CreatureCard,
@@ -44,15 +44,15 @@ pub(crate) enum ExileGraveyardFilterKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ExileToGraveyardReplacementSpec<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) filter_kind: ExileGraveyardFilterKind,
-    pub(crate) graveyard_owner: ReplacementPlayerKind,
-    pub(crate) exclude_cycled: bool,
+pub struct ExileToGraveyardReplacementSpec<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub filter_kind: ExileGraveyardFilterKind,
+    pub graveyard_owner: ReplacementPlayerKind,
+    pub exclude_cycled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ExileWouldDieSpec {
+pub enum ExileWouldDieSpec {
     NontokenCreature {
         controller: ReplacementPlayerKind,
         exile_counter: Option<CounterType>,
@@ -66,7 +66,7 @@ pub(crate) enum ExileWouldDieSpec {
     SimpleCreature(ReplacementPlayerKind),
 }
 
-pub(crate) fn parse_exile_to_graveyard_replacement_tokens(
+pub fn parse_exile_to_graveyard_replacement_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ExileToGraveyardReplacementSpec<'_>> {
     primitives::parse_all(
@@ -77,7 +77,7 @@ pub(crate) fn parse_exile_to_graveyard_replacement_tokens(
     .ok()
 }
 
-pub(crate) fn parse_exile_would_die_tokens(tokens: &[OwnedLexToken]) -> Option<ExileWouldDieSpec> {
+pub fn parse_exile_would_die_tokens(tokens: &[OwnedLexToken]) -> Option<ExileWouldDieSpec> {
     primitives::parse_all(
         tokens,
         alt((

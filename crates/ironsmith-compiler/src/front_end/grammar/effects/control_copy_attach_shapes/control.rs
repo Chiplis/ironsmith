@@ -13,18 +13,18 @@ use crate::util::{
 };
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct GainControlClauseShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) duration_tokens: &'a [OwnedLexToken],
-    pub(crate) delayed_until_end_of_combat: bool,
-    pub(crate) dynamic_power_bound: bool,
+pub struct GainControlClauseShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
+    pub duration_tokens: &'a [OwnedLexToken],
+    pub delayed_until_end_of_combat: bool,
+    pub dynamic_power_bound: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PermanentControlDurationShape {
-    pub(crate) until: Until,
-    pub(crate) condition: Option<ConditionExpr>,
-    pub(crate) source_surface: Option<SourceReferenceSurface>,
+pub struct PermanentControlDurationShape {
+    pub until: Until,
+    pub condition: Option<ConditionExpr>,
+    pub source_surface: Option<SourceReferenceSurface>,
 }
 
 fn min_offset(left: Option<usize>, right: Option<usize>) -> Option<usize> {
@@ -59,7 +59,7 @@ fn delayed_combat_start(tokens: &[OwnedLexToken]) -> Option<usize> {
     min_offset(without_article, with_article)
 }
 
-pub(crate) fn parse_gain_control_clause_shape(
+pub fn parse_gain_control_clause_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<GainControlClauseShape<'_>> {
     let tokens = trim_lexed_commas(tokens);
@@ -225,7 +225,7 @@ fn parse_predicate_control_duration(tokens: &[OwnedLexToken]) -> Option<Until> {
     None
 }
 
-pub(crate) fn parse_control_duration_shape(tokens: &[OwnedLexToken]) -> Option<ControlDurationAst> {
+pub fn parse_control_duration_shape(tokens: &[OwnedLexToken]) -> Option<ControlDurationAst> {
     let tokens = trim_lexed_commas(tokens);
     if tokens.is_empty() {
         return Some(ControlDurationAst::Forever);
@@ -247,7 +247,7 @@ pub(crate) fn parse_control_duration_shape(tokens: &[OwnedLexToken]) -> Option<C
     None
 }
 
-pub(crate) fn parse_permanent_control_duration_shape(
+pub fn parse_permanent_control_duration_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PermanentControlDurationShape> {
     if permission_shapes::contains_tokens(tokens, &["for", "as", "long", "as"])

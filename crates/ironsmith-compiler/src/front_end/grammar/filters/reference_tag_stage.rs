@@ -12,7 +12,7 @@ use crate::types::SubtypeFamily;
 const TARGET_OR_TARGETS_WORDS: &[&str] = &["target", "targets"];
 const THAT_WORD: &str = "that";
 
-pub(crate) fn compound_filter_subtype_prefix_word_len(words: &[&str]) -> Option<usize> {
+pub fn compound_filter_subtype_prefix_word_len(words: &[&str]) -> Option<usize> {
     if words.get(..2) == Some(&["time", "lord"]) {
         return Some(2);
     }
@@ -397,7 +397,7 @@ fn has_plural_object_noun_surface(tokens: &[OwnedLexToken]) -> bool {
 /// Unlike [`has_plural_object_noun_surface`], this stops at the first object
 /// noun so a singular destination such as "a permanent attached to creatures
 /// you control" is not widened by a plural noun in its relative clause.
-pub(crate) fn has_plural_object_head_surface(tokens: &[OwnedLexToken]) -> bool {
+pub fn has_plural_object_head_surface(tokens: &[OwnedLexToken]) -> bool {
     tokens
         .iter()
         .filter_map(OwnedLexToken::as_word)
@@ -1002,7 +1002,7 @@ fn strip_be_put_on_reference_prefix(all_words: &mut Vec<&str>, segment_tokens: &
     all_words.drain(0..3);
 }
 
-pub(crate) fn parse_object_filter_with_grammar_entrypoint_lexed(
+pub fn parse_object_filter_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
@@ -1041,7 +1041,7 @@ pub(crate) fn parse_object_filter_with_grammar_entrypoint_lexed(
 /// "land that is snow or could produce {C}", but it cannot represent the
 /// second arm without this typed capability predicate and would otherwise
 /// silently narrow the legal set to snow lands.
-pub(crate) fn apply_supertype_or_mana_capability_union(
+pub fn apply_supertype_or_mana_capability_union(
     filter: &mut ObjectFilter,
     tokens: &[OwnedLexToken],
 ) {

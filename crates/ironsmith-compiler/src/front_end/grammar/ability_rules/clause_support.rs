@@ -357,7 +357,7 @@ fn protection_from_each_mana_value_among_action(tokens: &[OwnedLexToken]) -> Opt
         .map(KeywordAction::ProtectionFromEachManaValueAmong)
 }
 
-pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
+pub fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     let chain = clause_grammar::parse_protection_chain_tokens(tokens)?;
     let words = TokenWordView::new(tokens).word_refs();
     let mut actions = Vec::new();
@@ -458,7 +458,7 @@ fn parse_hexproof_from_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordActi
     Some(vec![KeywordAction::HexproofFrom(filter)])
 }
 
-pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
+pub fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     fn parse_simple_keyword_phrase_lexed(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
         let words_view = TokenWordView::new(tokens);
         let words = words_view.word_refs();
@@ -703,7 +703,7 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
     }
 }
 
-pub(crate) fn parse_effect_sentences_lexed(
+pub fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     super::effect_sentences::parse_effect_sentences_lexed(tokens)
@@ -729,7 +729,7 @@ fn parse_effect_sentences_or_single_sentence_lexed(
 /// `this combat` is the lifetime of the delayed trigger, not part of the
 /// damage recipient. Keep that lifetime decision with the caller while this
 /// rule returns the typed recipient and the effects following the comma.
-pub(crate) fn parse_linked_combat_damage_clause_lexed(
+pub fn parse_linked_combat_damage_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerFilter, Vec<EffectAst>)>, CardTextError> {
     let intro = clause_grammar::parse_trigger_intro_tokens(tokens);
@@ -790,7 +790,7 @@ fn trigger_without_intro(trigger: &TriggerSpec) -> &TriggerSpec {
 /// This must run in the shared triggered-line parser, rather than only during
 /// semantic rewriting, because the CST classifier probes the complete physical
 /// line before it prepares a triggered rewrite item.
-pub(crate) fn parse_linked_attack_group_combat_triggered_line_lexed(
+pub fn parse_linked_attack_group_combat_triggered_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {
     let sentences = split_lexed_sentences(tokens);
@@ -852,9 +852,7 @@ pub(crate) fn parse_linked_attack_group_combat_triggered_line_lexed(
     }))
 }
 
-pub(crate) fn parse_triggered_line_lexed(
-    tokens: &[OwnedLexToken],
-) -> Result<LineAst, CardTextError> {
+pub fn parse_triggered_line_lexed(tokens: &[OwnedLexToken]) -> Result<LineAst, CardTextError> {
     let (tokens, trailing_cap) =
         crate::grammar::document_shapes::parse_trailing_trigger_cap_suffix_tokens(tokens)
             .map(|shape| {
@@ -1433,13 +1431,11 @@ fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst,
     )))
 }
 
-pub(crate) fn parse_trigger_clause_lexed(
-    tokens: &[OwnedLexToken],
-) -> Result<TriggerSpec, CardTextError> {
+pub fn parse_trigger_clause_lexed(tokens: &[OwnedLexToken]) -> Result<TriggerSpec, CardTextError> {
     super::activation_and_restrictions::parse_trigger_clause_lexed(tokens)
 }
 
-pub(crate) fn parse_static_ability_ast_line_lexed(
+pub fn parse_static_ability_ast_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     super::keyword_static::parse_static_ability_ast_line_lexed(tokens)

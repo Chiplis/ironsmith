@@ -8,7 +8,7 @@ use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TriggerKindAst {
+pub enum TriggerKindAst {
     Normal,
     Reflexive,
     Delayed,
@@ -18,7 +18,7 @@ pub(crate) enum TriggerKindAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum TriggerSubjectAst {
+pub enum TriggerSubjectAst {
     Source,
     Object(ObjectFilter),
     Player(PlayerFilter),
@@ -26,13 +26,13 @@ pub(crate) enum TriggerSubjectAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TriggerZoneTransitionAst {
+pub struct TriggerZoneTransitionAst {
     pub from: Option<Zone>,
     pub to: Option<Zone>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TriggerFrequencyAst {
+pub enum TriggerFrequencyAst {
     EachOccurrence,
     Once,
     AtMostPerTurn(u32),
@@ -40,7 +40,7 @@ pub(crate) enum TriggerFrequencyAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TriggerReferenceSurfaceAst {
+pub enum TriggerReferenceSurfaceAst {
     It,
     That,
     Those,
@@ -49,19 +49,19 @@ pub(crate) enum TriggerReferenceSurfaceAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TriggerReferenceAst {
+pub struct TriggerReferenceAst {
     pub surface: TriggerReferenceSurfaceAst,
     pub reference: SymbolReference,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TriggerBindingsAst {
+pub struct TriggerBindingsAst {
     pub triggering_object: Option<SymbolReference>,
     pub triggering_event: SymbolReference,
 }
 
 impl TriggerBindingsAst {
-    pub(crate) fn allocate(
+    pub fn allocate(
         context: ParseContextView<'_>,
         triggering_object_cardinality: Option<Cardinality>,
         provenance: Option<ProvenanceId>,
@@ -102,7 +102,7 @@ impl TriggerBindingsAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerTriggerEventAst {
+pub struct CompilerTriggerEventAst {
     pub intro: TriggerIntroSurfaceAst,
     pub kind: TriggerKindAst,
     pub subject: TriggerSubjectAst,
@@ -118,14 +118,14 @@ pub(crate) struct CompilerTriggerEventAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LinkedTriggerEffectAst {
+pub struct LinkedTriggerEffectAst {
     pub effect_index: usize,
     pub triggering_object: Option<SymbolReference>,
     pub triggering_event: SymbolReference,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerTriggeredAbilityAst {
+pub struct CompilerTriggeredAbilityAst {
     pub event: CompilerTriggerEventAst,
     /// Branch-scoped executable program. `effects` remains as the finite
     /// compatibility payload until the PR-31 lowering migration.

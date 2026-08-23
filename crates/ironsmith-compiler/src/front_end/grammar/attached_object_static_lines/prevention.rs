@@ -13,32 +13,32 @@ use super::subjects::{semantic_finish, semantic_kw, semantic_phrase};
 
 #[path = "prevention/prevent_all.rs"]
 mod prevent_all;
-pub(crate) use prevent_all::*;
+pub use prevent_all::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RemoveCounterPreventionAmount {
+pub enum RemoveCounterPreventionAmount {
     Fixed(u32),
     DamageAmount,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RemoveCounterPreventionFollowUp {
-    pub(crate) counter_type: CounterType,
-    pub(crate) counters_per_removed: u32,
+pub struct RemoveCounterPreventionFollowUp {
+    pub counter_type: CounterType,
+    pub counters_per_removed: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RemoveCounterPreventionSpec<'a> {
-    pub(crate) counter_type: CounterType,
-    pub(crate) amount: RemoveCounterPreventionAmount,
-    pub(crate) condition_tokens: Option<&'a [OwnedLexToken]>,
-    pub(crate) follow_up: Option<RemoveCounterPreventionFollowUp>,
-    pub(crate) one_damage_per_counter: bool,
-    pub(crate) separate_removal_sentence: bool,
+pub struct RemoveCounterPreventionSpec<'a> {
+    pub counter_type: CounterType,
+    pub amount: RemoveCounterPreventionAmount,
+    pub condition_tokens: Option<&'a [OwnedLexToken]>,
+    pub follow_up: Option<RemoveCounterPreventionFollowUp>,
+    pub one_damage_per_counter: bool,
+    pub separate_removal_sentence: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PutCounterPreventionSpec<'a> {
+pub enum PutCounterPreventionSpec<'a> {
     General {
         condition_tokens: Option<&'a [OwnedLexToken]>,
         display_prefix_tokens: &'a [OwnedLexToken],
@@ -48,7 +48,7 @@ pub(crate) enum PutCounterPreventionSpec<'a> {
     CreatureCombat,
 }
 
-pub(crate) fn parse_remove_counter_prevention_tokens(
+pub fn parse_remove_counter_prevention_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<RemoveCounterPreventionSpec<'_>> {
     primitives::parse_all(
@@ -59,7 +59,7 @@ pub(crate) fn parse_remove_counter_prevention_tokens(
     .ok()
 }
 
-pub(crate) fn parse_put_counter_prevention_tokens(
+pub fn parse_put_counter_prevention_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PutCounterPreventionSpec<'_>> {
     primitives::parse_all(

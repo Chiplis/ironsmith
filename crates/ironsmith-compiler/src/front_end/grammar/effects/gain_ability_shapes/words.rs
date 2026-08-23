@@ -6,7 +6,7 @@ use crate::grammar::leaf;
 use crate::grammar::primitives::{self, WordSliceInput};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum GainAbilityVerb {
+pub enum GainAbilityVerb {
     Gain,
     Lose,
     Has,
@@ -15,7 +15,7 @@ pub(crate) enum GainAbilityVerb {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SharedAbilityTail {
+pub enum SharedAbilityTail {
     Gain,
     Lose,
     Has,
@@ -23,24 +23,24 @@ pub(crate) enum SharedAbilityTail {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum AbilityReferenceSurface {
+pub enum AbilityReferenceSurface {
     ThisAbility,
     AllAbilities,
     Other,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct GainSubjectShape {
-    pub(crate) demonstrative_object: bool,
-    pub(crate) demonstrative_player: bool,
-    pub(crate) pronoun: bool,
-    pub(crate) tagged_pronoun: bool,
-    pub(crate) target: bool,
-    pub(crate) controller_tail: bool,
-    pub(crate) player_any: bool,
-    pub(crate) player_you: bool,
-    pub(crate) you_and_permanents: bool,
-    pub(crate) source_subject: bool,
+pub struct GainSubjectShape {
+    pub demonstrative_object: bool,
+    pub demonstrative_player: bool,
+    pub pronoun: bool,
+    pub tagged_pronoun: bool,
+    pub target: bool,
+    pub controller_tail: bool,
+    pub player_any: bool,
+    pub player_you: bool,
+    pub you_and_permanents: bool,
+    pub source_subject: bool,
 }
 
 fn gain_word(input: &mut WordSliceInput<'_>) -> WResult<GainAbilityVerb> {
@@ -113,11 +113,11 @@ fn first_matching_verb(words: &[&str], search: VerbSearch) -> Option<(usize, Gai
     None
 }
 
-pub(crate) fn find_gain_ability_verb(words: &[&str]) -> Option<(usize, GainAbilityVerb)> {
+pub fn find_gain_ability_verb(words: &[&str]) -> Option<(usize, GainAbilityVerb)> {
     first_matching_verb(words, VerbSearch::GainLoseHas)
 }
 
-pub(crate) fn find_primary_gain_ability_verb(words: &[&str]) -> Option<(usize, GainAbilityVerb)> {
+pub fn find_primary_gain_ability_verb(words: &[&str]) -> Option<(usize, GainAbilityVerb)> {
     let (offset, verb) = find_gain_ability_verb(words)?;
     if verb != GainAbilityVerb::Has {
         return Some((offset, verb));
@@ -147,10 +147,7 @@ pub(crate) fn find_primary_gain_ability_verb(words: &[&str]) -> Option<(usize, G
     Some((offset + 1 + tail + 1, verb))
 }
 
-pub(crate) fn find_gain_or_lose_verb(
-    words: &[&str],
-    losing: bool,
-) -> Option<(usize, GainAbilityVerb)> {
+pub fn find_gain_or_lose_verb(words: &[&str], losing: bool) -> Option<(usize, GainAbilityVerb)> {
     if losing {
         first_matching_verb(words, VerbSearch::Lose)
     } else {
@@ -158,11 +155,11 @@ pub(crate) fn find_gain_or_lose_verb(
     }
 }
 
-pub(crate) fn find_get_verb(words: &[&str]) -> Option<usize> {
+pub fn find_get_verb(words: &[&str]) -> Option<usize> {
     first_matching_verb(words, VerbSearch::Get).map(|(offset, _)| offset)
 }
 
-pub(crate) fn find_become_verb(words: &[&str]) -> Option<usize> {
+pub fn find_become_verb(words: &[&str]) -> Option<usize> {
     first_matching_verb(words, VerbSearch::Become).map(|(offset, _)| offset)
 }
 
@@ -177,10 +174,7 @@ fn shared_tail_parser(input: &mut WordSliceInput<'_>) -> WResult<SharedAbilityTa
     .parse_next(input)
 }
 
-pub(crate) fn find_shared_ability_tail(
-    words: &[&str],
-    expected: SharedAbilityTail,
-) -> Option<usize> {
+pub fn find_shared_ability_tail(words: &[&str], expected: SharedAbilityTail) -> Option<usize> {
     let mut offset = 0usize;
     while offset < words.len() {
         let mut input = &words[offset..];
@@ -210,39 +204,39 @@ fn word_present(words: &[&str], expected: &'static str) -> bool {
     false
 }
 
-pub(crate) fn gain_words_include_token_noun(words: &[&str]) -> bool {
+pub fn gain_words_include_token_noun(words: &[&str]) -> bool {
     word_present(words, "token") || word_present(words, "tokens")
 }
 
-pub(crate) fn gain_words_include_target(words: &[&str]) -> bool {
+pub fn gain_words_include_target(words: &[&str]) -> bool {
     word_present(words, "target")
 }
 
-pub(crate) fn gain_words_include_control_verb(words: &[&str]) -> bool {
+pub fn gain_words_include_control_verb(words: &[&str]) -> bool {
     word_present(words, "control") || word_present(words, "controls")
 }
 
-pub(crate) fn gain_word_is_connector(word: &str) -> bool {
+pub fn gain_word_is_connector(word: &str) -> bool {
     matches!(word, "and" | "then")
 }
 
-pub(crate) fn gain_word_is_trigger_intro(word: &str) -> bool {
+pub fn gain_word_is_trigger_intro(word: &str) -> bool {
     matches!(word, "when" | "whenever" | "at")
 }
 
-pub(crate) fn gain_word_is_when_intro(word: &str) -> bool {
+pub fn gain_word_is_when_intro(word: &str) -> bool {
     matches!(word, "when" | "whenever")
 }
 
-pub(crate) fn gain_word_is_pronoun(word: &str) -> bool {
+pub fn gain_word_is_pronoun(word: &str) -> bool {
     matches!(word, "it" | "they")
 }
 
-pub(crate) fn gain_word_is_source_noun(word: &str) -> bool {
+pub fn gain_word_is_source_noun(word: &str) -> bool {
     matches!(word, "creature" | "permanent" | "spell" | "card")
 }
 
-pub(crate) fn find_gain_and_separator(words: &[&str], after: usize) -> Option<usize> {
+pub fn find_gain_and_separator(words: &[&str], after: usize) -> Option<usize> {
     let mut offset = after;
     while offset < words.len() {
         let mut input = &words[offset..];
@@ -257,7 +251,7 @@ pub(crate) fn find_gain_and_separator(words: &[&str], after: usize) -> Option<us
     None
 }
 
-pub(crate) fn gain_verb_is_life_or_control_head(word: &str) -> bool {
+pub fn gain_verb_is_life_or_control_head(word: &str) -> bool {
     matches!(word, "life" | "control")
 }
 
@@ -301,7 +295,7 @@ fn demonstrative_gain_subject_tail<'a>(words: &'a [&'a str]) -> Option<&'a [&'a 
         })
 }
 
-pub(crate) fn classify_gain_subject<'a>(words: &'a [&'a str]) -> GainSubjectShape {
+pub fn classify_gain_subject<'a>(words: &'a [&'a str]) -> GainSubjectShape {
     let demonstrative_tail = demonstrative_gain_subject_tail(words);
     let demonstrative_player = demonstrative_tail
         .and_then(|tail| tail.first())
@@ -368,15 +362,13 @@ pub(crate) fn classify_gain_subject<'a>(words: &'a [&'a str]) -> GainSubjectShap
     }
 }
 
-pub(crate) fn starts_nested_triggered_ability(words: &[&str]) -> bool {
+pub fn starts_nested_triggered_ability(words: &[&str]) -> bool {
     primitives::parse_word_sequence_prefix(words, &["when"]).is_some()
         || primitives::parse_word_sequence_prefix(words, &["whenever"]).is_some()
         || primitives::parse_word_sequence_prefix(words, &["at", "the"]).is_some()
 }
 
-pub(crate) fn classify_ability_reference_surface<'a>(
-    words: &'a [&'a str],
-) -> AbilityReferenceSurface {
+pub fn classify_ability_reference_surface<'a>(words: &'a [&'a str]) -> AbilityReferenceSurface {
     if primitives::parse_full_word_slice(
         words,
         (
@@ -404,7 +396,7 @@ pub(crate) fn classify_ability_reference_surface<'a>(
     }
 }
 
-pub(crate) fn is_must_attack_this_combat_tail(words: &[&str]) -> bool {
+pub fn is_must_attack_this_combat_tail(words: &[&str]) -> bool {
     primitives::parse_full_word_slice(
         words,
         (
@@ -480,7 +472,7 @@ fn subject_start_at(words: &[&str], offset: usize) -> Option<usize> {
     None
 }
 
-pub(crate) fn find_gain_real_subject_start(words: &[&str], before_get: usize) -> usize {
+pub fn find_gain_real_subject_start(words: &[&str], before_get: usize) -> usize {
     let mut offset = before_get;
     while offset > 0 {
         offset -= 1;
@@ -491,7 +483,7 @@ pub(crate) fn find_gain_real_subject_start(words: &[&str], before_get: usize) ->
     0
 }
 
-pub(crate) fn gain_clause_is_defender_as_if_attack(words: &[&str]) -> bool {
+pub fn gain_clause_is_defender_as_if_attack(words: &[&str]) -> bool {
     let mut saw_can_attack = false;
     let mut saw_as_though = false;
     let mut saw_defender = false;

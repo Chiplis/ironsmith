@@ -13,7 +13,7 @@ fn parse_skip_tapped_source_turn_lexed<'a>(input: &mut LexStream<'a>) -> WResult
     eof.void().parse_next(input)
 }
 
-pub(crate) fn is_skip_tapped_source_turn_replacement(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_skip_tapped_source_turn_replacement(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,
         parse_skip_tapped_source_turn_lexed,
@@ -37,7 +37,7 @@ fn parse_if_did_untap_source_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()>
     eof.void().parse_next(input)
 }
 
-pub(crate) fn is_if_did_untap_source_followup(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_if_did_untap_source_followup(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,
         parse_if_did_untap_source_lexed,

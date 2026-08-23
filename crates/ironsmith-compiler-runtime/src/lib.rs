@@ -1,0 +1,1116 @@
+use ironsmith_compiled_artifact::{
+    ArtifactCardId, ArtifactCardIdentity, CompiledCardArtifact, CompiledCardPayload,
+    wire_definition_from_serializable,
+};
+use ironsmith_compiler as compiler;
+#[cfg(test)]
+use ironsmith_runtime_catalog::CardRegistryArtifactExt as _;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CompilerIntegrationError {
+    Parse(compiler::CardTextError),
+    UnsupportedEffect { detail: String },
+    UnsupportedStaticAbility { detail: String },
+    UnsupportedTrigger { detail: String },
+    ArtifactEncoding { detail: String },
+    ArtifactMaterialization { detail: String },
+}
+
+impl std::fmt::Display for CompilerIntegrationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Parse(err) => err.fmt(f),
+            Self::UnsupportedEffect { detail } => {
+                write!(
+                    f,
+                    "runtime compiler integration does not support effect conversion: {detail}"
+                )
+            }
+            Self::UnsupportedStaticAbility { detail } => {
+                write!(
+                    f,
+                    "runtime compiler integration does not support static ability conversion: {detail}"
+                )
+            }
+            Self::UnsupportedTrigger { detail } => {
+                write!(
+                    f,
+                    "runtime compiler integration does not support trigger conversion: {detail}"
+                )
+            }
+            Self::ArtifactEncoding { detail } => {
+                write!(f, "failed to encode compiled-card artifact: {detail}")
+            }
+            Self::ArtifactMaterialization { detail } => {
+                write!(f, "failed to materialize compiled-card artifact: {detail}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for CompilerIntegrationError {}
+
+impl From<compiler::CardTextError> for CompilerIntegrationError {
+    fn from(value: compiler::CardTextError) -> Self {
+        Self::Parse(value)
+    }
+}
+
+struct CompilerEffectModel;
+
+impl ironsmith::effect_model_interpreter::EffectModel for CompilerEffectModel {
+    type Effect = compiler::effect::Effect;
+    type StaticAbility = compiler::static_abilities::StaticAbility;
+    type CardDefinition = compiler::cards::CardDefinition;
+    type Ability = compiler::ability::Ability;
+    type EmblemDescription = compiler::effect::EmblemDescription;
+    type ContinuousTarget = compiler::continuous::EffectTarget;
+    type ContinuousModification = compiler::continuous::Modification;
+    type RuntimeModification = compiler::effects::continuous::RuntimeModification;
+    type Grantable = compiler::grant::Grantable;
+    type GrantDuration = compiler::grant::GrantDuration;
+    type GrantSpec = compiler::grant::GrantSpec;
+
+    fn downcast_ref<T: 'static>(effect: &Self::Effect) -> Option<&T> {
+        effect.downcast_ref::<T>()
+    }
+
+    fn payload_type_name(effect: &Self::Effect) -> &str {
+        effect.payload_type_name()
+    }
+}
+
+struct CompilerEffectModelHooks;
+
+impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEffectModel>
+    for CompilerEffectModelHooks
+{
+    type Error = CompilerIntegrationError;
+
+    fn unsupported_effect(&mut self, detail: String) -> Self::Error {
+        CompilerIntegrationError::UnsupportedEffect { detail }
+    }
+
+    fn runtime_static_ability_hook(
+        &mut self,
+        ability: compiler::static_abilities::StaticAbility,
+    ) -> Result<ironsmith::static_abilities::StaticAbility, Self::Error> {
+        runtime_static_ability(ability)
+    }
+
+    fn runtime_card_definition_hook(
+        &mut self,
+        definition: compiler::cards::CardDefinition,
+    ) -> Result<ironsmith::cards::CardDefinition, Self::Error> {
+        runtime_definition_from_core_model(definition)
+    }
+
+    fn runtime_ability_hook(
+        &mut self,
+        ability: compiler::ability::Ability,
+    ) -> Result<ironsmith::ability::Ability, Self::Error> {
+        runtime_ability_from_core_model(ability)
+    }
+
+    fn runtime_emblem_hook(
+        &mut self,
+        emblem: compiler::effect::EmblemDescription,
+    ) -> Result<ironsmith::effect::EmblemDescription, Self::Error> {
+        let mut converted = ironsmith::effect::EmblemDescription::new(&emblem.name, &emblem.text);
+        for ability in emblem.abilities {
+            converted = converted.with_ability(runtime_ability_from_core_model(ability)?);
+        }
+        Ok(converted)
+    }
+
+    fn runtime_continuous_modification_hook(
+        &mut self,
+        modification: compiler::continuous::Modification,
+    ) -> Result<ironsmith::continuous::Modification, Self::Error> {
+        ironsmith::continuous::Modification::try_from_model(
+            modification,
+            runtime_static_ability,
+            runtime_ability_from_core_model,
+            runtime_ability_from_core_model,
+        )
+    }
+
+    fn runtime_continuous_runtime_modification_hook(
+        &mut self,
+        modification: compiler::effects::continuous::RuntimeModification,
+    ) -> Result<ironsmith::effects::continuous::RuntimeModification, Self::Error> {
+        Ok(match modification {
+            compiler::effects::continuous::RuntimeModification::ModifyPowerToughness {
+                power,
+                toughness,
+            } => ironsmith::effects::continuous::RuntimeModification::ModifyPowerToughness {
+                power,
+                toughness,
+            },
+            compiler::effects::continuous::RuntimeModification::ChangeControllerToEffectController => {
+                ironsmith::effects::continuous::RuntimeModification::ChangeControllerToEffectController
+            }
+            compiler::effects::continuous::RuntimeModification::ChangeControllerToPlayer(player) => {
+                ironsmith::effects::continuous::RuntimeModification::ChangeControllerToPlayer(player)
+            }
+            compiler::effects::continuous::RuntimeModification::CopyOf {
+                source,
+                preserve_source_abilities,
+                name_override,
+                name_override_surface,
+                add_supertypes,
+                copy_exception_surface,
+            } => ironsmith::effects::continuous::RuntimeModification::CopyOf {
+                source,
+                preserve_source_abilities,
+                name_override,
+                name_override_surface,
+                add_supertypes,
+                copy_exception_surface,
+            },
+            compiler::effects::continuous::RuntimeModification::RemoveAllAbilities => {
+                ironsmith::effects::continuous::RuntimeModification::RemoveAllAbilities
+            }
+            compiler::effects::continuous::RuntimeModification::RemoveThisAbility => {
+                ironsmith::effects::continuous::RuntimeModification::RemoveThisAbility
+            }
+            compiler::effects::continuous::RuntimeModification::SetAuraAttachmentFilter(filter) => {
+                ironsmith::effects::continuous::RuntimeModification::SetAuraAttachmentFilter(filter)
+            }
+        })
+    }
+
+    fn runtime_grantable_hook(
+        &mut self,
+        grantable: compiler::grant::Grantable,
+    ) -> Result<ironsmith::grant::Grantable, Self::Error> {
+        Ok(match grantable {
+            compiler::grant::Grantable::Ability(ability) => {
+                ironsmith::grant::Grantable::Ability(runtime_static_ability(ability)?)
+            }
+            compiler::grant::Grantable::AlternativeCast(method) => {
+                ironsmith::grant::Grantable::AlternativeCast(convert_alternative_cast(method)?)
+            }
+            compiler::grant::Grantable::PlayFrom => ironsmith::grant::Grantable::PlayFrom,
+            compiler::grant::Grantable::DerivedAlternativeCast(spec) => {
+                ironsmith::grant::Grantable::DerivedAlternativeCast(
+                    convert_derived_alternative_cast(spec)?,
+                )
+            }
+        })
+    }
+
+    fn runtime_grant_duration_hook(
+        &mut self,
+        duration: compiler::grant::GrantDuration,
+    ) -> Result<ironsmith::grant::GrantDuration, Self::Error> {
+        match duration {
+            compiler::grant::GrantDuration::Forever => Ok(ironsmith::grant::GrantDuration::Forever),
+            compiler::grant::GrantDuration::UntilEndOfTurn => {
+                Ok(ironsmith::grant::GrantDuration::UntilEndOfTurn)
+            }
+            compiler::grant::GrantDuration::UntilYourNextTurnEnd => {
+                Ok(ironsmith::grant::GrantDuration::UntilYourNextTurnEnd)
+            }
+        }
+    }
+
+    fn runtime_grant_spec_hook(
+        &mut self,
+        spec: compiler::grant::GrantSpec,
+    ) -> Result<ironsmith::grant::GrantSpec, Self::Error> {
+        Ok(ironsmith::grant::GrantSpec {
+            grantable: self.runtime_grantable_hook(spec.grantable)?,
+            filter: spec.filter,
+            zone: spec.zone,
+            beneficiary: spec.beneficiary,
+            usage_limit: spec.usage_limit,
+            cast_this_way_filter: spec.cast_this_way_filter,
+            source_exiled_surface: spec.source_exiled_surface,
+            cast_this_way_grants: spec
+                .cast_this_way_grants
+                .into_iter()
+                .map(|ability| self.runtime_static_ability_hook(ability))
+                .collect::<Result<Vec<_>, _>>()?,
+        })
+    }
+
+    fn runtime_external_model_effect_hook(
+        &mut self,
+        effect: &compiler::effect::Effect,
+    ) -> Result<Option<ironsmith::effect::Effect>, Self::Error> {
+        if let Some(payload) =
+            effect.downcast_ref::<compiler::effects::cards::ImprintFromHandEffect>()
+        {
+            return Ok(Some(ironsmith::effect::Effect::new(
+                ironsmith::effects::cards::ImprintFromHandEffect::new(payload.filter.clone()),
+            )));
+        }
+        if let Some(payload) = effect.downcast_ref::<compiler::effects::ScaleXValueEffect>() {
+            return Ok(Some(ironsmith::effect::Effect::scale_x_value(
+                payload.target.clone(),
+                payload.multiplier,
+            )));
+        }
+        Ok(None)
+    }
+}
+
+fn runtime_effect_from_core_model(
+    effect: compiler::effect::Effect,
+) -> Result<ironsmith::effect::Effect, CompilerIntegrationError> {
+    ironsmith::effect_model_interpreter::interpret_effect_model::<CompilerEffectModel, _>(
+        effect,
+        &mut CompilerEffectModelHooks,
+    )
+}
+
+fn remove_redundant_target_only_effects_in_program(
+    program: &mut ironsmith::resolution::ResolutionProgram,
+) {
+    ironsmith::effect_model_interpreter::prune_redundant_target_only_effects_in_program(program);
+}
+
+fn runtime_cost_from_core_model(
+    cost: compiler::costs::Cost,
+) -> Result<ironsmith::costs::Cost, CompilerIntegrationError> {
+    let model = cost.try_map_effect(runtime_effect_from_core_model)?;
+    ironsmith::costs::Cost::from_model(model)
+        .map_err(|detail| CompilerIntegrationError::UnsupportedEffect { detail })
+}
+
+fn runtime_optional_cost_from_core_model(
+    cost: compiler::cost::OptionalCost,
+) -> Result<ironsmith::cost::OptionalCost, CompilerIntegrationError> {
+    cost.try_map(runtime_cost_from_core_model)
+}
+
+fn convert_alternative_cast(
+    method: compiler::alternative_cast::AlternativeCastingMethod,
+) -> Result<ironsmith::alternative_cast::AlternativeCastingMethod, CompilerIntegrationError> {
+    let mut method =
+        method.try_map(runtime_effect_from_core_model, runtime_cost_from_core_model)?;
+    if let ironsmith::alternative_cast::AlternativeCastingMethod::Overload { effects, .. } =
+        &mut method
+    {
+        *effects = effects
+            .drain(..)
+            .filter_map(detarget_overload_effect)
+            .collect();
+    }
+    Ok(method)
+}
+
+fn detarget_overload_effect(
+    effect: ironsmith::effect::Effect,
+) -> Option<ironsmith::effect::Effect> {
+    if effect
+        .downcast_ref::<ironsmith::effects::TargetOnlyEffect>()
+        .is_some()
+    {
+        return None;
+    }
+
+    if let Some(tagged) = effect.downcast_ref::<ironsmith::effects::TaggedEffect>() {
+        let inner = detarget_overload_effect((*tagged.effect).clone())?;
+        return Some(ironsmith::effect::Effect::new(
+            ironsmith::effects::TaggedEffect::new(tagged.tag.clone(), inner),
+        ));
+    }
+
+    if let Some(apply) = effect.downcast_ref::<ironsmith::effects::ApplyContinuousEffect>()
+        && let Some(ironsmith::target::ChooseSpec::Target(inner)) = &apply.target_spec
+        && let ironsmith::target::ChooseSpec::Object(filter) = inner.as_ref()
+    {
+        let mut detargeted = apply.clone();
+        detargeted.target = ironsmith::continuous::EffectTarget::Filter(filter.clone());
+        detargeted.target_spec = Some(ironsmith::target::ChooseSpec::Object(filter.clone()));
+        detargeted.require_creature_target = false;
+        return Some(ironsmith::effect::Effect::new(detargeted));
+    }
+
+    Some(effect)
+}
+
+fn convert_derived_alternative_cast(
+    spec: compiler::grant::DerivedAlternativeCast,
+) -> Result<ironsmith::grant::DerivedAlternativeCast, CompilerIntegrationError> {
+    Ok(match spec {
+        compiler::grant::DerivedAlternativeCast::FlashbackFromCardManaCost { additional_costs } => {
+            ironsmith::grant::DerivedAlternativeCast::FlashbackFromCardManaCost {
+                additional_costs: additional_costs
+                    .into_iter()
+                    .map(runtime_cost_from_core_model)
+                    .collect::<Result<Vec<_>, _>>()?,
+            }
+        }
+        compiler::grant::DerivedAlternativeCast::EscapeFromCardManaCost { exile_count } => {
+            ironsmith::grant::DerivedAlternativeCast::EscapeFromCardManaCost { exile_count }
+        }
+        compiler::grant::DerivedAlternativeCast::RetraceFromCardManaCost => {
+            ironsmith::grant::DerivedAlternativeCast::RetraceFromCardManaCost
+        }
+        compiler::grant::DerivedAlternativeCast::BlitzFromCardManaCost => {
+            ironsmith::grant::DerivedAlternativeCast::BlitzFromCardManaCost
+        }
+        compiler::grant::DerivedAlternativeCast::EmergeFromCardManaCost => {
+            ironsmith::grant::DerivedAlternativeCast::EmergeFromCardManaCost
+        }
+        compiler::grant::DerivedAlternativeCast::MiracleFromCardManaCostReducedBy { reduction } => {
+            ironsmith::grant::DerivedAlternativeCast::MiracleFromCardManaCostReducedBy { reduction }
+        }
+        compiler::grant::DerivedAlternativeCast::ManaValueAsGenericFromHand => {
+            ironsmith::grant::DerivedAlternativeCast::ManaValueAsGenericFromHand
+        }
+        compiler::grant::DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit } => {
+            ironsmith::grant::DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit }
+        }
+        compiler::grant::DerivedAlternativeCast::LifeEqualManaValueFromZone {
+            zone,
+            usage_limit,
+        } => ironsmith::grant::DerivedAlternativeCast::LifeEqualManaValueFromZone {
+            zone,
+            usage_limit,
+        },
+        compiler::grant::DerivedAlternativeCast::GraveyardCastFromCardManaCost {
+            additional_costs,
+            usage_limit,
+            condition,
+            exiles_after_resolution,
+        } => ironsmith::grant::DerivedAlternativeCast::GraveyardCastFromCardManaCost {
+            additional_costs: additional_costs
+                .into_iter()
+                .map(runtime_cost_from_core_model)
+                .collect::<Result<Vec<_>, _>>()?,
+            usage_limit,
+            condition,
+            exiles_after_resolution,
+        },
+    })
+}
+
+fn runtime_static_ability_model(
+    ability: compiler::static_abilities::StaticAbility,
+) -> Result<ironsmith::static_abilities::CompiledStaticAbility, CompilerIntegrationError> {
+    ability.try_map(
+        runtime_trigger_from_core_model,
+        runtime_effect_from_core_model,
+        runtime_cost_from_core_model,
+    )
+}
+
+fn runtime_static_ability(
+    ability: compiler::static_abilities::StaticAbility,
+) -> Result<ironsmith::static_abilities::StaticAbility, CompilerIntegrationError> {
+    Ok(ironsmith::static_abilities::StaticAbility::from_model(
+        runtime_static_ability_model(ability)?,
+    ))
+}
+
+fn runtime_trigger_from_core_model(
+    trigger: compiler::triggers::Trigger,
+) -> Result<ironsmith::triggers::Trigger, CompilerIntegrationError> {
+    ironsmith::triggers::Trigger::from_model(trigger)
+        .map_err(|err| CompilerIntegrationError::UnsupportedTrigger { detail: err.detail })
+}
+
+fn runtime_ability_from_core_model(
+    ability: compiler::ability::Ability,
+) -> Result<ironsmith::ability::Ability, CompilerIntegrationError> {
+    let mut converted = ability.try_map(
+        runtime_static_ability,
+        runtime_trigger_from_core_model,
+        runtime_effect_from_core_model,
+        runtime_cost_from_core_model,
+    )?;
+    match &mut converted.kind {
+        ironsmith::ability::AbilityKind::Triggered(triggered) => {
+            remove_redundant_target_only_effects_in_program(&mut triggered.effects);
+        }
+        ironsmith::ability::AbilityKind::Activated(activated) => {
+            remove_redundant_target_only_effects_in_program(&mut activated.effects);
+        }
+        ironsmith::ability::AbilityKind::Static(_) => {}
+    }
+    converted = runtime_ability_with_inherent_functional_zones(converted);
+    Ok(converted)
+}
+
+fn runtime_ability_with_inherent_functional_zones(
+    ability: ironsmith::ability::Ability,
+) -> ironsmith::ability::Ability {
+    let ironsmith::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+        return ability;
+    };
+    match static_ability.id() {
+        ironsmith::static_abilities::StaticAbilityId::ExileToExileInsteadOfGraveyard
+        | ironsmith::static_abilities::StaticAbilityId::ExileToCounteredExileInsteadOfGraveyard
+        | ironsmith::static_abilities::StaticAbilityId::ExileWouldDieInstead => {
+            ability.in_zones(vec![
+                ironsmith::zone::Zone::Battlefield,
+                ironsmith::zone::Zone::Stack,
+                ironsmith::zone::Zone::Graveyard,
+                ironsmith::zone::Zone::Hand,
+                ironsmith::zone::Zone::Library,
+                ironsmith::zone::Zone::Exile,
+                ironsmith::zone::Zone::Command,
+            ])
+        }
+        ironsmith::static_abilities::StaticAbilityId::Dredge => {
+            ability.in_zones(vec![ironsmith::zone::Zone::Graveyard])
+        }
+        ironsmith::static_abilities::StaticAbilityId::Grants => {
+            if let Some(spec) = static_ability.grant_spec()
+                && spec.filter.source
+                && spec.zone != ironsmith::zone::Zone::Battlefield
+            {
+                ability.in_zones(vec![spec.zone])
+            } else {
+                ability
+            }
+        }
+        _ => ability,
+    }
+}
+
+fn combine_level_ability_statics(
+    abilities: Vec<ironsmith::ability::Ability>,
+) -> Vec<ironsmith::ability::Ability> {
+    let mut out = Vec::with_capacity(abilities.len());
+    let mut levels = Vec::new();
+
+    for ability in abilities {
+        let ironsmith::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+            out.push(ability);
+            continue;
+        };
+        let Some(level_abilities) = static_ability.level_abilities() else {
+            out.push(ability);
+            continue;
+        };
+        levels.extend(level_abilities.iter().cloned());
+    }
+
+    if !levels.is_empty() {
+        out.push(ironsmith::ability::Ability::static_ability(
+            ironsmith::static_abilities::StaticAbility::with_level_abilities(levels),
+        ));
+    }
+
+    out
+}
+
+const CLASS_LEVEL_MARKER_PREFIX: &str = "__ironsmith_class_level:";
+
+fn class_level_marker(ability: &ironsmith::ability::ActivatedAbility) -> Option<u32> {
+    ability
+        .additional_restrictions
+        .iter()
+        .find_map(|restriction| restriction.strip_prefix(CLASS_LEVEL_MARKER_PREFIX))
+        .and_then(|level| level.parse::<u32>().ok())
+}
+
+fn class_level_activation_condition(level: u32) -> ironsmith::ConditionExpr {
+    let required_counters = level.saturating_sub(2);
+    if required_counters == 0 {
+        return ironsmith::ConditionExpr::SourceHasNoCounter(ironsmith::CounterType::Level);
+    }
+    ironsmith::ConditionExpr::And(
+        Box::new(ironsmith::ConditionExpr::SourceHasCounterAtLeast {
+            counter_type: ironsmith::CounterType::Level,
+            count: required_counters,
+            surface: ironsmith::SourceCounterThresholdSurface::SourceHas,
+        }),
+        Box::new(ironsmith::ConditionExpr::Not(Box::new(
+            ironsmith::ConditionExpr::SourceHasCounterAtLeast {
+                counter_type: ironsmith::CounterType::Level,
+                count: required_counters + 1,
+                surface: ironsmith::SourceCounterThresholdSurface::SourceHas,
+            },
+        ))),
+    )
+}
+
+fn and_condition(
+    left: Option<ironsmith::ConditionExpr>,
+    right: ironsmith::ConditionExpr,
+) -> ironsmith::ConditionExpr {
+    left.map(|left| ironsmith::ConditionExpr::And(Box::new(left), Box::new(right.clone())))
+        .unwrap_or(right)
+}
+
+fn apply_class_level_runtime_gates(definition: &mut ironsmith::cards::CardDefinition) {
+    if !definition
+        .card
+        .subtypes
+        .contains(&ironsmith::Subtype::Class)
+    {
+        return;
+    }
+
+    let mut current_level = None;
+    for ability in &mut definition.abilities {
+        if let ironsmith::ability::AbilityKind::Activated(activated) = &mut ability.kind
+            && let Some(level) = class_level_marker(activated)
+        {
+            activated.activation_condition = Some(and_condition(
+                activated.activation_condition.take(),
+                class_level_activation_condition(level),
+            ));
+            current_level = Some(level);
+            continue;
+        }
+
+        let Some(level) = current_level else {
+            continue;
+        };
+        if let ironsmith::ability::AbilityKind::Triggered(triggered) = &mut ability.kind
+            && triggered.presentation_label.is_none()
+        {
+            triggered.presentation_label =
+                Some(ironsmith::ability::PresentationLabel::from_ability_word(
+                    format!("{CLASS_LEVEL_MARKER_PREFIX}{level}"),
+                ));
+        }
+    }
+}
+
+fn runtime_definition_from_core_model(
+    definition: compiler::CardDefinition,
+) -> Result<ironsmith::cards::CardDefinition, CompilerIntegrationError> {
+    let mut definition = definition.try_map(
+        runtime_ability_from_core_model,
+        runtime_effect_from_core_model,
+        runtime_cost_from_core_model,
+        convert_alternative_cast,
+        runtime_optional_cost_from_core_model,
+    )?;
+    definition.abilities = combine_level_ability_statics(definition.abilities);
+    apply_class_level_runtime_gates(&mut definition);
+    if let Some(spell_effect) = &mut definition.spell_effect {
+        remove_redundant_target_only_effects_in_program(spell_effect);
+    }
+    Ok(definition)
+}
+
+pub fn into_runtime_definition(
+    definition: compiler::CardDefinition,
+) -> Result<ironsmith::cards::CardDefinition, CompilerIntegrationError> {
+    runtime_definition_from_core_model(definition)
+}
+
+pub fn into_runtime_compiled_card_text(
+    compiled: compiler::CompiledCardText<compiler::CardDefinition>,
+) -> Result<compiler::CompiledCardText<ironsmith::cards::CardDefinition>, CompilerIntegrationError>
+{
+    Ok(compiler::CompiledCardText {
+        definition: into_runtime_definition(compiled.definition)?,
+        annotations: compiled.annotations,
+    })
+}
+
+pub fn compile_to_runtime_definition(
+    name: &str,
+    text: impl Into<String>,
+    allow_unsupported: bool,
+) -> Result<ironsmith::cards::CardDefinition, CompilerIntegrationError> {
+    let builder = compiler::CardDefinitionBuilder::new(ironsmith::ids::CardId::new(), name);
+    compile_builder_to_runtime_definition(builder, text, allow_unsupported)
+}
+
+pub fn compile_builder_to_runtime_definition(
+    builder: compiler::CardDefinitionBuilder,
+    text: impl Into<String>,
+    allow_unsupported: bool,
+) -> Result<ironsmith::cards::CardDefinition, CompilerIntegrationError> {
+    let text = text.into();
+    compiler::stack::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, move || {
+        let compiled =
+            compile_builder_to_runtime_compiled_card_text(builder, text, allow_unsupported)?;
+        Ok(compiled.definition)
+    })
+}
+
+/// Compile source at the compiler/runtime boundary and emit a deterministic
+/// transport envelope beside the materialized runtime definition.
+pub fn compile_builder_to_artifact(
+    builder: compiler::CardDefinitionBuilder,
+    text: impl Into<String>,
+    allow_unsupported: bool,
+) -> Result<(CompiledCardArtifact, ironsmith::cards::CardDefinition), CompilerIntegrationError> {
+    let source = text.into();
+    let compiled = compiler::CompilerFacade::new().compile_definition(
+        builder,
+        source.clone(),
+        compiler::CompilePolicy { allow_unsupported },
+    )?;
+    let wire_definition =
+        wire_definition_from_serializable(&compiled.definition).map_err(|error| {
+            CompilerIntegrationError::ArtifactEncoding {
+                detail: error.to_string(),
+            }
+        })?;
+    // The heavy canonical renderer is intentionally outside this engine bridge.
+    // Compiler/text packaging may replace this source surface before publishing.
+    let canonical_text = source.trim().to_string();
+    let linked_face_layout = match compiled.definition.card.linked_face_layout {
+        ironsmith::card::LinkedFaceLayout::None => None,
+        layout => Some(format!("{layout:?}")),
+    };
+    let mut artifact = CompiledCardArtifact::new(
+        ArtifactCardIdentity {
+            local_id: ArtifactCardId(1),
+            name: compiled.definition.card.name.clone(),
+            face_name: None,
+            other_face: compiled
+                .definition
+                .card
+                .other_face
+                .map(|_| ArtifactCardId(2)),
+            linked_face_layout,
+        },
+        CompiledCardPayload {
+            definition: wire_definition,
+            canonical_text,
+            ability_labels: source
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(str::to_string)
+                .collect(),
+        },
+        concat!("ironsmith-compiler/", env!("CARGO_PKG_VERSION")),
+        source.as_bytes(),
+    );
+    artifact.compiler_facts.insert(
+        "allowUnsupported".to_string(),
+        allow_unsupported.to_string(),
+    );
+    artifact.refresh_checksum();
+    let definition = ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(
+        &artifact,
+    )
+    .map_err(|error| CompilerIntegrationError::ArtifactMaterialization {
+        detail: error.to_string(),
+    })?;
+    Ok((artifact, definition))
+}
+
+#[derive(Debug, Clone)]
+pub struct RuntimeBuilderSnapshot {
+    pub card: ironsmith::card::Card,
+    pub has_fuse: bool,
+}
+
+impl RuntimeBuilderSnapshot {
+    fn into_compiler_builder(self) -> compiler::CardDefinitionBuilder {
+        let mut builder = compiler::CardDefinitionBuilder::new(self.card.id, self.card.name);
+
+        if let Some(cost) = self.card.mana_cost {
+            builder = builder.mana_cost(cost);
+        }
+        if let Some(colors) = self.card.color_indicator {
+            builder = builder.color_indicator(colors);
+        }
+        builder = builder
+            .supertypes(self.card.supertypes)
+            .card_types(self.card.card_types)
+            .subtypes(self.card.subtypes)
+            .attraction_lights(self.card.attraction_lights)
+            .linked_face_layout(self.card.linked_face_layout);
+        if let Some(pt) = self.card.power_toughness {
+            builder = builder.power_toughness(pt);
+        }
+        if let Some(loyalty) = self.card.loyalty {
+            builder = builder.loyalty(loyalty);
+        }
+        if let Some(defense) = self.card.defense {
+            builder = builder.defense(defense);
+        }
+        if let Some(face) = self.card.other_face {
+            builder = builder.other_face(face);
+        }
+        if let Some(face_name) = self.card.other_face_name {
+            builder = builder.other_face_name(face_name);
+        }
+        if self.card.is_token {
+            builder = builder.token();
+        }
+        if self.has_fuse {
+            builder = builder.has_fuse();
+        }
+
+        builder
+    }
+}
+
+pub fn compile_runtime_builder_snapshot_to_runtime_definition(
+    snapshot: RuntimeBuilderSnapshot,
+    text: impl Into<String>,
+    allow_unsupported: bool,
+) -> Result<ironsmith::cards::CardDefinition, CompilerIntegrationError> {
+    compile_builder_to_runtime_definition(snapshot.into_compiler_builder(), text, allow_unsupported)
+}
+
+pub fn compile_runtime_builder_snapshot_to_runtime_compiled_card_text(
+    snapshot: RuntimeBuilderSnapshot,
+    text: impl Into<String>,
+    allow_unsupported: bool,
+) -> Result<compiler::CompiledCardText<ironsmith::cards::CardDefinition>, CompilerIntegrationError>
+{
+    compile_builder_to_runtime_compiled_card_text(
+        snapshot.into_compiler_builder(),
+        text,
+        allow_unsupported,
+    )
+}
+
+pub fn compile_builder_to_runtime_compiled_card_text(
+    builder: compiler::CardDefinitionBuilder,
+    text: impl Into<String>,
+    allow_unsupported: bool,
+) -> Result<compiler::CompiledCardText<ironsmith::cards::CardDefinition>, CompilerIntegrationError>
+{
+    let compiled = compiler::CompilerFacade::new().compile_definition(
+        builder,
+        text,
+        compiler::CompilePolicy { allow_unsupported },
+    )?;
+    into_runtime_compiled_card_text(compiled)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ironsmith::ids::PlayerId;
+    use ironsmith::types::CardType;
+    use ironsmith::zone::Zone;
+
+    #[test]
+    fn converts_assign_no_combat_damage_effect_payload() {
+        let compiler_effect = compiler::effect::Effect::assign_no_combat_damage(
+            compiler::target::ChooseSpec::Source,
+            compiler::effect::Until::EndOfTurn,
+        );
+
+        let runtime_effect = runtime_effect_from_core_model(compiler_effect)
+            .expect("assignment suppression should cross the compiler/runtime bridge");
+        let suppression = runtime_effect
+            .downcast_ref::<ironsmith::effects::AssignNoCombatDamageEffect>()
+            .expect("runtime payload should remain assignment suppression");
+
+        assert_eq!(suppression.source, ironsmith::target::ChooseSpec::Source);
+        assert_eq!(suppression.until, ironsmith::effect::Until::EndOfTurn);
+    }
+
+    #[test]
+    fn converts_tag_other_block_participant_effect_payload() {
+        let filter = compiler::target::ObjectFilter::creature();
+        let compiler_effect = compiler::effect::Effect::tag_other_block_participant(
+            "other_block_participant",
+            Some(filter.clone()),
+        );
+
+        let runtime_effect = runtime_effect_from_core_model(compiler_effect)
+            .expect("block-participant tagging should cross the compiler/runtime bridge");
+        let tagging = runtime_effect
+            .downcast_ref::<ironsmith::effects::TagOtherBlockParticipantEffect>()
+            .expect("runtime payload should remain block-participant tagging");
+
+        assert_eq!(tagging.tag.as_str(), "other_block_participant");
+        assert_eq!(tagging.filter.as_ref(), Some(&filter));
+    }
+
+    #[test]
+    fn compile_to_runtime_definition_handles_representative_spell_text() {
+        let definition = compile_to_runtime_definition(
+            "Lightning Bolt",
+            "Mana cost: {R}\nType: Instant\nLightning Bolt deals 3 damage to any target.",
+            false,
+        )
+        .expect("lightning bolt should compile through runtime compiler integration");
+
+        assert_eq!(definition.name(), "Lightning Bolt");
+        assert!(definition.spell_effect.is_some());
+        assert_eq!(definition.card.name, "Lightning Bolt");
+    }
+
+    #[test]
+    fn compile_builder_to_runtime_definition_preserves_manual_metadata() {
+        let definition = compile_builder_to_runtime_definition(
+            compiler::CardDefinitionBuilder::new(ironsmith::ids::CardId::new(), "Command Tower")
+                .card_types(vec![CardType::Land]),
+            "{T}: Add one mana of any color in your commander's color identity.",
+            false,
+        )
+        .expect("command tower should compile through runtime compiler integration");
+
+        assert!(definition.card.is_land());
+        assert_eq!(definition.abilities.len(), 1);
+    }
+
+    #[test]
+    fn compile_builder_to_runtime_definition_handles_cumulative_upkeep_payment_from_metadata_builder()
+     {
+        fn contains_effect<T: 'static>(effect: &ironsmith::effect::Effect) -> bool {
+            if effect.downcast_ref::<T>().is_some() {
+                return true;
+            }
+            let mut found = false;
+            effect.visit_child_effects(&mut |child| {
+                found |= contains_effect::<T>(child);
+            });
+            found
+        }
+
+        // The compiler's deeply nested typed parser legitimately needs more
+        // than libtest's small worker-stack default for this long reminder
+        // clause. Exercise the same integration on an explicitly sized test
+        // thread so the assertion remains structural instead of depending on
+        // platform test-runner stack limits.
+        let definition = std::thread::Builder::new()
+            .name("cumulative-upkeep-compiler-regression".to_string())
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                compile_builder_to_runtime_definition(
+                    compiler::CardDefinitionBuilder::new(
+                        ironsmith::ids::CardId::new(),
+                        "Jötun Grunt",
+                    )
+                    .mana_cost(ironsmith::mana::ManaCost::from_pips(vec![
+                        vec![ironsmith::mana::ManaSymbol::Generic(1)],
+                        vec![ironsmith::mana::ManaSymbol::White],
+                    ]))
+                    .card_types(vec![CardType::Creature])
+                    .subtypes(vec![
+                        ironsmith::types::Subtype::Giant,
+                        ironsmith::types::Subtype::Soldier,
+                    ])
+                    .power_toughness(ironsmith::card::PowerToughness::fixed(4, 4)),
+                    "Cumulative upkeep—Put two cards from a single graveyard on the bottom of their owner's library. (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)",
+                    false,
+                )
+                .expect("Jötun Grunt should compile through runtime compiler integration")
+            })
+            .expect("cumulative-upkeep compiler test thread should start")
+            .join()
+            .expect("cumulative-upkeep compiler test thread should finish");
+
+        let root_effects = definition
+            .abilities
+            .iter()
+            .flat_map(|ability| match &ability.kind {
+                ironsmith::ability::AbilityKind::Triggered(triggered) => {
+                    triggered.effects.all_effects()
+                }
+                ironsmith::ability::AbilityKind::Activated(activated) => {
+                    activated.effects.all_effects()
+                }
+                ironsmith::ability::AbilityKind::Static(_) => Vec::new(),
+            });
+        let root_effects = root_effects.collect::<Vec<_>>();
+        assert!(
+            root_effects.iter().any(|effect| contains_effect::<
+                ironsmith::effects::CumulativeUpkeepEffect,
+            >(effect))
+        );
+        assert!(
+            root_effects
+                .iter()
+                .any(|effect| contains_effect::<ironsmith::effects::MoveToZoneEffect>(effect))
+        );
+    }
+
+    #[test]
+    fn supported_keyword_mechanics_do_not_lower_to_keyword_markers() {
+        let cases = [
+            (
+                "Grapeshot",
+                "Mana cost: {1}{R}\nType: Sorcery\nGrapeshot deals 1 damage to any target.\nStorm",
+                "CopySpellEffect",
+            ),
+            (
+                "Alive // Well",
+                "Mana cost: {3}{G}\nType: Sorcery\nCreate a 3/3 green Centaur creature token.\nFuse",
+                "has_fuse: true",
+            ),
+            (
+                "Akrasan Squire",
+                "Mana cost: {W}\nType: Creature — Human Soldier\nPower/Toughness: 1/1\nExalted",
+                "exalted_attacker",
+            ),
+            (
+                "Abstruse Interference",
+                "Mana cost: {2}{U}\nType: Instant\nDevoid\nCounter target spell unless its controller pays {1}.",
+                "MakeColorless",
+            ),
+            (
+                "Accorder Paladin",
+                "Mana cost: {1}{W}\nType: Creature — Human Knight\nPower/Toughness: 3/1\nBattle cry",
+                "ModifyPowerToughnessEffect",
+            ),
+            (
+                "Adaptive Snapjaw",
+                "Mana cost: {4}{G}\nType: Creature — Lizard Beast\nPower/Toughness: 6/2\nEvolve",
+                "EvolveEffect",
+            ),
+            (
+                "Bilious Skulldweller",
+                "Mana cost: {B}\nType: Creature — Phyrexian Insect\nPower/Toughness: 1/1\nDeathtouch\nToxic 1",
+                "PoisonCountersEffect",
+            ),
+            (
+                "Doomed Traveler",
+                "Mana cost: {W}\nType: Creature — Human Soldier\nPower/Toughness: 1/1\nAfterlife 1",
+                "CreateTokenEffect",
+            ),
+            (
+                "Cached Defenses",
+                "Mana cost: {2}{G}\nType: Sorcery\nBolster 3.",
+                "BolsterEffect",
+            ),
+            (
+                "Aquastrand Spider",
+                "Mana cost: {1}{G}\nType: Creature — Spider Mutant\nPower/Toughness: 0/0\nGraft 2\n{G}: Target creature with a +1/+1 counter on it gains reach until end of turn.",
+                "MoveCountersEffect",
+            ),
+            (
+                "Arcbound Worker",
+                "Mana cost: {1}\nType: Artifact Creature — Construct\nPower/Toughness: 0/0\nModular 1",
+                "modular_triggering_object",
+            ),
+            (
+                "Ronin Houndmaster",
+                "Mana cost: {2}{R}\nType: Creature — Human Samurai\nPower/Toughness: 2/2\nBushido 1",
+                "ModifyPowerToughnessEffect",
+            ),
+            (
+                "Ulamog's Crusher",
+                "Mana cost: {8}\nType: Creature — Eldrazi\nPower/Toughness: 8/8\nAnnihilator 2",
+                "SacrificePlayerEffect",
+            ),
+            (
+                "Teysa, Envoy of Ghosts",
+                "Mana cost: {5}{W}{B}\nType: Legendary Creature — Human Advisor\nPower/Toughness: 4/4\nProtection from creatures",
+                "Protection",
+            ),
+            (
+                "Top Library Fixture",
+                "Mana cost: {2}{G}\nType: Creature — Bird\nPower/Toughness: 2/3\nYou may look at the top card of your library any time.",
+                "LookAtTopCardOfLibrary",
+            ),
+            (
+                "Mystic Remora",
+                "Mana cost: {U}\nType: Enchantment\nCumulative upkeep {1}",
+                "CumulativeUpkeepEffect",
+            ),
+            (
+                "Cumulative Discard Fixture",
+                "Mana cost: {1}{B}\nType: Enchantment\nCumulative upkeep—Discard a card.",
+                "DiscardEffect",
+            ),
+            (
+                "Cumulative Choice Fixture",
+                "Mana cost: {G}{W}\nType: Enchantment\nCumulative upkeep {G} or {W}",
+                "UnlessActionEffect",
+            ),
+            (
+                "Jötun Grunt",
+                "Mana cost: {1}{W}\nType: Creature — Giant Soldier\nPower/Toughness: 4/4\nCumulative upkeep—Put two cards from a single graveyard on the bottom of their owner's library. (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)",
+                "MoveToZoneEffect",
+            ),
+        ];
+
+        for (name, text, expected_debug) in cases {
+            let definition = compile_to_runtime_definition(name, text, false)
+                .unwrap_or_else(|err| panic!("{name} should compile: {err}"));
+            let debug = format!("{definition:#?}");
+            assert!(
+                !debug.contains("KeywordFallbackText"),
+                "{name} should not lower supported mechanics to KeywordFallbackText:\n{debug}"
+            );
+            assert!(
+                !debug.contains("RuleFallbackText"),
+                "{name} should not lower supported mechanics to RuleFallbackText:\n{debug}"
+            );
+            assert!(
+                debug.contains(expected_debug),
+                "{name} should contain {expected_debug}, got:\n{debug}"
+            );
+        }
+    }
+
+    #[test]
+    fn compiler_integrated_definitions_execute_normally_in_runtime() {
+        let definition = compile_to_runtime_definition(
+            "Llanowar Elves",
+            "Mana cost: {G}\nType: Creature — Elf Druid\nPower/Toughness: 1/1\n{T}: Add {G}.",
+            false,
+        )
+        .expect("llanowar elves should compile");
+
+        let mut game =
+            ironsmith::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let object_id = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let object = game.object(object_id).expect("object should exist");
+
+        assert_eq!(object.name, "Llanowar Elves");
+        assert_eq!(object.abilities.len(), 1);
+        assert!(object.abilities[0].is_mana_ability());
+    }
+
+    #[test]
+    fn compiled_artifact_materializes_without_the_compiler_bridge() {
+        let builder = compiler::CardDefinitionBuilder::new(
+            ironsmith::ids::CardId::from_raw(90_001),
+            "Artifact Bolt",
+        );
+        let source = "Mana cost: {R}\nType: Instant\nArtifact Bolt deals 3 damage to any target.";
+        let (artifact, definition) = compile_builder_to_artifact(builder, source, false)
+            .expect("artifact bolt should compile and materialize");
+
+        artifact
+            .validate()
+            .expect("artifact checksum should validate");
+        assert_eq!(artifact.payload.canonical_text, source);
+        assert_eq!(artifact.payload.ability_labels.len(), 3);
+        assert_eq!(definition.card.name, "Artifact Bolt");
+        assert!(format!("{definition:#?}").contains("DealDamageEffect"));
+
+        let mut registry = ironsmith::cards::CardRegistry::new();
+        registry
+            .register_compiled_artifact(&artifact)
+            .expect("lean catalog should materialize and register the artifact");
+        assert!(registry.get("Artifact Bolt").is_some());
+    }
+
+    #[test]
+    fn megatron_tyrant_strict_compiles_without_keyword_fallback() {
+        let definition = compile_to_runtime_definition(
+            "Megatron, Tyrant // Megatron, Destructive Force",
+            "Mana cost: {3}{R}{W}{B}\nType: Legendary Artifact Creature — Robot\nPower/Toughness: 7/5\nMore Than Meets the Eye {1}{R}{W}{B} (You may cast this card converted for {1}{R}{W}{B}.)\nYour opponents can't cast spells during combat.\nAt the beginning of each of your postcombat main phases, you may convert Megatron. If you do, add {C} for each 1 life your opponents have lost this turn.",
+            false,
+        )
+        .expect("Megatron should strict-compile without unsupported keyword fallbacks");
+
+        let debug = format!("{definition:#?}");
+        assert!(
+            !debug.contains("KeywordFallbackText") && !debug.contains("RuleFallbackText"),
+            "Megatron should not lower to fallback static abilities:\n{debug}"
+        );
+        assert!(
+            debug
+                .to_ascii_lowercase()
+                .contains("more than meets the eye {1}{r}{w}{b}")
+                && (debug.contains("OpponentsCantCastSpells")
+                    || (debug.contains("RuleRestriction") && debug.contains("CastSpellsMatching")))
+                && debug.contains("Opponent")
+                && debug.contains("ActivationTiming(DuringCombat)")
+                && debug.contains("ConvertEffect")
+                && debug.contains("AddScaledManaEffect")
+                && debug.contains("LifeLostThisTurn"),
+            "Megatron should preserve keyword marker and main ability semantics:\n{debug}"
+        );
+    }
+}

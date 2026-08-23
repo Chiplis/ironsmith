@@ -6,7 +6,7 @@ use crate::model::compiler_semantic::{
 
 use super::activation_and_restrictions::combine_mana_activation_condition;
 
-pub(crate) fn apply_pending_restrictions_to_ability(
+pub fn apply_pending_restrictions_to_ability(
     ability: &mut Ability,
     pending: &mut ParsedRestrictions,
 ) {
@@ -47,14 +47,14 @@ pub(crate) fn apply_pending_restrictions_to_ability(
     }
 }
 
-pub(crate) fn is_restrictable_ability(ability: &Ability) -> bool {
+pub fn is_restrictable_ability(ability: &Ability) -> bool {
     matches!(
         ability.kind,
         AbilityKind::Activated(_) | AbilityKind::Triggered(_)
     )
 }
 
-pub(crate) fn apply_pending_activation_restriction(
+pub fn apply_pending_activation_restriction(
     ability: &mut ActivatedAbility,
     restriction: &ParsedActivationRestriction,
 ) {
@@ -129,7 +129,7 @@ fn apply_pending_trigger_restriction(
     }
 }
 
-pub(crate) fn apply_pending_mana_restriction(
+pub fn apply_pending_mana_restriction(
     ability: &mut ActivatedAbility,
     restriction: &ParsedManaRestriction,
 ) {
@@ -144,7 +144,7 @@ pub(crate) fn apply_pending_mana_restriction(
 /// Applies the typed mana restrictions collected while parsing one activated
 /// ability. This belongs beside restriction preparation rather than in runtime
 /// lowering: no Oracle surface is inspected here.
-pub(crate) fn apply_pending_mana_restrictions(
+pub fn apply_pending_mana_restrictions(
     parsed: &mut crate::cards::builders::ParsedAbility,
     restrictions: &[crate::model::compiler_semantic::ParsedManaRestriction],
 ) -> Result<(), crate::cards::builders::CardTextError> {

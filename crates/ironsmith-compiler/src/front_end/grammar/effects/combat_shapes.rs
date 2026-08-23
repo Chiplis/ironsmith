@@ -5,6 +5,6 @@ mod conditions;
 #[path = "combat_shapes/damage.rs"]
 mod damage;
 
-pub(crate) use attachments::*;
-pub(crate) use conditions::*;
-pub(crate) use damage::*;
+pub use attachments::*;
+pub use conditions::*;
+pub use damage::*;

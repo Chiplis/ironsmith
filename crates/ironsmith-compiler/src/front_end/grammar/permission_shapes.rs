@@ -3,13 +3,13 @@ use winnow::error::{ContextError, ErrMode};
 use winnow::prelude::*;
 use winnow::token::any;
 
-pub(crate) use super::filters::{
+pub use super::filters::{
     PermissionAtom, PermissionCaptureKind, PermissionCaptureRole, PermissionSequence,
 };
 use super::primitives::{self, WordSliceInput};
 use crate::lexer::{OwnedLexToken, TokenWordView};
 
-pub(crate) fn exact_tokens(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
+pub fn exact_tokens(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
     let words = TokenWordView::new(tokens).word_refs();
     let mut input: WordSliceInput<'_> = &words;
     (dynamic_sequence(expected), eof.void())
@@ -18,29 +18,29 @@ pub(crate) fn exact_tokens(tokens: &[OwnedLexToken], expected: &[&str]) -> bool 
         .is_ok()
 }
 
-pub(crate) fn exact_tokens_any(tokens: &[OwnedLexToken], alternatives: &[&[&str]]) -> bool {
+pub fn exact_tokens_any(tokens: &[OwnedLexToken], alternatives: &[&[&str]]) -> bool {
     alternatives
         .iter()
         .any(|expected| exact_tokens(tokens, expected))
 }
 
-pub(crate) fn prefix_tokens(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
+pub fn prefix_tokens(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
     let words = TokenWordView::new(tokens).word_refs();
     let mut input: WordSliceInput<'_> = &words;
     dynamic_sequence(expected).parse_next(&mut input).is_ok()
 }
 
-pub(crate) fn contains_tokens(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
+pub fn contains_tokens(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
     find_words(&TokenWordView::new(tokens).word_refs(), expected).is_some()
 }
 
-pub(crate) fn contains_tokens_any(tokens: &[OwnedLexToken], alternatives: &[&[&str]]) -> bool {
+pub fn contains_tokens_any(tokens: &[OwnedLexToken], alternatives: &[&[&str]]) -> bool {
     alternatives
         .iter()
         .any(|expected| contains_tokens(tokens, expected))
 }
 
-pub(crate) fn starts_at_words(words: &[&str], offset: usize, expected: &[&str]) -> bool {
+pub fn starts_at_words(words: &[&str], offset: usize, expected: &[&str]) -> bool {
     let Some(words) = words.get(offset..) else {
         return false;
     };
@@ -48,11 +48,11 @@ pub(crate) fn starts_at_words(words: &[&str], offset: usize, expected: &[&str]) 
     dynamic_sequence(expected).parse_next(&mut input).is_ok()
 }
 
-pub(crate) fn prefix_words(words: &[&str], expected: &[&str]) -> bool {
+pub fn prefix_words(words: &[&str], expected: &[&str]) -> bool {
     starts_at_words(words, 0, expected)
 }
 
-pub(crate) fn exact_words(words: &[&str], expected: &[&str]) -> bool {
+pub fn exact_words(words: &[&str], expected: &[&str]) -> bool {
     let mut input: WordSliceInput<'_> = words;
     (dynamic_sequence(expected), eof.void())
         .void()
@@ -60,20 +60,20 @@ pub(crate) fn exact_words(words: &[&str], expected: &[&str]) -> bool {
         .is_ok()
 }
 
-pub(crate) fn exact_any_words(words: &[&str], alternatives: &[&[&str]]) -> bool {
+pub fn exact_any_words(words: &[&str], alternatives: &[&[&str]]) -> bool {
     alternatives
         .iter()
         .any(|expected| exact_words(words, expected))
 }
 
-pub(crate) fn suffix_words(words: &[&str], expected: &[&str]) -> bool {
+pub fn suffix_words(words: &[&str], expected: &[&str]) -> bool {
     if expected.len() > words.len() {
         return false;
     }
     exact_words(&words[words.len() - expected.len()..], expected)
 }
 
-pub(crate) fn find_words(words: &[&str], expected: &[&str]) -> Option<usize> {
+pub fn find_words(words: &[&str], expected: &[&str]) -> Option<usize> {
     if expected.is_empty() {
         return None;
     }

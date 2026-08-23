@@ -13,28 +13,28 @@ use ironsmith_core::ValueSurfaceHint;
 
 #[path = "misc_action_shapes/payment_and_untap.rs"]
 mod payment_and_untap;
-pub(crate) use payment_and_untap::*;
+pub use payment_and_untap::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BecomePlayerSurface {
+pub enum BecomePlayerSurface {
     Monarch,
     LifeTotal,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SwitchTargetSurface<'a> {
+pub enum SwitchTargetSurface<'a> {
     Source(&'a [OwnedLexToken]),
     Tagged(&'a [OwnedLexToken]),
     Explicit(&'a [OwnedLexToken]),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SwitchPowerToughnessShape<'a> {
-    pub(crate) target: SwitchTargetSurface<'a>,
+pub struct SwitchPowerToughnessShape<'a> {
+    pub target: SwitchTargetSurface<'a>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SkipActionKind {
+pub enum SkipActionKind {
     NextCombatPhaseThisTurn,
     CombatPhases,
     DrawStep,
@@ -42,43 +42,43 @@ pub(crate) enum SkipActionKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SkipActionShape {
-    pub(crate) player: PlayerAst,
-    pub(crate) action: SkipActionKind,
+pub struct SkipActionShape {
+    pub player: PlayerAst,
+    pub action: SkipActionKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EndActionShape {
+pub enum EndActionShape {
     Turn,
     CombatPhase,
     EndStepLoseGame,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FlipTargetSurface<'a> {
+pub enum FlipTargetSurface<'a> {
     Source(Option<&'a [OwnedLexToken]>),
     Coin,
     Explicit(&'a [OwnedLexToken]),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct FlipActionShape<'a> {
-    pub(crate) target: FlipTargetSurface<'a>,
-    pub(crate) delayed_until_next_end_step: bool,
+pub struct FlipActionShape<'a> {
+    pub target: FlipTargetSurface<'a>,
+    pub delayed_until_next_end_step: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RollDieShape {
-    pub(crate) sides: u32,
-    pub(crate) die_text: Option<String>,
+pub struct RollDieShape {
+    pub sides: u32,
+    pub die_text: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct MillActionShape {
-    pub(crate) count: Value,
+pub struct MillActionShape {
+    pub count: Value,
 }
 
-pub(crate) fn parse_misc_word_choice(word: &str, choices: &[&str]) -> bool {
+pub fn parse_misc_word_choice(word: &str, choices: &[&str]) -> bool {
     for choice in choices {
         if permission_shapes::exact_words(&[word], &[*choice]) {
             return true;
@@ -87,7 +87,7 @@ pub(crate) fn parse_misc_word_choice(word: &str, choices: &[&str]) -> bool {
     false
 }
 
-pub(crate) fn parse_become_player_surface(tokens: &[OwnedLexToken]) -> BecomePlayerSurface {
+pub fn parse_become_player_surface(tokens: &[OwnedLexToken]) -> BecomePlayerSurface {
     if [&["the", "monarch"][..], &["monarch"]]
         .iter()
         .any(|expected| permission_shapes::exact_tokens(tokens, expected))
@@ -98,7 +98,7 @@ pub(crate) fn parse_become_player_surface(tokens: &[OwnedLexToken]) -> BecomePla
     }
 }
 
-pub(crate) fn parse_switch_power_toughness_tokens(
+pub fn parse_switch_power_toughness_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SwitchPowerToughnessShape<'_>> {
     let (power, _, after_power) =
@@ -157,7 +157,7 @@ fn contains_word(tokens: &[OwnedLexToken], word: &'static str) -> bool {
     primitives::find_prefix(tokens, || primitives::kw(word).void()).is_some()
 }
 
-pub(crate) fn parse_skip_action_tokens(
+pub fn parse_skip_action_tokens(
     tokens: &[OwnedLexToken],
     subject_player: Option<PlayerAst>,
 ) -> Option<SkipActionShape> {
@@ -188,7 +188,7 @@ pub(crate) fn parse_skip_action_tokens(
     Some(SkipActionShape { player, action })
 }
 
-pub(crate) fn parse_end_action_tokens(tokens: &[OwnedLexToken]) -> Option<EndActionShape> {
+pub fn parse_end_action_tokens(tokens: &[OwnedLexToken]) -> Option<EndActionShape> {
     if [&["the", "combat", "phase"][..], &["combat", "phase"]]
         .iter()
         .any(|expected| permission_shapes::exact_tokens(tokens, expected))
@@ -215,7 +215,7 @@ fn next_end_step_suffix(input: &mut LexStream<'_>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_flip_action_tokens(tokens: &[OwnedLexToken]) -> FlipActionShape<'_> {
+pub fn parse_flip_action_tokens(tokens: &[OwnedLexToken]) -> FlipActionShape<'_> {
     if tokens.is_empty() {
         return FlipActionShape {
             target: FlipTargetSurface::Source(None),
@@ -285,7 +285,7 @@ fn is_die_noun(token: &OwnedLexToken) -> bool {
     token.is_word("die") || token.is_word("dice")
 }
 
-pub(crate) fn parse_roll_die_tokens(tokens: &[OwnedLexToken]) -> Option<RollDieShape> {
+pub fn parse_roll_die_tokens(tokens: &[OwnedLexToken]) -> Option<RollDieShape> {
     let tokens = if tokens
         .first()
         .is_some_and(|token| token.is_word("a") || token.is_word("an"))
@@ -430,7 +430,7 @@ fn trailing_is_instead(tokens: &[OwnedLexToken]) -> bool {
     permission_shapes::exact_tokens(tokens, &["instead"])
 }
 
-pub(crate) fn parse_mill_action_tokens(
+pub fn parse_mill_action_tokens(
     tokens: &[OwnedLexToken],
     subject_player: PlayerAst,
 ) -> Result<Option<MillActionShape>, CardTextError> {

@@ -13,15 +13,15 @@ use super::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RestActionShape {
+pub enum RestActionShape {
     Destroy,
     Exile,
     Sacrifice,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct OptionalSequencePrefixShape {
-    pub(crate) tail: Range<usize>,
+pub struct OptionalSequencePrefixShape {
+    pub tail: Range<usize>,
 }
 
 fn rest_action(input: &mut LexStream<'_>) -> WResult<RestActionShape> {
@@ -44,7 +44,7 @@ fn rest_action(input: &mut LexStream<'_>) -> WResult<RestActionShape> {
     Ok(action)
 }
 
-pub(crate) fn parse_rest_action_shape(tokens: &[OwnedLexToken]) -> Option<RestActionShape> {
+pub fn parse_rest_action_shape(tokens: &[OwnedLexToken]) -> Option<RestActionShape> {
     primitives::parse_all(tokens, rest_action, "sequence-rest-action").ok()
 }
 
@@ -59,7 +59,7 @@ fn optional_may_prefix(input: &mut LexStream<'_>) -> WResult<()> {
     Ok(())
 }
 
-pub(crate) fn parse_optional_sequence_prefix_shape(
+pub fn parse_optional_sequence_prefix_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<OptionalSequencePrefixShape> {
     let (_, tail) = primitives::parse_prefix(tokens, optional_may_prefix)?;
@@ -69,7 +69,7 @@ pub(crate) fn parse_optional_sequence_prefix_shape(
     })
 }
 
-pub(crate) fn is_consult_hand_then_exile_others_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_consult_hand_then_exile_others_shape(tokens: &[OwnedLexToken]) -> bool {
     starts_sequence(
         tokens,
         &[
@@ -81,7 +81,7 @@ pub(crate) fn is_consult_hand_then_exile_others_shape(tokens: &[OwnedLexToken]) 
         && contains_sequence_phrase(tokens, &[&["cards"]])
 }
 
-pub(crate) fn is_consult_battlefield_or_hand_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_consult_battlefield_or_hand_shape(tokens: &[OwnedLexToken]) -> bool {
     starts_sequence(
         tokens,
         &[

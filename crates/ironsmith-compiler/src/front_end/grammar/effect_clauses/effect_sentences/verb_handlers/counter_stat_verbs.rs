@@ -96,7 +96,7 @@ fn generic_mana_amount_from_symbol(symbol: ManaSymbol) -> Option<i32> {
     }
 }
 
-pub(crate) fn parse_counter_target_phrase(
+pub fn parse_counter_target_phrase(
     tokens: &[OwnedLexToken],
 ) -> Result<TargetAst, CardTextError> {
     let words = crate::lexer::token_word_refs(tokens);
@@ -543,7 +543,7 @@ fn parse_counter_ability_target_phrase(
     Ok(Some(target))
 }
 
-pub(crate) fn scale_value_multiplier(value: Value, multiplier: i32) -> Value {
+pub fn scale_value_multiplier(value: Value, multiplier: i32) -> Value {
     if multiplier <= 0 {
         return Value::Fixed(0);
     }
@@ -558,7 +558,7 @@ pub(crate) fn scale_value_multiplier(value: Value, multiplier: i32) -> Value {
     }
 }
 
-pub(crate) fn parse_counter_unless_additional_generic_value(
+pub fn parse_counter_unless_additional_generic_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
     let Some(shape) = counter_grammar::parse_additional_payment_head(tokens) else {
@@ -609,7 +609,7 @@ pub(crate) fn parse_counter_unless_additional_generic_value(
     Ok(Some(scale_value_multiplier(dynamic, multiplier)))
 }
 
-pub(crate) fn parse_reveal(
+pub fn parse_reveal(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -829,7 +829,7 @@ fn parse_prior_effect_count_binding_clause(tokens: &[OwnedLexToken]) -> Option<V
     })
 }
 
-pub(crate) fn parse_life_amount(
+pub fn parse_life_amount(
     tokens: &[OwnedLexToken],
     amount_kind: &str,
 ) -> Result<(Value, usize), CardTextError> {
@@ -847,7 +847,7 @@ pub(crate) fn parse_life_amount(
     })
 }
 
-pub(crate) fn parse_life_equal_to_value(
+pub fn parse_life_equal_to_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -1000,7 +1000,7 @@ fn parse_life_total_as_turn_began_value(words: &[&str]) -> Option<Value> {
     counter_grammar::parse_life_total_as_turn_began_words(words)
 }
 
-pub(crate) fn parse_life_amount_from_trailing(
+pub fn parse_life_amount_from_trailing(
     base_amount: &Value,
     trailing: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
@@ -1137,7 +1137,7 @@ fn parse_for_each_counter_on_reference_value(tokens: &[OwnedLexToken]) -> Option
     }
 }
 
-pub(crate) fn validate_life_keyword(rest: &[OwnedLexToken]) -> Result<(), CardTextError> {
+pub fn validate_life_keyword(rest: &[OwnedLexToken]) -> Result<(), CardTextError> {
     if rest
         .first()
         .and_then(OwnedLexToken::as_word)
@@ -1150,7 +1150,7 @@ pub(crate) fn validate_life_keyword(rest: &[OwnedLexToken]) -> Result<(), CardTe
     Ok(())
 }
 
-pub(crate) fn remap_source_stat_value_to_it(value: Value) -> Value {
+pub fn remap_source_stat_value_to_it(value: Value) -> Value {
     match value {
         Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
             value: Box::new(remap_source_stat_value_to_it(*value)),

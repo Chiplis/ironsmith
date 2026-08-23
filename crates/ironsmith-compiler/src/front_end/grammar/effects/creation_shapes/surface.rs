@@ -9,7 +9,7 @@ use super::super::super::super::lexer::{OwnedLexToken, TokenWordView};
 use super::super::super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CreationWordClass {
+pub enum CreationWordClass {
     And,
     Article,
     ArticleOrThe,
@@ -133,7 +133,7 @@ impl CreationWordClass {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CreationPhrase {
+pub enum CreationPhrase {
     AbilityFromAmong,
     AdditionToOtherTypes,
     AtEndOfCombat,
@@ -470,26 +470,26 @@ fn phrase_anywhere(words: &[&str], phrase: &[&str]) -> Option<usize> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct CreationWords<'a> {
+pub struct CreationWords<'a> {
     words: &'a [&'a str],
 }
 
 impl<'a> CreationWords<'a> {
-    pub(crate) fn new(words: &'a [&'a str]) -> Self {
+    pub fn new(words: &'a [&'a str]) -> Self {
         Self { words }
     }
 
-    pub(crate) fn class_at(self, idx: usize, class: CreationWordClass) -> bool {
+    pub fn class_at(self, idx: usize, class: CreationWordClass) -> bool {
         self.words
             .get(idx)
             .is_some_and(|word| class.words().iter().any(|expected| word == expected))
     }
 
-    pub(crate) fn first_is(self, class: CreationWordClass) -> bool {
+    pub fn first_is(self, class: CreationWordClass) -> bool {
         self.class_at(0, class)
     }
 
-    pub(crate) fn has(self, class: CreationWordClass) -> bool {
+    pub fn has(self, class: CreationWordClass) -> bool {
         class
             .words()
             .iter()
@@ -500,7 +500,7 @@ impl<'a> CreationWords<'a> {
         self.words.contains(&expected)
     }
 
-    pub(crate) fn location(self, class: CreationWordClass) -> Option<usize> {
+    pub fn location(self, class: CreationWordClass) -> Option<usize> {
         class
             .words()
             .iter()
@@ -508,18 +508,18 @@ impl<'a> CreationWords<'a> {
             .min()
     }
 
-    pub(crate) fn starts(self, phrase: CreationPhrase) -> bool {
+    pub fn starts(self, phrase: CreationPhrase) -> bool {
         phrase
             .alternatives()
             .iter()
             .any(|expected| phrase_at_start(self.words, expected))
     }
 
-    pub(crate) fn has_phrase(self, phrase: CreationPhrase) -> bool {
+    pub fn has_phrase(self, phrase: CreationPhrase) -> bool {
         self.phrase_location(phrase).is_some()
     }
 
-    pub(crate) fn phrase_location(self, phrase: CreationPhrase) -> Option<usize> {
+    pub fn phrase_location(self, phrase: CreationPhrase) -> Option<usize> {
         phrase
             .alternatives()
             .iter()
@@ -527,13 +527,13 @@ impl<'a> CreationWords<'a> {
             .min()
     }
 
-    pub(crate) fn exact(self, phrase: CreationPhrase) -> bool {
+    pub fn exact(self, phrase: CreationPhrase) -> bool {
         phrase.alternatives().iter().any(|expected| {
             expected.len() == self.words.len() && phrase_at_start(self.words, expected)
         })
     }
 
-    pub(crate) fn suffix_location(self, phrase: CreationPhrase) -> Option<usize> {
+    pub fn suffix_location(self, phrase: CreationPhrase) -> Option<usize> {
         phrase
             .alternatives()
             .iter()
@@ -543,20 +543,20 @@ impl<'a> CreationWords<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct CreationTokens<'a> {
+pub struct CreationTokens<'a> {
     tokens: &'a [OwnedLexToken],
 }
 
 impl<'a> CreationTokens<'a> {
-    pub(crate) fn new(tokens: &'a [OwnedLexToken]) -> Self {
+    pub fn new(tokens: &'a [OwnedLexToken]) -> Self {
         Self { tokens }
     }
 
-    pub(crate) fn words(self) -> Vec<&'a str> {
+    pub fn words(self) -> Vec<&'a str> {
         TokenWordView::new(self.tokens).word_refs()
     }
 
-    pub(crate) fn boundary(self, word_idx: usize) -> Option<usize> {
+    pub fn boundary(self, word_idx: usize) -> Option<usize> {
         let view = TokenWordView::new(self.tokens);
         if word_idx == view.len() {
             return Some(self.tokens.len());
@@ -565,13 +565,13 @@ impl<'a> CreationTokens<'a> {
             .map(|range| range.start)
     }
 
-    pub(crate) fn word_range(self, words: Range<usize>) -> Option<&'a [OwnedLexToken]> {
+    pub fn word_range(self, words: Range<usize>) -> Option<&'a [OwnedLexToken]> {
         let view = TokenWordView::new(self.tokens);
         let range = view.token_span_for_words(words.start, words.end)?;
         Some(&self.tokens[range])
     }
 
-    pub(crate) fn token_is(self, token_idx: usize, class: CreationWordClass) -> bool {
+    pub fn token_is(self, token_idx: usize, class: CreationWordClass) -> bool {
         self.tokens.get(token_idx).is_some_and(|token| {
             let text = token.parser_text();
             class.words().contains(&text)

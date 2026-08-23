@@ -7,7 +7,7 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum WhereXKnownValue<'a> {
+pub enum WhereXKnownValue<'a> {
     ThisAbilityResolvedThisTurnCount,
     YourLifeTotal,
     HalfYourLifeTotalRoundedUp,
@@ -27,9 +27,7 @@ pub(crate) enum WhereXKnownValue<'a> {
     },
 }
 
-pub(crate) fn parse_where_x_known_value_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<WhereXKnownValue<'_>> {
+pub fn parse_where_x_known_value_tokens(tokens: &[OwnedLexToken]) -> Option<WhereXKnownValue<'_>> {
     primitives::parse_all(
         tokens,
         parse_where_x_known_value_lexed,

@@ -7,7 +7,7 @@ use super::super::super::front_end::grammar::effects::{
 use super::super::super::lexer::LexedClause;
 use super::*;
 
-pub(crate) fn collapse_leading_signed_pt_modifier_tokens(
+pub fn collapse_leading_signed_pt_modifier_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<OwnedLexToken>> {
     let sign = match tokens.first()?.kind {
@@ -29,7 +29,7 @@ pub(crate) fn collapse_leading_signed_pt_modifier_tokens(
     Some(collapsed)
 }
 
-pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+pub fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let clause = LexedClause::new(tokens);
     if clause.is_empty() {
         return Err(CardTextError::ParseError(

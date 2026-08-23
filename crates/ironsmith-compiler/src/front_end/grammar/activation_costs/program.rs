@@ -424,21 +424,21 @@ fn parse_activation_cost_cst_tokens(
     })
 }
 
-pub(crate) fn parse_activation_cost_tokens(
+pub fn parse_activation_cost_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostCst, CardTextError> {
     parse_activation_cost_cst_tokens(tokens, &render_token_slice(tokens))
 }
 
 #[cfg(test)]
-pub(crate) fn parse_activation_cost_tokens_rewrite(
+pub fn parse_activation_cost_tokens_rewrite(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostCst, CardTextError> {
     parse_activation_cost_tokens(tokens)
 }
 
 #[cfg(test)]
-pub(crate) fn parse_activation_cost_rewrite(raw: &str) -> Result<ActivationCostCst, CardTextError> {
+pub fn parse_activation_cost_rewrite(raw: &str) -> Result<ActivationCostCst, CardTextError> {
     let tokens = lex_line(raw.trim(), 0)?;
     parse_activation_cost_cst_tokens(&tokens, raw)
 }

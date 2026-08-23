@@ -122,8 +122,12 @@ function round(value) {
 }
 
 async function initGame() {
-  const wasmBytes = await readFile(new URL("../pkg/ironsmith_bg.wasm", import.meta.url));
-  await initWasm({ module_or_path: wasmBytes });
+  const [engine, compiler, verifier] = await Promise.all([
+    readFile(new URL("../pkg/engine_bg.wasm", import.meta.url)),
+    readFile(new URL("../pkg/compiler_bg.wasm", import.meta.url)),
+    readFile(new URL("../pkg/verifier_bg.wasm", import.meta.url)),
+  ]);
+  await initWasm({ engine, compiler, verifier });
   return new WasmGame();
 }
 

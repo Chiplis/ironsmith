@@ -14,7 +14,7 @@ npm install --save-exact ironsmith-wasm@0.1.0
 
 ## Initialize
 
-`wasm-pack`'s web target resolves the adjacent `.wasm` file when `init()` is called. Vite and other modern ESM bundlers understand this pattern.
+The package facade initializes the adjacent engine, compiler, and verifier modules. Vite and other modern ESM bundlers understand these module-relative assets.
 
 ```ts
 import init, { WasmGame } from "ironsmith-wasm";
@@ -23,7 +23,9 @@ await init();
 const engine = new WasmGame();
 ```
 
-If your host manages WASM assets itself, the binary is also exported as `ironsmith-wasm/ironsmith_bg.wasm`; pass its URL, bytes, response, or compiled module to `init`.
+If your host manages WASM assets itself, the three binaries are exported as `engine_bg.wasm`, `compiler_bg.wasm`, and `verifier_bg.wasm`. Pass their URLs, bytes, responses, or compiled modules to `init({ engine, compiler, verifier })`.
+
+The facade preserves source-based registration methods by compiling source in the compiler module and loading versioned typed artifacts into the parser-free engine module. Linked faces are registered as one artifact batch, with their local IDs remapped atomically by each engine session.
 
 ## Load a Manabrew deck
 

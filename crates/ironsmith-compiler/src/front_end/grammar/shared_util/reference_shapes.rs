@@ -5,13 +5,13 @@ use crate::static_abilities::StaticAbilityId;
 use crate::target::PlayerFilter;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum FilterKeywordConstraint {
+pub enum FilterKeywordConstraint {
     Static(StaticAbilityId),
     Marker(&'static str),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum SubjectAst {
+pub enum SubjectAst {
     Player(PlayerAst),
     /// The controller of the source object from the enclosing trigger event.
     ///
@@ -22,7 +22,7 @@ pub(crate) enum SubjectAst {
     This,
 }
 
-pub(crate) fn contains_source_from_your_graveyard(words: &[&str]) -> bool {
+pub fn contains_source_from_your_graveyard(words: &[&str]) -> bool {
     find_one_of(
         words,
         &[
@@ -36,7 +36,7 @@ pub(crate) fn contains_source_from_your_graveyard(words: &[&str]) -> bool {
     )
 }
 
-pub(crate) fn contains_source_from_your_hand(words: &[&str]) -> bool {
+pub fn contains_source_from_your_hand(words: &[&str]) -> bool {
     find_one_of(
         words,
         &[
@@ -52,7 +52,7 @@ pub(crate) fn contains_source_from_your_hand(words: &[&str]) -> bool {
     )
 }
 
-pub(crate) fn contains_from_command_zone(words: &[&str]) -> bool {
+pub fn contains_from_command_zone(words: &[&str]) -> bool {
     permission_shapes::find_words(words, &["from", "command", "zone"]).is_some()
 }
 
@@ -60,7 +60,7 @@ pub(crate) fn contains_from_command_zone(words: &[&str]) -> bool {
 /// object moving from the command zone.  A command-zone phrase in the effect's
 /// object set (for example, "commanders you own from the command zone") must
 /// not change the functional zone of the source ability.
-pub(crate) fn contains_source_from_command_zone(words: &[&str]) -> bool {
+pub fn contains_source_from_command_zone(words: &[&str]) -> bool {
     find_one_of(
         words,
         &[
@@ -76,29 +76,29 @@ pub(crate) fn contains_source_from_command_zone(words: &[&str]) -> bool {
     )
 }
 
-pub(crate) fn contains_discard_source(words: &[&str]) -> bool {
+pub fn contains_discard_source(words: &[&str]) -> bool {
     permission_shapes::find_words(words, &["discard", "this", "card"]).is_some()
 }
 
-pub(crate) fn is_source_from_your_graveyard(words: &[&str]) -> bool {
+pub fn is_source_from_your_graveyard(words: &[&str]) -> bool {
     words.len() >= 4
         && prefix_one_of(words, &[&["this"], &["thiss"]])
         && permission_shapes::find_words(words, &["from", "your", "graveyard"]).is_some()
         && has_one_of_words(words, &["card", "creature", "permanent"])
 }
 
-pub(crate) fn is_source_from_exile(words: &[&str]) -> bool {
+pub fn is_source_from_exile(words: &[&str]) -> bool {
     words.len() >= 3
         && prefix_one_of(words, &[&["this"], &["thiss"]])
         && permission_shapes::find_words(words, &["from", "exile"]).is_some()
         && has_one_of_words(words, &["card", "creature", "permanent", "source"])
 }
 
-pub(crate) fn parse_subject_tokens(tokens: &[OwnedLexToken]) -> SubjectAst {
+pub fn parse_subject_tokens(tokens: &[OwnedLexToken]) -> SubjectAst {
     parse_subject_words(&TokenWordView::new(tokens).word_refs())
 }
 
-pub(crate) fn parse_subject_words(words: &[&str]) -> SubjectAst {
+pub fn parse_subject_words(words: &[&str]) -> SubjectAst {
     if words.is_empty() {
         return SubjectAst::This;
     }
@@ -377,7 +377,7 @@ pub(crate) fn parse_subject_words(words: &[&str]) -> SubjectAst {
     SubjectAst::This
 }
 
-pub(crate) fn parse_filter_keyword_constraint_words(
+pub fn parse_filter_keyword_constraint_words(
     words: &[&str],
 ) -> Option<(FilterKeywordConstraint, usize)> {
     if words.is_empty() {
@@ -402,7 +402,7 @@ pub(crate) fn parse_filter_keyword_constraint_words(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FilterKeywordListConnective {
+pub enum FilterKeywordListConnective {
     And,
     Or,
     AndOr,
@@ -412,7 +412,7 @@ pub(crate) enum FilterKeywordListConnective {
 /// haste"). Commas are elided from the word view, so adjacent keywords with no
 /// separator word are accepted as list items; the final connective word picks
 /// the surface ("or" vs "and/or" vs "and").
-pub(crate) fn parse_filter_keyword_constraint_list_words(
+pub fn parse_filter_keyword_constraint_list_words(
     words: &[&str],
 ) -> Option<(
     Vec<FilterKeywordConstraint>,
@@ -460,7 +460,7 @@ pub(crate) fn parse_filter_keyword_constraint_list_words(
     Some((constraints, connective, consumed))
 }
 
-pub(crate) fn cycling_keyword_root(word: &str) -> Option<&str> {
+pub fn cycling_keyword_root(word: &str) -> Option<&str> {
     if permission_shapes::exact_words(&[word], &["cycling"]) {
         return Some("");
     }
@@ -471,7 +471,7 @@ pub(crate) fn cycling_keyword_root(word: &str) -> Option<&str> {
     None
 }
 
-pub(crate) fn parse_hand_advantage_player(words: &[&str]) -> Option<PlayerFilter> {
+pub fn parse_hand_advantage_player(words: &[&str]) -> Option<PlayerFilter> {
     let (base, mut idx) = player_base(words)?;
     if !starts_with_one_of_words(words, idx, &["who", "that"])
         || !starts_with_one_of_words(words, idx + 1, &["has", "have"])
@@ -518,7 +518,7 @@ pub(crate) fn parse_hand_advantage_player(words: &[&str]) -> Option<PlayerFilter
     })
 }
 
-pub(crate) fn parse_life_advantage_player(words: &[&str]) -> Option<PlayerFilter> {
+pub fn parse_life_advantage_player(words: &[&str]) -> Option<PlayerFilter> {
     if permission_shapes::exact_words(
         words,
         &[

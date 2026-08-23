@@ -6,12 +6,12 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ComposedAnthemSegment<'a> {
-    pub(crate) body_tokens: &'a [OwnedLexToken],
-    pub(crate) omitted_subject: bool,
+pub struct ComposedAnthemSegment<'a> {
+    pub body_tokens: &'a [OwnedLexToken],
+    pub omitted_subject: bool,
 }
 
-pub(crate) fn parse_composed_anthem_segment_tokens(
+pub fn parse_composed_anthem_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ComposedAnthemSegment<'_>> {
     let tokens = trim_lexed_commas(tokens);
@@ -31,9 +31,7 @@ pub(crate) fn parse_composed_anthem_segment_tokens(
     })
 }
 
-pub(crate) fn parse_where_x_value_prefix_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<&[OwnedLexToken]> {
+pub fn parse_where_x_value_prefix_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     primitives::parse_prefix(tokens, primitives::phrase(&["where", "x", "is"]))
         .map(|(_, rest)| rest)
 }

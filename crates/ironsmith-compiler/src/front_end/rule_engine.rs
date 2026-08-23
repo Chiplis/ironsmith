@@ -8,46 +8,46 @@ use std::collections::HashMap;
 
 use super::lexer::{OwnedLexToken, TokenKind, TokenWordView, contains_token_kind};
 
-pub(crate) const RULE_SHAPE_HAS_COLON: u32 = 1 << 0;
-pub(crate) const RULE_SHAPE_HAS_COMMA: u32 = 1 << 1;
-pub(crate) const RULE_SHAPE_HAS_SEMICOLON: u32 = 1 << 2;
-pub(crate) const RULE_SHAPE_STARTS_IF: u32 = 1 << 3;
-pub(crate) const RULE_SHAPE_STARTS_WHEN: u32 = 1 << 4;
-pub(crate) const RULE_SHAPE_STARTS_WHENEVER: u32 = 1 << 5;
-pub(crate) const RULE_SHAPE_STARTS_AT: u32 = 1 << 6;
-pub(crate) const RULE_SHAPE_STARTS_MAY: u32 = 1 << 7;
+pub const RULE_SHAPE_HAS_COLON: u32 = 1 << 0;
+pub const RULE_SHAPE_HAS_COMMA: u32 = 1 << 1;
+pub const RULE_SHAPE_HAS_SEMICOLON: u32 = 1 << 2;
+pub const RULE_SHAPE_STARTS_IF: u32 = 1 << 3;
+pub const RULE_SHAPE_STARTS_WHEN: u32 = 1 << 4;
+pub const RULE_SHAPE_STARTS_WHENEVER: u32 = 1 << 5;
+pub const RULE_SHAPE_STARTS_AT: u32 = 1 << 6;
+pub const RULE_SHAPE_STARTS_MAY: u32 = 1 << 7;
 
 #[derive(Debug, Clone)]
-pub(crate) struct LexClauseWords<'a>(TokenWordView<'a>);
+pub struct LexClauseWords<'a>(TokenWordView<'a>);
 
 impl<'a> LexClauseWords<'a> {
-    pub(crate) fn new(tokens: &'a [OwnedLexToken]) -> Self {
+    pub fn new(tokens: &'a [OwnedLexToken]) -> Self {
         Self(TokenWordView::new(tokens))
     }
 
-    pub(crate) fn first(&self) -> Option<&str> {
+    pub fn first(&self) -> Option<&str> {
         self.0.first()
     }
 
-    pub(crate) fn to_word_refs(&self) -> Vec<&str> {
+    pub fn to_word_refs(&self) -> Vec<&str> {
         self.0.to_word_refs()
     }
 
-    pub(crate) fn join(&self, separator: &str) -> String {
+    pub fn join(&self, separator: &str) -> String {
         self.0.join(separator)
     }
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct LexClauseView<'a> {
-    pub(crate) raw: Option<&'a str>,
-    pub(crate) tokens: &'a [OwnedLexToken],
-    pub(crate) words: LexClauseWords<'a>,
-    pub(crate) shape: u32,
+pub struct LexClauseView<'a> {
+    pub raw: Option<&'a str>,
+    pub tokens: &'a [OwnedLexToken],
+    pub words: LexClauseWords<'a>,
+    pub shape: u32,
 }
 
 impl<'a> LexClauseView<'a> {
-    pub(crate) fn from_tokens(tokens: &'a [OwnedLexToken]) -> Self {
+    pub fn from_tokens(tokens: &'a [OwnedLexToken]) -> Self {
         let words = LexClauseWords::new(tokens);
         let shape = compute_lex_clause_rule_shape(tokens, &words);
         Self {
@@ -58,11 +58,11 @@ impl<'a> LexClauseView<'a> {
         }
     }
 
-    pub(crate) fn head(&self) -> &str {
+    pub fn head(&self) -> &str {
         self.words.first().unwrap_or("")
     }
 
-    pub(crate) fn display_text(&self) -> String {
+    pub fn display_text(&self) -> String {
         if let Some(raw) = self.raw {
             raw.trim().to_string()
         } else {
@@ -71,7 +71,7 @@ impl<'a> LexClauseView<'a> {
     }
 }
 
-pub(crate) fn unsupported_rule_error(
+pub fn unsupported_rule_error(
     rule_id: &str,
     message: &str,
     subject_label: &str,
@@ -104,29 +104,29 @@ fn compute_lex_clause_rule_shape(tokens: &[OwnedLexToken], words: &LexClauseWord
     shape
 }
 
-pub(crate) type LexClauseRuleFn<T> = for<'a> fn(&LexClauseView<'a>) -> ParseOutcome<T>;
-pub(crate) type LegacyLexClauseRuleFn<T> =
+pub type LexClauseRuleFn<T> = for<'a> fn(&LexClauseView<'a>) -> ParseOutcome<T>;
+pub type LegacyLexClauseRuleFn<T> =
     for<'a> fn(&LexClauseView<'a>) -> Result<Option<T>, CardTextError>;
 
 #[derive(Clone, Copy)]
-pub(crate) enum LexRuleHandler<T> {
+pub enum LexRuleHandler<T> {
     Structured(LexClauseRuleFn<T>),
     Legacy(LegacyLexClauseRuleFn<T>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LexRuleHeadHint {
+pub enum LexRuleHeadHint {
     Single(&'static str),
     Pair(&'static str, &'static str),
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct LexRuleHintIndex {
+pub struct LexRuleHintIndex {
     by_head: HashMap<&'static str, Vec<usize>>,
     by_head_pair: HashMap<(&'static str, &'static str), Vec<usize>>,
 }
 
-pub(crate) fn build_lex_rule_hint_index(
+pub fn build_lex_rule_hint_index(
     rule_count: usize,
     mut head_hints_for_rule: impl FnMut(usize) -> Vec<LexRuleHeadHint>,
 ) -> LexRuleHintIndex {
@@ -149,7 +149,7 @@ pub(crate) fn build_lex_rule_hint_index(
 }
 
 impl LexRuleHintIndex {
-    pub(crate) fn candidate_indices(&self, head: &str, second: Option<&str>) -> Vec<usize> {
+    pub fn candidate_indices(&self, head: &str, second: Option<&str>) -> Vec<usize> {
         let mut candidate_indices = Vec::new();
         if let Some(second) = second
             && let Some(indices) = self.by_head_pair.get(&(head, second))
@@ -166,23 +166,23 @@ impl LexRuleHintIndex {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct LexRuleDef<T> {
-    pub(crate) metadata: RegistryRuleMetadata,
-    pub(crate) shape_mask: u32,
-    pub(crate) run: LexRuleHandler<T>,
+pub struct LexRuleDef<T> {
+    pub metadata: RegistryRuleMetadata,
+    pub shape_mask: u32,
+    pub run: LexRuleHandler<T>,
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct LexRuleIndex<T: 'static> {
+pub struct LexRuleIndex<T: 'static> {
     rules: &'static [LexRuleDef<T>],
 }
 
 impl<T: 'static> LexRuleIndex<T> {
-    pub(crate) const fn new(rules: &'static [LexRuleDef<T>]) -> Self {
+    pub const fn new(rules: &'static [LexRuleDef<T>]) -> Self {
         Self { rules }
     }
 
-    pub(crate) fn recognize<'a>(&self, view: &LexClauseView<'a>) -> ParseOutcome<RuleMatch<T>> {
+    pub fn recognize<'a>(&self, view: &LexClauseView<'a>) -> ParseOutcome<RuleMatch<T>> {
         recognize_lex_rule_indices(RuleId::new("lex-rule-registry"), &[self], view)
     }
 
@@ -228,7 +228,7 @@ impl<T: 'static> LexRuleIndex<T> {
 /// Resolve several rule families as one ambiguity domain. Staging remains an
 /// explicit caller decision, but registration order within a stage cannot
 /// select between two successful families.
-pub(crate) fn recognize_lex_rule_indices<T: 'static>(
+pub fn recognize_lex_rule_indices<T: 'static>(
     registry: RuleId,
     indices: &[&LexRuleIndex<T>],
     view: &LexClauseView<'_>,
@@ -261,27 +261,27 @@ fn lex_rule_matches_view<T>(rule: &LexRuleDef<T>, view: &LexClauseView<'_>) -> b
     (view.shape & rule.shape_mask) == rule.shape_mask
 }
 
-pub(crate) type LexUnsupportedPredicate = for<'a> fn(&LexClauseView<'a>) -> bool;
+pub type LexUnsupportedPredicate = for<'a> fn(&LexClauseView<'a>) -> bool;
 
 #[derive(Clone, Copy)]
-pub(crate) struct LexUnsupportedRuleDef {
-    pub(crate) metadata: RegistryRuleMetadata,
-    pub(crate) shape_mask: u32,
-    pub(crate) message: &'static str,
-    pub(crate) predicate: LexUnsupportedPredicate,
+pub struct LexUnsupportedRuleDef {
+    pub metadata: RegistryRuleMetadata,
+    pub shape_mask: u32,
+    pub message: &'static str,
+    pub predicate: LexUnsupportedPredicate,
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct LexUnsupportedDiagnoser {
+pub struct LexUnsupportedDiagnoser {
     rules: &'static [LexUnsupportedRuleDef],
 }
 
 impl LexUnsupportedDiagnoser {
-    pub(crate) const fn new(rules: &'static [LexUnsupportedRuleDef]) -> Self {
+    pub const fn new(rules: &'static [LexUnsupportedRuleDef]) -> Self {
         Self { rules }
     }
 
-    pub(crate) fn diagnose(
+    pub fn diagnose(
         &self,
         view: &LexClauseView<'_>,
         subject_label: &'static str,

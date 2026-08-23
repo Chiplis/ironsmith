@@ -11,7 +11,7 @@ use super::super::filters::parse_object_filter_with_grammar_entrypoint_lexed;
 use super::super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ExactPermissionSubject {
+pub enum ExactPermissionSubject {
     GenericSpell,
     GenericSpells,
     PermanentSpell,
@@ -21,12 +21,12 @@ pub(crate) enum ExactPermissionSubject {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SpellSubjectFacts {
-    pub(crate) contains_spell: bool,
-    pub(crate) contains_singular_spell: bool,
-    pub(crate) contains_plural_spells: bool,
-    pub(crate) starts_with_generic_spell: bool,
-    pub(crate) exact: Option<ExactPermissionSubject>,
+pub struct SpellSubjectFacts {
+    pub contains_spell: bool,
+    pub contains_singular_spell: bool,
+    pub contains_plural_spells: bool,
+    pub starts_with_generic_spell: bool,
+    pub exact: Option<ExactPermissionSubject>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,7 +36,7 @@ enum ListSeparator {
     Or,
 }
 
-pub(crate) fn parse_spell_subject_facts(tokens: &[OwnedLexToken]) -> SpellSubjectFacts {
+pub fn parse_spell_subject_facts(tokens: &[OwnedLexToken]) -> SpellSubjectFacts {
     let contains_singular_spell = primitives::find_prefix(tokens, || {
         primitives::kw("spell").value(ExactPermissionSubject::GenericSpell)
     })
@@ -54,13 +54,11 @@ pub(crate) fn parse_spell_subject_facts(tokens: &[OwnedLexToken]) -> SpellSubjec
     }
 }
 
-pub(crate) fn parse_exact_permission_subject(
-    tokens: &[OwnedLexToken],
-) -> Option<ExactPermissionSubject> {
+pub fn parse_exact_permission_subject(tokens: &[OwnedLexToken]) -> Option<ExactPermissionSubject> {
     primitives::parse_all(tokens, exact_permission_subject, "exact permission subject").ok()
 }
 
-pub(crate) fn parse_permission_subject_filter_tokens(
+pub fn parse_permission_subject_filter_tokens(
     filter_tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     if filter_tokens.is_empty() {
@@ -107,7 +105,7 @@ pub(crate) fn parse_permission_subject_filter_tokens(
     Ok(None)
 }
 
-pub(crate) fn parse_cast_permission_filter_tokens(
+pub fn parse_cast_permission_filter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let spell_subject = parse_spell_subject_facts(tokens);
@@ -123,7 +121,7 @@ pub(crate) fn parse_cast_permission_filter_tokens(
     parse_permission_subject_filter_tokens(tokens)
 }
 
-pub(crate) fn parse_simple_spell_type_list_filter_tokens(
+pub fn parse_simple_spell_type_list_filter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ObjectFilter> {
     let card_types =
@@ -134,11 +132,11 @@ pub(crate) fn parse_simple_spell_type_list_filter_tokens(
     })
 }
 
-pub(crate) fn generic_spell_subject_requires_nonland(tokens: &[OwnedLexToken]) -> bool {
+pub fn generic_spell_subject_requires_nonland(tokens: &[OwnedLexToken]) -> bool {
     parse_spell_subject_facts(tokens).starts_with_generic_spell
 }
 
-pub(crate) fn permanent_spell_filter() -> ObjectFilter {
+pub fn permanent_spell_filter() -> ObjectFilter {
     ObjectFilter {
         card_types: vec![
             CardType::Artifact,

@@ -13,59 +13,59 @@ use super::super::super::{
 use super::parse_consult_traversal_shape;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ConsultMoveSelectionShape {
+pub enum ConsultMoveSelectionShape {
     AllMatched,
     AnyNumberOfMatched,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ConsultMatchedMoveShape {
-    pub(crate) selection: ConsultMoveSelectionShape,
-    pub(crate) zone: Zone,
-    pub(crate) controller_you: bool,
-    pub(crate) target_plural_surface: bool,
+pub struct ConsultMatchedMoveShape {
+    pub selection: ConsultMoveSelectionShape,
+    pub zone: Zone,
+    pub controller_you: bool,
+    pub target_plural_surface: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ConsultRepeatedMoveShape {
-    pub(crate) first_filter: Vec<OwnedLexToken>,
-    pub(crate) repeated_filter: Vec<OwnedLexToken>,
-    pub(crate) zone: Zone,
+pub struct ConsultRepeatedMoveShape {
+    pub first_filter: Vec<OwnedLexToken>,
+    pub repeated_filter: Vec<OwnedLexToken>,
+    pub zone: Zone,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ConsultMiddleShape {
+pub enum ConsultMiddleShape {
     MatchedMove(ConsultMatchedMoveShape),
     RepeatedMove(ConsultRepeatedMoveShape),
     Generic(Vec<Vec<OwnedLexToken>>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ConsultRemainderDispositionShape {
+pub enum ConsultRemainderDispositionShape {
     Graveyard,
     LibraryBottom(LibraryBottomOrderAst),
     ShuffleLibrary,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ConsultDispositionSequenceShape {
-    pub(crate) consult_tokens: Vec<OwnedLexToken>,
-    pub(crate) middle: ConsultMiddleShape,
-    pub(crate) remainder: ConsultRemainderDispositionShape,
+pub struct ConsultDispositionSequenceShape {
+    pub consult_tokens: Vec<OwnedLexToken>,
+    pub middle: ConsultMiddleShape,
+    pub remainder: ConsultRemainderDispositionShape,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RevealRepeatedDispositionSequenceShape {
-    pub(crate) reveal_tokens: Vec<OwnedLexToken>,
-    pub(crate) repeated: ConsultRepeatedMoveShape,
-    pub(crate) remainder: ConsultRemainderDispositionShape,
+pub struct RevealRepeatedDispositionSequenceShape {
+    pub reveal_tokens: Vec<OwnedLexToken>,
+    pub repeated: ConsultRepeatedMoveShape,
+    pub remainder: ConsultRemainderDispositionShape,
 }
 
 fn trimmed(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     LexedClause::new(tokens).trimmed().tokens()
 }
 
-pub(crate) fn parse_consult_matched_move_shape(
+pub fn parse_consult_matched_move_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ConsultMatchedMoveShape> {
     let tokens = trimmed(tokens);
@@ -293,7 +293,7 @@ fn split_terminal_remainder(
     Some((trimmed(&tokens[..remainder_at]).to_vec(), remainder))
 }
 
-pub(crate) fn parse_consult_disposition_sequence_shape(
+pub fn parse_consult_disposition_sequence_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ConsultDispositionSequenceShape> {
     let sentences = split_lexed_sentences(tokens);
@@ -336,7 +336,7 @@ pub(crate) fn parse_consult_disposition_sequence_shape(
     })
 }
 
-pub(crate) fn parse_reveal_repeated_disposition_sequence_shape(
+pub fn parse_reveal_repeated_disposition_sequence_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<RevealRepeatedDispositionSequenceShape> {
     let sentences = split_lexed_sentences(tokens);

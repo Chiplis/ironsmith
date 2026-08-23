@@ -9,66 +9,66 @@ use crate::target::PlayerFilter;
 
 #[path = "delayed_sentence_shapes/schedule.rs"]
 mod schedule;
-pub(crate) use schedule::*;
+pub use schedule::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DelayedObjectKind {
+pub enum DelayedObjectKind {
     Creature,
     Permanent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DelayedLeavesObjectKind {
+pub enum DelayedLeavesObjectKind {
     Creature,
     Permanent,
     Token,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DelayedTaggedLeavesShape<'a> {
-    pub(crate) kind: DelayedLeavesObjectKind,
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct DelayedTaggedLeavesShape<'a> {
+    pub kind: DelayedLeavesObjectKind,
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DelayedNextCombatShape<'a> {
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct DelayedNextCombatShape<'a> {
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct DelayedEndStepShape<'a> {
-    pub(crate) player: PlayerFilter,
-    pub(crate) start_next_turn: bool,
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct DelayedEndStepShape<'a> {
+    pub player: PlayerFilter,
+    pub start_next_turn: bool,
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DelayedThisTurnPlacement {
+pub enum DelayedThisTurnPlacement {
     LeadingDuration,
     TrailingDuration,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DelayedThisTurnShape<'a> {
-    pub(crate) placement: DelayedThisTurnPlacement,
-    pub(crate) trigger_tokens: &'a [OwnedLexToken],
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
-    pub(crate) references_previous_creature: bool,
+pub struct DelayedThisTurnShape<'a> {
+    pub placement: DelayedThisTurnPlacement,
+    pub trigger_tokens: &'a [OwnedLexToken],
+    pub effect_tokens: &'a [OwnedLexToken],
+    pub references_previous_creature: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DelayedTaggedDamageShape {
-    pub(crate) kind: DelayedObjectKind,
-    pub(crate) combat: bool,
+pub struct DelayedTaggedDamageShape {
+    pub kind: DelayedObjectKind,
+    pub combat: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CopyTwiceShape {
-    pub(crate) may_choose_new_targets: bool,
+pub struct CopyTwiceShape {
+    pub may_choose_new_targets: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DelayedDiesShape<'a> {
+pub enum DelayedDiesShape<'a> {
     ThatReference {
         effect_tokens: &'a [OwnedLexToken],
     },
@@ -156,7 +156,7 @@ fn leaves_object_kind<'a>(input: &mut LexStream<'a>) -> WResult<DelayedLeavesObj
 /// Parses a delayed follow-up that watches the object selected or created by
 /// the preceding effect: `When that creature/token/permanent leaves the
 /// battlefield, ...`.
-pub(crate) fn parse_delayed_tagged_leaves_shape(
+pub fn parse_delayed_tagged_leaves_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DelayedTaggedLeavesShape<'_>> {
     let tokens = trimmed(tokens);
@@ -182,7 +182,7 @@ pub(crate) fn parse_delayed_tagged_leaves_shape(
     })
 }
 
-pub(crate) fn parse_delayed_next_combat_shape(
+pub fn parse_delayed_next_combat_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DelayedNextCombatShape<'_>> {
     let tokens = trimmed(tokens);
@@ -241,9 +241,7 @@ fn end_step_header<'a>(input: &mut LexStream<'a>) -> WResult<(PlayerFilter, bool
     Ok((player, start_next_turn))
 }
 
-pub(crate) fn parse_delayed_end_step_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<DelayedEndStepShape<'_>> {
+pub fn parse_delayed_end_step_shape(tokens: &[OwnedLexToken]) -> Option<DelayedEndStepShape<'_>> {
     let tokens = trimmed(tokens);
     let ((player, start_next_turn), after_comma) = primitives::parse_prefix(
         tokens,
@@ -277,9 +275,7 @@ fn parse_intro_and_trigger(tokens: &[OwnedLexToken]) -> Option<DelayedTriggerCor
     })
 }
 
-pub(crate) fn parse_delayed_this_turn_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<DelayedThisTurnShape<'_>> {
+pub fn parse_delayed_this_turn_shape(tokens: &[OwnedLexToken]) -> Option<DelayedThisTurnShape<'_>> {
     let tokens = trimmed(tokens);
 
     if let Some(((), after_duration)) = primitives::parse_prefix(
@@ -324,7 +320,7 @@ pub(crate) fn parse_delayed_this_turn_shape(
     })
 }
 
-pub(crate) fn parse_delayed_attack_unblocked_subject(
+pub fn parse_delayed_attack_unblocked_subject(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     let tokens = trimmed(tokens);
@@ -342,7 +338,7 @@ pub(crate) fn parse_delayed_attack_unblocked_subject(
     (!subject_tokens.is_empty()).then_some(subject_tokens)
 }
 
-pub(crate) fn parse_delayed_tagged_damage_shape(
+pub fn parse_delayed_tagged_damage_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DelayedTaggedDamageShape> {
     primitives::parse_all(
@@ -364,7 +360,7 @@ pub(crate) fn parse_delayed_tagged_damage_shape(
     .ok()
 }
 
-pub(crate) fn parse_delayed_deals_combat_damage_kind(
+pub fn parse_delayed_deals_combat_damage_kind(
     tokens: &[OwnedLexToken],
 ) -> Option<DelayedObjectKind> {
     primitives::parse_all(
@@ -386,9 +382,7 @@ pub(crate) fn parse_delayed_deals_combat_damage_kind(
 /// The target is chosen while the enclosing spell or ability resolves; the
 /// delayed trigger must subsequently watch that exact object rather than every
 /// object matching the descriptive filter.
-pub(crate) fn parse_delayed_target_dies_subject(
-    tokens: &[OwnedLexToken],
-) -> Option<&[OwnedLexToken]> {
+pub fn parse_delayed_target_dies_subject(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let tokens = trimmed(tokens);
     let (_, after_target) = primitives::parse_prefix(tokens, primitives::kw("target"))?;
     let (subject_tokens, ()) = primitives::split_lexed_once_before_suffix(after_target, 1, || {
@@ -398,14 +392,14 @@ pub(crate) fn parse_delayed_target_dies_subject(
     (!subject_tokens.is_empty()).then_some(subject_tokens)
 }
 
-pub(crate) struct DelayedTargetCombatDamageShape<'a> {
+pub struct DelayedTargetCombatDamageShape<'a> {
     pub subject_tokens: &'a [OwnedLexToken],
     pub recipient_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DelayedDiesAfterDamageByPreviousCreatureShape<'a> {
-    pub(crate) victim_tokens: &'a [OwnedLexToken],
+pub struct DelayedDiesAfterDamageByPreviousCreatureShape<'a> {
+    pub victim_tokens: &'a [OwnedLexToken],
 }
 
 /// Parse the event core from a delayed watcher such as
@@ -415,7 +409,7 @@ pub(crate) struct DelayedDiesAfterDamageByPreviousCreatureShape<'a> {
 /// this parser deliberately receives only the trigger core. The demonstrative
 /// damager refers to the creature selected by the preceding instruction; the
 /// victim remains the independently dying object.
-pub(crate) fn parse_delayed_dies_after_damage_by_previous_creature_shape(
+pub fn parse_delayed_dies_after_damage_by_previous_creature_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DelayedDiesAfterDamageByPreviousCreatureShape<'_>> {
     let (victim_tokens, ()) =
@@ -434,7 +428,7 @@ pub(crate) fn parse_delayed_dies_after_damage_by_previous_creature_shape(
 /// Parse "target <subject> deals combat damage to <recipient>" for a delayed
 /// this-turn registration. The target is chosen while the enclosing ability
 /// resolves; the trigger must watch that exact object.
-pub(crate) fn parse_delayed_target_deals_combat_damage_shape(
+pub fn parse_delayed_target_deals_combat_damage_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DelayedTargetCombatDamageShape<'_>> {
     let tokens = trimmed(tokens);
@@ -455,7 +449,7 @@ pub(crate) fn parse_delayed_target_deals_combat_damage_shape(
 
 /// Parse the object-kind portion of a delayed
 /// "target ... is put into your graveyard" trigger.
-pub(crate) fn parse_delayed_target_put_into_your_graveyard_subject(
+pub fn parse_delayed_target_put_into_your_graveyard_subject(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     let tokens = trimmed(tokens);
@@ -478,7 +472,7 @@ pub(crate) fn parse_delayed_target_put_into_your_graveyard_subject(
 /// exact event-shaped spelling alongside the uncontracted and demonstrative
 /// forms. The narrow `put into a graveyard` tail prevents a possessive `its`
 /// from being mistaken for this pronoun elsewhere.
-pub(crate) fn is_delayed_prior_object_put_into_a_graveyard(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_delayed_prior_object_put_into_a_graveyard(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         trimmed(tokens),
         (
@@ -497,7 +491,7 @@ pub(crate) fn is_delayed_prior_object_put_into_a_graveyard(tokens: &[OwnedLexTok
     .is_ok()
 }
 
-pub(crate) fn is_next_cast_spell_or_loyalty_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_next_cast_spell_or_loyalty_shape(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         trimmed(tokens),
         alt((
@@ -515,7 +509,7 @@ pub(crate) fn is_next_cast_spell_or_loyalty_shape(tokens: &[OwnedLexToken]) -> b
     .is_ok()
 }
 
-pub(crate) fn parse_copy_twice_shape(tokens: &[OwnedLexToken]) -> Option<CopyTwiceShape> {
+pub fn parse_copy_twice_shape(tokens: &[OwnedLexToken]) -> Option<CopyTwiceShape> {
     let (_, tail) = primitives::parse_prefix(
         trimmed(tokens),
         semantic_phrase(&["copy", "that", "spell", "or", "ability", "twice"]),
@@ -551,11 +545,11 @@ pub(crate) fn parse_copy_twice_shape(tokens: &[OwnedLexToken]) -> Option<CopyTwi
     })
 }
 
-pub(crate) fn delayed_trigger_has_next_marker(tokens: &[OwnedLexToken]) -> bool {
+pub fn delayed_trigger_has_next_marker(tokens: &[OwnedLexToken]) -> bool {
     primitives::find_prefix(trimmed(tokens), || primitives::kw("next")).is_some()
 }
 
-pub(crate) fn delayed_trigger_has_first_time_marker(tokens: &[OwnedLexToken]) -> bool {
+pub fn delayed_trigger_has_first_time_marker(tokens: &[OwnedLexToken]) -> bool {
     primitives::split_lexed_once_before_suffix(trimmed(tokens), 1, || {
         (primitives::phrase(&["for", "the", "first", "time"]), eof).void()
     })
@@ -573,7 +567,7 @@ fn dies_this_way_suffix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_delayed_dies_shape(tokens: &[OwnedLexToken]) -> Option<DelayedDiesShape<'_>> {
+pub fn parse_delayed_dies_shape(tokens: &[OwnedLexToken]) -> Option<DelayedDiesShape<'_>> {
     let tokens = trimmed(tokens);
     let (header_tokens, effect_tokens) =
         primitives::split_lexed_once_on_separator(tokens, || primitives::comma().void())?;

@@ -4751,7 +4751,7 @@ fn parse_a_global_greatest_power_control_predicate(
     })
 }
 
-pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
+pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
     let predicate_tokens = if token_slice_first_is(tokens, "if") {
         &tokens[1..]
     } else {

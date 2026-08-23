@@ -1,5 +1,6 @@
 use crate::{CostComponent, ManaCost, PowerToughness, TotalCost, Zone};
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum TrapCondition {
     OpponentCastSpells { count: u32 },
@@ -8,6 +9,7 @@ pub enum TrapCondition {
     CreatureDealtDamageToYou,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct AlternativeCastRequirements {
     pub exile_from_graveyard: u32,
@@ -27,6 +29,7 @@ fn compose_total_cost<C: CostComponent>(
     TotalCost::from_costs(components)
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum AlternativeCastingMethod<E, C, Cond> {
     Dash {
@@ -94,7 +97,7 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
         cost: ManaCost,
     },
     Composed {
-        name: &'static str,
+        name: crate::InternedStr,
         total_cost: TotalCost<C>,
         condition: Option<Cond>,
         /// Typed copiable-value override supplied by the Prototype keyword.
@@ -104,14 +107,14 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
         prototype_power_toughness: Option<PowerToughness>,
     },
     FromZone {
-        name: &'static str,
+        name: crate::InternedStr,
         zone: Zone,
         total_cost: TotalCost<C>,
         condition: Option<Cond>,
         exiles_after_resolution: bool,
     },
     Trap {
-        name: &'static str,
+        name: crate::InternedStr,
         cost: ManaCost,
         condition: TrapCondition,
     },
@@ -306,9 +309,9 @@ where
             Self::Miracle { .. } => "Miracle",
             Self::FlashWithAdditionalCost { .. } => "Flash",
             Self::Foretell { .. } => "Foretell",
-            Self::Composed { name, .. } => name,
-            Self::Trap { name, .. } => name,
-            Self::FromZone { name, .. } => name,
+            Self::Composed { name, .. } => name.as_str(),
+            Self::Trap { name, .. } => name.as_str(),
+            Self::FromZone { name, .. } => name.as_str(),
             Self::Bestow { .. } => "Bestow",
             Self::Mutate { .. } => "Mutate",
         }
@@ -316,7 +319,7 @@ where
 
     pub fn trap(name: &'static str, cost: ManaCost, condition: TrapCondition) -> Self {
         Self::Trap {
-            name,
+            name: name.into(),
             cost,
             condition,
         }
@@ -335,7 +338,7 @@ where
         additional_costs: Vec<C>,
     ) -> Self {
         Self::Composed {
-            name,
+            name: name.into(),
             total_cost: compose_total_cost(mana_cost, additional_costs),
             condition: None,
             prototype_power_toughness: None,
@@ -349,7 +352,7 @@ where
         condition: Cond,
     ) -> Self {
         Self::Composed {
-            name,
+            name: name.into(),
             total_cost: compose_total_cost(mana_cost, additional_costs),
             condition: Some(condition),
             prototype_power_toughness: None,
@@ -358,7 +361,7 @@ where
 
     pub fn prototype(cost: ManaCost, power_toughness: PowerToughness) -> Self {
         Self::Composed {
-            name: "Prototype",
+            name: "Prototype".into(),
             total_cost: compose_total_cost(Some(cost), Vec::new()),
             condition: None,
             prototype_power_toughness: Some(power_toughness),
@@ -383,7 +386,7 @@ where
         exiles_after_resolution: bool,
     ) -> Self {
         Self::FromZone {
-            name,
+            name: name.into(),
             zone,
             total_cost,
             condition,
@@ -660,7 +663,7 @@ mod tests {
     fn try_map_preserves_composed_cost_alternatives() {
         let method: AlternativeCastingMethod<(), Cost<&'static str>, ()> =
             AlternativeCastingMethod::Composed {
-                name: "Choice cost",
+                name: "Choice cost".into(),
                 total_cost: TotalCost::one_of(vec![
                     TotalCost::from_cost(Cost::effect("discard")),
                     TotalCost::mana(generic_two()),

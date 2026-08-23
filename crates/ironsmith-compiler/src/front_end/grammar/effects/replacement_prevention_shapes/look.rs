@@ -5,7 +5,7 @@ use winnow::combinator::{alt, opt};
 use winnow::error::ModalResult as WResult;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LookHandPlayerShape {
+pub enum LookHandPlayerShape {
     TargetPlayer,
     TargetOpponent,
     Opponent,
@@ -13,16 +13,16 @@ pub(crate) enum LookHandPlayerShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LookHandShape {
-    pub(crate) player: LookHandPlayerShape,
-    pub(crate) choose_card_name: bool,
+pub struct LookHandShape {
+    pub player: LookHandPlayerShape,
+    pub choose_card_name: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct LookTopExileOneShape {
-    pub(crate) count: u32,
-    pub(crate) player: PlayerAst,
-    pub(crate) face_down: bool,
+pub struct LookTopExileOneShape {
+    pub count: u32,
+    pub player: PlayerAst,
+    pub face_down: bool,
 }
 
 fn look_hand_player<'a>(input: &mut LexStream<'a>) -> WResult<LookHandPlayerShape> {
@@ -78,7 +78,7 @@ fn look_hand<'a>(input: &mut LexStream<'a>) -> WResult<LookHandShape> {
     })
 }
 
-pub(crate) fn parse_look_hand_shape(tokens: &[OwnedLexToken]) -> Option<LookHandShape> {
+pub fn parse_look_hand_shape(tokens: &[OwnedLexToken]) -> Option<LookHandShape> {
     primitives::parse_all(tokens, look_hand, "look at hand shape").ok()
 }
 
@@ -109,9 +109,7 @@ fn exile_one_followup(tokens: &[OwnedLexToken]) -> Option<bool> {
         .then_some(true)
 }
 
-pub(crate) fn parse_look_top_exile_one_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<LookTopExileOneShape> {
+pub fn parse_look_top_exile_one_shape(tokens: &[OwnedLexToken]) -> Option<LookTopExileOneShape> {
     let (_, body) = primitives::parse_prefix(tokens, primitives::phrase(&["look", "at"]))?;
     let (_, body) = primitives::parse_prefix(body, opt(primitives::kw("the")))?;
     let (_, body) = primitives::parse_prefix(body, primitives::kw("top"))?;

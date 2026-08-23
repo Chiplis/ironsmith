@@ -39,7 +39,7 @@ fn parse_token_definition_pt_token<'a>(input: &mut LexStream<'a>) -> WResult<()>
     Ok(())
 }
 
-pub(crate) fn first_token_definition_pt_token(tokens: &[OwnedLexToken]) -> Option<usize> {
+pub fn first_token_definition_pt_token(tokens: &[OwnedLexToken]) -> Option<usize> {
     primitives::find_prefix(tokens, || parse_token_definition_pt_token)
         .map(|(token_idx, _, _)| token_idx)
 }
@@ -148,7 +148,7 @@ fn token_colors(words: &[&str]) -> ColorSet {
 /// "Sand Warrior creature tokens that are red, green, and white." Token
 /// identity normally appears before `token(s)`, so this suffix is not part of
 /// the definition slice passed to the ordinary token-shape parser.
-pub(crate) fn parse_postnominal_token_colors_tokens(tokens: &[OwnedLexToken]) -> Option<ColorSet> {
+pub fn parse_postnominal_token_colors_tokens(tokens: &[OwnedLexToken]) -> Option<ColorSet> {
     let words = parser_token_word_refs(tokens);
     let color_start = if words.starts_with(&["that", "are"]) || words.starts_with(&["that", "is"]) {
         2
@@ -283,7 +283,7 @@ fn inline_rule_self_surface(
         .then(|| SourceReferenceSurface::FullName(named_token.to_string()))
 }
 
-pub(crate) fn authored_inline_rule_presentations(
+pub fn authored_inline_rule_presentations(
     source_tokens: &[OwnedLexToken],
     named_token: Option<&str>,
 ) -> Vec<CreatureTokenInlineRulePresentation> {
@@ -514,13 +514,13 @@ pub(super) fn creature_rules(
     }
 }
 
-pub(crate) fn parse_token_definition_shape_text(source_text: &str) -> Option<TokenDefinitionSpec> {
+pub fn parse_token_definition_shape_text(source_text: &str) -> Option<TokenDefinitionSpec> {
     let trimmed = source_text.trim();
     let tokens = lex_line(trimmed, 0).ok()?;
     parse_token_definition_shape_tokens(&tokens)
 }
 
-pub(crate) fn parse_token_definition_shape_tokens(
+pub fn parse_token_definition_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenDefinitionSpec> {
     let words = parser_token_word_refs(tokens);
@@ -712,7 +712,7 @@ pub(crate) fn parse_token_definition_shape_tokens(
     }))
 }
 
-pub(crate) fn source_chosen_token_characteristics(words: &[&str]) -> (bool, bool) {
+pub fn source_chosen_token_characteristics(words: &[&str]) -> (bool, bool) {
     let use_source_chosen_color = [
         &["token", "of", "the", "chosen", "color"][..],
         &["token", "of", "that", "color"][..],

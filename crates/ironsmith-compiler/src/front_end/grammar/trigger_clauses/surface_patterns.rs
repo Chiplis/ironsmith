@@ -2,7 +2,7 @@ use super::super::permission_shapes;
 use crate::lexer::{OwnedLexToken, TokenWordView};
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct TriggerClausePattern<'p> {
+pub struct TriggerClausePattern<'p> {
     exact: Option<&'p [&'p str]>,
     exact_any: &'p [&'p [&'p str]],
     prefix: Option<&'p [&'p str]>,
@@ -16,7 +16,7 @@ pub(crate) struct TriggerClausePattern<'p> {
 }
 
 impl<'p> TriggerClausePattern<'p> {
-    pub(crate) const fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             exact: None,
             exact_any: &[],
@@ -31,61 +31,58 @@ impl<'p> TriggerClausePattern<'p> {
         }
     }
 
-    pub(crate) const fn exact(mut self, phrase: &'p [&'p str]) -> Self {
+    pub const fn exact(mut self, phrase: &'p [&'p str]) -> Self {
         self.exact = Some(phrase);
         self
     }
 
-    pub(crate) const fn exact_any(mut self, phrases: &'p [&'p [&'p str]]) -> Self {
+    pub const fn exact_any(mut self, phrases: &'p [&'p [&'p str]]) -> Self {
         self.exact_any = phrases;
         self
     }
 
-    pub(crate) const fn prefix(mut self, phrase: &'p [&'p str]) -> Self {
+    pub const fn prefix(mut self, phrase: &'p [&'p str]) -> Self {
         self.prefix = Some(phrase);
         self
     }
 
-    pub(crate) const fn prefix_any(mut self, phrases: &'p [&'p [&'p str]]) -> Self {
+    pub const fn prefix_any(mut self, phrases: &'p [&'p [&'p str]]) -> Self {
         self.prefix_any = phrases;
         self
     }
 
-    pub(crate) const fn suffix(mut self, phrase: &'p [&'p str]) -> Self {
+    pub const fn suffix(mut self, phrase: &'p [&'p str]) -> Self {
         self.suffix = Some(phrase);
         self
     }
 
-    pub(crate) const fn suffix_any(mut self, phrases: &'p [&'p [&'p str]]) -> Self {
+    pub const fn suffix_any(mut self, phrases: &'p [&'p [&'p str]]) -> Self {
         self.suffix_any = phrases;
         self
     }
 
-    pub(crate) const fn contains_phrases(mut self, phrases: &'p [&'p [&'p str]]) -> Self {
+    pub const fn contains_phrases(mut self, phrases: &'p [&'p [&'p str]]) -> Self {
         self.contains_phrases = phrases;
         self
     }
 
-    pub(crate) const fn contains_any_phrases(mut self, phrases: &'p [&'p [&'p [&'p str]]]) -> Self {
+    pub const fn contains_any_phrases(mut self, phrases: &'p [&'p [&'p [&'p str]]]) -> Self {
         self.contains_any_phrases = phrases;
         self
     }
 
-    pub(crate) const fn contains_words(mut self, words: &'p [&'p str]) -> Self {
+    pub const fn contains_words(mut self, words: &'p [&'p str]) -> Self {
         self.contains_words = words;
         self
     }
 
-    pub(crate) const fn contains_any_words(mut self, word_sets: &'p [&'p [&'p str]]) -> Self {
+    pub const fn contains_any_words(mut self, word_sets: &'p [&'p [&'p str]]) -> Self {
         self.contains_any_words = word_sets;
         self
     }
 }
 
-pub(crate) fn parse_trigger_surface_words(
-    words: &[&str],
-    pattern: TriggerClausePattern<'_>,
-) -> bool {
+pub fn parse_trigger_surface_words(words: &[&str], pattern: TriggerClausePattern<'_>) -> bool {
     if let Some(exact) = pattern.exact
         && !permission_shapes::exact_words(words, exact)
     {
@@ -156,14 +153,14 @@ pub(crate) fn parse_trigger_surface_words(
     true
 }
 
-pub(crate) fn parse_trigger_surface_tokens(
+pub fn parse_trigger_surface_tokens(
     tokens: &[OwnedLexToken],
     pattern: TriggerClausePattern<'_>,
 ) -> bool {
     parse_trigger_surface_words(&TokenWordView::new(tokens).word_refs(), pattern)
 }
 
-pub(crate) fn find_trigger_surface_window(
+pub fn find_trigger_surface_window(
     words: &[&str],
     width: usize,
     pattern: TriggerClausePattern<'_>,

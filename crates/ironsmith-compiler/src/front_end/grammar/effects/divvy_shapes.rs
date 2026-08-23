@@ -6,19 +6,19 @@ use crate::grammar::primitives;
 use crate::lexer::{OwnedLexToken, TokenWordView};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DivvyChooserShape {
+pub enum DivvyChooserShape {
     Opponent,
     TargetOpponent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DivvyRestDestinationShape {
+pub enum DivvyRestDestinationShape {
     Hand,
     BattlefieldTapped,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DivvySequenceShape {
+pub enum DivvySequenceShape {
     SearchFourCreatureCards,
     SearchLibraryGraveyardExileRemainderToTop,
     ExchangeCreatureControl,
@@ -101,9 +101,7 @@ fn sequence_has_phrase(sentence_words: &[Vec<&str>], phrase: &[&str]) -> bool {
         .any(|words| phrase_anywhere(words, phrase))
 }
 
-pub(crate) fn parse_divvy_sequence_shape(
-    sentences: &[&[OwnedLexToken]],
-) -> Option<DivvySequenceShape> {
+pub fn parse_divvy_sequence_shape(sentences: &[&[OwnedLexToken]]) -> Option<DivvySequenceShape> {
     let sentence_words = sentences
         .iter()
         .map(|tokens| TokenWordView::new(tokens).to_word_refs())

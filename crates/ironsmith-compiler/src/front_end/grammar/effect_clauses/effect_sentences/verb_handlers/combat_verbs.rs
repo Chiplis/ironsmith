@@ -131,7 +131,7 @@ fn damage_to_embedded_target_controller(
     })
 }
 
-pub(crate) fn parse_attach_object_phrase(
+pub fn parse_attach_object_phrase(
     tokens: &[OwnedLexToken],
 ) -> Result<TargetAst, CardTextError> {
     let object_span = span_from_tokens(tokens);
@@ -178,7 +178,7 @@ pub(crate) fn parse_attach_object_phrase(
         }
     }
 }
-pub(crate) fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let clause = crate::lexer::token_word_refs(tokens).join(" ");
     let shape =
         combat_grammar::parse_combat_attach_clause_shape_lexed(tokens).map_err(|error| {
@@ -309,7 +309,7 @@ fn parse_attached_object_reference(tokens: &[OwnedLexToken]) -> Option<TargetAst
     Some(TargetAst::Object(filter, None, None))
 }
 
-pub(crate) fn parse_unattach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+pub fn parse_unattach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {
         return Err(CardTextError::ParseError(
             "unattach clause missing object".to_string(),
@@ -355,7 +355,7 @@ pub(crate) fn parse_unattach(tokens: &[OwnedLexToken]) -> Result<EffectAst, Card
     Ok(EffectAst::subject_verb_unattach(object))
 }
 
-pub(crate) fn damage_clause_has_terminal_unpreventable_rider(tokens: &[OwnedLexToken]) -> bool {
+pub fn damage_clause_has_terminal_unpreventable_rider(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::lexer::token_word_refs(tokens);
     const RIDERS: &[&[&str]] = &[
         &["and", "the", "damage", "cant", "be", "prevented"],
@@ -370,7 +370,7 @@ pub(crate) fn damage_clause_has_terminal_unpreventable_rider(tokens: &[OwnedLexT
     })
 }
 
-pub(crate) fn mark_damage_ast_unpreventable(effect: &mut EffectAst) {
+pub fn mark_damage_ast_unpreventable(effect: &mut EffectAst) {
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         match &mut subject_verb.action {
             SubjectVerbActionAst::DealDamage { unpreventable, .. }
@@ -391,7 +391,7 @@ pub(crate) fn mark_damage_ast_unpreventable(effect: &mut EffectAst) {
     );
 }
 
-pub(crate) fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+pub fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let has_unpreventable_rider = damage_clause_has_terminal_unpreventable_rider(tokens);
     let mut effect = parse_deal_damage_inner(tokens)?;
     if has_unpreventable_rider {
@@ -540,7 +540,7 @@ fn preserve_optional_single_damage_target(
     }
 }
 
-pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
+pub fn parse_deal_damage_to_target_equal_to_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = combat_grammar::parse_combat_damage_to_target_equal_shape_lexed(tokens)
@@ -593,7 +593,7 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
     );
     Ok(Some(EffectAst::subject_verb_damage(amount, target)))
 }
-pub(crate) fn parse_deal_damage_equal_to_clause(
+pub fn parse_deal_damage_equal_to_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = combat_grammar::parse_combat_damage_equal_shape_lexed(tokens) else {
@@ -746,7 +746,7 @@ fn parse_divided_damage_with_amount(
         }
     }
 }
-pub(crate) fn parse_deal_damage_with_amount(
+pub fn parse_deal_damage_with_amount(
     tokens: &[OwnedLexToken],
     amount: Value,
     used: usize,
@@ -978,7 +978,7 @@ pub(crate) fn parse_deal_damage_with_amount(
         }
     }
 }
-pub(crate) fn parse_instead_if_control_predicate(
+pub fn parse_instead_if_control_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let Some(shape) = combat_grammar::parse_combat_control_predicate_shape_lexed(tokens) else {

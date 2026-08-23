@@ -12,13 +12,13 @@ use super::super::primitives;
 use super::common::{finish_text_parse, spaced, word_boundary};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum LeafManaPipToken {
+pub enum LeafManaPipToken {
     ManaGroup(Vec<ManaSymbol>),
     LegacyBare(ManaSymbol),
 }
 
 impl LeafManaPipToken {
-    pub(crate) fn into_pip(self) -> Vec<ManaSymbol> {
+    pub fn into_pip(self) -> Vec<ManaSymbol> {
         match self {
             Self::ManaGroup(group) => group,
             Self::LegacyBare(symbol) => vec![symbol],
@@ -27,12 +27,12 @@ impl LeafManaPipToken {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LeafManaCostPrefix {
-    pub(crate) cost: ManaCost,
-    pub(crate) consumed: usize,
+pub struct LeafManaCostPrefix {
+    pub cost: ManaCost,
+    pub consumed: usize,
 }
 
-pub(crate) fn parse_leaf_mana_symbol_inner(input: &mut &str) -> WResult<ManaSymbol> {
+pub fn parse_leaf_mana_symbol_inner(input: &mut &str) -> WResult<ManaSymbol> {
     alt((
         digit1.try_map(|digits: &str| digits.parse::<u8>().map(ManaSymbol::Generic)),
         one_of([
@@ -59,7 +59,7 @@ pub(crate) fn parse_leaf_mana_symbol_inner(input: &mut &str) -> WResult<ManaSymb
     .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_mana_symbol_group_inner(input: &mut &str) -> WResult<Vec<ManaSymbol>> {
+pub fn parse_leaf_mana_symbol_group_inner(input: &mut &str) -> WResult<Vec<ManaSymbol>> {
     separated(1.., parse_leaf_mana_symbol_inner, spaced('/'))
         .context(StrContext::Label("mana symbol group"))
         .context(StrContext::Expected(StrContextValue::Description(
@@ -68,7 +68,7 @@ pub(crate) fn parse_leaf_mana_symbol_group_inner(input: &mut &str) -> WResult<Ve
         .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_spelled_mana_word(input: &mut &str) -> WResult<ManaSymbol> {
+pub fn parse_leaf_spelled_mana_word(input: &mut &str) -> WResult<ManaSymbol> {
     terminated(
         alt((
             "white".value(ManaSymbol::White),
@@ -87,17 +87,13 @@ pub(crate) fn parse_leaf_spelled_mana_word(input: &mut &str) -> WResult<ManaSymb
     .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_mana_group_token<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<Vec<ManaSymbol>> {
+pub fn parse_leaf_mana_group_token<'a>(input: &mut LexStream<'a>) -> WResult<Vec<ManaSymbol>> {
     let token = primitives::token_kind(TokenKind::ManaGroup).parse_next(input)?;
     parse_leaf_mana_symbol_group_complete(token.slice.as_str())
         .map_err(|_| primitives::backtrack_err("mana group", "braced mana symbols"))
 }
 
-pub(crate) fn parse_leaf_legacy_bare_mana_token<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<ManaSymbol> {
+pub fn parse_leaf_legacy_bare_mana_token<'a>(input: &mut LexStream<'a>) -> WResult<ManaSymbol> {
     let checkpoint = input.checkpoint();
     let token = alt((
         primitives::token_kind(TokenKind::Word),
@@ -116,7 +112,7 @@ pub(crate) fn parse_leaf_legacy_bare_mana_token<'a>(
     }
 }
 
-pub(crate) fn parse_leaf_surface_mana_pip_lexed<'a>(
+pub fn parse_leaf_surface_mana_pip_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<LeafManaPipToken> {
     alt((
@@ -130,7 +126,7 @@ pub(crate) fn parse_leaf_surface_mana_pip_lexed<'a>(
     .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_mana_cost_prefix_lexed<'a>(
+pub fn parse_leaf_mana_cost_prefix_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<LeafManaCostPrefix> {
     repeat(1.., parse_leaf_surface_mana_pip_lexed)
@@ -145,7 +141,7 @@ pub(crate) fn parse_leaf_mana_cost_prefix_lexed<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_fixed_mana_cost_prefix_lexed<'a>(
+pub fn parse_leaf_fixed_mana_cost_prefix_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<LeafManaCostPrefix> {
     repeat(
@@ -170,7 +166,7 @@ pub(crate) fn parse_leaf_fixed_mana_cost_prefix_lexed<'a>(
     .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_mana_cost_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ManaCost> {
+pub fn parse_leaf_mana_cost_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ManaCost> {
     repeat(1.., parse_leaf_mana_group_token)
         .map(ManaCost::from_pips)
         .context(StrContext::Label("mana cost"))
@@ -180,7 +176,7 @@ pub(crate) fn parse_leaf_mana_cost_lexed<'a>(input: &mut LexStream<'a>) -> WResu
         .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_fixed_mana_output_lexed<'a>(
+pub fn parse_leaf_fixed_mana_output_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<Vec<ManaSymbol>> {
     repeat(
@@ -202,18 +198,16 @@ pub(crate) fn parse_leaf_fixed_mana_output_lexed<'a>(
     .parse_next(input)
 }
 
-pub(crate) fn parse_leaf_mana_symbol_complete(raw: &str) -> Result<ManaSymbol, CardTextError> {
+pub fn parse_leaf_mana_symbol_complete(raw: &str) -> Result<ManaSymbol, CardTextError> {
     let unbraced = trim_single_mana_brace_pair(raw.trim());
     finish_text_parse(unbraced, parse_leaf_mana_symbol_spaced, "leaf-mana-symbol")
 }
 
-pub(crate) fn parse_leaf_bare_mana_symbol_complete(raw: &str) -> Result<ManaSymbol, CardTextError> {
+pub fn parse_leaf_bare_mana_symbol_complete(raw: &str) -> Result<ManaSymbol, CardTextError> {
     finish_text_parse(raw, parse_leaf_mana_symbol_spaced, "leaf-bare-mana-symbol")
 }
 
-pub(crate) fn parse_leaf_mana_symbol_group_complete(
-    raw: &str,
-) -> Result<Vec<ManaSymbol>, CardTextError> {
+pub fn parse_leaf_mana_symbol_group_complete(raw: &str) -> Result<Vec<ManaSymbol>, CardTextError> {
     let trimmed = raw.trim().trim_matches('{').trim_matches('}');
     finish_text_parse(
         trimmed,
@@ -222,17 +216,15 @@ pub(crate) fn parse_leaf_mana_symbol_group_complete(
     )
 }
 
-pub(crate) fn parse_leaf_spelled_mana_word_complete(
-    raw: &str,
-) -> Result<ManaSymbol, CardTextError> {
+pub fn parse_leaf_spelled_mana_word_complete(raw: &str) -> Result<ManaSymbol, CardTextError> {
     finish_text_parse(raw, parse_leaf_spelled_mana_word, "leaf-spelled-mana-word")
 }
 
-pub(crate) fn parse_leaf_pawprint_label_count_complete(raw: &str) -> Result<u32, CardTextError> {
+pub fn parse_leaf_pawprint_label_count_complete(raw: &str) -> Result<u32, CardTextError> {
     finish_text_parse(raw, parse_leaf_pawprint_label_count, "leaf-pawprint-label")
 }
 
-pub(crate) fn parse_leaf_pawprint_label_count_token(token: &OwnedLexToken) -> Option<u32> {
+pub fn parse_leaf_pawprint_label_count_token(token: &OwnedLexToken) -> Option<u32> {
     match token.kind {
         TokenKind::ManaGroup => parse_leaf_pawprint_label_count_complete(token.parser_text()).ok(),
         TokenKind::Word if token.parser_text() == "p" => Some(1),
@@ -246,7 +238,7 @@ fn parse_leaf_pawprint_label_count(input: &mut &str) -> WResult<u32> {
         .map_err(|_| winnow::error::ErrMode::Backtrack(winnow::error::ContextError::new()))
 }
 
-pub(crate) fn parse_leaf_surface_mana_pip_token(token: &OwnedLexToken) -> Option<LeafManaPipToken> {
+pub fn parse_leaf_surface_mana_pip_token(token: &OwnedLexToken) -> Option<LeafManaPipToken> {
     primitives::parse_all(
         std::slice::from_ref(token),
         parse_leaf_surface_mana_pip_lexed,
@@ -255,16 +247,14 @@ pub(crate) fn parse_leaf_surface_mana_pip_token(token: &OwnedLexToken) -> Option
     .ok()
 }
 
-pub(crate) fn parse_leaf_mana_cost_prefix_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<LeafManaCostPrefix> {
+pub fn parse_leaf_mana_cost_prefix_tokens(tokens: &[OwnedLexToken]) -> Option<LeafManaCostPrefix> {
     let mut input = LexStream::new(tokens);
     parse_leaf_mana_cost_prefix_lexed
         .parse_next(&mut input)
         .ok()
 }
 
-pub(crate) fn parse_leaf_fixed_mana_cost_prefix_tokens(
+pub fn parse_leaf_fixed_mana_cost_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LeafManaCostPrefix> {
     let mut input = LexStream::new(tokens);
@@ -274,9 +264,7 @@ pub(crate) fn parse_leaf_fixed_mana_cost_prefix_tokens(
 }
 
 #[cfg(test)]
-pub(crate) fn parse_leaf_legacy_mana_cost_prefix_words(
-    words: &[&str],
-) -> Option<LeafManaCostPrefix> {
+pub fn parse_leaf_legacy_mana_cost_prefix_words(words: &[&str]) -> Option<LeafManaCostPrefix> {
     let mut input: primitives::WordSliceInput<'_> = words;
     let cost = parse_leaf_legacy_mana_cost_prefix_word_slice
         .parse_next(&mut input)
@@ -287,22 +275,17 @@ pub(crate) fn parse_leaf_legacy_mana_cost_prefix_words(
     })
 }
 
-#[cfg(test)]
-pub(crate) fn parse_leaf_mana_symbol_group_tokens(
+pub fn parse_leaf_mana_symbol_group_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<ManaSymbol>, CardTextError> {
     primitives::parse_all(tokens, parse_leaf_mana_group_token, "leaf-mana-group")
 }
 
-pub(crate) fn parse_leaf_mana_cost_tokens(
-    tokens: &[OwnedLexToken],
-) -> Result<ManaCost, CardTextError> {
+pub fn parse_leaf_mana_cost_tokens(tokens: &[OwnedLexToken]) -> Result<ManaCost, CardTextError> {
     primitives::parse_all(tokens, parse_leaf_mana_cost_lexed, "leaf-mana-cost")
 }
 
-pub(crate) fn parse_leaf_fixed_mana_output_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<Vec<ManaSymbol>> {
+pub fn parse_leaf_fixed_mana_output_tokens(tokens: &[OwnedLexToken]) -> Option<Vec<ManaSymbol>> {
     primitives::parse_all(
         tokens,
         parse_leaf_fixed_mana_output_lexed,

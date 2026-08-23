@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) fn condition_for_chosen_option(context: &ChosenOptionContext) -> crate::ConditionExpr {
+pub fn condition_for_chosen_option(context: &ChosenOptionContext) -> crate::ConditionExpr {
     match context {
         ChosenOptionContext::SourceOption(label) => {
             crate::ConditionExpr::SourceChosenOption(label.clone())
@@ -52,7 +52,7 @@ pub(crate) fn condition_for_chosen_option(context: &ChosenOptionContext) -> crat
     }
 }
 
-pub(crate) fn wrap_chosen_option_static_chunk(
+pub fn wrap_chosen_option_static_chunk(
     chunk: LineAst,
     chosen_option: Option<&ChosenOptionContext>,
 ) -> Result<LineAst, CardTextError> {

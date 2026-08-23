@@ -6,26 +6,26 @@ use super::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TriggerSubjectSurfaceFacts {
-    pub(crate) player: Option<TriggerControllerReference>,
-    pub(crate) contains_you: bool,
-    pub(crate) contains_enchanted_player: bool,
-    pub(crate) contains_chosen_player: bool,
-    pub(crate) contains_opponent: bool,
-    pub(crate) on_your_team: bool,
-    pub(crate) any_source: bool,
-    pub(crate) relative_pronoun: bool,
-    pub(crate) power_greater_than_base_power: bool,
+pub struct TriggerSubjectSurfaceFacts {
+    pub player: Option<TriggerControllerReference>,
+    pub contains_you: bool,
+    pub contains_enchanted_player: bool,
+    pub contains_chosen_player: bool,
+    pub contains_opponent: bool,
+    pub on_your_team: bool,
+    pub any_source: bool,
+    pub relative_pronoun: bool,
+    pub power_greater_than_base_power: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ShuffleTriggerSubjectFacts {
-    pub(crate) player: TriggerControllerReference,
-    pub(crate) caused_by_spell_or_ability: bool,
-    pub(crate) use_effect_controller: bool,
+pub struct ShuffleTriggerSubjectFacts {
+    pub player: TriggerControllerReference,
+    pub caused_by_spell_or_ability: bool,
+    pub use_effect_controller: bool,
 }
 
-pub(crate) fn parse_trigger_subject_surface_facts(words: &[&str]) -> TriggerSubjectSurfaceFacts {
+pub fn parse_trigger_subject_surface_facts(words: &[&str]) -> TriggerSubjectSurfaceFacts {
     TriggerSubjectSurfaceFacts {
         player: parse_trigger_controller_reference(words),
         contains_you: exact_word_occurs(words, &["you"]),
@@ -48,9 +48,7 @@ pub(crate) fn parse_trigger_subject_surface_facts(words: &[&str]) -> TriggerSubj
     }
 }
 
-pub(crate) fn parse_shuffle_trigger_subject_facts(
-    words: &[&str],
-) -> Option<ShuffleTriggerSubjectFacts> {
+pub fn parse_shuffle_trigger_subject_facts(words: &[&str]) -> Option<ShuffleTriggerSubjectFacts> {
     if let Some(player) = parse_trigger_controller_reference(words) {
         return Some(ShuffleTriggerSubjectFacts {
             player,
@@ -82,19 +80,19 @@ pub(crate) fn parse_shuffle_trigger_subject_facts(
     })
 }
 
-pub(crate) fn trigger_words_are_one_or_more(words: &[&str]) -> bool {
+pub fn trigger_words_are_one_or_more(words: &[&str]) -> bool {
     word_slice_is(words, &["one", "or", "more"])
 }
 
-pub(crate) fn trigger_word_is_connector(word: &str) -> bool {
+pub fn trigger_word_is_connector(word: &str) -> bool {
     matches!(word, "and" | "or")
 }
 
-pub(crate) fn trigger_word_is_other_modifier(word: &str) -> bool {
+pub fn trigger_word_is_other_modifier(word: &str) -> bool {
     matches!(word, "another" | "other")
 }
 
-pub(crate) fn normalize_each_with_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+pub fn normalize_each_with_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let mut normalized = Vec::with_capacity(tokens.len());
     let mut index = 0usize;
     while index < tokens.len() {

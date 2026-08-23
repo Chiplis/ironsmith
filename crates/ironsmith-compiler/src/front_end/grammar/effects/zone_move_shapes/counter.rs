@@ -9,12 +9,12 @@ use crate::lexer::{LexStream, LexedClause, OwnedLexToken};
 use crate::mana::ManaSymbol;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CounterClauseShapeError {
+pub enum CounterClauseShapeError {
     MissingPays,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CounterPaymentTailShape<'a> {
+pub enum CounterPaymentTailShape<'a> {
     None,
     Life(Value),
     Other {
@@ -25,21 +25,21 @@ pub(crate) enum CounterPaymentTailShape<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CounterUnlessShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) normalized_payment_tokens: Vec<OwnedLexToken>,
-    pub(crate) payment_tokens: &'a [OwnedLexToken],
-    pub(crate) mana: Vec<ManaSymbol>,
-    pub(crate) tail: CounterPaymentTailShape<'a>,
-    pub(crate) where_tokens: Option<&'a [OwnedLexToken]>,
-    pub(crate) has_x_mana_payment: bool,
-    pub(crate) has_dynamic_payment_tail: bool,
-    pub(crate) starts_with_mana_word: bool,
-    pub(crate) twice_x_surface: bool,
+pub struct CounterUnlessShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
+    pub normalized_payment_tokens: Vec<OwnedLexToken>,
+    pub payment_tokens: &'a [OwnedLexToken],
+    pub mana: Vec<ManaSymbol>,
+    pub tail: CounterPaymentTailShape<'a>,
+    pub where_tokens: Option<&'a [OwnedLexToken]>,
+    pub has_x_mana_payment: bool,
+    pub has_dynamic_payment_tail: bool,
+    pub starts_with_mana_word: bool,
+    pub twice_x_surface: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CounterClauseShape<'a> {
+pub enum CounterClauseShape<'a> {
     SecondSpellThisTurn { target_tokens: Vec<OwnedLexToken> },
     MalformedConditional,
     Unless(CounterUnlessShape<'a>),
@@ -274,7 +274,7 @@ fn parse_unless_shape<'a>(
     })
 }
 
-pub(crate) fn parse_counter_clause_shape(
+pub fn parse_counter_clause_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<CounterClauseShape<'_>, CounterClauseShapeError> {
     let tokens = trimmed(tokens);

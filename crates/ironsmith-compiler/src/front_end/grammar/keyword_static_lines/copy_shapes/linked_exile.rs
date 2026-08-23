@@ -11,20 +11,20 @@ use super::super::super::super::lexer::{LexStream, trim_lexed_commas};
 use super::super::super::{filters, leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LinkedExileCopyCounterValue {
+pub enum LinkedExileCopyCounterValue {
     OtherCardPower,
     OtherCardToughness,
     OtherCardManaValue,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct LinkedExilePairCopyShape {
-    pub(crate) may: bool,
-    pub(crate) exile_count: u32,
-    pub(crate) copy_count: u32,
-    pub(crate) filter: ObjectFilter,
-    pub(crate) counter_type: CounterType,
-    pub(crate) counter_value: LinkedExileCopyCounterValue,
+pub struct LinkedExilePairCopyShape {
+    pub may: bool,
+    pub exile_count: u32,
+    pub copy_count: u32,
+    pub filter: ObjectFilter,
+    pub counter_type: CounterType,
+    pub counter_value: LinkedExileCopyCounterValue,
 }
 
 fn graveyard_zone<'a>(input: &mut LexStream<'a>) -> WResult<Zone> {

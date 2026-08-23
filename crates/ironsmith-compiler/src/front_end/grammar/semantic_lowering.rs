@@ -13,13 +13,13 @@ mod triggered_shapes;
 #[path = "semantic_lowering/villainous_choice_shapes.rs"]
 mod villainous_choice_shapes;
 
-pub(crate) use hideaway::*;
-pub(crate) use keyword_shapes::*;
-pub(crate) use special_triggered_programs::*;
-pub(crate) use statement_shapes::*;
-pub(crate) use static_shapes::*;
-pub(crate) use triggered_shapes::*;
-pub(crate) use villainous_choice_shapes::*;
+pub use hideaway::*;
+pub use keyword_shapes::*;
+pub use special_triggered_programs::*;
+pub use statement_shapes::*;
+pub use static_shapes::*;
+pub use triggered_shapes::*;
+pub use villainous_choice_shapes::*;
 
 use winnow::combinator::{eof, peek, repeat_till};
 use winnow::error::ModalResult as WResult;

@@ -1,7 +1,7 @@
 use super::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SubjectRole {
+pub enum SubjectRole {
     Actor,
     AffectedPlayer,
     Chooser,
@@ -10,7 +10,7 @@ pub(crate) enum SubjectRole {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct LoweredSubject {
+pub struct LoweredSubject {
     role: SubjectRole,
     player_filter: PlayerFilter,
     choices: Vec<ChooseSpec>,
@@ -18,7 +18,7 @@ pub(crate) struct LoweredSubject {
 }
 
 impl LoweredSubject {
-    pub(crate) fn from_resolved(player_filter: PlayerFilter, choices: Vec<ChooseSpec>) -> Self {
+    pub fn from_resolved(player_filter: PlayerFilter, choices: Vec<ChooseSpec>) -> Self {
         Self {
             role: SubjectRole::Actor,
             player_filter,
@@ -50,7 +50,7 @@ impl LoweredSubject {
         })
     }
 
-    pub(crate) fn resolve_resolution_chooser(
+    pub fn resolve_resolution_chooser(
         player: PlayerAst,
         ctx: &mut EffectLoweringContext,
         allow_target: bool,
@@ -81,7 +81,7 @@ impl LoweredSubject {
         Ok(subject)
     }
 
-    pub(crate) fn resolve_actor(
+    pub fn resolve_actor(
         player: PlayerAst,
         ctx: &mut EffectLoweringContext,
         allow_target: bool,
@@ -98,7 +98,7 @@ impl LoweredSubject {
         )
     }
 
-    pub(crate) fn resolve_chooser(
+    pub fn resolve_chooser(
         player: PlayerAst,
         ctx: &mut EffectLoweringContext,
         allow_target: bool,
@@ -115,7 +115,7 @@ impl LoweredSubject {
         )
     }
 
-    pub(crate) fn resolve_affected_player(
+    pub fn resolve_affected_player(
         player: PlayerAst,
         ctx: &mut EffectLoweringContext,
         allow_target: bool,
@@ -132,7 +132,7 @@ impl LoweredSubject {
         )
     }
 
-    pub(crate) fn resolve_library_owner(
+    pub fn resolve_library_owner(
         player: PlayerAst,
         ctx: &mut EffectLoweringContext,
         allow_target: bool,
@@ -149,7 +149,7 @@ impl LoweredSubject {
         )
     }
 
-    pub(crate) fn resolve_zone_owner(
+    pub fn resolve_zone_owner(
         player: PlayerAst,
         ctx: &mut EffectLoweringContext,
         allow_target: bool,
@@ -166,41 +166,41 @@ impl LoweredSubject {
         )
     }
 
-    pub(crate) fn as_role(mut self, role: SubjectRole) -> Self {
+    pub fn as_role(mut self, role: SubjectRole) -> Self {
         self.role = role;
         self
     }
 
-    pub(crate) fn as_chooser(&self) -> PlayerFilter {
+    pub fn as_chooser(&self) -> PlayerFilter {
         debug_assert_eq!(self.role, SubjectRole::Chooser);
         self.player_filter.clone()
     }
 
-    pub(crate) fn player_filter(&self) -> &PlayerFilter {
+    pub fn player_filter(&self) -> &PlayerFilter {
         &self.player_filter
     }
 
-    pub(crate) fn clone_player_filter(&self) -> PlayerFilter {
+    pub fn clone_player_filter(&self) -> PlayerFilter {
         self.player_filter.clone()
     }
 
-    pub(crate) fn into_player_filter(&self) -> PlayerFilter {
+    pub fn into_player_filter(&self) -> PlayerFilter {
         self.player_filter.clone()
     }
 
-    pub(crate) fn into_parts(self) -> (PlayerFilter, Vec<ChooseSpec>) {
+    pub fn into_parts(self) -> (PlayerFilter, Vec<ChooseSpec>) {
         (self.player_filter, self.choices)
     }
 
-    pub(crate) fn choices(&self) -> &[ChooseSpec] {
+    pub fn choices(&self) -> &[ChooseSpec] {
         &self.choices
     }
 
-    pub(crate) fn into_choices(&self) -> Vec<ChooseSpec> {
+    pub fn into_choices(&self) -> Vec<ChooseSpec> {
         self.choices.clone()
     }
 
-    pub(crate) fn bind_player_refs_in_value(
+    pub fn bind_player_refs_in_value(
         &self,
         value: &Value,
         ctx: &mut EffectLoweringContext,
@@ -210,7 +210,7 @@ impl LoweredSubject {
         Ok(value)
     }
 
-    pub(crate) fn resolve_object_refs_and_bind_player_refs_in_value(
+    pub fn resolve_object_refs_and_bind_player_refs_in_value(
         &self,
         value: &Value,
         ctx: &mut EffectLoweringContext,
@@ -220,7 +220,7 @@ impl LoweredSubject {
         Ok(value)
     }
 
-    pub(crate) fn resolve_object_refs_and_bind_player_refs_in_filter(
+    pub fn resolve_object_refs_and_bind_player_refs_in_filter(
         &self,
         filter: &ObjectFilter,
         ctx: &mut EffectLoweringContext,
@@ -231,7 +231,7 @@ impl LoweredSubject {
         Ok(resolved)
     }
 
-    pub(crate) fn bind_owned_zone_filter(
+    pub fn bind_owned_zone_filter(
         &self,
         filter: &ObjectFilter,
         ctx: &mut EffectLoweringContext,
@@ -247,7 +247,7 @@ impl LoweredSubject {
         Ok(resolved)
     }
 
-    pub(crate) fn bind_library_filter(
+    pub fn bind_library_filter(
         &self,
         filter: &ObjectFilter,
         ctx: &mut EffectLoweringContext,
@@ -262,7 +262,7 @@ impl LoweredSubject {
         Ok(resolved)
     }
 
-    pub(crate) fn bind_discard_filter(
+    pub fn bind_discard_filter(
         &self,
         filter: &ObjectFilter,
         ctx: &mut EffectLoweringContext,
@@ -270,7 +270,7 @@ impl LoweredSubject {
         self.bind_owned_zone_filter(filter, ctx, Zone::Hand)
     }
 
-    pub(crate) fn bind_sacrifice_filter(
+    pub fn bind_sacrifice_filter(
         &self,
         filter: &ObjectFilter,
         ctx: &mut EffectLoweringContext,
@@ -282,7 +282,7 @@ impl LoweredSubject {
         Ok(resolved)
     }
 
-    pub(crate) fn bind_revealed_hand_choice_filter(
+    pub fn bind_revealed_hand_choice_filter(
         &self,
         filter: &ObjectFilter,
         ctx: &mut EffectLoweringContext,
@@ -301,17 +301,13 @@ impl LoweredSubject {
         Ok(resolved)
     }
 
-    pub(crate) fn apply_player_refs_to_value(
-        &self,
-        value: &mut Value,
-        ctx: &EffectLoweringContext,
-    ) {
+    pub fn apply_player_refs_to_value(&self, value: &mut Value, ctx: &EffectLoweringContext) {
         if !ctx.iterated_player {
             bind_relative_iterated_player_in_value_to_player_filter(value, &self.player_filter);
         }
     }
 
-    pub(crate) fn apply_player_refs_to_filter(
+    pub fn apply_player_refs_to_filter(
         &self,
         filter: &mut ObjectFilter,
         ctx: &EffectLoweringContext,
@@ -321,7 +317,7 @@ impl LoweredSubject {
         }
     }
 
-    pub(crate) fn target_prelude(&self) -> Vec<Effect> {
+    pub fn target_prelude(&self) -> Vec<Effect> {
         self.choices
             .iter()
             .cloned()
@@ -329,11 +325,11 @@ impl LoweredSubject {
             .collect()
     }
 
-    pub(crate) fn resolution_prelude(&self) -> Vec<Effect> {
+    pub fn resolution_prelude(&self) -> Vec<Effect> {
         self.resolution_prelude.clone()
     }
 
-    pub(crate) fn prepend_target_prelude_if_needed(&self, effect: Effect) -> Vec<Effect> {
+    pub fn prepend_target_prelude_if_needed(&self, effect: Effect) -> Vec<Effect> {
         let mut effects = self.resolution_prelude.clone();
         if effect.target_spec().is_none() {
             effects.extend(self.target_prelude());
@@ -343,7 +339,7 @@ impl LoweredSubject {
     }
 }
 
-pub(crate) fn compile_player_role_effect<Builder>(
+pub fn compile_player_role_effect<Builder>(
     role: SubjectRole,
     player: PlayerAst,
     ctx: &mut EffectLoweringContext,
@@ -401,7 +397,7 @@ where
     Ok((effects, subject.into_choices()))
 }
 
-pub(crate) fn compile_player_effect_from_resolved_filter<YouBuilder, OtherBuilder>(
+pub fn compile_player_effect_from_resolved_filter<YouBuilder, OtherBuilder>(
     filter: PlayerFilter,
     choices: Vec<ChooseSpec>,
     build_you: YouBuilder,

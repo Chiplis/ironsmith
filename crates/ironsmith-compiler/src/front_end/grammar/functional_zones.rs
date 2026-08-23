@@ -171,13 +171,13 @@ const RETURN_SELF_FROM_GRAVEYARD_PHRASES: &[&[&str]] = &[
 const DISCARD_THIS_CARD_PHRASE: &[&str] = &["discard", "this", "card"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TriggerFunctionalZoneFacts {
-    pub(crate) explicit_zone: Option<Zone>,
-    pub(crate) returns_self_from_graveyard: bool,
-    pub(crate) discards_this_card: bool,
+pub struct TriggerFunctionalZoneFacts {
+    pub explicit_zone: Option<Zone>,
+    pub returns_self_from_graveyard: bool,
+    pub discards_this_card: bool,
 }
 
-pub(crate) fn parse_activated_functional_zones_tokens(
+pub fn parse_activated_functional_zones_tokens(
     cost_tokens: &[OwnedLexToken],
     effect_sentences: &[&[OwnedLexToken]],
 ) -> Vec<Zone> {
@@ -260,7 +260,7 @@ fn parse_trigger_zone_hint_tokens(tokens: &[OwnedLexToken]) -> Option<Zone> {
     None
 }
 
-pub(crate) fn parse_static_functional_zones_tokens(tokens: &[OwnedLexToken]) -> Option<Vec<Zone>> {
+pub fn parse_static_functional_zones_tokens(tokens: &[OwnedLexToken]) -> Option<Vec<Zone>> {
     if has_any_phrase(tokens, SOURCE_NOT_ON_BATTLEFIELD_PHRASES) {
         return Some(vec![
             Zone::Hand,
@@ -296,7 +296,7 @@ pub(crate) fn parse_static_functional_zones_tokens(tokens: &[OwnedLexToken]) -> 
     (!zones.is_empty()).then_some(zones)
 }
 
-pub(crate) fn parse_trigger_functional_zone_facts_tokens(
+pub fn parse_trigger_functional_zone_facts_tokens(
     tokens: &[OwnedLexToken],
 ) -> TriggerFunctionalZoneFacts {
     TriggerFunctionalZoneFacts {

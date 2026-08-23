@@ -42,7 +42,7 @@ fn committed_failure<T>(
     ))
 }
 
-pub(crate) fn recognize_activation_cost_head(
+pub fn recognize_activation_cost_head(
     tokens: &[OwnedLexToken],
 ) -> ParseOutcome<LeafActivationCostHead> {
     const RULE: RuleId = RuleId::new("leaf.activation-cost-head");
@@ -72,9 +72,7 @@ pub(crate) fn recognize_activation_cost_head(
     }
 }
 
-pub(crate) fn recognize_mana_cost_prefix(
-    tokens: &[OwnedLexToken],
-) -> ParseOutcome<LeafManaCostPrefix> {
+pub fn recognize_mana_cost_prefix(tokens: &[OwnedLexToken]) -> ParseOutcome<LeafManaCostPrefix> {
     const RULE: RuleId = RuleId::new("leaf.mana-cost-prefix");
     if !tokens
         .first()
@@ -88,7 +86,7 @@ pub(crate) fn recognize_mana_cost_prefix(
     }
 }
 
-pub(crate) fn recognize_number_prefix(tokens: &[OwnedLexToken]) -> ParseOutcome<LeafNumberPrefix> {
+pub fn recognize_number_prefix(tokens: &[OwnedLexToken]) -> ParseOutcome<LeafNumberPrefix> {
     const RULE: RuleId = RuleId::new("leaf.number-prefix");
     let commits = tokens.first().is_some_and(|token| {
         token.kind == TokenKind::Number
@@ -120,7 +118,7 @@ pub(crate) fn recognize_number_prefix(tokens: &[OwnedLexToken]) -> ParseOutcome<
     }
 }
 
-pub(crate) fn recognize_condition_intro(
+pub fn recognize_condition_intro(
     tokens: &[OwnedLexToken],
 ) -> ParseOutcome<LeafConditionIntroPrefix<'_>> {
     const RULE: RuleId = RuleId::new("leaf.condition-intro");
@@ -133,7 +131,7 @@ pub(crate) fn recognize_condition_intro(
     }
 }
 
-pub(crate) fn recognize_duration_prefix(
+pub fn recognize_duration_prefix(
     tokens: &[OwnedLexToken],
 ) -> ParseOutcome<LeafDurationPrefix<'_, LeafDurationPhrase>> {
     const RULE: RuleId = RuleId::new("leaf.duration-prefix");
@@ -146,7 +144,7 @@ pub(crate) fn recognize_duration_prefix(
     }
 }
 
-pub(crate) fn recognize_player_reference(
+pub fn recognize_player_reference(
     tokens: &[OwnedLexToken],
     mode: LeafPlayerReferenceMode,
 ) -> ParseOutcome<LeafPlayerReference> {
@@ -175,7 +173,7 @@ pub(crate) fn recognize_player_reference(
     }
 }
 
-pub(crate) fn recognize_target_head(tokens: &[OwnedLexToken]) -> ParseOutcome<LeafTargetHead<'_>> {
+pub fn recognize_target_head(tokens: &[OwnedLexToken]) -> ParseOutcome<LeafTargetHead<'_>> {
     const RULE: RuleId = RuleId::new("leaf.target-head");
     let commits = tokens.iter().any(|token| token.parser_text() == "target")
         || matches!(

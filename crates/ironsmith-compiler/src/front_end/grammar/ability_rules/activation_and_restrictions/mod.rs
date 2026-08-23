@@ -45,20 +45,20 @@ use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
-pub(crate) mod activated_line_core;
+pub mod activated_line_core;
 mod activated_sentence_parsers;
-pub(crate) mod activation_costs;
-pub(crate) mod activation_restriction_clauses;
-pub(crate) mod choice_object_clauses;
-pub(crate) mod keyword_action_costs;
+pub mod activation_costs;
+pub mod activation_restriction_clauses;
+pub mod choice_object_clauses;
+pub mod keyword_action_costs;
 #[path = "keyword_activated_lines.rs"]
-pub(crate) mod keyword_activated_lines;
+pub mod keyword_activated_lines;
 #[path = "../../trigger_clauses/semantic.rs"]
-pub(crate) mod trigger_clause_core;
-pub(crate) mod trigger_subject_filters;
+pub mod trigger_clause_core;
+pub mod trigger_subject_filters;
 
 use activated_line_core::*;
-pub(crate) use activated_line_core::{
+pub use activated_line_core::{
     color_from_color_set, combine_mana_activation_condition, is_activate_only_restriction_sentence,
     is_any_player_may_activate_sentence_lexed, is_trigger_only_restriction_sentence,
     parse_activated_line, parse_activation_cost, parse_all_creatures_able_to_block_source_line,
@@ -68,20 +68,18 @@ pub(crate) use activated_line_core::{
     scale_dynamic_cost_modifier_value,
 };
 #[cfg(test)]
-pub(crate) use activated_line_core::{
-    parse_activate_only_timing_lexed, parse_activation_condition_lexed,
-};
+pub use activated_line_core::{parse_activate_only_timing_lexed, parse_activation_condition_lexed};
 use activated_sentence_parsers::collect_activated_sentence_modifiers;
-pub(crate) use activation_costs::parse_cant_clauses;
+pub use activation_costs::parse_cant_clauses;
 use activation_restriction_clauses::*;
-pub(crate) use activation_restriction_clauses::{
+pub use activation_restriction_clauses::{
     find_negation_span, parse_cant_restriction_clause, parse_cant_restrictions,
     parse_subject_object_filter, parse_type_adjective_conjunction_filter,
     starts_with_target_indicator,
 };
 #[cfg(test)]
-pub(crate) use choice_object_clauses::parse_you_choose_objects_clause;
-pub(crate) use choice_object_clauses::{
+pub use choice_object_clauses::parse_you_choose_objects_clause;
+pub use choice_object_clauses::{
     parse_choose_basic_land_type_phrase_words, parse_choose_card_type_phrase_words,
     parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand, parse_choose_color_phrase_words,
     parse_choose_creature_type_phrase_words, parse_choose_creature_type_then_become_type,
@@ -93,21 +91,21 @@ pub(crate) use choice_object_clauses::{
     parse_you_choose_objects_clause_with_count_value, parse_you_choose_player_clause,
 };
 use keyword_action_costs::*;
-pub(crate) use keyword_action_costs::{
+pub use keyword_action_costs::{
     find_payment_alternative_or, normalize_cant_words, parse_ability_phrase,
     parse_payment_clause_as_total_cost, parse_single_graveyard_bottom_library_payment,
     parse_single_word_keyword_action, target_ast_to_object_filter,
 };
-pub(crate) use keyword_activated_lines::{
+pub use keyword_activated_lines::{
     parse_channel_line_lexed, parse_craft_line_lexed, parse_cycling_line, parse_cycling_line_lexed,
     parse_equip_line_lexed, parse_reconfigure_line_lexed,
 };
 use trigger_clause_core::*;
-pub(crate) use trigger_clause_core::{
+pub use trigger_clause_core::{
     parse_leading_exactly_quantifier, parse_leading_or_more_quantifier, parse_trigger_clause_lexed,
 };
 use trigger_subject_filters::*;
-pub(crate) use trigger_subject_filters::{
+pub use trigger_subject_filters::{
     append_token_reminder_to_last_create_effect, build_may_cast_tagged_effect,
     controller_filter_for_token_player, effect_creates_any_token,
     effect_creates_eldrazi_spawn_or_scion, is_generic_token_reminder_sentence,

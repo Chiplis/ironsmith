@@ -42,7 +42,7 @@ const CHOSEN_COLOR_REFERENCES: &[&[&str]] = &[
 /// Apostrophe normalization presents the possessive noun as `creatures`.
 /// The returned value is presentation metadata; the caller supplies the
 /// tagged color-sharing relation that carries runtime semantics.
-pub(crate) fn parse_additional_cost_object_colors_surface(
+pub fn parse_additional_cost_object_colors_surface(
     tokens: &[OwnedLexToken],
 ) -> Option<ironsmith_core::AdditionalCostObjectSurface> {
     let words = parser_token_word_refs(tokens);
@@ -86,13 +86,13 @@ pub(crate) fn parse_additional_cost_object_colors_surface(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DiscardShapeError {
+pub enum DiscardShapeError {
     MissingCount,
     MissingCardKeyword,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum DiscardClauseShape<'a> {
+pub enum DiscardClauseShape<'a> {
     Hand,
     AllCardsInHand,
     TaggedOne,
@@ -105,16 +105,16 @@ pub(crate) enum DiscardClauseShape<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct DiscardCardsShape<'a> {
-    pub(crate) uses_all_count: bool,
-    pub(crate) count: Value,
-    pub(crate) any_number: bool,
-    pub(crate) qualifier_tokens: &'a [OwnedLexToken],
-    pub(crate) trailing_tokens: &'a [OwnedLexToken],
+pub struct DiscardCardsShape<'a> {
+    pub uses_all_count: bool,
+    pub count: Value,
+    pub any_number: bool,
+    pub qualifier_tokens: &'a [OwnedLexToken],
+    pub trailing_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DiscardQualifierShape {
+pub enum DiscardQualifierShape {
     EmptyOrThe,
     ChosenColor,
     Colors(ColorSet),
@@ -122,7 +122,7 @@ pub(crate) enum DiscardQualifierShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DiscardTrailingShape {
+pub enum DiscardTrailingShape {
     Empty,
     Random,
     ChosenName,
@@ -133,12 +133,12 @@ pub(crate) enum DiscardTrailingShape {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct DiscardAlternativeShape<'a> {
-    pub(crate) discard_tokens: &'a [OwnedLexToken],
+pub struct DiscardAlternativeShape<'a> {
+    pub discard_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum DiscardUnlessShape<'a> {
+pub enum DiscardUnlessShape<'a> {
     None,
     MissingPredicate,
     Predicate(&'a [OwnedLexToken]),
@@ -204,7 +204,7 @@ fn is_full_hand_discard(words: &[&str]) -> bool {
     common::exact_any(rest, HAND_REFERENCES)
 }
 
-pub(crate) fn parse_discard_clause_shape(
+pub fn parse_discard_clause_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<DiscardClauseShape<'_>, DiscardShapeError> {
     let words = parser_token_word_refs(tokens);
@@ -290,7 +290,7 @@ fn color_set(tokens: &[OwnedLexToken]) -> Option<ColorSet> {
     saw_color.then_some(colors)
 }
 
-pub(crate) fn parse_discard_qualifier_shape(tokens: &[OwnedLexToken]) -> DiscardQualifierShape {
+pub fn parse_discard_qualifier_shape(tokens: &[OwnedLexToken]) -> DiscardQualifierShape {
     let words = parser_token_word_refs(tokens);
     if words.is_empty() || common::exact(&words, &["the"]) {
         DiscardQualifierShape::EmptyOrThe
@@ -303,7 +303,7 @@ pub(crate) fn parse_discard_qualifier_shape(tokens: &[OwnedLexToken]) -> Discard
     }
 }
 
-pub(crate) fn parse_discard_trailing_shape(tokens: &[OwnedLexToken]) -> DiscardTrailingShape {
+pub fn parse_discard_trailing_shape(tokens: &[OwnedLexToken]) -> DiscardTrailingShape {
     let words = parser_token_word_refs(tokens);
     if words.is_empty() {
         DiscardTrailingShape::Empty
@@ -322,7 +322,7 @@ pub(crate) fn parse_discard_trailing_shape(tokens: &[OwnedLexToken]) -> DiscardT
     }
 }
 
-pub(crate) fn parse_discard_alternative_shape(
+pub fn parse_discard_alternative_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DiscardAlternativeShape<'_>> {
     let mut search_tokens = tokens;
@@ -348,7 +348,7 @@ pub(crate) fn parse_discard_alternative_shape(
     None
 }
 
-pub(crate) fn parse_discard_unless_shape(tokens: &[OwnedLexToken]) -> DiscardUnlessShape<'_> {
+pub fn parse_discard_unless_shape(tokens: &[OwnedLexToken]) -> DiscardUnlessShape<'_> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
     let Some((_, predicate_tokens)) =
         primitives::parse_prefix(tokens, primitives::kw("unless").void())

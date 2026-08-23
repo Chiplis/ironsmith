@@ -46,7 +46,7 @@ fn prepend_that_player_subject(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     rewritten
 }
 
-pub(crate) fn parse_for_each_object_subject(
+pub fn parse_for_each_object_subject(
     subject_tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let Some(shape) = for_each_shapes::parse_for_each_object_subject_shape(subject_tokens) else {
@@ -55,7 +55,7 @@ pub(crate) fn parse_for_each_object_subject(
     Ok(Some(parse_for_each_object_filter(shape.filter_tokens)?))
 }
 
-pub(crate) fn parse_for_each_object_filter(
+pub fn parse_for_each_object_filter(
     filter_tokens: &[OwnedLexToken],
 ) -> Result<ObjectFilter, CardTextError> {
     let mut filter = parse_object_filter(filter_tokens, false)?;
@@ -105,7 +105,7 @@ pub(crate) fn parse_for_each_object_filter(
     Ok(filter)
 }
 
-pub(crate) fn parse_for_each_targeted_object_subject(
+pub fn parse_for_each_targeted_object_subject(
     subject_tokens: &[OwnedLexToken],
 ) -> Result<Option<(ObjectFilter, ChoiceCount)>, CardTextError> {
     let Some(shape) = for_each_shapes::parse_for_each_target_subject_shape(subject_tokens) else {
@@ -124,20 +124,20 @@ pub(crate) fn parse_for_each_targeted_object_subject(
     Ok(Some((filter, count)))
 }
 
-pub(crate) fn is_target_player_dealt_damage_by_this_turn_subject(words: &[&str]) -> bool {
+pub fn is_target_player_dealt_damage_by_this_turn_subject(words: &[&str]) -> bool {
     for_each_shapes::is_target_player_damage_subject_words(words)
 }
 
-pub(crate) fn is_mana_replacement_clause_words(words: &[&str]) -> bool {
+pub fn is_mana_replacement_clause_words(words: &[&str]) -> bool {
     for_each_shapes::parse_mana_clause_shape_words(words) == Some(ManaClauseShape::Replacement)
 }
 
-pub(crate) fn is_mana_trigger_additional_clause_words(words: &[&str]) -> bool {
+pub fn is_mana_trigger_additional_clause_words(words: &[&str]) -> bool {
     for_each_shapes::parse_mana_clause_shape_words(words)
         == Some(ManaClauseShape::AdditionalTrigger)
 }
 
-pub(crate) fn parse_has_base_power_clause(
+pub fn parse_has_base_power_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = for_each_shapes::parse_base_power_clause_shape(tokens)? else {
@@ -151,7 +151,7 @@ pub(crate) fn parse_has_base_power_clause(
     )))
 }
 
-pub(crate) fn parse_has_base_power_toughness_clause(
+pub fn parse_has_base_power_toughness_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     // Copular animation clauses such as "Each of them is a 1/1 Spirit in
@@ -229,7 +229,7 @@ pub(crate) fn parse_has_base_power_toughness_clause(
     )))
 }
 
-pub(crate) fn parse_get_for_each_count_value(
+pub fn parse_get_for_each_count_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
     let Some(shape) = for_each_shapes::parse_for_each_target_subject_shape(tokens) else {
@@ -274,7 +274,7 @@ pub(crate) fn parse_get_for_each_count_value(
     Ok(Some(value.with_surface_hint(ValueSurfaceHint::ForEach)))
 }
 
-pub(crate) fn parse_get_modifier_values_with_tail(
+pub fn parse_get_modifier_values_with_tail(
     modifier_tokens: &[OwnedLexToken],
     power: Value,
     toughness: Value,
@@ -340,7 +340,7 @@ pub(crate) fn parse_get_modifier_values_with_tail(
     Ok((out_power, out_toughness, shape.duration, shape.condition))
 }
 
-pub(crate) fn force_implicit_token_controller_you(effects: &mut [EffectAst]) {
+pub fn force_implicit_token_controller_you(effects: &mut [EffectAst]) {
     for effect in effects {
         match effect {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -756,7 +756,7 @@ fn parse_relative_control_conditional(
     })
 }
 
-pub(crate) fn parse_for_each_opponent_clause(
+pub fn parse_for_each_opponent_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     // Voter-relative opponent sets are already represented by an event-
@@ -999,7 +999,7 @@ pub(crate) fn parse_for_each_opponent_clause(
     Ok(Some(wrap_opponents(&iteration_filter, effects)))
 }
 
-pub(crate) fn parse_for_each_target_players_clause(
+pub fn parse_for_each_target_players_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = for_each_shapes::parse_for_each_target_players_shape(tokens) else {
@@ -1055,7 +1055,7 @@ pub(crate) fn parse_for_each_target_players_clause(
     }))
 }
 
-pub(crate) fn parse_who_did_this_way_predicate(
+pub fn parse_who_did_this_way_predicate(
     inner_tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
     Ok(tagged_predicate(
@@ -1084,7 +1084,7 @@ fn parse_combat_damage_history_participant(
     }))
 }
 
-pub(crate) fn parse_for_each_player_clause(
+pub fn parse_for_each_player_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(outer) = for_each_shapes::parse_participant_clause_shape(tokens) else {
@@ -1671,7 +1671,7 @@ mod participant_choice_ownership_tests {
         assert_eq!(
             filter.with_counter,
             Some(crate::filter::CounterConstraint::Typed(
-                crate::object::CounterType::Named("memory")
+                crate::object::CounterType::Named("memory".into())
             ))
         );
         assert!(filter.has_owner_before_zone_surface());

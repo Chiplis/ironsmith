@@ -213,7 +213,7 @@ fn with_sacrificed_object_surface(value: Value, words: &[&str]) -> Value {
     }
 }
 
-pub(crate) fn colored_mana_symbols_in_costs(words: &[&str]) -> Option<(Value, usize)> {
+pub fn colored_mana_symbols_in_costs(words: &[&str]) -> Option<(Value, usize)> {
     let mut idx = if permission_shapes::prefix_words(words, &["for", "each"]) {
         2
     } else if permission_shapes::prefix_words(words, &["each"]) {
@@ -374,7 +374,7 @@ fn parse_devotion_value_words(words: &[&str]) -> Option<(Value, usize)> {
     Some((Value::Devotion { player, color }, color_index + 1))
 }
 
-pub(crate) fn parse_value_expr_words(words: &[&str]) -> Option<(Value, usize)> {
+pub fn parse_value_expr_words(words: &[&str]) -> Option<(Value, usize)> {
     if let Some(parsed) = parse_whichever_is_greater_value_words(words) {
         return Some(parsed);
     }
@@ -437,7 +437,7 @@ fn parse_whichever_is_greater_value_words(words: &[&str]) -> Option<(Value, usiz
     None
 }
 
-pub(crate) fn parse_value_expr_tokens(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
+pub fn parse_value_expr_tokens(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
     let word_view = TokenWordView::new(tokens);
     let words = word_view.word_refs();
     let (value, used_words) = parse_value_expr_words(&words)?;

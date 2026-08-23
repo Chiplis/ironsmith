@@ -36,12 +36,12 @@ use ironsmith::static_abilities::StaticAbility;
 use ironsmith::triggers::{Trigger, TriggerEvent, check_triggers};
 use ironsmith::types::{CardType, Subtype, Supertype};
 use ironsmith::zone::Zone;
-use ironsmith_registry::cards::definitions::{
+use ironsmith_registry_test::cards::definitions::{
     basic_island, basic_mountain, blood_artist, culling_the_weak, emrakul_the_promised_end,
     gemstone_caverns, grizzly_bears, lightning_bolt, ornithopter, phyrexian_tower, polluted_delta,
     serum_powder, stoke_the_flames, urzas_saga, yawgmoth_thran_physician,
 };
-use ironsmith_registry::compile_to_runtime_definition;
+use ironsmith_registry_test::compile_to_runtime_definition;
 use serde::Deserialize;
 use serde_json::json;
 

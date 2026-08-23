@@ -12,7 +12,7 @@ use crate::target::ObjectFilter;
 /// Payload-bearing mechanics use `CompilerKeywordPayloadAst`; callers cannot
 /// smuggle an unparsed payload through a display string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerKeywordIdentityAst {
+pub enum CompilerKeywordIdentityAst {
     Flying,
     Menace,
     Banding,
@@ -176,7 +176,7 @@ pub(crate) enum CompilerKeywordIdentityAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerKeywordPayloadAst {
+pub enum CompilerKeywordPayloadAst {
     None,
     Value(Value),
     Cost(CompilerTotalCost),
@@ -199,14 +199,14 @@ pub(crate) enum CompilerKeywordPayloadAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerKeywordAbilityAst {
+pub struct CompilerKeywordAbilityAst {
     pub identity: CompilerKeywordIdentityAst,
     pub payload: CompilerKeywordPayloadAst,
     pub provenance: Option<SemanticProvenance>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ModalSelectionModifierAst {
+pub enum ModalSelectionModifierAst {
     None,
     ChooseAllFor(CompilerTotalCost),
     AdditionalModesFor(CompilerTotalCost),
@@ -214,7 +214,7 @@ pub(crate) enum ModalSelectionModifierAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerModalSelectionAst {
+pub struct CompilerModalSelectionAst {
     pub min: Value,
     pub max: Option<Value>,
     pub same_mode_more_than_once: bool,
@@ -225,7 +225,7 @@ pub(crate) struct CompilerModalSelectionAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerModalModeAst {
+pub struct CompilerModalModeAst {
     pub scope: SymbolScopeId,
     pub label: Option<SemanticProvenance>,
     pub point_cost: Option<u32>,
@@ -237,7 +237,7 @@ pub(crate) struct CompilerModalModeAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerModalAbilityAst {
+pub struct CompilerModalAbilityAst {
     pub selection: CompilerModalSelectionAst,
     pub prefix_effects: Vec<EffectAst>,
     pub modes: Vec<CompilerModalModeAst>,
@@ -245,41 +245,41 @@ pub(crate) struct CompilerModalAbilityAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LevelBandAst {
+pub struct LevelBandAst {
     pub min: u32,
     pub max: Option<u32>,
     pub power_toughness: Option<(i32, i32)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerLevelBandAst {
+pub struct CompilerLevelBandAst {
     pub band: LevelBandAst,
     pub abilities: Vec<CompilerStructuredAbilityAst>,
     pub provenance: Option<SemanticProvenance>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerLevelAbilityAst {
+pub struct CompilerLevelAbilityAst {
     pub bands: Vec<CompilerLevelBandAst>,
     pub provenance: Option<SemanticProvenance>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerSagaChapterAst {
+pub struct CompilerSagaChapterAst {
     pub chapters: Vec<u32>,
     pub effects: Vec<EffectAst>,
     pub provenance: Option<SemanticProvenance>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerSagaAbilityAst {
+pub struct CompilerSagaAbilityAst {
     pub read_ahead: bool,
     pub chapters: Vec<CompilerSagaChapterAst>,
     pub provenance: Option<SemanticProvenance>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerClassLevelAst {
+pub struct CompilerClassLevelAst {
     pub level: u32,
     pub cost: Option<CompilerTotalCost>,
     pub abilities: Vec<CompilerStructuredAbilityAst>,
@@ -287,13 +287,13 @@ pub(crate) struct CompilerClassLevelAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerClassAbilityAst {
+pub struct CompilerClassAbilityAst {
     pub levels: Vec<CompilerClassLevelAst>,
     pub provenance: Option<SemanticProvenance>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerStructuredAbilityAst {
+pub enum CompilerStructuredAbilityAst {
     Keyword(Box<CompilerKeywordAbilityAst>),
     Static(Box<CompilerStaticAbilityAst>),
     Activated(Box<CompilerActivatedAbilityAst>),

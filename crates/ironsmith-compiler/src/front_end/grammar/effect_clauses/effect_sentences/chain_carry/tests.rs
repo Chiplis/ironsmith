@@ -3664,7 +3664,7 @@ fn descent_into_madness_exact_body_does_not_collapse_the_zone_arms() {
         count_value.unhinted(),
         Value::CountersOnSource(crate::object::CounterType::Named(name))
             | Value::CountersOn(_, Some(crate::object::CounterType::Named(name)))
-            if *name == "despair"
+            if name.as_str() == "despair"
     ));
     assert!(
         !filter.any_of.iter().any(|arm| {

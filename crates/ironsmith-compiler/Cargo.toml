@@ -4,14 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-ironsmith-core = { path = "../ironsmith-core" }
-logos = "0.16.1"
-stacker = "0.1.23"
-winnow = { version = "1.0.1", default-features = false, features = ["std", "ascii"] }
+ironsmith-compiler-grammar = { path = "../ironsmith-compiler-grammar", default-features = false }
 
 [features]
 default = []
-serialization = []
+serialization = ["ironsmith-compiler-grammar/serialization"]
 
 [lib]
 path = "src/lib.rs"

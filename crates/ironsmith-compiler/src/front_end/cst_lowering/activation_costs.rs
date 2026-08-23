@@ -6,7 +6,7 @@ use crate::grammar::activation_costs::{ActivationCostCst, ActivationCostSegmentC
 
 /// Semantic boundary for activation costs. Grammar CST is consumed here and
 /// the returned tree contains no runtime `Cost` or effect payload objects.
-pub(crate) fn recognize_activation_cost_cst(
+pub fn recognize_activation_cost_cst(
     cst: &ActivationCostCst,
 ) -> Result<CompilerTotalCost, CardTextError> {
     if let Some(generic) = cst.waterbend_generic {
@@ -256,7 +256,7 @@ fn recognize_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
 
 /// Compatibility facade for callers that have not yet moved their runtime
 /// materialization boundary. Recognition itself always completes first.
-pub(crate) fn lower_activation_cost_cst(
+pub fn lower_activation_cost_cst(
     cst: &ActivationCostCst,
 ) -> Result<crate::cost::TotalCost, CardTextError> {
     let cost = recognize_activation_cost_cst(cst)?;

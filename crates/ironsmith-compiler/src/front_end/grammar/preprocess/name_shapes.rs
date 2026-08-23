@@ -5,15 +5,15 @@ use crate::grammar::{permission_shapes, primitives};
 use crate::lexer::{TokenWordView, lex_line};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SingleKeywordVerbSurface;
+pub struct SingleKeywordVerbSurface;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct KeywordAbilityNameSurface;
+pub struct KeywordAbilityNameSurface;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct VoteChoiceSurface;
+pub struct VoteChoiceSurface;
 
-pub(crate) fn parse_single_keyword_verb(name: &str) -> Option<SingleKeywordVerbSurface> {
+pub fn parse_single_keyword_verb(name: &str) -> Option<SingleKeywordVerbSurface> {
     let tokens = lex_line(name.trim(), 0).ok()?;
     let words = TokenWordView::new(&tokens).word_refs();
     let [word] = words.as_slice() else {
@@ -54,7 +54,7 @@ pub(crate) fn parse_single_keyword_verb(name: &str) -> Option<SingleKeywordVerbS
     .then_some(SingleKeywordVerbSurface)
 }
 
-pub(crate) fn parse_keyword_ability_name(name: &str) -> Option<KeywordAbilityNameSurface> {
+pub fn parse_keyword_ability_name(name: &str) -> Option<KeywordAbilityNameSurface> {
     let tokens = lex_line(name.trim(), 0).ok()?;
     let words = TokenWordView::new(&tokens).word_refs();
     if permission_shapes::exact_words(&words, &["first", "strike"])
@@ -70,7 +70,7 @@ pub(crate) fn parse_keyword_ability_name(name: &str) -> Option<KeywordAbilityNam
         .then_some(KeywordAbilityNameSurface)
 }
 
-pub(crate) fn parse_vote_choice_surface(text: &str) -> Option<VoteChoiceSurface> {
+pub fn parse_vote_choice_surface(text: &str) -> Option<VoteChoiceSurface> {
     let tokens = lex_line(text.trim(), 0).ok()?;
     let words = TokenWordView::new(&tokens).word_refs();
     (permission_shapes::find_words(&words, &["vote", "for"]).is_some()
@@ -78,7 +78,7 @@ pub(crate) fn parse_vote_choice_surface(text: &str) -> Option<VoteChoiceSurface>
     .then_some(VoteChoiceSurface)
 }
 
-pub(crate) fn parse_short_self_reference_name(name: &str) -> String {
+pub fn parse_short_self_reference_name(name: &str) -> String {
     let trimmed = name.trim();
     let Ok(tokens) = lex_line(trimmed, 0) else {
         return trimmed.to_string();

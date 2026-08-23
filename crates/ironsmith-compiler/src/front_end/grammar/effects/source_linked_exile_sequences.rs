@@ -7,7 +7,7 @@ use crate::lexer::{LexStream, OwnedLexToken};
 use crate::types::CardType;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SourceLinkedExileReferenceKind {
+pub enum SourceLinkedExileReferenceKind {
     Permanent,
     CardType(CardType),
 }
@@ -15,8 +15,8 @@ pub(crate) enum SourceLinkedExileReferenceKind {
 /// "Each player turns face up all cards they own exiled with this [source],
 /// then puts all permanent cards among them onto the battlefield."
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RevealSourceExiledPermanentsShape {
-    pub(crate) source_kind: SourceLinkedExileReferenceKind,
+pub struct RevealSourceExiledPermanentsShape {
+    pub source_kind: SourceLinkedExileReferenceKind,
 }
 
 fn source_reference<'a>(input: &mut LexStream<'a>) -> WResult<SourceLinkedExileReferenceKind> {
@@ -66,7 +66,7 @@ fn reveal_source_exiled_permanents<'a>(
     Ok(RevealSourceExiledPermanentsShape { source_kind })
 }
 
-pub(crate) fn parse_reveal_source_exiled_permanents_tokens(
+pub fn parse_reveal_source_exiled_permanents_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<RevealSourceExiledPermanentsShape> {
     primitives::parse_all(

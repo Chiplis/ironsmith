@@ -20,51 +20,51 @@ use super::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DieRollAdjustmentSpec {
-    pub(crate) life_cost: u32,
-    pub(crate) adjustment: u32,
+pub struct DieRollAdjustmentSpec {
+    pub life_cost: u32,
+    pub adjustment: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TokenCharacteristicFollowup;
+pub struct TokenCharacteristicFollowup;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TemporaryStaticFollowup {
-    pub(crate) has_negation: bool,
+pub struct TemporaryStaticFollowup {
+    pub has_negation: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ReturnedObjectMoveHead;
+pub struct ReturnedObjectMoveHead;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ReturnedObjectSubject {
+pub enum ReturnedObjectSubject {
     It,
     ThatCard,
     ThatCreature,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ReturnedObjectFollowupFacts<'a> {
-    pub(crate) subject: ReturnedObjectSubject,
-    pub(crate) keyword_tokens: Option<&'a [OwnedLexToken]>,
-    pub(crate) colors: Option<ColorSet>,
-    pub(crate) subtypes: Vec<Subtype>,
+pub struct ReturnedObjectFollowupFacts<'a> {
+    pub subject: ReturnedObjectSubject,
+    pub keyword_tokens: Option<&'a [OwnedLexToken]>,
+    pub colors: Option<ColorSet>,
+    pub subtypes: Vec<Subtype>,
 }
 
 impl ReturnedObjectFollowupFacts<'_> {
-    pub(crate) fn has_characteristic_changes(&self) -> bool {
+    pub fn has_characteristic_changes(&self) -> bool {
         self.keyword_tokens.is_some() || self.colors.is_some() || !self.subtypes.is_empty()
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LinkedStatementSurface {
+pub enum LinkedStatementSurface {
     ExiledCardCostsMore,
     ChooseTwoShuffleRest,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StatementEffectPreference {
+pub enum StatementEffectPreference {
     EachPlayerChooseBounceThenDraw,
     LeadingEffectVerb,
     UnlessSearch,
@@ -77,7 +77,7 @@ pub(crate) enum StatementEffectPreference {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum SelfCounterEntrySpec {
+pub enum SelfCounterEntrySpec {
     Unconditional {
         count: Value,
     },
@@ -88,21 +88,21 @@ pub(crate) enum SelfCounterEntrySpec {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CommaSplit<'a> {
-    pub(crate) before: &'a [OwnedLexToken],
-    pub(crate) after: &'a [OwnedLexToken],
+pub struct CommaSplit<'a> {
+    pub before: &'a [OwnedLexToken],
+    pub after: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SnowManaCounterEntrySpec<'a> {
-    pub(crate) condition: ConditionExpr,
-    pub(crate) entry_tokens: &'a [OwnedLexToken],
-    pub(crate) counter_type: CounterType,
-    pub(crate) count: Value,
+pub struct SnowManaCounterEntrySpec<'a> {
+    pub condition: ConditionExpr,
+    pub entry_tokens: &'a [OwnedLexToken],
+    pub counter_type: CounterType,
+    pub count: Value,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DayNightStartsDay;
+pub struct DayNightStartsDay;
 
 fn fixed_leaf_number(words: &[&str]) -> Option<u32> {
     leaf::parse_leaf_number_prefix_words(words)
@@ -116,9 +116,7 @@ fn fixed_leaf_mana_symbol(word: &str) -> Option<crate::mana::ManaSymbol> {
         .ok()
 }
 
-pub(crate) fn parse_die_roll_adjustment_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<DieRollAdjustmentSpec> {
+pub fn parse_die_roll_adjustment_tokens(tokens: &[OwnedLexToken]) -> Option<DieRollAdjustmentSpec> {
     let words = parser_token_word_refs(tokens);
     if !phrase_is_prefix(&words, &["after", "you", "roll", "a", "die"])
         || !every_phrase_is_present(
@@ -148,7 +146,7 @@ pub(crate) fn parse_die_roll_adjustment_tokens(
     })
 }
 
-pub(crate) fn parse_token_characteristic_followup_tokens(
+pub fn parse_token_characteristic_followup_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenCharacteristicFollowup> {
     let words = parser_token_word_refs(tokens);
@@ -158,7 +156,7 @@ pub(crate) fn parse_token_characteristic_followup_tokens(
     .then_some(TokenCharacteristicFollowup)
 }
 
-pub(crate) fn parse_temporary_static_followup_tokens(
+pub fn parse_temporary_static_followup_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TemporaryStaticFollowup> {
     let words = parser_token_word_refs(tokens);
@@ -180,7 +178,7 @@ pub(crate) fn parse_temporary_static_followup_tokens(
     })
 }
 
-pub(crate) fn parse_returned_object_move_head_tokens(
+pub fn parse_returned_object_move_head_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ReturnedObjectMoveHead> {
     let words = parser_token_word_refs(tokens);
@@ -233,7 +231,7 @@ fn returned_keyword_tokens<'a>(
     Some(&tokens[range])
 }
 
-pub(crate) fn parse_returned_object_followup_tokens(
+pub fn parse_returned_object_followup_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ReturnedObjectFollowupFacts<'_>> {
     let words = parser_token_word_refs(tokens);
@@ -261,7 +259,7 @@ pub(crate) fn parse_returned_object_followup_tokens(
     })
 }
 
-pub(crate) fn parse_linked_statement_surface_tokens(
+pub fn parse_linked_statement_surface_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LinkedStatementSurface> {
     let words = parser_token_word_refs(tokens);
@@ -352,7 +350,7 @@ fn leading_effect_verb(words: &[&str]) -> bool {
     .any(|verb| phrase_is_prefix(words, &[*verb]))
 }
 
-pub(crate) fn parse_statement_effect_preference_tokens(
+pub fn parse_statement_effect_preference_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<StatementEffectPreference> {
     let words = parser_token_word_refs(tokens);
@@ -427,7 +425,7 @@ fn parse_comma_split<'a>(input: &mut LexStream<'a>) -> WResult<CommaSplit<'a>> {
     Ok(CommaSplit { before, after })
 }
 
-pub(crate) fn parse_comma_split_tokens(tokens: &[OwnedLexToken]) -> Option<CommaSplit<'_>> {
+pub fn parse_comma_split_tokens(tokens: &[OwnedLexToken]) -> Option<CommaSplit<'_>> {
     primitives::parse_all(tokens, parse_comma_split, "semantic-comma-split").ok()
 }
 
@@ -504,9 +502,7 @@ fn is_x_plus_one_entry(words: &[&str]) -> bool {
     .any(|expected| phrase_is_prefix(words, expected))
 }
 
-pub(crate) fn parse_self_counter_entry_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<SelfCounterEntrySpec> {
+pub fn parse_self_counter_entry_tokens(tokens: &[OwnedLexToken]) -> Option<SelfCounterEntrySpec> {
     let words = parser_token_word_refs(tokens);
     if is_single_plus_one_entry(&words) {
         return Some(SelfCounterEntrySpec::Unconditional {
@@ -592,7 +588,7 @@ fn parse_entry_counter_count(words: &[&str]) -> Value {
     Value::Fixed(before.or(after).unwrap_or(1) as i32)
 }
 
-pub(crate) fn parse_snow_mana_counter_entry_tokens(
+pub fn parse_snow_mana_counter_entry_tokens(
     effect_tokens: &[OwnedLexToken],
     intervening_snow_condition: bool,
 ) -> Option<SnowManaCounterEntrySpec<'_>> {
@@ -623,9 +619,7 @@ pub(crate) fn parse_snow_mana_counter_entry_tokens(
     })
 }
 
-pub(crate) fn parse_day_night_starts_day_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<DayNightStartsDay> {
+pub fn parse_day_night_starts_day_tokens(tokens: &[OwnedLexToken]) -> Option<DayNightStartsDay> {
     let words = parser_token_word_refs(tokens);
     (phrase_is_present(&words, &["neither", "day", "nor", "night"])
         && phrase_is_present(&words, &["becomes", "day"])

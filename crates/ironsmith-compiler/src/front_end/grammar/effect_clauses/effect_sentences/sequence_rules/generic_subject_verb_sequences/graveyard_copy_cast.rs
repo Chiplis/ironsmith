@@ -159,7 +159,7 @@ fn exact_terminal_card_copy_tag(effect: &EffectAst) -> Option<TagKey> {
 /// `as_copy` mode is the existing executable primitive for copying a card in a
 /// non-stack zone and casting that copy. The shared exile tag preserves the
 /// exact selected card and the optional cast remains a `May` action.
-pub(crate) fn parse_graveyard_exile_copy_then_may_cast_copy(
+pub fn parse_graveyard_exile_copy_then_may_cast_copy(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -213,7 +213,7 @@ pub(crate) fn parse_graveyard_exile_copy_then_may_cast_copy(
 /// it inside `IfResult::Did` makes the cast proposal contingent on the exile
 /// while avoiding an invalid stack-spell `CopySpell` action for a card in
 /// exile.
-pub(crate) fn parse_graveyard_exile_if_copy_then_may_cast_copy(
+pub fn parse_graveyard_exile_if_copy_then_may_cast_copy(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

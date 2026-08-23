@@ -14,12 +14,12 @@ use super::keyword_static::{
 };
 use super::lexer::TokenWordView;
 use super::object_filters::parse_object_filter;
-pub(crate) use super::util::{
+pub use super::util::{
     find_activation_cost_start, join_sentences_with_period, non_article_word_refs,
     parse_subtype_flexible, parse_value, strip_leading_article_tokens,
     trim_edge_punctuation_tokens, value_contains_unbound_x,
 };
-pub(crate) use crate::grammar::shared_util::value_semantics::{
+pub use crate::grammar::shared_util::value_semantics::{
     parse_equal_to_aggregate_filter_value, parse_filter_comparison_tokens,
 };
 
@@ -65,7 +65,7 @@ fn parse_add_mana_amount(tokens: &[OwnedLexToken]) -> Option<Value> {
     parse_value(amount_tokens).map(|(value, _)| value)
 }
 
-pub(crate) fn parse_add_mana(
+pub fn parse_add_mana(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -440,7 +440,7 @@ fn parse_add_one_mana_any_color_among_filter(
     Ok(Some(parse_object_filter(span.filter_tokens, false)?))
 }
 
-pub(crate) fn mana_symbol_to_color(symbol: ManaSymbol) -> Option<crate::color::Color> {
+pub fn mana_symbol_to_color(symbol: ManaSymbol) -> Option<crate::color::Color> {
     match symbol {
         ManaSymbol::White => Some(crate::color::Color::White),
         ManaSymbol::Blue => Some(crate::color::Color::Blue),
@@ -451,13 +451,13 @@ pub(crate) fn mana_symbol_to_color(symbol: ManaSymbol) -> Option<crate::color::C
     }
 }
 
-pub(crate) fn parse_or_mana_color_choices(
+pub fn parse_or_mana_color_choices(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<crate::color::Color>>, CardTextError> {
     Ok(activation_grammar::parse_or_mana_color_choices(tokens))
 }
 
-pub(crate) fn parse_any_combination_mana_colors(
+pub fn parse_any_combination_mana_colors(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<crate::color::Color>>, CardTextError> {
     let clause_words = TokenWordView::new(tokens).to_word_refs();
@@ -480,16 +480,16 @@ pub(crate) fn parse_any_combination_mana_colors(
     })
 }
 
-pub(crate) fn trim_leading_commas(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+pub fn trim_leading_commas(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     let start = first_non_comma_token_index(tokens);
     &tokens[start..]
 }
 
-pub(crate) fn is_mana_pool_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_mana_pool_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
     activation_grammar::is_mana_pool_tail(tokens)
 }
 
-pub(crate) fn parse_land_could_produce_filter(
+pub fn parse_land_could_produce_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(ObjectFilter, crate::effects::ManaTypeSource)>, CardTextError> {
     let words = TokenWordView::new(tokens).to_word_refs();

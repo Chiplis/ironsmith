@@ -8,7 +8,7 @@ use crate::lexer::{OwnedLexToken, TokenWordView};
 use super::super::{leaf, primitives};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AggregateValueMetric {
+pub enum AggregateValueMetric {
     BasicLandTypes,
     CreatureTypes,
     Colors,
@@ -19,24 +19,24 @@ pub(crate) enum AggregateValueMetric {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct AggregateValueSurface<'a> {
-    pub(crate) metric: AggregateValueMetric,
-    pub(crate) scope_words: &'a [&'a str],
+pub struct AggregateValueSurface<'a> {
+    pub metric: AggregateValueMetric,
+    pub scope_words: &'a [&'a str],
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct QuantityComparisonWords {
-    pub(crate) comparison: Comparison,
-    pub(crate) consumed_words: usize,
+pub struct QuantityComparisonWords {
+    pub comparison: Comparison,
+    pub consumed_words: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct QuantityComparisonTokens {
-    pub(crate) comparison: Comparison,
-    pub(crate) consumed_tokens: usize,
+pub struct QuantityComparisonTokens {
+    pub comparison: Comparison,
+    pub consumed_tokens: usize,
 }
 
-pub(crate) fn parse_aggregate_value_surface<'a>(
+pub fn parse_aggregate_value_surface<'a>(
     words: &'a [&'a str],
 ) -> Option<AggregateValueSurface<'a>> {
     let mut input: primitives::WordSliceInput<'a> = words;
@@ -44,7 +44,7 @@ pub(crate) fn parse_aggregate_value_surface<'a>(
     input.is_empty().then_some(surface)
 }
 
-pub(crate) fn parse_quantity_comparison_prefix_words(
+pub fn parse_quantity_comparison_prefix_words(
     words: &[&str],
     allow_default_one: bool,
     article_implies_min_one: bool,
@@ -66,7 +66,7 @@ pub(crate) fn parse_quantity_comparison_prefix_words(
     })
 }
 
-pub(crate) fn parse_quantity_comparison_prefix_tokens(
+pub fn parse_quantity_comparison_prefix_tokens(
     tokens: &[OwnedLexToken],
     allow_default_one: bool,
     article_implies_min_one: bool,

@@ -10,29 +10,29 @@ use crate::static_abilities::StaticAbilityId;
 use crate::target::PlayerFilter;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum KeywordBundleShapeError {
+pub enum KeywordBundleShapeError {
     UnsupportedAbility,
     ModifierChanged,
     UnsupportedTrailingList,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct KeywordBundlePumpShape<'a> {
-    pub(crate) duration: Until,
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) power: Value,
-    pub(crate) toughness: Value,
-    pub(crate) abilities: Vec<StaticAbilityId>,
+pub struct KeywordBundlePumpShape<'a> {
+    pub duration: Until,
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub power: Value,
+    pub toughness: Value,
+    pub abilities: Vec<StaticAbilityId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ScaleAxes {
-    pub(crate) power: bool,
-    pub(crate) toughness: bool,
+pub struct ScaleAxes {
+    pub power: bool,
+    pub toughness: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ScaledPowerShape<'a> {
+pub enum ScaledPowerShape<'a> {
     SetLifeTotal {
         player: PlayerAst,
         player_filter: PlayerFilter,
@@ -53,9 +53,9 @@ pub(crate) enum ScaledPowerShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SacrificeThenDrawShape<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) artifact_enchantment_or_token: bool,
+pub struct SacrificeThenDrawShape<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub artifact_enchantment_or_token: bool,
 }
 
 fn trim_shape_edges(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -151,7 +151,7 @@ fn strip_bundle_separator(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     }
 }
 
-pub(crate) fn parse_keyword_bundle_pump_shape(
+pub fn parse_keyword_bundle_pump_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<KeywordBundlePumpShape<'_>>, KeywordBundleShapeError> {
     let tokens = trim_shape_edges(tokens);
@@ -367,7 +367,7 @@ fn scaled_target_surface<'a>(
     })
 }
 
-pub(crate) fn parse_scaled_power_shape(tokens: &[OwnedLexToken]) -> Option<ScaledPowerShape<'_>> {
+pub fn parse_scaled_power_shape(tokens: &[OwnedLexToken]) -> Option<ScaledPowerShape<'_>> {
     let mut tokens = trim_shape_edges(tokens);
     if let Some(((), rest)) =
         primitives::parse_prefix(tokens, primitives::phrase(&["until", "end", "of", "turn"]))
@@ -409,7 +409,7 @@ pub(crate) fn parse_scaled_power_shape(tokens: &[OwnedLexToken]) -> Option<Scale
     scaled_target_surface(subject_tokens, axes, multiplier)
 }
 
-pub(crate) fn parses_spell_this_way_pay_life(tokens: &[OwnedLexToken]) -> bool {
+pub fn parses_spell_this_way_pay_life(tokens: &[OwnedLexToken]) -> bool {
     let tokens = trim_shape_edges(tokens);
     primitives::parse_prefix(
         tokens,
@@ -421,7 +421,7 @@ pub(crate) fn parses_spell_this_way_pay_life(tokens: &[OwnedLexToken]) -> bool {
         && primitives::contains_word(tokens, "cost")
 }
 
-pub(crate) fn parse_sacrifice_then_draw_shape(
+pub fn parse_sacrifice_then_draw_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SacrificeThenDrawShape<'_>> {
     let tokens = trim_shape_edges(tokens);

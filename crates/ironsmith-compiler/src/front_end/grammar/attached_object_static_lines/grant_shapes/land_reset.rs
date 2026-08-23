@@ -50,7 +50,7 @@ fn attached_land_ability_reset_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_attached_land_ability_reset_tokens(
+pub fn parse_attached_land_ability_reset_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedLandAbilityResetSpec<'_>> {
     primitives::parse_all(

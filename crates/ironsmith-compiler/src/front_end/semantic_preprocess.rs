@@ -15,30 +15,30 @@ use crate::model::provenance::{
 use crate::types::CardType;
 
 #[derive(Debug, Clone)]
-pub(crate) struct PreprocessedDocument {
-    pub(crate) builder: CardDefinitionBuilder,
-    pub(crate) annotations: ParseAnnotations,
-    pub(crate) provenance: ProvenanceStore,
-    pub(crate) structure: crate::front_end::DocumentStructure,
-    pub(crate) items: Vec<PreprocessedItem>,
+pub struct PreprocessedDocument {
+    pub builder: CardDefinitionBuilder,
+    pub annotations: ParseAnnotations,
+    pub provenance: ProvenanceStore,
+    pub structure: crate::front_end::DocumentStructure,
+    pub items: Vec<PreprocessedItem>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum PreprocessedItem {
+pub enum PreprocessedItem {
     Metadata(PreprocessedMetadataLine),
     Line(PreprocessedLine),
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct PreprocessedMetadataLine {
-    pub(crate) info: LineInfo,
-    pub(crate) value: MetadataLine,
+pub struct PreprocessedMetadataLine {
+    pub info: LineInfo,
+    pub value: MetadataLine,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct PreprocessedLine {
-    pub(crate) info: LineInfo,
-    pub(crate) tokens: Vec<OwnedLexToken>,
+pub struct PreprocessedLine {
+    pub info: LineInfo,
+    pub tokens: Vec<OwnedLexToken>,
 }
 
 fn bytes_start_with(slice: &[u8], prefix: &[u8]) -> bool {
@@ -926,7 +926,7 @@ fn is_ignorable_unparsed_line(line: &str) -> bool {
     preprocess_grammar::parse_ignorable_parenthetical_line(line)
 }
 
-pub(crate) fn preprocess_document(
+pub fn preprocess_document(
     builder: CardDefinitionBuilder,
     text: &str,
 ) -> Result<PreprocessedDocument, CardTextError> {
@@ -938,7 +938,7 @@ pub(crate) fn preprocess_document(
     preprocess_document_with_provenance(builder, text, provenance)
 }
 
-pub(crate) fn preprocess_document_with_provenance(
+pub fn preprocess_document_with_provenance(
     mut builder: CardDefinitionBuilder,
     text: &str,
     mut provenance: ProvenanceStore,
@@ -1140,7 +1140,7 @@ pub(crate) fn preprocess_document_with_provenance(
                 normalized: line.to_string(),
                 char_map: (0..line.chars().count()).collect(),
             };
-            builder = builder.apply_metadata(meta.clone())?;
+            builder = builder.apply_compiler_metadata(meta.clone())?;
             annotations.record_original_line(line_index, &normalized.original);
             annotations.record_normalized_line(line_index, &normalized.normalized);
             annotations.record_char_map(line_index, normalized.char_map.clone());
@@ -1273,7 +1273,7 @@ pub(crate) fn preprocess_document_with_provenance(
     })
 }
 
-pub(crate) fn make_line_info(
+pub fn make_line_info(
     line_index: usize,
     raw_line: impl Into<String>,
     normalized: NormalizedLine,

@@ -12,12 +12,12 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, TokenWordView, trim_l
 use super::super::{filters, leaf, primitives};
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum AnthemSubjectGrammarMatch {
+pub enum AnthemSubjectGrammarMatch {
     Filter(ObjectFilter),
     RejectFragment,
 }
 
-pub(crate) fn parse_exact_anthem_subject_grammar(
+pub fn parse_exact_anthem_subject_grammar(
     tokens: &[OwnedLexToken],
 ) -> Option<AnthemSubjectGrammarMatch> {
     if let Some(filter) = parse_instant_and_sorcery_spells(tokens) {
@@ -306,7 +306,7 @@ fn subject_branch_looks_type_like(filter: &ObjectFilter) -> bool {
         || !filter.excluded_supertypes.is_empty()
 }
 
-pub(crate) fn object_filter_specificity_score(filter: &ObjectFilter) -> usize {
+pub fn object_filter_specificity_score(filter: &ObjectFilter) -> usize {
     let mut score = 0usize;
     if !filter.any_of.is_empty() {
         score += 12;

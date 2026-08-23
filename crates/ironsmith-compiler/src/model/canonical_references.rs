@@ -20,7 +20,7 @@ use crate::model::symbols::{
 use crate::model::visit::{SemanticVisitor, for_each_nested_effects, visit_effect_node};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub(crate) enum ReferenceJoinKindAst {
+pub enum ReferenceJoinKindAst {
     Conditional,
     Modal,
     Optional,
@@ -31,7 +31,7 @@ pub(crate) enum ReferenceJoinKindAst {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ReferenceJoinAst {
+pub struct ReferenceJoinAst {
     pub kind: ReferenceJoinKindAst,
     pub incoming: Vec<SymbolId>,
     pub branch_exports: Vec<Vec<SymbolId>>,
@@ -39,7 +39,7 @@ pub(crate) struct ReferenceJoinAst {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum CanonicalReferenceDiagnostic {
+pub enum CanonicalReferenceDiagnostic {
     MissingBinding {
         reference: SymbolReference,
     },
@@ -68,21 +68,21 @@ pub(crate) enum CanonicalReferenceDiagnostic {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ResolvedReferenceAst {
+pub struct ResolvedReferenceAst {
     pub reference: SymbolReference,
     pub use_scope: SymbolScopeId,
     pub binding: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct CanonicalReferenceResolutionAst {
+pub struct CanonicalReferenceResolutionAst {
     pub resolved: Vec<ResolvedReferenceAst>,
     pub joins: Vec<ReferenceJoinAst>,
     pub diagnostics: Vec<CanonicalReferenceDiagnostic>,
 }
 
 impl CanonicalReferenceResolutionAst {
-    pub(crate) fn append(&mut self, mut other: Self) {
+    pub fn append(&mut self, mut other: Self) {
         self.resolved.append(&mut other.resolved);
         self.joins.append(&mut other.joins);
         self.diagnostics.append(&mut other.diagnostics);
@@ -543,7 +543,7 @@ impl<'a> CanonicalReferenceResolver<'a> {
     }
 }
 
-pub(crate) fn resolve_effect_references(
+pub fn resolve_effect_references(
     effects: &[EffectAst],
     symbols: &SymbolTable,
     scope: SymbolScopeId,
@@ -553,7 +553,7 @@ pub(crate) fn resolve_effect_references(
     resolver.report
 }
 
-pub(crate) fn resolve_parsed_items_references(
+pub fn resolve_parsed_items_references(
     items: &[ParsedCardItem],
     symbols: &SymbolTable,
 ) -> CanonicalReferenceResolutionAst {

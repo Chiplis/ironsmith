@@ -8,21 +8,21 @@ use crate::util::parse_number;
 use super::super::super::{permission_shapes, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CountedLookedCardsIntoHandShape {
-    pub(crate) count: u32,
+pub struct CountedLookedCardsIntoHandShape {
+    pub count: u32,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct LookedCardBattlefieldShape<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) tapped: bool,
+pub struct LookedCardBattlefieldShape<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub tapped: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct LookedCardBattlefieldAndHandShape<'a> {
-    pub(crate) battlefield_filter_tokens: &'a [OwnedLexToken],
-    pub(crate) tapped: bool,
-    pub(crate) hand_filter_tokens: &'a [OwnedLexToken],
+pub struct LookedCardBattlefieldAndHandShape<'a> {
+    pub battlefield_filter_tokens: &'a [OwnedLexToken],
+    pub tapped: bool,
+    pub hand_filter_tokens: &'a [OwnedLexToken],
 }
 
 fn from_among_looked_cards(input: &mut LexStream<'_>) -> WResult<()> {
@@ -47,7 +47,7 @@ fn end_of_tokens(input: &mut LexStream<'_>) -> WResult<()> {
     eof.void().parse_next(input)
 }
 
-pub(crate) fn parse_looked_card_battlefield_shape(
+pub fn parse_looked_card_battlefield_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LookedCardBattlefieldShape<'_>> {
     let tokens = trim_lexed_commas(tokens);
@@ -66,7 +66,7 @@ pub(crate) fn parse_looked_card_battlefield_shape(
     })
 }
 
-pub(crate) fn parse_looked_card_battlefield_and_hand_shape(
+pub fn parse_looked_card_battlefield_and_hand_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LookedCardBattlefieldAndHandShape<'_>> {
     let tokens = trim_lexed_commas(tokens);
@@ -122,7 +122,7 @@ fn into_your_hand_tail(input: &mut LexStream<'_>) -> WResult<()> {
     eof.void().parse_next(input)
 }
 
-pub(crate) fn parse_counted_looked_cards_into_hand_shape(
+pub fn parse_counted_looked_cards_into_hand_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<CountedLookedCardsIntoHandShape> {
     let tokens = trim_lexed_commas(tokens);
@@ -135,7 +135,7 @@ pub(crate) fn parse_counted_looked_cards_into_hand_shape(
     Some(CountedLookedCardsIntoHandShape { count })
 }
 
-pub(crate) fn parse_kicked_counted_looked_cards_into_hand_shape(
+pub fn parse_kicked_counted_looked_cards_into_hand_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<CountedLookedCardsIntoHandShape> {
     let (_, tail) = primitives::parse_prefix(
@@ -176,13 +176,13 @@ fn negative_put_from_among_head(input: &mut LexStream<'_>) -> WResult<()> {
     eof.void().parse_next(input)
 }
 
-pub(crate) fn is_if_you_dont_put_looked_card_into_hand(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_if_you_dont_put_looked_card_into_hand(tokens: &[OwnedLexToken]) -> bool {
     negative_put_from_among_head
         .parse(LexStream::new(trim_lexed_commas(tokens)))
         .is_ok()
 }
 
-pub(crate) fn is_put_rest_on_library_bottom(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_put_rest_on_library_bottom(tokens: &[OwnedLexToken]) -> bool {
     let tokens = trim_lexed_commas(tokens);
     primitives::parse_prefix(
         tokens,

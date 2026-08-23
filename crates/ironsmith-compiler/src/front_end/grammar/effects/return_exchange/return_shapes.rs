@@ -9,14 +9,14 @@ use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::token::any;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ReturnZoneShape {
+pub enum ReturnZoneShape {
     Hand,
     Battlefield,
     Graveyard,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ReturnControllerShape {
+pub enum ReturnControllerShape {
     Preserve,
     You,
     Owner,
@@ -24,30 +24,30 @@ pub(crate) enum ReturnControllerShape {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ReturnTimingShape {
+pub enum ReturnTimingShape {
     NextEndStep(PlayerFilter),
     NextUpkeep(PlayerAst),
     EndOfCombat,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ReturnDestinationShape {
-    pub(crate) zone: ReturnZoneShape,
-    pub(crate) destination_player_surface: Option<PlayerAst>,
-    pub(crate) tapped: bool,
-    pub(crate) attacking: bool,
-    pub(crate) face_down: bool,
-    pub(crate) transformed: bool,
-    pub(crate) converted: bool,
-    pub(crate) controller: ReturnControllerShape,
-    pub(crate) timing: Option<ReturnTimingShape>,
-    pub(crate) has_unparsed_timing_words: bool,
-    pub(crate) attached_to_tokens: Option<Vec<OwnedLexToken>>,
-    pub(crate) excluded_subtypes: Vec<Subtype>,
+pub struct ReturnDestinationShape {
+    pub zone: ReturnZoneShape,
+    pub destination_player_surface: Option<PlayerAst>,
+    pub tapped: bool,
+    pub attacking: bool,
+    pub face_down: bool,
+    pub transformed: bool,
+    pub converted: bool,
+    pub controller: ReturnControllerShape,
+    pub timing: Option<ReturnTimingShape>,
+    pub has_unparsed_timing_words: bool,
+    pub attached_to_tokens: Option<Vec<OwnedLexToken>>,
+    pub excluded_subtypes: Vec<Subtype>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ReturnTargetShape {
+pub enum ReturnTargetShape {
     PairedSourceAndExiled {
         source_subtype: Option<Subtype>,
     },
@@ -77,12 +77,12 @@ pub(crate) enum ReturnTargetShape {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ReturnClauseShape {
-    pub(crate) target: ReturnTargetShape,
-    pub(crate) destination: ReturnDestinationShape,
-    pub(crate) destination_first: bool,
-    pub(crate) random: bool,
-    pub(crate) has_unless: bool,
+pub struct ReturnClauseShape {
+    pub target: ReturnTargetShape,
+    pub destination: ReturnDestinationShape,
+    pub destination_first: bool,
+    pub random: bool,
+    pub has_unless: bool,
 }
 
 fn marker_anywhere<'a, O, P>(tokens: &'a [OwnedLexToken], parser: P) -> bool
@@ -231,7 +231,7 @@ fn parse_return_timing_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ReturnTim
     Ok(timing)
 }
 
-pub(crate) fn parse_return_timing_words_shape(words: &[&str]) -> Option<ReturnTimingShape> {
+pub fn parse_return_timing_words_shape(words: &[&str]) -> Option<ReturnTimingShape> {
     let tokens = words
         .iter()
         .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
@@ -459,7 +459,7 @@ fn paired_source_and_exiled(tokens: &[OwnedLexToken]) -> Option<Option<Subtype>>
         })
 }
 
-pub(crate) fn is_return_back_reference_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_return_back_reference_shape(tokens: &[OwnedLexToken]) -> bool {
     exact_any(
         tokens,
         &[
@@ -640,7 +640,7 @@ fn classify_target(tokens: &[OwnedLexToken], zone: ReturnZoneShape) -> Option<Re
     })
 }
 
-pub(crate) fn parse_return_clause_shape(tokens: &[OwnedLexToken]) -> Option<ReturnClauseShape> {
+pub fn parse_return_clause_shape(tokens: &[OwnedLexToken]) -> Option<ReturnClauseShape> {
     let destination_first = primitives::parse_prefix(tokens, primitives::kw("to")).is_some();
     let normalized;
     let tokens = if destination_first {

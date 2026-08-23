@@ -32,7 +32,7 @@ use super::verb_dispatch::parse_effect_with_verb;
 const ODD_RESULT_VALUES_D6: &[i32] = &[1, 3, 5];
 const EVEN_RESULT_VALUES_D6: &[i32] = &[2, 4, 6];
 
-pub(crate) fn extract_subject_player(subject: Option<SubjectAst>) -> Option<PlayerAst> {
+pub fn extract_subject_player(subject: Option<SubjectAst>) -> Option<PlayerAst> {
     match subject {
         Some(SubjectAst::Player(player)) => Some(player),
         Some(SubjectAst::TriggeringSourceController) => Some(PlayerAst::TriggeringSourceController),
@@ -40,7 +40,7 @@ pub(crate) fn extract_subject_player(subject: Option<SubjectAst>) -> Option<Play
     }
 }
 
-pub(crate) fn parse_prevent_next_damage_clause(
+pub fn parse_prevent_next_damage_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = clause_shapes::parse_prevent_next_damage_tokens(tokens) else {
@@ -75,7 +75,7 @@ pub(crate) fn parse_prevent_next_damage_clause(
     )))
 }
 
-pub(crate) fn parse_double_counters_clause(
+pub fn parse_double_counters_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = clause_shapes::parse_double_counters_tokens(tokens) else {
@@ -115,13 +115,13 @@ pub(crate) fn parse_double_counters_clause(
     Ok(Some(effect))
 }
 
-pub(crate) fn parse_distribute_counters_clause(
+pub fn parse_distribute_counters_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     parse_distribute_counters_sentence(SubjectVerbPrimitiveClause::new(tokens))
 }
 
-pub(crate) fn parse_verb_first_clause(
+pub fn parse_verb_first_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(word) = tokens.first().and_then(OwnedLexToken::as_word) else {
@@ -173,7 +173,7 @@ pub(crate) fn parse_verb_first_clause(
     Ok(Some(effect))
 }
 
-pub(crate) fn parse_choose_target_and_verb_clause(
+pub fn parse_choose_target_and_verb_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = clause_shapes::parse_choose_target_verb_shape_tokens(tokens) else {
@@ -189,7 +189,7 @@ pub(crate) fn parse_choose_target_and_verb_clause(
     Ok(Some(effect))
 }
 
-pub(crate) fn parse_copy_spell_clause(
+pub fn parse_copy_spell_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     fn parse_copy_for_each_count(tokens: &[OwnedLexToken]) -> Result<Value, CardTextError> {
@@ -1067,9 +1067,7 @@ mod copy_all_tests {
     }
 }
 
-pub(crate) fn parse_counter_target_phrase(
-    tokens: &[OwnedLexToken],
-) -> Result<TargetAst, CardTextError> {
+pub fn parse_counter_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
     if let Some(target) = parse_counter_ability_target_phrase(tokens)? {
         return Ok(target);
     }
@@ -1169,7 +1167,7 @@ fn parse_prevention_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst,
     parse_target_phrase(tokens)
 }
 
-pub(crate) fn parse_prevent_all_damage_clause(
+pub fn parse_prevent_all_damage_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = clause_shapes::parse_prevent_all_damage_shape_tokens(tokens) else {
@@ -1265,7 +1263,7 @@ pub(crate) fn parse_prevent_all_damage_clause(
     }
 }
 
-pub(crate) fn parse_can_attack_as_though_no_defender_clause(
+pub fn parse_can_attack_as_though_no_defender_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(subject_tokens) = clause_shapes::parse_can_attack_no_defender_subject_tokens(tokens)
@@ -1307,7 +1305,7 @@ pub(crate) fn parse_can_attack_as_though_no_defender_clause(
     )))
 }
 
-pub(crate) fn parse_prevent_next_time_damage_sentence(
+pub fn parse_prevent_next_time_damage_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if let Some(shape) = clause_shapes::parse_replace_next_damage_with_destroy_tokens(tokens) {
@@ -1388,7 +1386,7 @@ pub(crate) fn parse_prevent_next_time_damage_sentence(
     Ok(Some(vec![effect]))
 }
 
-pub(crate) fn parse_redirect_next_damage_sentence(
+pub fn parse_redirect_next_damage_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = clause_shapes::parse_redirect_next_damage_tokens(tokens) else {
@@ -1585,7 +1583,7 @@ pub(crate) fn parse_redirect_next_damage_sentence(
     };
     Ok(Some(vec![effect]))
 }
-pub(crate) fn parse_can_block_additional_creature_this_turn_clause(
+pub fn parse_can_block_additional_creature_this_turn_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = clause_shapes::parse_can_block_additional_tokens(tokens) else {
@@ -1606,7 +1604,7 @@ pub(crate) fn parse_can_block_additional_creature_this_turn_clause(
     )))
 }
 
-pub(crate) fn parse_win_the_game_clause(
+pub fn parse_win_the_game_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = clause_shapes::parse_win_game_shape_tokens(tokens) else {
@@ -1714,7 +1712,7 @@ fn parse_kicked_additional_targets_prelude(
     )]))
 }
 
-pub(crate) fn parse_choose_target_prelude_sentence(
+pub fn parse_choose_target_prelude_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = clause_shapes::parse_choose_target_prelude_shape_tokens(tokens) else {
@@ -1841,7 +1839,7 @@ fn keyword_repeat_value(
     }
 }
 
-pub(crate) fn parse_keyword_mechanic_clause(
+pub fn parse_keyword_mechanic_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = clause_shapes::parse_keyword_mechanic_tokens(tokens) else {
@@ -1888,9 +1886,9 @@ pub(crate) fn parse_keyword_mechanic_clause(
         },
         clause_shapes::KeywordMechanicShape::OddEvenResult { odd, action_tokens } => {
             let predicate = if odd {
-                crate::effect::Comparison::OneOf(ODD_RESULT_VALUES_D6)
+                crate::effect::Comparison::OneOf(ODD_RESULT_VALUES_D6.into())
             } else {
-                crate::effect::Comparison::OneOf(EVEN_RESULT_VALUES_D6)
+                crate::effect::Comparison::OneOf(EVEN_RESULT_VALUES_D6.into())
             };
             let Some((verb, verb_idx)) = find_verb(action_tokens) else {
                 return Err(CardTextError::ParseError(format!(
@@ -2075,9 +2073,7 @@ pub(crate) fn parse_keyword_mechanic_clause(
     };
     Ok(Some(effect))
 }
-pub(crate) fn parse_connive_clause(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
+pub fn parse_connive_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = clause_shapes::parse_connive_clause_shape_tokens(tokens) else {
         return Ok(None);
     };

@@ -3,7 +3,7 @@ use crate::model::{CompilerGrantedAbilityAst, CompilerStaticAbilityAst, StaticOp
 
 /// Runtime construction is injected here so recognition and semantic
 /// validation never need runtime ability constructors.
-pub(crate) trait StaticAbilityMaterializer {
+pub trait StaticAbilityMaterializer {
     type RuntimeStatic;
     type RuntimeAbility;
 
@@ -19,14 +19,14 @@ pub(crate) trait StaticAbilityMaterializer {
     ) -> Result<Self::RuntimeAbility, CardTextError>;
 }
 
-pub(crate) fn materialize_static_ability<M: StaticAbilityMaterializer>(
+pub fn materialize_static_ability<M: StaticAbilityMaterializer>(
     materializer: &mut M,
     ability: &CompilerStaticAbilityAst,
 ) -> Result<M::RuntimeStatic, CardTextError> {
     materializer.materialize_operation(ability, &ability.operation)
 }
 
-pub(crate) fn materialize_nested_grants<M: StaticAbilityMaterializer>(
+pub fn materialize_nested_grants<M: StaticAbilityMaterializer>(
     materializer: &mut M,
     ability: &CompilerStaticAbilityAst,
 ) -> Result<Vec<M::RuntimeAbility>, CardTextError> {

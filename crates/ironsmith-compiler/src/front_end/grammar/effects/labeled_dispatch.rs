@@ -13,9 +13,9 @@ mod surface;
 #[path = "labeled_dispatch/token_copy.rs"]
 mod token_copy;
 
-pub(crate) use ability_candidates::*;
-pub(crate) use cost_reduction::*;
-pub(crate) use labels::*;
-pub(crate) use passive_addition::*;
-pub(crate) use surface::*;
-pub(crate) use token_copy::*;
+pub use ability_candidates::*;
+pub use cost_reduction::*;
+pub use labels::*;
+pub use passive_addition::*;
+pub use surface::*;
+pub use token_copy::*;

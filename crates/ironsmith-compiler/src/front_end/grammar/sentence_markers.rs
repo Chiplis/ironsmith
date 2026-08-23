@@ -6,7 +6,7 @@ use super::{line_families, primitives};
 use crate::lexer::{LexStream, OwnedLexToken, lex_line};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ConditionalFollowupActor {
+pub enum ConditionalFollowupActor {
     You,
     They,
     ThatPlayer,
@@ -14,27 +14,27 @@ pub(crate) enum ConditionalFollowupActor {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ConditionalFollowupMatch<'a> {
-    pub(crate) actor: ConditionalFollowupActor,
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
+pub struct ConditionalFollowupMatch<'a> {
+    pub actor: ConditionalFollowupActor,
+    pub tail_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LeadingMayActor {
+pub enum LeadingMayActor {
     You,
     ThatPlayer,
     Default,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LeadingMayActionMatch<'a> {
-    pub(crate) actor: LeadingMayActor,
-    pub(crate) verb: &'static str,
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
+pub struct LeadingMayActionMatch<'a> {
+    pub actor: LeadingMayActor,
+    pub verb: &'static str,
+    pub tail_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum KeywordMarkerKind {
+pub enum KeywordMarkerKind {
     Prototype,
     MoreThanMeetsTheEye,
     TicketSticker,
@@ -55,14 +55,14 @@ fn conditional_followup_actor(input: &mut LexStream<'_>) -> WResult<ConditionalF
     .parse_next(input)
 }
 
-pub(crate) fn parse_conditional_followup_tokens(
+pub fn parse_conditional_followup_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ConditionalFollowupMatch<'_>> {
     let (actor, tail_tokens) = primitives::parse_prefix(tokens, conditional_followup_actor)?;
     Some(ConditionalFollowupMatch { actor, tail_tokens })
 }
 
-pub(crate) fn has_nonconditional_instead(tokens: &[OwnedLexToken]) -> bool {
+pub fn has_nonconditional_instead(tokens: &[OwnedLexToken]) -> bool {
     if primitives::parse_prefix(tokens, primitives::kw("if")).is_some() {
         return false;
     }
@@ -95,7 +95,7 @@ fn allowed_verb(
     ))
 }
 
-pub(crate) fn parse_leading_may_action_tokens<'a>(
+pub fn parse_leading_may_action_tokens<'a>(
     tokens: &'a [OwnedLexToken],
     verbs: &'static [&'static str],
     allow_bare: bool,
@@ -119,7 +119,7 @@ pub(crate) fn parse_leading_may_action_tokens<'a>(
     })
 }
 
-pub(crate) fn parse_keyword_marker_text(text: &str) -> Option<KeywordMarkerKind> {
+pub fn parse_keyword_marker_text(text: &str) -> Option<KeywordMarkerKind> {
     let lowered = text.trim_start().to_ascii_lowercase();
     let input = lowered.as_str();
     if input == "compleated" {
@@ -146,11 +146,11 @@ pub(crate) fn parse_keyword_marker_text(text: &str) -> Option<KeywordMarkerKind>
     line_families::parse_sticker_ticket_marker(&tokens).map(|_| KeywordMarkerKind::TicketSticker)
 }
 
-pub(crate) fn recognizes_ticket_sticker_marker(text: &str) -> bool {
+pub fn recognizes_ticket_sticker_marker(text: &str) -> bool {
     parse_keyword_marker_text(text) == Some(KeywordMarkerKind::TicketSticker)
 }
 
-pub(crate) fn recognizes_core_keyword_marker(text: &str) -> bool {
+pub fn recognizes_core_keyword_marker(text: &str) -> bool {
     matches!(
         parse_keyword_marker_text(text),
         Some(

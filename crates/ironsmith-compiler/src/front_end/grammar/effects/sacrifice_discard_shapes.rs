@@ -7,6 +7,6 @@ mod sacrifice;
 #[path = "sacrifice_discard_shapes/sequences.rs"]
 mod sequences;
 
-pub(crate) use discard::*;
-pub(crate) use sacrifice::*;
-pub(crate) use sequences::*;
+pub use discard::*;
+pub use sacrifice::*;
+pub use sequences::*;

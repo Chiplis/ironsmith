@@ -4,37 +4,37 @@ use winnow::combinator::{alt, opt, peek, repeat_till};
 use winnow::error::ModalResult as WResult;
 use winnow::token::any;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PreventNextDamageShape<'a> {
-    pub(crate) amount_tokens: &'a [OwnedLexToken],
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) source_of_your_choice: bool,
-    pub(crate) protects_you_and_permanents_you_control: bool,
+pub struct PreventNextDamageShape<'a> {
+    pub amount_tokens: &'a [OwnedLexToken],
+    pub target_tokens: &'a [OwnedLexToken],
+    pub source_of_your_choice: bool,
+    pub protects_you_and_permanents_you_control: bool,
 }
 #[derive(Debug, Clone)]
-pub(crate) struct PreventNextTimeDamageShape<'a> {
-    pub(crate) source: DamageSourceShape<'a>,
-    pub(crate) target: DamageTargetShape<'a>,
-    pub(crate) reflect_damage_to_source_controller: bool,
+pub struct PreventNextTimeDamageShape<'a> {
+    pub source: DamageSourceShape<'a>,
+    pub target: DamageTargetShape<'a>,
+    pub reflect_damage_to_source_controller: bool,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DestroyDamageTargetReference {
+pub enum DestroyDamageTargetReference {
     It,
     Creature,
     Permanent,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ReplaceNextDamageWithDestroyShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) destroyed_reference: DestroyDamageTargetReference,
+pub struct ReplaceNextDamageWithDestroyShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
+    pub destroyed_reference: DestroyDamageTargetReference,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DamageTargetShape<'a> {
+pub enum DamageTargetShape<'a> {
     AnyTarget,
     You,
     Target(&'a [OwnedLexToken]),
 }
 #[derive(Debug, Clone)]
-pub(crate) enum DamageSourceShape<'a> {
+pub enum DamageSourceShape<'a> {
     Choice,
     ChoiceMatching(ObjectFilter),
     Target(&'a [OwnedLexToken]),
@@ -45,14 +45,14 @@ pub(crate) enum DamageSourceShape<'a> {
     Filter(ObjectFilter),
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RedirectDamageDestinationShape<'a> {
+pub enum RedirectDamageDestinationShape<'a> {
     SourceObject,
     Controller,
     Target(&'a [OwnedLexToken]),
     TargetOfChoice(&'a [OwnedLexToken]),
 }
 #[derive(Debug, Clone)]
-pub(crate) enum RedirectNextDamageShape<'a> {
+pub enum RedirectNextDamageShape<'a> {
     AllToYouAndPermanents {
         other: bool,
         destination_tokens: &'a [OwnedLexToken],
@@ -137,9 +137,7 @@ fn you_and_permanents<'a>(input: &mut LexStream<'a>) -> WResult<bool> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_you_and_permanents_filter_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<ObjectFilter> {
+pub fn parse_you_and_permanents_filter_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     primitives::parse_all(
         tokens,
         (you_and_permanents_filter, winnow::combinator::eof).map(|((_, filter), _)| filter),
@@ -391,7 +389,7 @@ fn parse_prevent_next_damage_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_prevent_next_damage_tokens(
+pub fn parse_prevent_next_damage_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PreventNextDamageShape<'_>> {
     primitives::parse_all(
@@ -446,7 +444,7 @@ fn parse_prevent_next_time_damage_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_prevent_next_time_damage_tokens(
+pub fn parse_prevent_next_time_damage_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PreventNextTimeDamageShape<'_>> {
     primitives::parse_all(
@@ -488,7 +486,7 @@ fn parse_replace_next_damage_with_destroy_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_replace_next_damage_with_destroy_tokens(
+pub fn parse_replace_next_damage_with_destroy_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ReplaceNextDamageWithDestroyShape<'_>> {
     primitives::parse_all(
@@ -696,7 +694,7 @@ fn parse_redirect_next_damage_lexed<'a>(
     .parse_next(input)
 }
 
-pub(crate) fn parse_redirect_next_damage_tokens(
+pub fn parse_redirect_next_damage_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<RedirectNextDamageShape<'_>> {
     primitives::parse_all(

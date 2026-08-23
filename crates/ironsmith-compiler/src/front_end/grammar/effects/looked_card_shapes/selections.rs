@@ -11,7 +11,7 @@ use crate::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LookedCardDestinationShape {
+pub enum LookedCardDestinationShape {
     Hand,
     Graveyard,
     Battlefield,
@@ -20,13 +20,13 @@ pub(crate) enum LookedCardDestinationShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ThreeWayLookedCardDispositionShape {
+pub enum ThreeWayLookedCardDispositionShape {
     HandTopBottom,
     HandGraveyardBottom,
 }
 
 impl ThreeWayLookedCardDispositionShape {
-    pub(crate) const fn destinations(self) -> [LookedCardDestinationShape; 3] {
+    pub const fn destinations(self) -> [LookedCardDestinationShape; 3] {
         match self {
             Self::HandTopBottom => [
                 LookedCardDestinationShape::Hand,
@@ -43,49 +43,49 @@ impl ThreeWayLookedCardDispositionShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RevealedCardChooserShape {
+pub enum RevealedCardChooserShape {
     You,
     TargetOpponent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RevealedCardChoiceShape {
-    pub(crate) chooser: RevealedCardChooserShape,
-    pub(crate) destination: Option<LookedCardDestinationShape>,
+pub struct RevealedCardChoiceShape {
+    pub chooser: RevealedCardChooserShape,
+    pub destination: Option<LookedCardDestinationShape>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ChosenCardMoveFollowupShape {
-    pub(crate) destination: LookedCardDestinationShape,
-    pub(crate) followup: Range<usize>,
+pub struct ChosenCardMoveFollowupShape {
+    pub destination: LookedCardDestinationShape,
+    pub followup: Range<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct OpponentRevealedCardSelectionShape {
-    pub(crate) filter: Option<Range<usize>>,
+pub struct OpponentRevealedCardSelectionShape {
+    pub filter: Option<Range<usize>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChosenCardPartitionShape {
-    pub(crate) selected_destination: LookedCardDestinationShape,
-    pub(crate) remainder_destination: LookedCardDestinationShape,
+pub struct ChosenCardPartitionShape {
+    pub selected_destination: LookedCardDestinationShape,
+    pub remainder_destination: LookedCardDestinationShape,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CountedLookedHandRemainderShape {
-    pub(crate) count: ChoiceCount,
-    pub(crate) remainder_order: LibraryBottomOrderAst,
+pub struct CountedLookedHandRemainderShape {
+    pub count: ChoiceCount,
+    pub remainder_order: LibraryBottomOrderAst,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct OptionalLookedTopRemainderShape {
-    pub(crate) count: ChoiceCount,
-    pub(crate) remainder_order: LibraryBottomOrderAst,
+pub struct OptionalLookedTopRemainderShape {
+    pub count: ChoiceCount,
+    pub remainder_order: LibraryBottomOrderAst,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ExactLookedCardMoveShape {
-    pub(crate) destination: LookedCardDestinationShape,
+pub struct ExactLookedCardMoveShape {
+    pub destination: LookedCardDestinationShape,
 }
 
 fn counted_looked_reference(input: &mut LexStream<'_>) -> WResult<ChoiceCount> {
@@ -153,7 +153,7 @@ fn counted_looked_hand_remainder(
     })
 }
 
-pub(crate) fn parse_counted_looked_hand_remainder_shape(
+pub fn parse_counted_looked_hand_remainder_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<CountedLookedHandRemainderShape> {
     counted_looked_hand_remainder
@@ -182,7 +182,7 @@ fn optional_looked_top_selection(input: &mut LexStream<'_>) -> WResult<ChoiceCou
     }
 }
 
-pub(crate) fn parse_optional_looked_top_remainder_shape(
+pub fn parse_optional_looked_top_remainder_shape(
     selection_tokens: &[OwnedLexToken],
     remainder_tokens: &[OwnedLexToken],
 ) -> Option<OptionalLookedTopRemainderShape> {
@@ -256,7 +256,7 @@ fn exact_looked_card_move(input: &mut LexStream<'_>) -> WResult<ExactLookedCardM
     Ok(ExactLookedCardMoveShape { destination })
 }
 
-pub(crate) fn parse_exact_looked_card_move_shape(
+pub fn parse_exact_looked_card_move_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ExactLookedCardMoveShape> {
     exact_looked_card_move
@@ -293,7 +293,7 @@ fn three_way_disposition(input: &mut LexStream<'_>) -> WResult<ThreeWayLookedCar
     }
 }
 
-pub(crate) fn parse_three_way_looked_card_disposition_shape(
+pub fn parse_three_way_looked_card_disposition_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ThreeWayLookedCardDispositionShape> {
     three_way_disposition
@@ -329,7 +329,7 @@ fn revealed_card_choice(input: &mut LexStream<'_>) -> WResult<RevealedCardChoice
     })
 }
 
-pub(crate) fn parse_revealed_card_choice_shape(
+pub fn parse_revealed_card_choice_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<RevealedCardChoiceShape> {
     revealed_card_choice
@@ -337,7 +337,7 @@ pub(crate) fn parse_revealed_card_choice_shape(
         .ok()
 }
 
-pub(crate) fn is_one_looked_card_into_hand_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_one_looked_card_into_hand_shape(tokens: &[OwnedLexToken]) -> bool {
     let mut input = LexStream::new(trim_lexed_commas(tokens));
     if looked_one_reference.parse_next(&mut input).is_err() {
         return false;
@@ -349,7 +349,7 @@ pub(crate) fn is_one_looked_card_into_hand_shape(tokens: &[OwnedLexToken]) -> bo
     opt(primitives::period()).parse_next(&mut input).is_ok() && input.is_empty()
 }
 
-pub(crate) fn parse_chosen_card_move_followup_shape(
+pub fn parse_chosen_card_move_followup_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ChosenCardMoveFollowupShape> {
     let tokens = trim_lexed_commas(tokens);
@@ -366,7 +366,7 @@ pub(crate) fn parse_chosen_card_move_followup_shape(
     })
 }
 
-pub(crate) fn parse_opponent_revealed_card_selection_shape(
+pub fn parse_opponent_revealed_card_selection_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<OpponentRevealedCardSelectionShape> {
     let tokens = trim_lexed_commas(tokens);
@@ -421,7 +421,7 @@ fn chosen_card_partition(input: &mut LexStream<'_>) -> WResult<ChosenCardPartiti
     })
 }
 
-pub(crate) fn parse_chosen_card_partition_shape(
+pub fn parse_chosen_card_partition_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ChosenCardPartitionShape> {
     chosen_card_partition

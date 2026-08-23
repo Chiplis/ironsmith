@@ -10,23 +10,23 @@ use super::super::primitives;
 #[path = "copy_shapes/linked_exile.rs"]
 mod linked_exile;
 use linked_exile::parse_linked_exile_pair_lexed;
-pub(crate) use linked_exile::{LinkedExileCopyCounterValue, LinkedExilePairCopyShape};
+pub use linked_exile::{LinkedExileCopyCounterValue, LinkedExilePairCopyShape};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CopySourceKind {
+pub enum CopySourceKind {
     Source,
     Enchanted,
     Filter,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CopyExceptionDisplaySplit<'a> {
-    pub(crate) before_separator: &'a [OwnedLexToken],
-    pub(crate) after_separator: &'a [OwnedLexToken],
+pub struct CopyExceptionDisplaySplit<'a> {
+    pub before_separator: &'a [OwnedLexToken],
+    pub after_separator: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum EnterAsCopyShape<'a> {
+pub enum EnterAsCopyShape<'a> {
     LinkedExilePair(LinkedExilePairCopyShape),
     Direct {
         affected_tokens: &'a [OwnedLexToken],
@@ -44,7 +44,7 @@ pub(crate) enum EnterAsCopyShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CopyCharacteristicRemainder<'a> {
+pub enum CopyCharacteristicRemainder<'a> {
     None,
     PowerToughnessFromSource,
     Abilities(&'a [OwnedLexToken]),
@@ -52,7 +52,7 @@ pub(crate) enum CopyCharacteristicRemainder<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CopyExceptionShape<'a> {
+pub enum CopyExceptionShape<'a> {
     Name {
         name_tokens: &'a [OwnedLexToken],
         use_named_subject: bool,
@@ -67,7 +67,7 @@ pub(crate) enum CopyExceptionShape<'a> {
     },
 }
 
-pub(crate) fn parse_enter_as_copy_tokens(tokens: &[OwnedLexToken]) -> Option<EnterAsCopyShape<'_>> {
+pub fn parse_enter_as_copy_tokens(tokens: &[OwnedLexToken]) -> Option<EnterAsCopyShape<'_>> {
     if let Ok(shape) = primitives::parse_all(
         tokens,
         parse_linked_exile_pair_lexed,
@@ -96,9 +96,7 @@ pub(crate) fn parse_enter_as_copy_tokens(tokens: &[OwnedLexToken]) -> Option<Ent
     .ok()
 }
 
-pub(crate) fn parse_copy_exception_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<CopyExceptionShape<'_>> {
+pub fn parse_copy_exception_tokens(tokens: &[OwnedLexToken]) -> Option<CopyExceptionShape<'_>> {
     primitives::parse_all(
         tokens,
         alt((

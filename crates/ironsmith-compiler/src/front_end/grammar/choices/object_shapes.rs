@@ -10,7 +10,7 @@ use super::super::{leaf, primitives};
 use super::{ChoiceObjectClauseSyntaxError, word_phrase};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TargetPlayerChoiceActor {
+pub enum TargetPlayerChoiceActor {
     TargetPlayer,
     TargetOpponent,
     Opponent,
@@ -19,7 +19,7 @@ pub(crate) enum TargetPlayerChoiceActor {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PossessiveObjectChoiceActor {
+pub enum PossessiveObjectChoiceActor {
     You,
     SubjectPlayer,
     ObjectController,
@@ -27,33 +27,33 @@ pub(crate) enum PossessiveObjectChoiceActor {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PossessiveObjectChoiceShape {
-    pub(crate) actor: PossessiveObjectChoiceActor,
-    pub(crate) object_tokens: Vec<OwnedLexToken>,
+pub struct PossessiveObjectChoiceShape {
+    pub actor: PossessiveObjectChoiceActor,
+    pub object_tokens: Vec<OwnedLexToken>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct ChoiceObjectFilterFacts {
-    pub(crate) bare_card: bool,
-    pub(crate) graveyard_and_hand: bool,
-    pub(crate) tagged_graveyard_disjunction: bool,
-    pub(crate) graveyard_arm_is_plain_card: bool,
+pub struct ChoiceObjectFilterFacts {
+    pub bare_card: bool,
+    pub graveyard_and_hand: bool,
+    pub tagged_graveyard_disjunction: bool,
+    pub graveyard_arm_is_plain_card: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct TargetPlayerChoiceShape<'a> {
-    pub(crate) actor: TargetPlayerChoiceActor,
-    pub(crate) count: ChoiceCount,
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
+pub struct TargetPlayerChoiceShape<'a> {
+    pub actor: TargetPlayerChoiceActor,
+    pub count: ChoiceCount,
+    pub filter_tokens: &'a [OwnedLexToken],
     /// The same clause beginning at its `choose`/`chooses` verb. This lets the
     /// shared object-choice grammar retain trailing dynamic counts and chosen-
     /// set constraints without duplicating those rules for player subjects.
-    pub(crate) object_choice_tokens: &'a [OwnedLexToken],
-    pub(crate) filter_facts: ChoiceObjectFilterFacts,
-    pub(crate) filter_is_player_target: bool,
+    pub object_choice_tokens: &'a [OwnedLexToken],
+    pub filter_facts: ChoiceObjectFilterFacts,
+    pub filter_is_player_target: bool,
 }
 
-pub(crate) fn parse_target_player_choice_tokens(
+pub fn parse_target_player_choice_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TargetPlayerChoiceShape<'_>>, ChoiceObjectClauseSyntaxError> {
     let mut input = LexStream::new(tokens);
@@ -95,7 +95,7 @@ pub(crate) fn parse_target_player_choice_tokens(
 /// Remove an embedded choice-owner phrase while retaining the complete object
 /// and zone description around it, e.g. `a creature card of their choice from
 /// their graveyard` -> `a creature card from their graveyard`.
-pub(crate) fn parse_possessive_object_choice_tokens(
+pub fn parse_possessive_object_choice_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PossessiveObjectChoiceShape> {
     for (phrase, actor) in [
@@ -147,7 +147,7 @@ pub(crate) fn parse_possessive_object_choice_tokens(
     None
 }
 
-pub(crate) fn parse_choice_object_filter_facts_words(words: &[&str]) -> ChoiceObjectFilterFacts {
+pub fn parse_choice_object_filter_facts_words(words: &[&str]) -> ChoiceObjectFilterFacts {
     let has_graveyard = word_occurs(words, parse_graveyard_word);
     let has_hand = word_occurs(words, parse_hand_word);
     let has_or = word_occurs(words, primitives::word_slice_exact("or").void());

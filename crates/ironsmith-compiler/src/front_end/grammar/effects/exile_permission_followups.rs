@@ -7,15 +7,15 @@ use crate::grammar::primitives;
 use crate::lexer::{LexStream, LexedClause, OwnedLexToken, TokenKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ExilePermissionFollowupKind {
+pub enum ExilePermissionFollowupKind {
     ReflexiveExileNonland,
     DelayedPlayCard,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ExilePermissionFollowupShape<'a> {
-    pub(crate) kind: ExilePermissionFollowupKind,
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct ExilePermissionFollowupShape<'a> {
+    pub kind: ExilePermissionFollowupKind,
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 fn followup_kind(input: &mut LexStream<'_>) -> WResult<ExilePermissionFollowupKind> {
@@ -51,7 +51,7 @@ fn exile_permission_followup<'a>(
     })
 }
 
-pub(crate) fn parse_exile_permission_followup_shape(
+pub fn parse_exile_permission_followup_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ExilePermissionFollowupShape<'_>> {
     primitives::parse_all(

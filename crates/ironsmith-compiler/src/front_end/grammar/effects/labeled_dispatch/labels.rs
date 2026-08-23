@@ -8,17 +8,17 @@ use crate::lexer::{LexStream, OwnedLexToken, TokenKind};
 use super::super::super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LeadingEffectLabelKind {
+pub enum LeadingEffectLabelKind {
     Conditional,
     SupportedProcedure,
     Unknown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LeadingEffectLabelShape<'a> {
-    pub(crate) kind: LeadingEffectLabelKind,
-    pub(crate) label_tokens: &'a [OwnedLexToken],
-    pub(crate) body_tokens: &'a [OwnedLexToken],
+pub struct LeadingEffectLabelShape<'a> {
+    pub kind: LeadingEffectLabelKind,
+    pub label_tokens: &'a [OwnedLexToken],
+    pub body_tokens: &'a [OwnedLexToken],
 }
 
 fn label_delimiter(input: &mut LexStream<'_>) -> WResult<()> {
@@ -93,7 +93,7 @@ fn supported_procedure_label(input: &mut LexStream<'_>) -> WResult<()> {
     eof.void().parse_next(input)
 }
 
-pub(crate) fn parse_leading_effect_label_tokens(
+pub fn parse_leading_effect_label_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LeadingEffectLabelShape<'_>> {
     primitives::parse_all(tokens, leading_effect_label, "leading effect label").ok()

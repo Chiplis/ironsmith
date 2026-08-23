@@ -7,64 +7,64 @@ use crate::grammar::{leaf, permission_shapes, primitives};
 use crate::lexer::{OwnedLexToken, trim_lexed_commas};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RestDestinationShape {
+pub enum RestDestinationShape {
     BottomOfLibrary,
     Graveyard,
     Hand,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FromAmongDestinationShape {
+pub enum FromAmongDestinationShape {
     Battlefield,
     Hand,
     Other,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct TaggedPutShape {
-    pub(crate) count: Option<ChoiceCount>,
-    pub(crate) plural_reference: bool,
-    pub(crate) rest_destination: Option<RestDestinationShape>,
-    pub(crate) bottom_order: Option<LibraryBottomOrderAst>,
+pub struct TaggedPutShape {
+    pub count: Option<ChoiceCount>,
+    pub plural_reference: bool,
+    pub rest_destination: Option<RestDestinationShape>,
+    pub bottom_order: Option<LibraryBottomOrderAst>,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct TaggedTopPutShape {
-    pub(crate) count: ChoiceCount,
-    pub(crate) bottom_order: LibraryBottomOrderAst,
+pub struct TaggedTopPutShape {
+    pub count: ChoiceCount,
+    pub bottom_order: LibraryBottomOrderAst,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct FromAmongPutShape<'a> {
-    pub(crate) count: ChoiceCount,
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) destination: FromAmongDestinationShape,
-    pub(crate) rest_destination: Option<RestDestinationShape>,
+pub struct FromAmongPutShape<'a> {
+    pub count: ChoiceCount,
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub destination: FromAmongDestinationShape,
+    pub rest_destination: Option<RestDestinationShape>,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct RevealedRemainderShape {
-    pub(crate) random_order: bool,
+pub struct RevealedRemainderShape {
+    pub random_order: bool,
     /// `true` for "the rest of the revealed cards", where the most recently
     /// selected card must be excluded. `false` for the whole revealed
     /// collection.
-    pub(crate) exclude_current_reference: bool,
-    pub(crate) surface: ironsmith_core::LibraryRemainderSurface,
+    pub exclude_current_reference: bool,
+    pub surface: ironsmith_core::LibraryRemainderSurface,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PartitionBattlefieldControllerShape {
+pub enum PartitionBattlefieldControllerShape {
     You,
     SubjectPlayer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TaggedBattlefieldPartitionShape {
-    pub(crate) count: ChoiceCount,
-    pub(crate) chosen_tapped: bool,
-    pub(crate) chosen_controller: PartitionBattlefieldControllerShape,
-    pub(crate) remainder_tapped: bool,
-    pub(crate) remainder_controller: PartitionBattlefieldControllerShape,
+pub struct TaggedBattlefieldPartitionShape {
+    pub count: ChoiceCount,
+    pub chosen_tapped: bool,
+    pub chosen_controller: PartitionBattlefieldControllerShape,
+    pub remainder_tapped: bool,
+    pub remainder_controller: PartitionBattlefieldControllerShape,
 }
 
 fn rest_head(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
@@ -81,7 +81,7 @@ fn rest_head(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     None
 }
 
-pub(crate) fn parse_rest_destination(tokens: &[OwnedLexToken]) -> Option<RestDestinationShape> {
+pub fn parse_rest_destination(tokens: &[OwnedLexToken]) -> Option<RestDestinationShape> {
     let tail = rest_head(tokens)?;
     if primitives::contains_word(tail, "bottom")
         && (primitives::contains_word(tail, "library")
@@ -158,7 +158,7 @@ fn parse_partition_battlefield_destination(
 /// their control". This is a reusable collection-partition shape; the parser
 /// deliberately requires both destinations to be explicit so an unrelated
 /// conjunction cannot be swallowed as a remainder move.
-pub(crate) fn parse_tagged_battlefield_partition_shape(
+pub fn parse_tagged_battlefield_partition_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<TaggedBattlefieldPartitionShape> {
     let body = strip_optional_put(tokens);
@@ -186,7 +186,7 @@ pub(crate) fn parse_tagged_battlefield_partition_shape(
     })
 }
 
-pub(crate) fn parse_tagged_into_hand_shape(tokens: &[OwnedLexToken]) -> Option<TaggedPutShape> {
+pub fn parse_tagged_into_hand_shape(tokens: &[OwnedLexToken]) -> Option<TaggedPutShape> {
     let body = strip_optional_put(tokens);
     let (into_index, _, destination) = primitives::find_prefix(body, || primitives::kw("into"))?;
     if !(primitives::contains_word(destination, "hand")
@@ -212,9 +212,7 @@ pub(crate) fn parse_tagged_into_hand_shape(tokens: &[OwnedLexToken]) -> Option<T
     })
 }
 
-pub(crate) fn parse_tagged_on_top_library_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<TaggedTopPutShape> {
+pub fn parse_tagged_on_top_library_shape(tokens: &[OwnedLexToken]) -> Option<TaggedTopPutShape> {
     let rest = rest_head(tokens)?;
     if !primitives::contains_word(rest, "bottom") {
         return None;
@@ -242,9 +240,7 @@ pub(crate) fn parse_tagged_on_top_library_shape(
     })
 }
 
-pub(crate) fn parse_from_among_them_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<FromAmongPutShape<'_>> {
+pub fn parse_from_among_them_shape(tokens: &[OwnedLexToken]) -> Option<FromAmongPutShape<'_>> {
     let tokens = trim_lexed_commas(tokens);
     let (reference_index, _, after_reference) = primitives::find_prefix(tokens, || {
         alt((
@@ -289,7 +285,7 @@ pub(crate) fn parse_from_among_them_shape(
     })
 }
 
-pub(crate) fn has_from_among_hand_surface(tokens: &[OwnedLexToken]) -> bool {
+pub fn has_from_among_hand_surface(tokens: &[OwnedLexToken]) -> bool {
     let Some((_, _, after_among)) =
         primitives::find_prefix(tokens, || primitives::phrase(&["from", "among"]).void())
     else {
@@ -299,9 +295,7 @@ pub(crate) fn has_from_among_hand_surface(tokens: &[OwnedLexToken]) -> bool {
         || primitives::contains_word(after_among, "hands")
 }
 
-pub(crate) fn parse_all_exiled_into_hand_filter(
-    tokens: &[OwnedLexToken],
-) -> Option<&[OwnedLexToken]> {
+pub fn parse_all_exiled_into_hand_filter(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let tokens = trim_lexed_commas(tokens);
     let (_, after_put) = primitives::parse_prefix(tokens, primitives::kw("put").void())?;
     let (_, _) = primitives::parse_prefix(
@@ -322,9 +316,7 @@ pub(crate) fn parse_all_exiled_into_hand_filter(
     Some(filter)
 }
 
-pub(crate) fn parse_revealed_remainder_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<RevealedRemainderShape> {
+pub fn parse_revealed_remainder_shape(tokens: &[OwnedLexToken]) -> Option<RevealedRemainderShape> {
     let is_remainder = [
         "rest", "cards", "revealed", "this", "way", "bottom", "library",
     ]
@@ -368,7 +360,7 @@ pub(crate) fn parse_revealed_remainder_shape(
     })
 }
 
-pub(crate) fn is_reorder_tagged_cards(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_reorder_tagged_cards(tokens: &[OwnedLexToken]) -> bool {
     primitives::contains_word(tokens, "back")
         && primitives::contains_word(tokens, "any")
         && primitives::contains_word(tokens, "order")

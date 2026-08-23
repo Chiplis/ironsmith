@@ -130,9 +130,7 @@ fn parse_static_abilities_among(tokens: &[OwnedLexToken]) -> Option<Value> {
     )
 }
 
-pub(crate) fn parse_creation_for_each_dynamic_count_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<Value> {
+pub fn parse_creation_for_each_dynamic_count_tokens(tokens: &[OwnedLexToken]) -> Option<Value> {
     // Keep the canonical exact surface on the dedicated value.  The shared
     // turn-history parser also understands the broader `... that died this
     // turn` family, but creation counts use this value directly in lowering
@@ -302,7 +300,7 @@ fn reject_lossy_count(tokens: &[OwnedLexToken], words: &[&str]) -> Result<(), Ca
     Ok(())
 }
 
-pub(crate) fn validate_creation_count_fallback_tokens(
+pub fn validate_creation_count_fallback_tokens(
     tokens: &[OwnedLexToken],
     full_clause_words: &[&str],
 ) -> Result<(), CardTextError> {
@@ -323,7 +321,7 @@ pub(crate) fn validate_creation_count_fallback_tokens(
     Ok(())
 }
 
-pub(crate) fn parse_investigate_for_each_count_tokens(
+pub fn parse_investigate_for_each_count_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Value, CardTextError> {
     let token_surface = CreationTokens::new(tokens);

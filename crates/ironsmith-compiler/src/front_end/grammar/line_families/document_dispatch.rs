@@ -7,14 +7,14 @@ use crate::lexer::{LexStream, OwnedLexToken, TokenKind};
 use crate::model::ast::TriggerIntroSurfaceAst;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SimpleDocumentLineShape {
+pub enum SimpleDocumentLineShape {
     StartYourEngines,
     Learn,
     SplitTopAndFaceDownLook,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SpecialLineShape {
+pub enum SpecialLineShape {
     SplitTopLookAndLandPlay,
     AssignDamageAsUnblockedEnchanted,
     GraveyardOrExileCast,
@@ -22,55 +22,55 @@ pub(crate) enum SpecialLineShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DraftRuleLineShape;
+pub struct DraftRuleLineShape;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChampionedWithThisTriggerShape<'a> {
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct ChampionedWithThisTriggerShape<'a> {
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct MaxSpeedLineShape<'a> {
-    pub(crate) body_tokens: &'a [OwnedLexToken],
-    pub(crate) trigger_intro: Option<TriggerIntroSurfaceAst>,
+pub struct MaxSpeedLineShape<'a> {
+    pub body_tokens: &'a [OwnedLexToken],
+    pub trigger_intro: Option<TriggerIntroSurfaceAst>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChampionLineShape<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
+pub struct ChampionLineShape<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct StationKeywordLineShape {
-    pub(crate) creature_threshold: Option<i32>,
+pub struct StationKeywordLineShape {
+    pub creature_threshold: Option<i32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct StationThresholdLineShape<'a> {
-    pub(crate) threshold: i32,
-    pub(crate) body_tokens: &'a [OwnedLexToken],
-    pub(crate) trigger_intro: Option<TriggerIntroSurfaceAst>,
-    pub(crate) needs_terminal_punctuation: bool,
+pub struct StationThresholdLineShape<'a> {
+    pub threshold: i32,
+    pub body_tokens: &'a [OwnedLexToken],
+    pub trigger_intro: Option<TriggerIntroSurfaceAst>,
+    pub needs_terminal_punctuation: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EscapeEntersWithLineShape;
+pub struct EscapeEntersWithLineShape;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AlternativeCostKeywordLineShape<'a> {
-    pub(crate) cost_tokens: &'a [OwnedLexToken],
+pub struct AlternativeCostKeywordLineShape<'a> {
+    pub cost_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LinkedStatementPreference {
+pub enum LinkedStatementPreference {
     ChooseTwoShuffleRestBattlefield,
     ExiledCardCostsMore,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LeadingUnlessLineShape<'a> {
-    pub(crate) condition_tokens: &'a [OwnedLexToken],
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct LeadingUnlessLineShape<'a> {
+    pub condition_tokens: &'a [OwnedLexToken],
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 fn parse_visible_all<'a, O, P>(tokens: &'a [OwnedLexToken], mut parser: P) -> Option<O>
@@ -122,9 +122,7 @@ fn simple_document_line(input: &mut LexStream<'_>) -> WResult<SimpleDocumentLine
     .parse_next(input)
 }
 
-pub(crate) fn parse_simple_document_line(
-    tokens: &[OwnedLexToken],
-) -> Option<SimpleDocumentLineShape> {
+pub fn parse_simple_document_line(tokens: &[OwnedLexToken]) -> Option<SimpleDocumentLineShape> {
     parse_visible_all(tokens, simple_document_line)
 }
 
@@ -202,7 +200,7 @@ fn additional_combat_after_main_phase(input: &mut LexStream<'_>) -> WResult<Spec
     Ok(SpecialLineShape::AdditionalCombatAfterMainPhase)
 }
 
-pub(crate) fn parse_special_line(tokens: &[OwnedLexToken]) -> Option<SpecialLineShape> {
+pub fn parse_special_line(tokens: &[OwnedLexToken]) -> Option<SpecialLineShape> {
     parse_visible_all(tokens, special_line)
 }
 
@@ -217,7 +215,7 @@ fn draft_rule_prefix(input: &mut LexStream<'_>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_draft_rule_line(tokens: &[OwnedLexToken]) -> Option<DraftRuleLineShape> {
+pub fn parse_draft_rule_line(tokens: &[OwnedLexToken]) -> Option<DraftRuleLineShape> {
     let visible = super::parse_visible_line_tokens(tokens);
     if parse_visible_all(
         visible,
@@ -233,7 +231,7 @@ pub(crate) fn parse_draft_rule_line(tokens: &[OwnedLexToken]) -> Option<DraftRul
     Some(DraftRuleLineShape)
 }
 
-pub(crate) fn parse_championed_with_this_trigger(
+pub fn parse_championed_with_this_trigger(
     tokens: &[OwnedLexToken],
 ) -> Option<ChampionedWithThisTriggerShape<'_>> {
     primitives::parse_prefix(tokens, primitives::kw("when"))?;
@@ -246,7 +244,7 @@ pub(crate) fn parse_championed_with_this_trigger(
     })
 }
 
-pub(crate) fn parse_max_speed_line(tokens: &[OwnedLexToken]) -> Option<MaxSpeedLineShape<'_>> {
+pub fn parse_max_speed_line(tokens: &[OwnedLexToken]) -> Option<MaxSpeedLineShape<'_>> {
     primitives::parse_prefix(tokens, primitives::phrase(&["max", "speed"]))?;
     let body_tokens = super::parse_max_speed_body(tokens)
         .map(|shape| shape.body_tokens)
@@ -274,7 +272,7 @@ fn parse_keyword_tail<'a>(
     Some(super::trim_commas(tail))
 }
 
-pub(crate) fn parse_champion_line(tokens: &[OwnedLexToken]) -> Option<ChampionLineShape<'_>> {
+pub fn parse_champion_line(tokens: &[OwnedLexToken]) -> Option<ChampionLineShape<'_>> {
     let mut filter_tokens = parse_keyword_tail(tokens, "champion")?;
     if primitives::parse_prefix(
         filter_tokens,
@@ -287,7 +285,7 @@ pub(crate) fn parse_champion_line(tokens: &[OwnedLexToken]) -> Option<ChampionLi
     Some(ChampionLineShape { filter_tokens })
 }
 
-pub(crate) fn parse_station_keyword_line(
+pub fn parse_station_keyword_line(
     tokens: &[OwnedLexToken],
     source_tokens: &[OwnedLexToken],
 ) -> Option<StationKeywordLineShape> {
@@ -298,7 +296,7 @@ pub(crate) fn parse_station_keyword_line(
     })
 }
 
-pub(crate) fn parse_station_threshold_line(
+pub fn parse_station_threshold_line(
     tokens: &[OwnedLexToken],
 ) -> Option<StationThresholdLineShape<'_>> {
     let shape = super::parse_station_threshold(tokens)?;
@@ -314,22 +312,20 @@ pub(crate) fn parse_station_threshold_line(
     })
 }
 
-pub(crate) fn parse_escape_enters_with_line(
+pub fn parse_escape_enters_with_line(
     tokens: &[OwnedLexToken],
 ) -> Option<EscapeEntersWithLineShape> {
     primitives::find_prefix(tokens, || primitives::phrase(&["escapes", "with"]).void())?;
     Some(EscapeEntersWithLineShape)
 }
 
-pub(crate) fn parse_surge_line(
-    tokens: &[OwnedLexToken],
-) -> Option<AlternativeCostKeywordLineShape<'_>> {
+pub fn parse_surge_line(tokens: &[OwnedLexToken]) -> Option<AlternativeCostKeywordLineShape<'_>> {
     Some(AlternativeCostKeywordLineShape {
         cost_tokens: parse_keyword_tail(tokens, "surge")?,
     })
 }
 
-pub(crate) fn parse_freerunning_line(
+pub fn parse_freerunning_line(
     tokens: &[OwnedLexToken],
 ) -> Option<AlternativeCostKeywordLineShape<'_>> {
     Some(AlternativeCostKeywordLineShape {
@@ -337,7 +333,7 @@ pub(crate) fn parse_freerunning_line(
     })
 }
 
-pub(crate) fn parse_linked_statement_preference(
+pub fn parse_linked_statement_preference(
     tokens: &[OwnedLexToken],
 ) -> Option<LinkedStatementPreference> {
     parse_choose_two_shuffle_rest_battlefield(tokens)
@@ -372,9 +368,7 @@ fn parse_exiled_card_costs_more(tokens: &[OwnedLexToken]) -> Option<LinkedStatem
     Some(LinkedStatementPreference::ExiledCardCostsMore)
 }
 
-pub(crate) fn parse_leading_unless_line(
-    tokens: &[OwnedLexToken],
-) -> Option<LeadingUnlessLineShape<'_>> {
+pub fn parse_leading_unless_line(tokens: &[OwnedLexToken]) -> Option<LeadingUnlessLineShape<'_>> {
     primitives::parse_prefix(tokens, primitives::kw("unless"))?;
     let split = super::parse_comma_split(tokens)?;
     (split.before.len() >= 2 && !split.after.is_empty()).then_some(LeadingUnlessLineShape {

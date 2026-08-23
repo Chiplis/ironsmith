@@ -9,8 +9,8 @@ mod life;
 #[path = "control_copy_attach_shapes/looked_put.rs"]
 mod looked_put;
 
-pub(crate) use common::*;
-pub(crate) use control::*;
-pub(crate) use destinations::*;
-pub(crate) use life::*;
-pub(crate) use looked_put::*;
+pub use common::*;
+pub use control::*;
+pub use destinations::*;
+pub use life::*;
+pub use looked_put::*;

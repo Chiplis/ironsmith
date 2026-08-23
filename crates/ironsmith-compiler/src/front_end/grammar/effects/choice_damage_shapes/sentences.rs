@@ -7,49 +7,49 @@ use crate::lexer::{OwnedLexToken, TokenWordView, trim_lexed_commas};
 use super::common::{ChoiceDamageScope, is_choice_damage_drain_shape, parse_choice_damage_scope};
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct OpponentDrainSentenceShape<'a> {
-    pub(crate) where_tokens: &'a [OwnedLexToken],
+pub struct OpponentDrainSentenceShape<'a> {
+    pub where_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct RevealSelectedHandShape<'a> {
-    pub(crate) descriptor_tokens: &'a [OwnedLexToken],
+pub struct RevealSelectedHandShape<'a> {
+    pub descriptor_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct EachPlayerMayRevealSelectedHandShape<'a> {
-    pub(crate) action_tokens: &'a [OwnedLexToken],
+pub struct EachPlayerMayRevealSelectedHandShape<'a> {
+    pub action_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct RandomHandRevealShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) descriptor_tokens: &'a [OwnedLexToken],
-    pub(crate) hand_tokens: &'a [OwnedLexToken],
+pub struct RandomHandRevealShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub descriptor_tokens: &'a [OwnedLexToken],
+    pub hand_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct DamageUnlessShape<'a> {
-    pub(crate) damage_tokens: &'a [OwnedLexToken],
-    pub(crate) condition_tokens: &'a [OwnedLexToken],
+pub struct DamageUnlessShape<'a> {
+    pub damage_tokens: &'a [OwnedLexToken],
+    pub condition_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct RelativeOpponentDamageDifferenceShape<'a> {
-    pub(crate) source_tokens: &'a [OwnedLexToken],
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
+pub struct RelativeOpponentDamageDifferenceShape<'a> {
+    pub source_tokens: &'a [OwnedLexToken],
+    pub filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct UnlessSentenceShape<'a> {
-    pub(crate) unless_token: usize,
-    pub(crate) action_tokens: &'a [OwnedLexToken],
+pub struct UnlessSentenceShape<'a> {
+    pub unless_token: usize,
+    pub action_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct EachOpponentReturnUnlessDrawShape {
-    pub(crate) target_start_word: usize,
-    pub(crate) target_end_word: usize,
+pub struct EachOpponentReturnUnlessDrawShape {
+    pub target_start_word: usize,
+    pub target_end_word: usize,
 }
 
 fn each_opponent_prefix<'a>(
@@ -68,7 +68,7 @@ fn where_x_is<'a>(input: &mut crate::lexer::LexStream<'a>) -> winnow::error::Mod
     primitives::phrase(&["where", "x", "is"]).parse_next(input)
 }
 
-pub(crate) fn parse_opponent_drain_sentence_shape(
+pub fn parse_opponent_drain_sentence_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<OpponentDrainSentenceShape<'_>> {
     let (_, body) = primitives::parse_prefix(tokens, each_opponent_prefix)?;
@@ -103,7 +103,7 @@ fn each_player_may_prefix<'a>(
     primitives::phrase(&["each", "player", "may"]).parse_next(input)
 }
 
-pub(crate) fn parse_each_player_may_reveal_selected_hand_shape(
+pub fn parse_each_player_may_reveal_selected_hand_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<EachPlayerMayRevealSelectedHandShape<'_>> {
     let (_, action_tokens) = primitives::parse_prefix(tokens, each_player_may_prefix)?;
@@ -111,7 +111,7 @@ pub(crate) fn parse_each_player_may_reveal_selected_hand_shape(
     Some(EachPlayerMayRevealSelectedHandShape { action_tokens })
 }
 
-pub(crate) fn parse_reveal_selected_hand_shape(
+pub fn parse_reveal_selected_hand_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<RevealSelectedHandShape<'_>> {
     let (_, body) = primitives::parse_prefix(tokens, primitives::kw("reveal"))?;
@@ -136,7 +136,7 @@ fn reveal_article<'a>(input: &mut crate::lexer::LexStream<'a>) -> winnow::error:
     .parse_next(input)
 }
 
-pub(crate) fn parse_random_hand_reveal_shape(
+pub fn parse_random_hand_reveal_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<RandomHandRevealShape<'_>> {
     let (reveal_offset, _, after_reveal) = primitives::find_prefix(tokens, || reveal_verb)?;
@@ -159,7 +159,7 @@ pub(crate) fn parse_random_hand_reveal_shape(
     })
 }
 
-pub(crate) fn parse_damage_unless_shape(tokens: &[OwnedLexToken]) -> Option<DamageUnlessShape<'_>> {
+pub fn parse_damage_unless_shape(tokens: &[OwnedLexToken]) -> Option<DamageUnlessShape<'_>> {
     let (damage_tokens, condition_tokens) =
         primitives::split_lexed_once_on_separator(tokens, || primitives::kw("unless").void())?;
     let damage_tokens = trim_lexed_commas(damage_tokens);
@@ -173,7 +173,7 @@ pub(crate) fn parse_damage_unless_shape(tokens: &[OwnedLexToken]) -> Option<Dama
     })
 }
 
-pub(crate) fn parse_relative_opponent_damage_difference_shape(
+pub fn parse_relative_opponent_damage_difference_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<RelativeOpponentDamageDifferenceShape<'_>> {
     let (damage_offset, _, after_damage) = primitives::find_prefix(tokens, || {
@@ -201,7 +201,7 @@ pub(crate) fn parse_relative_opponent_damage_difference_shape(
     })
 }
 
-pub(crate) fn parse_enchanted_attacked_damage_shape(
+pub fn parse_enchanted_attacked_damage_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DamageUnlessShape<'_>> {
     let shape = parse_damage_unless_shape(tokens)?;
@@ -215,9 +215,7 @@ pub(crate) fn parse_enchanted_attacked_damage_shape(
     matches_tail.then_some(shape)
 }
 
-pub(crate) fn parse_unless_sentence_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<UnlessSentenceShape<'_>> {
+pub fn parse_unless_sentence_shape(tokens: &[OwnedLexToken]) -> Option<UnlessSentenceShape<'_>> {
     let (action_tokens, _) =
         primitives::split_lexed_once_on_separator(tokens, || primitives::kw("unless").void())?;
     let unless_token = action_tokens.len();
@@ -249,7 +247,7 @@ fn phrase_word_offset(words: &[&str], phrase: &[&'static str]) -> Option<usize> 
     None
 }
 
-pub(crate) fn parse_each_opponent_return_unless_draw_shape(
+pub fn parse_each_opponent_return_unless_draw_shape(
     words: &[&str],
 ) -> Option<EachOpponentReturnUnlessDrawShape> {
     if parse_choice_damage_scope(words) != Some(ChoiceDamageScope::Opponent) {

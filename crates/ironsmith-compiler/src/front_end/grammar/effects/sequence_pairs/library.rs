@@ -16,7 +16,7 @@ use super::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum LookExileFaceDownShape {
+pub enum LookExileFaceDownShape {
     Counted {
         look: Range<usize>,
         exile: Range<usize>,
@@ -34,13 +34,13 @@ pub(crate) enum LookExileFaceDownShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LookedCardDisposition {
+pub enum LookedCardDisposition {
     HandAndLibraryBottom(LibraryBottomOrderAst),
     HandAndGraveyard,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LookedPartitionDestination {
+pub enum LookedPartitionDestination {
     Hand,
     Graveyard,
     LibraryTop(LibraryBottomOrderAst),
@@ -48,28 +48,28 @@ pub(crate) enum LookedPartitionDestination {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LookedCardPartitionShape {
-    pub(crate) selected_count: ChoiceCount,
-    pub(crate) selected_destination: LookedPartitionDestination,
-    pub(crate) remainder_destination: LookedPartitionDestination,
+pub struct LookedCardPartitionShape {
+    pub selected_count: ChoiceCount,
+    pub selected_destination: LookedPartitionDestination,
+    pub remainder_destination: LookedPartitionDestination,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LookedCardIntoHandShape {
-    pub(crate) filter: Range<usize>,
+pub struct LookedCardIntoHandShape {
+    pub filter: Range<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum RevealTopRemainder {
+pub enum RevealTopRemainder {
     Graveyard,
     LibraryBottom(LibraryBottomOrderAst),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RevealTopMatchingFollowupShape {
-    pub(crate) filter: Range<usize>,
-    pub(crate) chosen_type_reference: bool,
-    pub(crate) remainder: RevealTopRemainder,
+pub struct RevealTopMatchingFollowupShape {
+    pub filter: Range<usize>,
+    pub chosen_type_reference: bool,
+    pub remainder: RevealTopRemainder,
 }
 
 const COUNTED_FACE_DOWN_PREFIXES: &[&[&str]] = &[
@@ -97,7 +97,7 @@ const GRAVEYARDS_REST: &[&[&str]] = &[
     &["put", "the", "rest", "into", "their", "graveyard"],
 ];
 
-pub(crate) fn parse_bottom_order(tokens: &[OwnedLexToken]) -> Option<LibraryBottomOrderAst> {
+pub fn parse_bottom_order(tokens: &[OwnedLexToken]) -> Option<LibraryBottomOrderAst> {
     if !contains_sequence_word(tokens, "bottom") || !contains_sequence_word(tokens, "library") {
         return None;
     }
@@ -138,7 +138,7 @@ fn counted_face_down_graveyard_shape(tokens: &[OwnedLexToken]) -> Option<ChoiceC
     Some(count)
 }
 
-pub(crate) fn parse_look_exile_face_down_shape(
+pub fn parse_look_exile_face_down_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LookExileFaceDownShape> {
     let mut exile_input = LexStream::new(tokens);
@@ -190,9 +190,7 @@ const OTHER_GRAVEYARD: &[&[&str]] = &[
     &["rest", "into", "graveyard"],
 ];
 
-pub(crate) fn parse_looked_card_disposition(
-    tokens: &[OwnedLexToken],
-) -> Option<LookedCardDisposition> {
+pub fn parse_looked_card_disposition(tokens: &[OwnedLexToken]) -> Option<LookedCardDisposition> {
     if !starts_sequence(tokens, PUT_ONE_HAND) {
         return None;
     }
@@ -381,7 +379,7 @@ fn looked_card_optional_one_top_remainder_bottom(
 /// from swallowing longer looked-card procedures. Library placements retain
 /// their own order modes so the selected subset and its complement can be
 /// ordered independently.
-pub(crate) fn parse_looked_card_partition_shape(
+pub fn parse_looked_card_partition_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LookedCardPartitionShape> {
     alt((
@@ -392,7 +390,7 @@ pub(crate) fn parse_looked_card_partition_shape(
     .ok()
 }
 
-pub(crate) fn is_keyword_bundle_choice_filter(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_keyword_bundle_choice_filter(tokens: &[OwnedLexToken]) -> bool {
     let mut input = LexStream::new(tokens);
     let mut segments = 0usize;
     while let Ok(token) = super::next_word(&mut input) {
@@ -427,7 +425,7 @@ const FROM_AMONG: &[&[&str]] = &[
     &["from", "among", "them"],
 ];
 
-pub(crate) fn parse_looked_card_into_hand_shape(
+pub fn parse_looked_card_into_hand_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LookedCardIntoHandShape> {
     let mut input = LexStream::new(tokens);
@@ -452,7 +450,7 @@ const PUT_ALL: &[&[&str]] = &[&["put", "all"], &["puts", "all"]];
 const CHOSEN_TYPE: &[&[&str]] = &[&["chosen", "type"], &["that", "type"]];
 const REST_GRAVEYARD: &[&[&str]] = &[&["and", "rest", "into", "your"]];
 
-pub(crate) fn parse_reveal_top_matching_followup_shape(
+pub fn parse_reveal_top_matching_followup_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<RevealTopMatchingFollowupShape> {
     let mut input = LexStream::new(tokens);

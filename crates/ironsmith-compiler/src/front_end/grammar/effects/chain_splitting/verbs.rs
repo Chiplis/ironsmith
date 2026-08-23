@@ -5,11 +5,11 @@ use winnow::token::any;
 use super::super::super::super::lexer::{OwnedLexToken, parser_token_word_refs};
 use super::{ChainVerbKind, ChainVerbMatch};
 
-pub(crate) fn find_chain_verb_tokens(tokens: &[OwnedLexToken]) -> Option<ChainVerbMatch> {
+pub fn find_chain_verb_tokens(tokens: &[OwnedLexToken]) -> Option<ChainVerbMatch> {
     find_chain_verb_words(&parser_token_word_refs(tokens))
 }
 
-pub(crate) fn find_chain_verb_words(words: &[&str]) -> Option<ChainVerbMatch> {
+pub fn find_chain_verb_words(words: &[&str]) -> Option<ChainVerbMatch> {
     let mut input = words;
     while !input.is_empty() {
         let word_index = words.len().saturating_sub(input.len());

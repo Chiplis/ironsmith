@@ -10,13 +10,13 @@ mod exile_shapes;
 #[path = "search_library/shuffle_shapes.rs"]
 mod shuffle_shapes;
 
-pub(crate) use duration_shapes::*;
-pub(crate) use exile_shapes::*;
-pub(crate) use shuffle_shapes::*;
+pub use duration_shapes::*;
+pub use exile_shapes::*;
+pub use shuffle_shapes::*;
 
 #[path = "search_library/same_name_references.rs"]
 mod same_name_references;
-pub(crate) use same_name_references::*;
+pub use same_name_references::*;
 
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
 const EACH_OF_THEM_SUBJECT: &[&str] = &["each", "of", "them"];
@@ -340,7 +340,7 @@ fn search_library_word_index(words: &[&str], expected: &str) -> Option<usize> {
     None
 }
 
-pub(crate) fn last_non_article_parser_word_token_idx(
+pub fn last_non_article_parser_word_token_idx(
     parser_words: &[(usize, &str)],
     end_exclusive: usize,
 ) -> Option<usize> {
@@ -354,7 +354,7 @@ pub(crate) fn last_non_article_parser_word_token_idx(
     None
 }
 
-pub(crate) fn normalize_subject_routing_word(word: &str) -> String {
+pub fn normalize_subject_routing_word(word: &str) -> String {
     let bytes = word.as_bytes();
     if bytes.len() >= 2 && bytes[bytes.len() - 2] == b'\'' && bytes[bytes.len() - 1] == b's' {
         let stem = &word[..word.len() - 2];
@@ -366,7 +366,7 @@ pub(crate) fn normalize_subject_routing_word(word: &str) -> String {
     word.to_string()
 }
 
-pub(crate) fn subject_routing_word_refs(tokens: &[OwnedLexToken]) -> Vec<String> {
+pub fn subject_routing_word_refs(tokens: &[OwnedLexToken]) -> Vec<String> {
     parser_token_word_refs(tokens)
         .into_iter()
         .map(normalize_subject_routing_word)
@@ -374,52 +374,52 @@ pub(crate) fn subject_routing_word_refs(tokens: &[OwnedLexToken]) -> Vec<String>
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SearchLibrarySentenceHeadSplit<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) search_tokens: &'a [OwnedLexToken],
-    pub(crate) sentence_has_direct_may: bool,
+pub struct SearchLibrarySentenceHeadSplit<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub search_tokens: &'a [OwnedLexToken],
+    pub sentence_has_direct_may: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SearchLibraryClauseMarkers {
-    pub(crate) for_idx: usize,
-    pub(crate) put_idx: Option<usize>,
-    pub(crate) exile_idx: Option<usize>,
-    pub(crate) reveal_idx: Option<usize>,
-    pub(crate) shuffle_idx: Option<usize>,
-    pub(crate) filter_boundary: usize,
-    pub(crate) has_explicit_destination: bool,
+pub struct SearchLibraryClauseMarkers {
+    pub for_idx: usize,
+    pub put_idx: Option<usize>,
+    pub exile_idx: Option<usize>,
+    pub reveal_idx: Option<usize>,
+    pub shuffle_idx: Option<usize>,
+    pub filter_boundary: usize,
+    pub has_explicit_destination: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SearchLibraryFilterBoundary {
-    pub(crate) filter_end: usize,
+pub struct SearchLibraryFilterBoundary {
+    pub filter_end: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SearchLibraryDiscardFollowupBoundary {
-    pub(crate) discard_idx: usize,
-    pub(crate) discard_end: usize,
-    pub(crate) shuffle_idx: usize,
+pub struct SearchLibraryDiscardFollowupBoundary {
+    pub discard_idx: usize,
+    pub discard_end: usize,
+    pub shuffle_idx: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SearchLibraryEffectRouting {
-    pub(crate) destination: Zone,
-    pub(crate) reveal: bool,
-    pub(crate) reveal_reference_surface: Option<crate::effect::SearchResultReferenceSurface>,
-    pub(crate) shuffle: bool,
-    pub(crate) face_down_exile: bool,
-    pub(crate) split_battlefield_and_hand: bool,
-    pub(crate) has_tapped_modifier: bool,
-    pub(crate) battlefield_entry_counters: Vec<BattlefieldEntryCounterSpec>,
+pub struct SearchLibraryEffectRouting {
+    pub destination: Zone,
+    pub reveal: bool,
+    pub reveal_reference_surface: Option<crate::effect::SearchResultReferenceSurface>,
+    pub shuffle: bool,
+    pub face_down_exile: bool,
+    pub split_battlefield_and_hand: bool,
+    pub has_tapped_modifier: bool,
+    pub battlefield_entry_counters: Vec<BattlefieldEntryCounterSpec>,
     /// Whether the put clause hands the found card to you ("… and put it onto
     /// the battlefield under your control"). Searching another player's library
     /// otherwise leaves the card under ITS owner's control.
-    pub(crate) enters_under_your_control: bool,
-    pub(crate) library_position_from_top: Option<Value>,
-    pub(crate) result_reference_surface: crate::effect::SearchResultReferenceSurface,
-    pub(crate) search_top_in_any_order_surface: bool,
+    pub enters_under_your_control: bool,
+    pub library_position_from_top: Option<Value>,
+    pub result_reference_surface: crate::effect::SearchResultReferenceSurface,
+    pub search_top_in_any_order_surface: bool,
 }
 
 /// Parse counters authored as part of a searched card's battlefield entry,
@@ -500,43 +500,43 @@ fn search_library_reference_surface_after(
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SearchLibrarySubjectRouting {
-    pub(crate) player: PlayerAst,
-    pub(crate) search_player_target: Option<TargetAst>,
-    pub(crate) forced_library_owner: Option<PlayerFilter>,
-    pub(crate) search_zones_override: Option<Vec<Zone>>,
+pub struct SearchLibrarySubjectRouting {
+    pub player: PlayerAst,
+    pub search_player_target: Option<TargetAst>,
+    pub forced_library_owner: Option<PlayerFilter>,
+    pub search_zones_override: Option<Vec<Zone>>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct SearchLibraryCountPrefix {
-    pub(crate) count: ChoiceCount,
-    pub(crate) search_mode: SearchSelectionMode,
-    pub(crate) count_used: usize,
-    pub(crate) count_value: Option<Value>,
+pub struct SearchLibraryCountPrefix {
+    pub count: ChoiceCount,
+    pub search_mode: SearchSelectionMode,
+    pub count_used: usize,
+    pub count_value: Option<Value>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum SearchLibrarySameNameReference {
+pub enum SearchLibrarySameNameReference {
     Tagged(TagKey),
     Target(TargetAst),
     Choose { filter: ObjectFilter, tag: TagKey },
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct SearchLibrarySameNameSplit {
-    pub(crate) filter_tokens: Vec<OwnedLexToken>,
-    pub(crate) same_name_reference: Option<SearchLibrarySameNameReference>,
-    pub(crate) same_name_relation: TaggedOpbjectRelation,
-    pub(crate) same_name_antecedent_surface: Option<ironsmith_core::SameNameAntecedentSurface>,
+pub struct SearchLibrarySameNameSplit {
+    pub filter_tokens: Vec<OwnedLexToken>,
+    pub same_name_reference: Option<SearchLibrarySameNameReference>,
+    pub same_name_relation: TaggedOpbjectRelation,
+    pub same_name_antecedent_surface: Option<ironsmith_core::SameNameAntecedentSurface>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct SearchLibraryLeadingPrelude<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) leading_effects: Vec<EffectAst>,
+pub struct SearchLibraryLeadingPrelude<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub leading_effects: Vec<EffectAst>,
 }
 
-pub(crate) fn conditional_label_phrase<'a>(
+pub fn conditional_label_phrase<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     dispatch! {peek(primitives::word_parser_text);
@@ -564,7 +564,7 @@ pub(crate) fn conditional_label_phrase<'a>(
     .parse_next(input)
 }
 
-pub(crate) fn split_search_library_sentence_head_lexed(
+pub fn split_search_library_sentence_head_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<SearchLibrarySentenceHeadSplit<'_>> {
     let mut inside_quotes = false;
@@ -605,7 +605,7 @@ pub(crate) fn split_search_library_sentence_head_lexed(
     None
 }
 
-pub(crate) fn search_library_search_verb<'a>(
+pub fn search_library_search_verb<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     alt((primitives::kw("search"), primitives::kw("searches")))
@@ -613,7 +613,7 @@ pub(crate) fn search_library_search_verb<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn search_library_put_marker<'a>(
+pub fn search_library_put_marker<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     alt((primitives::kw("put"), primitives::kw("puts")))
@@ -621,7 +621,7 @@ pub(crate) fn search_library_put_marker<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn search_library_reveal_marker<'a>(
+pub fn search_library_reveal_marker<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     alt((primitives::kw("reveal"), primitives::kw("reveals")))
@@ -629,7 +629,7 @@ pub(crate) fn search_library_reveal_marker<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn search_library_shuffle_marker<'a>(
+pub fn search_library_shuffle_marker<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     alt((primitives::kw("shuffle"), primitives::kw("shuffles")))
@@ -637,13 +637,13 @@ pub(crate) fn search_library_shuffle_marker<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn search_library_for_marker<'a>(
+pub fn search_library_for_marker<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     primitives::kw("for").void().parse_next(input)
 }
 
-pub(crate) fn search_library_exile_destination_marker<'a>(
+pub fn search_library_exile_destination_marker<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     (
@@ -659,19 +659,19 @@ pub(crate) fn search_library_exile_destination_marker<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn search_library_then_marker<'a>(
+pub fn search_library_then_marker<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     primitives::kw("then").void().parse_next(input)
 }
 
-pub(crate) fn search_library_and_marker<'a>(
+pub fn search_library_and_marker<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     primitives::kw("and").void().parse_next(input)
 }
 
-pub(crate) fn search_library_discard_marker<'a>(
+pub fn search_library_discard_marker<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     alt((primitives::kw("discard"), primitives::kw("discards")))
@@ -679,13 +679,13 @@ pub(crate) fn search_library_discard_marker<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn search_library_reveal_or_then_marker<'a>(
+pub fn search_library_reveal_or_then_marker<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     alt((search_library_reveal_marker, search_library_then_marker)).parse_next(input)
 }
 
-pub(crate) fn search_library_comma_filter_break_marker<'a>(
+pub fn search_library_comma_filter_break_marker<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     (
@@ -700,7 +700,7 @@ pub(crate) fn search_library_comma_filter_break_marker<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn search_library_with_that_name_suffix<'a>(
+pub fn search_library_with_that_name_suffix<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     primitives::phrase(&["with", "that", "name"])
@@ -708,7 +708,7 @@ pub(crate) fn search_library_with_that_name_suffix<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn search_library_with_the_chosen_name_suffix<'a>(
+pub fn search_library_with_the_chosen_name_suffix<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     primitives::phrase(&["with", "the", "chosen", "name"])
@@ -716,7 +716,7 @@ pub(crate) fn search_library_with_the_chosen_name_suffix<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn search_library_with_chosen_name_suffix<'a>(
+pub fn search_library_with_chosen_name_suffix<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     primitives::phrase(&["with", "chosen", "name"])
@@ -724,7 +724,7 @@ pub(crate) fn search_library_with_chosen_name_suffix<'a>(
         .parse_next(input)
 }
 
-pub(crate) fn strip_search_library_suffix_lexed(
+pub fn strip_search_library_suffix_lexed(
     tokens: &[OwnedLexToken],
     parser: for<'a> fn(&mut LexStream<'a>) -> Result<(), ErrMode<ContextError>>,
 ) -> Option<Vec<OwnedLexToken>> {
@@ -745,9 +745,7 @@ pub(crate) fn strip_search_library_suffix_lexed(
     None
 }
 
-pub(crate) fn strip_search_library_leading_count_tokens(
-    tokens: &[OwnedLexToken],
-) -> Vec<OwnedLexToken> {
+pub fn strip_search_library_leading_count_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let tokens = trim_commas(tokens);
     if let Some((_, rest)) = primitives::parse_prefix(&tokens, primitives::kw("exactly"))
         && let Some((_, used)) = parse_number(rest)
@@ -760,7 +758,7 @@ pub(crate) fn strip_search_library_leading_count_tokens(
     tokens
 }
 
-pub(crate) fn strip_search_library_different_names_clause_lexed(
+pub fn strip_search_library_different_names_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> (Vec<OwnedLexToken>, bool) {
     let mut cursor = 0usize;
@@ -827,13 +825,13 @@ fn strip_search_library_color_count_phrase_lexed(
     None
 }
 
-pub(crate) fn is_default_search_library_card_selector(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_default_search_library_card_selector(tokens: &[OwnedLexToken]) -> bool {
     let parser_words = parser_token_word_refs(tokens);
     let words = crate::util::non_article_word_refs(&parser_words);
     search_library_words_are_default_card_selector(&words)
 }
 
-pub(crate) fn parse_search_library_basic_land_type_slots_lexed(
+pub fn parse_search_library_basic_land_type_slots_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<SearchLibrarySlotAst>> {
     let parser_words = parser_token_word_refs(tokens);
@@ -862,7 +860,7 @@ pub(crate) fn parse_search_library_basic_land_type_slots_lexed(
     )
 }
 
-pub(crate) fn find_search_library_marker_lexed(
+pub fn find_search_library_marker_lexed(
     tokens: &[OwnedLexToken],
     parser: for<'a> fn(&mut LexStream<'a>) -> Result<(), ErrMode<ContextError>>,
 ) -> Option<usize> {
@@ -878,7 +876,7 @@ pub(crate) fn find_search_library_marker_lexed(
     None
 }
 
-pub(crate) fn find_last_search_library_marker_lexed(
+pub fn find_last_search_library_marker_lexed(
     tokens: &[OwnedLexToken],
     parser: for<'a> fn(&mut LexStream<'a>) -> Result<(), ErrMode<ContextError>>,
 ) -> Option<usize> {
@@ -895,7 +893,7 @@ pub(crate) fn find_last_search_library_marker_lexed(
     last_match
 }
 
-pub(crate) fn scan_search_library_clause_markers_lexed(
+pub fn scan_search_library_clause_markers_lexed(
     search_tokens: &[OwnedLexToken],
 ) -> Option<SearchLibraryClauseMarkers> {
     let for_idx = find_search_library_marker_lexed(search_tokens, search_library_search_verb)
@@ -931,7 +929,7 @@ pub(crate) fn scan_search_library_clause_markers_lexed(
     })
 }
 
-pub(crate) fn find_search_library_filter_boundary_lexed(
+pub fn find_search_library_filter_boundary_lexed(
     search_tokens: &[OwnedLexToken],
     for_idx: usize,
     filter_boundary: usize,
@@ -962,7 +960,7 @@ pub(crate) fn find_search_library_filter_boundary_lexed(
     SearchLibraryFilterBoundary { filter_end }
 }
 
-pub(crate) fn find_search_library_discard_before_shuffle_followup_lexed(
+pub fn find_search_library_discard_before_shuffle_followup_lexed(
     search_tokens: &[OwnedLexToken],
     put_idx: Option<usize>,
 ) -> Option<SearchLibraryDiscardFollowupBoundary> {
@@ -995,7 +993,7 @@ pub(crate) fn find_search_library_discard_before_shuffle_followup_lexed(
 /// Return the exact discard clause in the authored search sequence
 /// `..., shuffle, then discard ...`. The ordering and separator guard keep an
 /// unrelated later discard from being absorbed into the search program.
-pub(crate) fn find_search_library_discard_after_shuffle_followup_lexed(
+pub fn find_search_library_discard_after_shuffle_followup_lexed(
     search_tokens: &[OwnedLexToken],
     put_idx: Option<usize>,
 ) -> Option<&[OwnedLexToken]> {
@@ -1019,7 +1017,7 @@ pub(crate) fn find_search_library_discard_after_shuffle_followup_lexed(
     (!discard_tokens.is_empty()).then_some(discard_tokens)
 }
 
-pub(crate) fn find_search_library_trailing_life_followup_lexed(
+pub fn find_search_library_trailing_life_followup_lexed(
     search_tokens: &[OwnedLexToken],
     start_idx: usize,
 ) -> Option<&[OwnedLexToken]> {
@@ -1046,7 +1044,7 @@ pub(crate) fn find_search_library_trailing_life_followup_lexed(
     starts_with_life_clause.then_some(trailing_tokens)
 }
 
-pub(crate) fn find_search_library_trailing_create_followup_lexed(
+pub fn find_search_library_trailing_create_followup_lexed(
     search_tokens: &[OwnedLexToken],
     start_idx: usize,
 ) -> Option<&[OwnedLexToken]> {
@@ -1097,7 +1095,7 @@ pub(crate) fn find_search_library_trailing_create_followup_lexed(
     .then_some(trailing_tokens)
 }
 
-pub(crate) fn derive_search_library_effect_routing_lexed(
+pub fn derive_search_library_effect_routing_lexed(
     tokens: &[OwnedLexToken],
     search_tokens: &[OwnedLexToken],
     clause_markers: SearchLibraryClauseMarkers,
@@ -1168,7 +1166,7 @@ pub(crate) fn derive_search_library_effect_routing_lexed(
     }
 }
 
-pub(crate) fn derive_search_library_subject_routing_lexed(
+pub fn derive_search_library_subject_routing_lexed(
     search_tokens: &[OwnedLexToken],
     chooser: PlayerAst,
 ) -> Option<SearchLibrarySubjectRouting> {
@@ -1366,7 +1364,7 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
     })
 }
 
-pub(crate) fn parse_search_library_count_prefix_lexed(
+pub fn parse_search_library_count_prefix_lexed(
     count_tokens: &[OwnedLexToken],
 ) -> SearchLibraryCountPrefix {
     let mut count = ChoiceCount::exactly(1);
@@ -1434,7 +1432,7 @@ pub(crate) fn parse_search_library_count_prefix_lexed(
     }
 }
 
-pub(crate) fn parse_search_library_same_name_reference_lexed(
+pub fn parse_search_library_same_name_reference_lexed(
     raw_filter_tokens: &[OwnedLexToken],
     mut filter_tokens: Vec<OwnedLexToken>,
     clause_display: &str,
@@ -1551,7 +1549,7 @@ pub(crate) fn parse_search_library_same_name_reference_lexed(
     })
 }
 
-pub(crate) fn parse_search_library_object_filter_lexed(
+pub fn parse_search_library_object_filter_lexed(
     filter_tokens: &[OwnedLexToken],
     clause_display: &str,
 ) -> Result<ObjectFilter, CardTextError> {
@@ -1692,7 +1690,7 @@ pub(crate) fn parse_search_library_object_filter_lexed(
     }
 }
 
-pub(crate) fn split_search_named_item_filters_lexed(
+pub fn split_search_named_item_filters_lexed(
     filter_tokens: &[OwnedLexToken],
     clause_display: &str,
 ) -> Result<Option<Vec<ObjectFilter>>, CardTextError> {
@@ -1803,7 +1801,7 @@ pub(crate) fn split_search_named_item_filters_lexed(
     Ok(Some(filters))
 }
 
-pub(crate) fn parse_search_library_leading_effect_prelude_lexed<'a>(
+pub fn parse_search_library_leading_effect_prelude_lexed<'a>(
     subject_tokens: &'a [OwnedLexToken],
     subject_starts_effect_lexed: fn(&[OwnedLexToken]) -> bool,
     parse_leading_effects_lexed: fn(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
@@ -1839,20 +1837,18 @@ pub(crate) fn parse_search_library_leading_effect_prelude_lexed<'a>(
     })
 }
 
-pub(crate) fn search_library_has_unsupported_top_position_probe(words: &[&str]) -> bool {
+pub fn search_library_has_unsupported_top_position_probe(words: &[&str]) -> bool {
     word_slice_mentions_nth_from_top(words)
         && !search_word_stream_matches_at_some_offset(words, ON_TOP_OF_LIBRARY_PHRASE)
         && search_library_put_position_from_top_words(words).is_none()
 }
 
-pub(crate) fn search_library_has_unsupported_top_position_probe_lexed(
-    tokens: &[OwnedLexToken],
-) -> bool {
+pub fn search_library_has_unsupported_top_position_probe_lexed(tokens: &[OwnedLexToken]) -> bool {
     let words = parser_token_word_refs(tokens);
     search_library_has_unsupported_top_position_probe(&words)
 }
 
-pub(crate) fn search_library_put_position_from_top_words(words: &[&str]) -> Option<Value> {
+pub fn search_library_put_position_from_top_words(words: &[&str]) -> Option<Value> {
     let mut idx = 0usize;
     while idx < words.len() {
         let Some((position, used)) = ironsmith_core::parse_ordinal_words(&words[idx..]) else {
@@ -1872,13 +1868,13 @@ pub(crate) fn search_library_put_position_from_top_words(words: &[&str]) -> Opti
     None
 }
 
-pub(crate) fn search_library_subject_wraps_each_target_player_lexed(
+pub fn search_library_subject_wraps_each_target_player_lexed(
     subject_tokens: &[OwnedLexToken],
 ) -> bool {
     token_word_refs(subject_tokens).as_slice() == EACH_OF_THEM_SUBJECT
 }
 
-pub(crate) fn search_library_subject_player_iteration_filter_lexed(
+pub fn search_library_subject_player_iteration_filter_lexed(
     subject_tokens: &[OwnedLexToken],
 ) -> Option<PlayerFilter> {
     let words = token_word_refs(subject_tokens)
@@ -1898,7 +1894,7 @@ pub(crate) fn search_library_subject_player_iteration_filter_lexed(
     }
 }
 
-pub(crate) fn parse_search_library_iterated_object_subject_lexed(
+pub fn parse_search_library_iterated_object_subject_lexed(
     subject_tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     const PLAYER_OR_OPPONENT_PREFIXES: &[&[&str]] = &[
@@ -1951,9 +1947,7 @@ pub(crate) fn parse_search_library_iterated_object_subject_lexed(
     Ok(Some(parse_object_filter_lexed(&filter_tokens, false)?))
 }
 
-pub(crate) fn search_library_starts_with_search_verb_lexed(
-    search_tokens: &[OwnedLexToken],
-) -> bool {
+pub fn search_library_starts_with_search_verb_lexed(search_tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(search_tokens, search_library_search_verb).is_some()
 }
 

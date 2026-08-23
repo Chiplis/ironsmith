@@ -9,7 +9,7 @@ use crate::target::{ChooseSpec, ObjectFilter, SourceReferenceSurface};
 /// Keeping this separate is behaviorally important: two mana-value-4 cards
 /// each satisfy `mana value 6 or less`, but together do not satisfy `total
 /// mana value 6 or less`.
-pub(crate) fn lift_total_mana_value_choice_constraint(
+pub fn lift_total_mana_value_choice_constraint(
     tokens: &[OwnedLexToken],
     filter: &mut ObjectFilter,
 ) -> Option<ChoiceAggregateConstraint> {

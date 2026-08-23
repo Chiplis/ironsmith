@@ -258,7 +258,7 @@ fn token_rule_target_is_self(target_tokens: &[OwnedLexToken], named_token: Optio
         || named_token.is_some_and(|name| trimmed_render(target_tokens).eq_ignore_ascii_case(name))
 }
 
-pub(crate) fn parse_embedded_token_rule_tokens(
+pub fn parse_embedded_token_rule_tokens(
     tokens: &[OwnedLexToken],
     named_token: Option<&str>,
 ) -> Option<TokenEmbeddedRuleShape> {
@@ -295,7 +295,7 @@ pub(crate) fn parse_embedded_token_rule_tokens(
     )
 }
 
-pub(crate) fn parse_inline_noncreature_spell_damage_tokens(
+pub fn parse_inline_noncreature_spell_damage_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<InlineNoncreatureSpellDamageShape> {
     let words = parser_token_word_refs(tokens);

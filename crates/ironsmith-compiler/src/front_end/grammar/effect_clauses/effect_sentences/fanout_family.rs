@@ -40,7 +40,7 @@ fn trim_serial_modifier_tokens(mut tokens: &[OwnedLexToken]) -> &[OwnedLexToken]
 /// Parses three-or-more independently targeted P/T modifiers sharing one
 /// leading duration. This is the typed shape used by Blue Dragon rather than
 /// letting generic chain carry collapse multiple targets onto the final one.
-pub(crate) fn parse_serial_target_pt_modifiers_sentence(
+pub fn parse_serial_target_pt_modifiers_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let (duration_phrase, duration_body) = if let Some(prefix) =
@@ -134,7 +134,7 @@ fn fanout_words_contain_word(tokens: &[OwnedLexToken], expected: &str) -> bool {
         .any(|token| fanout_token_is_word(token, expected))
 }
 
-pub(crate) fn parse_same_name_fanout_filter(
+pub fn parse_same_name_fanout_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let reference = fanout_grammar::parse_same_name_reference_span(tokens).map_err(|_| {
@@ -190,7 +190,7 @@ pub(crate) fn parse_same_name_fanout_filter(
     Ok(Some(filter))
 }
 
-pub(crate) fn parse_same_name_target_fanout_sentence(
+pub fn parse_same_name_target_fanout_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let (tokens, until_source_leaves) = split_until_source_leaves_tail(tokens);
@@ -275,7 +275,7 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
     }
 }
 
-pub(crate) fn parse_shared_color_fanout_filter(
+pub fn parse_shared_color_fanout_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let reference = fanout_grammar::parse_shares_color_reference_span(tokens).map_err(|_| {
@@ -434,7 +434,7 @@ fn parse_explicit_shared_color_gets_or_gains(
     ]))
 }
 
-pub(crate) fn parse_shared_color_target_fanout_sentence(
+pub fn parse_shared_color_target_fanout_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = fanout_grammar::strip_radiance_label(tokens);
@@ -861,7 +861,7 @@ fn parse_conditional_damage_pair_sentence(
     }]))
 }
 
-pub(crate) fn parse_compound_damage_fanout_sentence(
+pub fn parse_compound_damage_fanout_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if let Some(conditional_pair) = parse_conditional_damage_pair_sentence(tokens)? {
@@ -1014,7 +1014,7 @@ fn is_removed_counter_damage_fanout_member(effect: &EffectAst) -> bool {
 /// every arm to the same removal outcome. Requiring an all-damage tail and at
 /// least two replaced arms prevents an unrelated later damage instruction
 /// from inheriting this provenance.
-pub(crate) fn bind_removed_counter_damage_fanout(effects: &mut [EffectAst]) -> bool {
+pub fn bind_removed_counter_damage_fanout(effects: &mut [EffectAst]) -> bool {
     let [removal, damage @ ..] = effects else {
         return false;
     };
@@ -1043,7 +1043,7 @@ pub(crate) fn bind_removed_counter_damage_fanout(effects: &mut [EffectAst]) -> b
 /// The typed `Removed` metric is important for a multi-recipient fanout: both
 /// damage arms read the same removal outcome. The first damage effect must not
 /// become the numeric producer for the second arm.
-pub(crate) fn parse_remove_counters_then_shared_damage_fanout(
+pub fn parse_remove_counters_then_shared_damage_fanout(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     for (and_idx, token) in tokens.iter().enumerate() {
@@ -1085,7 +1085,7 @@ pub(crate) fn parse_remove_counters_then_shared_damage_fanout(
     Ok(None)
 }
 
-pub(crate) fn parse_same_name_gets_fanout_sentence(
+pub fn parse_same_name_gets_fanout_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some((verb, verb_idx)) = find_verb(tokens) else {

@@ -6,38 +6,38 @@ use crate::grammar::primitives;
 use crate::lexer::{LexStream, OwnedLexToken, parser_token_word_refs, trim_lexed_commas};
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SearchShuffleGraveyardShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) optional_shuffle: bool,
-    pub(crate) each_player_subject: bool,
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) trailing_tokens: &'a [OwnedLexToken],
-    pub(crate) owner_library_destination: bool,
-    pub(crate) has_target_selector: bool,
-    pub(crate) has_source_and_graveyard_clause: bool,
-    pub(crate) has_hand_clause: bool,
+pub struct SearchShuffleGraveyardShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub optional_shuffle: bool,
+    pub each_player_subject: bool,
+    pub target_tokens: &'a [OwnedLexToken],
+    pub trailing_tokens: &'a [OwnedLexToken],
+    pub owner_library_destination: bool,
+    pub has_target_selector: bool,
+    pub has_source_and_graveyard_clause: bool,
+    pub has_hand_clause: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SearchShuffleObjectReference {
+pub enum SearchShuffleObjectReference {
     General,
     SingularBackReference,
     PluralTaggedReference,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct SearchShuffleObjectShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) owner_subject_target_tokens: Option<Vec<OwnedLexToken>>,
-    pub(crate) possessive_owner_subject: bool,
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) trailing_tokens: &'a [OwnedLexToken],
-    pub(crate) reference: SearchShuffleObjectReference,
-    pub(crate) owner_library_destination: bool,
+pub struct SearchShuffleObjectShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub owner_subject_target_tokens: Option<Vec<OwnedLexToken>>,
+    pub possessive_owner_subject: bool,
+    pub target_tokens: &'a [OwnedLexToken],
+    pub trailing_tokens: &'a [OwnedLexToken],
+    pub reference: SearchShuffleObjectReference,
+    pub owner_library_destination: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EachChosenPlayerSearchPutTopShape;
+pub struct EachChosenPlayerSearchPutTopShape;
 
 fn each_chosen_player_search_put_top<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     primitives::phrase(&["each", "of", "them"]).parse_next(input)?;
@@ -55,7 +55,7 @@ fn each_chosen_player_search_put_top<'a>(input: &mut LexStream<'a>) -> WResult<(
     eof.void().parse_next(input)
 }
 
-pub(crate) fn parse_each_chosen_player_search_put_top_shape(
+pub fn parse_each_chosen_player_search_put_top_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<EachChosenPlayerSearchPutTopShape> {
     primitives::parse_all(
@@ -172,7 +172,7 @@ fn clause_body(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     }
 }
 
-pub(crate) fn parse_shuffle_graveyard_shape_lexed(
+pub fn parse_shuffle_graveyard_shape_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<SearchShuffleGraveyardShape<'_>> {
     let clause = clause_body(tokens);
@@ -234,7 +234,7 @@ pub(crate) fn parse_shuffle_graveyard_shape_lexed(
     })
 }
 
-pub(crate) fn parse_shuffle_object_shape_lexed(
+pub fn parse_shuffle_object_shape_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<SearchShuffleObjectShape<'_>> {
     let clause = clause_body(tokens);

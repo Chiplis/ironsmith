@@ -448,7 +448,7 @@ fn except_for_cant_attack_static_ability(
     )))
 }
 
-pub(crate) fn parse_cant_clauses(
+pub fn parse_cant_clauses(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     // A leading duration belongs to the effect sentence parser.  If this
@@ -611,7 +611,7 @@ pub(crate) fn parse_cant_clauses(
     parse_cant_clause(tokens).map(|ability| ability.map(|ability| vec![ability]))
 }
 
-pub(crate) fn split_cant_clause_on_or(tokens: &[OwnedLexToken]) -> Option<Vec<Vec<OwnedLexToken>>> {
+pub fn split_cant_clause_on_or(tokens: &[OwnedLexToken]) -> Option<Vec<Vec<OwnedLexToken>>> {
     crate::grammar::activation_restrictions::parse_cant_restriction_or_split_tokens(tokens)
         .map(|split| vec![split.first, split.second])
 }
@@ -636,9 +636,7 @@ fn parse_unspent_mana_retention_static(
     ))
 }
 
-pub(crate) fn parse_cant_clause(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<StaticAbility>, CardTextError> {
+pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, CardTextError> {
     if let Some((condition, remainder)) = strip_static_restriction_condition(tokens)?
         && remainder.as_slice() != tokens
     {

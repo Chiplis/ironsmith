@@ -9,15 +9,15 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, TokenKind, trim_lexed
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PersistentAnthemTailHead {
-    pub(crate) tokens: Vec<OwnedLexToken>,
-    pub(crate) get_token: usize,
-    pub(crate) modifier_word: String,
-    pub(crate) tail_start: usize,
+pub struct PersistentAnthemTailHead {
+    pub tokens: Vec<OwnedLexToken>,
+    pub get_token: usize,
+    pub modifier_word: String,
+    pub tail_start: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ContinuingSegmentShape<'a> {
+pub enum ContinuingSegmentShape<'a> {
     CantBlock,
     CantAttackAlone,
     MustAttack,
@@ -30,12 +30,12 @@ pub(crate) enum ContinuingSegmentShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct KeywordActivatedSplit<'a> {
-    pub(crate) keyword_tokens: &'a [OwnedLexToken],
-    pub(crate) activated_tokens: &'a [OwnedLexToken],
+pub struct KeywordActivatedSplit<'a> {
+    pub keyword_tokens: &'a [OwnedLexToken],
+    pub activated_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_persistent_anthem_tail_head(
+pub fn parse_persistent_anthem_tail_head(
     tokens: &[OwnedLexToken],
 ) -> Option<PersistentAnthemTailHead> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
@@ -70,7 +70,7 @@ pub(crate) fn parse_persistent_anthem_tail_head(
     })
 }
 
-pub(crate) fn parse_direct_have_tail(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn parse_direct_have_tail(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
     let (_, rest) = primitives::parse_prefix(
         tokens,
@@ -82,9 +82,7 @@ pub(crate) fn parse_direct_have_tail(tokens: &[OwnedLexToken]) -> Option<&[Owned
     Some(trim_lexed_commas(rest))
 }
 
-pub(crate) fn parse_continuing_segment_shape(
-    tokens: &[OwnedLexToken],
-) -> ContinuingSegmentShape<'_> {
+pub fn parse_continuing_segment_shape(tokens: &[OwnedLexToken]) -> ContinuingSegmentShape<'_> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
     if parse_complete_any_phrase(
         tokens,
@@ -151,7 +149,7 @@ pub(crate) fn parse_continuing_segment_shape(
     ContinuingSegmentShape::Other
 }
 
-pub(crate) fn strip_must_attack_suffix(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn strip_must_attack_suffix(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
     let (head, _) = primitives::split_lexed_once_before_suffix(tokens, 1, || {
         primitives::any_phrase(&[
@@ -165,9 +163,7 @@ pub(crate) fn strip_must_attack_suffix(tokens: &[OwnedLexToken]) -> Option<&[Own
     (!head.is_empty()).then_some(head)
 }
 
-pub(crate) fn split_keyword_and_activated(
-    tokens: &[OwnedLexToken],
-) -> Option<KeywordActivatedSplit<'_>> {
+pub fn split_keyword_and_activated(tokens: &[OwnedLexToken]) -> Option<KeywordActivatedSplit<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
     let colon =
         primitives::find_prefix(tokens, || primitives::token_kind(TokenKind::Colon).void())?.0;

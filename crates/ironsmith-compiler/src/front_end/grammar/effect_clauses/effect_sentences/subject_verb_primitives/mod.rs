@@ -52,7 +52,7 @@ use crate::zone::Zone;
 use std::cell::OnceCell;
 use std::sync::LazyLock;
 
-pub(crate) fn parse_sentence_put_multiple_counters_on_target(
+pub fn parse_sentence_put_multiple_counters_on_target(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(
@@ -60,7 +60,7 @@ pub(crate) fn parse_sentence_put_multiple_counters_on_target(
     )
 }
 
-pub(crate) fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
+pub fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(
@@ -68,7 +68,7 @@ pub(crate) fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
     )
 }
 
-pub(crate) fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefield(
+pub fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefield(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(
@@ -76,14 +76,14 @@ pub(crate) fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefi
     )
 }
 
-pub(crate) fn parse_sentence_counter_target_spell_if_it_was_kicked(
+pub fn parse_sentence_counter_target_spell_if_it_was_kicked(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause
         .parse_with_lexed(super::conditionals::parse_sentence_counter_target_spell_if_it_was_kicked)
 }
 
-pub(crate) fn parse_sentence_counter_target_spell_thats_second_cast_this_turn(
+pub fn parse_sentence_counter_target_spell_thats_second_cast_this_turn(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(
@@ -91,7 +91,7 @@ pub(crate) fn parse_sentence_counter_target_spell_thats_second_cast_this_turn(
     )
 }
 
-pub(crate) fn parse_sentence_exile_target_creature_with_greatest_power(
+pub fn parse_sentence_exile_target_creature_with_greatest_power(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(
@@ -99,13 +99,13 @@ pub(crate) fn parse_sentence_exile_target_creature_with_greatest_power(
     )
 }
 
-pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
+pub fn parse_delayed_when_that_dies_this_turn_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(super::dispatch_inner::parse_delayed_when_that_dies_this_turn_sentence)
 }
 
-pub(crate) fn parse_delayed_when_that_leaves_battlefield_sentence(
+pub fn parse_delayed_when_that_leaves_battlefield_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(
@@ -113,13 +113,13 @@ pub(crate) fn parse_delayed_when_that_leaves_battlefield_sentence(
     )
 }
 
-pub(crate) fn parse_sentence_delayed_trigger_this_turn(
+pub fn parse_sentence_delayed_trigger_this_turn(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(super::dispatch_inner::parse_sentence_delayed_trigger_this_turn)
 }
 
-pub(crate) fn parse_if_any_tagged_cards_share_card_type_with_triggering_spell(
+pub fn parse_if_any_tagged_cards_share_card_type_with_triggering_spell(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = super::super::grammar::effects::clause_dispatch_shapes::parse_tagged_shares_card_type_condition_tokens(
@@ -157,10 +157,10 @@ mod mechanic_marker_family;
 mod registry;
 mod token_copy_control_family;
 
-pub(crate) use choice_damage_family::*;
-pub(crate) use combat_and_damage_family::*;
-pub(crate) use counter_marker_family::*;
-pub(crate) use delayed_step_family::*;
-pub(crate) use mechanic_marker_family::*;
-pub(crate) use registry::*;
-pub(crate) use token_copy_control_family::*;
+pub use choice_damage_family::*;
+pub use combat_and_damage_family::*;
+pub use counter_marker_family::*;
+pub use delayed_step_family::*;
+pub use mechanic_marker_family::*;
+pub use registry::*;
+pub use token_copy_control_family::*;

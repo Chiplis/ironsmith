@@ -95,7 +95,7 @@ fn full_parse_tokens_have_triggered_intervening_if_clause(tokens: &[OwnedLexToke
         .is_some()
 }
 
-pub(crate) fn dynamic_zone_change_group_token_creation_from_authored_trigger(
+pub fn dynamic_zone_change_group_token_creation_from_authored_trigger(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     // The document route supplies the intact trigger line, while the
@@ -418,7 +418,7 @@ fn reconcile_open_attraction_reminder(line: &mut LineAst, raw_line: &str) {
     }
 }
 
-pub(crate) fn linked_created_token_next_turn_sacrifice_effects(
+pub fn linked_created_token_next_turn_sacrifice_effects(
     effect_tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if !has_linked_created_token_next_turn_sacrifice_surface(effect_tokens) {
@@ -472,7 +472,7 @@ pub(crate) fn linked_created_token_next_turn_sacrifice_effects(
     Ok(Some(created))
 }
 
-pub(crate) fn has_linked_created_token_next_turn_sacrifice_surface(
+pub fn has_linked_created_token_next_turn_sacrifice_surface(
     effect_tokens: &[OwnedLexToken],
 ) -> bool {
     let sentences = split_lexed_sentences(effect_tokens);
@@ -506,9 +506,7 @@ pub(crate) fn has_linked_created_token_next_turn_sacrifice_surface(
 /// lifecycle established by its next two sentences. Both follow-ups contain
 /// `when`, so a broad triggered-line probe can otherwise promote the final
 /// embedded trigger and discard the producer plus its first delayed action.
-pub(crate) fn has_created_token_reciprocal_lifecycle_surface(
-    effect_tokens: &[OwnedLexToken],
-) -> bool {
+pub fn has_created_token_reciprocal_lifecycle_surface(effect_tokens: &[OwnedLexToken]) -> bool {
     use crate::grammar::trigger_subjects::{
         TokenLifecycleSentenceKind, parse_token_lifecycle_sentence_tokens,
     };
@@ -1220,7 +1218,7 @@ fn normalized_triggered_source_words_from_tokens(tokens: &[OwnedLexToken]) -> Ve
     semantic_grammar::normalized_trigger_source_words_tokens(tokens)
 }
 
-pub(crate) fn parse_statement_token_groups_to_chunks(
+pub fn parse_statement_token_groups_to_chunks(
     info: LineInfo,
     parse_tokens: &[OwnedLexToken],
     parse_groups: &[Vec<OwnedLexToken>],
@@ -2584,9 +2582,7 @@ fn membership_predicate_for_iterated_object(tag: &str) -> PredicateAst {
 }
 
 #[cfg(test)]
-pub(crate) fn parse_single_effect_lexed(
-    tokens: &[OwnedLexToken],
-) -> Result<EffectAst, CardTextError> {
+pub fn parse_single_effect_lexed(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     parse_effect_sentences_lexed(tokens)?
         .into_iter()
         .next()
@@ -2594,7 +2590,7 @@ pub(crate) fn parse_single_effect_lexed(
 }
 
 #[cfg(test)]
-pub(crate) fn strip_lexed_suffix_phrase<'a>(
+pub fn strip_lexed_suffix_phrase<'a>(
     tokens: &'a [OwnedLexToken],
     phrase: &[&str],
 ) -> Option<&'a [OwnedLexToken]> {
@@ -2610,7 +2606,7 @@ pub(crate) fn strip_lexed_suffix_phrase<'a>(
     Some(&tokens[..token_idx])
 }
 
-pub(crate) fn parse_triggered_line(
+pub fn parse_triggered_line(
     info: LineInfo,
     full_text: &str,
     full_parse_tokens: &[OwnedLexToken],
@@ -2893,7 +2889,7 @@ fn starts_with_exact_graveyard_card_copy_cast_sequence(
         && matched.consumed_sentences <= sentences.len()
 }
 
-pub(crate) fn exact_graveyard_card_copy_cast_sequence(
+pub fn exact_graveyard_card_copy_cast_sequence(
     effect_parse_tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
     let sentences = split_lexed_sentences(effect_parse_tokens)
@@ -3036,7 +3032,7 @@ fn exact_dynamic_exile_permission_bundle(
     Some(effects)
 }
 
-pub(crate) fn exact_looked_hand_optional_cast_bundle(
+pub fn exact_looked_hand_optional_cast_bundle(
     effect_parse_tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
     let sentences = split_lexed_sentences(effect_parse_tokens)
@@ -3087,7 +3083,7 @@ pub(crate) fn exact_looked_hand_optional_cast_bundle(
 /// single typed trigger body. The broad grant-ability sentence parser can
 /// otherwise read `you may cast target card ...` as an ability granted to the
 /// triggering spell, losing both targeting and execution.
-pub(crate) fn exact_target_same_name_graveyard_may_cast_bundle(
+pub fn exact_target_same_name_graveyard_may_cast_bundle(
     effect_parse_tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
     let words = crate::lexer::parser_token_word_refs(effect_parse_tokens);
@@ -3253,9 +3249,7 @@ fn exact_atomic_return_as_aura_bundle(
 /// successfully parse each sentence while losing the value/object-set bridge,
 /// so expose one exact predicate for the CST layer to claim them before those
 /// probes run.
-pub(crate) fn is_exact_correlated_trigger_effect_bundle(
-    effect_parse_tokens: &[OwnedLexToken],
-) -> bool {
+pub fn is_exact_correlated_trigger_effect_bundle(effect_parse_tokens: &[OwnedLexToken]) -> bool {
     exact_dynamic_exile_permission_bundle(effect_parse_tokens).is_some()
         || exact_atomic_return_as_aura_bundle(effect_parse_tokens).is_some()
         || exact_looked_hand_optional_cast_bundle(effect_parse_tokens).is_some()
@@ -3266,9 +3260,7 @@ pub(crate) fn is_exact_correlated_trigger_effect_bundle(
 /// triggering object, so the stronger typed proof above is intentionally too
 /// early. The semantic lowering pass still has to produce the exact typed
 /// PowerOf/ItsOwner/shared-tag bundle before this route has any effect.
-pub(crate) fn is_authored_dynamic_exile_permission_bundle(
-    effect_parse_tokens: &[OwnedLexToken],
-) -> bool {
+pub fn is_authored_dynamic_exile_permission_bundle(effect_parse_tokens: &[OwnedLexToken]) -> bool {
     let sentences = split_lexed_sentences(effect_parse_tokens);
     let [exile, permission] = sentences.as_slice() else {
         return false;
@@ -3292,9 +3284,7 @@ pub(crate) fn is_authored_dynamic_exile_permission_bundle(
 /// Preserve the authored optional collection cast long enough for the
 /// two-sentence looked-hand rule to bind its zone owner. Generic pronoun
 /// normalization would otherwise reduce the second sentence to `Cast it`.
-pub(crate) fn is_authored_look_hand_optional_cast_bundle(
-    effect_parse_tokens: &[OwnedLexToken],
-) -> bool {
+pub fn is_authored_look_hand_optional_cast_bundle(effect_parse_tokens: &[OwnedLexToken]) -> bool {
     let sentences = split_lexed_sentences(effect_parse_tokens);
     let [look, cast] = sentences.as_slice() else {
         return false;
@@ -3468,7 +3458,7 @@ fn mark_non_mana_activated_line(line: &mut LineAst) {
     }
 }
 
-pub(crate) fn parse_library_origin_source_pump_unblockable_triggered_line(
+pub fn parse_library_origin_source_pump_unblockable_triggered_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {
     fn exact_owned_card_filter(filter: &ObjectFilter) -> bool {
@@ -5483,7 +5473,7 @@ fn lower_spell_or_activated_ability_x_cost_trigger(
     }))
 }
 
-pub(crate) fn parse_special_triggered_line(
+pub fn parse_special_triggered_line(
     line: &RewriteTriggeredLine,
     full_parse_tokens: &[OwnedLexToken],
     trigger_parse_tokens: &[OwnedLexToken],
@@ -6041,7 +6031,7 @@ fn capitalize_first_equip_cost_alternative_display(tokens: &[OwnedLexToken]) -> 
     }
 }
 
-pub(crate) fn parse_static_line(
+pub fn parse_static_line(
     info: LineInfo,
     parse_tokens: &[OwnedLexToken],
     chosen_option: Option<&ChosenOptionContext>,
@@ -6465,7 +6455,7 @@ fn additional_land_play_static_count_uses_token_words() {
 }
 
 #[cfg(test)]
-pub(crate) fn parse_keyword_line_for_test(
+pub fn parse_keyword_line_for_test(
     info: LineInfo,
     text: &str,
     parse_tokens: &[OwnedLexToken],
@@ -6475,7 +6465,7 @@ pub(crate) fn parse_keyword_line_for_test(
 }
 
 #[cfg(test)]
-pub(crate) fn parse_keyword_line_with_full_tokens_for_test(
+pub fn parse_keyword_line_with_full_tokens_for_test(
     info: LineInfo,
     text: &str,
     parse_tokens: &[OwnedLexToken],
@@ -6711,14 +6701,14 @@ fn triggered_line_source_text_keeps_labelled_raw_do_this_only_once_suffix() {
     assert_eq!(triggered_line_source_text(&line), raw_line);
 }
 
-pub(crate) fn normalize_exert_followup_source_reference_tokens(
+pub fn normalize_exert_followup_source_reference_tokens(
     source_ref: &str,
     followup_tokens: &[OwnedLexToken],
 ) -> Vec<OwnedLexToken> {
     semantic_grammar::normalize_exert_followup_source_tokens(source_ref, followup_tokens)
 }
 
-pub(crate) fn parse_exert_attack_keyword_line(
+pub fn parse_exert_attack_keyword_line(
     line: &RewriteKeywordLine,
     parse_tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
@@ -6808,7 +6798,7 @@ fn rewrite_copy_count_to_times_paid_label_rewrite(effects: &mut [EffectAst], lab
     }
 }
 
-pub(crate) fn parse_gift_keyword_line(line: &RewriteKeywordLine) -> Result<LineAst, CardTextError> {
+pub fn parse_gift_keyword_line(line: &RewriteKeywordLine) -> Result<LineAst, CardTextError> {
     let spec =
         semantic_grammar::parse_standard_gift_spec_tokens(&line.parse_tokens).ok_or_else(|| {
             CardTextError::ParseError(format!(
@@ -6965,7 +6955,7 @@ fn standard_gift_create_token_effect(
     )
 }
 
-pub(crate) fn parse_keyword_special_cases(
+pub fn parse_keyword_special_cases(
     line: &RewriteKeywordLine,
     parse_tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {
@@ -7063,7 +7053,7 @@ fn try_parse_chosen_type_behold_two_additional_cost(
     Some(LineAst::OptionalCost(optional_cost.into()))
 }
 
-pub(crate) fn try_parse_optional_waterbend_additional_cost(
+pub fn try_parse_optional_waterbend_additional_cost(
     line: &RewriteKeywordLine,
     parse_tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {
@@ -7236,7 +7226,7 @@ fn partner_name_and_visible_label_trim_on_lexed_reminder_tokens() {
     );
 }
 
-pub(crate) fn try_parse_optional_cost_with_cast_trigger(
+pub fn try_parse_optional_cost_with_cast_trigger(
     line: &RewriteKeywordLine,
     parse_tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {
@@ -7303,7 +7293,7 @@ pub(crate) fn try_parse_optional_cost_with_cast_trigger(
     }))
 }
 
-pub(crate) fn try_parse_optional_behold_additional_cost(
+pub fn try_parse_optional_behold_additional_cost(
     line: &RewriteKeywordLine,
     parse_tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {
@@ -7333,7 +7323,7 @@ pub(crate) fn try_parse_optional_behold_additional_cost(
     Ok(Some(LineAst::OptionalCost(optional_cost.into())))
 }
 
-pub(crate) fn rewrite_modal_to_parsed_item(
+pub fn rewrite_modal_to_parsed_item(
     modal: RewriteModalBlock,
 ) -> Result<ParsedCardItem, CardTextError> {
     let Some(mut header) = parse_modal_header(&modal.header, &modal.header_tokens)? else {

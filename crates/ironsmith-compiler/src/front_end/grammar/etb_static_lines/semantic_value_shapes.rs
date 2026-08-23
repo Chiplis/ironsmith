@@ -12,13 +12,13 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, TokenWordView, trim_l
 use super::super::{filters, leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum WhereXSpecialNumberFilterKind {
+pub enum WhereXSpecialNumberFilterKind {
     CreaturesDiedThisTurn,
     CommanderCastCount,
     CreaturesControlledByThosePlayers,
 }
 
-pub(crate) fn parse_where_x_special_number_filter_tokens(
+pub fn parse_where_x_special_number_filter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<WhereXSpecialNumberFilterKind> {
     primitives::parse_all(
@@ -79,7 +79,7 @@ pub(crate) fn parse_where_x_special_number_filter_tokens(
     .ok()
 }
 
-pub(crate) fn parse_etb_static_ability_ids_tokens(
+pub fn parse_etb_static_ability_ids_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<StaticAbilityId>> {
     let parsed = primitives::parse_all(
@@ -97,9 +97,7 @@ pub(crate) fn parse_etb_static_ability_ids_tokens(
     (!unique.is_empty()).then_some(unique)
 }
 
-pub(crate) fn parse_number_of_counters_on_source_value_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<Value> {
+pub fn parse_number_of_counters_on_source_value_tokens(tokens: &[OwnedLexToken]) -> Option<Value> {
     primitives::parse_all(
         tokens,
         parse_number_of_counters_on_source_value_lexed,
@@ -108,7 +106,7 @@ pub(crate) fn parse_number_of_counters_on_source_value_tokens(
     .ok()
 }
 
-pub(crate) fn parse_snow_mana_of_spell_color_condition_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_snow_mana_of_spell_color_condition_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,
         parse_snow_mana_of_spell_color_condition_lexed,
@@ -117,7 +115,7 @@ pub(crate) fn parse_snow_mana_of_spell_color_condition_tokens(tokens: &[OwnedLex
     .is_ok()
 }
 
-pub(crate) fn parse_pt_choice_keyword_action_words(words: &[&str]) -> Option<KeywordAction> {
+pub fn parse_pt_choice_keyword_action_words(words: &[&str]) -> Option<KeywordAction> {
     let mut input: primitives::WordSliceInput<'_> = words;
     let action = alt((
         (

@@ -96,6 +96,7 @@ fn describe_conjunctive_filter_list(mut parts: Vec<String>) -> String {
 }
 
 /// A reference to an object for use in filters and effects.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum ObjectRef {
     #[default]
@@ -116,6 +117,7 @@ impl ObjectRef {
 
 /// Constraint requiring the candidate object to be a legal target for a
 /// referenced stack object.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TargetabilityConstraint {
     pub stack_object: ObjectRef,
@@ -132,6 +134,7 @@ impl TargetabilityConstraint {
 /// Both variants have the same inclusive-union runtime meaning. Keeping the
 /// distinction lets compiled text preserve Oracle's `and/or` surface without
 /// changing which objects match the filter.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ObjectFilterUnionConnective {
     #[default]
@@ -145,6 +148,7 @@ pub enum ObjectFilterUnionConnective {
 /// source of truth. This value only prevents a later renderer from collapsing
 /// an authored antecedent such as "that spell" or "that creature" to the
 /// ambiguous pronoun "it".
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SameNameAntecedentSurface {
     Card,
@@ -182,6 +186,7 @@ impl SameNameAntecedentSurface {
 ///
 /// The tagged same-name constraint remains the executable relationship. This
 /// equality-transparent value only preserves which source noun Oracle used.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChosenNameSourceSurface {
     Artifact,
@@ -222,6 +227,7 @@ impl ChosenNameSourceSurface {
 /// Tagged-object identity remains the runtime source of truth. This value is
 /// equality-transparent presentation metadata retained on the comparison
 /// filter so compiled text does not collapse an explicit antecedent to "it."
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DemonstrativeAntecedentSurface {
     Artifact,
@@ -273,6 +279,7 @@ impl DemonstrativeAntecedentSurface {
 /// an additional cost. Object identity remains a tagged runtime relation;
 /// this value only preserves whether the authored noun was sacrificed or
 /// exiled.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AdditionalCostObjectAction {
     Sacrificed,
@@ -290,6 +297,7 @@ impl AdditionalCostObjectAction {
 
 /// Presentation-only description of an explicit additional-cost object
 /// reference such as "the sacrificed creature" or "the exiled permanent."
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AdditionalCostObjectSurface {
     pub action: AdditionalCostObjectAction,
@@ -310,6 +318,7 @@ impl AdditionalCostObjectSurface {
 }
 
 /// Authored opponent quantifier in a "played by ..." entry restriction.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlayedByOpponentSurface {
     YourOpponents,
@@ -332,6 +341,7 @@ impl PlayedByOpponentSurface {
 /// The `entered_graveyard_*` flags remain the executable semantics. This
 /// equality-transparent surface distinguishes the broad canonical wording
 /// "put there this turn" from an explicitly authored "from anywhere" clause.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GraveyardEntryHistorySurface {
     PutThereThisTurn,
@@ -343,6 +353,7 @@ pub enum GraveyardEntryHistorySurface {
 /// intentionally global. The filter still selects objects by its ordinary
 /// semantic fields; this distinguishes the authored object categories that
 /// jointly cover that global set.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GlobalCharacteristicDomainSurface {
     CardsOutsideBattlefieldSpellsAndPermanents,
@@ -354,6 +365,7 @@ pub enum GlobalCharacteristicDomainSurface {
 /// equality and is used throughout lowering, deduplication, and runtime shape
 /// checks. Oracle-only spelling choices must therefore compare equal to the
 /// same runtime filter rendered with a canonical surface.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ObjectFilterUnionSurface {
     connective: ObjectFilterUnionConnective,
@@ -989,6 +1001,7 @@ impl PartialEq for ObjectFilterUnionSurface {
 impl Eq for ObjectFilterUnionSurface {}
 
 /// Which power/toughness reference a filter should use.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PtReference {
     #[default]
@@ -997,6 +1010,7 @@ pub enum PtReference {
 }
 
 /// Relationship between a candidate object's own power and toughness.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PowerToughnessRelation {
     PowerGreaterThanToughness,
@@ -1005,6 +1019,7 @@ pub enum PowerToughnessRelation {
 }
 
 /// Relationship an object may have with a tagged object set.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaggedOpbjectRelation {
     IsTaggedObject,
@@ -1045,6 +1060,7 @@ pub enum TaggedOpbjectRelation {
 
 /// A characteristic that can be compared between a candidate object and a
 /// separately filtered set of objects.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObjectCharacteristic {
     CardType,
@@ -1070,6 +1086,7 @@ impl ObjectCharacteristic {
 
 /// Whether a candidate must share at least one listed characteristic with the
 /// comparison set, or share none of them.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObjectCharacteristicRelationKind {
     SharesAny,
@@ -1081,6 +1098,7 @@ pub enum ObjectCharacteristicRelationKind {
 ///
 /// Multiple characteristics are alternatives, matching Oracle constructions
 /// such as "shares a color or mana value with the exiled card."
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ObjectCharacteristicRelation {
     pub kind: ObjectCharacteristicRelationKind,
@@ -1130,6 +1148,7 @@ impl ObjectCharacteristicRelation {
 }
 
 /// Alternative casting capability qualifier for card filters.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AlternativeCastKind {
     Blitz,
@@ -1143,6 +1162,7 @@ pub enum AlternativeCastKind {
 }
 
 /// Counter-state qualifier for object filters.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CounterConstraint {
     Any,
@@ -1154,6 +1174,7 @@ pub enum CounterConstraint {
 }
 
 /// A parity requirement for numeric object properties.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParityRequirement {
     Odd,
@@ -1181,12 +1202,14 @@ impl ParityRequirement {
 }
 
 /// Power relationship against the source object in filter context.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourcePowerRelation {
     LessThanSource,
 }
 
 /// Stack object kind constraint for stack-targeting filters.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StackObjectKind {
     Spell,
@@ -1197,6 +1220,7 @@ pub enum StackObjectKind {
 }
 
 /// A tagged-object constraint used by object filters.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaggedObjectConstraint {
     pub tag: TagKey,
@@ -1204,6 +1228,7 @@ pub struct TaggedObjectConstraint {
 }
 
 /// Filter for selecting players.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum PlayerFilter {
     #[default]
@@ -1558,6 +1583,7 @@ impl PlayerFilter {
 }
 
 /// A numeric comparison for filtering.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Comparison {
     Equal(i32),
@@ -1601,6 +1627,7 @@ impl Comparison {
 /// still have a counter that was placed on an earlier turn or by a different
 /// player; this constraint asks which player controlled the source of the
 /// counter-placement event for this exact object during the current turn.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CountersPutOnThisTurnConstraint {
     /// `None` matches counters of any type.
@@ -1631,6 +1658,7 @@ impl CountersPutOnThisTurnConstraint {
 /// semantic source of truth for matching and filter equality. This wrapper is
 /// deliberately equality-transparent so capitalization and punctuation never
 /// affect lowering, deduplication, or runtime behavior.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Default)]
 pub struct ExcludedNameSurface(Option<String>);
 
@@ -1651,6 +1679,7 @@ impl PartialEq for ExcludedNameSurface {
 }
 
 /// Filter for selecting objects (permanents, spells, cards).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ObjectFilter {
     pub zone: Option<Zone>,
@@ -7719,7 +7748,7 @@ mod tests {
         let semantic = ObjectFilter::creature()
             .in_zone(Zone::Exile)
             .owned_by(PlayerFilter::You)
-            .with_counter_type(CounterType::Named("memory"));
+            .with_counter_type(CounterType::Named("memory".into()));
         let mut surfaced = semantic.clone();
         surfaced.set_owner_before_zone_surface(true);
         surfaced.set_counter_requirement_after_zone_surface(true);

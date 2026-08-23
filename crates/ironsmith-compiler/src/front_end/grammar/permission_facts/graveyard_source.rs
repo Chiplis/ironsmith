@@ -58,20 +58,20 @@ const TOP_LIBRARY_SHARED_TYPE_PREFIX: &[&str] = &["once", "each", "turn", "you",
 const SHARES_CARD_TYPE_WITH: &[&str] = &["if", "it", "shares", "a", "card", "type", "with"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SourceKindFact {
+pub enum SourceKindFact {
     Card,
     Spell,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct OnceEachTurnGraveyardCastFact<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) cost_tokens: Option<&'a [OwnedLexToken]>,
-    pub(crate) exiles_after_resolution: bool,
+pub struct OnceEachTurnGraveyardCastFact<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub cost_tokens: Option<&'a [OwnedLexToken]>,
+    pub exiles_after_resolution: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum GraveyardAdditionalCostFact<'a> {
+pub enum GraveyardAdditionalCostFact<'a> {
     Sacrifice {
         filter_tokens: &'a [OwnedLexToken],
     },
@@ -82,36 +82,36 @@ pub(crate) enum GraveyardAdditionalCostFact<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SourceGraveyardAdditionalCostFact<'a> {
-    pub(crate) source_kind: SourceKindFact,
-    pub(crate) cost_tokens: &'a [OwnedLexToken],
+pub struct SourceGraveyardAdditionalCostFact<'a> {
+    pub source_kind: SourceKindFact,
+    pub cost_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SourceCastPermissionFact {
-    pub(crate) source_kind: SourceKindFact,
-    pub(crate) zone: Zone,
+pub struct SourceCastPermissionFact {
+    pub source_kind: SourceKindFact,
+    pub zone: Zone,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SourceGraveyardDieRollCastFact {
-    pub(crate) result: u32,
+pub struct SourceGraveyardDieRollCastFact {
+    pub result: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SourceGraveyardDynamicSurchargeFact<'a> {
-    pub(crate) source_tokens: &'a [OwnedLexToken],
-    pub(crate) cost_tokens: &'a [OwnedLexToken],
-    pub(crate) repetition_tokens: &'a [OwnedLexToken],
+pub struct SourceGraveyardDynamicSurchargeFact<'a> {
+    pub source_tokens: &'a [OwnedLexToken],
+    pub cost_tokens: &'a [OwnedLexToken],
+    pub repetition_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct OnceEachTurnTopLibrarySharedTypeFact<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) source_reference_tokens: &'a [OwnedLexToken],
+pub struct OnceEachTurnTopLibrarySharedTypeFact<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub source_reference_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_once_each_turn_graveyard_cast_tokens(
+pub fn parse_once_each_turn_graveyard_cast_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<OnceEachTurnGraveyardCastFact<'_>> {
     parse_semantic_all(tokens, parse_once_each_turn_graveyard_cast_lexed)
@@ -145,7 +145,7 @@ fn parse_once_each_turn_graveyard_cast_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_graveyard_additional_cost_tokens(
+pub fn parse_graveyard_additional_cost_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<GraveyardAdditionalCostFact<'_>> {
     parse_semantic_all(
@@ -212,7 +212,7 @@ fn parse_card_type_atom(input: &mut LexStream<'_>) -> WResult<Option<CardType>> 
     .parse_next(input)
 }
 
-pub(crate) fn parse_source_graveyard_additional_cost_tokens(
+pub fn parse_source_graveyard_additional_cost_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SourceGraveyardAdditionalCostFact<'_>> {
     parse_semantic_all(tokens, parse_source_graveyard_additional_cost_lexed)
@@ -232,7 +232,7 @@ fn parse_source_graveyard_additional_cost_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_source_cast_permission_tokens(
+pub fn parse_source_cast_permission_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SourceCastPermissionFact> {
     parse_semantic_all(tokens, parse_source_cast_permission_lexed)
@@ -260,7 +260,7 @@ fn parse_source_kind(input: &mut LexStream<'_>) -> WResult<SourceKindFact> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_source_graveyard_die_roll_cast_tokens(
+pub fn parse_source_graveyard_die_roll_cast_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SourceGraveyardDieRollCastFact> {
     parse_semantic_all(tokens, parse_source_graveyard_die_roll_cast_lexed)
@@ -288,7 +288,7 @@ fn parse_source_graveyard_die_roll_cast_lexed(
     Ok(SourceGraveyardDieRollCastFact { result })
 }
 
-pub(crate) fn parse_source_graveyard_dynamic_surcharge_tokens(
+pub fn parse_source_graveyard_dynamic_surcharge_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SourceGraveyardDynamicSurchargeFact<'_>> {
     parse_semantic_all(tokens, parse_source_graveyard_dynamic_surcharge_lexed)
@@ -326,7 +326,7 @@ fn parse_source_graveyard_dynamic_surcharge_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_once_each_turn_top_library_shared_type_tokens(
+pub fn parse_once_each_turn_top_library_shared_type_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<OnceEachTurnTopLibrarySharedTypeFact<'_>> {
     parse_semantic_all(tokens, parse_once_each_turn_top_library_shared_type_lexed)

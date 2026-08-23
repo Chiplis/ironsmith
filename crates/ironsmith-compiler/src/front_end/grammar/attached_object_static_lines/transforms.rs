@@ -12,31 +12,31 @@ use super::subjects::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AttachedTransformLossKind {
+pub enum AttachedTransformLossKind {
     AllAbilities,
     OtherCardTypes,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AttachedTransformSpec<'a> {
-    pub(crate) subject: AttachedSubject,
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) descriptor_tokens: &'a [OwnedLexToken],
-    pub(crate) ability_tokens: Option<&'a [OwnedLexToken]>,
-    pub(crate) loss: Option<AttachedTransformLossKind>,
+pub struct AttachedTransformSpec<'a> {
+    pub subject: AttachedSubject,
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub descriptor_tokens: &'a [OwnedLexToken],
+    pub ability_tokens: Option<&'a [OwnedLexToken]>,
+    pub loss: Option<AttachedTransformLossKind>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AttachedBasePowerToughnessSpec {
-    pub(crate) power: i32,
-    pub(crate) toughness: i32,
-    pub(crate) preserve_other_types: bool,
+pub struct AttachedBasePowerToughnessSpec {
+    pub power: i32,
+    pub toughness: i32,
+    pub preserve_other_types: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AttachedBasePtKeywordSplit<'a> {
-    pub(crate) base_tokens: &'a [OwnedLexToken],
-    pub(crate) keyword_tokens: &'a [OwnedLexToken],
+pub struct AttachedBasePtKeywordSplit<'a> {
+    pub base_tokens: &'a [OwnedLexToken],
+    pub keyword_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,7 +46,7 @@ enum TransformBoundary {
     End,
 }
 
-pub(crate) fn parse_attached_transform_tokens(
+pub fn parse_attached_transform_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedTransformSpec<'_>> {
     primitives::parse_all(
@@ -57,7 +57,7 @@ pub(crate) fn parse_attached_transform_tokens(
     .ok()
 }
 
-pub(crate) fn parse_attached_base_power_toughness_tokens(
+pub fn parse_attached_base_power_toughness_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AttachedBasePowerToughnessSpec>, CardTextError> {
     if primitives::parse_prefix(
@@ -76,7 +76,7 @@ pub(crate) fn parse_attached_base_power_toughness_tokens(
     .map(Some)
 }
 
-pub(crate) fn split_attached_base_pt_keyword_tokens(
+pub fn split_attached_base_pt_keyword_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedBasePtKeywordSplit<'_>> {
     let (marker, _, after_has) = primitives::find_prefix(tokens, || {

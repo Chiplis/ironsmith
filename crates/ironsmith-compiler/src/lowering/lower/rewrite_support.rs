@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) fn infer_triggered_ability_functional_zones_from_facts(
+pub fn infer_triggered_ability_functional_zones_from_facts(
     trigger: &TriggerSpec,
     facts: &crate::model::facts::TriggerFunctionalZoneFacts,
 ) -> Vec<Zone> {

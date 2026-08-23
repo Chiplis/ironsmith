@@ -29,7 +29,7 @@ fn bind_explicit_tag_to_player_tagged_predicate(
     bound
 }
 
-pub(crate) fn compile_if_do_with_opponent_doesnt(
+pub fn compile_if_do_with_opponent_doesnt(
     first: &EffectAst,
     second: &EffectAst,
     ctx: &mut EffectLoweringContext,
@@ -232,7 +232,7 @@ pub(crate) fn compile_if_do_with_opponent_doesnt(
     Ok(Some((effects, choices)))
 }
 
-pub(crate) fn compile_if_do_with_player_doesnt(
+pub fn compile_if_do_with_player_doesnt(
     first: &EffectAst,
     second: &EffectAst,
     ctx: &mut EffectLoweringContext,
@@ -399,7 +399,7 @@ fn correlated_choice_result_predicate(
     }
 }
 
-pub(crate) fn compile_if_do_with_opponent_did(
+pub fn compile_if_do_with_opponent_did(
     first: &EffectAst,
     second: &EffectAst,
     ctx: &mut EffectLoweringContext,
@@ -562,7 +562,7 @@ pub(crate) fn compile_if_do_with_opponent_did(
     Ok(Some((effects, choices)))
 }
 
-pub(crate) fn compile_if_do_with_player_did(
+pub fn compile_if_do_with_player_did(
     first: &EffectAst,
     second: &EffectAst,
     ctx: &mut EffectLoweringContext,
@@ -816,7 +816,7 @@ pub(super) fn assign_effect_result_id_for_ast(
     Ok(())
 }
 
-pub(crate) fn compile_result_followup(
+pub fn compile_result_followup(
     first: &EffectAst,
     second: &EffectAst,
     ctx: &mut EffectLoweringContext,
@@ -910,7 +910,7 @@ impl EffectLoweringContextState {
     }
 }
 
-pub(crate) fn with_preserved_lowering_context<T, Configure, Run>(
+pub fn with_preserved_lowering_context<T, Configure, Run>(
     ctx: &mut EffectLoweringContext,
     configure: Configure,
     run: Run,
@@ -926,7 +926,7 @@ where
     result
 }
 
-pub(crate) fn compile_effects_preserving_last_effect(
+pub fn compile_effects_preserving_last_effect(
     effects: &[EffectAst],
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
@@ -940,7 +940,7 @@ pub(crate) fn compile_effects_preserving_last_effect(
     Ok((compiled, choices))
 }
 
-pub(crate) fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> EffectPredicate {
+pub fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> EffectPredicate {
     match predicate {
         IfResultPredicate::Did => EffectPredicate::Happened,
         IfResultPredicate::WonClash => {
@@ -980,7 +980,7 @@ pub(crate) fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> E
     }
 }
 
-pub(crate) fn compile_repeat_process_body(
+pub fn compile_repeat_process_body(
     effects: &[EffectAst],
     continue_effect_index: usize,
     ctx: &mut EffectLoweringContext,
@@ -1119,7 +1119,7 @@ fn compile_starting_with_controller_each_player_process(
     )))
 }
 
-pub(crate) fn compile_effects_in_iterated_player_context(
+pub fn compile_effects_in_iterated_player_context(
     effects: &[EffectAst],
     ctx: &mut EffectLoweringContext,
     tagged_object: Option<String>,
@@ -1163,7 +1163,7 @@ pub(crate) fn compile_effects_in_iterated_player_context(
     Ok((compiled, choices))
 }
 
-pub(crate) fn compile_effects_in_iterated_object_context(
+pub fn compile_effects_in_iterated_object_context(
     effects: &[EffectAst],
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
@@ -1194,7 +1194,7 @@ pub(crate) fn compile_effects_in_iterated_object_context(
     Ok((compiled, choices))
 }
 
-pub(crate) fn force_implicit_vote_token_controller_you(effects: &mut [EffectAst]) {
+pub fn force_implicit_vote_token_controller_you(effects: &mut [EffectAst]) {
     for effect in effects {
         match effect {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -1420,7 +1420,7 @@ fn preserve_annotated_effect_result_id(
     )
 }
 
-pub(crate) fn compile_vote_sequence(
+pub fn compile_vote_sequence(
     effects: &[AnnotatedEffect],
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>, usize)>, CardTextError> {
@@ -1685,14 +1685,14 @@ pub(crate) fn compile_vote_sequence(
     Ok(Some((compiled, choices, consumed)))
 }
 
-pub(crate) fn choose_spec_for_targeted_player_filter(filter: &PlayerFilter) -> Option<ChooseSpec> {
+pub fn choose_spec_for_targeted_player_filter(filter: &PlayerFilter) -> Option<ChooseSpec> {
     if let PlayerFilter::Target(inner) = filter {
         return Some(ChooseSpec::target(ChooseSpec::Player((**inner).clone())));
     }
     None
 }
 
-pub(crate) fn collect_targeted_player_specs_from_player_filter(
+pub fn collect_targeted_player_specs_from_player_filter(
     filter: &PlayerFilter,
     specs: &mut Vec<ChooseSpec>,
 ) {
@@ -1722,7 +1722,7 @@ pub(crate) fn collect_targeted_player_specs_from_player_filter(
     }
 }
 
-pub(crate) fn collect_targeted_player_specs_from_filter(
+pub fn collect_targeted_player_specs_from_filter(
     filter: &ObjectFilter,
     specs: &mut Vec<ChooseSpec>,
 ) {
@@ -1749,9 +1749,7 @@ pub(crate) fn collect_targeted_player_specs_from_filter(
     }
 }
 
-pub(crate) fn target_context_prelude_for_filter(
-    filter: &ObjectFilter,
-) -> (Vec<Effect>, Vec<ChooseSpec>) {
+pub fn target_context_prelude_for_filter(filter: &ObjectFilter) -> (Vec<Effect>, Vec<ChooseSpec>) {
     let mut choices = Vec::new();
     collect_targeted_player_specs_from_filter(filter, &mut choices);
     let effects = choices

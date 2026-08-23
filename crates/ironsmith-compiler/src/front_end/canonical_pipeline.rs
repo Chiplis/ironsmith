@@ -5,7 +5,7 @@ use crate::parse_trace;
 
 /// The canonical public-to-the-compiler parse entry. It stops at the
 /// compiler-owned card AST and cannot allocate runtime abilities.
-pub(crate) fn parse_card_ast_with_context(
+pub fn parse_card_ast_with_context(
     context: &mut ParseContext,
     builder: CardDefinitionBuilder,
     text: String,

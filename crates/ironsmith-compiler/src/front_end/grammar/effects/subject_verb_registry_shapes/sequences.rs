@@ -8,33 +8,33 @@ use crate::lexer::{LexStream, OwnedLexToken};
 use crate::util::trim_edge_punctuation_tokens;
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ChoosePlayerToEffectShape<'a> {
-    pub(crate) choose_tokens: &'a [OwnedLexToken],
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct ChoosePlayerToEffectShape<'a> {
+    pub choose_tokens: &'a [OwnedLexToken],
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ReturnHalfControlledShape<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
+pub struct ReturnHalfControlledShape<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct HistoricalHalfDamageShape<'a> {
-    pub(crate) card_type_word: &'a str,
+pub struct HistoricalHalfDamageShape<'a> {
+    pub card_type_word: &'a str,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ExiledHandOwner {
+pub enum ExiledHandOwner {
     Your,
     Their,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct DrawForExiledHandShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) hand_owner: ExiledHandOwner,
-    pub(crate) shuffles_first: bool,
-    pub(crate) starts_with_draws: bool,
+pub struct DrawForExiledHandShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub hand_owner: ExiledHandOwner,
+    pub shuffles_first: bool,
+    pub starts_with_draws: bool,
 }
 
 fn connector<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -148,7 +148,7 @@ fn strip_leading_connectors(mut tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     }
 }
 
-pub(crate) fn parse_choose_player_to_effect_shape(
+pub fn parse_choose_player_to_effect_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ChoosePlayerToEffectShape<'_>> {
     let tokens = strip_leading_connectors(tokens);
@@ -162,19 +162,19 @@ pub(crate) fn parse_choose_player_to_effect_shape(
     })
 }
 
-pub(crate) fn parse_return_half_controlled_shape(
+pub fn parse_return_half_controlled_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ReturnHalfControlledShape<'_>> {
     primitives::parse_all(tokens, return_half, "registry-return-half").ok()
 }
 
-pub(crate) fn parse_historical_half_damage_shape(
+pub fn parse_historical_half_damage_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<HistoricalHalfDamageShape<'_>> {
     primitives::parse_all(tokens, historical_half_damage, "registry-half-damage").ok()
 }
 
-pub(crate) fn parse_draw_for_exiled_hand_shape(
+pub fn parse_draw_for_exiled_hand_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DrawForExiledHandShape<'_>> {
     primitives::parse_all(tokens, draw_for_exiled_hand, "registry-draw-exiled-hand").ok()

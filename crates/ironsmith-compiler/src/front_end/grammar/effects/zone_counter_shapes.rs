@@ -17,7 +17,7 @@ use crate::util::{
 use super::counter_marker_shapes;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum DynamicCounterCountShape {
+pub enum DynamicCounterCountShape {
     LifeLostThisWay {
         group_size: i32,
     },
@@ -32,20 +32,20 @@ pub(crate) enum DynamicCounterCountShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CounterReferenceSource {
+pub enum CounterReferenceSource {
     TaggedIt,
     Source,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ReferentialCounterCountShape {
-    pub(crate) source: CounterReferenceSource,
-    pub(crate) counter_type: Option<CounterType>,
-    pub(crate) consumed: usize,
+pub struct ReferentialCounterCountShape {
+    pub source: CounterReferenceSource,
+    pub counter_type: Option<CounterType>,
+    pub consumed: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CounterCountPrefixShape<'a> {
+pub enum CounterCountPrefixShape<'a> {
     UpTo {
         inner_tokens: &'a [OwnedLexToken],
     },
@@ -66,39 +66,39 @@ pub(crate) enum CounterCountPrefixShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CounterDescriptorShape {
-    pub(crate) count: u32,
-    pub(crate) counter_type: CounterType,
+pub struct CounterDescriptorShape {
+    pub count: u32,
+    pub counter_type: CounterType,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PutCounterTargetShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) equal_to_difference: bool,
+pub struct PutCounterTargetShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
+    pub equal_to_difference: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct PutOrRemoveCounterShape<'a> {
-    pub(crate) base_target_tokens: &'a [OwnedLexToken],
-    pub(crate) remove_count: Value,
-    pub(crate) remove_counter_type: Option<CounterType>,
-    pub(crate) remove_mode_tokens: &'a [OwnedLexToken],
+pub struct PutOrRemoveCounterShape<'a> {
+    pub base_target_tokens: &'a [OwnedLexToken],
+    pub remove_count: Value,
+    pub remove_counter_type: Option<CounterType>,
+    pub remove_mode_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum HalfStartingLifeRounding {
+pub enum HalfStartingLifeRounding {
     Up,
     Down,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct HalfStartingLifeShape {
-    pub(crate) player: PlayerFilter,
-    pub(crate) rounding: HalfStartingLifeRounding,
+pub struct HalfStartingLifeShape {
+    pub player: PlayerFilter,
+    pub rounding: HalfStartingLifeRounding,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum TransformTargetShape<'a> {
+pub enum TransformTargetShape<'a> {
     ImplicitSource,
     EachObject {
         filter_tokens: &'a [OwnedLexToken],
@@ -186,7 +186,7 @@ fn parse_basic_land_types_prefix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_dynamic_counter_count_shape(
+pub fn parse_dynamic_counter_count_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DynamicCounterCountShape> {
     let tokens = trim_shape_edges(tokens);
@@ -326,9 +326,7 @@ fn equal_value_shape(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], bool
     Some((trim_shape_edges(value_tokens), equal_to_difference))
 }
 
-pub(crate) fn parse_counter_count_prefix_shape(
-    tokens: &[OwnedLexToken],
-) -> CounterCountPrefixShape<'_> {
+pub fn parse_counter_count_prefix_shape(tokens: &[OwnedLexToken]) -> CounterCountPrefixShape<'_> {
     if let Some(((), inner_tokens)) =
         primitives::parse_prefix(tokens, primitives::phrase(&["up", "to"]).void())
     {
@@ -385,9 +383,7 @@ fn parse_descriptor_amount<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_counter_descriptor_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<CounterDescriptorShape> {
+pub fn parse_counter_descriptor_shape(tokens: &[OwnedLexToken]) -> Option<CounterDescriptorShape> {
     let tokens = trim_shape_edges(tokens);
     let (count, after_count) = primitives::parse_prefix(tokens, parse_descriptor_amount)?;
     let (noun_idx, (), after_noun) = primitives::find_prefix(after_count, || parse_counter_noun)?;
@@ -418,7 +414,7 @@ fn possessive_word<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn is_named_source_power_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_named_source_power_shape(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         trim_shape_edges(tokens),
         (
@@ -432,7 +428,7 @@ pub(crate) fn is_named_source_power_shape(tokens: &[OwnedLexToken]) -> bool {
     .is_ok()
 }
 
-pub(crate) fn is_him_or_her_counter_target(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_him_or_her_counter_target(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         trim_shape_edges(tokens),
         (primitives::phrase(&["him", "or", "her"]), eof).void(),
@@ -441,13 +437,13 @@ pub(crate) fn is_him_or_her_counter_target(tokens: &[OwnedLexToken]) -> bool {
     .is_ok()
 }
 
-pub(crate) fn strip_optional_put_prefix(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+pub fn strip_optional_put_prefix(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     primitives::parse_prefix(tokens, primitives::kw("put"))
         .map(|(_, rest)| trim_shape_edges(rest))
         .unwrap_or(tokens)
 }
 
-pub(crate) fn parse_put_counter_target_shape(
+pub fn parse_put_counter_target_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PutCounterTargetShape<'_>> {
     let (_, target_tokens) =
@@ -486,7 +482,7 @@ pub(crate) fn parse_put_counter_target_shape(
     })
 }
 
-pub(crate) fn strip_trailing_instead(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+pub fn strip_trailing_instead(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     let tokens = trim_shape_edges(tokens);
     primitives::split_lexed_once_before_suffix(tokens, 0, || {
         (primitives::kw("instead"), eof).void()
@@ -495,12 +491,12 @@ pub(crate) fn strip_trailing_instead(tokens: &[OwnedLexToken]) -> &[OwnedLexToke
     .unwrap_or(tokens)
 }
 
-pub(crate) fn strip_each_counter_prefix(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn strip_each_counter_prefix(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let (_, rest) = primitives::parse_prefix(tokens, primitives::kw("each"))?;
     Some(trim_shape_edges(rest))
 }
 
-pub(crate) fn split_for_each_counter_target(
+pub fn split_for_each_counter_target(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
     let (base, count) = primitives::split_lexed_once_on_separator(tokens, || {
@@ -511,7 +507,7 @@ pub(crate) fn split_for_each_counter_target(
     (!base.is_empty() && !count.is_empty()).then_some((base, count))
 }
 
-pub(crate) fn parse_shared_counter_target_shape(
+pub fn parse_shared_counter_target_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<counter_marker_shapes::SharedCounterTargetShape<'_>> {
     let shape = counter_marker_shapes::parse_shared_counter_target_tokens(tokens)?;
@@ -548,7 +544,7 @@ fn referential_remove_target<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_put_or_remove_counter_shape(
+pub fn parse_put_or_remove_counter_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PutOrRemoveCounterShape<'_>> {
     let (or_idx, (), after_remove) =
@@ -589,9 +585,7 @@ fn consumed_prefix(tokens: &[OwnedLexToken], rest: &[OwnedLexToken]) -> usize {
     tokens.len().saturating_sub(rest.len())
 }
 
-pub(crate) fn parse_counter_target_count_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<(ChoiceCount, usize)> {
+pub fn parse_counter_target_count_shape(tokens: &[OwnedLexToken]) -> Option<(ChoiceCount, usize)> {
     let tokens = trim_shape_edges(tokens);
     let mut rest = tokens;
     let mut consumed = 0usize;
@@ -704,21 +698,19 @@ fn target_leaves_suffix<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexT
     Ok(target)
 }
 
-pub(crate) fn split_until_target_leaves_shape(
+pub fn split_until_target_leaves_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
     primitives::split_lexed_once_before_suffix(tokens, 1, || target_leaves_suffix)
 }
 
-pub(crate) fn split_until_source_leaves_shape(
-    tokens: &[OwnedLexToken],
-) -> (&[OwnedLexToken], bool) {
+pub fn split_until_source_leaves_shape(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], bool) {
     primitives::split_lexed_once_before_suffix(tokens, 1, || source_leaves_suffix)
         .map(|(head, ())| (head, true))
         .unwrap_or((tokens, false))
 }
 
-pub(crate) fn split_until_opponent_becomes_monarch_shape(
+pub fn split_until_opponent_becomes_monarch_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     primitives::split_lexed_once_before_suffix(tokens, 1, || opponent_becomes_monarch_suffix)
@@ -780,9 +772,7 @@ fn parse_half_starting_life<'a>(input: &mut LexStream<'a>) -> WResult<HalfStarti
     Ok(HalfStartingLifeShape { player, rounding })
 }
 
-pub(crate) fn parse_half_starting_life_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<HalfStartingLifeShape> {
+pub fn parse_half_starting_life_shape(tokens: &[OwnedLexToken]) -> Option<HalfStartingLifeShape> {
     primitives::parse_all(
         trim_shape_edges(tokens),
         parse_half_starting_life,
@@ -816,7 +806,7 @@ fn exact_self_reference(tokens: &[OwnedLexToken]) -> bool {
     .is_ok()
 }
 
-pub(crate) fn parse_transform_target_shape(tokens: &[OwnedLexToken]) -> TransformTargetShape<'_> {
+pub fn parse_transform_target_shape(tokens: &[OwnedLexToken]) -> TransformTargetShape<'_> {
     let tokens = trim_shape_edges(tokens);
     if tokens.is_empty() {
         return TransformTargetShape::ImplicitSource;
@@ -854,14 +844,14 @@ pub(crate) fn parse_transform_target_shape(tokens: &[OwnedLexToken]) -> Transfor
     }
 }
 
-pub(crate) fn source_spec_for_reference(source: CounterReferenceSource) -> crate::ChooseSpec {
+pub fn source_spec_for_reference(source: CounterReferenceSource) -> crate::ChooseSpec {
     match source {
         CounterReferenceSource::TaggedIt => crate::ChooseSpec::Tagged(crate::TagKey::from(IT_TAG)),
         CounterReferenceSource::Source => crate::ChooseSpec::Source,
     }
 }
 
-pub(crate) fn player_filter_for_half_reference(player: PlayerAst) -> Option<PlayerFilter> {
+pub fn player_filter_for_half_reference(player: PlayerAst) -> Option<PlayerFilter> {
     match player {
         PlayerAst::You | PlayerAst::Implicit => Some(PlayerFilter::You),
         PlayerAst::Active => Some(PlayerFilter::Active),

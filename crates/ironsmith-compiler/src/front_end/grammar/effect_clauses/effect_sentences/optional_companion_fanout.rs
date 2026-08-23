@@ -165,7 +165,7 @@ fn parse_optional_companion_fanout_body(
     Ok(None)
 }
 
-pub(crate) fn parse_optional_companion_fanout_sentence(
+pub fn parse_optional_companion_fanout_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(prefix) = split_leading_result_prefix_lexed(tokens) else {

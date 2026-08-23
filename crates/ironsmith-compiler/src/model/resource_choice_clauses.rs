@@ -15,7 +15,7 @@ use crate::types::{CardType, Subtype, SubtypeFamily};
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerResourceOperationAst {
+pub enum CompilerResourceOperationAst {
     Gain,
     Lose,
     Pay,
@@ -31,7 +31,7 @@ pub(crate) enum CompilerResourceOperationAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerManaResourceAst {
+pub enum CompilerManaResourceAst {
     Fixed(Vec<ManaSymbol>),
     Cost {
         cost: ManaCost,
@@ -56,13 +56,13 @@ pub(crate) enum CompilerManaResourceAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerManaTypeSourceAst {
+pub enum CompilerManaTypeSourceAst {
     MatchingLandsCouldProduce,
     TriggeringEventProduced,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerResourceKindAst {
+pub enum CompilerResourceKindAst {
     Life,
     Mana(CompilerManaResourceAst),
     Energy,
@@ -74,14 +74,14 @@ pub(crate) enum CompilerResourceKindAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerResourceAmountAst {
+pub enum CompilerResourceAmountAst {
     Value(CompilerValueAst),
     All,
     Any { minimum: CompilerValueAst },
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerResourceClauseAst {
+pub struct CompilerResourceClauseAst {
     pub operation: CompilerResourceOperationAst,
     pub owner: ClauseActorAst,
     pub resource: CompilerResourceKindAst,
@@ -92,14 +92,14 @@ pub(crate) struct CompilerResourceClauseAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerChoiceVisibilityAst {
+pub enum CompilerChoiceVisibilityAst {
     Public,
     Secret,
     HiddenUntilReveal,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerChoiceDomainAst {
+pub enum CompilerChoiceDomainAst {
     Color,
     CardType(Vec<CardType>),
     Named(Vec<String>),
@@ -123,21 +123,21 @@ pub(crate) enum CompilerChoiceDomainAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerAggregateConstraintAst {
+pub struct CompilerAggregateConstraintAst {
     pub metric: CompilerAggregateMetricAst,
     pub minimum: Option<CompilerValueAst>,
     pub maximum: CompilerValueAst,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerAggregateMetricAst {
+pub enum CompilerAggregateMetricAst {
     Power,
     Toughness,
     ManaValue,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerChoiceClauseAst {
+pub struct CompilerChoiceClauseAst {
     pub chooser: ClauseActorAst,
     pub visibility: CompilerChoiceVisibilityAst,
     pub domain: CompilerChoiceDomainAst,
@@ -152,19 +152,19 @@ pub(crate) struct CompilerChoiceClauseAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerResourceChoiceClauseAst {
+pub enum CompilerResourceChoiceClauseAst {
     Resource(CompilerResourceClauseAst),
     Choice(CompilerChoiceClauseAst),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerVoteOrderAst {
+pub enum CompilerVoteOrderAst {
     Simultaneous,
     TurnOrder,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerVoteAst {
+pub struct CompilerVoteAst {
     pub voters: PlayerFilter,
     pub exclude_voter: bool,
     pub visibility: CompilerChoiceVisibilityAst,
@@ -178,7 +178,7 @@ pub(crate) struct CompilerVoteAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompilerIterationSourceAst {
+pub enum CompilerIterationSourceAst {
     Opponents,
     Players(PlayerFilter),
     SelectedPlayers {
@@ -191,7 +191,7 @@ pub(crate) enum CompilerIterationSourceAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CompilerRepetitionKindAst {
+pub enum CompilerRepetitionKindAst {
     ForEach,
     Exactly,
     UpTo,
@@ -199,7 +199,7 @@ pub(crate) enum CompilerRepetitionKindAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CompilerIterationAst {
+pub struct CompilerIterationAst {
     pub kind: CompilerRepetitionKindAst,
     pub source: CompilerIterationSourceAst,
     pub parent_scope: SymbolScopeId,

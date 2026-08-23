@@ -10,13 +10,13 @@ use crate::lexer::render_token_slice;
 use crate::model::ast::SubjectVerbActionAst;
 use crate::util::SubjectAst;
 
-pub(crate) type ActivationRestrictionCompatWords<'a> = grammar::TokenWordView<'a>;
+pub type ActivationRestrictionCompatWords<'a> = grammar::TokenWordView<'a>;
 
-pub(crate) fn joined_activation_clause_text(tokens: &[OwnedLexToken]) -> String {
+pub fn joined_activation_clause_text(tokens: &[OwnedLexToken]) -> String {
     crate::lexer::token_word_refs(tokens).join(" ")
 }
 
-pub(crate) fn parse_prefixed_activated_ability_label(
+pub fn parse_prefixed_activated_ability_label(
     tokens: &[OwnedLexToken],
     cost_start: usize,
 ) -> Option<String> {
@@ -33,7 +33,7 @@ pub(crate) fn parse_prefixed_activated_ability_label(
     }
 }
 
-pub(crate) fn parse_hand_keyword_activated_body_lexed(
+pub fn parse_hand_keyword_activated_body_lexed(
     body_tokens: &[OwnedLexToken],
     keyword: &str,
     display_label: &str,
@@ -54,7 +54,7 @@ pub(crate) fn parse_hand_keyword_activated_body_lexed(
     Ok(Some(parsed))
 }
 
-pub(crate) fn parse_activated_line(
+pub fn parse_activated_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     parse_activated_line_with_raw(tokens)
@@ -67,7 +67,7 @@ fn subject_allows_direct_mana_output(subject: &Option<SubjectAst>) -> bool {
     )
 }
 
-pub(crate) fn parse_activated_line_with_raw(
+pub fn parse_activated_line_with_raw(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     let Some(line_split) = activated_line_grammar::parse_activated_line_split_tokens(tokens) else {
@@ -377,11 +377,11 @@ fn prefixed_activated_ability_display_text(
     })
 }
 
-pub(crate) fn activation_cost_mentions_x(tokens: &[OwnedLexToken]) -> bool {
+pub fn activation_cost_mentions_x(tokens: &[OwnedLexToken]) -> bool {
     activated_line_grammar::parse_activation_cost_x_fact_tokens(tokens).is_some()
 }
 
-pub(crate) fn resolve_activated_mana_x_requirements(
+pub fn resolve_activated_mana_x_requirements(
     effect: &mut EffectAst,
     sentence_tokens: &[OwnedLexToken],
     x_defined_by_cost: bool,
@@ -512,7 +512,7 @@ fn replace_counter_removed_pump_with_x(effect: &mut EffectAst) {
     });
 }
 
-pub(crate) fn mana_effect_contains_unbound_x(effect: &EffectAst) -> bool {
+pub fn mana_effect_contains_unbound_x(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
             SubjectVerbActionAst::AddManaScaled { amount, .. }
@@ -539,9 +539,7 @@ pub(crate) fn mana_effect_contains_unbound_x(effect: &EffectAst) -> bool {
     }
 }
 
-pub(crate) fn parse_loyalty_shorthand_activation_cost(
-    cost_tokens: &[OwnedLexToken],
-) -> Option<TotalCost> {
+pub fn parse_loyalty_shorthand_activation_cost(cost_tokens: &[OwnedLexToken]) -> Option<TotalCost> {
     match activated_line_grammar::parse_loyalty_shorthand_activation_tokens(cost_tokens)? {
         ActivatedLoyaltyShorthand::Add(0) => Some(TotalCost::free()),
         ActivatedLoyaltyShorthand::Add(amount) => Some(TotalCost::from_cost(
@@ -556,14 +554,14 @@ pub(crate) fn parse_loyalty_shorthand_activation_cost(
     }
 }
 
-pub(crate) fn loyalty_additional_restrictions(is_loyalty_shorthand: bool) -> Vec<String> {
+pub fn loyalty_additional_restrictions(is_loyalty_shorthand: bool) -> Vec<String> {
     if !is_loyalty_shorthand {
         return Vec::new();
     }
     vec!["Activate only once each turn.".to_string()]
 }
 
-pub(crate) fn infer_activated_functional_zones_lexed(
+pub fn infer_activated_functional_zones_lexed(
     cost_tokens: &[OwnedLexToken],
     effect_sentences: &[&[OwnedLexToken]],
 ) -> Vec<Zone> {
@@ -573,13 +571,11 @@ pub(crate) fn infer_activated_functional_zones_lexed(
     )
 }
 
-pub(crate) fn parse_activate_only_timing_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<ActivationTiming> {
+pub fn parse_activate_only_timing_lexed(tokens: &[OwnedLexToken]) -> Option<ActivationTiming> {
     activated_sentence_parsers::parse_activate_only_timing_lexed(tokens)
 }
 
-pub(crate) fn flatten_mana_activation_conditions(
+pub fn flatten_mana_activation_conditions(
     condition: &crate::ConditionExpr,
     out: &mut Vec<crate::ConditionExpr>,
 ) {
@@ -592,7 +588,7 @@ pub(crate) fn flatten_mana_activation_conditions(
     }
 }
 
-pub(crate) fn rebuild_mana_activation_conditions(
+pub fn rebuild_mana_activation_conditions(
     conditions: Vec<crate::ConditionExpr>,
 ) -> Option<crate::ConditionExpr> {
     let mut iter = conditions.into_iter();
@@ -602,7 +598,7 @@ pub(crate) fn rebuild_mana_activation_conditions(
     }))
 }
 
-pub(crate) fn combine_mana_activation_condition(
+pub fn combine_mana_activation_condition(
     base: Option<crate::ConditionExpr>,
     timing: ActivationTiming,
 ) -> Option<crate::ConditionExpr> {
@@ -612,7 +608,7 @@ pub(crate) fn combine_mana_activation_condition(
     merge_mana_activation_conditions(base, crate::ConditionExpr::ActivationTiming(timing))
 }
 
-pub(crate) fn merge_mana_activation_conditions(
+pub fn merge_mana_activation_conditions(
     base: Option<crate::ConditionExpr>,
     condition: crate::ConditionExpr,
 ) -> Option<crate::ConditionExpr> {
@@ -626,41 +622,41 @@ pub(crate) fn merge_mana_activation_conditions(
     rebuild_mana_activation_conditions(conditions)
 }
 
-pub(crate) fn is_activate_only_restriction_sentence(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_activate_only_restriction_sentence(tokens: &[OwnedLexToken]) -> bool {
     activated_sentence_parsers::is_activate_only_restriction_sentence_lexed(tokens)
 }
 
-pub(crate) fn is_activate_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_activate_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
     activated_sentence_parsers::is_activate_only_restriction_sentence_lexed(tokens)
 }
 
-pub(crate) fn parse_mana_usage_restriction_sentence_lexed(
+pub fn parse_mana_usage_restriction_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::ability::ManaUsageRestriction> {
     activated_sentence_parsers::parse_mana_usage_restriction_sentence_lexed(tokens)
 }
 
-pub(crate) fn is_any_player_may_activate_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_any_player_may_activate_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
     activated_sentence_parsers::is_any_player_may_activate_sentence_lexed(tokens)
 }
 
-pub(crate) fn is_trigger_only_restriction_sentence(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_trigger_only_restriction_sentence(tokens: &[OwnedLexToken]) -> bool {
     activated_sentence_parsers::is_trigger_only_restriction_sentence_lexed(tokens)
 }
 
-pub(crate) fn is_trigger_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_trigger_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
     activated_sentence_parsers::is_trigger_only_restriction_sentence_lexed(tokens)
 }
 
-pub(crate) fn parse_triggered_times_each_turn_lexed(tokens: &[OwnedLexToken]) -> Option<u32> {
+pub fn parse_triggered_times_each_turn_lexed(tokens: &[OwnedLexToken]) -> Option<u32> {
     activated_sentence_parsers::parse_triggered_times_each_turn_lexed(tokens)
 }
 
-pub(crate) fn parse_named_number(word: &str) -> Option<u32> {
+pub fn parse_named_number(word: &str) -> Option<u32> {
     parse_cardinal_u32(word)
 }
 
-pub(crate) fn parse_activation_cost(tokens: &[OwnedLexToken]) -> Result<TotalCost, CardTextError> {
+pub fn parse_activation_cost(tokens: &[OwnedLexToken]) -> Result<TotalCost, CardTextError> {
     // Give the grammar-proven graveyard-to-library payment first refusal.
     // Otherwise the generic activation-cost CST interprets the leading
     // "Put three cards" as a PutCounters cost before it can see the source
@@ -674,7 +670,7 @@ pub(crate) fn parse_activation_cost(tokens: &[OwnedLexToken]) -> Result<TotalCos
     lower_activation_cost_cst(&cst)
 }
 
-pub(crate) fn parse_devotion_value_from_add_clause(
+pub fn parse_devotion_value_from_add_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
     let words = crate::lexer::token_word_refs(tokens);
@@ -695,7 +691,7 @@ pub(crate) fn parse_devotion_value_from_add_clause(
     })
 }
 
-pub(crate) fn color_from_color_set(colors: ColorSet) -> Option<crate::color::Color> {
+pub fn color_from_color_set(colors: ColorSet) -> Option<crate::color::Color> {
     let mut found = None;
     for color in [
         crate::color::Color::White,
@@ -715,18 +711,16 @@ pub(crate) fn color_from_color_set(colors: ColorSet) -> Option<crate::color::Col
 }
 
 #[cfg(test)]
-pub(crate) fn parse_activation_condition_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<crate::ConditionExpr> {
+pub fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Option<crate::ConditionExpr> {
     activated_sentence_parsers::parse_activation_condition_lexed(tokens)
 }
 
-pub(crate) fn parse_cardinal_u32(word: &str) -> Option<u32> {
+pub fn parse_cardinal_u32(word: &str) -> Option<u32> {
     let token = OwnedLexToken::word(word.to_string(), TextSpan::synthetic());
     parse_number(&[token]).map(|(value, _)| value)
 }
 
-pub(crate) fn parse_enters_tapped_line(
+pub fn parse_enters_tapped_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause = joined_activation_clause_text(tokens);
@@ -744,7 +738,7 @@ pub(crate) fn parse_enters_tapped_line(
     }
 }
 
-pub(crate) fn parse_cost_reduction_line(
+pub fn parse_cost_reduction_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let line_words = crate::lexer::token_word_refs(tokens);
@@ -979,7 +973,7 @@ pub(crate) fn parse_cost_reduction_line(
     }
 }
 
-pub(crate) fn scale_dynamic_cost_modifier_value(dynamic: Value, multiplier: i32) -> Value {
+pub fn scale_dynamic_cost_modifier_value(dynamic: Value, multiplier: i32) -> Value {
     if multiplier <= 0 {
         return Value::Fixed(0);
     }
@@ -999,7 +993,7 @@ pub(crate) fn scale_dynamic_cost_modifier_value(dynamic: Value, multiplier: i32)
     }
 }
 
-pub(crate) fn parse_all_creatures_able_to_block_source_line(
+pub fn parse_all_creatures_able_to_block_source_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let words_storage = normalize_cant_words(tokens);
@@ -1018,7 +1012,7 @@ pub(crate) fn parse_all_creatures_able_to_block_source_line(
     Ok(None)
 }
 
-pub(crate) fn parse_source_must_be_blocked_if_able_line(
+pub fn parse_source_must_be_blocked_if_able_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words_storage = normalize_cant_words(tokens);

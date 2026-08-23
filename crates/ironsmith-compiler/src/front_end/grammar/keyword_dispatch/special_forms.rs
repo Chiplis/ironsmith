@@ -7,7 +7,7 @@ use super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum KeywordFallbackKind {
+pub enum KeywordFallbackKind {
     Aftermath,
     BasicLandcycling,
     Encore,
@@ -15,7 +15,7 @@ pub(crate) enum KeywordFallbackKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum KeywordPrefixShape {
+pub enum KeywordPrefixShape {
     Surge,
     Freerunning,
     Sneak,
@@ -23,26 +23,22 @@ pub(crate) enum KeywordPrefixShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum KeywordSpecialFormShape {
+pub enum KeywordSpecialFormShape {
     SpellSneak,
     PermanentSneak,
     BlitzFromGraveyard,
     ExertAttack,
 }
 
-pub(crate) fn parse_keyword_fallback_kind_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<KeywordFallbackKind> {
+pub fn parse_keyword_fallback_kind_tokens(tokens: &[OwnedLexToken]) -> Option<KeywordFallbackKind> {
     primitives::parse_prefix(tokens, parse_keyword_fallback_kind_lexed).map(|(kind, _)| kind)
 }
 
-pub(crate) fn parse_keyword_prefix_shape_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<KeywordPrefixShape> {
+pub fn parse_keyword_prefix_shape_tokens(tokens: &[OwnedLexToken]) -> Option<KeywordPrefixShape> {
     primitives::parse_prefix(tokens, parse_keyword_prefix_shape_lexed).map(|(shape, _)| shape)
 }
 
-pub(crate) fn parse_keyword_special_form_shape_tokens(
+pub fn parse_keyword_special_form_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<KeywordSpecialFormShape> {
     let mut input = LexStream::new(tokens);

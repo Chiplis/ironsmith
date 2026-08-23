@@ -1,5 +1,6 @@
 use crate::{ObjectFilter, ObjectId, PlayerId};
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CauseType {
     Cost,
@@ -17,6 +18,7 @@ impl CauseType {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct EventCause {
     pub cause_type: CauseType,
@@ -98,6 +100,7 @@ impl EventCause {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CauseFilter {
     pub cause_type: Option<CauseTypeFilter>,
@@ -105,6 +108,7 @@ pub struct CauseFilter {
     pub controller_filter: Option<ControllerFilter>,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum CauseTypeFilter {
     Exact(CauseType),
@@ -126,6 +130,7 @@ impl CauseTypeFilter {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum ControllerFilter {
     Player(PlayerId),

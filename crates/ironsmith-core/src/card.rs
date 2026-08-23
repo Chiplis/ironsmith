@@ -3,6 +3,7 @@ use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::types::{CardType, Subtype, Supertype};
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LinkedFaceLayout {
     #[default]
@@ -12,6 +13,7 @@ pub enum LinkedFaceLayout {
 }
 
 /// Represents power or toughness values that may be variable.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PtValue {
     /// Fixed numeric value (e.g., 4)
@@ -45,6 +47,7 @@ impl std::fmt::Display for PtValue {
 }
 
 /// Power and toughness pair for creatures.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PowerToughness {
     pub power: PtValue,
@@ -67,6 +70,7 @@ impl PowerToughness {
 
 /// Static, immutable card definition.
 /// This represents the printed characteristics of a card.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Card {
     pub id: CardId,
@@ -261,6 +265,7 @@ impl Card {
 }
 
 /// Builder for constructing Card instances.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Default, Clone)]
 pub struct CardBuilder {
     id: CardId,

@@ -43,7 +43,7 @@ pub(super) fn rebind_permission_tag(
 /// across the persistent permission sentence. Parsing the two sentences in
 /// isolation loses all three links for possessive LKI forms such as "its
 /// power" and "its owner's library".
-pub(crate) fn parse_dynamic_exile_top_then_play_for_as_long_as_exiled(
+pub fn parse_dynamic_exile_top_then_play_for_as_long_as_exiled(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -93,7 +93,7 @@ pub(crate) fn parse_dynamic_exile_top_then_play_for_as_long_as_exiled(
     ]))
 }
 
-pub(crate) fn parse_exile_top_play_then_event_followup(
+pub fn parse_exile_top_play_then_event_followup(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

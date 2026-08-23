@@ -66,7 +66,7 @@ fn replace_dynamic_construct_pt_definition_placeholder(tokens: &mut [OwnedLexTok
     false
 }
 
-pub(crate) fn is_probable_token_name_word(word: &str) -> bool {
+pub fn is_probable_token_name_word(word: &str) -> bool {
     if !word
         .chars()
         .all(|ch| ch.is_ascii_alphabetic() || ch == '\'' || ch == '-')
@@ -90,7 +90,7 @@ pub(crate) fn is_probable_token_name_word(word: &str) -> bool {
     )
 }
 
-pub(crate) fn parse_copy_modifiers_from_tail(
+pub fn parse_copy_modifiers_from_tail(
     tail_words: &[&str],
 ) -> Result<
     (
@@ -124,13 +124,11 @@ pub(crate) fn parse_copy_modifiers_from_tail(
     ))
 }
 
-pub(crate) fn parse_next_end_step_token_delay_flags(
-    tail_words: &[&str],
-) -> (bool, bool, PlayerFilter) {
+pub fn parse_next_end_step_token_delay_flags(tail_words: &[&str]) -> (bool, bool, PlayerFilter) {
     super::super::util::parse_next_end_step_token_delay_flags(tail_words)
 }
 
-pub(crate) fn trailing_create_at_next_end_step_clause(
+pub fn trailing_create_at_next_end_step_clause(
     tail_words: &[&str],
 ) -> Option<(usize, PlayerFilter)> {
     creation_grammar::parse_trailing_create_delay_words(tail_words)
@@ -328,7 +326,7 @@ fn quoted_rule_creates_a_nested_token(tokens: &[OwnedLexToken]) -> bool {
 /// body loses siblings such as `indestructible` and a trailing `equip`;
 /// parsing the complete list lets the ordinary grant grammar preserve all
 /// three typed abilities and their source order.
-pub(crate) fn mixed_pronoun_token_rule_list(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn mixed_pronoun_token_rule_list(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let start = tokens.windows(2).position(|pair| {
         (pair[0].is_word("it") && pair[1].is_word("has"))
             || (pair[0].is_word("they") && pair[1].is_word("have"))
@@ -818,7 +816,7 @@ fn attach_inline_token_granted_abilities_to_effect(
 /// Production sentence dispatch strips embedded token rules before parsing the
 /// outer create action so quoted colons and verbs cannot win outer dispatch.
 /// Reattach those original quoted bodies to the create AST after that parse.
-pub(crate) fn attach_inline_token_granted_abilities_to_last_create(
+pub fn attach_inline_token_granted_abilities_to_last_create(
     effects: &mut [EffectAst],
     tokens: &[OwnedLexToken],
 ) -> bool {
@@ -839,7 +837,7 @@ pub(crate) fn attach_inline_token_granted_abilities_to_last_create(
 /// Attach a separately authored pronoun sentence whose ability list mixes a
 /// keyword, a quoted rule, and a trailing activation. The caller proves that
 /// this sentence immediately follows one token creation.
-pub(crate) fn attach_mixed_pronoun_token_rules_to_last_create(
+pub fn attach_mixed_pronoun_token_rules_to_last_create(
     effects: &mut [EffectAst],
     tokens: &[OwnedLexToken],
 ) -> bool {
@@ -929,7 +927,7 @@ fn parse_create_choice_of_options(
     )))
 }
 
-pub(crate) fn parse_create(
+pub fn parse_create(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -1692,7 +1690,7 @@ fn parse_create_for_each_player_condition(
     Ok(Some((filter, predicate)))
 }
 
-pub(crate) fn normalize_token_name(words: &[&str]) -> String {
+pub fn normalize_token_name(words: &[&str]) -> String {
     words.join(" ")
 }
 
@@ -1700,7 +1698,7 @@ fn parse_investigate_for_each_count(tokens: &[OwnedLexToken]) -> Result<Value, C
     creation_grammar::parse_investigate_for_each_count_tokens(tokens)
 }
 
-pub(crate) fn parse_investigate(
+pub fn parse_investigate(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -1783,7 +1781,7 @@ pub(crate) fn parse_investigate(
     Ok(EffectAst::subject_verb_investigate(player, count))
 }
 
-pub(crate) fn parse_incubate(
+pub fn parse_incubate(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -2410,10 +2408,12 @@ mod tests {
             panic!("expected a characteristic-defining P/T ability: {static_ability:#?}");
         };
         assert_eq!(power, toughness);
-        let Value::CountersOn(spec, Some(crate::CounterType::Named("slime"))) = power.unhinted()
+        let Value::CountersOn(spec, Some(crate::CounterType::Named(counter_name))) =
+            power.unhinted()
         else {
             panic!("expected a named-source counter value: {power:#?}");
         };
+        assert_eq!(counter_name.as_str(), "slime");
         assert!(matches!(spec.base(), ChooseSpec::Source));
         assert_eq!(
             spec.source_reference_surface(),

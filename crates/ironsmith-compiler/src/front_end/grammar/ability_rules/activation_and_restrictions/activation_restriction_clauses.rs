@@ -159,7 +159,7 @@ fn damage_cause_life_loss_restriction_from_tail(
     Some(Restriction::damage_cause_life_loss(player))
 }
 
-pub(crate) fn format_negated_restriction_display(tokens: &[OwnedLexToken]) -> String {
+pub fn format_negated_restriction_display(tokens: &[OwnedLexToken]) -> String {
     let authored_self_surface = tokens
         .iter()
         .position(|token| {
@@ -218,7 +218,7 @@ pub(crate) fn format_negated_restriction_display(tokens: &[OwnedLexToken]) -> St
     rendered
 }
 
-pub(crate) fn parse_cant_restrictions(
+pub fn parse_cant_restrictions(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<ParsedCantRestriction>>, CardTextError> {
     let normalized_storage = normalize_cant_words(tokens);
@@ -331,7 +331,7 @@ pub(crate) fn parse_cant_restrictions(
     parse_cant_restriction_clause(tokens).map(|restriction| restriction.map(|r| vec![r]))
 }
 
-pub(crate) fn parse_cant_restriction_clause(
+pub fn parse_cant_restriction_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedCantRestriction>, CardTextError> {
     use crate::effect::Restriction;
@@ -409,16 +409,12 @@ fn is_mana_retention_tail(words: &[&str]) -> bool {
 /// Parse "lose unspent [color] mana as steps [and phases end]" tails.
 /// Returns `Some(color)` on a match; the inner option is the retained color
 /// scope (`None` retains the whole pool).
-pub(crate) fn parse_unspent_mana_retention_tail(
-    words: &[&str],
-) -> Option<Option<crate::color::Color>> {
+pub fn parse_unspent_mana_retention_tail(words: &[&str]) -> Option<Option<crate::color::Color>> {
     crate::grammar::activation_restrictions::parse_unspent_mana_retention_tail_words(words)
         .map(|parsed| parsed.color)
 }
 
-pub(crate) fn parse_cant_cast_restriction_words(
-    words: &[&str],
-) -> Option<crate::effect::Restriction> {
+pub fn parse_cant_cast_restriction_words(words: &[&str]) -> Option<crate::effect::Restriction> {
     use crate::effect::Restriction;
     use restriction_grammar::CantCastRestrictionFact;
 
@@ -438,7 +434,7 @@ pub(crate) fn parse_cant_cast_restriction_words(
     )
 }
 
-pub(crate) fn strip_static_restriction_condition(
+pub fn strip_static_restriction_condition(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(crate::ConditionExpr, Vec<OwnedLexToken>)>, CardTextError> {
     use crate::grammar::activation_restrictions::{
@@ -493,7 +489,7 @@ pub(crate) fn strip_static_restriction_condition(
     }
 }
 
-pub(crate) fn parse_player_negated_restriction_clause(
+pub fn parse_player_negated_restriction_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedCantRestriction>, CardTextError> {
     use crate::effect::Restriction;
@@ -547,7 +543,7 @@ pub(crate) fn parse_player_negated_restriction_clause(
     }))
 }
 
-pub(crate) fn parse_player_restriction_subject(
+pub fn parse_player_restriction_subject(
     subject_tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerFilter, Option<TargetAst>)>, CardTextError> {
     if subject_tokens.is_empty() {
@@ -600,10 +596,7 @@ pub(crate) fn parse_player_restriction_subject(
     Ok(Some((player, None)))
 }
 
-pub(crate) fn target_ast_player_filter(
-    player: PlayerFilter,
-    span: Option<TextSpan>,
-) -> PlayerFilter {
+pub fn target_ast_player_filter(player: PlayerFilter, span: Option<TextSpan>) -> PlayerFilter {
     if span.is_some() {
         match player {
             PlayerFilter::Any => PlayerFilter::target_player(),
@@ -615,7 +608,7 @@ pub(crate) fn target_ast_player_filter(
     }
 }
 
-pub(crate) fn parse_cast_restriction_tail_filter(words: &[&str]) -> Option<ObjectFilter> {
+pub fn parse_cast_restriction_tail_filter(words: &[&str]) -> Option<ObjectFilter> {
     restriction_grammar::parse_cast_restriction_tail_filter_words(words)
 }
 
@@ -754,7 +747,7 @@ fn type_noun_runs(segment: &[OwnedLexToken]) -> Option<Vec<Vec<OwnedLexToken>>> 
 /// Serpents you control" distributes a bare qualifier tail over subtype
 /// nouns the same way, and a bare list ("Goblins and Elves") unions with no
 /// tail at all.
-pub(crate) fn parse_type_adjective_conjunction_filter(
+pub fn parse_type_adjective_conjunction_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     // "instant and/or sorcery cards" is an inclusive type list, not a
@@ -854,14 +847,14 @@ fn invert_except_by_blocker_filter(allowed: &ObjectFilter) -> Option<ObjectFilte
     Some(disallowed)
 }
 
-pub(crate) fn restriction_from_cast_limit_filter(
+pub fn restriction_from_cast_limit_filter(
     player: PlayerFilter,
     spell_filter: ObjectFilter,
 ) -> crate::effect::Restriction {
     crate::effect::Restriction::cast_more_than_one_spell_each_turn_matching(player, spell_filter)
 }
 
-pub(crate) fn parse_negated_object_restriction_clause(
+pub fn parse_negated_object_restriction_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedCantRestriction>, CardTextError> {
     use crate::effect::Restriction;
@@ -1140,23 +1133,23 @@ pub(crate) fn parse_negated_object_restriction_clause(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActivatedAbilityScope {
+pub enum ActivatedAbilityScope {
     All,
     TapCostOnly,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ParsedActivatedAbilitySubject {
+pub struct ParsedActivatedAbilitySubject {
     filter: ObjectFilter,
     target: Option<TargetAst>,
     scope: ActivatedAbilityScope,
 }
 
-pub(crate) fn strip_trailing_possessive_token(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+pub fn strip_trailing_possessive_token(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     crate::grammar::activation_restrictions::parse_activation_possessive_owner_tokens(tokens)
 }
 
-pub(crate) fn parse_activated_ability_subject(
+pub fn parse_activated_ability_subject(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedActivatedAbilitySubject>, CardTextError> {
     if tokens.is_empty() {
@@ -1224,7 +1217,7 @@ pub(crate) fn parse_activated_ability_subject(
     }))
 }
 
-pub(crate) fn ensure_it_tagged_constraint(filter: &mut ObjectFilter) {
+pub fn ensure_it_tagged_constraint(filter: &mut ObjectFilter) {
     if !filter
         .tagged_constraints
         .iter()
@@ -1237,26 +1230,26 @@ pub(crate) fn ensure_it_tagged_constraint(filter: &mut ObjectFilter) {
     }
 }
 
-pub(crate) fn starts_with_possessive_activated_ability_subject(tokens: &[OwnedLexToken]) -> bool {
+pub fn starts_with_possessive_activated_ability_subject(tokens: &[OwnedLexToken]) -> bool {
     restriction_grammar::parse_possessive_activated_ability_subject_tokens(tokens).is_some()
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ParsedCantRestriction {
-    pub(crate) restriction: crate::effect::Restriction,
-    pub(crate) target: Option<TargetAst>,
+pub struct ParsedCantRestriction {
+    pub restriction: crate::effect::Restriction,
+    pub target: Option<TargetAst>,
 }
 
-pub(crate) fn starts_with_target_indicator(tokens: &[OwnedLexToken]) -> bool {
+pub fn starts_with_target_indicator(tokens: &[OwnedLexToken]) -> bool {
     restriction_grammar::parse_target_indicator_tokens(tokens).is_some()
 }
 
-pub(crate) fn find_negation_span(tokens: &[OwnedLexToken]) -> Option<(usize, usize)> {
+pub fn find_negation_span(tokens: &[OwnedLexToken]) -> Option<(usize, usize)> {
     crate::grammar::activation_restrictions::parse_activation_negation_span_tokens(tokens)
         .map(|span| (span.first, span.end))
 }
 
-pub(crate) fn parse_subject_object_filter(
+pub fn parse_subject_object_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     if tokens.is_empty() {

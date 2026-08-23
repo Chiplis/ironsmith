@@ -44,7 +44,7 @@ fn word_slice_boundary(words: &[&str], expected: &'static str) -> Option<usize> 
     Some(prefix.len())
 }
 
-pub(crate) fn parse_copy_tail_shape_tokens(tokens: &[OwnedLexToken]) -> CopyTailShape {
+pub fn parse_copy_tail_shape_tokens(tokens: &[OwnedLexToken]) -> CopyTailShape {
     let retarget = boundary_before(tokens, retarget_prefix)
         .and_then(|(index, may)| {
             let tail = tokens.get(index + 1..).unwrap_or_default();
@@ -76,7 +76,7 @@ pub(crate) fn parse_copy_tail_shape_tokens(tokens: &[OwnedLexToken]) -> CopyTail
     }
 }
 
-pub(crate) fn parse_copy_clause_shape_tokens(tokens: &[OwnedLexToken]) -> Option<CopyClauseShape> {
+pub fn parse_copy_clause_shape_tokens(tokens: &[OwnedLexToken]) -> Option<CopyClauseShape> {
     let copy_word = boundary_before(
         tokens,
         alt((primitives::kw("copy"), primitives::kw("copies"))),
@@ -180,7 +180,7 @@ fn copy_target_reference<'a>(input: &mut LexStream<'a>) -> WResult<CopyTargetSha
     .parse_next(input)
 }
 
-pub(crate) fn parse_copy_target_shape_tokens(tokens: &[OwnedLexToken]) -> CopyTargetShape<'_> {
+pub fn parse_copy_target_shape_tokens(tokens: &[OwnedLexToken]) -> CopyTargetShape<'_> {
     let trimmed = trim_lexed_commas(tokens);
     primitives::parse_all(trimmed, copy_target_reference, "copy target reference")
         .unwrap_or(CopyTargetShape::Explicit(trimmed))
@@ -216,9 +216,7 @@ fn parse_copy_retarget_lexed<'a>(input: &mut LexStream<'a>) -> WResult<CopyRetar
     })
 }
 
-pub(crate) fn parse_copy_retarget_shape_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<CopyRetargetShape> {
+pub fn parse_copy_retarget_shape_tokens(tokens: &[OwnedLexToken]) -> Option<CopyRetargetShape> {
     primitives::parse_all(
         trim_lexed_commas(tokens),
         parse_copy_retarget_lexed,

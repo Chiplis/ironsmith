@@ -15,13 +15,13 @@ use super::grammar::primitives as grammar;
 use super::grammar::sentence_markers;
 use super::grammar::static_keyword_line_shapes;
 #[cfg(test)]
-pub(crate) use super::grammar::values::parse_value_comparison_tokens;
-pub(crate) use super::grammar::values::{parse_mana_symbol, parse_scryfall_mana_cost};
+pub use super::grammar::values::parse_value_comparison_tokens;
+pub use super::grammar::values::{parse_mana_symbol, parse_scryfall_mana_cost};
 use super::lexer::{LexStream, OwnedLexToken, TokenKind, contains_token_kind, render_token_slice};
-pub(crate) type LexedInput<'a> = LexStream<'a>;
+pub type LexedInput<'a> = LexStream<'a>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TurnDurationPhrase {
+pub enum TurnDurationPhrase {
     ThisTurn,
     UntilEndOfTurn,
     UntilYourNextTurn,
@@ -40,7 +40,7 @@ fn until_from_leaf_duration(duration: LeafDurationPhrase) -> Until {
     }
 }
 
-pub(crate) fn iter_contains<I, T>(items: I, expected: &T) -> bool
+pub fn iter_contains<I, T>(items: I, expected: &T) -> bool
 where
     I: IntoIterator,
     I::Item: std::borrow::Borrow<T>,
@@ -49,7 +49,7 @@ where
     crate::slice_primitives::iter_contains(items, expected)
 }
 
-pub(crate) fn locate_index<T>(items: &[T], mut predicate: impl FnMut(&T) -> bool) -> Option<usize> {
+pub fn locate_index<T>(items: &[T], mut predicate: impl FnMut(&T) -> bool) -> Option<usize> {
     for (idx, item) in items.iter().enumerate() {
         if predicate(item) {
             return Some(idx);
@@ -58,7 +58,7 @@ pub(crate) fn locate_index<T>(items: &[T], mut predicate: impl FnMut(&T) -> bool
     None
 }
 
-pub(crate) fn find_window_by<T>(
+pub fn find_window_by<T>(
     items: &[T],
     window_len: usize,
     predicate: impl FnMut(&[T]) -> bool,
@@ -66,37 +66,35 @@ pub(crate) fn find_window_by<T>(
     crate::slice_primitives::find_window_by(items, window_len, predicate)
 }
 
-pub(crate) fn contains_sequence<T: PartialEq>(items: &[T], window: &[T]) -> bool {
+pub fn contains_sequence<T: PartialEq>(items: &[T], window: &[T]) -> bool {
     crate::slice_primitives::contains_sequence(items, window)
 }
 
-pub(crate) use contains_sequence as contains_window;
+pub use contains_sequence as contains_window;
 
 #[cfg(test)]
-pub(crate) use crate::string_primitives::contains as str_contains;
-pub(crate) use sentence_markers::recognizes_core_keyword_marker as is_core_keyword_marker_text;
-pub(crate) use sentence_markers::recognizes_ticket_sticker_marker as is_ticket_sticker_marker_text;
+pub use crate::string_primitives::contains as str_contains;
+pub use sentence_markers::recognizes_core_keyword_marker as is_core_keyword_marker_text;
+pub use sentence_markers::recognizes_ticket_sticker_marker as is_ticket_sticker_marker_text;
 
-pub(crate) fn parse_lexed_prefix<'a, O>(
+pub fn parse_lexed_prefix<'a, O>(
     tokens: &'a [OwnedLexToken],
     parser: impl Parser<LexedInput<'a>, O, ErrMode<ContextError>>,
 ) -> Option<(O, &'a [OwnedLexToken])> {
     grammar::parse_prefix(tokens, parser)
 }
 
-pub(crate) fn parse_word_token<'a>(input: &mut LexedInput<'a>) -> WResult<&'a str> {
+pub fn parse_word_token<'a>(input: &mut LexedInput<'a>) -> WResult<&'a str> {
     grammar::word_text(input)
 }
 
-pub(crate) fn rewrite_followup_intro_to_if_lexed(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+pub fn rewrite_followup_intro_to_if_lexed(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     // Preserve reflexive "when" prefixes so lowering emits a stack-queued
     // ReflexiveTriggerEffect instead of an inline IfEffect.
     tokens.to_vec()
 }
 
-pub(crate) fn remove_copy_exception_type_removal_lexed(
-    tokens: &[OwnedLexToken],
-) -> Vec<OwnedLexToken> {
+pub fn remove_copy_exception_type_removal_lexed(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let mut rewritten = tokens.to_vec();
     while let Some(span) =
         static_keyword_line_shapes::parse_copy_exception_type_removal_span(&rewritten)
@@ -106,11 +104,11 @@ pub(crate) fn remove_copy_exception_type_removal_lexed(
     rewritten
 }
 
-pub(crate) fn lexed_tokens_contain_non_prefix_instead(tokens: &[OwnedLexToken]) -> bool {
+pub fn lexed_tokens_contain_non_prefix_instead(tokens: &[OwnedLexToken]) -> bool {
     sentence_markers::has_nonconditional_instead(tokens)
 }
 
-pub(crate) fn strip_leading_if_you_do_lexed(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+pub fn strip_leading_if_you_do_lexed(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     sentence_markers::parse_conditional_followup_tokens(tokens)
         .map(|matched| matched.tail_tokens)
         .unwrap_or(tokens)
@@ -127,7 +125,7 @@ fn find_token_index_with_span(tokens: &[OwnedLexToken], span: TextSpan) -> Optio
     None
 }
 
-pub(crate) fn clone_sentence_chunk_tokens(
+pub fn clone_sentence_chunk_tokens(
     tokens: &[OwnedLexToken],
     sentences: &[&[OwnedLexToken]],
 ) -> Option<Vec<OwnedLexToken>> {
@@ -139,7 +137,7 @@ pub(crate) fn clone_sentence_chunk_tokens(
     Some(tokens[start..end_start + last_sentence.len()].to_vec())
 }
 
-pub(crate) fn split_em_dash_label_prefix_tokens(
+pub fn split_em_dash_label_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
     let mut inside_quotes = false;
@@ -206,17 +204,15 @@ fn label_has_disallowed_period(tokens: &[OwnedLexToken]) -> bool {
     false
 }
 
-pub(crate) fn split_em_dash_label_prefix(
-    tokens: &[OwnedLexToken],
-) -> Option<(String, &[OwnedLexToken])> {
+pub fn split_em_dash_label_prefix(tokens: &[OwnedLexToken]) -> Option<(String, &[OwnedLexToken])> {
     let (label_tokens, body_tokens) = split_em_dash_label_prefix_tokens(tokens)?;
     let label = render_token_slice(label_tokens).trim().to_string();
     (!label.is_empty()).then_some((label, body_tokens))
 }
 
-pub(crate) use sentence_markers::{LeadingMayActionMatch, LeadingMayActor};
+pub use sentence_markers::{LeadingMayActionMatch, LeadingMayActor};
 
-pub(crate) fn parse_leading_may_action_lexed<'a>(
+pub fn parse_leading_may_action_lexed<'a>(
     tokens: &'a [OwnedLexToken],
     verbs: &'static [&'static str],
     allow_bare: bool,
@@ -228,7 +224,7 @@ fn parse_head_words<'a>(input: &mut LexedInput<'a>) -> WResult<(&'a str, Option<
     peek(seq!(parse_word_token, opt(parse_word_token))).parse_next(input)
 }
 
-pub(crate) fn lexed_head_words(tokens: &[OwnedLexToken]) -> Option<(&str, Option<&str>)> {
+pub fn lexed_head_words(tokens: &[OwnedLexToken]) -> Option<(&str, Option<&str>)> {
     parse_lexed_prefix(tokens, parse_head_words).map(|(head, _)| head)
 }
 
@@ -242,28 +238,28 @@ fn turn_duration_from_leaf(duration: LeafTurnDurationPhrase) -> TurnDurationPhra
 }
 
 #[cfg(test)]
-pub(crate) fn parse_turn_duration_prefix(
+pub fn parse_turn_duration_prefix(
     tokens: &[OwnedLexToken],
 ) -> Option<(TurnDurationPhrase, &[OwnedLexToken])> {
     let parsed = parse_leaf_turn_duration_prefix_tokens(tokens)?;
     Some((turn_duration_from_leaf(parsed.duration), parsed.rest))
 }
 
-pub(crate) fn parse_turn_duration_suffix(
+pub fn parse_turn_duration_suffix(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], TurnDurationPhrase)> {
     let parsed = parse_leaf_turn_duration_suffix_tokens(tokens)?;
     Some((parsed.rest, turn_duration_from_leaf(parsed.duration)))
 }
 
-pub(crate) fn parse_simple_restriction_duration_prefix(
+pub fn parse_simple_restriction_duration_prefix(
     tokens: &[OwnedLexToken],
 ) -> Option<(Until, &[OwnedLexToken])> {
     let parsed = parse_leaf_restriction_duration_prefix_tokens(tokens)?;
     Some((until_from_leaf_duration(parsed.duration), parsed.rest))
 }
 
-pub(crate) fn parse_simple_restriction_duration_suffix(
+pub fn parse_simple_restriction_duration_suffix(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], Until)> {
     let parsed = parse_leaf_restriction_duration_suffix_tokens(tokens)?;

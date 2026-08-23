@@ -2,23 +2,23 @@ use super::super::{permission_shapes, primitives};
 use crate::lexer::{TokenWordView, lex_line, render_token_slice};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SubjectPredicateSurface {
-    pub(crate) subject: String,
-    pub(crate) predicate: String,
+pub struct SubjectPredicateSurface {
+    pub subject: String,
+    pub predicate: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BorrowAbilitySurface {
-    pub(crate) phrase: &'static str,
+pub struct BorrowAbilitySurface {
+    pub phrase: &'static str,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ExiledSourceAbilityTailSurface {
-    pub(crate) source_noun: &'static str,
+pub struct ExiledSourceAbilityTailSurface {
+    pub source_noun: &'static str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum BorrowStaticSentenceSurface {
+pub enum BorrowStaticSentenceSurface {
     Leading {
         condition: String,
         consequence: String,
@@ -30,7 +30,7 @@ pub(crate) enum BorrowStaticSentenceSurface {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum BorrowStaticConditionSurface {
+pub enum BorrowStaticConditionSurface {
     ExiledWithAbility {
         subject: String,
         tail: String,
@@ -46,7 +46,7 @@ pub(crate) enum BorrowStaticConditionSurface {
     },
 }
 
-pub(crate) fn parse_subject_predicate_surface(sentence: &str) -> Option<SubjectPredicateSurface> {
+pub fn parse_subject_predicate_surface(sentence: &str) -> Option<SubjectPredicateSurface> {
     let tokens = lex_line(sentence.trim(), 0).ok()?;
     let mut verb_index = None;
     for verb in [
@@ -69,7 +69,7 @@ pub(crate) fn parse_subject_predicate_surface(sentence: &str) -> Option<SubjectP
         .then_some(SubjectPredicateSurface { subject, predicate })
 }
 
-pub(crate) fn parse_borrow_ability_surface(sentence: &str) -> Option<BorrowAbilitySurface> {
+pub fn parse_borrow_ability_surface(sentence: &str) -> Option<BorrowAbilitySurface> {
     let tokens = lex_line(sentence.trim(), 0).ok()?;
     let words = TokenWordView::new(&tokens).word_refs();
     let mut best: Option<(usize, &'static str)> = None;
@@ -93,9 +93,7 @@ pub(crate) fn parse_borrow_ability_surface(sentence: &str) -> Option<BorrowAbili
     best.map(|(_, phrase)| BorrowAbilitySurface { phrase })
 }
 
-pub(crate) fn parse_exiled_source_ability_tail(
-    tail: &str,
-) -> Option<ExiledSourceAbilityTailSurface> {
+pub fn parse_exiled_source_ability_tail(tail: &str) -> Option<ExiledSourceAbilityTailSurface> {
     let tokens = lex_line(tail.trim(), 0).ok()?;
     let words = TokenWordView::new(&tokens).word_refs();
     for source_noun in SOURCE_NOUNS {
@@ -113,9 +111,7 @@ pub(crate) fn parse_exiled_source_ability_tail(
     None
 }
 
-pub(crate) fn parse_borrow_static_sentence_surface(
-    sentence: &str,
-) -> Option<BorrowStaticSentenceSurface> {
+pub fn parse_borrow_static_sentence_surface(sentence: &str) -> Option<BorrowStaticSentenceSurface> {
     let tokens = lex_line(sentence.trim(), 0).ok()?;
     let words = TokenWordView::new(&tokens);
     let word_refs = words.word_refs();
@@ -161,7 +157,7 @@ pub(crate) fn parse_borrow_static_sentence_surface(
         .then_some(BorrowStaticSentenceSurface::Trailing { prefix, condition })
 }
 
-pub(crate) fn parse_borrow_static_condition_surface(
+pub fn parse_borrow_static_condition_surface(
     condition: &str,
     ability: &str,
 ) -> Option<BorrowStaticConditionSurface> {

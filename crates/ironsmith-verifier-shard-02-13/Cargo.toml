@@ -1,0 +1,10 @@
+[package]
+name = "ironsmith-verifier-shard-02-13"
+version = "0.1.0"
+edition = "2024"
+[dependencies]
+ironsmith-verifier-ziffle = { path = "../ironsmith-verifier-ziffle", default-features = false }
+ironsmith-verifier-shard-02-07 = { path = "../ironsmith-verifier-shard-02-07", default-features = false }
+ironsmith-verifier-shard-08-13 = { path = "../ironsmith-verifier-shard-08-13", default-features = false }
+[features]
+default = []

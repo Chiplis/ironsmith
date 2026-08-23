@@ -1,35 +1,35 @@
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use winnow::combinator::alt;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use winnow::error::{ModalResult as WResult, StrContext, StrContextValue};
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use winnow::prelude::*;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use crate::cards::builders::CardTextError;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use super::common::{finish_text_parse, phrase};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LeafPlayerReference {
+pub enum LeafPlayerReference {
     You,
     Opponent,
     EachOpponent,
     AnyPlayer,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     EachPlayer,
     TargetPlayer,
     TargetOpponent,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     ItsController,
     ThatPlayer,
     DefendingPlayer,
     AttackingPlayer,
 }
 
-#[cfg(test)]
-pub(crate) fn parse_player_reference(input: &mut &str) -> WResult<LeafPlayerReference> {
+#[cfg(any(test, feature = "test-support"))]
+pub fn parse_player_reference(input: &mut &str) -> WResult<LeafPlayerReference> {
     alt((
         parse_target_player_reference,
         parse_opponent_reference,
@@ -44,14 +44,12 @@ pub(crate) fn parse_player_reference(input: &mut &str) -> WResult<LeafPlayerRefe
     .parse_next(input)
 }
 
-#[cfg(test)]
-pub(crate) fn parse_player_reference_complete(
-    raw: &str,
-) -> Result<LeafPlayerReference, CardTextError> {
+#[cfg(any(test, feature = "test-support"))]
+pub fn parse_player_reference_complete(raw: &str) -> Result<LeafPlayerReference, CardTextError> {
     finish_text_parse(raw, parse_player_reference, "leaf-player-reference")
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn parse_target_player_reference(input: &mut &str) -> WResult<LeafPlayerReference> {
     alt((
         phrase("target opponent").value(LeafPlayerReference::TargetOpponent),
@@ -60,7 +58,7 @@ fn parse_target_player_reference(input: &mut &str) -> WResult<LeafPlayerReferenc
     .parse_next(input)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn parse_opponent_reference(input: &mut &str) -> WResult<LeafPlayerReference> {
     alt((
         phrase("each opponent").value(LeafPlayerReference::EachOpponent),
@@ -70,7 +68,7 @@ fn parse_opponent_reference(input: &mut &str) -> WResult<LeafPlayerReference> {
     .parse_next(input)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn parse_any_player_reference(input: &mut &str) -> WResult<LeafPlayerReference> {
     alt((
         phrase("each player").value(LeafPlayerReference::EachPlayer),
@@ -80,7 +78,7 @@ fn parse_any_player_reference(input: &mut &str) -> WResult<LeafPlayerReference> 
     .parse_next(input)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 mod tests {
     use super::*;
 

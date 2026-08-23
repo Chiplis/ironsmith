@@ -15,7 +15,7 @@ use super::typed_clause_heads::{
 const COORDINATION_RULE: RuleId = RuleId::new("typed-effect-coordination");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CoordinationOmissionAst {
+pub enum CoordinationOmissionAst {
     None,
     Subject,
     Action,
@@ -24,7 +24,7 @@ pub(crate) enum CoordinationOmissionAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RecognizedCoordinationBoundary {
+pub struct RecognizedCoordinationBoundary {
     pub operator: CoordinationOperatorAst,
     pub ordering: EffectOrderingAst,
     pub omission: CoordinationOmissionAst,
@@ -32,14 +32,14 @@ pub(crate) struct RecognizedCoordinationBoundary {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct RecognizedCoordinationMember<'a> {
+pub struct RecognizedCoordinationMember<'a> {
     pub tokens: &'a [OwnedLexToken],
     pub head: Option<TypedClauseHeadAst<'a>>,
     pub span: Option<TextSpan>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct CoordinationPlan<'a> {
+pub struct CoordinationPlan<'a> {
     pub kind: CoordinationKindAst,
     pub members: Vec<RecognizedCoordinationMember<'a>>,
     pub boundaries: Vec<RecognizedCoordinationBoundary>,
@@ -49,7 +49,7 @@ impl CoordinationPlan<'_> {
     /// Build the compiler coordination node once each recognized source
     /// member has produced one semantic effect.  Multi-effect legacy members
     /// remain unwrapped until their parser returns an explicit nested program.
-    pub(crate) fn into_ast(
+    pub fn into_ast(
         self,
         effects: Vec<crate::cards::builders::EffectAst>,
     ) -> Option<CoordinationAst> {
@@ -94,7 +94,7 @@ impl CoordinationPlan<'_> {
     /// Materialize omitted grammar only for the legacy effect-clause parser.
     /// The returned tokens are not semantic state: `boundaries` remains the
     /// authoritative carry program and is retained in `CoordinationAst`.
-    pub(crate) fn materialized_segments(&self) -> Option<Vec<Vec<OwnedLexToken>>> {
+    pub fn materialized_segments(&self) -> Option<Vec<Vec<OwnedLexToken>>> {
         let mut materialized = Vec::with_capacity(self.members.len());
         for (member_index, member) in self.members.iter().enumerate() {
             let Some(boundary) = member_index
@@ -146,7 +146,7 @@ impl CoordinationPlan<'_> {
     /// Return the authored member slices without applying subject carry. This
     /// is used by outer constructs that already own and inject the subject of
     /// every member, such as quantified-participant clauses.
-    pub(crate) fn member_segments(&self) -> Vec<Vec<OwnedLexToken>> {
+    pub fn member_segments(&self) -> Vec<Vec<OwnedLexToken>> {
         self.members
             .iter()
             .map(|member| member.tokens.to_vec())
@@ -155,7 +155,7 @@ impl CoordinationPlan<'_> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CoordinationClauseFacts {
+pub struct CoordinationClauseFacts {
     pub head: super::chain_carry::CarryClauseHead,
     pub imperative_collection_move: bool,
     pub imperative_return: bool,
@@ -164,13 +164,13 @@ pub(crate) struct CoordinationClauseFacts {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CoordinationReferenceFacts {
+pub struct CoordinationReferenceFacts {
     pub life_stat_pronoun: bool,
     pub affected_object_controller_reward: bool,
     pub implicit_draw_discard_actor: bool,
 }
 
-pub(crate) fn recognize_coordination_reference_facts(
+pub fn recognize_coordination_reference_facts(
     tokens: &[OwnedLexToken],
 ) -> CoordinationReferenceFacts {
     let words = crate::lexer::parser_token_word_refs(tokens);
@@ -208,9 +208,7 @@ pub(crate) fn recognize_coordination_reference_facts(
     }
 }
 
-pub(crate) fn recognize_coordination_clause_facts(
-    tokens: &[OwnedLexToken],
-) -> CoordinationClauseFacts {
+pub fn recognize_coordination_clause_facts(tokens: &[OwnedLexToken]) -> CoordinationClauseFacts {
     let words = crate::lexer::parser_token_word_refs(tokens);
     let significant = tokens
         .iter()
@@ -239,7 +237,7 @@ pub(crate) fn recognize_coordination_clause_facts(
 /// Materialize a structurally omitted subject for the compatibility clause
 /// parser.  The decision is made from typed verb positions and the dedicated
 /// carryable-subject grammar before the follow-up effect is parsed.
-pub(crate) fn materialize_shared_subject_followup(
+pub fn materialize_shared_subject_followup(
     previous: &[OwnedLexToken],
     followup: &[OwnedLexToken],
 ) -> Option<Vec<OwnedLexToken>> {
@@ -267,9 +265,7 @@ pub(crate) fn materialize_shared_subject_followup(
     Some(materialized)
 }
 
-pub(crate) fn recognize_coordination(
-    tokens: &[OwnedLexToken],
-) -> ParseOutcome<CoordinationPlan<'_>> {
+pub fn recognize_coordination(tokens: &[OwnedLexToken]) -> ParseOutcome<CoordinationPlan<'_>> {
     let tokens = trim_lexed_commas(tokens);
     let tokens = if tokens
         .first()
@@ -443,9 +439,12 @@ fn classify_boundary<'a>(
         && before
             .iter()
             .any(|token| token.is_word("choose") || token.is_word("chooses"))
-        && after.first().and_then(OwnedLexToken::as_word).is_some_and(|word| {
-            word == "nontoken" || word == "non-token" || word.starts_with("non-")
-        })
+        && after
+            .first()
+            .and_then(OwnedLexToken::as_word)
+            .is_some_and(|word| {
+                word == "nontoken" || word == "non-token" || word.starts_with("non-")
+            })
         && crate::object_filters::parse_object_filter(after, false).is_ok()
     {
         // A serial negative modifier is still part of the chosen object

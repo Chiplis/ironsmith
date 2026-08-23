@@ -17,18 +17,18 @@ use super::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ExertAttackHead {
-    pub(crate) only_if_not_exerted_this_turn: bool,
-    pub(crate) source_ref: String,
+pub struct ExertAttackHead {
+    pub only_if_not_exerted_this_turn: bool,
+    pub source_ref: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ExertReflexiveFollowup<'a> {
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct ExertReflexiveFollowup<'a> {
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StandardGiftVariant {
+pub enum StandardGiftVariant {
     Card,
     Treasure,
     Food,
@@ -38,14 +38,14 @@ pub(crate) enum StandardGiftVariant {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct StandardGiftSpec {
-    pub(crate) variant: StandardGiftVariant,
-    pub(crate) timing: GiftTimingAst,
+pub struct StandardGiftSpec {
+    pub variant: StandardGiftVariant,
+    pub timing: GiftTimingAst,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PartnerVariantLabel {
-    pub(crate) display: String,
+pub struct PartnerVariantLabel {
+    pub display: String,
 }
 
 fn exert_prefix(words: &[&str]) -> Option<(bool, usize)> {
@@ -67,7 +67,7 @@ fn exert_prefix(words: &[&str]) -> Option<(bool, usize)> {
     }
 }
 
-pub(crate) fn parse_exert_attack_head_tokens(
+pub fn parse_exert_attack_head_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ExertAttackHead, &'static str> {
     let words = parser_token_word_refs(tokens);
@@ -100,7 +100,7 @@ pub(crate) fn parse_exert_attack_head_tokens(
     })
 }
 
-pub(crate) fn parse_exert_reflexive_followup_tokens(
+pub fn parse_exert_reflexive_followup_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ExertReflexiveFollowup<'_>> {
     let words = parser_token_word_refs(tokens);
@@ -113,11 +113,11 @@ pub(crate) fn parse_exert_reflexive_followup_tokens(
     (!effect_tokens.is_empty()).then_some(ExertReflexiveFollowup { effect_tokens })
 }
 
-pub(crate) fn parse_when_followup_intro_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_when_followup_intro_tokens(tokens: &[OwnedLexToken]) -> bool {
     phrase_is_prefix(&parser_token_word_refs(tokens), &["when"])
 }
 
-pub(crate) fn normalize_exert_followup_source_tokens(
+pub fn normalize_exert_followup_source_tokens(
     source_ref: &str,
     followup_tokens: &[OwnedLexToken],
 ) -> Vec<OwnedLexToken> {
@@ -175,9 +175,7 @@ fn keyword_visible_prefix(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     visible_keyword_tokens(&mut input).unwrap_or(tokens)
 }
 
-pub(crate) fn parse_standard_gift_spec_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<StandardGiftSpec> {
+pub fn parse_standard_gift_spec_tokens(tokens: &[OwnedLexToken]) -> Option<StandardGiftSpec> {
     let visible = keyword_visible_prefix(tokens);
     let words = parser_token_word_refs(visible);
     let variant = if phrase_is_exact(&words, &["gift", "a", "card"]) {
@@ -206,9 +204,7 @@ pub(crate) fn parse_standard_gift_spec_tokens(
     Some(StandardGiftSpec { variant, timing })
 }
 
-pub(crate) fn parse_partner_variant_label_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<PartnerVariantLabel> {
+pub fn parse_partner_variant_label_tokens(tokens: &[OwnedLexToken]) -> Option<PartnerVariantLabel> {
     let visible_tokens = keyword_visible_prefix(tokens);
     let words = parser_token_word_refs(visible_tokens);
     if phrase_is_exact(&words, &["partner"]) || phrase_is_prefix(&words, &["partner", "with"]) {
@@ -255,7 +251,7 @@ fn additional_cost_tail(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     (!tail.is_empty()).then_some(tail)
 }
 
-pub(crate) fn parse_optional_waterbend_generic_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
+pub fn parse_optional_waterbend_generic_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
     let tail = additional_cost_tail(tokens)?;
     let words = parser_token_word_refs(tail);
     if !phrase_is_prefix(&words, &["you", "may", "waterbend"]) {

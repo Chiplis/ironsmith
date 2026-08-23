@@ -8,35 +8,35 @@ use crate::grammar::primitives;
 use crate::lexer::{LexStream, OwnedLexToken};
 
 #[derive(Debug, Clone)]
-pub(crate) struct JointDrawShape<'a> {
-    pub(crate) other_player: PlayerAst,
-    pub(crate) another_target_player: bool,
-    pub(crate) amount_tokens: &'a [OwnedLexToken],
+pub struct JointDrawShape<'a> {
+    pub other_player: PlayerAst,
+    pub another_target_player: bool,
+    pub amount_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct JointLifeShape<'a> {
-    pub(crate) other_player: PlayerAst,
-    pub(crate) gains: bool,
-    pub(crate) amount_tokens: &'a [OwnedLexToken],
+pub struct JointLifeShape<'a> {
+    pub other_player: PlayerAst,
+    pub gains: bool,
+    pub amount_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct JointCreateShape<'a> {
-    pub(crate) other_player: PlayerAst,
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct JointCreateShape<'a> {
+    pub other_player: PlayerAst,
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct JointSacrificeShape<'a> {
-    pub(crate) other_player: PlayerAst,
-    pub(crate) object_tokens: &'a [OwnedLexToken],
+pub struct JointSacrificeShape<'a> {
+    pub other_player: PlayerAst,
+    pub object_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct AttackingPlayerDrawLoseShape<'a> {
-    pub(crate) draw_tokens: &'a [OwnedLexToken],
-    pub(crate) lose_tokens: &'a [OwnedLexToken],
+pub struct AttackingPlayerDrawLoseShape<'a> {
+    pub draw_tokens: &'a [OwnedLexToken],
+    pub lose_tokens: &'a [OwnedLexToken],
 }
 
 fn player_object<'a>(input: &mut LexStream<'a>) -> WResult<(PlayerAst, bool)> {
@@ -154,25 +154,23 @@ fn attacking_draw_lose<'a>(input: &mut LexStream<'a>) -> WResult<AttackingPlayer
     })
 }
 
-pub(crate) fn parse_joint_draw_shape(tokens: &[OwnedLexToken]) -> Option<JointDrawShape<'_>> {
+pub fn parse_joint_draw_shape(tokens: &[OwnedLexToken]) -> Option<JointDrawShape<'_>> {
     primitives::parse_all(tokens, joint_draw, "registry-joint-draw").ok()
 }
 
-pub(crate) fn parse_joint_life_shape(tokens: &[OwnedLexToken]) -> Option<JointLifeShape<'_>> {
+pub fn parse_joint_life_shape(tokens: &[OwnedLexToken]) -> Option<JointLifeShape<'_>> {
     primitives::parse_all(tokens, joint_life, "registry-joint-life").ok()
 }
 
-pub(crate) fn parse_joint_create_shape(tokens: &[OwnedLexToken]) -> Option<JointCreateShape<'_>> {
+pub fn parse_joint_create_shape(tokens: &[OwnedLexToken]) -> Option<JointCreateShape<'_>> {
     primitives::parse_all(tokens, joint_create, "registry-joint-create").ok()
 }
 
-pub(crate) fn parse_joint_sacrifice_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<JointSacrificeShape<'_>> {
+pub fn parse_joint_sacrifice_shape(tokens: &[OwnedLexToken]) -> Option<JointSacrificeShape<'_>> {
     primitives::parse_all(tokens, joint_sacrifice, "registry-joint-sacrifice").ok()
 }
 
-pub(crate) fn parse_attacking_player_draw_lose_shape(
+pub fn parse_attacking_player_draw_lose_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<AttackingPlayerDrawLoseShape<'_>> {
     primitives::parse_all(tokens, attacking_draw_lose, "registry-attacking-draw-lose").ok()

@@ -58,7 +58,7 @@ mod subject_verb_followups;
 /// Keep a retarget of a newly copied stack object in the delayed trigger that
 /// creates that copy. Trigger-line parsing has its own public-root path, so it
 /// applies this typed normalization after constructing its raw `LineAst` too.
-pub(crate) fn transport_copy_retarget_into_trailing_delayed_trigger(effects: &mut Vec<EffectAst>) {
+pub fn transport_copy_retarget_into_trailing_delayed_trigger(effects: &mut Vec<EffectAst>) {
     subject_verb_followups::transport_copy_retarget_into_trailing_delayed_trigger(effects);
     subject_verb_followups::transport_copy_retarget_into_trailing_optional_copy(effects);
 }
@@ -67,7 +67,7 @@ pub(crate) fn transport_copy_retarget_into_trailing_delayed_trigger(effects: &mu
 /// token rule can be mistaken for the outer action. The unquoted prefix proves
 /// the participant and creation shape; the untouched tokens are then used to
 /// attach each quoted rule to the created token.
-pub(crate) fn parse_quantified_token_creation_with_embedded_rules(
+pub fn parse_quantified_token_creation_with_embedded_rules(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let full_tokens = trim_edge_punctuation(tokens);
@@ -262,10 +262,7 @@ const WOULD_ENTER_BATTLEFIELD_UNDER_OPPONENT_PHRASE: &[&str] = &[
 ];
 const ENTERS_UNDER_YOUR_CONTROL_INSTEAD_PHRASE: &[&str] =
     &["enters", "under", "your", "control", "instead"];
-pub(crate) fn apply_leading_duration_to_become_effect(
-    effect: &mut EffectAst,
-    duration: &Until,
-) -> bool {
+pub fn apply_leading_duration_to_become_effect(effect: &mut EffectAst, duration: &Until) -> bool {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
             SubjectVerbActionAst::BecomeBasePtCreature {
@@ -801,26 +798,26 @@ pub(super) fn consult_cast_effects(
     consult_family::consult_cast_effects(clause, match_tag)
 }
 
-pub(crate) struct SentenceInput {
+pub struct SentenceInput {
     lowered: OnceCell<Vec<OwnedLexToken>>,
     lexed: Vec<OwnedLexToken>,
 }
 
 impl SentenceInput {
-    pub(crate) fn from_lexed(tokens: &[OwnedLexToken]) -> Self {
+    pub fn from_lexed(tokens: &[OwnedLexToken]) -> Self {
         Self {
             lowered: OnceCell::new(),
             lexed: tokens.to_vec(),
         }
     }
 
-    pub(crate) fn lowered(&self) -> &[OwnedLexToken] {
+    pub fn lowered(&self) -> &[OwnedLexToken] {
         self.lowered
             .get_or_init(|| normalize_parser_tokens(&self.lexed))
             .as_slice()
     }
 
-    pub(crate) fn lexed(&self) -> &[OwnedLexToken] {
+    pub fn lexed(&self) -> &[OwnedLexToken] {
         self.lexed.as_slice()
     }
 }
@@ -930,9 +927,7 @@ fn future_zone_replacement_counters(
         .unwrap_or_default()
 }
 
-pub(crate) fn future_zone_replacement_from_sentence_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<EffectAst> {
+pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let target = || TargetAst::Tagged(TagKey::from(IT_TAG), None);
     if tokens.first().is_some_and(|token| token.is_word("if"))
         && sentence_contains(tokens, WOULD_LEAVE_THE_BATTLEFIELD_PHRASE)
@@ -1664,10 +1659,7 @@ pub(super) fn parse_if_you_cant_sentence(
     consult_family::parse_if_you_cant_sentence(tokens)
 }
 
-pub(crate) fn with_where_x_surface_hints(
-    mut value: Value,
-    binding_tokens: &[OwnedLexToken],
-) -> Value {
+pub fn with_where_x_surface_hints(mut value: Value, binding_tokens: &[OwnedLexToken]) -> Value {
     let words = crate::lexer::token_word_refs(binding_tokens);
     let explicit_count_surface = words.contains(&"number")
         && words.iter().any(|word| {
@@ -3192,10 +3184,10 @@ mod delegated_categorical_library_choice_tests {
     }
 }
 
-pub(crate) fn parse_effect_sentences_lexed(
+pub fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+    crate::stack::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
         let sentences = split_lexed_sentences(tokens);
         if let [exile, upkeep] = sentences.as_slice()
             && effect_grammar::parse_collection_scoped_each_upkeep_return_shape(exile, upkeep)
@@ -5112,24 +5104,24 @@ fn group_this_way_copy_cast_followups(tokens: &[OwnedLexToken], effects: &mut Ve
     }
 }
 
-pub(crate) fn is_cant_be_regenerated_this_turn_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_cant_be_regenerated_this_turn_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
     effect_grammar::followup_shapes::parse_cant_be_regenerated_followup(tokens)
         .is_some_and(|shape| shape.this_turn)
 }
 
 #[cfg(test)]
-pub(crate) fn is_cant_be_regenerated_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_cant_be_regenerated_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
     effect_grammar::followup_shapes::parse_cant_be_regenerated_followup(tokens).is_some()
 }
 
-pub(crate) fn apply_cant_be_regenerated_to_last_destroy_effect(effects: &mut [EffectAst]) -> bool {
+pub fn apply_cant_be_regenerated_to_last_destroy_effect(effects: &mut [EffectAst]) -> bool {
     let Some(last) = effects.last_mut() else {
         return false;
     };
     apply_cant_be_regenerated_to_effect(last)
 }
 
-pub(crate) fn apply_cant_be_regenerated_to_last_destroy_group(effects: &mut [EffectAst]) -> bool {
+pub fn apply_cant_be_regenerated_to_last_destroy_group(effects: &mut [EffectAst]) -> bool {
     let Some(last) = effects.last_mut() else {
         return false;
     };
@@ -5147,9 +5139,7 @@ pub(crate) fn apply_cant_be_regenerated_to_last_destroy_group(effects: &mut [Eff
     applied
 }
 
-pub(crate) fn apply_cant_be_regenerated_to_last_target_effect(
-    effects: &mut Vec<EffectAst>,
-) -> bool {
+pub fn apply_cant_be_regenerated_to_last_target_effect(effects: &mut Vec<EffectAst>) -> bool {
     let Some(previous_target) = effects.last().and_then(primary_target_from_effect) else {
         return false;
     };
@@ -5211,9 +5201,7 @@ fn apply_cant_be_regenerated_to_effect(effect: &mut EffectAst) -> bool {
     }
 }
 
-pub(crate) fn mark_last_destroy_creature_destroyed_this_way_surface(
-    effects: &mut [EffectAst],
-) -> bool {
+pub fn mark_last_destroy_creature_destroyed_this_way_surface(effects: &mut [EffectAst]) -> bool {
     fn mark(effect: &mut EffectAst) -> bool {
         match effect {
             EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
@@ -7406,7 +7394,7 @@ fn apply_cant_be_regenerated_to_effects_tail(effects: &mut [EffectAst]) -> bool 
     false
 }
 
-pub(crate) fn primary_damage_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
+pub fn primary_damage_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
             SubjectVerbActionAst::DealDamage { target, .. }
@@ -7426,7 +7414,7 @@ pub(crate) fn primary_damage_target_from_effect(effect: &EffectAst) -> Option<Ta
     }
 }
 
-pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
+pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
             SubjectVerbActionAst::DealDamage { target, .. }
@@ -7542,35 +7530,32 @@ fn time_travel_effect_ast() -> EffectAst {
     )
 }
 
-pub(crate) fn replace_it_damage_target_in_effects(effects: &mut [EffectAst], target: &TargetAst) {
+pub fn replace_it_damage_target_in_effects(effects: &mut [EffectAst], target: &TargetAst) {
     for effect in effects {
         replace_it_damage_target(effect, target);
     }
 }
 
-pub(crate) fn replace_it_target_in_effects(effects: &mut [EffectAst], target: &TargetAst) {
+pub fn replace_it_target_in_effects(effects: &mut [EffectAst], target: &TargetAst) {
     for effect in effects {
         replace_it_target(effect, target);
     }
 }
 
-pub(crate) fn is_placeholder_damage_target(target: &TargetAst) -> bool {
+pub fn is_placeholder_damage_target(target: &TargetAst) -> bool {
     matches!(
         target,
         TargetAst::PlayerOrPlaneswalker(PlayerFilter::Any, None)
     )
 }
 
-pub(crate) fn replace_placeholder_damage_target_in_effects(
-    effects: &mut [EffectAst],
-    target: &TargetAst,
-) {
+pub fn replace_placeholder_damage_target_in_effects(effects: &mut [EffectAst], target: &TargetAst) {
     for effect in effects {
         replace_placeholder_damage_target(effect, target);
     }
 }
 
-pub(crate) fn replace_placeholder_damage_target(effect: &mut EffectAst, target: &TargetAst) {
+pub fn replace_placeholder_damage_target(effect: &mut EffectAst, target: &TargetAst) {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
             SubjectVerbActionAst::DealDamage {
@@ -7593,7 +7578,7 @@ pub(crate) fn replace_placeholder_damage_target(effect: &mut EffectAst, target: 
     }
 }
 
-pub(crate) fn replace_unbound_x_in_damage_effects(
+pub fn replace_unbound_x_in_damage_effects(
     effects: &mut [EffectAst],
     replacement: &Value,
     clause: &str,
@@ -7604,7 +7589,7 @@ pub(crate) fn replace_unbound_x_in_damage_effects(
     Ok(())
 }
 
-pub(crate) fn replace_unbound_x_in_damage_effect(
+pub fn replace_unbound_x_in_damage_effect(
     effect: &mut EffectAst,
     replacement: &Value,
     clause: &str,
@@ -7645,7 +7630,7 @@ pub(crate) fn replace_unbound_x_in_damage_effect(
     Ok(())
 }
 
-pub(crate) fn replace_unbound_x_in_effects_anywhere(
+pub fn replace_unbound_x_in_effects_anywhere(
     effects: &mut [EffectAst],
     replacement: &Value,
     clause: &str,
@@ -7656,7 +7641,7 @@ pub(crate) fn replace_unbound_x_in_effects_anywhere(
     Ok(())
 }
 
-pub(crate) fn replace_unbound_x_in_effect_anywhere(
+pub fn replace_unbound_x_in_effect_anywhere(
     effect: &mut EffectAst,
     replacement: &Value,
     clause: &str,
@@ -8377,7 +8362,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
     Ok(())
 }
 
-pub(crate) fn parse_exact_where_x_value_expression(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_exact_where_x_value_expression(tokens: &[OwnedLexToken]) -> Option<Value> {
     let tokens = trim_edge_punctuation(tokens);
     if let Some(value) =
         crate::grammar::shared_util::value_semantics::parse_mana_symbol_spent_to_cast_value(&tokens)
@@ -8402,7 +8387,7 @@ pub(crate) fn parse_exact_where_x_value_expression(tokens: &[OwnedLexToken]) -> 
     (used == body.len()).then_some(value)
 }
 
-pub(crate) fn apply_where_x_to_damage_amounts(
+pub fn apply_where_x_to_damage_amounts(
     tokens: &[OwnedLexToken],
     effects: &mut [EffectAst],
 ) -> Result<(), CardTextError> {
@@ -8439,7 +8424,7 @@ pub(crate) fn apply_where_x_to_damage_amounts(
     }
 }
 
-pub(crate) fn replace_it_damage_target(effect: &mut EffectAst, target: &TargetAst) {
+pub fn replace_it_damage_target(effect: &mut EffectAst, target: &TargetAst) {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => {
             if let SubjectVerbActionAst::DealDamage {
@@ -8457,7 +8442,7 @@ pub(crate) fn replace_it_damage_target(effect: &mut EffectAst, target: &TargetAs
     }
 }
 
-pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
+pub fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
     fn should_replace_self_replacement_target(effect_target: &TargetAst) -> bool {
         target_references_it(effect_target)
             || matches!(
@@ -8707,7 +8692,7 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
     }
 }
 
-pub(crate) fn target_references_it(target: &TargetAst) -> bool {
+pub fn target_references_it(target: &TargetAst) -> bool {
     match target {
         TargetAst::Tagged(tag, _) => tag.as_str() == IT_TAG,
         TargetAst::Object(filter, _, _) => filter
@@ -8719,7 +8704,7 @@ pub(crate) fn target_references_it(target: &TargetAst) -> bool {
     }
 }
 
-pub(crate) fn is_that_turn_end_step_sentence(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_that_turn_end_step_sentence(tokens: &[OwnedLexToken]) -> bool {
     grammar::match_word_prefix(
         tokens,
         &[
@@ -8750,7 +8735,7 @@ pub(crate) fn is_that_turn_end_step_sentence(tokens: &[OwnedLexToken]) -> bool {
         .is_some()
 }
 
-pub(crate) fn most_recent_extra_turn_player(effects: &[EffectAst]) -> Option<PlayerAst> {
+pub fn most_recent_extra_turn_player(effects: &[EffectAst]) -> Option<PlayerAst> {
     effects.iter().rev().find_map(|effect| {
         let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
             subject: crate::cards::builders::SubjectVerbSubjectAst { player, .. },
@@ -8763,7 +8748,7 @@ pub(crate) fn most_recent_extra_turn_player(effects: &[EffectAst]) -> Option<Pla
     })
 }
 
-pub(crate) fn rewrite_when_one_or_more_this_way_clause_prefix(
+pub fn rewrite_when_one_or_more_this_way_clause_prefix(
     tokens: &[OwnedLexToken],
 ) -> Vec<OwnedLexToken> {
     // Generic "When one or more ... this way, ..." follow-ups are semantically
@@ -8819,9 +8804,7 @@ pub(crate) fn rewrite_when_one_or_more_this_way_clause_prefix(
     tokens.to_vec()
 }
 
-pub(crate) fn strip_otherwise_sentence_prefix(
-    tokens: &[OwnedLexToken],
-) -> Option<Vec<OwnedLexToken>> {
+pub fn strip_otherwise_sentence_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
     if tokens
         .first()
         .and_then(OwnedLexToken::as_word)
@@ -8849,9 +8832,7 @@ pub(crate) fn strip_otherwise_sentence_prefix(
     }
 }
 
-pub(crate) fn rewrite_otherwise_referential_subject(
-    tokens: Vec<OwnedLexToken>,
-) -> Vec<OwnedLexToken> {
+pub fn rewrite_otherwise_referential_subject(tokens: Vec<OwnedLexToken>) -> Vec<OwnedLexToken> {
     if !effect_grammar::dispatch_entry_shapes::has_otherwise_referential_subject_tokens(&tokens) {
         return tokens;
     }
@@ -8863,7 +8844,7 @@ pub(crate) fn rewrite_otherwise_referential_subject(
     rewritten
 }
 
-pub(crate) fn is_nonsemantic_restriction_sentence(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_nonsemantic_restriction_sentence(tokens: &[OwnedLexToken]) -> bool {
     is_activate_only_restriction_sentence(tokens)
         || is_trigger_only_restriction_sentence(tokens)
         || effect_grammar::dispatch_entry_shapes::is_x_cant_be_zero_tokens(tokens)
@@ -8911,9 +8892,7 @@ fn token_copy_followup_container_effects_mut(
     }
 }
 
-pub(crate) fn parse_token_copy_followup_sentence(
-    tokens: &[OwnedLexToken],
-) -> Option<TokenCopyFollowup> {
+pub fn parse_token_copy_followup_sentence(tokens: &[OwnedLexToken]) -> Option<TokenCopyFollowup> {
     let tokens = if tokens
         .first()
         .and_then(OwnedLexToken::as_word)
@@ -8990,7 +8969,7 @@ pub(crate) fn parse_token_copy_followup_sentence(
         })
 }
 
-pub(crate) fn parse_token_copy_followup_sentence_lexed(
+pub fn parse_token_copy_followup_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenCopyFollowup> {
     let tokens = if tokens
@@ -9069,7 +9048,7 @@ pub(crate) fn parse_token_copy_followup_sentence_lexed(
         })
 }
 
-pub(crate) fn parse_token_granted_ability_followup_sentence_lexed(
+pub fn parse_token_granted_ability_followup_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<GrantedAbilityAst>>, CardTextError> {
     let Some(ability_tokens) =
@@ -9197,7 +9176,7 @@ fn apply_unapplied_token_copy_followup(
     Ok(effects)
 }
 
-pub(crate) fn try_apply_token_granted_ability_followup(
+pub fn try_apply_token_granted_ability_followup(
     effects: &mut [EffectAst],
     abilities: &[GrantedAbilityAst],
     presentation: ironsmith_core::TokenAbilityPresentation,
@@ -9283,7 +9262,7 @@ pub(crate) fn try_apply_token_granted_ability_followup(
     }
 }
 
-pub(crate) fn try_apply_token_copy_followup(
+pub fn try_apply_token_copy_followup(
     effects: &mut [EffectAst],
     followup: TokenCopyFollowup,
 ) -> Result<bool, CardTextError> {

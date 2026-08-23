@@ -9,44 +9,44 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::{conditions, filters, leaf, primitives, structure};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CarriedSubjectTypeAdditionShape<'a> {
-    pub(crate) first_sentence_tokens: &'a [OwnedLexToken],
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) addition_tokens: &'a [OwnedLexToken],
+pub struct CarriedSubjectTypeAdditionShape<'a> {
+    pub first_sentence_tokens: &'a [OwnedLexToken],
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub addition_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ConditionalAnthemReplacementShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) base_power: i32,
-    pub(crate) base_toughness: i32,
-    pub(crate) condition_filter: ObjectFilter,
-    pub(crate) replacement_power: i32,
-    pub(crate) replacement_toughness: i32,
+pub struct ConditionalAnthemReplacementShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub base_power: i32,
+    pub base_toughness: i32,
+    pub condition_filter: ObjectFilter,
+    pub replacement_power: i32,
+    pub replacement_toughness: i32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ConditionalAnthemOtherwiseShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) condition_filter: ObjectFilter,
-    pub(crate) true_power: i32,
-    pub(crate) true_toughness: i32,
-    pub(crate) false_power: i32,
-    pub(crate) false_toughness: i32,
+pub struct ConditionalAnthemOtherwiseShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub condition_filter: ObjectFilter,
+    pub true_power: i32,
+    pub true_toughness: i32,
+    pub false_power: i32,
+    pub false_toughness: i32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CarriedConditionalAnthemGrantShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) base_power: i32,
-    pub(crate) base_toughness: i32,
-    pub(crate) additional_power: i32,
-    pub(crate) additional_toughness: i32,
-    pub(crate) ability_tokens: &'a [OwnedLexToken],
-    pub(crate) condition: conditions::ObjectAttachedToObjectConditionAst,
+pub struct CarriedConditionalAnthemGrantShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub base_power: i32,
+    pub base_toughness: i32,
+    pub additional_power: i32,
+    pub additional_toughness: i32,
+    pub ability_tokens: &'a [OwnedLexToken],
+    pub condition: conditions::ObjectAttachedToObjectConditionAst,
 }
 
-pub(crate) fn parse_carried_subject_type_addition(
+pub fn parse_carried_subject_type_addition(
     tokens: &[OwnedLexToken],
 ) -> Option<CarriedSubjectTypeAdditionShape<'_>> {
     let sentences = structure::split_lexed_sentences(tokens)
@@ -73,7 +73,7 @@ pub(crate) fn parse_carried_subject_type_addition(
     })
 }
 
-pub(crate) fn parse_conditional_anthem_replacement(
+pub fn parse_conditional_anthem_replacement(
     tokens: &[OwnedLexToken],
 ) -> Option<ConditionalAnthemReplacementShape<'_>> {
     let sentences = two_sentences(tokens)?;
@@ -90,7 +90,7 @@ pub(crate) fn parse_conditional_anthem_replacement(
     })
 }
 
-pub(crate) fn parse_conditional_anthem_otherwise(
+pub fn parse_conditional_anthem_otherwise(
     tokens: &[OwnedLexToken],
 ) -> Option<ConditionalAnthemOtherwiseShape<'_>> {
     let sentences = two_sentences(tokens)?;
@@ -107,7 +107,7 @@ pub(crate) fn parse_conditional_anthem_otherwise(
     })
 }
 
-pub(crate) fn parse_carried_conditional_anthem_grant(
+pub fn parse_carried_conditional_anthem_grant(
     tokens: &[OwnedLexToken],
 ) -> Option<CarriedConditionalAnthemGrantShape<'_>> {
     let sentences = two_sentences(tokens)?;

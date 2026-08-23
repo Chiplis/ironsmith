@@ -31,7 +31,7 @@ const MANA_OPTION_SEPARATOR_WORDS: &[&str] = &[
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AddManaChoiceKind {
+pub enum AddManaChoiceKind {
     AnyOneColor,
     AnyColor,
     AnyOneType,
@@ -39,42 +39,42 @@ pub(crate) enum AddManaChoiceKind {
 }
 
 impl AddManaChoiceKind {
-    pub(crate) fn any_one(self) -> bool {
+    pub fn any_one(self) -> bool {
         matches!(self, Self::AnyOneColor | Self::AnyOneType)
     }
 
-    pub(crate) fn allow_colorless(self) -> bool {
+    pub fn allow_colorless(self) -> bool {
         matches!(self, Self::AnyOneType | Self::AnyType)
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct AddManaChoiceClause<'a> {
-    pub(crate) kind: AddManaChoiceKind,
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
+pub struct AddManaChoiceClause<'a> {
+    pub kind: AddManaChoiceKind,
+    pub tail_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct AddManaClauseFacts<'a> {
-    pub(crate) imprinted_colors: bool,
-    pub(crate) commander_identity: bool,
-    pub(crate) different_colors: bool,
-    pub(crate) chosen_color_reference: bool,
-    pub(crate) one_that_color_tail: Option<&'a [OwnedLexToken]>,
-    pub(crate) amount_that_color: bool,
-    pub(crate) choice: Option<AddManaChoiceClause<'a>>,
+pub struct AddManaClauseFacts<'a> {
+    pub imprinted_colors: bool,
+    pub commander_identity: bool,
+    pub different_colors: bool,
+    pub chosen_color_reference: bool,
+    pub one_that_color_tail: Option<&'a [OwnedLexToken]>,
+    pub amount_that_color: bool,
+    pub choice: Option<AddManaChoiceClause<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct FixedManaOutput {
-    pub(crate) mana: Vec<ManaSymbol>,
-    pub(crate) has_explicit_symbol: bool,
-    pub(crate) last_mana_token: Option<usize>,
-    pub(crate) first_for_each_token: Option<usize>,
+pub struct FixedManaOutput {
+    pub mana: Vec<ManaSymbol>,
+    pub has_explicit_symbol: bool,
+    pub last_mana_token: Option<usize>,
+    pub first_for_each_token: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FixedManaTailKind {
+pub enum FixedManaTailKind {
     ChosenColor,
     Pool,
     Instead,
@@ -82,30 +82,30 @@ pub(crate) enum FixedManaTailKind {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ColorsAmongSpan<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
+pub struct ColorsAmongSpan<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct AnyColorAmongSpan<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
+pub struct AnyColorAmongSpan<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum LandCouldProduceShape<'a> {
+pub enum LandCouldProduceShape<'a> {
     CouldProduceFilter(&'a [OwnedLexToken]),
     TriggeringEventProducedFilter(&'a [OwnedLexToken]),
     UnsupportedTrailing,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum AnyCombinationManaError {
+pub enum AnyCombinationManaError {
     MissingColors,
     UnsupportedSymbol(String),
     NonColoredSymbol(String),
 }
 
-pub(crate) fn parse_add_mana_clause_facts(tokens: &[OwnedLexToken]) -> AddManaClauseFacts<'_> {
+pub fn parse_add_mana_clause_facts(tokens: &[OwnedLexToken]) -> AddManaClauseFacts<'_> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     let has_card = word_occurs(&words, &["card", "cards"]);
@@ -131,7 +131,7 @@ pub(crate) fn parse_add_mana_clause_facts(tokens: &[OwnedLexToken]) -> AddManaCl
     }
 }
 
-pub(crate) fn parse_fixed_mana_output(tokens: &[OwnedLexToken]) -> FixedManaOutput {
+pub fn parse_fixed_mana_output(tokens: &[OwnedLexToken]) -> FixedManaOutput {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     let first_for_each_token = phrase_offset(&words, FOR_EACH_PREFIX)
@@ -160,7 +160,7 @@ pub(crate) fn parse_fixed_mana_output(tokens: &[OwnedLexToken]) -> FixedManaOutp
     }
 }
 
-pub(crate) fn classify_fixed_mana_tail(tokens: &[OwnedLexToken]) -> FixedManaTailKind {
+pub fn classify_fixed_mana_tail(tokens: &[OwnedLexToken]) -> FixedManaTailKind {
     let words = TokenWordView::new(tokens).word_refs();
     if phrase_is_prefix(&words, CHOSEN_COLOR_MANA_TAIL_PREFIX)
         && words_after_prefix_are_allowed(
@@ -180,7 +180,7 @@ pub(crate) fn classify_fixed_mana_tail(tokens: &[OwnedLexToken]) -> FixedManaTai
     FixedManaTailKind::Unsupported
 }
 
-pub(crate) fn parse_colors_among_span(tokens: &[OwnedLexToken]) -> Option<ColorsAmongSpan<'_>> {
+pub fn parse_colors_among_span(tokens: &[OwnedLexToken]) -> Option<ColorsAmongSpan<'_>> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     phrase_offset(&words, FOR_EACH_COLOR_AMONG_PHRASE)?;
@@ -197,9 +197,7 @@ pub(crate) fn parse_colors_among_span(tokens: &[OwnedLexToken]) -> Option<Colors
     })
 }
 
-pub(crate) fn parse_any_color_among_span(
-    tokens: &[OwnedLexToken],
-) -> Option<AnyColorAmongSpan<'_>> {
+pub fn parse_any_color_among_span(tokens: &[OwnedLexToken]) -> Option<AnyColorAmongSpan<'_>> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     if !phrase_is_prefix(&words, ONE_MANA_OF_ANY_COLOR_AMONG_PHRASE) {
@@ -211,7 +209,7 @@ pub(crate) fn parse_any_color_among_span(
     (!filter_tokens.is_empty()).then_some(AnyColorAmongSpan { filter_tokens })
 }
 
-pub(crate) fn parse_or_mana_color_choices(tokens: &[OwnedLexToken]) -> Option<Vec<Color>> {
+pub fn parse_or_mana_color_choices(tokens: &[OwnedLexToken]) -> Option<Vec<Color>> {
     let mut has_or = false;
     let mut colors = Vec::new();
     for token in tokens {
@@ -240,7 +238,7 @@ pub(crate) fn parse_or_mana_color_choices(tokens: &[OwnedLexToken]) -> Option<Ve
     Some(colors)
 }
 
-pub(crate) fn parse_any_combination_mana_colors(
+pub fn parse_any_combination_mana_colors(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<Color>>, AnyCombinationManaError> {
     let words = TokenWordView::new(tokens).word_refs();
@@ -274,9 +272,7 @@ pub(crate) fn parse_any_combination_mana_colors(
     Ok(Some(colors))
 }
 
-pub(crate) fn parse_any_combination_mana_tail(
-    tokens: &[OwnedLexToken],
-) -> Option<&[OwnedLexToken]> {
+pub fn parse_any_combination_mana_tail(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let words = TokenWordView::new(tokens).word_refs();
     let offset = phrase_offset(&words, ANY_COMBINATION_OF_PHRASE)?;
     let where_word = words
@@ -291,7 +287,7 @@ pub(crate) fn parse_any_combination_mana_tail(
     tokens.get(where_token..)
 }
 
-pub(crate) fn is_mana_pool_tail(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_mana_pool_tail(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens).word_refs();
     phrase_is_prefix(&words, &["to"])
         && word_occurs(&words, &["mana"])
@@ -299,7 +295,7 @@ pub(crate) fn is_mana_pool_tail(tokens: &[OwnedLexToken]) -> bool {
         && words_are_allowed(&words, MANA_POOL_TAIL_WORDS)
 }
 
-pub(crate) fn parse_land_could_produce_shape(
+pub fn parse_land_could_produce_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LandCouldProduceShape<'_>> {
     let view = TokenWordView::new(tokens);
@@ -325,7 +321,7 @@ pub(crate) fn parse_land_could_produce_shape(
     }
 }
 
-pub(crate) fn is_player_choice_tail(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_player_choice_tail(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens).word_refs();
     const PHRASES: &[&[&str]] = &[
         &["they", "choose"],
@@ -338,18 +334,18 @@ pub(crate) fn is_player_choice_tail(tokens: &[OwnedLexToken]) -> bool {
         .any(|phrase| phrase_is_complete(&words, phrase))
 }
 
-pub(crate) fn is_removed_this_way_tail(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_removed_this_way_tail(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens).word_refs();
     phrase_is_prefix(&words, &["for", "each"])
         && phrase_is_suffix(&words, &["removed", "this", "way"])
 }
 
-pub(crate) fn is_among_tail(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_among_tail(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens).word_refs();
     phrase_is_prefix(&words, &["among"])
 }
 
-pub(crate) fn is_instead_if_tail(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_instead_if_tail(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens).word_refs();
     phrase_is_prefix(&words, &["instead", "if"])
 }

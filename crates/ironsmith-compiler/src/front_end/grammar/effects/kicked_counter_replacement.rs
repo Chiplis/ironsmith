@@ -10,22 +10,22 @@ use super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::{leaf, primitives, structure};
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CounterSpellTargetReference {
+pub enum CounterSpellTargetReference {
     Explicit(TargetAst),
     PriorSpell(Option<TextSpan>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CounterSpellManaValueGate {
-    pub(crate) target: CounterSpellTargetReference,
-    pub(crate) limit: Value,
-    pub(crate) filter: ObjectFilter,
+pub struct CounterSpellManaValueGate {
+    pub target: CounterSpellTargetReference,
+    pub limit: Value,
+    pub filter: ObjectFilter,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct KickedCounterReplacementFact {
-    pub(crate) base: CounterSpellManaValueGate,
-    pub(crate) kicked: CounterSpellManaValueGate,
+pub struct KickedCounterReplacementFact {
+    pub base: CounterSpellManaValueGate,
+    pub kicked: CounterSpellManaValueGate,
 }
 
 fn mana_value_gate_tail<'a>(input: &mut LexStream<'a>) -> WResult<(Value, ObjectFilter)> {
@@ -77,7 +77,7 @@ fn parse_kicked_gate_lexed<'a>(input: &mut LexStream<'a>) -> WResult<CounterSpel
     })
 }
 
-pub(crate) fn parse_kicked_counter_replacement_tokens(
+pub fn parse_kicked_counter_replacement_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<KickedCounterReplacementFact> {
     let sentences = structure::split_lexed_sentences(tokens);

@@ -9,7 +9,7 @@ use crate::types::{CardType, Subtype, SubtypeFamily};
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ChoiceTypePhraseSyntaxError {
+pub enum ChoiceTypePhraseSyntaxError {
     MissingCreatureSubtypeExclusion,
     UnsupportedCreatureSubtypeExclusion,
     MissingColorExclusion,
@@ -17,41 +17,41 @@ pub(crate) enum ChoiceTypePhraseSyntaxError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ChoiceCreatureTypePhrase {
-    pub(crate) consumed: usize,
-    pub(crate) excluded_subtypes: Vec<Subtype>,
+pub struct ChoiceCreatureTypePhrase {
+    pub consumed: usize,
+    pub excluded_subtypes: Vec<Subtype>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChoiceColorPhrase {
-    pub(crate) consumed: usize,
-    pub(crate) excluded: Option<ColorSet>,
+pub struct ChoiceColorPhrase {
+    pub consumed: usize,
+    pub excluded: Option<ColorSet>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ChoiceCardTypePhrase {
-    pub(crate) consumed: usize,
-    pub(crate) options: Vec<CardType>,
+pub struct ChoiceCardTypePhrase {
+    pub consumed: usize,
+    pub options: Vec<CardType>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChoiceSimpleTypePhrase {
-    pub(crate) consumed: usize,
+pub struct ChoiceSimpleTypePhrase {
+    pub consumed: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChoiceLandTypePhrase {
-    pub(crate) consumed: usize,
-    pub(crate) exclude_basic: bool,
+pub struct ChoiceLandTypePhrase {
+    pub consumed: usize,
+    pub exclude_basic: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChoiceSubtypeFamilyPhrase {
-    pub(crate) consumed: usize,
-    pub(crate) family: SubtypeFamily,
+pub struct ChoiceSubtypeFamilyPhrase {
+    pub consumed: usize,
+    pub family: SubtypeFamily,
 }
 
-pub(crate) fn parse_choice_creature_type_phrase_words(
+pub fn parse_choice_creature_type_phrase_words(
     words: &[&str],
 ) -> Result<Option<ChoiceCreatureTypePhrase>, ChoiceTypePhraseSyntaxError> {
     let mut input: primitives::WordSliceInput<'_> = words;
@@ -79,7 +79,7 @@ pub(crate) fn parse_choice_creature_type_phrase_words(
     }))
 }
 
-pub(crate) fn parse_choice_color_phrase_words(
+pub fn parse_choice_color_phrase_words(
     words: &[&str],
 ) -> Result<Option<ChoiceColorPhrase>, ChoiceTypePhraseSyntaxError> {
     let mut input: primitives::WordSliceInput<'_> = words;
@@ -111,7 +111,7 @@ pub(crate) fn parse_choice_color_phrase_words(
     }))
 }
 
-pub(crate) fn parse_choice_card_type_phrase_words(words: &[&str]) -> Option<ChoiceCardTypePhrase> {
+pub fn parse_choice_card_type_phrase_words(words: &[&str]) -> Option<ChoiceCardTypePhrase> {
     let mut input: primitives::WordSliceInput<'_> = words;
     parse_choose_prefix(&mut input).ok()?;
 
@@ -183,17 +183,15 @@ pub(crate) fn parse_choice_card_type_phrase_words(words: &[&str]) -> Option<Choi
     })
 }
 
-pub(crate) fn parse_choice_player_phrase_words(words: &[&str]) -> Option<ChoiceSimpleTypePhrase> {
+pub fn parse_choice_player_phrase_words(words: &[&str]) -> Option<ChoiceSimpleTypePhrase> {
     parse_simple_choice_phrase(words, &["player"])
 }
 
-pub(crate) fn parse_choice_basic_land_type_phrase_words(
-    words: &[&str],
-) -> Option<ChoiceSimpleTypePhrase> {
+pub fn parse_choice_basic_land_type_phrase_words(words: &[&str]) -> Option<ChoiceSimpleTypePhrase> {
     parse_simple_choice_phrase(words, &["basic", "land", "type"])
 }
 
-pub(crate) fn parse_choice_land_type_phrase_words(words: &[&str]) -> Option<ChoiceLandTypePhrase> {
+pub fn parse_choice_land_type_phrase_words(words: &[&str]) -> Option<ChoiceLandTypePhrase> {
     let mut input: primitives::WordSliceInput<'_> = words;
     parse_choose_prefix(&mut input).ok()?;
     let exclude_basic = opt(primitives::word_slice_exact("nonbasic"))
@@ -207,7 +205,7 @@ pub(crate) fn parse_choice_land_type_phrase_words(words: &[&str]) -> Option<Choi
     })
 }
 
-pub(crate) fn parse_choice_subtype_family_phrase_words(
+pub fn parse_choice_subtype_family_phrase_words(
     words: &[&str],
 ) -> Option<ChoiceSubtypeFamilyPhrase> {
     let mut input: primitives::WordSliceInput<'_> = words;

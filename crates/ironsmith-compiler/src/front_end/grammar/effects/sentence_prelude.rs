@@ -7,7 +7,7 @@ use super::super::super::lexer::{OwnedLexToken, TokenWordView};
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum SentencePreludeShape {
+pub enum SentencePreludeShape {
     XCantBeZero,
     RollDiceChooseOneResult {
         count: u32,
@@ -16,7 +16,7 @@ pub(crate) enum SentencePreludeShape {
     },
 }
 
-pub(crate) fn parse_sentence_prelude_shape_tokens(
+pub fn parse_sentence_prelude_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SentencePreludeShape> {
     let words = TokenWordView::new(tokens).word_refs();

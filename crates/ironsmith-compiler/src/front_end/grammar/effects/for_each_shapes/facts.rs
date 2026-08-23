@@ -7,7 +7,7 @@ use crate::grammar::primitives;
 use crate::lexer::OwnedLexToken;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ManaClauseShape {
+pub enum ManaClauseShape {
     Replacement,
     AdditionalTrigger,
 }
@@ -84,11 +84,11 @@ fn has_word(words: &[&str], expected: &'static str) -> bool {
     has_parser(words, word(expected))
 }
 
-pub(crate) fn has_demonstrative_object_reference_words(words: &[&str]) -> bool {
+pub fn has_demonstrative_object_reference_words(words: &[&str]) -> bool {
     has_parser(words, demonstrative_object)
 }
 
-pub(crate) fn is_target_player_damage_subject_words(words: &[&str]) -> bool {
+pub fn is_target_player_damage_subject_words(words: &[&str]) -> bool {
     let mut input = words;
     if alt((
         (word("target"), word("player")),
@@ -102,7 +102,7 @@ pub(crate) fn is_target_player_damage_subject_words(words: &[&str]) -> bool {
     has_parser(words, damage_by_this_creature_this) && has_parser(words, this_turn)
 }
 
-pub(crate) fn parse_mana_clause_shape_words(words: &[&str]) -> Option<ManaClauseShape> {
+pub fn parse_mana_clause_shape_words(words: &[&str]) -> Option<ManaClauseShape> {
     if !has_parser(words, for_mana) {
         return None;
     }
@@ -120,15 +120,15 @@ pub(crate) fn parse_mana_clause_shape_words(words: &[&str]) -> Option<ManaClause
     trigger.then_some(ManaClauseShape::AdditionalTrigger)
 }
 
-pub(crate) fn starts_life_total_becomes(tokens: &[OwnedLexToken]) -> bool {
+pub fn starts_life_total_becomes(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, primitives::phrase(&["life", "total", "becomes"])).is_some()
 }
 
-pub(crate) fn contains_may(tokens: &[OwnedLexToken]) -> bool {
+pub fn contains_may(tokens: &[OwnedLexToken]) -> bool {
     primitives::contains_word(tokens, "may")
 }
 
-pub(crate) fn starts_choose(tokens: &[OwnedLexToken]) -> bool {
+pub fn starts_choose(tokens: &[OwnedLexToken]) -> bool {
     tokens
         .first()
         .is_some_and(|token| token.is_word("choose") || token.is_word("chooses"))

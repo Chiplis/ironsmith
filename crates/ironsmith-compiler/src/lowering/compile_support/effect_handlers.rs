@@ -6,7 +6,7 @@ use crate::condition_antecedent::{
     predicate_source_counter_antecedent,
 };
 
-pub(crate) fn compile_delayed_trigger_spec(
+pub fn compile_delayed_trigger_spec(
     trigger: &TriggerSpec,
 ) -> Result<ironsmith_core::DelayedTriggerSpec, CardTextError> {
     match trigger {

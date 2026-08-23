@@ -8,7 +8,7 @@ use crate::model::facts::StatementReplacementSurfaceKind;
 use super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::primitives;
 
-pub(crate) fn parse_statement_replacement_surface_tokens(
+pub fn parse_statement_replacement_surface_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<StatementReplacementSurfaceKind> {
     primitives::parse_all(

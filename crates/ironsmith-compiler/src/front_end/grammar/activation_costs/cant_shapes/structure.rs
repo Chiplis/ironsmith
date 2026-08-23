@@ -12,13 +12,13 @@ use crate::grammar::{activation_restrictions, primitives};
 use crate::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct MultiSentenceCantDecline<'a> {
-    pub(crate) first_sentence_tokens: &'a [OwnedLexToken],
-    pub(crate) remaining_sentence_tokens: &'a [OwnedLexToken],
+pub struct MultiSentenceCantDecline<'a> {
+    pub first_sentence_tokens: &'a [OwnedLexToken],
+    pub remaining_sentence_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DirectTemporaryCastSubject {
+pub enum DirectTemporaryCastSubject {
     YourOpponents,
     EachOpponent,
     EachPlayer,
@@ -28,69 +28,69 @@ pub(crate) enum DirectTemporaryCastSubject {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DirectTemporaryCastDecline<'a> {
-    pub(crate) subject: DirectTemporaryCastSubject,
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) negation_tokens: &'a [OwnedLexToken],
-    pub(crate) spell_descriptor_tokens: &'a [OwnedLexToken],
-    pub(crate) duration_tokens: &'a [OwnedLexToken],
+pub struct DirectTemporaryCastDecline<'a> {
+    pub subject: DirectTemporaryCastSubject,
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub negation_tokens: &'a [OwnedLexToken],
+    pub spell_descriptor_tokens: &'a [OwnedLexToken],
+    pub duration_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum IteratedPlayerLead {
+pub enum IteratedPlayerLead {
     Each,
     ForEach,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum IteratedPlayerScope {
+pub enum IteratedPlayerScope {
     Player,
     Opponent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct IteratedPlayerWhoDecline<'a> {
-    pub(crate) lead: IteratedPlayerLead,
-    pub(crate) player: IteratedPlayerScope,
-    pub(crate) prefix_tokens: &'a [OwnedLexToken],
-    pub(crate) predicate_tokens: &'a [OwnedLexToken],
+pub struct IteratedPlayerWhoDecline<'a> {
+    pub lead: IteratedPlayerLead,
+    pub player: IteratedPlayerScope,
+    pub prefix_tokens: &'a [OwnedLexToken],
+    pub predicate_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LeadingIfCantDecline<'a> {
-    pub(crate) if_tokens: &'a [OwnedLexToken],
-    pub(crate) clause_tokens: &'a [OwnedLexToken],
+pub struct LeadingIfCantDecline<'a> {
+    pub if_tokens: &'a [OwnedLexToken],
+    pub clause_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StatModifierVerb {
+pub enum StatModifierVerb {
     Get,
     Gets,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct StatModifierConjunctionDecline<'a> {
-    pub(crate) verb: StatModifierVerb,
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) modifier_tokens: &'a [OwnedLexToken],
-    pub(crate) negation_tokens: &'a [OwnedLexToken],
-    pub(crate) negated_action_tokens: &'a [OwnedLexToken],
+pub struct StatModifierConjunctionDecline<'a> {
+    pub verb: StatModifierVerb,
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub modifier_tokens: &'a [OwnedLexToken],
+    pub negation_tokens: &'a [OwnedLexToken],
+    pub negated_action_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CantConjunctionExpansion {
-    pub(crate) negated_anchor: usize,
-    pub(crate) segments: Vec<Vec<OwnedLexToken>>,
+pub struct CantConjunctionExpansion {
+    pub negated_anchor: usize,
+    pub segments: Vec<Vec<OwnedLexToken>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SourceCantSubject {
+pub enum SourceCantSubject {
     This,
     ThisCreature,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GenericNegatedCantAction<'a> {
+pub enum GenericNegatedCantAction<'a> {
     SourceBlocksAttacker {
         source: SourceCantSubject,
         subject_tokens: &'a [OwnedLexToken],
@@ -104,14 +104,14 @@ pub(crate) enum GenericNegatedCantAction<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct NegatedUntapRemainder<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) negation_tokens: &'a [OwnedLexToken],
-    pub(crate) pre_untap_tokens: &'a [OwnedLexToken],
-    pub(crate) post_untap_tokens: &'a [OwnedLexToken],
+pub struct NegatedUntapRemainder<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub negation_tokens: &'a [OwnedLexToken],
+    pub pre_untap_tokens: &'a [OwnedLexToken],
+    pub post_untap_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_multi_sentence_cant_decline_tokens(
+pub fn parse_multi_sentence_cant_decline_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<MultiSentenceCantDecline<'_>> {
     primitives::parse_all(
@@ -122,7 +122,7 @@ pub(crate) fn parse_multi_sentence_cant_decline_tokens(
     .ok()
 }
 
-pub(crate) fn parse_direct_temporary_cast_decline_tokens(
+pub fn parse_direct_temporary_cast_decline_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DirectTemporaryCastDecline<'_>> {
     let negation = activation_restrictions::parse_activation_negation_span_tokens(tokens)?;
@@ -148,7 +148,7 @@ pub(crate) fn parse_direct_temporary_cast_decline_tokens(
     })
 }
 
-pub(crate) fn parse_iterated_player_who_decline_tokens(
+pub fn parse_iterated_player_who_decline_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<IteratedPlayerWhoDecline<'_>> {
     primitives::parse_all(
@@ -159,7 +159,7 @@ pub(crate) fn parse_iterated_player_who_decline_tokens(
     .ok()
 }
 
-pub(crate) fn parse_leading_if_cant_decline_tokens(
+pub fn parse_leading_if_cant_decline_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LeadingIfCantDecline<'_>> {
     primitives::parse_all(
@@ -170,7 +170,7 @@ pub(crate) fn parse_leading_if_cant_decline_tokens(
     .ok()
 }
 
-pub(crate) fn parse_stat_modifier_conjunction_decline_tokens(
+pub fn parse_stat_modifier_conjunction_decline_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<StatModifierConjunctionDecline<'_>> {
     let negation = activation_restrictions::parse_activation_negation_span_tokens(tokens)?;
@@ -189,7 +189,7 @@ pub(crate) fn parse_stat_modifier_conjunction_decline_tokens(
     })
 }
 
-pub(crate) fn parse_cant_conjunction_expansion_tokens(
+pub fn parse_cant_conjunction_expansion_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CantConjunctionExpansion> {
     let segments = primitives::split_lexed_slices_on_and(tokens);
@@ -303,7 +303,7 @@ pub(crate) fn parse_cant_conjunction_expansion_tokens(
     })
 }
 
-pub(crate) fn parse_generic_negated_cant_action_tokens(
+pub fn parse_generic_negated_cant_action_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<GenericNegatedCantAction<'_>> {
     let negation = activation_restrictions::parse_activation_negation_span_tokens(tokens)?;
@@ -343,7 +343,7 @@ pub(crate) fn parse_generic_negated_cant_action_tokens(
     })
 }
 
-pub(crate) fn parse_negated_untap_remainder_tokens(
+pub fn parse_negated_untap_remainder_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<NegatedUntapRemainder<'_>> {
     let negation = activation_restrictions::parse_activation_negation_span_tokens(tokens)?;

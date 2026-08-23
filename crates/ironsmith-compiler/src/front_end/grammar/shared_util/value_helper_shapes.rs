@@ -11,48 +11,48 @@ use crate::util::{is_article, source_reference_surface_for_words, this_source_su
 use super::value_shapes::{self, AggregateValueMetric};
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SpellCastThisTurnSurface {
-    pub(crate) filter_end: usize,
-    pub(crate) player: PlayerFilter,
-    pub(crate) exclude_source: bool,
+pub struct SpellCastThisTurnSurface {
+    pub filter_end: usize,
+    pub player: PlayerFilter,
+    pub exclude_source: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct NumberOfPrefix {
-    pub(crate) number_of_start: usize,
-    pub(crate) consumed: usize,
+pub struct NumberOfPrefix {
+    pub number_of_start: usize,
+    pub consumed: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum CounterValueReference {
+pub enum CounterValueReference {
     Source(Option<SourceReferenceSurface>),
     Tagged,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CounterReferenceValueShape {
-    pub(crate) counter_type: Option<CounterType>,
-    pub(crate) reference: CounterValueReference,
+pub struct CounterReferenceValueShape {
+    pub counter_type: Option<CounterType>,
+    pub reference: CounterValueReference,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AggregateKind {
+pub enum AggregateKind {
     Total,
     Greatest,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AggregateValueKind {
+pub enum AggregateValueKind {
     Power,
     Toughness,
     ManaValue,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AggregatePrefix {
-    pub(crate) aggregate: AggregateKind,
-    pub(crate) value_kind: AggregateValueKind,
-    pub(crate) consumed: usize,
+pub struct AggregatePrefix {
+    pub aggregate: AggregateKind,
+    pub value_kind: AggregateValueKind,
+    pub consumed: usize,
 }
 
 const SPELL_CAST_SUFFIXES: &[(&[&str], PlayerFilter)] = &[
@@ -86,11 +86,9 @@ const SPELL_CAST_SUFFIXES: &[(&[&str], PlayerFilter)] = &[
 ];
 #[path = "value_helper_shapes/reference_values.rs"]
 mod reference_values;
-pub(crate) use reference_values::*;
+pub use reference_values::*;
 
-pub(crate) fn parse_spell_cast_this_turn_surface(
-    words: &[&str],
-) -> Option<SpellCastThisTurnSurface> {
+pub fn parse_spell_cast_this_turn_surface(words: &[&str]) -> Option<SpellCastThisTurnSurface> {
     if !has_any(words, &["spell", "spells"])
         || !has_any(words, &["cast", "casts"])
         || !has_word(words, "this")
@@ -114,7 +112,7 @@ pub(crate) fn parse_spell_cast_this_turn_surface(
     None
 }
 
-pub(crate) fn parse_spells_cast_this_turn_value_words(words: &[&str]) -> Option<Value> {
+pub fn parse_spells_cast_this_turn_value_words(words: &[&str]) -> Option<Value> {
     let surface = parse_spell_cast_this_turn_surface(words)?;
     let filter = parse_object_filter_words(&words[..surface.filter_end], false).ok()?;
     Some(Value::SpellsCastThisTurnMatching {
@@ -124,7 +122,7 @@ pub(crate) fn parse_spells_cast_this_turn_value_words(words: &[&str]) -> Option<
     })
 }
 
-pub(crate) fn parse_aggregate_scope_value_words(words: &[&str]) -> Option<Value> {
+pub fn parse_aggregate_scope_value_words(words: &[&str]) -> Option<Value> {
     let surface = value_shapes::parse_aggregate_value_surface(words)?;
     let filter = parse_object_filter_words(surface.scope_words, false).ok()?;
     match surface.metric {
@@ -141,7 +139,7 @@ pub(crate) fn parse_aggregate_scope_value_words(words: &[&str]) -> Option<Value>
     }
 }
 
-pub(crate) fn parse_prior_effect_metric_source(words: &[&str]) -> Option<EffectMetricSource> {
+pub fn parse_prior_effect_metric_source(words: &[&str]) -> Option<EffectMetricSource> {
     let references_prior_effect = permission_shapes::find_words(words, &["this", "way"]).is_some()
         || words.iter().enumerate().any(|(index, word)| {
             matches!(
@@ -175,7 +173,7 @@ pub(crate) fn parse_prior_effect_metric_source(words: &[&str]) -> Option<EffectM
 /// Keeping the action typed lets reference resolution bind numeric queries to
 /// an exact producer while rendering preserves the authored relationship
 /// without inferring semantics from a generated tag name.
-pub(crate) fn parse_prior_effect_action(words: &[&str]) -> Option<(PriorEffectAction, usize)> {
+pub fn parse_prior_effect_action(words: &[&str]) -> Option<(PriorEffectAction, usize)> {
     const PATTERNS: &[(&[&str], PriorEffectAction)] = &[
         (&["phased", "out"], PriorEffectAction::PhasedOut),
         (
@@ -250,7 +248,7 @@ pub(crate) fn parse_prior_effect_action(words: &[&str]) -> Option<(PriorEffectAc
     })
 }
 
-pub(crate) fn parse_number_of_prefix(words: &[&str]) -> Option<NumberOfPrefix> {
+pub fn parse_number_of_prefix(words: &[&str]) -> Option<NumberOfPrefix> {
     let number_of_start = usize::from(permission_shapes::prefix_words(words, &["the"]));
     permission_shapes::starts_at_words(words, number_of_start, &["number", "of"]).then_some(
         NumberOfPrefix {
@@ -260,7 +258,7 @@ pub(crate) fn parse_number_of_prefix(words: &[&str]) -> Option<NumberOfPrefix> {
     )
 }
 
-pub(crate) fn parse_aggregate_prefix(words: &[&str]) -> Option<AggregatePrefix> {
+pub fn parse_aggregate_prefix(words: &[&str]) -> Option<AggregatePrefix> {
     let mut index = usize::from(permission_shapes::prefix_words(words, &["the"]));
     let aggregate = match words.get(index).copied()? {
         "total" => AggregateKind::Total,
@@ -293,7 +291,7 @@ pub(crate) fn parse_aggregate_prefix(words: &[&str]) -> Option<AggregatePrefix> 
     })
 }
 
-pub(crate) fn starts_equal_to_opponents_you_have(words: &[&str]) -> bool {
+pub fn starts_equal_to_opponents_you_have(words: &[&str]) -> bool {
     permission_shapes::prefix_words(
         words,
         &[
@@ -312,7 +310,7 @@ pub(crate) fn starts_equal_to_opponents_you_have(words: &[&str]) -> bool {
     )
 }
 
-pub(crate) fn starts_or_power_toughness(words: &[&str]) -> bool {
+pub fn starts_or_power_toughness(words: &[&str]) -> bool {
     permission_shapes::prefix_words(words, &["or", "power"])
         || permission_shapes::prefix_words(words, &["or", "toughness"])
 }

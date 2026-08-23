@@ -344,12 +344,12 @@ fn parse_exile_library_then_shuffle_graveyard_chain_lexed(
     ]))
 }
 
-pub(crate) fn looks_like_multi_create_chain_lexed(tokens: &[OwnedLexToken]) -> bool {
+pub fn looks_like_multi_create_chain_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches!(find_verb_lexed(tokens), Some((Verb::Create, _)))
         && chain_grammar::count_token_mentions(tokens) >= 2
 }
 
-pub(crate) fn parse_reveal_source_exiled_permanents_sentence_lexed(
+pub fn parse_reveal_source_exiled_permanents_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
     let shape = parse_reveal_source_exiled_permanents_tokens(tokens)?;
@@ -397,15 +397,13 @@ pub(crate) fn parse_reveal_source_exiled_permanents_sentence_lexed(
     }])
 }
 
-pub(crate) fn parse_effect_chain_lexed(
-    tokens: &[OwnedLexToken],
-) -> Result<Vec<EffectAst>, CardTextError> {
+pub fn parse_effect_chain_lexed(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError> {
     // Chain parsing recursively re-enters the sentence dispatcher for
     // nested clauses and quoted/conditional payloads.  The public chain
     // entrypoint is also used directly by compiler tests and lower-level
     // callers, so it needs the same stack growth protection as the sentence
     // entrypoint.
-    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+    crate::stack::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
         parse_effect_chain_lexed_inner(tokens)
     })
 }
@@ -533,7 +531,7 @@ fn parse_effect_chain_lexed_inner(
 /// sentence-sequence reference resolution binds it to the immediately prior
 /// affected-object tag, then runtime iteration evaluates each object's LKI
 /// controller and mana value independently.
-pub(crate) fn parse_each_prior_affected_object_controller_mana_value_life(
+pub fn parse_each_prior_affected_object_controller_mana_value_life(
     tokens: &[OwnedLexToken],
 ) -> Option<EffectAst> {
     let words = token_word_refs(tokens);
@@ -615,7 +613,7 @@ fn preserve_unique_nested_comma_then_surface(effects: &mut [EffectAst]) {
     }
 }
 
-pub(crate) fn preserve_coordinated_effect_chain_surface(
+pub fn preserve_coordinated_effect_chain_surface(
     tokens: &[OwnedLexToken],
     mut effects: Vec<EffectAst>,
 ) -> Vec<EffectAst> {
@@ -1316,7 +1314,7 @@ fn parse_effect_chain_uncoordinated_lexed(
     parse_effect_chain_with_subject_verb_primitives_lexed(tokens)
 }
 
-pub(crate) fn preserve_result_conjunction_body_lexed(
+pub fn preserve_result_conjunction_body_lexed(
     trailing_tokens: &[OwnedLexToken],
     effects: &mut Vec<EffectAst>,
 ) {
@@ -1373,7 +1371,7 @@ pub(crate) fn preserve_result_conjunction_body_lexed(
     }
 }
 
-pub(crate) fn preserve_leading_result_coordination_lexed(
+pub fn preserve_leading_result_coordination_lexed(
     tokens: &[OwnedLexToken],
     effects: &mut Vec<EffectAst>,
 ) {
@@ -1398,7 +1396,7 @@ pub(crate) fn preserve_leading_result_coordination_lexed(
     preserve_result_conjunction_body_lexed(prefix.trailing_tokens, nested);
 }
 
-pub(crate) fn parse_destroy_then_temporary_cant_attack_block_chain_lexed(
+pub fn parse_destroy_then_temporary_cant_attack_block_chain_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if let Some(split) = chain_grammar::parse_destroy_restriction_splits_tokens(tokens)
@@ -1444,7 +1442,7 @@ fn is_would_enter_replacement_clause(tokens: &[OwnedLexToken]) -> bool {
     chain_grammar::parse_would_enter_replacement_tokens(tokens)
 }
 
-pub(crate) fn parse_or_action_clause_lexed(
+pub fn parse_or_action_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     if chain_grammar::parse_tap_or_untap_all_choice_tokens(tokens) {
@@ -1509,10 +1507,10 @@ pub(crate) fn parse_or_action_clause_lexed(
 #[path = "chain_carry/tests.rs"]
 mod tests;
 
-pub(crate) fn parse_effect_chain_with_subject_verb_primitives_lexed(
+pub fn parse_effect_chain_with_subject_verb_primitives_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+    crate::stack::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
         parse_effect_chain_with_subject_verb_primitives_lexed_unstacked(tokens)
     })
 }
@@ -1647,7 +1645,7 @@ fn parse_effect_chain_with_subject_verb_primitives_lexed_unstacked(
     parse_effect_chain_inner_lexed(tokens)
 }
 
-pub(crate) fn leading_condition_is_paid_label(tokens: &[OwnedLexToken]) -> bool {
+pub fn leading_condition_is_paid_label(tokens: &[OwnedLexToken]) -> bool {
     let Some(if_idx) = tokens.iter().position(|token| token.is_word("if")) else {
         return false;
     };
@@ -1675,7 +1673,7 @@ pub(crate) fn leading_condition_is_paid_label(tokens: &[OwnedLexToken]) -> bool 
     }
 }
 
-pub(crate) fn append_missing_coordinated_return_discard_tail(
+pub fn append_missing_coordinated_return_discard_tail(
     tokens: &[OwnedLexToken],
     effects: &mut Vec<EffectAst>,
 ) -> Result<(), CardTextError> {
@@ -1708,10 +1706,10 @@ pub(crate) fn append_missing_coordinated_return_discard_tail(
     Ok(())
 }
 
-pub(crate) fn parse_effect_chain_inner_lexed(
+pub fn parse_effect_chain_inner_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+    crate::stack::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
         parse_effect_chain_inner_lexed_unstacked(tokens, true)
     })
 }
@@ -2735,7 +2733,7 @@ fn bind_adjacent_life_stat_pronouns(effects: &mut [EffectAst], recognized_refere
 /// binder ran. The authored X uses and typed tagged stat value together prove
 /// that both adjacent life actions share one value; copying the complete value
 /// preserves the same LKI object identity and presentation hints.
-pub(crate) fn bind_adjacent_shared_x_life_stat_values(
+pub fn bind_adjacent_shared_x_life_stat_values(
     effects: &mut [EffectAst],
     tokens: &[OwnedLexToken],
 ) {
@@ -2828,7 +2826,7 @@ pub(crate) fn bind_adjacent_shared_x_life_stat_values(
 /// value parsing can synthesize the same TargetOnly prelude once per X use;
 /// the lexical one-target proof distinguishes that from two independently
 /// authored target slots.
-pub(crate) fn dedupe_shared_target_player_draw_lose_x(
+pub fn dedupe_shared_target_player_draw_lose_x(
     effects: &mut Vec<EffectAst>,
     tokens: &[OwnedLexToken],
 ) {
@@ -2947,7 +2945,7 @@ fn parse_tap_those_then_unattach_equipment_lexed(
     ]))
 }
 
-pub(crate) fn parse_may_have_any_number_tagged_phase_out_lexed(
+pub fn parse_may_have_any_number_tagged_phase_out_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<EffectAst> {
     if token_word_refs(tokens).as_slice()
@@ -2989,7 +2987,7 @@ pub(crate) fn parse_may_have_any_number_tagged_phase_out_lexed(
     })
 }
 
-pub(crate) fn parse_return_it_then_loses_all_abilities_lexed(
+pub fn parse_return_it_then_loses_all_abilities_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(return_tokens) = chain_grammar::split_return_then_loses_tokens(tokens) else {
@@ -3302,7 +3300,7 @@ fn parse_carried_cant_effects(
     Ok(Some(effects))
 }
 
-pub(crate) fn collapse_for_each_player_it_tag_followups(effects: &mut Vec<EffectAst>) {
+pub fn collapse_for_each_player_it_tag_followups(effects: &mut Vec<EffectAst>) {
     let mut idx = 0usize;
     while idx + 1 < effects.len() {
         let should_merge = match (&effects[idx], &effects[idx + 1]) {
@@ -3340,7 +3338,7 @@ pub(crate) fn collapse_for_each_player_it_tag_followups(effects: &mut Vec<Effect
     }
 }
 
-pub(crate) fn collapse_for_each_object_it_tag_followups(effects: &mut Vec<EffectAst>) {
+pub fn collapse_for_each_object_it_tag_followups(effects: &mut Vec<EffectAst>) {
     let mut idx = 0usize;
     while idx + 1 < effects.len() {
         let should_merge = match (&effects[idx], &effects[idx + 1]) {
@@ -3398,7 +3396,7 @@ fn is_revealed_this_way_scalar_reward(effect: &EffectAst) -> bool {
     )
 }
 
-pub(crate) fn parse_effect_clause_with_trailing_if_lexed(
+pub fn parse_effect_clause_with_trailing_if_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
     // Some clauses contain an authored trailing condition inside a larger
@@ -3664,7 +3662,7 @@ fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {
     ) || matches!(predicate, PredicateAst::TaggedMatches(tag, _) if tag.as_str() == ENCHANTED_TAG_NAME)
 }
 
-pub(crate) fn target_is_generic_token_filter(target: &TargetAst) -> bool {
+pub fn target_is_generic_token_filter(target: &TargetAst) -> bool {
     let TargetAst::Object(filter, _, _) = target else {
         return false;
     };
@@ -3677,7 +3675,7 @@ pub(crate) fn target_is_generic_token_filter(target: &TargetAst) -> bool {
         && filter.owner.is_none()
 }
 
-pub(crate) fn collapse_token_copy_next_end_step_exile_followup_lexed(
+pub fn collapse_token_copy_next_end_step_exile_followup_lexed(
     effects: &mut Vec<EffectAst>,
     tokens: &[OwnedLexToken],
 ) {
@@ -3750,7 +3748,7 @@ pub(crate) fn collapse_token_copy_next_end_step_exile_followup_lexed(
     }
 }
 
-pub(crate) fn collapse_token_copy_next_end_step_sacrifice_followup_lexed(
+pub fn collapse_token_copy_next_end_step_sacrifice_followup_lexed(
     effects: &mut Vec<EffectAst>,
     tokens: &[OwnedLexToken],
 ) {
@@ -3840,7 +3838,7 @@ pub(crate) fn collapse_token_copy_next_end_step_sacrifice_followup_lexed(
     }
 }
 
-pub(crate) fn collapse_token_copy_end_of_combat_exile_followup_lexed(
+pub fn collapse_token_copy_end_of_combat_exile_followup_lexed(
     effects: &mut Vec<EffectAst>,
     tokens: &[OwnedLexToken],
 ) {
@@ -3943,7 +3941,7 @@ fn split_on_comma_or_semicolon_lexed(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedL
     segments
 }
 
-pub(crate) fn expand_segments_with_comma_action_clauses_lexed(
+pub fn expand_segments_with_comma_action_clauses_lexed(
     segments: Vec<Vec<OwnedLexToken>>,
 ) -> Vec<Vec<OwnedLexToken>> {
     let mut expanded = Vec::new();
@@ -4001,7 +3999,7 @@ pub(crate) fn expand_segments_with_comma_action_clauses_lexed(
     expanded
 }
 
-pub(crate) fn expand_segments_with_multi_create_clauses_lexed(
+pub fn expand_segments_with_multi_create_clauses_lexed(
     segments: Vec<Vec<OwnedLexToken>>,
 ) -> Vec<Vec<OwnedLexToken>> {
     let mut expanded = Vec::new();
@@ -4075,7 +4073,7 @@ pub(crate) fn expand_segments_with_multi_create_clauses_lexed(
     expanded
 }
 
-pub(crate) fn expand_missing_verb_segment_lexed(
+pub fn expand_missing_verb_segment_lexed(
     previous: &[OwnedLexToken],
     segment: &[OwnedLexToken],
 ) -> Option<Vec<OwnedLexToken>> {
@@ -4144,14 +4142,14 @@ pub(crate) fn expand_missing_verb_segment_lexed(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CarryContext {
+pub enum CarryContext {
     Player(PlayerAst),
     ForEachPlayer,
     ForEachTargetPlayers(ChoiceCount),
     ForEachOpponent,
 }
 
-pub(crate) fn player_ast_from_filter_for_carry(filter: &PlayerFilter) -> Option<PlayerAst> {
+pub fn player_ast_from_filter_for_carry(filter: &PlayerFilter) -> Option<PlayerAst> {
     match filter {
         PlayerFilter::You => Some(PlayerAst::You),
         PlayerFilter::Opponent => Some(PlayerAst::Opponent),
@@ -4169,7 +4167,7 @@ pub(crate) fn player_ast_from_filter_for_carry(filter: &PlayerFilter) -> Option<
     }
 }
 
-pub(crate) fn player_owner_filter_from_target_for_carry(target: &TargetAst) -> Option<PlayerAst> {
+pub fn player_owner_filter_from_target_for_carry(target: &TargetAst) -> Option<PlayerAst> {
     match target {
         TargetAst::Player(filter, _) => player_ast_from_filter_for_carry(filter),
         TargetAst::Object(filter, _, _) => {
@@ -4206,7 +4204,7 @@ fn player_target_carry_context(target: &TargetAst) -> Option<CarryContext> {
     }
 }
 
-pub(crate) fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryContext> {
+pub fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryContext> {
     if matches!(effect, EffectAst::ForEachPlayer { .. }) {
         return Some(CarryContext::ForEachPlayer);
     }
@@ -4297,7 +4295,7 @@ pub(crate) fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryConte
     }
 }
 
-pub(crate) fn effect_uses_implicit_player(effect: &EffectAst) -> bool {
+pub fn effect_uses_implicit_player(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
@@ -4519,7 +4517,7 @@ fn subject_verb_player_action_player(effect: &EffectAst) -> Option<PlayerAst> {
     }
 }
 
-pub(crate) fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context: CarryContext) {
+pub fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context: CarryContext) {
     match carried_context {
         CarryContext::Player(carried_player) => {
             // When carrying an explicit target player/opponent into an implicit clause,
@@ -4588,7 +4586,7 @@ pub(crate) fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context
     }
 }
 
-pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
+pub fn maybe_apply_carried_player_with_clause_lexed(
     effect: &mut EffectAst,
     carried_context: CarryContext,
     clause_tokens: &[OwnedLexToken],
@@ -4755,7 +4753,7 @@ fn normalize_imperative_create_player(effect: &mut EffectAst) -> bool {
     false
 }
 
-pub(crate) fn bind_implicit_player_context(effect: &mut EffectAst, player: PlayerAst) {
+pub fn bind_implicit_player_context(effect: &mut EffectAst, player: PlayerAst) {
     match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             subject,
@@ -4981,55 +4979,51 @@ fn parse_leading_player_may_words(words: &[&str]) -> Option<PlayerAst> {
     parse_player_may_prefix(&mut input).ok()
 }
 
-pub(crate) fn parse_leading_player_may_lexed(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {
+pub fn parse_leading_player_may_lexed(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {
     let word_view = TokenWordView::new(tokens);
     let words = word_view.word_refs();
     parse_leading_player_may_words(&words)
 }
 
-pub(crate) fn find_verb(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)> {
+pub fn find_verb(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)> {
     find_verb_lexed(tokens)
 }
 
-pub(crate) fn parse_effect_chain(
-    tokens: &[OwnedLexToken],
-) -> Result<Vec<EffectAst>, CardTextError> {
+pub fn parse_effect_chain(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError> {
     parse_effect_chain_lexed(tokens)
 }
 
-pub(crate) fn parse_effect_chain_with_subject_verb_primitives(
+pub fn parse_effect_chain_with_subject_verb_primitives(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     parse_effect_chain_with_subject_verb_primitives_lexed(tokens)
 }
 
-pub(crate) fn parse_effect_chain_inner(
-    tokens: &[OwnedLexToken],
-) -> Result<Vec<EffectAst>, CardTextError> {
+pub fn parse_effect_chain_inner(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError> {
     parse_effect_chain_inner_lexed(tokens)
 }
 
-pub(crate) fn parse_effect_clause_with_trailing_if(
+pub fn parse_effect_clause_with_trailing_if(
     tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
     parse_effect_clause_with_trailing_if_lexed(tokens)
 }
 
-pub(crate) fn collapse_token_copy_next_end_step_exile_followup(
+pub fn collapse_token_copy_next_end_step_exile_followup(
     effects: &mut Vec<EffectAst>,
     tokens: &[OwnedLexToken],
 ) {
     collapse_token_copy_next_end_step_exile_followup_lexed(effects, tokens);
 }
 
-pub(crate) fn collapse_token_copy_end_of_combat_exile_followup(
+pub fn collapse_token_copy_end_of_combat_exile_followup(
     effects: &mut Vec<EffectAst>,
     tokens: &[OwnedLexToken],
 ) {
     collapse_token_copy_end_of_combat_exile_followup_lexed(effects, tokens);
 }
 
-pub(crate) fn maybe_apply_carried_player_with_clause(
+pub fn maybe_apply_carried_player_with_clause(
     effect: &mut EffectAst,
     carried_context: CarryContext,
     clause_tokens: &[OwnedLexToken],
@@ -5037,16 +5031,16 @@ pub(crate) fn maybe_apply_carried_player_with_clause(
     maybe_apply_carried_player_with_clause_lexed(effect, carried_context, clause_tokens);
 }
 
-pub(crate) fn remove_first_word(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+pub fn remove_first_word(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     remove_first_may_word_tokens(tokens)
 }
 
-pub(crate) fn remove_through_first_word(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+pub fn remove_through_first_word(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     remove_through_first_may_word_tokens(tokens)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Verb {
+pub enum Verb {
     Add,
     Move,
     Deal,

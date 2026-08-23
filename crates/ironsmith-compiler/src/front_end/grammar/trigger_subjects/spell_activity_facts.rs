@@ -6,14 +6,14 @@ use super::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SpellOriginSurface {
+pub enum SpellOriginSurface {
     Graveyard,
     Exile,
     Hand,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SpellOwnerSurface {
+pub enum SpellOwnerSurface {
     SubjectActor,
     /// A possessive pronoun agreeing with the already parsed casting actor
     /// (`a player casts a spell from their hand`). The trigger owns this
@@ -23,35 +23,35 @@ pub(crate) enum SpellOwnerSurface {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SpellActivitySurfaceFacts {
-    pub(crate) has_spell_noun: bool,
-    pub(crate) during_combat: bool,
-    pub(crate) during_their_turn: bool,
-    pub(crate) during_turn: Option<TriggerControllerReference>,
-    pub(crate) exact_spells_this_turn: Option<u32>,
-    pub(crate) min_spells_this_turn: Option<u32>,
-    pub(crate) count_all_spells_this_turn: bool,
-    pub(crate) from_not_hand: bool,
+pub struct SpellActivitySurfaceFacts {
+    pub has_spell_noun: bool,
+    pub during_combat: bool,
+    pub during_their_turn: bool,
+    pub during_turn: Option<TriggerControllerReference>,
+    pub exact_spells_this_turn: Option<u32>,
+    pub min_spells_this_turn: Option<u32>,
+    pub count_all_spells_this_turn: bool,
+    pub from_not_hand: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct DrawTurnSurfaceFacts {
-    pub(crate) exact_draws_this_turn: Option<u32>,
-    pub(crate) draw_numbers_this_turn: Vec<u32>,
-    pub(crate) except_first_in_draw_step: bool,
+pub struct DrawTurnSurfaceFacts {
+    pub exact_draws_this_turn: Option<u32>,
+    pub draw_numbers_this_turn: Vec<u32>,
+    pub except_first_in_draw_step: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SpellFilterSurfaceFacts<'a> {
-    pub(crate) is_unqualified_spell: bool,
-    pub(crate) has_spell_noun: bool,
-    pub(crate) origin: Option<SpellOriginSurface>,
-    pub(crate) owner: Option<SpellOwnerSurface>,
-    pub(crate) qualifier_words: Option<Vec<&'a str>>,
-    pub(crate) chosen_color_qualifier: bool,
+pub struct SpellFilterSurfaceFacts<'a> {
+    pub is_unqualified_spell: bool,
+    pub has_spell_noun: bool,
+    pub origin: Option<SpellOriginSurface>,
+    pub owner: Option<SpellOwnerSurface>,
+    pub qualifier_words: Option<Vec<&'a str>>,
+    pub chosen_color_qualifier: bool,
 }
 
-pub(crate) fn parse_spell_activity_surface_facts(words: &[&str]) -> SpellActivitySurfaceFacts {
+pub fn parse_spell_activity_surface_facts(words: &[&str]) -> SpellActivitySurfaceFacts {
     let has_spell_noun = exact_word_occurs(words, &["spell", "spells"]);
     let during_their_turn = any_sequence_present(
         words,
@@ -103,7 +103,7 @@ pub(crate) fn parse_spell_activity_surface_facts(words: &[&str]) -> SpellActivit
     }
 }
 
-pub(crate) fn parse_draw_turn_surface_facts(words: &[&str]) -> DrawTurnSurfaceFacts {
+pub fn parse_draw_turn_surface_facts(words: &[&str]) -> DrawTurnSurfaceFacts {
     let except_first_in_draw_step = draw_except_first_surface(words);
     let draw_numbers_this_turn = if except_first_in_draw_step {
         Vec::new()
@@ -122,9 +122,7 @@ pub(crate) fn parse_draw_turn_surface_facts(words: &[&str]) -> DrawTurnSurfaceFa
     }
 }
 
-pub(crate) fn parse_spell_filter_surface_facts<'a>(
-    words: &[&'a str],
-) -> SpellFilterSurfaceFacts<'a> {
+pub fn parse_spell_filter_surface_facts<'a>(words: &[&'a str]) -> SpellFilterSurfaceFacts<'a> {
     let is_unqualified_spell =
         word_slice_is_any(words, &[&["a", "spell"], &["spells"], &["spell"]]);
     let has_spell_noun = exact_word_occurs(words, &["spell", "spells"]);
@@ -250,11 +248,11 @@ fn is_nested_object_head(word: &str) -> bool {
     )
 }
 
-pub(crate) fn spell_activity_words_are_or_separator(words: &[&str]) -> bool {
+pub fn spell_activity_words_are_or_separator(words: &[&str]) -> bool {
     word_slice_is(words, &["or"])
 }
 
-pub(crate) fn trim_trailing_spell_auxiliary_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+pub fn trim_trailing_spell_auxiliary_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     let mut end = tokens.len();
     while tokens[..end]
         .last()
@@ -266,7 +264,7 @@ pub(crate) fn trim_trailing_spell_auxiliary_tokens(tokens: &[OwnedLexToken]) -> 
     &tokens[..end]
 }
 
-pub(crate) fn spell_tokens_have_noun(tokens: &[OwnedLexToken]) -> bool {
+pub fn spell_tokens_have_noun(tokens: &[OwnedLexToken]) -> bool {
     tokens
         .iter()
         .filter_map(OwnedLexToken::as_word)

@@ -1,4 +1,4 @@
-pub(crate) fn parse_gain_life_equal_to_power_sentence(
+pub fn parse_gain_life_equal_to_power_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_gain_life_equal_power_tokens(tokens) else {
@@ -22,7 +22,7 @@ pub(crate) fn parse_gain_life_equal_to_power_sentence(
     )]))
 }
 
-pub(crate) fn parse_prevent_damage_sentence(
+pub fn parse_prevent_damage_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     if let Some(effect) = effect_grammar::parse_prevent_damage_sentence_lexed(tokens)? {
@@ -31,7 +31,7 @@ pub(crate) fn parse_prevent_damage_sentence(
     parse_prevent_all_damage_clause(tokens)
 }
 
-pub(crate) fn parse_gain_x_plus_life_sentence(
+pub fn parse_gain_x_plus_life_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_gain_x_plus_life_tokens(tokens) else {

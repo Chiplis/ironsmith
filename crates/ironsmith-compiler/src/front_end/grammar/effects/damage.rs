@@ -3,18 +3,18 @@ use winnow::combinator::{alt, eof, opt};
 use winnow::token::take_till;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SerialDamageFanout {
-    pub(crate) source: Vec<OwnedLexToken>,
-    pub(crate) parts: Vec<SerialDamagePart>,
+pub struct SerialDamageFanout {
+    pub source: Vec<OwnedLexToken>,
+    pub parts: Vec<SerialDamagePart>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SerialDamagePart {
-    pub(crate) amount: Value,
-    pub(crate) target_tokens: Vec<OwnedLexToken>,
+pub struct SerialDamagePart {
+    pub amount: Value,
+    pub target_tokens: Vec<OwnedLexToken>,
 }
 
-pub(crate) fn parse_serial_damage_fanout_tokens(
+pub fn parse_serial_damage_fanout_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<SerialDamageFanout>, CardTextError> {
     if let Some(serial) = primitives::parse_all_or_none(

@@ -21,7 +21,7 @@ use crate::grammar::effects as effect_grammar;
 use crate::target::TaggedOpbjectRelation;
 use crate::zone::Zone;
 
-pub(crate) fn parse_exile_top_library_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+pub fn parse_exile_top_library_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let count = super::dispatch_entry::parse_top_of_your_library_count(
         tokens,
         effect_grammar::dispatch_entry_shapes::TopLibraryAction::Exile,
@@ -35,7 +35,7 @@ pub(crate) fn parse_exile_top_library_prefix(tokens: &[OwnedLexToken]) -> Option
     )])
 }
 
-pub(crate) fn parse_consult_traversal_sentence(
+pub fn parse_consult_traversal_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ConsultSentenceParts>, CardTextError> {
     let Some(shape) = effect_grammar::parse_consult_traversal_shape(tokens) else {
@@ -148,7 +148,7 @@ pub(crate) fn parse_consult_traversal_sentence(
 /// traversal itself for callers that compose specialized dispositions, while
 /// this entry point preserves a generic authored continuation such as damage
 /// followed by moving the revealed collection.
-pub(crate) fn parse_consult_traversal_with_inline_followup(
+pub fn parse_consult_traversal_with_inline_followup(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_consult_traversal_shape(tokens) else {
@@ -284,7 +284,7 @@ fn apply_consult_prefix_player_surface(effects: &mut [EffectAst], player: Player
 }
 
 #[cfg(test)]
-pub(crate) fn parse_consult_condition_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_consult_condition_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     effect_grammar::parse_consult_condition_value_shape(tokens)
 }
 
@@ -338,7 +338,7 @@ fn parse_bargained_face_down_cast_mana_value_gate_inner<'a>(
     .parse_next(input)
 }
 
-pub(crate) fn parse_bargained_face_down_cast_mana_value_gate(
+pub fn parse_bargained_face_down_cast_mana_value_gate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(crate::effect::ValueComparisonOperator, Value)>, CardTextError> {
     grammar::parse_all_or_none(
@@ -402,7 +402,7 @@ fn parse_if_you_cant_remainder_inner<'a>(
     .parse_next(input)
 }
 
-pub(crate) fn parse_consult_mana_value_condition_tokens(
+pub fn parse_consult_mana_value_condition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ConsultCastManaValueCondition> {
     let shape = effect_grammar::parse_consult_mana_value_condition_shape(tokens)?;
@@ -412,7 +412,7 @@ pub(crate) fn parse_consult_mana_value_condition_tokens(
     })
 }
 
-pub(crate) fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<ConsultCastClause> {
+pub fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<ConsultCastClause> {
     let shape = effect_grammar::parse_consult_cast_shape(tokens)?;
     let caster = match parse_subject(&shape.caster) {
         SubjectAst::Player(player) => player,
@@ -449,14 +449,14 @@ pub(crate) fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<Cons
     })
 }
 
-pub(crate) fn parse_consult_bottom_remainder_clause(
+pub fn parse_consult_bottom_remainder_clause(
     tokens: &[OwnedLexToken],
     mode: LibraryConsultModeAst,
 ) -> Option<LibraryBottomOrderAst> {
     effect_grammar::parse_consult_bottom_remainder_shape(tokens, mode)
 }
 
-pub(crate) fn parse_if_declined_put_match_into_hand(
+pub fn parse_if_declined_put_match_into_hand(
     tokens: &[OwnedLexToken],
     match_tag: TagKey,
 ) -> Option<Vec<EffectAst>> {
@@ -474,7 +474,7 @@ pub(crate) fn parse_if_declined_put_match_into_hand(
     )])
 }
 
-pub(crate) fn consult_cast_effects(
+pub fn consult_cast_effects(
     clause: &ConsultCastClause,
     match_tag: TagKey,
 ) -> Result<Vec<EffectAst>, CardTextError> {
@@ -561,7 +561,7 @@ pub(crate) fn consult_cast_effects(
     Ok(cast_effects)
 }
 
-pub(crate) fn parse_if_you_dont_sentence(
+pub fn parse_if_you_dont_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     // Some card text spells out the action whose failure is being tested:
@@ -660,7 +660,7 @@ fn is_explicit_failed_action_verb(token: Option<&OwnedLexToken>) -> bool {
     })
 }
 
-pub(crate) fn parse_if_you_cant_sentence(
+pub fn parse_if_you_cant_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(after) = grammar::parse_all_or_none(

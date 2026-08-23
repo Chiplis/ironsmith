@@ -9,27 +9,27 @@ use super::super::{seek_sequence_phrase, sequence_any_phrase, sequence_phrase};
 use super::{ConsultManaValueConditionShape, parse_consult_mana_value_condition_shape};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ConsultCastTimingShape {
+pub enum ConsultCastTimingShape {
     Immediate,
     UntilEndOfTurn,
     UntilYourNextTurnEnd,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ConsultCastCostShape {
+pub enum ConsultCastCostShape {
     Normal,
     WithoutPayingManaCost,
     PayLifeEqualToManaValue,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ConsultCastShape {
-    pub(crate) caster: Vec<OwnedLexToken>,
-    pub(crate) allow_land: bool,
-    pub(crate) timing: ConsultCastTimingShape,
-    pub(crate) cost: ConsultCastCostShape,
-    pub(crate) mana_value_condition: Option<ConsultManaValueConditionShape>,
-    pub(crate) surface: ironsmith_core::GrantPlayTaggedSurface,
+pub struct ConsultCastShape {
+    pub caster: Vec<OwnedLexToken>,
+    pub allow_land: bool,
+    pub timing: ConsultCastTimingShape,
+    pub cost: ConsultCastCostShape,
+    pub mana_value_condition: Option<ConsultManaValueConditionShape>,
+    pub surface: ironsmith_core::GrantPlayTaggedSurface,
 }
 
 const PAY_LIFE_MANA_VALUE_CLAUSE: &[&str] = &[
@@ -76,7 +76,7 @@ fn consult_cast_action(
     .parse_next(input)
 }
 
-pub(crate) fn parse_consult_cast_shape(tokens: &[OwnedLexToken]) -> Option<ConsultCastShape> {
+pub fn parse_consult_cast_shape(tokens: &[OwnedLexToken]) -> Option<ConsultCastShape> {
     let mut clause = trim_commas(tokens);
     let mut timing = ConsultCastTimingShape::Immediate;
     let mut leading_duration = false;

@@ -8,34 +8,34 @@ use crate::mana::ManaCost;
 use crate::util::trim_edge_punctuation_tokens;
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct DestroyConsultLoopShape<'a> {
-    pub(crate) consult_tokens: &'a [OwnedLexToken],
+pub struct DestroyConsultLoopShape<'a> {
+    pub consult_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct FlashbackGrantShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct FlashbackGrantShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct EachPlayerRevealTypesShape<'a> {
-    pub(crate) battlefield_filter_tokens: &'a [OwnedLexToken],
-    pub(crate) extra_filter_tokens: Option<&'a [OwnedLexToken]>,
+pub struct EachPlayerRevealTypesShape<'a> {
+    pub battlefield_filter_tokens: &'a [OwnedLexToken],
+    pub extra_filter_tokens: Option<&'a [OwnedLexToken]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct DelayedUpkeepPaymentShape {
-    pub(crate) mana: ManaCost,
+pub struct DelayedUpkeepPaymentShape {
+    pub mana: ManaCost,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct StartingEachPlayerOptionalRepeatShape<'a> {
+pub struct StartingEachPlayerOptionalRepeatShape<'a> {
     /// The first sentence with the participant-ordering prefix removed.
     ///
     /// Keeping the ordinary `each player may ...` clause lets the existing
     /// effect parser produce the complete typed optional action instead of
     /// teaching the sequence recognizer about individual action families.
-    pub(crate) each_player_clause_tokens: &'a [OwnedLexToken],
+    pub each_player_clause_tokens: &'a [OwnedLexToken],
 }
 
 fn trimmed(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -106,7 +106,7 @@ fn iterative_repeat<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_iterative_library_sequence_shape(
+pub fn parse_iterative_library_sequence_shape(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],
@@ -143,7 +143,7 @@ fn create_rats<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_each_player_pay_life_sequence_shape(
+pub fn parse_each_player_pay_life_sequence_shape(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],
@@ -193,7 +193,7 @@ fn verbs_match_optional_action(first: &[OwnedLexToken], repeated: &[OwnedLexToke
 /// Only the leading verbs need agree: Oracle commonly abbreviates the repeated
 /// action's object phrase (for example, "a permanent card from their hand" to
 /// "a card").
-pub(crate) fn parse_starting_each_player_optional_repeat_shape<'a>(
+pub fn parse_starting_each_player_optional_repeat_shape<'a>(
     first: &'a [OwnedLexToken],
     second: &[OwnedLexToken],
 ) -> Option<StartingEachPlayerOptionalRepeatShape<'a>> {
@@ -237,7 +237,7 @@ fn exile_that_card_tail<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_destroy_consult_loop_shape(
+pub fn parse_destroy_consult_loop_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DestroyConsultLoopShape<'_>> {
     let clause = trimmed(tokens);
@@ -258,7 +258,7 @@ fn all_markers_present(tokens: &[OwnedLexToken], words: &[&'static str]) -> bool
         .all(|word| primitives::find_prefix(tokens, || primitives::kw(word)).is_some())
 }
 
-pub(crate) fn parse_put_exiled_then_shuffle_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_put_exiled_then_shuffle_shape(tokens: &[OwnedLexToken]) -> bool {
     let normalized = without_articles(trimmed(tokens));
     all_markers_present(
         &normalized,
@@ -325,7 +325,7 @@ fn flashback_cost<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_flashback_grant_shape<'a>(
+pub fn parse_flashback_grant_shape<'a>(
     first: &'a [OwnedLexToken],
     second: &[OwnedLexToken],
 ) -> Option<FlashbackGrantShape<'a>> {
@@ -388,7 +388,7 @@ fn same_for<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_each_player_reveal_types_shape<'a>(
+pub fn parse_each_player_reveal_types_shape<'a>(
     first: &[OwnedLexToken],
     second: &'a [OwnedLexToken],
 ) -> Option<EachPlayerRevealTypesShape<'a>> {
@@ -442,7 +442,7 @@ fn counter_target<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_prevention_counter_followup_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_prevention_counter_followup_shape(tokens: &[OwnedLexToken]) -> bool {
     let normalized = without_articles(trimmed(tokens));
     if primitives::parse_prefix(&normalized, prevention_counter_prefix).is_none()
         || !all_markers_present(&normalized, &["put", "+1/+1", "counter", "on"])
@@ -475,7 +475,7 @@ fn reflect_tail<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_prevention_reflect_followup_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_prevention_reflect_followup_shape(tokens: &[OwnedLexToken]) -> bool {
     let clause = trimmed(tokens);
     let Some(((), rest)) = primitives::parse_prefix(clause, prevented_this_way) else {
         return false;
@@ -503,7 +503,7 @@ fn prevention_gain_life_followup<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_prevention_gain_life_followup_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_prevention_gain_life_followup_shape(tokens: &[OwnedLexToken]) -> bool {
     exact_unit(trimmed(tokens), prevention_gain_life_followup)
 }
 
@@ -522,7 +522,7 @@ fn prevented_amount<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_prevention_exile_top_followup_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_prevention_exile_top_followup_shape(tokens: &[OwnedLexToken]) -> bool {
     let clause = trimmed(tokens);
     primitives::parse_prefix(clause, exile_top_prefix).is_some()
         && primitives::find_prefix(clause, || prevented_amount).is_some()
@@ -564,7 +564,7 @@ fn source_marker<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_source_tapped_lock_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_source_tapped_lock_shape(tokens: &[OwnedLexToken]) -> bool {
     let clause = trimmed(tokens);
     primitives::parse_prefix(clause, untap_prefix).is_some()
         && primitives::find_prefix(clause, || source_tapped_duration).is_some()
@@ -572,7 +572,7 @@ pub(crate) fn parse_source_tapped_lock_shape(tokens: &[OwnedLexToken]) -> bool {
         && primitives::find_prefix(clause, || source_marker).is_some()
 }
 
-pub(crate) fn parse_untap_clause_prefix_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_untap_clause_prefix_shape(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(trimmed(tokens), untap_prefix).is_some()
 }
 
@@ -589,7 +589,7 @@ fn upkeep_pay_prefix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     primitives::kw("pay").void().parse_next(input)
 }
 
-pub(crate) fn parse_delayed_upkeep_payment_shape(
+pub fn parse_delayed_upkeep_payment_shape(
     upkeep_tokens: &[OwnedLexToken],
     lose_tokens: &[OwnedLexToken],
 ) -> Option<DelayedUpkeepPaymentShape> {

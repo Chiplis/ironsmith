@@ -23,7 +23,7 @@ const TAGGED_ARTIFACT: &[&[&str]] = &[&["that", "artifact"], &["those", "artifac
 const TAGGED_ENCHANTMENT: &[&[&str]] = &[&["that", "enchantment"]];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CombatAttachTaggedObjectShape {
+pub enum CombatAttachTaggedObjectShape {
     Plain,
     Equipment,
     Aura,
@@ -33,10 +33,10 @@ pub(crate) enum CombatAttachTaggedObjectShape {
 
 #[path = "attachments/attached_references.rs"]
 mod attached_references;
-pub(crate) use attached_references::*;
+pub use attached_references::*;
 
 #[derive(Debug, Clone)]
-pub(crate) enum CombatAttachObjectShape<'a> {
+pub enum CombatAttachObjectShape<'a> {
     Source,
     Tagged(CombatAttachTaggedObjectShape),
     All {
@@ -57,13 +57,13 @@ pub(crate) enum CombatAttachObjectShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CombatAttachClauseError {
+pub enum CombatAttachClauseError {
     MissingDestination,
     MissingObjectOrDestination,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum CombatAttachClauseShape<'a> {
+pub enum CombatAttachClauseShape<'a> {
     DestinationFirstTagged {
         tagged_tokens: &'a [OwnedLexToken],
         object_tokens: &'a [OwnedLexToken],
@@ -85,7 +85,7 @@ fn exact_phrase(tokens: &[OwnedLexToken], phrases: &'static [&'static [&'static 
     .is_ok()
 }
 
-pub(crate) fn parse_combat_attach_tagged_object_shape_lexed(
+pub fn parse_combat_attach_tagged_object_shape_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<CombatAttachTaggedObjectShape> {
     if exact_phrase(tokens, TAGGED_PLAIN) {
@@ -103,7 +103,7 @@ pub(crate) fn parse_combat_attach_tagged_object_shape_lexed(
     }
 }
 
-pub(crate) fn parse_combat_attach_object_shape_lexed(
+pub fn parse_combat_attach_object_shape_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<CombatAttachObjectShape<'_>> {
     let words = parser_token_word_refs(tokens);
@@ -179,7 +179,7 @@ fn last_to_marker(tokens: &[OwnedLexToken]) -> Option<usize> {
     })
 }
 
-pub(crate) fn parse_combat_attach_clause_shape_lexed(
+pub fn parse_combat_attach_clause_shape_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<CombatAttachClauseShape<'_>, CombatAttachClauseError> {
     let tokens = trim_edge_punctuation_tokens(tokens);

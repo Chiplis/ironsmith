@@ -1,32 +1,32 @@
 use super::*;
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct RewriteLoweredCardState {
-    pub(crate) haunt_linkage: Option<(Vec<crate::effect::Effect>, Vec<ChooseSpec>)>,
-    pub(crate) latest_spell_exports: ReferenceExports,
-    pub(crate) latest_additional_cost_exports: ReferenceExports,
-    pub(crate) latest_created_token: Option<(
+pub struct RewriteLoweredCardState {
+    pub haunt_linkage: Option<(Vec<crate::effect::Effect>, Vec<ChooseSpec>)>,
+    pub latest_spell_exports: ReferenceExports,
+    pub latest_additional_cost_exports: ReferenceExports,
+    pub latest_created_token: Option<(
         String,
         crate::model::token_definition::TokenDefinitionSpec,
         PlayerAst,
     )>,
-    pub(crate) pending_backups: Vec<PendingBackup>,
-    pub(crate) pending_cipher: bool,
+    pub pending_backups: Vec<PendingBackup>,
+    pub pending_cipher: bool,
     /// Last source line that contributed a top-level statement program.
     /// Used only to retain authored line boundaries when adjacent spell
     /// instructions are appended to one resolution program.
-    pub(crate) latest_statement_line_index: Option<usize>,
+    pub latest_statement_line_index: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PendingBackup {
+pub struct PendingBackup {
     /// Number of already-lowered actual abilities at the source position where
     /// the keyword appeared. Migration-only keyword actions are not abilities.
-    pub(crate) ability_boundary: usize,
-    pub(crate) amount: u32,
+    pub ability_boundary: usize,
+    pub amount: u32,
 }
 
-pub(crate) fn rewrite_update_last_restrictable_ability(
+pub fn rewrite_update_last_restrictable_ability(
     builder: &CardDefinitionBuilder,
     abilities_before: usize,
     last_restrictable_ability: &mut Option<usize>,
@@ -44,7 +44,7 @@ pub(crate) fn rewrite_update_last_restrictable_ability(
     }
 }
 
-pub(crate) fn rewrite_lower_level_ability_ast(
+pub fn rewrite_lower_level_ability_ast(
     level: ParsedLevelAbilityAst,
 ) -> Result<RewriteLoweredLevelAbilityAst, CardTextError> {
     let mut lowered = crate::ability::LevelAbility::new(level.min_level, level.max_level);
@@ -101,9 +101,9 @@ pub(crate) fn rewrite_lower_level_ability_ast(
     })
 }
 
-pub(crate) struct RewriteLoweredLevelAbilityAst {
-    pub(crate) level_ability: crate::ability::LevelAbility,
-    pub(crate) activated_lines: Vec<NormalizedLineAst>,
+pub struct RewriteLoweredLevelAbilityAst {
+    pub level_ability: crate::ability::LevelAbility,
+    pub activated_lines: Vec<NormalizedLineAst>,
 }
 
 fn apply_level_range_activation_condition(
@@ -148,7 +148,7 @@ fn apply_level_range_activation_condition(
         .push(format!("__ironsmith_level_range:{min_level}:{max_label}"));
 }
 
-pub(crate) fn uses_spell_only_functional_zones(static_ability: &StaticAbility) -> bool {
+pub fn uses_spell_only_functional_zones(static_ability: &StaticAbility) -> bool {
     matches!(
         static_ability.id(),
         crate::static_abilities::StaticAbilityId::ConditionalSpellKeyword
@@ -175,7 +175,7 @@ pub(crate) fn uses_spell_only_functional_zones(static_ability: &StaticAbility) -
     }
 }
 
-pub(crate) fn uses_referenced_ability_functional_zones(
+pub fn uses_referenced_ability_functional_zones(
     static_ability: &StaticAbility,
     references_this_ability_cost: bool,
 ) -> bool {
@@ -183,7 +183,7 @@ pub(crate) fn uses_referenced_ability_functional_zones(
         && references_this_ability_cost
 }
 
-pub(crate) fn uses_all_zone_functional_zones(static_ability: &StaticAbility) -> bool {
+pub fn uses_all_zone_functional_zones(static_ability: &StaticAbility) -> bool {
     matches!(
         static_ability.id(),
         crate::static_abilities::StaticAbilityId::ShuffleIntoLibraryFromGraveyard
@@ -191,7 +191,7 @@ pub(crate) fn uses_all_zone_functional_zones(static_ability: &StaticAbility) -> 
     )
 }
 
-pub(crate) fn effect_target_uses_it_reference(spec: &ChooseSpec) -> bool {
+pub fn effect_target_uses_it_reference(spec: &ChooseSpec) -> bool {
     match spec {
         ChooseSpec::Tagged(_) => true,
         ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
@@ -223,9 +223,7 @@ fn replacement_choose_spec_object_filter(spec: &ChooseSpec) -> Option<&ObjectFil
     }
 }
 
-pub(crate) fn extract_previous_replacement_target(
-    effect: &crate::effect::Effect,
-) -> Option<ChooseSpec> {
+pub fn extract_previous_replacement_target(effect: &crate::effect::Effect) -> Option<ChooseSpec> {
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         return extract_previous_replacement_target(&tagged.effect);
     }
@@ -287,7 +285,7 @@ pub(crate) fn extract_previous_replacement_target(
     None
 }
 
-pub(crate) fn rewrite_replacement_effect_target(
+pub fn rewrite_replacement_effect_target(
     effect: &crate::effect::Effect,
     previous_target: &ChooseSpec,
 ) -> Option<crate::effect::Effect> {
@@ -370,7 +368,7 @@ pub(crate) fn rewrite_replacement_effect_target(
     None
 }
 
-pub(crate) fn push_unsupported_marker(
+pub fn push_unsupported_marker(
     builder: CardDefinitionBuilder,
     raw_line: &str,
     reason: String,
@@ -384,7 +382,7 @@ pub(crate) fn push_unsupported_marker(
     ))
 }
 
-pub(crate) fn rewrite_apply_line_ast(
+pub fn rewrite_apply_line_ast(
     builder: CardDefinitionBuilder,
     state: &mut RewriteLoweredCardState,
     parsed: NormalizedLineChunk,
@@ -404,7 +402,7 @@ pub(crate) fn rewrite_apply_line_ast(
     )
 }
 
-pub(crate) fn rewrite_lower_line_ast(
+pub fn rewrite_lower_line_ast(
     builder: &mut CardDefinitionBuilder,
     state: &mut RewriteLoweredCardState,
     annotations: &mut ParseAnnotations,

@@ -6,7 +6,7 @@ fn is_explicit_target_clause(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
         || parse_choice_count_before_target_prefix(clause.tokens()).is_some()
 }
 
-pub(crate) fn parse_sentence_each_opponent_loses_x_and_you_gain_x(
+pub fn parse_sentence_each_opponent_loses_x_and_you_gain_x(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = choice_shapes::parse_opponent_drain_sentence_shape(clause.tokens()) else {
@@ -39,7 +39,7 @@ pub(crate) fn parse_sentence_each_opponent_loses_x_and_you_gain_x(
     ]))
 }
 
-pub(crate) fn parse_sentence_relative_opponent_damage_difference(
+pub fn parse_sentence_relative_opponent_damage_difference(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) =
@@ -84,55 +84,55 @@ pub(crate) fn parse_sentence_relative_opponent_damage_difference(
     }]))
 }
 
-pub(crate) fn parse_sentence_same_name_target_fanout(
+pub fn parse_sentence_same_name_target_fanout(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(parse_same_name_target_fanout_sentence)
 }
 
-pub(crate) fn parse_sentence_shared_color_target_fanout(
+pub fn parse_sentence_shared_color_target_fanout(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(parse_shared_color_target_fanout_sentence)
 }
 
-pub(crate) fn parse_sentence_compound_damage_fanout(
+pub fn parse_sentence_compound_damage_fanout(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(parse_compound_damage_fanout_sentence)
 }
 
-pub(crate) fn parse_sentence_serial_target_pt_modifiers(
+pub fn parse_sentence_serial_target_pt_modifiers(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(parse_serial_target_pt_modifiers_sentence)
 }
 
-pub(crate) fn parse_sentence_same_name_gets_fanout(
+pub fn parse_sentence_same_name_gets_fanout(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(parse_same_name_gets_fanout_sentence)
 }
 
-pub(crate) fn parse_sentence_delayed_until_next_end_step(
+pub fn parse_sentence_delayed_until_next_end_step(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(parse_delayed_until_next_end_step_sentence)
 }
 
-pub(crate) fn parse_sentence_destroy_or_exile_all_split(
+pub fn parse_sentence_destroy_or_exile_all_split(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(parse_destroy_or_exile_all_split_sentence)
 }
 
-pub(crate) fn parse_sentence_exile_up_to_one_each_target_type(
+pub fn parse_sentence_exile_up_to_one_each_target_type(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     clause.parse_with_lexed(parse_exile_up_to_one_each_target_type_sentence)
 }
 
-pub(crate) fn parse_sentence_exile_multi_target(
+pub fn parse_sentence_exile_multi_target(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if !choice_shapes::first_choice_damage_word_is(&clause.word_refs(), "exile")
@@ -218,7 +218,7 @@ pub(crate) fn parse_sentence_exile_multi_target(
     }]))
 }
 
-pub(crate) fn split_destroy_target_segments(
+pub fn split_destroy_target_segments(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Vec<SubjectVerbPrimitiveClause<'_>> {
     let mut segments = Vec::new();
@@ -245,7 +245,7 @@ pub(crate) fn split_destroy_target_segments(
     segments
 }
 
-pub(crate) fn parse_sentence_destroy_multi_target(
+pub fn parse_sentence_destroy_multi_target(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = choice_shapes::parse_destroy_multi_target_shape(clause.tokens()) else {
@@ -329,7 +329,7 @@ pub(crate) fn parse_sentence_destroy_multi_target(
     }]))
 }
 
-pub(crate) fn parse_sentence_reveal_selected_cards_in_your_hand(
+pub fn parse_sentence_reveal_selected_cards_in_your_hand(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_sentence_reveal_selected_cards_in_hand_for_player(
@@ -427,7 +427,7 @@ fn parse_sentence_reveal_selected_cards_in_hand_for_player(
     ]))
 }
 
-pub(crate) fn parse_sentence_each_player_may_reveal_selected_cards_in_their_hand(
+pub fn parse_sentence_each_player_may_reveal_selected_cards_in_their_hand(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) =
@@ -452,7 +452,7 @@ pub(crate) fn parse_sentence_each_player_may_reveal_selected_cards_in_their_hand
     }]))
 }
 
-pub(crate) fn parse_sentence_target_player_reveals_random_card_from_hand(
+pub fn parse_sentence_target_player_reveals_random_card_from_hand(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = choice_shapes::parse_random_hand_reveal_shape(clause.tokens()) else {
@@ -520,7 +520,7 @@ fn is_hand_reference_clause(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
     choice_shapes::is_hand_reference_shape(&clause.word_refs())
 }
 
-pub(crate) fn object_target_with_count(target: &TargetAst) -> Option<(ObjectFilter, ChoiceCount)> {
+pub fn object_target_with_count(target: &TargetAst) -> Option<(ObjectFilter, ChoiceCount)> {
     match target {
         TargetAst::Object(filter, _, _) => Some((filter.clone(), ChoiceCount::exactly(1))),
         TargetAst::WithCount(inner, count) => match inner.as_ref() {
@@ -531,7 +531,7 @@ pub(crate) fn object_target_with_count(target: &TargetAst) -> Option<(ObjectFilt
     }
 }
 
-pub(crate) fn parse_sentence_damage_unless_controller_has_source_deal_damage(
+pub fn parse_sentence_damage_unless_controller_has_source_deal_damage(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = choice_shapes::parse_damage_unless_shape(clause.tokens()) else {
@@ -633,7 +633,7 @@ pub(crate) fn parse_sentence_damage_unless_controller_has_source_deal_damage(
     Ok(Some(vec![unless]))
 }
 
-pub(crate) fn parse_sentence_damage_to_that_player_unless_enchanted_attacked(
+pub fn parse_sentence_damage_to_that_player_unless_enchanted_attacked(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = choice_shapes::parse_enchanted_attacked_damage_shape(clause.tokens()) else {
@@ -682,7 +682,7 @@ pub(crate) fn parse_sentence_damage_to_that_player_unless_enchanted_attacked(
     }]))
 }
 
-pub(crate) fn parse_sentence_unless_pays(
+pub fn parse_sentence_unless_pays(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     // This causative alternative is an action choice, not a payment. Keep it

@@ -7,50 +7,46 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EtbEntryFilterSpec<'a> {
-    pub(crate) filter_tokens: &'a [OwnedLexToken],
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
+pub struct EtbEntryFilterSpec<'a> {
+    pub filter_tokens: &'a [OwnedLexToken],
+    pub tail_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AsEntersRevealFromHandSpec<'a> {
-    pub(crate) source_kind_tokens: &'a [OwnedLexToken],
-    pub(crate) reveal_filter_tokens: &'a [OwnedLexToken],
+pub struct AsEntersRevealFromHandSpec<'a> {
+    pub source_kind_tokens: &'a [OwnedLexToken],
+    pub reveal_filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RevealedThisWayOrControlSpec<'a> {
-    pub(crate) reveal_filter_tokens: &'a [OwnedLexToken],
-    pub(crate) control_condition_tokens: &'a [OwnedLexToken],
+pub struct RevealedThisWayOrControlSpec<'a> {
+    pub reveal_filter_tokens: &'a [OwnedLexToken],
+    pub control_condition_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SpellCastEntersAdditionalCounterSpec<'a> {
-    pub(crate) spell_filter_tokens: &'a [OwnedLexToken],
-    pub(crate) condition_tokens: &'a [OwnedLexToken],
-    pub(crate) entry_tokens: &'a [OwnedLexToken],
+pub struct SpellCastEntersAdditionalCounterSpec<'a> {
+    pub spell_filter_tokens: &'a [OwnedLexToken],
+    pub condition_tokens: &'a [OwnedLexToken],
+    pub entry_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AsEntersSpec<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
+pub struct AsEntersSpec<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub tail_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_entry_filter_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<EtbEntryFilterSpec<'_>> {
+pub fn parse_entry_filter_tokens(tokens: &[OwnedLexToken]) -> Option<EtbEntryFilterSpec<'_>> {
     primitives::parse_all(tokens, parse_entry_filter_lexed, "ETB entry filter").ok()
 }
 
-pub(crate) fn parse_reveal_from_hand_filter_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<&[OwnedLexToken]> {
+pub fn parse_reveal_from_hand_filter_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let (_, filter_tokens, _) = primitives::find_prefix(tokens, || parse_reveal_from_hand_lexed)?;
     Some(filter_tokens)
 }
 
-pub(crate) fn parse_as_enters_reveal_from_hand_tokens(
+pub fn parse_as_enters_reveal_from_hand_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AsEntersRevealFromHandSpec<'_>> {
     primitives::parse_all(
@@ -61,7 +57,7 @@ pub(crate) fn parse_as_enters_reveal_from_hand_tokens(
     .ok()
 }
 
-pub(crate) fn parse_revealed_this_way_or_control_tokens(
+pub fn parse_revealed_this_way_or_control_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<RevealedThisWayOrControlSpec<'_>> {
     primitives::parse_all(
@@ -72,7 +68,7 @@ pub(crate) fn parse_revealed_this_way_or_control_tokens(
     .ok()
 }
 
-pub(crate) fn parse_enters_tapped_unless_condition_tokens(
+pub fn parse_enters_tapped_unless_condition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     primitives::parse_all(
@@ -83,7 +79,7 @@ pub(crate) fn parse_enters_tapped_unless_condition_tokens(
     .ok()
 }
 
-pub(crate) fn parse_spell_cast_enters_additional_counter_tokens(
+pub fn parse_spell_cast_enters_additional_counter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SpellCastEntersAdditionalCounterSpec<'_>> {
     primitives::parse_all(
@@ -94,7 +90,7 @@ pub(crate) fn parse_spell_cast_enters_additional_counter_tokens(
     .ok()
 }
 
-pub(crate) fn parse_as_enters_tokens(tokens: &[OwnedLexToken]) -> Option<AsEntersSpec<'_>> {
+pub fn parse_as_enters_tokens(tokens: &[OwnedLexToken]) -> Option<AsEntersSpec<'_>> {
     primitives::parse_all(tokens, parse_as_enters_lexed, "as-enters clause").ok()
 }
 

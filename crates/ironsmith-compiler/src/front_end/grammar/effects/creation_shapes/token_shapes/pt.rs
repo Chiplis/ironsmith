@@ -1,16 +1,16 @@
 use super::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PtComponent {
+pub enum PtComponent {
     Fixed(i32),
     X,
     Star,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PtSurface {
-    pub(crate) power: PtComponent,
-    pub(crate) toughness: PtComponent,
+pub struct PtSurface {
+    pub power: PtComponent,
+    pub toughness: PtComponent,
 }
 
 fn parse_pt_component(input: &mut &str) -> WResult<PtComponent> {
@@ -37,16 +37,16 @@ fn parse_unsigned_pt(input: &mut &str) -> WResult<(i32, i32)> {
     .parse_next(input)
 }
 
-pub(crate) fn parse_pt_word(word: &str) -> Option<PtSurface> {
+pub fn parse_pt_word(word: &str) -> Option<PtSurface> {
     let normalized = word.to_ascii_lowercase();
     parse_pt.parse(&normalized).ok()
 }
 
-pub(crate) fn parse_unsigned_pt_word(word: &str) -> Option<(i32, i32)> {
+pub fn parse_unsigned_pt_word(word: &str) -> Option<(i32, i32)> {
     parse_unsigned_pt.parse(word).ok()
 }
 
-pub(crate) fn first_pt_word(words: &[&str]) -> Option<(usize, PtSurface)> {
+pub fn first_pt_word(words: &[&str]) -> Option<(usize, PtSurface)> {
     for (idx, word) in words.iter().enumerate() {
         if let Some(parsed) = parse_pt_word(word) {
             return Some((idx, parsed));

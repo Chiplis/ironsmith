@@ -9,20 +9,20 @@ use crate::target::ObjectFilter;
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ControllerSacrificeConsultShape {
-    pub(crate) target_filter: ObjectFilter,
-    pub(crate) match_filter: ObjectFilter,
-    pub(crate) destination: Zone,
-    pub(crate) conditional_on_sacrifice: bool,
+pub struct ControllerSacrificeConsultShape {
+    pub target_filter: ObjectFilter,
+    pub match_filter: ObjectFilter,
+    pub destination: Zone,
+    pub conditional_on_sacrifice: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct EachPlayerShuffleThenConsultShape {
-    pub(crate) shuffled_filter: ObjectFilter,
-    pub(crate) qualifying_filter: ObjectFilter,
-    pub(crate) match_filter: ObjectFilter,
-    pub(crate) destination: Zone,
-    pub(crate) remainder_order: LibraryBottomOrderAst,
+pub struct EachPlayerShuffleThenConsultShape {
+    pub shuffled_filter: ObjectFilter,
+    pub qualifying_filter: ObjectFilter,
+    pub match_filter: ObjectFilter,
+    pub destination: Zone,
+    pub remainder_order: LibraryBottomOrderAst,
 }
 
 fn commas<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -200,7 +200,7 @@ fn parse_conditional_controller_sacrifice_consult_tokens(
     })
 }
 
-pub(crate) fn parse_controller_sacrifice_consult_tokens(
+pub fn parse_controller_sacrifice_consult_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ControllerSacrificeConsultShape> {
     parse_legacy_controller_sacrifice_consult_tokens(tokens)
@@ -244,7 +244,7 @@ fn random_bottom_disposition<'a>(input: &mut LexStream<'a>) -> WResult<Zone> {
     Ok(destination)
 }
 
-pub(crate) fn parse_each_player_shuffle_then_consult_tokens(
+pub fn parse_each_player_shuffle_then_consult_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EachPlayerShuffleThenConsultShape> {
     let sentences = split_lexed_sentences(tokens);

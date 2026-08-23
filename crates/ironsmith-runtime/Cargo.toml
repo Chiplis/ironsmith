@@ -2,169 +2,29 @@
 name = "ironsmith-runtime"
 version = "0.1.0"
 edition = "2024"
-autobins = false
-autotests = false
+
+[dependencies]
+engine = { package = "ironsmith-engine", path = "../ironsmith-engine", default-features = false }
+ironsmith-text = { path = "../ironsmith-text", default-features = false }
+ironsmith-runtime-catalog = { path = "../ironsmith-runtime-catalog", default-features = false }
 
 [lib]
 name = "ironsmith"
-crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+crate-type = ["rlib"]
 doctest = false
 
-[dependencies]
-ironsmith-core = { path = "../ironsmith-core" }
-ironsmith-compiler = { path = "../ironsmith-compiler", optional = true }
-stacker = "0.1.23"
-rand = "0.10.1"
-rand_chacha = "0.10.0"
-rayon = "1.12"
-rustc-hash = "2.1.2"
-im = "15.1.0"
-logos = "0.16.1"
-winnow = { version = "1.0.1", default-features = false, features = ["std", "ascii"] }
-serde = { version = "1.0.228", features = ["derive"], optional = true }
-serde_json = { version = "1.0.149", optional = true }
-wasm-bindgen = { version = "0.2.120", optional = true }
-serde-wasm-bindgen = { version = "0.6.5", optional = true }
-console_error_panic_hook = { version = "0.1.7", optional = true }
-getrandom = { version = "0.4.2", features = ["wasm_js"], optional = true }
-js-sys = { version = "0.3.97", optional = true }
-
-[build-dependencies]
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
-
-[dev-dependencies]
-criterion = "0.7"
-
-[[bench]]
-name = "scale"
-harness = false
-required-features = ["bench-support"]
-
-[[test]]
-name = "i051_end_turn"
-path = "tests/i051_end_turn.rs"
-
-[[test]]
-name = "u037_end_combat_phase"
-path = "tests/u037_end_combat_phase.rs"
-
-[[test]]
-name = "u040_rad_counters"
-path = "tests/u040_rad_counters.rs"
-
-[[test]]
-name = "u045_die_rerolls"
-path = "tests/u045_die_rerolls.rs"
-
-[[test]]
-name = "u060_ante"
-path = "tests/u060_ante.rs"
-
-[[test]]
-name = "u061_planechase"
-path = "tests/u061_planechase.rs"
-
-[[test]]
-name = "u062_vanguard"
-path = "tests/u062_vanguard.rs"
-
-[[test]]
-name = "u063_archenemy"
-path = "tests/u063_archenemy.rs"
-
-[[test]]
-name = "u064_conspiracy_draft"
-path = "tests/u064_conspiracy_draft.rs"
-
-[[test]]
-name = "u065_subgames"
-path = "tests/u065_subgames.rs"
-
-[[test]]
-name = "u066_contraptions"
-path = "tests/u066_contraptions.rs"
-
-[[test]]
-name = "u067_range_of_influence"
-path = "tests/u067_range_of_influence.rs"
-
-[[test]]
-name = "u069_deploy_creatures"
-path = "tests/u069_deploy_creatures.rs"
-
-[[test]]
-name = "u070_shared_team_turns"
-path = "tests/u070_shared_team_turns.rs"
-
-[[test]]
-name = "u071_free_for_all"
-path = "tests/u071_free_for_all.rs"
-
-[[test]]
-name = "u072_grand_melee"
-path = "tests/u072_grand_melee.rs"
-
-[[test]]
-name = "u073_team_vs_team"
-path = "tests/u073_team_vs_team.rs"
-
-[[test]]
-name = "u074_emperor"
-path = "tests/u074_emperor.rs"
-
-[[test]]
-name = "u075_two_headed_giant"
-path = "tests/u075_two_headed_giant.rs"
-
-[[test]]
-name = "u076_alternating_teams"
-path = "tests/u076_alternating_teams.rs"
-
-[[test]]
-name = "u077_commander_draft"
-path = "tests/u077_commander_draft.rs"
-
-[[test]]
-name = "u002_companion"
-path = "tests/u002_companion.rs"
-required-features = ["runtime-parser-tests"]
-
-[[test]]
-name = "u068_attack_direction"
-path = "tests/u068_attack_direction.rs"
-
-[[example]]
-name = "complex_layer_cake_report"
-required-features = ["bench-support"]
-
 [features]
-default = ["serialization", "engine-integration-tests", "runtime-parser-tests"]
-serialization = ["dep:serde", "dep:serde_json"]
-generated-registry = []
-engine-integration-tests = []
-runtime-parser-tests = ["dep:ironsmith-compiler"]
-handwritten-parse-support = []
-bench-support = ["runtime-parser-tests"]
-shadow-continuous = ["serialization"]
-paranoid-invariants = []
-dhat-heap = []
-wasm = [
-    "serialization",
-    "generated-registry",
-    "runtime-parser-tests",
-    "dep:wasm-bindgen",
-    "dep:serde-wasm-bindgen",
-    "dep:console_error_panic_hook",
-    "dep:getrandom",
-    "dep:js-sys",
-]
-wasm-lean = [
-    "serialization",
-    "runtime-parser-tests",
-    "dep:wasm-bindgen",
-    "dep:serde-wasm-bindgen",
-    "dep:console_error_panic_hook",
-    "dep:getrandom",
-    "dep:js-sys",
-]
+default = ["serialization", "analysis", "compiler-bridge"]
+serialization = ["engine/serialization"]
+analysis = ["engine/analysis"]
+compiler-bridge = ["engine/compiler-bridge"]
+generated-registry = ["engine/generated-registry"]
+engine-integration-tests = ["engine/engine-integration-tests"]
+handwritten-parse-support = ["engine/handwritten-parse-support"]
+bench-support = ["engine/bench-support"]
+shadow-continuous = ["engine/shadow-continuous"]
+paranoid-invariants = ["engine/paranoid-invariants"]
+dhat-heap = ["engine/dhat-heap"]
+wasm = ["engine/wasm"]
+wasm-lean = ["engine/wasm-lean"]

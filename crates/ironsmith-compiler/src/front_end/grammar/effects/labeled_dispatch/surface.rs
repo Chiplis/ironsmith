@@ -15,33 +15,33 @@ const GAIN_LOSE_WORDS: &[&[&str]] = &[&["gain"], &["gains"], &["lose"], &["loses
 const VOTE_WORDS: &[&[&str]] = &[&["vote"], &["votes"]];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CastFromAmongShape {
-    pub(crate) mana_value_or_less: Option<u32>,
+pub struct CastFromAmongShape {
+    pub mana_value_or_less: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct LabeledDispatchShape<'a> {
-    pub(crate) round_up_each_time: bool,
-    pub(crate) starts_if: bool,
-    pub(crate) pre_extension_head: bool,
-    pub(crate) exile_then: bool,
-    pub(crate) then_tail: Option<&'a [OwnedLexToken]>,
-    pub(crate) each_player_choose: bool,
-    pub(crate) cast_from_among_free: Option<CastFromAmongShape>,
-    pub(crate) cast_hand_free: bool,
-    pub(crate) has_unquoted_search: bool,
-    pub(crate) exile_all_cards_from_hand_graveyard: bool,
-    pub(crate) starts_enchant: bool,
-    pub(crate) starts_earthbend: bool,
-    pub(crate) has_unless: bool,
-    pub(crate) has_gain_or_lose: bool,
-    pub(crate) has_vote: bool,
-    pub(crate) return_rounded_up: bool,
-    pub(crate) choose_do_same_for: bool,
-    pub(crate) cast_any_number_graveyard_free: bool,
-    pub(crate) starts_sacrifice: bool,
-    pub(crate) sacrifice_counted: bool,
-    pub(crate) tap_all_or_each_then_untap_all_or_each: bool,
+pub struct LabeledDispatchShape<'a> {
+    pub round_up_each_time: bool,
+    pub starts_if: bool,
+    pub pre_extension_head: bool,
+    pub exile_then: bool,
+    pub then_tail: Option<&'a [OwnedLexToken]>,
+    pub each_player_choose: bool,
+    pub cast_from_among_free: Option<CastFromAmongShape>,
+    pub cast_hand_free: bool,
+    pub has_unquoted_search: bool,
+    pub exile_all_cards_from_hand_graveyard: bool,
+    pub starts_enchant: bool,
+    pub starts_earthbend: bool,
+    pub has_unless: bool,
+    pub has_gain_or_lose: bool,
+    pub has_vote: bool,
+    pub return_rounded_up: bool,
+    pub choose_do_same_for: bool,
+    pub cast_any_number_graveyard_free: bool,
+    pub starts_sacrifice: bool,
+    pub sacrifice_counted: bool,
+    pub tap_all_or_each_then_untap_all_or_each: bool,
 }
 
 fn mana_value_or_less_bound(tokens: &[OwnedLexToken]) -> Option<u32> {
@@ -80,7 +80,7 @@ fn contains_unquoted_search(tokens: &[OwnedLexToken]) -> bool {
     false
 }
 
-pub(crate) fn parse_labeled_dispatch_shape(tokens: &[OwnedLexToken]) -> LabeledDispatchShape<'_> {
+pub fn parse_labeled_dispatch_shape(tokens: &[OwnedLexToken]) -> LabeledDispatchShape<'_> {
     let words = parser_token_word_refs(tokens);
     let then_tail = primitives::parse_prefix(tokens, primitives::kw("then").void())
         .map(|(_, rest)| rest)

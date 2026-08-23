@@ -10,28 +10,28 @@ use super::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StackObjectReferenceShape {
+pub enum StackObjectReferenceShape {
     Source,
     PreviousChosen,
     Triggering,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CopyCandidateKind {
+pub enum CopyCandidateKind {
     Object,
     Player,
     PlayerOrPermanent,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CopyCandidateShape {
-    pub(crate) candidate: Range<usize>,
-    pub(crate) kind: CopyCandidateKind,
-    pub(crate) exclude_current_targets: bool,
+pub struct CopyCandidateShape {
+    pub candidate: Range<usize>,
+    pub kind: CopyCandidateKind,
+    pub exclude_current_targets: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum CopyForEachLayout {
+pub enum CopyForEachLayout {
     CopyThenForEach {
         subject: Range<usize>,
         target: Range<usize>,
@@ -44,15 +44,15 @@ pub(crate) enum CopyForEachLayout {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CopyForEachShape {
-    pub(crate) wrap_if_result: bool,
-    pub(crate) layout: CopyForEachLayout,
+pub struct CopyForEachShape {
+    pub wrap_if_result: bool,
+    pub layout: CopyForEachLayout,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TaggedCopyRetargetShape {
-    pub(crate) wrap_if_result: bool,
-    pub(crate) copy_target: Range<usize>,
+pub struct TaggedCopyRetargetShape {
+    pub wrap_if_result: bool,
+    pub copy_target: Range<usize>,
 }
 
 const COULD_TARGET: &[&[&str]] = &[
@@ -92,7 +92,7 @@ fn candidate_suffix_start(tokens: &[OwnedLexToken]) -> usize {
     tokens.len()
 }
 
-pub(crate) fn parse_copy_candidate_shape(tokens: &[OwnedLexToken]) -> Option<CopyCandidateShape> {
+pub fn parse_copy_candidate_shape(tokens: &[OwnedLexToken]) -> Option<CopyCandidateShape> {
     let end = candidate_suffix_start(tokens);
     let mut start = 0usize;
     let mut input = LexStream::new(&tokens[..end]);
@@ -150,7 +150,7 @@ fn previous_chose_stack_object(tokens: &[OwnedLexToken]) -> bool {
     false
 }
 
-pub(crate) fn parse_stack_object_reference_shape(
+pub fn parse_stack_object_reference_shape(
     target: &[OwnedLexToken],
     previous: Option<&[OwnedLexToken]>,
 ) -> StackObjectReferenceShape {
@@ -163,7 +163,7 @@ pub(crate) fn parse_stack_object_reference_shape(
     }
 }
 
-pub(crate) fn is_tempting_offer_copy_sequence(
+pub fn is_tempting_offer_copy_sequence(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],
@@ -208,7 +208,7 @@ fn after_phrase_offset(
     Some(tokens.len().saturating_sub(input.len()))
 }
 
-pub(crate) fn parse_copy_for_each_shape(tokens: &[OwnedLexToken]) -> Option<CopyForEachShape> {
+pub fn parse_copy_for_each_shape(tokens: &[OwnedLexToken]) -> Option<CopyForEachShape> {
     let wrap_if_result = starts_sequence(tokens, &[&["if", "you", "do"]]);
     let for_each = first_phrase_offset(tokens, &[&["for", "each"]])?;
     let copy = first_phrase_offset(tokens, &[&["copy"], &["copies"]])?;
@@ -254,7 +254,7 @@ pub(crate) fn parse_copy_for_each_shape(tokens: &[OwnedLexToken]) -> Option<Copy
     })
 }
 
-pub(crate) fn each_copy_targets_different_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn each_copy_targets_different_shape(tokens: &[OwnedLexToken]) -> bool {
     contains_sequence_phrase(
         tokens,
         &[&[
@@ -270,7 +270,7 @@ pub(crate) fn each_copy_targets_different_shape(tokens: &[OwnedLexToken]) -> boo
     )
 }
 
-pub(crate) fn parse_tagged_copy_retarget_shape(
+pub fn parse_tagged_copy_retarget_shape(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
 ) -> Option<TaggedCopyRetargetShape> {

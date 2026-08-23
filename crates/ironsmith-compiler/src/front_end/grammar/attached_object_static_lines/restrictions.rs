@@ -10,7 +10,7 @@ use super::subjects::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AttachedCombatRestrictionKind {
+pub enum AttachedCombatRestrictionKind {
     CantAttack,
     CantBlock,
     CantAttackOrBlock,
@@ -18,28 +18,28 @@ pub(crate) enum AttachedCombatRestrictionKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AttachedCombatRestrictionSpec {
-    pub(crate) subject: AttachedSubject,
-    pub(crate) kind: AttachedCombatRestrictionKind,
+pub struct AttachedCombatRestrictionSpec {
+    pub subject: AttachedSubject,
+    pub kind: AttachedCombatRestrictionKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AttachedCombatRestrictionGrantSpec<'a> {
-    pub(crate) subject: AttachedSubject,
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) kind: AttachedCombatRestrictionKind,
-    pub(crate) ability_tokens: &'a [OwnedLexToken],
+pub struct AttachedCombatRestrictionGrantSpec<'a> {
+    pub subject: AttachedSubject,
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub kind: AttachedCombatRestrictionKind,
+    pub ability_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AttachedTapAbilitySubject {
+pub enum AttachedTapAbilitySubject {
     EnchantedCreature,
     EnchantedPermanent,
     EquippedCreature,
 }
 
 impl AttachedTapAbilitySubject {
-    pub(crate) fn display(self) -> &'static str {
+    pub fn display(self) -> &'static str {
         match self {
             Self::EnchantedCreature => "enchanted creature",
             Self::EnchantedPermanent => "enchanted permanent",
@@ -48,7 +48,7 @@ impl AttachedTapAbilitySubject {
     }
 }
 
-pub(crate) fn parse_attached_combat_restriction_tokens(
+pub fn parse_attached_combat_restriction_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedCombatRestrictionSpec> {
     primitives::parse_all(
@@ -59,7 +59,7 @@ pub(crate) fn parse_attached_combat_restriction_tokens(
     .ok()
 }
 
-pub(crate) fn parse_attached_combat_restriction_grant_tokens(
+pub fn parse_attached_combat_restriction_grant_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedCombatRestrictionGrantSpec<'_>> {
     primitives::parse_all(
@@ -70,7 +70,7 @@ pub(crate) fn parse_attached_combat_restriction_grant_tokens(
     .ok()
 }
 
-pub(crate) fn parse_all_creatures_block_attached_tokens(
+pub fn parse_all_creatures_block_attached_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedSubject> {
     primitives::parse_all(
@@ -81,7 +81,7 @@ pub(crate) fn parse_all_creatures_block_attached_tokens(
     .ok()
 }
 
-pub(crate) fn parse_attached_tap_ability_restriction_tokens(
+pub fn parse_attached_tap_ability_restriction_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedTapAbilitySubject> {
     primitives::parse_all(
@@ -92,9 +92,7 @@ pub(crate) fn parse_attached_tap_ability_restriction_tokens(
     .ok()
 }
 
-pub(crate) fn parse_you_control_attached_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<AttachedSubject> {
+pub fn parse_you_control_attached_tokens(tokens: &[OwnedLexToken]) -> Option<AttachedSubject> {
     primitives::parse_all(
         tokens,
         parse_you_control_attached_lexed,
@@ -103,7 +101,7 @@ pub(crate) fn parse_you_control_attached_tokens(
     .ok()
 }
 
-pub(crate) fn parse_attached_restriction_tail_tokens(
+pub fn parse_attached_restriction_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedCombatRestrictionKind> {
     primitives::parse_all(

@@ -9,36 +9,36 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ManaValueGrantSpec<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
+pub struct ManaValueGrantSpec<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LifeManaValueGrantSpec<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) usage_limit: LifeManaValueGrantUsageLimit,
+pub struct LifeManaValueGrantSpec<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub usage_limit: LifeManaValueGrantUsageLimit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LifeManaValueGrantUsageLimit {
+pub enum LifeManaValueGrantUsageLimit {
     OnceDuringEachOfYourTurns,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct FixedManaCostGrantSpec<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) mana_cost: ManaCost,
+pub struct FixedManaCostGrantSpec<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub mana_cost: ManaCost,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum HandSizePlayerKind {
+pub enum HandSizePlayerKind {
     You,
     Opponent,
     Any,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum HandSizeOperation {
+pub enum HandSizeOperation {
     Reduce(u32),
     Increase(u32),
     Set(u32),
@@ -46,20 +46,20 @@ pub(crate) enum HandSizeOperation {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct HandSizeLineSpec<'a> {
-    pub(crate) condition_tokens: Option<&'a [OwnedLexToken]>,
-    pub(crate) player: HandSizePlayerKind,
-    pub(crate) operation: HandSizeOperation,
+pub struct HandSizeLineSpec<'a> {
+    pub condition_tokens: Option<&'a [OwnedLexToken]>,
+    pub player: HandSizePlayerKind,
+    pub operation: HandSizeOperation,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ManaSpendPlayerKind {
+pub enum ManaSpendPlayerKind {
     You,
     Any,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ManaSpendPermissionShape<'a> {
+pub enum ManaSpendPermissionShape<'a> {
     SymbolAsAnyColorOtherAsColorless {
         symbol: ManaSymbol,
     },
@@ -73,13 +73,11 @@ pub(crate) enum ManaSpendPermissionShape<'a> {
     },
 }
 
-pub(crate) fn parse_mana_value_grant_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<ManaValueGrantSpec<'_>> {
+pub fn parse_mana_value_grant_tokens(tokens: &[OwnedLexToken]) -> Option<ManaValueGrantSpec<'_>> {
     primitives::parse_all(tokens, parse_mana_value_grant_lexed, "mana-value grant").ok()
 }
 
-pub(crate) fn parse_life_mana_value_grant_tokens(
+pub fn parse_life_mana_value_grant_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LifeManaValueGrantSpec<'_>> {
     primitives::parse_all(
@@ -90,7 +88,7 @@ pub(crate) fn parse_life_mana_value_grant_tokens(
     .ok()
 }
 
-pub(crate) fn parse_fixed_mana_cost_grant_tokens(
+pub fn parse_fixed_mana_cost_grant_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<FixedManaCostGrantSpec<'_>> {
     primitives::parse_all(
@@ -101,17 +99,15 @@ pub(crate) fn parse_fixed_mana_cost_grant_tokens(
     .ok()
 }
 
-pub(crate) fn parse_cascade_land_drop_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_cascade_land_drop_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(tokens, parse_cascade_land_drop_lexed, "cascade land drop").is_ok()
 }
 
-pub(crate) fn parse_hand_size_line_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<HandSizeLineSpec<'_>> {
+pub fn parse_hand_size_line_tokens(tokens: &[OwnedLexToken]) -> Option<HandSizeLineSpec<'_>> {
     primitives::parse_all(tokens, parse_hand_size_line_lexed, "maximum hand-size line").ok()
 }
 
-pub(crate) fn parse_mana_spend_permission_tokens(
+pub fn parse_mana_spend_permission_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaSpendPermissionShape<'_>> {
     primitives::parse_all(

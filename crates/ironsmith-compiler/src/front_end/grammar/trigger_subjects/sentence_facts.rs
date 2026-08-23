@@ -3,12 +3,12 @@ use crate::lexer::{OwnedLexToken, TokenKind, parser_token_word_refs};
 use super::{exact_word_occurs, parse_trigger_word_token, word_slice_has_any_prefix};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TriggerSentenceSurfaceFacts {
-    pub(crate) spawn_scion_mana_reminder: bool,
-    pub(crate) round_up_each_time: bool,
+pub struct TriggerSentenceSurfaceFacts {
+    pub spawn_scion_mana_reminder: bool,
+    pub round_up_each_time: bool,
 }
 
-pub(crate) fn parse_trigger_sentence_surface_facts(
+pub fn parse_trigger_sentence_surface_facts(
     tokens: &[OwnedLexToken],
 ) -> TriggerSentenceSurfaceFacts {
     let words = parser_token_word_refs(tokens);
@@ -29,9 +29,7 @@ pub(crate) fn parse_trigger_sentence_surface_facts(
     }
 }
 
-pub(crate) fn parse_embedded_token_rules_boundary_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<usize> {
+pub fn parse_embedded_token_rules_boundary_tokens(tokens: &[OwnedLexToken]) -> Option<usize> {
     let words = parser_token_word_refs(tokens);
     if !exact_word_occurs(&words, &["create", "creates"]) || !exact_word_occurs(&words, &["token"])
     {

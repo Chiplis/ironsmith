@@ -8,32 +8,32 @@ use crate::grammar::{leaf, primitives};
 use crate::lexer::OwnedLexToken;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum GainBasePtShapeError {
+pub enum GainBasePtShapeError {
     InvalidValue,
     UnsupportedTail,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct GainBasePtShape {
-    pub(crate) power: Value,
-    pub(crate) toughness: Value,
+pub struct GainBasePtShape {
+    pub power: Value,
+    pub toughness: Value,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct LeadingGainBasePtShape {
-    pub(crate) has_offset: usize,
-    pub(crate) power: Value,
-    pub(crate) toughness: Value,
+pub struct LeadingGainBasePtShape {
+    pub has_offset: usize,
+    pub power: Value,
+    pub toughness: Value,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct GainPumpHeadShape {
-    pub(crate) power: Value,
-    pub(crate) toughness: Value,
-    pub(crate) has_local_duration: bool,
+pub struct GainPumpHeadShape {
+    pub power: Value,
+    pub toughness: Value,
+    pub has_local_duration: bool,
     /// Number of leading surface tokens before the actual P/T modifier, such
     /// as `an additional` in clash result clauses.
-    pub(crate) modifier_token_offset: usize,
+    pub modifier_token_offset: usize,
 }
 
 fn parse_gain_pump_head_lexed<'a>(
@@ -128,13 +128,13 @@ fn parse_base_pt_tail(
     Ok(Some(GainBasePtShape { power, toughness }))
 }
 
-pub(crate) fn parse_gain_base_pt_after_has_shape(
+pub fn parse_gain_base_pt_after_has_shape(
     words_after_has: &[&str],
 ) -> Result<Option<GainBasePtShape>, GainBasePtShapeError> {
     parse_base_pt_tail(words_after_has, false)
 }
 
-pub(crate) fn parse_leading_gain_base_pt_shape(
+pub fn parse_leading_gain_base_pt_shape(
     words: &[&str],
 ) -> Result<Option<LeadingGainBasePtShape>, GainBasePtShapeError> {
     let mut offset = 0usize;
@@ -157,7 +157,7 @@ pub(crate) fn parse_leading_gain_base_pt_shape(
     Ok(None)
 }
 
-pub(crate) fn subject_contains_gain_base_pt(words: &[&str]) -> bool {
+pub fn subject_contains_gain_base_pt(words: &[&str]) -> bool {
     let mut offset = 0usize;
     while offset < words.len() {
         let mut input = &words[offset..];
@@ -169,9 +169,7 @@ pub(crate) fn subject_contains_gain_base_pt(words: &[&str]) -> bool {
     false
 }
 
-pub(crate) fn parse_gain_pump_head_shape(
-    modifier_tokens: &[OwnedLexToken],
-) -> Option<GainPumpHeadShape> {
+pub fn parse_gain_pump_head_shape(modifier_tokens: &[OwnedLexToken]) -> Option<GainPumpHeadShape> {
     primitives::parse_prefix(modifier_tokens, parse_gain_pump_head_lexed).map(|(shape, _)| shape)
 }
 

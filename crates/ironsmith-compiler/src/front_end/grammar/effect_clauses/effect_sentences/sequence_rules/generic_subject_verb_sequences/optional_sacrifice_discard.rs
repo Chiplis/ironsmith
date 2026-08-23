@@ -11,7 +11,7 @@ use crate::zone::Zone;
 /// discarding together with the following consequence for opponents who did
 /// neither. The two effects remain inside one opponent frame, so the result
 /// test is executable independently for each participant.
-pub(crate) fn parse_each_opponent_may_sacrifice_or_discard_then_damage_nonparticipants(
+pub fn parse_each_opponent_may_sacrifice_or_discard_then_damage_nonparticipants(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

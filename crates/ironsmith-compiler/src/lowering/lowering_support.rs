@@ -47,7 +47,7 @@ use crate::model::reference_state::{
     LoweredEffects, ReferenceEnv, ReferenceExports, ReferenceImports,
 };
 
-pub(crate) fn replace_pending_removed_counter_metrics_with_x(effects: &mut [EffectAst]) {
+pub fn replace_pending_removed_counter_metrics_with_x(effects: &mut [EffectAst]) {
     fn replace_value(value: &mut Value) {
         let hints = value.surface_hints().to_vec();
         if matches!(
@@ -788,7 +788,7 @@ fn this_blocks_or_becomes_blocked_other_filter(trigger: &TriggerSpec) -> Option<
     pair(left, right).or_else(|| pair(right, left))
 }
 
-pub(crate) fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<&str> {
+pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<&str> {
     if let TriggerSpec::WithIntro { trigger, .. } = trigger {
         return default_trigger_last_object_tag(trigger);
     }
@@ -1968,7 +1968,7 @@ fn flatten_top_level_source_sentences(
     (flattened, Vec::new())
 }
 
-pub(crate) fn rewrite_prepare_effects_for_lowering(
+pub fn rewrite_prepare_effects_for_lowering(
     effects: &[EffectAst],
     imports: impl Into<ReferenceImports>,
 ) -> Result<PreparedEffectsForLowering, CardTextError> {
@@ -2074,7 +2074,7 @@ fn effect_consumes_prior_damage_metric(effect: &EffectAst) -> bool {
 /// explicitly carries statement exports into the next source line. Assigning
 /// an ID to the final memory-producing effect is therefore required for typed
 /// followups such as "the creature they exiled" to bind across that boundary.
-pub(crate) fn rewrite_prepare_statement_effects_for_lowering(
+pub fn rewrite_prepare_statement_effects_for_lowering(
     effects: &[EffectAst],
     imports: impl Into<ReferenceImports>,
 ) -> Result<PreparedEffectsForLowering, CardTextError> {
@@ -2108,7 +2108,7 @@ pub(crate) fn rewrite_prepare_statement_effects_for_lowering(
     )
 }
 
-pub(crate) fn rewrite_prepare_additional_cost_effects_for_lowering(
+pub fn rewrite_prepare_additional_cost_effects_for_lowering(
     effects: &[EffectAst],
     imports: impl Into<ReferenceImports>,
 ) -> Result<PreparedEffectsForLowering, CardTextError> {
@@ -2130,7 +2130,7 @@ pub(crate) fn rewrite_prepare_additional_cost_effects_for_lowering(
     )
 }
 
-pub(crate) fn rewrite_prepare_effects_with_trigger_context_for_lowering(
+pub fn rewrite_prepare_effects_with_trigger_context_for_lowering(
     trigger: Option<&TriggerSpec>,
     effects: &[EffectAst],
     imports: impl Into<ReferenceImports>,
@@ -2211,7 +2211,7 @@ pub(crate) fn rewrite_prepare_effects_with_trigger_context_for_lowering(
     )
 }
 
-pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
+pub fn rewrite_prepare_triggered_effects_for_lowering(
     trigger: TriggerSpec,
     effects: &[EffectAst],
     imports: impl Into<ReferenceImports>,
@@ -2648,7 +2648,7 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
     ))
 }
 
-pub(crate) fn rewrite_lower_prepared_statement_effects(
+pub fn rewrite_lower_prepared_statement_effects(
     prepared: &PreparedEffectsForLowering,
 ) -> Result<LoweredEffects, CardTextError> {
     let mut lowered = materialize_prepared_statement_effects(prepared)?;
@@ -2656,7 +2656,7 @@ pub(crate) fn rewrite_lower_prepared_statement_effects(
     Ok(lowered)
 }
 
-pub(crate) fn rewrite_lower_prepared_additional_cost_choice_modes_with_exports(
+pub fn rewrite_lower_prepared_additional_cost_choice_modes_with_exports(
     options: &[NormalizedAdditionalCostChoiceOptionAst],
 ) -> Result<(Vec<EffectMode>, ReferenceExports), CardTextError> {
     let mut exports = ReferenceExports::default();
@@ -2814,23 +2814,21 @@ fn effect_produces_mana(effect: &crate::effect::Effect) -> bool {
     effect.contains_mana_production()
 }
 
-pub(crate) fn rewrite_lower_parsed_ability(
-    parsed: ParsedAbility,
-) -> Result<ParsedAbility, CardTextError> {
-    stacker::maybe_grow(1024 * 1024, 2 * 1024 * 1024, || {
+pub fn rewrite_lower_parsed_ability(parsed: ParsedAbility) -> Result<ParsedAbility, CardTextError> {
+    crate::stack::maybe_grow(1024 * 1024, 2 * 1024 * 1024, || {
         rewrite_lower_parsed_ability_internal(parsed, None)
     })
 }
 
-pub(crate) fn rewrite_lower_prepared_ability(
+pub fn rewrite_lower_prepared_ability(
     normalized: NormalizedParsedAbility,
 ) -> Result<ParsedAbility, CardTextError> {
-    stacker::maybe_grow(1024 * 1024, 2 * 1024 * 1024, || {
+    crate::stack::maybe_grow(1024 * 1024, 2 * 1024 * 1024, || {
         rewrite_lower_parsed_ability_internal(normalized.parsed, normalized.prepared)
     })
 }
 
-pub(crate) fn rewrite_apply_instead_followup_statement_to_last_ability(
+pub fn rewrite_apply_instead_followup_statement_to_last_ability(
     builder: &mut CardDefinitionBuilder,
     last_restrictable_ability: Option<usize>,
     effects: &[EffectAst],
@@ -2909,7 +2907,7 @@ pub(crate) fn rewrite_apply_instead_followup_statement_to_last_ability(
     Ok(true)
 }
 
-pub(crate) fn rewrite_apply_delayed_trigger_followup_statement_to_last_ability(
+pub fn rewrite_apply_delayed_trigger_followup_statement_to_last_ability(
     builder: &mut CardDefinitionBuilder,
     last_restrictable_ability: Option<usize>,
     effects: &[EffectAst],
@@ -2956,7 +2954,7 @@ pub(crate) fn rewrite_apply_delayed_trigger_followup_statement_to_last_ability(
     Ok(true)
 }
 
-pub(crate) fn rewrite_parsed_triggered_ability(
+pub fn rewrite_parsed_triggered_ability(
     trigger: TriggerSpec,
     effects_ast: Vec<EffectAst>,
     functional_zones: Vec<Zone>,
@@ -2985,9 +2983,7 @@ pub(crate) fn rewrite_parsed_triggered_ability(
     }
 }
 
-pub(crate) fn rewrite_static_ability_for_keyword_action(
-    action: KeywordAction,
-) -> Option<StaticAbility> {
+pub fn rewrite_static_ability_for_keyword_action(action: KeywordAction) -> Option<StaticAbility> {
     if !action.lowers_to_static_ability() {
         return None;
     }
@@ -3147,7 +3143,7 @@ fn rewrite_lower_keyword_action_or_err(
     })
 }
 
-pub(crate) fn rewrite_lower_keyword_action_to_object_abilities(
+pub fn rewrite_lower_keyword_action_to_object_abilities(
     action: KeywordAction,
 ) -> Result<Vec<Ability>, CardTextError> {
     if let Some(abilities) = executable_object_abilities_for_keyword_action(&action) {
@@ -3427,7 +3423,7 @@ fn rewrite_lower_pregame_reveal_from_opening_hand(
     ))
 }
 
-pub(crate) fn rewrite_lower_static_ability_ast(
+pub fn rewrite_lower_static_ability_ast(
     ability: StaticAbilityAst,
 ) -> Result<StaticAbility, CardTextError> {
     match ability {
@@ -3623,7 +3619,7 @@ pub(crate) fn rewrite_lower_static_ability_ast(
     }
 }
 
-pub(crate) fn rewrite_lower_static_abilities_ast(
+pub fn rewrite_lower_static_abilities_ast(
     abilities: Vec<StaticAbilityAst>,
 ) -> Result<Vec<StaticAbility>, CardTextError> {
     abilities
@@ -4101,7 +4097,7 @@ fn rewrite_validate_card_definition_for_iterated_player(
     Ok(())
 }
 
-pub(crate) fn rewrite_validate_iterated_player_bindings_in_lowered_effects(
+pub fn rewrite_validate_iterated_player_bindings_in_lowered_effects(
     lowered: &LoweredEffects,
     initial_iterated_player_bound: bool,
     context: &str,

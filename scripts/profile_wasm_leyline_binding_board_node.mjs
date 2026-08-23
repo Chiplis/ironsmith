@@ -140,26 +140,6 @@ function summarizePriorityAdvance(perf) {
   };
 }
 
-function summarizeManaPipPayment(perf) {
-  if (!perf) return null;
-  return {
-    pendingKind: metric(perf, "pendingKind"),
-    remainingPipsBefore: metric(perf, "remainingPipsBefore") ?? null,
-    remainingPipsAfter: metric(perf, "remainingPipsAfter") ?? null,
-    cachedOptionCount: metric(perf, "cachedOptionCount") ?? null,
-    builtOptionCount: metric(perf, "builtOptionCount") ?? null,
-    usedCachedOptions: Boolean(metric(perf, "usedCachedOptions")),
-    buildOptionsMs: numberMetric(perf, "buildOptionsMs"),
-    executePaymentMs: numberMetric(perf, "executePaymentMs"),
-    queueManaEventMs: numberMetric(perf, "queueManaEventMs"),
-    drainTriggersMs: numberMetric(perf, "drainTriggersMs"),
-    continueCastMs: numberMetric(perf, "continueCastMs"),
-    continueActivationMs: numberMetric(perf, "continueActivationMs"),
-    pipPaid: Boolean(metric(perf, "pipPaid")),
-    resultKind: metric(perf, "resultKind"),
-  };
-}
-
 function summarizePriorityAction(perf) {
   if (!perf) return null;
   return {
@@ -171,7 +151,6 @@ function summarizePriorityAction(perf) {
     advancePriorityMs: numberMetric(perf, "advancePriorityMs"),
     resolveStackEntryMs: numberMetric(perf, "resolveStackEntryMs"),
     resetPriorityMs: numberMetric(perf, "resetPriorityMs"),
-    manaPipPayment: summarizeManaPipPayment(metric(perf, "manaPipPayment")),
     nestedPriorityAdvance: summarizePriorityAdvance(metric(perf, "nestedPriorityAdvance")),
   };
 }
@@ -404,12 +383,6 @@ function printHuman(summary) {
       console.log(
         `    action=${priorityAction.actionKind}, apply=${priorityAction.responseApplyMs}ms, advance=${priorityAction.advancePriorityMs}ms, result=${priorityAction.priorityResult}`
       );
-      if (priorityAction.manaPipPayment) {
-        const mana = priorityAction.manaPipPayment;
-        console.log(
-          `    mana: cached=${mana.cachedOptionCount}, build=${mana.buildOptionsMs}ms, execute=${mana.executePaymentMs}ms, drain=${mana.drainTriggersMs}ms, continueCast=${mana.continueCastMs}ms`
-        );
-      }
       if (nested) {
         console.log(
           `    nested advance: total=${nested.totalMs}ms, sba=${nested.stateBasedActionsMs}ms, triggers=${nested.putTriggersMs}ms, legal=${nested.computeLegalActionsMs}ms, actions=${nested.actionCount}`

@@ -10,40 +10,40 @@ use crate::effect::Until;
 
 #[path = "chain_carry/carry_facts.rs"]
 mod carry_facts;
-pub(crate) use carry_facts::*;
+pub use carry_facts::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ChainOwner {
+pub enum ChainOwner {
     You,
     TargetPlayer,
     TargetOpponent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ExileLibraryShuffleSpec {
-    pub(crate) owner: ChainOwner,
+pub struct ExileLibraryShuffleSpec {
+    pub owner: ChainOwner,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ChainPlayerScope {
+pub enum ChainPlayerScope {
     EachOpponent,
     EachPlayer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct OrActionSplit<'a> {
-    pub(crate) first_tokens: &'a [OwnedLexToken],
-    pub(crate) second_tokens: &'a [OwnedLexToken],
+pub struct OrActionSplit<'a> {
+    pub first_tokens: &'a [OwnedLexToken],
+    pub second_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DestroyRestrictionSplit<'a> {
-    pub(crate) destroy_tokens: &'a [OwnedLexToken],
-    pub(crate) restriction_tokens: &'a [OwnedLexToken],
+pub struct DestroyRestrictionSplit<'a> {
+    pub destroy_tokens: &'a [OwnedLexToken],
+    pub restriction_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CoordinatedTargetActionKind {
+pub enum CoordinatedTargetActionKind {
     Destroy,
     Exile,
     Return,
@@ -53,7 +53,7 @@ pub(crate) enum CoordinatedTargetActionKind {
 /// A later `then` clause is deliberately excluded from the coordinated run;
 /// for example, the two returns in "return A and B, then discard" remain
 /// independent targets while the discard stays sequential.
-pub(crate) fn coordinated_target_action_kind(
+pub fn coordinated_target_action_kind(
     tokens: &[OwnedLexToken],
 ) -> Option<CoordinatedTargetActionKind> {
     let words = tokens
@@ -79,7 +79,7 @@ pub(crate) fn coordinated_target_action_kind(
 /// Returns a sequential discard tail following a coordinated action prefix.
 /// This is kept as a token slice so the ordinary discard parser remains the
 /// sole authority for counts, filters, randomness, and player binding.
-pub(crate) fn trailing_then_discard_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn trailing_then_discard_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let then_idx = tokens.iter().position(|token| token.is_word("then"))?;
     let trailing = trim_lexed_commas(tokens.get(then_idx + 1..)?);
     trailing
@@ -89,26 +89,24 @@ pub(crate) fn trailing_then_discard_tokens(tokens: &[OwnedLexToken]) -> Option<&
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DelayedCopyTiming {
+pub enum DelayedCopyTiming {
     EndStep { player_is_you: bool },
     Upkeep { player_is_you: bool },
     EndOfCombat,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DelayedCopyFacts {
-    pub(crate) has_exile: bool,
-    pub(crate) has_sacrifice: bool,
-    pub(crate) has_token: bool,
-    pub(crate) timing: Option<DelayedCopyTiming>,
+pub struct DelayedCopyFacts {
+    pub has_exile: bool,
+    pub has_sacrifice: bool,
+    pub has_token: bool,
+    pub timing: Option<DelayedCopyTiming>,
 }
 
 /// Recognizes one Oracle clause containing two or more explicit target
 /// subjects, each with its own `gets` modifier, joined by `and`. The return
 /// value records whether the shared duration was printed at the front.
-pub(crate) fn coordinated_target_stat_modifier_leading_duration(
-    tokens: &[OwnedLexToken],
-) -> Option<bool> {
+pub fn coordinated_target_stat_modifier_leading_duration(tokens: &[OwnedLexToken]) -> Option<bool> {
     let words = tokens
         .iter()
         .filter_map(OwnedLexToken::as_word)
@@ -127,7 +125,7 @@ pub(crate) fn coordinated_target_stat_modifier_leading_duration(
 /// Recognizes a single source-subject clause of the form
 /// "this source deals ... and gains ...". Semantic AST validation remains in
 /// the sentence layer; this helper records only the coordinated word order.
-pub(crate) fn coordinated_source_damage_then_gain(tokens: &[OwnedLexToken]) -> bool {
+pub fn coordinated_source_damage_then_gain(tokens: &[OwnedLexToken]) -> bool {
     let words = tokens
         .iter()
         .filter_map(OwnedLexToken::as_word)
@@ -157,7 +155,7 @@ pub(crate) fn coordinated_source_damage_then_gain(tokens: &[OwnedLexToken]) -> b
 /// two-sentence surface "Tap ... . It doesn't untap ...". Both lower to the
 /// same runtime actions, but the typed sequence surface lets the renderer
 /// preserve the original relationship without guessing from adjacency.
-pub(crate) fn coordinated_tap_then_next_untap(tokens: &[OwnedLexToken]) -> bool {
+pub fn coordinated_tap_then_next_untap(tokens: &[OwnedLexToken]) -> bool {
     let words = tokens
         .iter()
         .filter_map(OwnedLexToken::as_word)
@@ -197,7 +195,7 @@ pub(crate) fn coordinated_tap_then_next_untap(tokens: &[OwnedLexToken]) -> bool 
 /// preserve one printed Oracle clause without inferring coordination from
 /// the lowered effects. A `then` chain is sequential even when another
 /// conjunction also appears in the sentence.
-pub(crate) fn coordinated_effect_chain_leading_duration(tokens: &[OwnedLexToken]) -> Option<bool> {
+pub fn coordinated_effect_chain_leading_duration(tokens: &[OwnedLexToken]) -> Option<bool> {
     // A gain/get compound has one grammatical subject and is owned by the
     // typed gain-ability parser. Treating its `and gets` tail as an
     // independent action loses that subject after a leading duration (for
@@ -231,7 +229,7 @@ pub(crate) fn coordinated_effect_chain_leading_duration(tokens: &[OwnedLexToken]
         .then(|| parse_carry_duration_prefix_tokens(tokens).is_some())
 }
 
-pub(crate) fn parse_choose_each_basic_land_type_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_choose_each_basic_land_type_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,
         (
@@ -247,12 +245,12 @@ pub(crate) fn parse_choose_each_basic_land_type_tokens(tokens: &[OwnedLexToken])
     .is_ok()
 }
 
-pub(crate) fn parse_create_fragment_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_create_fragment_tokens(tokens: &[OwnedLexToken]) -> bool {
     let starts_like_count = primitives::parse_prefix(tokens, parse_create_fragment_count).is_some();
     starts_like_count && contains_semantic_word(tokens, "token", "tokens")
 }
 
-pub(crate) fn parse_exile_library_shuffle_tokens(
+pub fn parse_exile_library_shuffle_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ExileLibraryShuffleSpec> {
     primitives::parse_all(
@@ -263,7 +261,7 @@ pub(crate) fn parse_exile_library_shuffle_tokens(
     .ok()
 }
 
-pub(crate) fn count_token_mentions(tokens: &[OwnedLexToken]) -> usize {
+pub fn count_token_mentions(tokens: &[OwnedLexToken]) -> usize {
     let mut input = LexStream::new(tokens);
     let mut count = 0usize;
     loop {
@@ -285,13 +283,11 @@ pub(crate) fn count_token_mentions(tokens: &[OwnedLexToken]) -> usize {
     count
 }
 
-pub(crate) fn parse_meld_them_into_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn parse_meld_them_into_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     primitives::parse_all(tokens, parse_meld_them_into_lexed, "meld-them chain").ok()
 }
 
-pub(crate) fn parse_leading_chain_scope_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<ChainPlayerScope> {
+pub fn parse_leading_chain_scope_tokens(tokens: &[OwnedLexToken]) -> Option<ChainPlayerScope> {
     primitives::parse_prefix(
         tokens,
         alt((
@@ -304,33 +300,33 @@ pub(crate) fn parse_leading_chain_scope_tokens(
     .map(|(scope, _)| scope)
 }
 
-pub(crate) fn strip_leading_have_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn strip_leading_have_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     primitives::parse_prefix(tokens, alt((semantic_kw("have"), semantic_kw("has"))))
         .map(|(_, rest)| trim_lexed_commas(rest))
 }
 
-pub(crate) fn strip_leading_choose_to_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn strip_leading_choose_to_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     primitives::parse_prefix(tokens, semantic_phrase(&["choose", "to"]))
         .map(|(_, rest)| trim_lexed_commas(rest))
 }
 
-pub(crate) fn starts_with_may_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn starts_with_may_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, semantic_kw("may")).is_some()
 }
 
-pub(crate) fn strip_leading_and_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn strip_leading_and_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     primitives::parse_prefix(tokens, semantic_kw("and")).map(|(_, rest)| trim_lexed_commas(rest))
 }
 
-pub(crate) fn starts_with_unless_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn starts_with_unless_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, semantic_kw("unless")).is_some()
 }
 
-pub(crate) fn starts_with_destroy_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn starts_with_destroy_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, semantic_kw("destroy")).is_some()
 }
 
-pub(crate) fn parse_tap_or_untap_all_choice_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_tap_or_untap_all_choice_tokens(tokens: &[OwnedLexToken]) -> bool {
     let starts = primitives::parse_prefix(
         tokens,
         (
@@ -346,14 +342,14 @@ pub(crate) fn parse_tap_or_untap_all_choice_tokens(tokens: &[OwnedLexToken]) -> 
             .is_some()
 }
 
-pub(crate) fn parse_temporary_attack_block_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_temporary_attack_block_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
     contains_semantic_word(tokens, "cant", "cannot")
         && (contains_semantic_word(tokens, "attack", "attacks")
             || contains_semantic_word(tokens, "block", "blocks"))
         && find_semantic_phrase(tokens, &["this", "turn"]).is_some()
 }
 
-pub(crate) fn parse_destroy_restriction_splits_tokens(
+pub fn parse_destroy_restriction_splits_tokens(
     tokens: &[OwnedLexToken],
 ) -> Vec<DestroyRestrictionSplit<'_>> {
     if !starts_with_destroy_tokens(tokens) {
@@ -396,7 +392,7 @@ pub(crate) fn parse_destroy_restriction_splits_tokens(
     splits
 }
 
-pub(crate) fn parse_until_end_of_turn_trigger_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_until_end_of_turn_trigger_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(
         tokens,
         (
@@ -414,13 +410,13 @@ pub(crate) fn parse_until_end_of_turn_trigger_tokens(tokens: &[OwnedLexToken]) -
     .is_some()
 }
 
-pub(crate) fn parse_would_enter_replacement_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_would_enter_replacement_tokens(tokens: &[OwnedLexToken]) -> bool {
     contains_semantic_word(tokens, "would", "would")
         && contains_semantic_word(tokens, "instead", "instead")
         && contains_semantic_word(tokens, "enter", "enters")
 }
 
-pub(crate) fn parse_or_action_splits_tokens(tokens: &[OwnedLexToken]) -> Vec<OrActionSplit<'_>> {
+pub fn parse_or_action_splits_tokens(tokens: &[OwnedLexToken]) -> Vec<OrActionSplit<'_>> {
     if !contains_semantic_word(tokens, "or", "or") {
         return Vec::new();
     }
@@ -461,7 +457,7 @@ pub(crate) fn parse_or_action_splits_tokens(tokens: &[OwnedLexToken]) -> Vec<OrA
     splits
 }
 
-pub(crate) fn parse_tap_then_unattach_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_tap_then_unattach_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, semantic_phrase(&["tap", "those"])).is_some()
         && find_semantic_phrase(
             tokens,
@@ -470,7 +466,7 @@ pub(crate) fn parse_tap_then_unattach_tokens(tokens: &[OwnedLexToken]) -> bool {
         .is_some()
 }
 
-pub(crate) fn split_return_then_loses_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn split_return_then_loses_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     primitives::parse_prefix(tokens, semantic_phrase(&["return", "it"]))?;
     let (idx, (), _) = primitives::find_prefix(tokens, || {
         semantic_phrase(&["and", "it", "loses", "all", "abilities"])
@@ -480,7 +476,7 @@ pub(crate) fn split_return_then_loses_tokens(tokens: &[OwnedLexToken]) -> Option
     (!return_tokens.is_empty()).then_some(return_tokens)
 }
 
-pub(crate) fn is_rounded_up_segment_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_rounded_up_segment_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,
         (
@@ -496,13 +492,11 @@ pub(crate) fn is_rounded_up_segment_tokens(tokens: &[OwnedLexToken]) -> bool {
     .is_ok()
 }
 
-pub(crate) fn has_where_x_is_half_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn has_where_x_is_half_tokens(tokens: &[OwnedLexToken]) -> bool {
     find_semantic_phrase(tokens, &["where", "x", "is", "half"]).is_some()
 }
 
-pub(crate) fn split_all_abilities_and_gain_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<&[OwnedLexToken]> {
+pub fn split_all_abilities_and_gain_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     primitives::parse_prefix(
         tokens,
         (
@@ -514,7 +508,7 @@ pub(crate) fn split_all_abilities_and_gain_tokens(
     .map(|(_, rest)| trim_lexed_commas(rest))
 }
 
-pub(crate) fn parse_delayed_copy_facts_tokens(tokens: &[OwnedLexToken]) -> DelayedCopyFacts {
+pub fn parse_delayed_copy_facts_tokens(tokens: &[OwnedLexToken]) -> DelayedCopyFacts {
     let has_exile = contains_semantic_word(tokens, "exile", "exiles");
     let has_sacrifice = contains_semantic_word(tokens, "sacrifice", "sacrifices");
     let has_token = contains_semantic_word(tokens, "token", "tokens");
@@ -545,7 +539,7 @@ pub(crate) fn parse_delayed_copy_facts_tokens(tokens: &[OwnedLexToken]) -> Delay
     }
 }
 
-pub(crate) fn has_token_rules_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn has_token_rules_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
     find_semantic_phrase(tokens, &["when", "this", "token"]).is_some()
         || find_semantic_phrase(tokens, &["whenever", "this", "token"]).is_some()
         || find_semantic_phrase(tokens, &["this", "token"]).is_some()
@@ -555,7 +549,7 @@ pub(crate) fn has_token_rules_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
         || find_semantic_phrase(tokens, &["they", "have"]).is_some()
 }
 
-pub(crate) fn is_causative_have_player_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_causative_have_player_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(
         tokens,
         (

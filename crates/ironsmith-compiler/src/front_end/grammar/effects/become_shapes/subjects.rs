@@ -23,14 +23,14 @@ const TAGGED_REFERENCES: &[&[&str]] = &[
     &["those", "objects"],
 ];
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BecomeMassTargetKind {
+pub enum BecomeMassTargetKind {
     Creature,
     Land,
     Unsupported,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum BecomeTargetSubjectShape<'a> {
+pub enum BecomeTargetSubjectShape<'a> {
     Mass(BecomeMassTargetKind),
     Tagged,
     FilteredMany(&'a [OwnedLexToken]),
@@ -76,7 +76,7 @@ fn is_basic_land_type(word: &str) -> bool {
     })
 }
 
-pub(crate) fn parse_become_target_subject_shape<'a>(
+pub fn parse_become_target_subject_shape<'a>(
     target_tokens: &'a [OwnedLexToken],
     body_tokens: &[OwnedLexToken],
 ) -> BecomeTargetSubjectShape<'a> {
@@ -125,7 +125,7 @@ pub(crate) fn parse_become_target_subject_shape<'a>(
     BecomeTargetSubjectShape::Parsed(target_tokens)
 }
 
-pub(crate) fn become_subject_set_quantifier_surface(
+pub fn become_subject_set_quantifier_surface(
     target_tokens: &[OwnedLexToken],
 ) -> Option<ironsmith_core::SetQuantifierSurface> {
     let words = parser_token_word_refs(trim_lexed_commas(target_tokens));
@@ -140,21 +140,19 @@ pub(crate) fn become_subject_set_quantifier_surface(
     }
 }
 
-pub(crate) fn become_subject_has_life_total(tokens: &[OwnedLexToken]) -> bool {
+pub fn become_subject_has_life_total(tokens: &[OwnedLexToken]) -> bool {
     permission_shapes::contains_tokens(tokens, &["life"])
         && permission_shapes::contains_tokens(tokens, &["total"])
 }
 
-pub(crate) fn parse_leading_duration_target_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<&[OwnedLexToken]> {
+pub fn parse_leading_duration_target_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let (target_offset, _, _) =
         primitives::find_prefix(tokens, || primitives::kw("target").void())?;
     let target_tokens = trim_lexed_commas(&tokens[target_offset..]);
     (target_tokens.len() > 1).then_some(target_tokens)
 }
 
-pub(crate) fn aura_subject_prefers_source(tokens: &[OwnedLexToken]) -> bool {
+pub fn aura_subject_prefers_source(tokens: &[OwnedLexToken]) -> bool {
     let words = parser_token_word_refs(tokens);
     exact_any(&words, &[&["it"], &["this"], &["this", "creature"]])
 }

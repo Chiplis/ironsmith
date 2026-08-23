@@ -7,19 +7,19 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CharacteristicSourceValueKind {
+pub enum CharacteristicSourceValueKind {
     Power,
     Toughness,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CharacteristicRelativeValue {
+pub enum CharacteristicRelativeValue {
     Same,
     Plus(u32),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CharacteristicAggregateKind {
+pub enum CharacteristicAggregateKind {
     BasicLandTypes,
     CreatureTypes,
     Colors,
@@ -29,12 +29,12 @@ pub(crate) enum CharacteristicAggregateKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CharacteristicAggregatePrefix<'a> {
-    pub(crate) kind: CharacteristicAggregateKind,
-    pub(crate) scope_tokens: &'a [OwnedLexToken],
+pub struct CharacteristicAggregatePrefix<'a> {
+    pub kind: CharacteristicAggregateKind,
+    pub scope_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_characteristic_shared_value_tail_tokens(
+pub fn parse_characteristic_shared_value_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     let (power_toughness_start, _, _) = primitives::find_prefix(tokens, || {
@@ -52,7 +52,7 @@ pub(crate) fn parse_characteristic_shared_value_tail_tokens(
     .ok()
 }
 
-pub(crate) fn parse_characteristic_source_value_tokens(
+pub fn parse_characteristic_source_value_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CharacteristicSourceValueKind> {
     primitives::parse_all(
@@ -63,7 +63,7 @@ pub(crate) fn parse_characteristic_source_value_tokens(
     .ok()
 }
 
-pub(crate) fn parse_characteristic_relative_value_tokens(
+pub fn parse_characteristic_relative_value_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CharacteristicRelativeValue> {
     primitives::parse_all(
@@ -74,15 +74,13 @@ pub(crate) fn parse_characteristic_relative_value_tokens(
     .ok()
 }
 
-pub(crate) fn strip_characteristic_number_of_prefix_tokens(
-    tokens: &[OwnedLexToken],
-) -> &[OwnedLexToken] {
+pub fn strip_characteristic_number_of_prefix_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     primitives::parse_prefix(tokens, parse_characteristic_number_of_prefix_lexed)
         .map(|(_, rest)| rest)
         .unwrap_or(tokens)
 }
 
-pub(crate) fn parse_characteristic_aggregate_prefix_tokens(
+pub fn parse_characteristic_aggregate_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CharacteristicAggregatePrefix<'_>> {
     primitives::parse_prefix(tokens, parse_characteristic_aggregate_prefix_lexed).map(
@@ -93,7 +91,7 @@ pub(crate) fn parse_characteristic_aggregate_prefix_tokens(
     )
 }
 
-pub(crate) fn characteristic_tokens_have_card_types_among_marker(tokens: &[OwnedLexToken]) -> bool {
+pub fn characteristic_tokens_have_card_types_among_marker(tokens: &[OwnedLexToken]) -> bool {
     primitives::find_prefix(tokens, || {
         (
             alt((primitives::kw("type"), primitives::kw("types"))),
@@ -105,7 +103,7 @@ pub(crate) fn characteristic_tokens_have_card_types_among_marker(tokens: &[Owned
         && primitives::find_prefix(tokens, || primitives::kw("card").void()).is_some()
 }
 
-pub(crate) fn parse_iterated_mana_value_base_pt_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
+pub fn parse_iterated_mana_value_base_pt_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,
         parse_iterated_mana_value_base_pt_tail_lexed,

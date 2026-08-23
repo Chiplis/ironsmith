@@ -879,7 +879,7 @@ fn sync_counter_from_name(raw: &str) -> ironsmith::object::CounterType {
         "winch" => CounterType::Winch,
         "wind" => CounterType::Wind,
         "wish" => CounterType::Wish,
-        _ => CounterType::Named(Box::leak(normalized.into_boxed_str())),
+        _ => CounterType::Named(normalized.into()),
     }
 }
 

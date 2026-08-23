@@ -1,15 +1,15 @@
 #[path = "clause_dispatch_shapes/core.rs"]
 mod core;
-pub(crate) use core::*;
+pub use core::*;
 
 #[path = "clause_dispatch_shapes/direct.rs"]
 mod direct;
-pub(crate) use direct::*;
+pub use direct::*;
 
 #[path = "clause_dispatch_shapes/permissions.rs"]
 mod permissions;
-pub(crate) use permissions::*;
+pub use permissions::*;
 
 #[path = "clause_dispatch_shapes/relational.rs"]
 mod relational;
-pub(crate) use relational::*;
+pub use relational::*;

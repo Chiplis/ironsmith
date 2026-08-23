@@ -14,18 +14,18 @@ const ACTIVATE_ONLY_IF: &[&str] = &["activate", "only", "if"];
 const ONLY_IF: &[&str] = &["only", "if"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ActivationRestrictionNormalization {
+pub enum ActivationRestrictionNormalization {
     Redundant,
     Residual(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TextOnlyActivationRestriction {
+pub enum TextOnlyActivationRestriction {
     SourceDidNotAttackThisTurn,
     SourceAttackedThisTurn,
 }
 
-pub(crate) fn parse_once_per_turn_activation_restriction_tokens(
+pub fn parse_once_per_turn_activation_restriction_tokens(
     tokens: &[OwnedLexToken],
 ) -> ActivationRestrictionNormalization {
     let mut input = LexStream::new(tokens);
@@ -34,7 +34,7 @@ pub(crate) fn parse_once_per_turn_activation_restriction_tokens(
         .unwrap_or(ActivationRestrictionNormalization::Redundant)
 }
 
-pub(crate) fn parse_text_only_activation_restriction_tokens(
+pub fn parse_text_only_activation_restriction_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TextOnlyActivationRestriction> {
     primitives::parse_all(

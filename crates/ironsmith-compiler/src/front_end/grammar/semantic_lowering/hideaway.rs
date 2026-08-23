@@ -6,11 +6,11 @@ use super::super::super::lexer::{OwnedLexToken, render_token_slice};
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct HideawayKeywordShape {
-    pub(crate) count: i32,
+pub struct HideawayKeywordShape {
+    pub count: i32,
 }
 
-pub(crate) fn parse_hideaway_keyword_tokens(
+pub fn parse_hideaway_keyword_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<HideawayKeywordShape>, CardTextError> {
     let Some(((), count_tokens)) =

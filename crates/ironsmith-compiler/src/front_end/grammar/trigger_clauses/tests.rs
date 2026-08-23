@@ -755,7 +755,7 @@ fn parses_numbered_counter_placement_as_an_ordinal_trigger() {
         panic!("expected a numbered counter trigger, got {parsed:#?}");
     };
     assert!(filter.source);
-    assert_eq!(counter_type, CounterType::Named("plan"));
+    assert_eq!(counter_type, CounterType::Named("plan".into()));
     assert_eq!(counter_number, 4);
 }
 
@@ -780,7 +780,7 @@ fn parses_last_named_counter_removed_from_typed_source() {
         panic!("expected a typed counter-removal trigger: {parsed:#?}");
     };
     assert!(filter.source);
-    assert_eq!(counter_type, Some(CounterType::Named("ore")));
+    assert_eq!(counter_type, Some(CounterType::Named("ore".into())));
     assert!(last);
     assert!(!caused_by_source);
 }

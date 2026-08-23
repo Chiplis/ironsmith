@@ -6,7 +6,7 @@ use crate::ir::ChosenOptionContext;
 use crate::model::facts::{LineInfo, MetadataLine};
 
 #[derive(Debug, Clone)]
-pub(crate) enum KeywordLinePayloadCst {
+pub enum KeywordLinePayloadCst {
     Ast(LineAst),
     Kicker {
         cost: crate::cost::TotalCost,
@@ -15,15 +15,15 @@ pub(crate) enum KeywordLinePayloadCst {
 }
 
 impl KeywordLinePayloadCst {
-    pub(crate) fn ast(ast: LineAst) -> Self {
+    pub fn ast(ast: LineAst) -> Self {
         Self::Ast(ast)
     }
 
-    pub(crate) fn kicker(cost: crate::cost::TotalCost) -> Self {
+    pub fn kicker(cost: crate::cost::TotalCost) -> Self {
         Self::Kicker { cost, label: None }
     }
 
-    pub(crate) fn set_kicker_label(&mut self, label: String) -> Result<(), String> {
+    pub fn set_kicker_label(&mut self, label: String) -> Result<(), String> {
         let Self::Kicker {
             label: current_label,
             ..
@@ -35,7 +35,7 @@ impl KeywordLinePayloadCst {
         Ok(())
     }
 
-    pub(crate) fn to_line_ast(&self) -> LineAst {
+    pub fn to_line_ast(&self) -> LineAst {
         match self {
             Self::Ast(ast) => ast.clone(),
             Self::Kicker { cost, label } => {
@@ -50,12 +50,12 @@ impl KeywordLinePayloadCst {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct RewriteDocumentCst {
-    pub(crate) lines: Vec<RewriteLineCst>,
+pub struct RewriteDocumentCst {
+    pub lines: Vec<RewriteLineCst>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum RewriteLineCst {
+pub enum RewriteLineCst {
     Metadata(MetadataLineCst),
     Keyword(KeywordLineCst),
     Activated(ActivatedLineCst),
@@ -69,21 +69,21 @@ pub(crate) enum RewriteLineCst {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct MetadataLineCst {
-    pub(crate) value: MetadataLine,
+pub struct MetadataLineCst {
+    pub value: MetadataLine,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct KeywordLineCst {
-    pub(crate) info: LineInfo,
-    pub(crate) parse_tokens: Vec<OwnedLexToken>,
-    pub(crate) full_parse_tokens: Vec<OwnedLexToken>,
-    pub(crate) kind: KeywordLineKindCst,
-    pub(crate) payload: KeywordLinePayloadCst,
+pub struct KeywordLineCst {
+    pub info: LineInfo,
+    pub parse_tokens: Vec<OwnedLexToken>,
+    pub full_parse_tokens: Vec<OwnedLexToken>,
+    pub kind: KeywordLineKindCst,
+    pub payload: KeywordLinePayloadCst,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum KeywordLineKindCst {
+pub enum KeywordLineKindCst {
     AdditionalCost,
     AdditionalCostChoice,
     AlternativeCast,
@@ -125,101 +125,101 @@ pub(crate) enum KeywordLineKindCst {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ActivatedLineCst {
-    pub(crate) info: LineInfo,
-    pub(crate) cost: ActivationCostCst,
-    pub(crate) cost_parse_tokens: Vec<OwnedLexToken>,
-    pub(crate) effect_parse_tokens: Vec<OwnedLexToken>,
-    pub(crate) presentation: Option<PresentationLabel>,
-    pub(crate) chosen_option: Option<ChosenOptionContext>,
+pub struct ActivatedLineCst {
+    pub info: LineInfo,
+    pub cost: ActivationCostCst,
+    pub cost_parse_tokens: Vec<OwnedLexToken>,
+    pub effect_parse_tokens: Vec<OwnedLexToken>,
+    pub presentation: Option<PresentationLabel>,
+    pub chosen_option: Option<ChosenOptionContext>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TriggerIntroCst {
+pub enum TriggerIntroCst {
     When,
     Whenever,
     At,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct TriggeredLineCst {
-    pub(crate) info: LineInfo,
-    pub(crate) full_text: String,
-    pub(crate) full_parse_tokens: Vec<OwnedLexToken>,
-    pub(crate) trigger_parse_tokens: Vec<OwnedLexToken>,
-    pub(crate) effect_parse_tokens: Vec<OwnedLexToken>,
-    pub(crate) intervening_if: Option<PredicateAst>,
-    pub(crate) max_triggers_per_turn: Option<u32>,
-    pub(crate) chosen_option: Option<ChosenOptionContext>,
-    pub(crate) presentation: Option<PresentationLabel>,
+pub struct TriggeredLineCst {
+    pub info: LineInfo,
+    pub full_text: String,
+    pub full_parse_tokens: Vec<OwnedLexToken>,
+    pub trigger_parse_tokens: Vec<OwnedLexToken>,
+    pub effect_parse_tokens: Vec<OwnedLexToken>,
+    pub intervening_if: Option<PredicateAst>,
+    pub max_triggers_per_turn: Option<u32>,
+    pub chosen_option: Option<ChosenOptionContext>,
+    pub presentation: Option<PresentationLabel>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct StaticLineCst {
-    pub(crate) info: LineInfo,
-    pub(crate) parse_tokens: Vec<OwnedLexToken>,
-    pub(crate) chosen_option: Option<ChosenOptionContext>,
-    pub(crate) parsed: Option<LineAst>,
+pub struct StaticLineCst {
+    pub info: LineInfo,
+    pub parse_tokens: Vec<OwnedLexToken>,
+    pub chosen_option: Option<ChosenOptionContext>,
+    pub parsed: Option<LineAst>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct StatementLineCst {
-    pub(crate) info: LineInfo,
-    pub(crate) text: String,
-    pub(crate) parse_tokens: Vec<OwnedLexToken>,
-    pub(crate) parse_groups: Vec<Vec<OwnedLexToken>>,
+pub struct StatementLineCst {
+    pub info: LineInfo,
+    pub text: String,
+    pub parse_tokens: Vec<OwnedLexToken>,
+    pub parse_groups: Vec<Vec<OwnedLexToken>>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ModalBlockCst {
-    pub(crate) header: LineInfo,
-    pub(crate) header_tokens: Vec<OwnedLexToken>,
-    pub(crate) modes: Vec<ModalModeCst>,
+pub struct ModalBlockCst {
+    pub header: LineInfo,
+    pub header_tokens: Vec<OwnedLexToken>,
+    pub modes: Vec<ModalModeCst>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ModalModeCst {
-    pub(crate) info: LineInfo,
-    pub(crate) text: String,
-    pub(crate) point_cost: Option<u32>,
-    pub(crate) additional_mana_cost: Option<crate::mana::ManaCost>,
-    pub(crate) effects_ast: Vec<EffectAst>,
+pub struct ModalModeCst {
+    pub info: LineInfo,
+    pub text: String,
+    pub point_cost: Option<u32>,
+    pub additional_mana_cost: Option<crate::mana::ManaCost>,
+    pub effects_ast: Vec<EffectAst>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct LevelHeaderCst {
-    pub(crate) min_level: u32,
-    pub(crate) max_level: Option<u32>,
-    pub(crate) pt: Option<(i32, i32)>,
-    pub(crate) items: Vec<LevelItemCst>,
+pub struct LevelHeaderCst {
+    pub min_level: u32,
+    pub max_level: Option<u32>,
+    pub pt: Option<(i32, i32)>,
+    pub items: Vec<LevelItemCst>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LevelItemKindCst {
+pub enum LevelItemKindCst {
     KeywordActions,
     StaticAbilities,
     ActivatedAbility,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct LevelItemCst {
-    pub(crate) info: LineInfo,
-    pub(crate) text: String,
-    pub(crate) kind: LevelItemKindCst,
-    pub(crate) parsed: ParsedLevelAbilityItemAst,
+pub struct LevelItemCst {
+    pub info: LineInfo,
+    pub text: String,
+    pub kind: LevelItemKindCst,
+    pub parsed: ParsedLevelAbilityItemAst,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct SagaChapterLineCst {
-    pub(crate) info: LineInfo,
-    pub(crate) chapters: Vec<u32>,
-    pub(crate) presentation_label: Option<String>,
-    pub(crate) text: String,
-    pub(crate) effects_ast: Vec<EffectAst>,
+pub struct SagaChapterLineCst {
+    pub info: LineInfo,
+    pub chapters: Vec<u32>,
+    pub presentation_label: Option<String>,
+    pub text: String,
+    pub effects_ast: Vec<EffectAst>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct UnsupportedLineCst {
-    pub(crate) info: LineInfo,
-    pub(crate) reason_code: &'static str,
+pub struct UnsupportedLineCst {
+    pub info: LineInfo,
+    pub reason_code: &'static str,
 }

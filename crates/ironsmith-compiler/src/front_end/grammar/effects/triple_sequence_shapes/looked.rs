@@ -18,7 +18,7 @@ use super::super::sequence_pairs::{
 use super::parse_consult_remainder_order_tokens;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LookedMoveDestinationShape {
+pub enum LookedMoveDestinationShape {
     Hand,
     Battlefield {
         tapped: bool,
@@ -29,63 +29,63 @@ pub(crate) enum LookedMoveDestinationShape {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LookedMoveActionShape {
-    pub(crate) count: ChoiceCount,
-    pub(crate) filter: Range<usize>,
-    pub(crate) destination: LookedMoveDestinationShape,
-    pub(crate) all_matching: bool,
-    pub(crate) entry_counter: Option<(u32, CounterType)>,
+pub struct LookedMoveActionShape {
+    pub count: ChoiceCount,
+    pub filter: Range<usize>,
+    pub destination: LookedMoveDestinationShape,
+    pub all_matching: bool,
+    pub entry_counter: Option<(u32, CounterType)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LookedHandActionShape {
-    pub(crate) count: ChoiceCount,
-    pub(crate) filter: Range<usize>,
-    pub(crate) filter_uses_and_or: bool,
+pub struct LookedHandActionShape {
+    pub count: ChoiceCount,
+    pub filter: Range<usize>,
+    pub filter_uses_and_or: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LookedTopActionShape {
-    pub(crate) count: ChoiceCount,
-    pub(crate) filter: Range<usize>,
+pub struct LookedTopActionShape {
+    pub count: ChoiceCount,
+    pub filter: Range<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LookedTopAndRemainderActionShape {
-    pub(crate) count: ChoiceCount,
-    pub(crate) filter: Range<usize>,
-    pub(crate) remainder_order: LibraryBottomOrderAst,
+pub struct LookedTopAndRemainderActionShape {
+    pub count: ChoiceCount,
+    pub filter: Range<usize>,
+    pub remainder_order: LibraryBottomOrderAst,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LookedCastActionShape {
-    pub(crate) filter: Range<usize>,
-    pub(crate) mentions_spell: bool,
-    pub(crate) mana_value_limit: Option<u32>,
+pub struct LookedCastActionShape {
+    pub filter: Range<usize>,
+    pub mentions_spell: bool,
+    pub mana_value_limit: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LookedRemainderShape {
+pub enum LookedRemainderShape {
     Graveyard,
     LibraryBottom(LibraryBottomOrderAst),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AnyNumberRevealedChoiceShape {
-    pub(crate) count: ChoiceCount,
-    pub(crate) filter: Range<usize>,
+pub struct AnyNumberRevealedChoiceShape {
+    pub count: ChoiceCount,
+    pub filter: Range<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RevealOneGainManaValueShape {
-    pub(crate) view: Range<usize>,
+pub struct RevealOneGainManaValueShape {
+    pub view: Range<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LookedRevealSelectionShape {
-    pub(crate) count: ChoiceCount,
-    pub(crate) filter: Range<usize>,
-    pub(crate) remainder_order: LibraryBottomOrderAst,
+pub struct LookedRevealSelectionShape {
+    pub count: ChoiceCount,
+    pub filter: Range<usize>,
+    pub remainder_order: LibraryBottomOrderAst,
 }
 
 const FROM_AMONG: &[&[&str]] = &[
@@ -149,9 +149,7 @@ fn parse_battlefield_entry_counter(tail: &[OwnedLexToken]) -> Option<(u32, Count
     Some((descriptor.count, descriptor.counter_type))
 }
 
-pub(crate) fn parse_looked_move_action_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<LookedMoveActionShape> {
+pub fn parse_looked_move_action_shape(tokens: &[OwnedLexToken]) -> Option<LookedMoveActionShape> {
     let (head, tail) = split_from_among(tokens)?;
     let all_matching = tokens
         .get(head.clone())?
@@ -223,7 +221,7 @@ const REVEAL_TO_TOP: &[&[&str]] = &[
     &["put", "those", "cards", "on", "top"],
 ];
 
-pub(crate) fn parse_looked_hand_action_shape(
+pub fn parse_looked_hand_action_shape(
     tokens: &[OwnedLexToken],
     reveal_chosen: bool,
 ) -> Option<LookedHandActionShape> {
@@ -244,9 +242,7 @@ pub(crate) fn parse_looked_hand_action_shape(
     })
 }
 
-pub(crate) fn parse_looked_top_action_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<LookedTopActionShape> {
+pub fn parse_looked_top_action_shape(tokens: &[OwnedLexToken]) -> Option<LookedTopActionShape> {
     let (head, tail) = split_from_among(tokens)?;
     let (count, filter) = counted_filter_range(tokens, head);
     if filter.is_empty()
@@ -262,7 +258,7 @@ pub(crate) fn parse_looked_top_action_shape(
 /// "reveal up to one land card from among them, then put that card on top ...
 /// and the rest on the bottom ...". The selected subset and the remainder
 /// stay tied to the same looked-at collection.
-pub(crate) fn parse_looked_top_and_remainder_action_shape(
+pub fn parse_looked_top_and_remainder_action_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LookedTopAndRemainderActionShape> {
     let (head, tail) = split_from_among(tokens)?;
@@ -287,9 +283,7 @@ pub(crate) fn parse_looked_top_and_remainder_action_shape(
     })
 }
 
-pub(crate) fn parse_looked_cast_action_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<LookedCastActionShape> {
+pub fn parse_looked_cast_action_shape(tokens: &[OwnedLexToken]) -> Option<LookedCastActionShape> {
     let (filter, tail) = split_from_among(tokens)?;
     if !starts_sequence(tail, &[&["without", "paying", "its", "mana", "cost"]]) {
         return None;
@@ -308,7 +302,7 @@ pub(crate) fn parse_looked_cast_action_shape(
 /// Parses a reveal selection whose source and remainder both refer to the
 /// preceding looked-at collection, for example "up to two creature and/or
 /// land cards from among them, then put the rest on the bottom ...".
-pub(crate) fn parse_looked_reveal_selection_shape(
+pub fn parse_looked_reveal_selection_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LookedRevealSelectionShape> {
     let (head, tail) = split_from_among(tokens)?;
@@ -325,7 +319,7 @@ pub(crate) fn parse_looked_reveal_selection_shape(
     })
 }
 
-pub(crate) fn is_revealed_land_creature_split_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_revealed_land_creature_split_shape(tokens: &[OwnedLexToken]) -> bool {
     starts_sequence(tokens, &[&["put"]])
         && contains_sequence_phrase(
             tokens,
@@ -366,9 +360,7 @@ fn parse_mana_value_limit(tokens: &[OwnedLexToken]) -> Option<u32> {
     Some(value)
 }
 
-pub(crate) fn parse_looked_remainder_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<LookedRemainderShape> {
+pub fn parse_looked_remainder_shape(tokens: &[OwnedLexToken]) -> Option<LookedRemainderShape> {
     let tail = primitives::parse_prefix(tokens, |input: &mut LexStream<'_>| {
         sequence_phrase(&["then"]).parse_next(input)
     })
@@ -405,7 +397,7 @@ pub(crate) fn parse_looked_remainder_shape(
 
 /// Whether the authored remainder explicitly names the revealed-card
 /// complement rather than using the shorter "the rest" surface.
-pub(crate) fn is_explicit_revealed_cards_not_put_onto_battlefield_complement(
+pub fn is_explicit_revealed_cards_not_put_onto_battlefield_complement(
     tokens: &[OwnedLexToken],
 ) -> bool {
     contains_sequence_phrase(tokens, &[&["all", "cards", "revealed", "this", "way"]])
@@ -422,7 +414,7 @@ pub(crate) fn is_explicit_revealed_cards_not_put_onto_battlefield_complement(
 
 /// Retains the authored wording for a looked/revealed-set complement while
 /// leaving its execution semantics unchanged.
-pub(crate) fn looked_remainder_surface(
+pub fn looked_remainder_surface(
     tokens: &[OwnedLexToken],
 ) -> ironsmith_core::LibraryRemainderSurface {
     if is_explicit_revealed_cards_not_put_onto_battlefield_complement(tokens) {
@@ -446,7 +438,7 @@ pub(crate) fn looked_remainder_surface(
 /// with some permanent on the battlefield.  The comparison set is modeled by
 /// the sequence parser rather than treating the trailing `if` as a gate on an
 /// arbitrary card from the looked pool.
-pub(crate) fn is_looked_same_name_permanent_battlefield_action(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_looked_same_name_permanent_battlefield_action(tokens: &[OwnedLexToken]) -> bool {
     starts_sequence(
         tokens,
         &[
@@ -484,7 +476,7 @@ pub(crate) fn is_looked_same_name_permanent_battlefield_action(tokens: &[OwnedLe
         )
 }
 
-pub(crate) fn parse_any_number_revealed_choice_shape(
+pub fn parse_any_number_revealed_choice_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<AnyNumberRevealedChoiceShape> {
     let (_, tail) = primitives::parse_prefix(tokens, |input: &mut LexStream<'_>| {
@@ -509,7 +501,7 @@ pub(crate) fn parse_any_number_revealed_choice_shape(
     })
 }
 
-pub(crate) fn is_land_nonland_split_bottom_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn is_land_nonland_split_bottom_shape(tokens: &[OwnedLexToken]) -> bool {
     starts_sequence(tokens, &[&["put"]])
         && contains_sequence_phrase(
             tokens,
@@ -546,7 +538,7 @@ pub(crate) fn is_land_nonland_split_bottom_shape(tokens: &[OwnedLexToken]) -> bo
             ))
 }
 
-pub(crate) fn parse_reveal_one_gain_mana_value_shape(
+pub fn parse_reveal_one_gain_mana_value_shape(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],

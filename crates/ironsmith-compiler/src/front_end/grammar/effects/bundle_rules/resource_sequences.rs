@@ -11,24 +11,24 @@ use crate::zone::Zone;
 use ironsmith_core::{EffectMetric, EffectMetricSource};
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TapControlledObjectsThenEmptyManaShape {
-    pub(crate) filter: ObjectFilter,
+pub struct TapControlledObjectsThenEmptyManaShape {
+    pub filter: ObjectFilter,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct EnergyPayAnyDestroyShape {
-    pub(crate) energy: Value,
-    pub(crate) filter: ObjectFilter,
-    pub(crate) minimum_payment: u32,
+pub struct EnergyPayAnyDestroyShape {
+    pub energy: Value,
+    pub filter: ObjectFilter,
+    pub minimum_payment: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct DiscardRedrawManaValueLadderShape {
-    pub(crate) filter: ObjectFilter,
-    pub(crate) mana_values: [u32; 3],
+pub struct DiscardRedrawManaValueLadderShape {
+    pub filter: ObjectFilter,
+    pub mana_values: [u32; 3],
 }
 
-pub(crate) fn parse_discard_redraw_mana_value_ladder_tokens(
+pub fn parse_discard_redraw_mana_value_ladder_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DiscardRedrawManaValueLadderShape> {
     primitives::parse_all(
@@ -112,7 +112,7 @@ fn parse_discard_redraw_mana_value_ladder(
     })
 }
 
-pub(crate) fn parse_energy_pay_any_destroy_tokens(
+pub fn parse_energy_pay_any_destroy_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EnergyPayAnyDestroyShape> {
     primitives::parse_all(
@@ -191,7 +191,7 @@ fn parse_energy_pay_any_destroy(input: &mut LexStream<'_>) -> WResult<EnergyPayA
     })
 }
 
-pub(crate) fn parse_tap_controlled_objects_then_empty_mana_tokens(
+pub fn parse_tap_controlled_objects_then_empty_mana_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TapControlledObjectsThenEmptyManaShape> {
     primitives::parse_all(

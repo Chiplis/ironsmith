@@ -820,14 +820,14 @@ fn target_is_any_damage_target(target: &TargetAst) -> bool {
     }
 }
 
-pub(crate) fn compile_effect(
+pub fn compile_effect(
     effect: &EffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
     // `compile_subject_verb_effect` has a large debug-build frame because it lowers the
     // complete typed action enum. Keep the recursive lowering guard consistent with the
     // other typed effect entry points; a 2 MiB alternate stack is smaller than that frame.
-    stacker::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
+    crate::stack::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
         compile_effect_inner(effect, ctx)
     })
 }

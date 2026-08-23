@@ -5,12 +5,12 @@ use winnow::token::any;
 use crate::lexer::{LexStream, OwnedLexToken};
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct RegistryWordSplit<'a> {
-    pub(crate) before: &'a [OwnedLexToken],
-    pub(crate) after: &'a [OwnedLexToken],
+pub struct RegistryWordSplit<'a> {
+    pub before: &'a [OwnedLexToken],
+    pub after: &'a [OwnedLexToken],
 }
 
-pub(crate) fn split_registry_clause_at_word(
+pub fn split_registry_clause_at_word(
     tokens: &[OwnedLexToken],
     word_index: usize,
 ) -> Option<RegistryWordSplit<'_>> {

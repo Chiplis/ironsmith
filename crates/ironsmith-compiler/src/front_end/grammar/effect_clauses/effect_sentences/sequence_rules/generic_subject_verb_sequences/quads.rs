@@ -155,7 +155,7 @@ fn parse_looked_card_move_result_branch(
 /// the source as the newest singular `it` antecedent. Both authored plural
 /// references still name the earlier looked collection, so bind them to that
 /// producer explicitly before reference resolution walks the optional body.
-pub(crate) fn parse_look_then_may_action_if_did_or_did_not_move_looked_card(
+pub fn parse_look_then_may_action_if_did_or_did_not_move_looked_card(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -281,7 +281,7 @@ fn compose_independent_looked_card_choices(
 /// threshold self-replacement of the chosen-set disposition. Both branches
 /// repeat the public look and independent typed choices, because a resolution
 /// self-replacement replaces the whole executable segment at runtime.
-pub(crate) fn parse_reveal_top_choose_and_or_hand_rest_bottom_with_destination_override(
+pub fn parse_reveal_top_choose_and_or_hand_rest_bottom_with_destination_override(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -497,7 +497,7 @@ fn wrap_flat_reveal_to_hand_partition_in_may(
 /// conditional `instead` changes how many matching looked-at cards may be
 /// revealed and moved to hand. The optional action remains a real `May`
 /// around an exact-size choice, so "may reveal two" cannot select only one.
-pub(crate) fn parse_look_reveal_one_or_instead_two_then_rest_bottom(
+pub fn parse_look_reveal_one_or_instead_two_then_rest_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -595,7 +595,7 @@ pub(crate) fn parse_look_reveal_one_or_instead_two_then_rest_bottom(
 /// move, even when the oracle text describes the remainder before stating the
 /// reflexive ability.  Keep the runtime antecedent adjacent to the result node
 /// and leave rendering to restore the oracle sentence order.
-pub(crate) fn parse_top_cards_move_rest_then_typed_when_result(
+pub fn parse_top_cards_move_rest_then_typed_when_result(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -637,7 +637,7 @@ pub(crate) fn parse_top_cards_move_rest_then_typed_when_result(
 /// four-sentence fallback lowers the deployment as a generic May target
 /// choice; composing through the shared looked-card producer instead gives
 /// the choice, move, grant pronoun, and remainder one stable selected tag.
-pub(crate) fn parse_top_cards_move_then_grant_rest_bottom(
+pub fn parse_top_cards_move_then_grant_rest_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -715,7 +715,7 @@ pub(crate) fn parse_top_cards_move_then_grant_rest_bottom(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_sacrifice_reveal_top_choose_any_revealed_land_nonland_split_rest_bottom(
+pub fn parse_sacrifice_reveal_top_choose_any_revealed_land_nonland_split_rest_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -870,7 +870,7 @@ fn parse_may_reveal_up_to_from_looked_cards(
 /// remainder can therefore be expressed once as `looked - selected` instead
 /// of taking whichever branch's last-object reference happened to survive
 /// conditional lowering.
-pub(crate) fn parse_look_at_top_conditional_hand_counts_then_rest_bottom(
+pub fn parse_look_at_top_conditional_hand_counts_then_rest_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -977,7 +977,7 @@ pub(crate) fn parse_look_at_top_conditional_hand_counts_then_rest_bottom(
 /// to whichever implicit object tag was most recently established. Build the
 /// selection once, then give both branches the same looked-minus-selected
 /// operands.
-pub(crate) fn parse_look_at_top_optional_battlefield_then_conditional_remainder(
+pub fn parse_look_at_top_optional_battlefield_then_conditional_remainder(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1075,7 +1075,7 @@ pub(crate) fn parse_look_at_top_optional_battlefield_then_conditional_remainder(
 /// The dynamic selection filter may still refer to the sacrificed object (for
 /// example through X), but its candidate domain is explicitly the earlier
 /// `looked_tag`; the complement is likewise computed from that tag.
-pub(crate) fn parse_look_then_may_sacrifice_if_did_select_battlefield_rest_bottom(
+pub fn parse_look_then_may_sacrifice_if_did_select_battlefield_rest_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1191,7 +1191,7 @@ pub(crate) fn parse_look_then_may_sacrifice_if_did_select_battlefield_rest_botto
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_override(
+pub fn parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_override(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1256,7 +1256,7 @@ pub(crate) fn parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_ov
     ]))
 }
 
-pub(crate) fn parse_look_at_top_may_put_match_onto_battlefield_then_if_not_put_into_hand_rest_bottom(
+pub fn parse_look_at_top_may_put_match_onto_battlefield_then_if_not_put_into_hand_rest_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1356,7 +1356,7 @@ fn parse_selected_card_leading_if(
 /// Composes a looked-card selection whose chosen card is revealed and moved
 /// to hand before a condition examines that exact selected card. The final
 /// remainder effect keeps the original looked pool authoritative.
-pub(crate) fn parse_look_reveal_match_to_hand_if_selected_matches_rest_bottom(
+pub fn parse_look_reveal_match_to_hand_if_selected_matches_rest_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1452,7 +1452,7 @@ pub(crate) fn parse_look_reveal_match_to_hand_if_selected_matches_rest_bottom(
 /// Composes two independent optional selections from one public looked-card
 /// pool and computes the graveyard group as the exact complement of both
 /// selected tags.
-pub(crate) fn parse_reveal_top_optional_battlefield_then_hand_rest_graveyard(
+pub fn parse_reveal_top_optional_battlefield_then_hand_rest_graveyard(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1711,7 +1711,7 @@ fn is_if_selected_not_put_onto_battlefield_put_into_hand(tokens: &[OwnedLexToken
 /// Preserves the singleton revealed-card provenance across an optional
 /// your-turn battlefield move, its hand fallback, and the exact library
 /// remainder.
-pub(crate) fn parse_look_may_reveal_then_your_turn_battlefield_else_hand_rest_bottom(
+pub fn parse_look_may_reveal_then_your_turn_battlefield_else_hand_rest_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1936,7 +1936,7 @@ fn compose_look_at_top_may_put_onto_battlefield_or_into_hand_rest_bottom(
     ]
 }
 
-pub(crate) fn parse_look_at_top_may_reveal_match_bargain_battlefield_else_hand_then_shuffle(
+pub fn parse_look_at_top_may_reveal_match_bargain_battlefield_else_hand_then_shuffle(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -2037,7 +2037,7 @@ fn parse_may_exile_filtered_looked_card(
 /// from among them. Put the rest on the bottom of your library in
 /// a random/any order. You may cast the exiled card <this turn|without paying
 /// its mana cost...>."
-pub(crate) fn parse_look_at_top_may_exile_match_rest_bottom_cast_exiled(
+pub fn parse_look_at_top_may_exile_match_rest_bottom_cast_exiled(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -2144,7 +2144,7 @@ pub(crate) fn parse_look_at_top_may_exile_match_rest_bottom_cast_exiled(
     ]))
 }
 
-pub(crate) fn parse_look_at_top_exile_one_rest_bottom_cast_else_hand(
+pub fn parse_look_at_top_exile_one_rest_bottom_cast_else_hand(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -2216,7 +2216,7 @@ pub(crate) fn parse_look_at_top_exile_one_rest_bottom_cast_else_hand(
     ]))
 }
 
-pub(crate) fn parse_look_at_top_exile_counted_rest_bottom_play_while_exiled(
+pub fn parse_look_at_top_exile_counted_rest_bottom_play_while_exiled(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -2324,7 +2324,7 @@ pub(crate) fn parse_look_at_top_exile_counted_rest_bottom_play_while_exiled(
     ]))
 }
 
-pub(crate) fn parse_search_reveal_named_match_battlefield_else_hand_then_shuffle(
+pub fn parse_search_reveal_named_match_battlefield_else_hand_then_shuffle(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

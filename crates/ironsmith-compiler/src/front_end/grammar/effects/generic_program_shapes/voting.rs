@@ -50,7 +50,7 @@ fn vote_target_prefix<'a>(input: &mut LexStream<'a>) -> ModalResult<()> {
     .parse_next(input)
 }
 
-pub(crate) fn vote_options_tokens_look_like_target_choice(tokens: &[OwnedLexToken]) -> bool {
+pub fn vote_options_tokens_look_like_target_choice(tokens: &[OwnedLexToken]) -> bool {
     if primitives::parse_prefix(tokens, vote_target_prefix).is_some() {
         return true;
     }
@@ -61,17 +61,17 @@ pub(crate) fn vote_options_tokens_look_like_target_choice(tokens: &[OwnedLexToke
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct NamedVoteOptionEffectsShape<'a> {
-    pub(crate) option_tokens: &'a [OwnedLexToken],
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct NamedVoteOptionEffectsShape<'a> {
+    pub option_tokens: &'a [OwnedLexToken],
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct VotedAgainstYouEffectsShape<'a> {
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct VotedAgainstYouEffectsShape<'a> {
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_voted_against_you_effects_shape(
+pub fn parse_voted_against_you_effects_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<VotedAgainstYouEffectsShape<'_>> {
     // This shape is also used from a trigger payload whose sentence boundary
@@ -133,7 +133,7 @@ fn parse_named_vote_option_effects_lexed<'a>(
     })
 }
 
-pub(crate) fn parse_named_vote_option_effects_shape(
+pub fn parse_named_vote_option_effects_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<NamedVoteOptionEffectsShape<'_>> {
     primitives::parse_all(

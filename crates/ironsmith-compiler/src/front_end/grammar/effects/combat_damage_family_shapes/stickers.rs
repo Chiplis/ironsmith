@@ -6,16 +6,16 @@ use crate::grammar::primitives;
 use crate::lexer::{OwnedLexToken, trim_lexed_commas};
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct PutStickerShape<'a> {
-    pub(crate) action: KeywordActionKind,
-    pub(crate) target_tokens: &'a [OwnedLexToken],
-    pub(crate) target_is_reference: bool,
+pub struct PutStickerShape<'a> {
+    pub action: KeywordActionKind,
+    pub target_tokens: &'a [OwnedLexToken],
+    pub target_is_reference: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct StickerAuraShape<'a> {
-    pub(crate) sticker_target_tokens: &'a [OwnedLexToken],
-    pub(crate) enchant_filter_tokens: &'a [OwnedLexToken],
+pub struct StickerAuraShape<'a> {
+    pub sticker_target_tokens: &'a [OwnedLexToken],
+    pub enchant_filter_tokens: &'a [OwnedLexToken],
 }
 
 fn marker_anywhere<'a, P, F>(tokens: &'a [OwnedLexToken], make_parser: F) -> bool
@@ -52,7 +52,7 @@ fn classify_sticker_action(tokens: &[OwnedLexToken]) -> KeywordActionKind {
     }
 }
 
-pub(crate) fn parse_put_sticker_shape(tokens: &[OwnedLexToken]) -> Option<PutStickerShape<'_>> {
+pub fn parse_put_sticker_shape(tokens: &[OwnedLexToken]) -> Option<PutStickerShape<'_>> {
     let (_, body) = primitives::parse_prefix(
         tokens,
         alt((primitives::kw("put"), primitives::kw("puts"))).void(),
@@ -90,7 +90,7 @@ pub(crate) fn parse_put_sticker_shape(tokens: &[OwnedLexToken]) -> Option<PutSti
     })
 }
 
-pub(crate) fn parse_sticker_aura_shape(tokens: &[OwnedLexToken]) -> Option<StickerAuraShape<'_>> {
+pub fn parse_sticker_aura_shape(tokens: &[OwnedLexToken]) -> Option<StickerAuraShape<'_>> {
     let (sticker_target_tokens, aura_tail) =
         primitives::split_lexed_once_on_separator(tokens, || {
             primitives::phrase(&["then", "it", "becomes"]).void()

@@ -9,13 +9,13 @@ fn sacrifice_choice_filter(mut filter: ObjectFilter) -> ObjectFilter {
     filter
 }
 
-pub(crate) fn parse_sentence_each_player_return_with_additional_counter(
+pub fn parse_sentence_each_player_return_with_additional_counter(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_each_player_return_with_additional_counter_sentence(clause)
 }
 
-pub(crate) fn parse_sentence_each_player_reveals_top_count_put_permanents_onto_battlefield_rest_graveyard(
+pub fn parse_sentence_each_player_reveals_top_count_put_permanents_onto_battlefield_rest_graveyard(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_each_player_reveal_permanents_shape(clause.tokens())
@@ -61,7 +61,7 @@ pub(crate) fn parse_sentence_each_player_reveals_top_count_put_permanents_onto_b
     }]))
 }
 
-pub(crate) fn parse_return_then_do_same_for_subtypes_sentence(
+pub fn parse_return_then_do_same_for_subtypes_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_return_same_subtypes_shape(clause.tokens()) else {
@@ -96,7 +96,7 @@ fn split_choose_same_followup_filters(filter: &ObjectFilter) -> Vec<ObjectFilter
     }
 }
 
-pub(crate) fn parse_choose_then_do_same_for_filter_sentence(
+pub fn parse_choose_then_do_same_for_filter_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_choose_same_filter_shape(clause.tokens()) else {
@@ -174,7 +174,7 @@ fn preserve_choose_clause_it_reference(references_prior_choice: bool, filter: &m
     }
 }
 
-pub(crate) fn parse_choose_then_choose_objects_sentence(
+pub fn parse_choose_then_choose_objects_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_choose_sequence_shape(clause.tokens()) else {
@@ -229,25 +229,25 @@ pub(crate) fn parse_choose_then_choose_objects_sentence(
     ]))
 }
 
-pub(crate) fn parse_sentence_return_then_do_same_for_subtypes(
+pub fn parse_sentence_return_then_do_same_for_subtypes(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_return_then_do_same_for_subtypes_sentence(clause)
 }
 
-pub(crate) fn parse_sentence_choose_then_choose_objects(
+pub fn parse_sentence_choose_then_choose_objects(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_choose_then_choose_objects_sentence(clause)
 }
 
-pub(crate) fn parse_sentence_choose_then_do_same_for_filter(
+pub fn parse_sentence_choose_then_do_same_for_filter(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_choose_then_do_same_for_filter_sentence(clause)
 }
 
-pub(crate) fn parse_sacrifice_any_number_sentence(
+pub fn parse_sacrifice_any_number_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_sacrifice_choice_shape(clause.tokens()) else {
@@ -284,13 +284,13 @@ pub(crate) fn parse_sacrifice_any_number_sentence(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_sentence_sacrifice_any_number(
+pub fn parse_sentence_sacrifice_any_number(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_sacrifice_any_number_sentence(clause)
 }
 
-pub(crate) fn parse_sacrifice_one_or_more_sentence(
+pub fn parse_sacrifice_one_or_more_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_sacrifice_choice_shape(clause.tokens()) else {
@@ -319,13 +319,13 @@ pub(crate) fn parse_sacrifice_one_or_more_sentence(
     ]))
 }
 
-pub(crate) fn parse_sentence_sacrifice_one_or_more(
+pub fn parse_sentence_sacrifice_one_or_more(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_sacrifice_one_or_more_sentence(clause)
 }
 
-pub(crate) fn parse_sentence_keyword_then_chain(
+pub fn parse_sentence_keyword_then_chain(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_then_sequence_shape(clause.tokens()) else {
@@ -347,7 +347,7 @@ pub(crate) fn parse_sentence_keyword_then_chain(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_sentence_chain_then_keyword(
+pub fn parse_sentence_chain_then_keyword(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_then_sequence_shape(clause.tokens()) else {
@@ -364,7 +364,7 @@ pub(crate) fn parse_sentence_chain_then_keyword(
     Ok(Some(head_effects))
 }
 
-pub(crate) fn parse_sentence_return_then_create(
+pub fn parse_sentence_return_then_create(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_return_create_shape(clause.tokens()) else {
@@ -384,7 +384,7 @@ pub(crate) fn parse_sentence_return_then_create(
     Ok(Some(head_effects))
 }
 
-pub(crate) fn parse_sentence_exile_then_may_put_from_exile(
+pub fn parse_sentence_exile_then_may_put_from_exile(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_exile_may_put_shape(clause.tokens()) else {
@@ -403,7 +403,7 @@ pub(crate) fn parse_sentence_exile_then_may_put_from_exile(
     Ok(Some(head_effects))
 }
 
-pub(crate) fn parse_exile_then_shuffle_graveyard_into_library_sentence(
+pub fn parse_exile_then_shuffle_graveyard_into_library_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_exile_shuffle_shape(clause.tokens()) else {
@@ -445,7 +445,7 @@ pub(crate) fn parse_exile_then_shuffle_graveyard_into_library_sentence(
     Ok(Some(head_effects))
 }
 
-pub(crate) fn parse_exile_source_with_counters_sentence(
+pub fn parse_exile_source_with_counters_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_exile_source_counter_shape(clause.tokens()) else {
@@ -480,13 +480,13 @@ pub(crate) fn parse_exile_source_with_counters_sentence(
     ]))
 }
 
-pub(crate) fn parse_sentence_exile_source_with_counters(
+pub fn parse_sentence_exile_source_with_counters(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_exile_source_with_counters_sentence(clause)
 }
 
-pub(crate) fn parse_sentence_comma_then_chain_special(
+pub fn parse_sentence_comma_then_chain_special(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_comma_then_special_shape(clause.tokens()) else {
@@ -536,7 +536,7 @@ fn bind_that_player_tail_to_returned_owner(effects: &mut [EffectAst]) {
     }
 }
 
-pub(crate) fn parse_destroy_then_land_controller_graveyard_count_damage_sentence(
+pub fn parse_destroy_then_land_controller_graveyard_count_damage_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_destroy_land_damage_shape(clause.tokens()) else {
@@ -570,7 +570,7 @@ pub(crate) fn parse_destroy_then_land_controller_graveyard_count_damage_sentence
     Ok(Some(head_effects))
 }
 
-pub(crate) fn parse_sentence_destroy_all_attached_to_target(
+pub fn parse_sentence_destroy_all_attached_to_target(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_destroy_attached_shape(clause.tokens()) else {
@@ -583,15 +583,13 @@ pub(crate) fn parse_sentence_destroy_all_attached_to_target(
     )]))
 }
 
-pub(crate) fn parse_sentence_destroy_then_land_controller_graveyard_count_damage(
+pub fn parse_sentence_destroy_then_land_controller_graveyard_count_damage(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_destroy_then_land_controller_graveyard_count_damage_sentence(clause)
 }
 
-pub(crate) fn find_color_choice_phrase(
-    clause: SubjectVerbPrimitiveClause<'_>,
-) -> Option<(usize, usize)> {
+pub fn find_color_choice_phrase(clause: SubjectVerbPrimitiveClause<'_>) -> Option<(usize, usize)> {
     effect_grammar::parse_color_choice_phrase_span(clause.tokens())
         .map(|shape| (shape.start, shape.len))
 }

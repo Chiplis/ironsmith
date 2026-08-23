@@ -8,15 +8,13 @@ use winnow::error::ModalResult as WResult;
 use winnow::token::any;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TaggedPermissionShape {
+pub enum TaggedPermissionShape {
     PlayExiledForAsLongAsExiled,
     ManaAnyTypeCastsTaggedThisWay,
     CastSingleFromAmongHandCards,
 }
 
-pub(crate) fn parse_tagged_permission_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<TaggedPermissionShape> {
+pub fn parse_tagged_permission_shape(tokens: &[OwnedLexToken]) -> Option<TaggedPermissionShape> {
     let parser = alt((
         primitives::any_phrase(&[
             &[
@@ -98,8 +96,8 @@ fn mana_value_bound<'a>(input: &mut LexStream<'a>) -> WResult<Comparison> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CastAnyTaggedShape {
-    pub(crate) mana_value: Option<Comparison>,
+pub struct CastAnyTaggedShape {
+    pub mana_value: Option<Comparison>,
 }
 
 fn cast_any_tagged<'a>(input: &mut LexStream<'a>) -> WResult<CastAnyTaggedShape> {
@@ -121,7 +119,7 @@ fn cast_any_tagged<'a>(input: &mut LexStream<'a>) -> WResult<CastAnyTaggedShape>
     Ok(CastAnyTaggedShape { mana_value })
 }
 
-pub(crate) fn parse_cast_any_tagged_shape(tokens: &[OwnedLexToken]) -> Option<CastAnyTaggedShape> {
+pub fn parse_cast_any_tagged_shape(tokens: &[OwnedLexToken]) -> Option<CastAnyTaggedShape> {
     primitives::parse_all(tokens, cast_any_tagged, "cast any tagged shape").ok()
 }
 
@@ -137,10 +135,10 @@ pub(crate) fn parse_cast_any_tagged_shape(tokens: &[OwnedLexToken]) -> Option<Ca
 /// does not accidentally apply a trailing cap only to the final arm of a type
 /// union.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CastTaggedCollectionShape<'a> {
-    pub(crate) count: ChoiceCount,
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) mana_value: Option<Comparison>,
+pub struct CastTaggedCollectionShape<'a> {
+    pub count: ChoiceCount,
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub mana_value: Option<Comparison>,
 }
 
 fn parse_collection_cast_count(
@@ -188,7 +186,7 @@ fn split_collection_cast_mana_value(
     Some((subject_tokens, Some(mana_value)))
 }
 
-pub(crate) fn parse_cast_tagged_collection_shape(
+pub fn parse_cast_tagged_collection_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<CastTaggedCollectionShape<'_>> {
     let tokens = trim_lexed_commas(tokens);
@@ -242,11 +240,11 @@ pub(crate) fn parse_cast_tagged_collection_shape(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CastTargetWithoutPayingShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct CastTargetWithoutPayingShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_cast_target_without_paying_shape(
+pub fn parse_cast_target_without_paying_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<CastTargetWithoutPayingShape<'_>> {
     let (head, ()) = primitives::split_lexed_once_before_suffix(tokens, 2, || {
@@ -264,11 +262,11 @@ pub(crate) fn parse_cast_target_without_paying_shape(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CastTargetFromYourGraveyardThisTurnShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct CastTargetFromYourGraveyardThisTurnShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_cast_target_from_your_graveyard_this_turn_shape(
+pub fn parse_cast_target_from_your_graveyard_this_turn_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<CastTargetFromYourGraveyardThisTurnShape<'_>> {
     let (_, rest) = primitives::parse_prefix(
@@ -297,11 +295,11 @@ pub(crate) fn parse_cast_target_from_your_graveyard_this_turn_shape(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ForEachCardPaymentShape {
-    pub(crate) life_amount: u32,
+pub struct ForEachCardPaymentShape {
+    pub life_amount: u32,
 }
 
-pub(crate) fn parse_for_each_card_payment_shape(
+pub fn parse_for_each_card_payment_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ForEachCardPaymentShape> {
     let (_, body) = primitives::parse_prefix(
@@ -327,11 +325,11 @@ pub(crate) fn parse_for_each_card_payment_shape(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct OpponentReturnChoiceShape<'a> {
-    pub(crate) target_tokens: &'a [OwnedLexToken],
+pub struct OpponentReturnChoiceShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
 }
 
-pub(crate) fn parse_opponent_return_choice_shape(
+pub fn parse_opponent_return_choice_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<OpponentReturnChoiceShape<'_>> {
     let (_, choice_tail) = primitives::parse_prefix(
@@ -351,9 +349,9 @@ pub(crate) fn parse_opponent_return_choice_shape(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CounterGroupRemovedShape<'a> {
-    pub(crate) group_size: u32,
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct CounterGroupRemovedShape<'a> {
+    pub group_size: u32,
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 fn counter_group_removed<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
@@ -373,7 +371,7 @@ fn counter_group_removed<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
     Ok(group_size)
 }
 
-pub(crate) fn parse_counter_group_removed_shape(
+pub fn parse_counter_group_removed_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<CounterGroupRemovedShape<'_>> {
     let (group_size, effect_tokens) = primitives::parse_prefix(tokens, counter_group_removed)?;
@@ -384,15 +382,13 @@ pub(crate) fn parse_counter_group_removed_shape(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ForEachPreventShape<'a> {
-    pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) prevent_tokens: &'a [OwnedLexToken],
-    pub(crate) unless_token: Option<usize>,
+pub struct ForEachPreventShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub prevent_tokens: &'a [OwnedLexToken],
+    pub unless_token: Option<usize>,
 }
 
-pub(crate) fn parse_for_each_prevent_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<ForEachPreventShape<'_>> {
+pub fn parse_for_each_prevent_shape(tokens: &[OwnedLexToken]) -> Option<ForEachPreventShape<'_>> {
     let (prevent_token, _, after_prevent) =
         primitives::find_prefix(tokens, || primitives::kw("prevent"))?;
     let subject_tokens = trim_lexed_commas(tokens.get(..prevent_token)?);
@@ -413,12 +409,12 @@ pub(crate) fn parse_for_each_prevent_shape(
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct TrailingIfFallbackShape<'a> {
-    pub(crate) head_tokens: &'a [OwnedLexToken],
-    pub(crate) predicate: PredicateAst,
+pub struct TrailingIfFallbackShape<'a> {
+    pub head_tokens: &'a [OwnedLexToken],
+    pub predicate: PredicateAst,
 }
 
-pub(crate) fn parse_trailing_if_fallback_shape(
+pub fn parse_trailing_if_fallback_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<TrailingIfFallbackShape<'_>> {
     let mut offset = 1usize;

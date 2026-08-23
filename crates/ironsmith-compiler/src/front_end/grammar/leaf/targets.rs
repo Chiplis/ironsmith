@@ -17,65 +17,65 @@ use super::counts::{
 use super::numbers::{LeafNumber, parse_leaf_number_or_x_prefix_lexed};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LeafTargetArticle {
+pub enum LeafTargetArticle {
     A,
     An,
     The,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LeafTargetArticleToken {
-    pub(crate) article: LeafTargetArticle,
-    pub(crate) span: TextSpan,
+pub struct LeafTargetArticleToken {
+    pub article: LeafTargetArticle,
+    pub span: TextSpan,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LeafRandomTargetKind {
+pub enum LeafRandomTargetKind {
     AtRandom,
     ChosenAtRandom,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LeafRandomTargetMarker {
-    pub(crate) kind: LeafRandomTargetKind,
-    pub(crate) span: Option<TextSpan>,
+pub struct LeafRandomTargetMarker {
+    pub kind: LeafRandomTargetKind,
+    pub span: Option<TextSpan>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LeafTopTargetPrefix {
-    pub(crate) span: TextSpan,
-    pub(crate) supplied_count: bool,
+pub struct LeafTopTargetPrefix {
+    pub span: TextSpan,
+    pub supplied_count: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LeafTargetHeadPrefix {
-    pub(crate) count: Option<ChoiceCount>,
-    pub(crate) consumed: usize,
-    pub(crate) explicit_target_span: Option<TextSpan>,
-    pub(crate) target_marker_span: Option<TextSpan>,
-    pub(crate) other: bool,
-    pub(crate) other_span: Option<TextSpan>,
-    pub(crate) articles: Vec<LeafTargetArticleToken>,
-    pub(crate) on_span: Option<TextSpan>,
-    pub(crate) top: Option<LeafTopTargetPrefix>,
-    pub(crate) ordinal: Option<u8>,
-    pub(crate) random: Option<LeafRandomTargetMarker>,
-    pub(crate) phrase_span: Option<TextSpan>,
+pub struct LeafTargetHeadPrefix {
+    pub count: Option<ChoiceCount>,
+    pub consumed: usize,
+    pub explicit_target_span: Option<TextSpan>,
+    pub target_marker_span: Option<TextSpan>,
+    pub other: bool,
+    pub other_span: Option<TextSpan>,
+    pub articles: Vec<LeafTargetArticleToken>,
+    pub on_span: Option<TextSpan>,
+    pub top: Option<LeafTopTargetPrefix>,
+    pub ordinal: Option<u8>,
+    pub random: Option<LeafRandomTargetMarker>,
+    pub phrase_span: Option<TextSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LeafTargetHead<'a> {
+pub struct LeafTargetHead<'a> {
     normalized_tokens: Cow<'a, [OwnedLexToken]>,
-    pub(crate) prefix: LeafTargetHeadPrefix,
+    pub prefix: LeafTargetHeadPrefix,
 }
 
 impl LeafTargetHead<'_> {
-    pub(crate) fn tokens(&self) -> &[OwnedLexToken] {
+    pub fn tokens(&self) -> &[OwnedLexToken] {
         self.normalized_tokens.as_ref()
     }
 
     #[cfg(test)]
-    pub(crate) fn rest(&self) -> &[OwnedLexToken] {
+    pub fn rest(&self) -> &[OwnedLexToken] {
         self.tokens()
             .get(self.prefix.consumed..)
             .unwrap_or_default()
@@ -87,7 +87,7 @@ struct NormalizedTargetTokens<'a> {
     random: Option<LeafRandomTargetMarker>,
 }
 
-pub(crate) fn parse_leaf_target_head_tokens(
+pub fn parse_leaf_target_head_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<LeafTargetHead<'_>, CardTextError> {
     let normalized = normalize_random_target_marker(tokens);
@@ -125,7 +125,7 @@ pub(crate) fn parse_leaf_target_head_tokens(
     })
 }
 
-pub(crate) fn parse_leaf_target_head_prefix_lexed<'a>(
+pub fn parse_leaf_target_head_prefix_lexed<'a>(
     input: &mut LexStream<'a>,
     random: Option<LeafRandomTargetMarker>,
     phrase_span: Option<TextSpan>,

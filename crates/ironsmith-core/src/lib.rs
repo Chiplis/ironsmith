@@ -24,6 +24,7 @@ pub mod event_model;
 pub mod filter_model;
 pub mod grant_model;
 pub mod ids;
+pub mod interned;
 pub mod mana;
 pub mod ordinal;
 pub mod resolution_model;
@@ -38,6 +39,7 @@ pub mod types;
 pub mod value_model;
 pub mod zone;
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WorkspaceSplitMarker;
 
@@ -195,6 +197,7 @@ pub use ids::{
     CardId, IdCountersSnapshot, ObjectId, PlayerId, StableId, reset_runtime_id_counters,
     restore_id_counters, snapshot_id_counters,
 };
+pub use interned::{InternedI32Slice, InternedStr};
 pub use mana::{ManaCost, ManaSymbol};
 pub use ordinal::{ordinal_word, parse_ordinal_word, parse_ordinal_words};
 pub use resolution_model::{ResolutionProgram, ResolutionSegment, SelfReplacementBranch};

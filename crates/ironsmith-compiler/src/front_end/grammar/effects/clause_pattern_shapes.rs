@@ -9,8 +9,8 @@ mod typed_clauses;
 #[path = "clause_pattern_shapes/utility.rs"]
 mod utility;
 
-pub(crate) use counter_ability::*;
-pub(crate) use damage::*;
-pub(crate) use keywords::*;
-pub(crate) use typed_clauses::*;
-pub(crate) use utility::*;
+pub use counter_ability::*;
+pub use damage::*;
+pub use keywords::*;
+pub use typed_clauses::*;
+pub use utility::*;

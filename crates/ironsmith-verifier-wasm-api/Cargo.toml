@@ -1,0 +1,12 @@
+[package]
+name = "ironsmith-verifier-wasm-api"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ironsmith-verifier-ziffle = { path = "../ironsmith-verifier-ziffle", default-features = false }
+js-sys = "0.3.97"
+wasm-bindgen = "0.2.120"
+
+[features]
+default = []

@@ -9,7 +9,7 @@ use crate::lexer::{LexStream, OwnedLexToken};
 use super::{semantic_kw, semantic_phrase, trimmed};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DelayedScheduleStep {
+pub enum DelayedScheduleStep {
     UntapStep,
     Upkeep,
     DrawStep,
@@ -22,11 +22,11 @@ pub(crate) enum DelayedScheduleStep {
 /// upkeep, ...". This is a semantic effect shape, not a printed triggered
 /// ability: resolving the surrounding spell registers the one-shot trigger.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct DelayedScheduleSentenceShape<'a> {
-    pub(crate) step: DelayedScheduleStep,
-    pub(crate) player: PlayerAst,
-    pub(crate) start_next_turn: bool,
-    pub(crate) effect_tokens: &'a [OwnedLexToken],
+pub struct DelayedScheduleSentenceShape<'a> {
+    pub step: DelayedScheduleStep,
+    pub player: PlayerAst,
+    pub start_next_turn: bool,
+    pub effect_tokens: &'a [OwnedLexToken],
 }
 
 fn delayed_schedule_player<'a>(input: &mut LexStream<'a>) -> WResult<PlayerAst> {
@@ -133,7 +133,7 @@ fn delayed_schedule_header<'a>(
     .parse_next(input)
 }
 
-pub(crate) fn parse_delayed_schedule_sentence_shape(
+pub fn parse_delayed_schedule_sentence_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DelayedScheduleSentenceShape<'_>> {
     let tokens = trimmed(tokens);

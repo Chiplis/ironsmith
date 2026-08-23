@@ -3,13 +3,13 @@ use winnow::prelude::*;
 use crate::grammar::primitives::{self, WordSliceInput};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ChoiceDamageScope {
+pub enum ChoiceDamageScope {
     Opponent,
     Player,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum AlternateDamageTargetShape {
+pub enum AlternateDamageTargetShape {
     Them,
     ThatPlayer,
 }
@@ -49,16 +49,14 @@ fn word_occurs(words: &[&str], expected: &'static str) -> bool {
     phrase_occurs(words, &[expected])
 }
 
-pub(crate) fn first_choice_damage_word_is(words: &[&str], expected: &'static str) -> bool {
+pub fn first_choice_damage_word_is(words: &[&str], expected: &'static str) -> bool {
     let mut input = words;
     primitives::word_slice_exact(expected)
         .parse_next(&mut input)
         .is_ok()
 }
 
-pub(crate) fn parse_alternate_damage_target_shape(
-    words: &[&str],
-) -> Option<AlternateDamageTargetShape> {
+pub fn parse_alternate_damage_target_shape(words: &[&str]) -> Option<AlternateDamageTargetShape> {
     if exact_phrase(words, &["them"]) {
         Some(AlternateDamageTargetShape::Them)
     } else if exact_phrase(words, &["that", "player"]) {
@@ -68,51 +66,51 @@ pub(crate) fn parse_alternate_damage_target_shape(
     }
 }
 
-pub(crate) fn is_choice_damage_source_subject_shape(words: &[&str]) -> bool {
+pub fn is_choice_damage_source_subject_shape(words: &[&str]) -> bool {
     exact_phrase(words, &["this", "aura"])
         || exact_phrase(words, &["this", "permanent"])
         || exact_phrase(words, &["this", "enchantment"])
 }
 
-pub(crate) fn is_that_player_target_shape(words: &[&str]) -> bool {
+pub fn is_that_player_target_shape(words: &[&str]) -> bool {
     exact_phrase(words, &["that", "player"])
 }
 
-pub(crate) fn is_choice_damage_drain_shape(words: &[&str]) -> bool {
+pub fn is_choice_damage_drain_shape(words: &[&str]) -> bool {
     (phrase_occurs(words, &["lose", "x", "life"]) || phrase_occurs(words, &["loses", "x", "life"]))
         && phrase_occurs(words, &["you", "gain", "x", "life"])
 }
 
-pub(crate) fn is_random_card_descriptor_shape(words: &[&str]) -> bool {
+pub fn is_random_card_descriptor_shape(words: &[&str]) -> bool {
     word_occurs(words, "card") && phrase_occurs(words, &["at", "random"])
 }
 
-pub(crate) fn is_create_token_sacrifice_counter_shape(words: &[&str]) -> bool {
+pub fn is_create_token_sacrifice_counter_shape(words: &[&str]) -> bool {
     first_choice_damage_word_is(words, "create")
         && word_occurs(words, "token")
         && word_occurs(words, "sacrifice")
         && word_occurs(words, "counter")
 }
 
-pub(crate) fn is_up_to_one_target_shape(words: &[&str]) -> bool {
+pub fn is_up_to_one_target_shape(words: &[&str]) -> bool {
     exact_phrase(words, &["up", "to", "one", "target"])
 }
 
-pub(crate) fn is_card_noun_at(words: &[&str], offset: usize) -> bool {
+pub fn is_card_noun_at(words: &[&str], offset: usize) -> bool {
     words
         .get(offset)
         .is_some_and(|word| matches!(*word, "card" | "cards"))
 }
 
-pub(crate) fn is_reveal_article_word(word: &str) -> bool {
+pub fn is_reveal_article_word(word: &str) -> bool {
     matches!(word, "a" | "an" | "one")
 }
 
-pub(crate) fn is_damage_word(word: &str) -> bool {
+pub fn is_damage_word(word: &str) -> bool {
     word == "damage"
 }
 
-pub(crate) fn parse_choice_damage_scope(words: &[&str]) -> Option<ChoiceDamageScope> {
+pub fn parse_choice_damage_scope(words: &[&str]) -> Option<ChoiceDamageScope> {
     let opponent = [
         &["for", "each", "opponent"][..],
         &["for", "each", "opponents"][..],
@@ -129,17 +127,17 @@ pub(crate) fn parse_choice_damage_scope(words: &[&str]) -> Option<ChoiceDamageSc
     parse_phrase_words(&mut input, &["each", "player"]).then_some(ChoiceDamageScope::Player)
 }
 
-pub(crate) fn has_leading_to_shape(words: &[&str]) -> bool {
+pub fn has_leading_to_shape(words: &[&str]) -> bool {
     first_choice_damage_word_is(words, "to")
 }
 
-pub(crate) fn has_all_or_each_at(words: &[&str], offset: usize) -> bool {
+pub fn has_all_or_each_at(words: &[&str], offset: usize) -> bool {
     words
         .get(offset)
         .is_some_and(|word| matches!(*word, "all" | "each"))
 }
 
-pub(crate) fn has_choice_damage_condition_boundary(words: &[&str]) -> bool {
+pub fn has_choice_damage_condition_boundary(words: &[&str]) -> bool {
     let mut offset = 0usize;
     while offset < words.len() {
         if words.get(offset).is_some_and(|word| {
@@ -155,15 +153,15 @@ pub(crate) fn has_choice_damage_condition_boundary(words: &[&str]) -> bool {
     false
 }
 
-pub(crate) fn has_if_or_unless_shape(words: &[&str]) -> bool {
+pub fn has_if_or_unless_shape(words: &[&str]) -> bool {
     word_occurs(words, "if") || word_occurs(words, "unless")
 }
 
-pub(crate) fn has_unless_shape(words: &[&str]) -> bool {
+pub fn has_unless_shape(words: &[&str]) -> bool {
     word_occurs(words, "unless")
 }
 
-pub(crate) fn is_that_controller_has_shape(words: &[&str]) -> bool {
+pub fn is_that_controller_has_shape(words: &[&str]) -> bool {
     if !words
         .first()
         .is_some_and(|word| matches!(*word, "that" | "its"))
@@ -186,7 +184,7 @@ pub(crate) fn is_that_controller_has_shape(words: &[&str]) -> bool {
     false
 }
 
-pub(crate) fn is_hand_reference_shape(words: &[&str]) -> bool {
+pub fn is_hand_reference_shape(words: &[&str]) -> bool {
     exact_phrase(words, &["their", "hand"])
         || exact_phrase(words, &["their", "hands"])
         || exact_phrase(words, &["your", "hand"])
@@ -197,7 +195,7 @@ pub(crate) fn is_hand_reference_shape(words: &[&str]) -> bool {
         || exact_phrase(words, &["target", "player", "hands"])
 }
 
-pub(crate) fn is_likely_named_or_source_reference_shape(words: &[&str]) -> bool {
+pub fn is_likely_named_or_source_reference_shape(words: &[&str]) -> bool {
     if words.is_empty() {
         return false;
     }

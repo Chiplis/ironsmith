@@ -7,7 +7,7 @@ use super::clause_facts::{exact, exact_any, prefix, prefix_remainder, suffix};
 use super::{ActivationCastLimitQualifier, parse_activation_cast_limit_qualifier_words};
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CantCastRestrictionFact {
+pub enum CantCastRestrictionFact {
     CastSpells(PlayerFilter),
     CastCreatureSpells(PlayerFilter),
     CastSpellsMatching {
@@ -21,7 +21,7 @@ pub(crate) enum CantCastRestrictionFact {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum PlayerActivationRestrictionTailFact {
+pub enum PlayerActivationRestrictionTailFact {
     CastSpellsMatching(ObjectFilter),
     CastSpells,
     ActivateNonManaAbilities,
@@ -31,9 +31,7 @@ pub(crate) enum PlayerActivationRestrictionTailFact {
     },
 }
 
-pub(crate) fn parse_cant_cast_restriction_fact_words(
-    words: &[&str],
-) -> Option<CantCastRestrictionFact> {
+pub fn parse_cant_cast_restriction_fact_words(words: &[&str]) -> Option<CantCastRestrictionFact> {
     if let Some(filter) = parse_spell_subject_cant_be_cast_filter_words(words) {
         return Some(CantCastRestrictionFact::CastSpellsMatching {
             player: PlayerFilter::Any,
@@ -119,14 +117,12 @@ pub(crate) fn parse_cant_cast_restriction_fact_words(
     })
 }
 
-pub(crate) fn parse_spell_subject_cant_be_cast_filter_words(
-    words: &[&str],
-) -> Option<ObjectFilter> {
+pub fn parse_spell_subject_cant_be_cast_filter_words(words: &[&str]) -> Option<ObjectFilter> {
     let subject = super::clause_facts::suffix_remainder(words, &["cant", "be", "cast"])?;
     (!subject.is_empty()).then(|| parse_spell_restriction_subject_filter_words(subject))?
 }
 
-pub(crate) fn parse_spell_restriction_subject_filter_words(words: &[&str]) -> Option<ObjectFilter> {
+pub fn parse_spell_restriction_subject_filter_words(words: &[&str]) -> Option<ObjectFilter> {
     let mut filter = ObjectFilter::spell();
     let mut input = words;
 
@@ -186,7 +182,7 @@ pub(crate) fn parse_spell_restriction_subject_filter_words(words: &[&str]) -> Op
     Some(filter)
 }
 
-pub(crate) fn parse_cast_more_than_one_limit_filter_words(words: &[&str]) -> Option<ObjectFilter> {
+pub fn parse_cast_more_than_one_limit_filter_words(words: &[&str]) -> Option<ObjectFilter> {
     let mut input = prefix_remainder(words, &["cast", "more", "than", "one"])?;
     let filter = if matches!(input.first().copied(), Some("spell")) {
         ObjectFilter::default()
@@ -198,7 +194,7 @@ pub(crate) fn parse_cast_more_than_one_limit_filter_words(words: &[&str]) -> Opt
     exact(input, &["spell", "each", "turn"]).then_some(filter)
 }
 
-pub(crate) fn parse_cast_additional_limit_filter_words(words: &[&str]) -> Option<ObjectFilter> {
+pub fn parse_cast_additional_limit_filter_words(words: &[&str]) -> Option<ObjectFilter> {
     let mut input = prefix_remainder(words, &["who", "has"]).unwrap_or(words);
     input = prefix_remainder(input, &["cast"])?;
     if matches!(input.first().copied(), Some("a" | "an")) {
@@ -219,7 +215,7 @@ pub(crate) fn parse_cast_additional_limit_filter_words(words: &[&str]) -> Option
     exact(input, &["spells"]).then_some(first.filter)
 }
 
-pub(crate) fn parse_cast_restriction_tail_filter_words(words: &[&str]) -> Option<ObjectFilter> {
+pub fn parse_cast_restriction_tail_filter_words(words: &[&str]) -> Option<ObjectFilter> {
     if let Some(rest) = prefix_remainder(words, &["cast"])
         && let Some(mut filter) = parse_spell_restriction_subject_filter_words(rest)
     {
@@ -250,7 +246,7 @@ pub(crate) fn parse_cast_restriction_tail_filter_words(words: &[&str]) -> Option
     (parsed.consumed == tail.len()).then_some(parsed.filter)
 }
 
-pub(crate) fn parse_card_type_list_filter_words(
+pub fn parse_card_type_list_filter_words(
     words: &[&str],
     zone: Option<Zone>,
 ) -> Option<ObjectFilter> {
@@ -276,7 +272,7 @@ pub(crate) fn parse_card_type_list_filter_words(
     Some(disjunction)
 }
 
-pub(crate) fn parse_player_activation_restriction_tail_words(
+pub fn parse_player_activation_restriction_tail_words(
     words: &[&str],
 ) -> Option<PlayerActivationRestrictionTailFact> {
     if let Some(filter) = parse_cast_restriction_tail_filter_words(words) {

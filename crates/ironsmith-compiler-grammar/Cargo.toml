@@ -1,0 +1,31 @@
+[package]
+name = "ironsmith-compiler-grammar"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ironsmith-core = { path = "../ironsmith-core", default-features = false, features = ["serde"] }
+ironsmith-compiler-api = { path = "../ironsmith-compiler-api", default-features = false }
+ironsmith-compiler-syntax = { path = "../ironsmith-compiler-syntax", default-features = false }
+ironsmith-compiler-source = { path = "../ironsmith-compiler-source", default-features = false }
+ironsmith-compiler-ast = { path = "../ironsmith-compiler-ast", default-features = false }
+ironsmith-compiler-semantic = { path = "../ironsmith-compiler-semantic", default-features = false }
+ironsmith-compiler-resolve = { path = "../ironsmith-compiler-resolve", default-features = false }
+ironsmith-grammar-common = { path = "../ironsmith-grammar-common", default-features = false }
+erased-serde = "0.4.9"
+serde = { version = "1.0.228", features = ["derive"] }
+winnow = { version = "1.0.1", default-features = false, features = ["std", "ascii"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+stacker = "0.1.23"
+
+[features]
+default = []
+serialization = []
+
+[dev-dependencies]
+ironsmith-grammar-common = { path = "../ironsmith-grammar-common", default-features = false, features = ["test-support"] }
+
+[lib]
+path = "src/lib.rs"
+doctest = false

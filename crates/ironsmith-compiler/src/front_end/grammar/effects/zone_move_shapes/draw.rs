@@ -18,40 +18,40 @@ use crate::zone::Zone;
 use super::super::ReturnTimingShape;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DrawCardCountOffset {
+pub enum DrawCardCountOffset {
     MinusOne,
     PlusOne,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum DrawHeadCountShape<'a> {
+pub enum DrawHeadCountShape<'a> {
     Resolved(Value),
     CardPrefixed { count_tokens: &'a [OwnedLexToken] },
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct DrawHeadShape<'a> {
-    pub(crate) count: DrawHeadCountShape<'a>,
-    pub(crate) additional: bool,
-    pub(crate) tail_tokens: &'a [OwnedLexToken],
-    pub(crate) parsed_offset: Option<DrawCardCountOffset>,
+pub struct DrawHeadShape<'a> {
+    pub count: DrawHeadCountShape<'a>,
+    pub additional: bool,
+    pub tail_tokens: &'a [OwnedLexToken],
+    pub parsed_offset: Option<DrawCardCountOffset>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DrawHeadShapeError {
+pub enum DrawHeadShapeError {
     MissingCount,
     MissingCardKeyword,
     UnsupportedTrailingClause,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DrawPlayerLoopShape<'a> {
-    pub(crate) opponents_only: bool,
-    pub(crate) who_tokens: &'a [OwnedLexToken],
+pub struct DrawPlayerLoopShape<'a> {
+    pub opponents_only: bool,
+    pub who_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum DrawTrailingShape<'a> {
+pub enum DrawTrailingShape<'a> {
     Instead,
     Delayed(ReturnTimingShape),
     ThenPut { put_tokens: &'a [OwnedLexToken] },
@@ -60,7 +60,7 @@ pub(crate) enum DrawTrailingShape<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum DrawKnownCountShape<'a> {
+pub enum DrawKnownCountShape<'a> {
     KickCount,
     ColorsAmong { filter_tokens: &'a [OwnedLexToken] },
     CreaturesDiedThisTurn,
@@ -68,14 +68,14 @@ pub(crate) enum DrawKnownCountShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DrawEqualStat {
+pub enum DrawEqualStat {
     Power,
     Toughness,
     ManaValue,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum DrawEqualShape<'a> {
+pub enum DrawEqualShape<'a> {
     GreatestCardsDiscardedThisWay,
     StatOfTarget {
         stat: DrawEqualStat,
@@ -158,9 +158,7 @@ fn card_noun<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_draw_card_count_offset_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<DrawCardCountOffset> {
+pub fn parse_draw_card_count_offset_shape(tokens: &[OwnedLexToken]) -> Option<DrawCardCountOffset> {
     let tokens = trimmed(tokens);
     if exact_phrase(tokens, &["minus", "one"]) {
         Some(DrawCardCountOffset::MinusOne)
@@ -171,9 +169,7 @@ pub(crate) fn parse_draw_card_count_offset_shape(
     }
 }
 
-pub(crate) fn parse_half_rounded_down_draw_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<(Value, usize)> {
+pub fn parse_half_rounded_down_draw_shape(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
     let ((), after_half) = primitives::parse_prefix(tokens, primitives::kw("half").void())?;
     let (card_idx, (), after_card) = primitives::find_prefix(after_half, || card_noun)?;
     let inner_tokens = trimmed(&after_half[..card_idx]);
@@ -210,7 +206,7 @@ fn parse_as_many_this_way(tokens: &[OwnedLexToken]) -> Option<Value> {
         )
 }
 
-pub(crate) fn parse_draw_head_shape(
+pub fn parse_draw_head_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<DrawHeadShape<'_>, DrawHeadShapeError> {
     let tokens = trimmed(tokens);
@@ -303,9 +299,7 @@ pub(crate) fn parse_draw_head_shape(
     })
 }
 
-pub(crate) fn parse_draw_player_loop_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<DrawPlayerLoopShape<'_>> {
+pub fn parse_draw_player_loop_shape(tokens: &[OwnedLexToken]) -> Option<DrawPlayerLoopShape<'_>> {
     let tokens = trimmed(tokens);
     let (opponents_only, who_tokens) = primitives::parse_prefix(
         tokens,
@@ -328,7 +322,7 @@ pub(crate) fn parse_draw_player_loop_shape(
     })
 }
 
-pub(crate) fn parse_draw_trailing_shape(tokens: &[OwnedLexToken]) -> Option<DrawTrailingShape<'_>> {
+pub fn parse_draw_trailing_shape(tokens: &[OwnedLexToken]) -> Option<DrawTrailingShape<'_>> {
     let tokens = trimmed(tokens);
     if exact_phrase(tokens, &["instead"]) {
         return Some(DrawTrailingShape::Instead);
@@ -375,14 +369,14 @@ pub(crate) fn parse_draw_trailing_shape(tokens: &[OwnedLexToken]) -> Option<Draw
     None
 }
 
-pub(crate) fn strip_draw_for_each_prefix(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub fn strip_draw_for_each_prefix(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let (_, filter_tokens) =
         primitives::parse_prefix(trimmed(tokens), primitives::phrase(&["for", "each"]).void())?;
     let filter_tokens = trimmed(filter_tokens);
     (!filter_tokens.is_empty()).then_some(filter_tokens)
 }
 
-pub(crate) fn contains_draw_for_each_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn contains_draw_for_each_shape(tokens: &[OwnedLexToken]) -> bool {
     primitives::find_prefix(trimmed(tokens), || semantic_phrase(&["for", "each"])).is_some()
 }
 
@@ -417,9 +411,7 @@ fn is_kick_count(tokens: &[OwnedLexToken]) -> bool {
     exact_source_reference(trimmed(source))
 }
 
-pub(crate) fn parse_draw_known_count_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<DrawKnownCountShape<'_>> {
+pub fn parse_draw_known_count_shape(tokens: &[OwnedLexToken]) -> Option<DrawKnownCountShape<'_>> {
     let tokens = trimmed(tokens);
     if is_kick_count(tokens) {
         return Some(DrawKnownCountShape::KickCount);
@@ -465,7 +457,7 @@ pub(crate) fn parse_draw_known_count_shape(
     None
 }
 
-pub(crate) fn parse_draw_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_draw_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Option<Value> {
     let tokens = trimmed(tokens);
     primitives::split_lexed_once_before_suffix(tokens, 0, || {
         (
@@ -565,7 +557,7 @@ pub(crate) fn parse_draw_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Opti
     Some(metric)
 }
 
-pub(crate) fn parse_draw_equal_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_draw_equal_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Option<Value> {
     let tokens = trimmed(tokens);
     let ((), value_tokens) =
         primitives::parse_prefix(tokens, primitives::phrase(&["equal", "to"]).void())?;
@@ -576,7 +568,7 @@ fn exact_any(tokens: &[OwnedLexToken], phrases: &'static [&'static [&'static str
     phrases.iter().any(|phrase| exact_phrase(tokens, phrase))
 }
 
-pub(crate) fn parse_draw_counter_reference_shape(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub fn parse_draw_counter_reference_shape(tokens: &[OwnedLexToken]) -> Option<Value> {
     let tokens = trimmed(tokens);
     let (counter_idx, (), after_counter) = primitives::find_prefix(tokens, || {
         alt((primitives::kw("counter"), primitives::kw("counters"))).void()
@@ -637,7 +629,7 @@ pub(crate) fn parse_draw_counter_reference_shape(tokens: &[OwnedLexToken]) -> Op
     Some(Value::CountersOn(Box::new(choose), counter_type))
 }
 
-pub(crate) fn parse_draw_equal_shape(tokens: &[OwnedLexToken]) -> Option<DrawEqualShape<'_>> {
+pub fn parse_draw_equal_shape(tokens: &[OwnedLexToken]) -> Option<DrawEqualShape<'_>> {
     let tokens = trimmed(tokens);
     let ((), value_tokens) =
         primitives::parse_prefix(tokens, primitives::phrase(&["equal", "to"]).void())?;
@@ -690,7 +682,7 @@ pub(crate) fn parse_draw_equal_shape(tokens: &[OwnedLexToken]) -> Option<DrawEqu
     })
 }
 
-pub(crate) fn counter_same_name_graveyard_shape(tokens: &[OwnedLexToken]) -> bool {
+pub fn counter_same_name_graveyard_shape(tokens: &[OwnedLexToken]) -> bool {
     let tokens = trimmed(tokens);
     let Some((_, (), after_graveyard)) = primitives::find_prefix(tokens, || {
         alt((primitives::kw("graveyard"), primitives::kw("graveyards"))).void()
@@ -707,7 +699,7 @@ pub(crate) fn counter_same_name_graveyard_shape(tokens: &[OwnedLexToken]) -> boo
         .is_some()
 }
 
-pub(crate) fn same_name_graveyard_count_value() -> Value {
+pub fn same_name_graveyard_count_value() -> Value {
     Value::Count(
         crate::target::ObjectFilter::default()
             .in_zone(Zone::Graveyard)

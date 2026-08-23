@@ -10,13 +10,13 @@ use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum NextSpellGrantAbilitySurface<'a> {
+pub enum NextSpellGrantAbilitySurface<'a> {
     CantBeCountered,
     Keyword(&'a [OwnedLexToken]),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum NextSpellKeywordActionShape<'a> {
+pub enum NextSpellKeywordActionShape<'a> {
     Known(KeywordAction),
     SingleWord(&'a str),
 }
@@ -103,7 +103,7 @@ fn next_spell_keyword_action<'a>(
     .parse_next(input)
 }
 
-pub(crate) fn parse_next_spell_keyword_action_tokens(
+pub fn parse_next_spell_keyword_action_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<NextSpellKeywordActionShape<'_>> {
     primitives::parse_all(
@@ -115,10 +115,10 @@ pub(crate) fn parse_next_spell_keyword_action_tokens(
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct NextSpellGrantShape<'a> {
-    pub(crate) player: PlayerAst,
-    pub(crate) filters: Vec<ObjectFilter>,
-    pub(crate) ability: NextSpellGrantAbilitySurface<'a>,
+pub struct NextSpellGrantShape<'a> {
+    pub player: PlayerAst,
+    pub filters: Vec<ObjectFilter>,
+    pub ability: NextSpellGrantAbilitySurface<'a>,
 }
 
 #[derive(Debug, Clone)]
@@ -363,7 +363,7 @@ fn spell_filter(
     Ok(filter)
 }
 
-pub(crate) fn parse_next_spell_grant_tokens(
+pub fn parse_next_spell_grant_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<NextSpellGrantShape<'_>>, CardTextError> {
     let Some(raw) =

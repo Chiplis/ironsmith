@@ -7,7 +7,7 @@ use super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::primitives;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ChosenTypeReferenceSurface {
+pub enum ChosenTypeReferenceSurface {
     ThatType,
     ChosenType,
 }
@@ -28,7 +28,7 @@ fn chosen_type_reference<'a>(input: &mut LexStream<'a>) -> WResult<ChosenTypeRef
     suffix().parse_next(input)
 }
 
-pub(crate) fn parse_chosen_type_reference_tokens(
+pub fn parse_chosen_type_reference_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ChosenTypeReferenceSurface> {
     primitives::parse_prefix(tokens, chosen_type_reference).map(|(surface, _)| surface)
