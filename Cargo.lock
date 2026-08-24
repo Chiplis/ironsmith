@@ -1313,6 +1313,7 @@ name = "ironsmith-compiler"
 version = "0.1.0"
 dependencies = [
  "ironsmith-compiler-grammar",
+ "ironsmith-core",
 ]
 
 [[package]]
@@ -1341,7 +1342,6 @@ dependencies = [
  "ironsmith-core",
  "ironsmith-grammar-common",
  "serde",
- "stacker",
  "winnow",
 ]
 
@@ -1470,6 +1470,7 @@ dependencies = [
  "ironsmith-core",
  "ironsmith-engine",
  "ironsmith-runtime-catalog",
+ "ironsmith-text",
 ]
 
 [[package]]
@@ -1595,8 +1596,11 @@ dependencies = [
 name = "ironsmith-text"
 version = "0.1.0"
 dependencies = [
+ "ironsmith-compiled-artifact",
+ "ironsmith-compiler",
  "ironsmith-core",
  "ironsmith-engine",
+ "ironsmith-runtime-catalog",
  "stacker",
 ]
 
@@ -1867,6 +1871,7 @@ dependencies = [
  "ironsmith-engine",
  "ironsmith-registry",
  "ironsmith-runtime-catalog",
+ "ironsmith-tools",
  "js-sys",
  "manabrew-protocol",
  "rand 0.10.1",

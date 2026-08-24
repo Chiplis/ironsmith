@@ -57,6 +57,14 @@ async function startWasmServer() {
   };
 }
 
+async function loadCardSources(page, routes) {
+  return page.evaluate(async (cardRoutes) => Promise.all(cardRoutes.map(async (route) => {
+    const response = await fetch(`/cards/${route}.json`);
+    if (!response.ok) throw new Error(`failed to load ${route}: HTTP ${response.status}`);
+    return response.json();
+  })), routes);
+}
+
 test("real WASM priority actions use canonical compiled ability labels", { timeout: 120000 }, async () => {
   const { vite, baseUrl } = await startWasmServer();
   let browser = null;
@@ -349,21 +357,17 @@ test("real WASM engine rejects a forged cast for a card outside the actor's hand
     });
 
     await page.goto(baseUrl);
-    const result = await page.evaluate(async ({ wasmModuleUrl }) => {
+    const cardSources = await loadCardSources(page, ["ornithopter", "plains"]);
+    const result = await page.evaluate(async ({ wasmModuleUrl, cardSources }) => {
       const mod = await import(wasmModuleUrl);
       await mod.default();
       const game = new mod.WasmGame();
-      let state = game.startMatch({
-        playerNames: ["Alice", "Bob"],
-        startingLife: 20,
-        seed: 1,
-        format: "normal",
-        openingHandSize: 7,
-        decks: [
-          Array(60).fill("Ornithopter"),
-          Array(60).fill("Ornithopter"),
-        ],
-      });
+      game.registerExternalCardSourcesJson(JSON.stringify(cardSources));
+      game.resetEmpty(["Alice", "Bob"], 20);
+      game.addCardToZone(0, "Ornithopter", "hand", true);
+      const forgedSpellId = game.addCardToZone(0, "Ornithopter", "library", true);
+      game.finishPuzzleSetup();
+      let state = game.uiState();
 
       for (let step = 0; step < 12; step += 1) {
         if (state.decision?.actions?.some((action) => action.action_ref?.kind === "cast_spell")) {
@@ -388,8 +392,10 @@ test("real WASM engine rejects a forged cast for a card outside the actor's hand
 
       const checkpointBefore = game.exportSyncCheckpoint();
       const actor = Number(decision.player);
-      const libraryCardId = checkpointBefore.players[actor].library[0];
-      const libraryObject = checkpointBefore.objects.find((object) => object.id === libraryCardId);
+      const libraryCardId = forgedSpellId;
+      const libraryObject = checkpointBefore.objects.find(
+        (object) => Number(object.id) === Number(libraryCardId)
+      );
       const legalHandSpellIds = decision.actions
         .filter((action) => action.action_ref?.kind === "cast_spell")
         .map((action) => action.action_ref.spell_id);
@@ -422,7 +428,7 @@ test("real WASM engine rejects a forged cast for a card outside the actor's hand
         legalHandSpellIds,
         stateUnchanged: JSON.stringify(game.exportSyncCheckpoint()) === JSON.stringify(checkpointBefore),
       };
-    }, { wasmModuleUrl: WASM_MODULE_URL });
+    }, { wasmModuleUrl: WASM_MODULE_URL, cardSources });
 
     assert.equal(result.actor, 0);
     assert.equal(result.libraryObject.name, "Ornithopter");
@@ -451,10 +457,12 @@ test("real WASM engine emits crypto requirements when a hidden committed card is
     });
 
     await page.goto(baseUrl);
-    const result = await page.evaluate(async ({ wasmModuleUrl, manifests }) => {
+    const cardSources = await loadCardSources(page, ["plains"]);
+    const result = await page.evaluate(async ({ wasmModuleUrl, manifests, cardSources }) => {
       const mod = await import(wasmModuleUrl);
       await mod.default();
       const game = new mod.WasmGame();
+      game.registerExternalCardSourcesJson(JSON.stringify(cardSources));
       let state = game.startMatch({
         playerNames: ["Alice", "Bob"],
         startingLife: 20,
@@ -462,14 +470,14 @@ test("real WASM engine emits crypto requirements when a hidden committed card is
         format: "normal",
         openingHandSize: 7,
         decks: [
-          Array(60).fill("Ornithopter"),
-          Array(60).fill("Ornithopter"),
+          Array(60).fill("Plains"),
+          Array(60).fill("Plains"),
         ],
         hiddenDeckManifests: manifests,
       });
 
       for (let step = 0; step < 12; step += 1) {
-        if (state.decision?.actions?.some((action) => action.action_ref?.kind === "cast_spell")) {
+        if (state.decision?.actions?.some((action) => action.action_ref?.kind === "play_land")) {
           break;
         }
         const action = state.decision?.actions?.find((candidate) => (
@@ -484,15 +492,15 @@ test("real WASM engine emits crypto requirements when a hidden committed card is
         state = game.dispatch({ type: "priority_action", action_ref: action.action_ref });
       }
 
-      const castAction = state.decision?.actions?.find(
-        (action) => action.action_ref?.kind === "cast_spell"
+      const playAction = state.decision?.actions?.find(
+        (action) => action.action_ref?.kind === "play_land"
       );
-      if (!castAction) {
-        throw new Error(`real engine did not expose a castable hand spell: ${JSON.stringify(state.decision)}`);
+      if (!playAction) {
+        throw new Error(`real engine did not expose a playable hand land: ${JSON.stringify(state.decision)}`);
       }
       state = game.dispatch({
         type: "priority_action",
-        action_ref: castAction.action_ref,
+        action_ref: playAction.action_ref,
       });
 
       return {
@@ -501,6 +509,7 @@ test("real WASM engine emits crypto requirements when a hidden committed card is
     }, {
       wasmModuleUrl: WASM_MODULE_URL,
       manifests: [hiddenManifest(0, 60), hiddenManifest(1, 60)],
+      cardSources,
     });
 
     assert.equal(
@@ -529,10 +538,17 @@ test("real WASM engine keeps Tainted Pact prompt after post-resolution hidden op
     });
 
     await page.goto(baseUrl);
-    const result = await page.evaluate(async ({ wasmModuleUrl, manifests }) => {
+    const cardSources = await loadCardSources(page, [
+      "island",
+      "mountain",
+      "tainted-pact",
+      "swamp",
+    ]);
+    const result = await page.evaluate(async ({ wasmModuleUrl, manifests, cardSources }) => {
       const mod = await import(wasmModuleUrl);
       await mod.default();
       const game = new mod.WasmGame();
+      game.registerExternalCardSourcesJson(JSON.stringify(cardSources));
       let state = game.startMatch({
         playerNames: ["Alice", "Bob"],
         startingLife: 20,
@@ -546,7 +562,8 @@ test("real WASM engine keeps Tainted Pact prompt after post-resolution hidden op
         hiddenDeckManifests: manifests,
       });
       const taintedPactId = game.addCardToZone(0, "Tainted Pact", "hand", true);
-      game.addCardToZone(0, "Black Lotus", "battlefield", true);
+      game.addCardToZone(0, "Swamp", "battlefield", true);
+      game.addCardToZone(0, "Swamp", "battlefield", true);
       state = game.uiState();
 
       function firstAction(predicate) {
@@ -596,13 +613,23 @@ test("real WASM engine keeps Tainted Pact prompt after post-resolution hidden op
         if (state.decision?.kind === "priority" && /Tainted Pact/i.test(JSON.stringify(state.stack_preview || []))) {
           break;
         }
+        if (state.decision?.kind === "mana_payment") {
+          state = game.dispatch({
+            type: "mana_payment",
+            response: {
+              action: "confirm",
+              plan_id: state.decision.plan_id,
+              request_hash: state.decision.request_hash,
+            },
+          });
+          continue;
+        }
         if (state.decision?.kind !== "select_options") {
           throw new Error(`unexpected payment decision: ${JSON.stringify(state.decision)}`);
         }
         const legal = (state.decision.options || []).filter((option) => option.legal !== false);
         const option =
-          legal.find((candidate) => /Black Lotus/i.test(candidate.description || ""))
-          || legal.find((candidate) => /^black$/i.test(candidate.description || ""))
+          legal.find((candidate) => /^black$/i.test(candidate.description || ""))
           || legal.find((candidate) => /black|\{B\}|from mana pool|pay/i.test(candidate.description || ""))
           || legal[0];
         if (!option) {
@@ -675,6 +702,7 @@ test("real WASM engine keeps Tainted Pact prompt after post-resolution hidden op
     }, {
       wasmModuleUrl: WASM_MODULE_URL,
       manifests: [hiddenManifest(0, 60), hiddenManifest(1, 60)],
+      cardSources,
     });
 
     assert.match(result.promptAfterReveal, /put .* into your hand/i);
@@ -701,10 +729,17 @@ test("real WASM engine opens Tainted Pact duplicate-stop exile card", { timeout:
     });
 
     await page.goto(baseUrl);
-    const result = await page.evaluate(async ({ wasmModuleUrl, manifests }) => {
+    const cardSources = await loadCardSources(page, [
+      "island",
+      "mountain",
+      "tainted-pact",
+      "swamp",
+    ]);
+    const result = await page.evaluate(async ({ wasmModuleUrl, manifests, cardSources }) => {
       const mod = await import(wasmModuleUrl);
       await mod.default();
       const game = new mod.WasmGame();
+      game.registerExternalCardSourcesJson(JSON.stringify(cardSources));
       let state = game.startMatch({
         playerNames: ["Alice", "Bob"],
         startingLife: 20,
@@ -718,7 +753,8 @@ test("real WASM engine opens Tainted Pact duplicate-stop exile card", { timeout:
         hiddenDeckManifests: manifests,
       });
       const taintedPactId = game.addCardToZone(0, "Tainted Pact", "hand", true);
-      game.addCardToZone(0, "Black Lotus", "battlefield", true);
+      game.addCardToZone(0, "Swamp", "battlefield", true);
+      game.addCardToZone(0, "Swamp", "battlefield", true);
       state = game.uiState();
 
       function firstAction(predicate) {
@@ -764,13 +800,23 @@ test("real WASM engine opens Tainted Pact duplicate-stop exile card", { timeout:
         if (state.decision?.kind === "priority" && /Tainted Pact/i.test(JSON.stringify(state.stack_preview || []))) {
           break;
         }
+        if (state.decision?.kind === "mana_payment") {
+          state = game.dispatch({
+            type: "mana_payment",
+            response: {
+              action: "confirm",
+              plan_id: state.decision.plan_id,
+              request_hash: state.decision.request_hash,
+            },
+          });
+          continue;
+        }
         if (state.decision?.kind !== "select_options") {
           throw new Error(`unexpected payment decision: ${JSON.stringify(state.decision)}`);
         }
         const legal = (state.decision.options || []).filter((option) => option.legal !== false);
         const option =
-          legal.find((candidate) => /Black Lotus/i.test(candidate.description || ""))
-          || legal.find((candidate) => /^black$/i.test(candidate.description || ""))
+          legal.find((candidate) => /^black$/i.test(candidate.description || ""))
           || legal.find((candidate) => /black|\{B\}|from mana pool|pay/i.test(candidate.description || ""))
           || legal[0];
         if (!option) {
@@ -854,6 +900,7 @@ test("real WASM engine opens Tainted Pact duplicate-stop exile card", { timeout:
     }, {
       wasmModuleUrl: WASM_MODULE_URL,
       manifests: [hiddenManifest(0, 60), hiddenManifest(1, 60)],
+      cardSources,
     });
 
     assert.equal(result.duplicateCard, "Island");
@@ -894,10 +941,12 @@ test("real WASM engine redacts committed hand cards after private reveal", { tim
     });
 
     await page.goto(baseUrl);
-    const result = await page.evaluate(async ({ wasmModuleUrl, manifests }) => {
+    const cardSources = await loadCardSources(page, ["island", "mountain"]);
+    const result = await page.evaluate(async ({ wasmModuleUrl, manifests, cardSources }) => {
       const mod = await import(wasmModuleUrl);
       await mod.default();
       const game = new mod.WasmGame();
+      game.registerExternalCardSourcesJson(JSON.stringify(cardSources));
       game.startMatch({
         playerNames: ["Alice", "Bob"],
         startingLife: 20,
@@ -930,6 +979,7 @@ test("real WASM engine redacts committed hand cards after private reveal", { tim
     }, {
       wasmModuleUrl: WASM_MODULE_URL,
       manifests: [hiddenManifest(0, 60), hiddenManifest(1, 60)],
+      cardSources,
     });
 
     assert.equal(result.opening.owner, 1);
@@ -957,7 +1007,14 @@ test("real WASM engine emits private openings for committed scry and surveil ins
     });
 
     await page.goto(baseUrl);
-    const result = await page.evaluate(async ({ wasmModuleUrl, manifests }) => {
+    const cardSources = await loadCardSources(page, [
+      "preordain",
+      "barrier-of-bones",
+      "island",
+      "swamp",
+      "mountain",
+    ]);
+    const result = await page.evaluate(async ({ wasmModuleUrl, manifests, cardSources }) => {
       const mod = await import(wasmModuleUrl);
       await mod.default();
 
@@ -970,6 +1027,7 @@ test("real WASM engine emits private openings for committed scry and surveil ins
 
       function advanceToInspectionPrompt({ spellName, landName, fillerName }) {
         const game = new mod.WasmGame();
+        game.registerExternalCardSourcesJson(JSON.stringify(cardSources));
         let state = game.startMatch({
           playerNames: ["Alice", "Bob"],
           startingLife: 20,
@@ -977,11 +1035,14 @@ test("real WASM engine emits private openings for committed scry and surveil ins
           format: "normal",
           openingHandSize: 7,
           decks: [
-            [landName, spellName, landName, landName, landName, landName, landName, landName, landName, landName],
-            Array(10).fill(fillerName),
+            Array(60).fill(landName),
+            Array(60).fill(fillerName),
           ],
           hiddenDeckManifests: manifests,
         });
+        game.addCardToZone(0, spellName, "hand", true);
+        game.addCardToZone(0, landName, "battlefield", true);
+        state = game.uiState();
 
         for (let step = 0; step < 20; step += 1) {
           const actions = state.decision?.actions || [];
@@ -1005,10 +1066,17 @@ test("real WASM engine emits private openings for committed scry and surveil ins
         }
         state = dispatchPriority(game, castAction);
 
-        if (state.decision?.kind !== "select_options") {
+        if (state.decision?.kind !== "mana_payment") {
           throw new Error(`${spellName} did not ask for mana payment: ${JSON.stringify(state.decision)}`);
         }
-        state = game.dispatch({ type: "select_options", option_indices: [0] });
+        state = game.dispatch({
+          type: "mana_payment",
+          response: {
+            action: "confirm",
+            plan_id: state.decision.plan_id,
+            request_hash: state.decision.request_hash,
+          },
+        });
 
         for (let step = 0; step < 10; step += 1) {
           if (state.decision?.kind === "select_objects") break;
@@ -1042,7 +1110,8 @@ test("real WASM engine emits private openings for committed scry and surveil ins
       };
     }, {
       wasmModuleUrl: WASM_MODULE_URL,
-      manifests: [hiddenManifest(0, 10), hiddenManifest(1, 10)],
+      manifests: [hiddenManifest(0, 60), hiddenManifest(1, 60)],
+      cardSources,
     });
 
     assert.equal(result.scry.decision.kind, "select_objects");
@@ -1107,27 +1176,33 @@ test("real WASM engine ziffle position reveal ignores opened commitment metadata
     });
 
     await page.goto(baseUrl);
-    const bobManifest = hiddenManifest(1, 0);
-    const result = await page.evaluate(async ({ wasmModuleUrl, bobManifest }) => {
+    const cardSources = await loadCardSources(page, ["island", "mountain"]);
+    const bobManifest = hiddenManifest(1, 60);
+    const result = await page.evaluate(async ({ wasmModuleUrl, bobManifest, cardSources }) => {
       const mod = await import(wasmModuleUrl);
       await mod.default();
       const game = new mod.WasmGame();
+      game.registerExternalCardSourcesJson(JSON.stringify(cardSources));
       game.startMatch({
         playerNames: ["Alice", "Bob"],
         startingLife: 20,
         seed: 1,
         format: "normal",
-        openingHandSize: 2,
+        openingHandSize: 60,
         decks: [[], []],
         hiddenDeckManifests: [
           {
             owner: 0,
-            deckCount: 2,
+            deckCount: 60,
             commitmentRoot: "ziffle:test-deck",
             decklistHash: "alice-deck",
             slotCommitments: [
               { slot: 0, commitment: "ziffle:test-deck:0" },
               { slot: 1, commitment: "ziffle:test-deck:1" },
+              ...Array.from({ length: 58 }, (_, index) => ({
+                slot: index + 2,
+                commitment: `ziffle:test-deck:${index + 2}`,
+              })),
             ],
           },
           bobManifest,
@@ -1159,12 +1234,19 @@ test("real WASM engine ziffle position reveal ignores opened commitment metadata
       const redactedHandObjects = checkpoint.players[0].hand.map((id) =>
         redactedForBob.objects.find((object) => object.id === id)
       );
+      const revealedHandObjects = handObjects.filter((object) => object?.name !== "Hidden Card");
+      const revealedIds = new Set(revealedHandObjects.map((object) => Number(object.id)));
+      const correspondingRedactedObjects = redactedHandObjects.filter((object) =>
+        revealedIds.has(Number(object?.id))
+      );
       return {
-        names: handObjects.map((object) => object?.name),
-        redactedNames: redactedHandObjects.map((object) => object?.name),
-        redactedCommitments: redactedHandObjects.map((object) => object?.hiddenCard?.commitment),
+        names: revealedHandObjects.map((object) => object?.name),
+        redactedNames: correspondingRedactedObjects.map((object) => object?.name),
+        redactedCommitments: correspondingRedactedObjects.map(
+          (object) => object?.hiddenCard?.commitment
+        ),
       };
-    }, { wasmModuleUrl: WASM_MODULE_URL, bobManifest });
+    }, { wasmModuleUrl: WASM_MODULE_URL, bobManifest, cardSources });
 
     assert.deepEqual(result.names.sort(), ["Island", "Mountain"]);
     assert.deepEqual(result.redactedNames.sort(), ["Hidden Card", "Hidden Card"]);
