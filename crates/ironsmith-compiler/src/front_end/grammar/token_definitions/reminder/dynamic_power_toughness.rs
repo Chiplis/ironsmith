@@ -1,5 +1,5 @@
 use super::*;
-use crate::target::{ObjectFilter, TaggedOpbjectRelation};
+use crate::target::{ObjectFilter, SourceReferenceSurface, TaggedOpbjectRelation};
 use crate::types::CardType;
 
 pub(super) fn normalized_reminder_words<'a>(words: &'a [&'a str]) -> Vec<&'a str> {
@@ -201,10 +201,65 @@ pub(super) fn parse_dynamic_power_toughness(words: &[&str]) -> Option<(Value, Va
     Some((power, toughness))
 }
 
+fn parse_named_source_counter_dynamic_power_toughness(
+    tokens: &[OwnedLexToken],
+    words: &[&str],
+) -> Option<(Value, Value)> {
+    let rhs = common::strip_phrase_prefix(
+        words,
+        &[
+            "its",
+            "power",
+            "and",
+            "toughness",
+            "are",
+            "each",
+            "equal",
+            "to",
+        ],
+    )?;
+    let descriptor = common::strip_phrase_prefix(rhs, &["the", "number", "of"])?;
+    let counter_idx = crate::word_primitives::select_word_position(descriptor, |word| {
+        matches!(word, "counter" | "counters")
+    })?;
+    if counter_idx == 0 || descriptor.get(counter_idx + 1) != Some(&"on") {
+        return None;
+    }
+    let reference_words = descriptor.get(counter_idx + 2..)?;
+    if reference_words.is_empty() {
+        return None;
+    }
+    let counter_type =
+        crate::grammar::filters::parse_counter_type_words(descriptor.get(..=counter_idx)?)?;
+
+    // The normalized P/T prefix can collapse `this token's` into `its`, so
+    // locate the unchanged proper-name suffix from the end of the authored
+    // token stream rather than trying to map every normalized prefix word.
+    let positions = crate::lexer::parser_token_word_positions(tokens);
+    let reference_word_start = positions.len().checked_sub(reference_words.len())?;
+    let reference_token_start = positions.get(reference_word_start)?.0;
+    let reference_token_end = positions.last()?.0.checked_add(1)?;
+    let reference_tokens = tokens.get(reference_token_start..reference_token_end)?;
+    if !crate::lexer::is_authored_proper_name_phrase(reference_tokens)
+        || !crate::lexer::is_bare_card_name_phrase(reference_tokens)
+    {
+        return None;
+    }
+    let surface = SourceReferenceSurface::FullName(crate::lexer::render_bare_card_name_surface(
+        reference_tokens,
+    ));
+    let value = Value::CountersOn(
+        Box::new(crate::util::source_choose_spec_for_surface(surface)),
+        Some(counter_type),
+    );
+    Some((value.clone(), value))
+}
+
 pub fn parse_token_dynamic_power_toughness_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<(Value, Value)> {
     let raw_words = parser_token_word_refs(tokens);
     let words = normalized_reminder_words(&raw_words);
     parse_dynamic_power_toughness(&words)
+        .or_else(|| parse_named_source_counter_dynamic_power_toughness(tokens, &words))
 }

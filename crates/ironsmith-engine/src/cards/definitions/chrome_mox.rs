@@ -10,14 +10,14 @@ use crate::types::CardType;
 ///
 /// Chrome Mox {0}
 /// Artifact
-/// Imprint — When Chrome Mox enters the battlefield, you may exile a nonartifact,
+/// Imprint — When this artifact enters the battlefield, you may exile a nonartifact,
 /// nonland card from your hand.
 /// {T}: Add one mana of any of the exiled card's colors.
 pub fn chrome_mox() -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Chrome Mox")
         .mana_cost(ManaCost::new())
         .card_types(vec![CardType::Artifact])
-        .parse_text("Imprint — When Chrome Mox enters the battlefield, you may exile a nonartifact, nonland card from your hand.\n{T}: Add one mana of any of the exiled card's colors.")
+        .parse_text("Imprint — When this artifact enters the battlefield, you may exile a nonartifact, nonland card from your hand.\n{T}: Add one mana of any of the exiled card's colors.")
         .expect("Card text should be supported")
 }
 

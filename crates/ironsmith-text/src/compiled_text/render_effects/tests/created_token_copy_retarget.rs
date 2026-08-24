@@ -1,7 +1,7 @@
 use super::*;
 
 fn soldier_token() -> crate::cards::CardDefinition {
-    crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Soldier")
+    crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Soldier")
         .token()
         .card_types(vec![CardType::Creature])
         .subtypes(vec![Subtype::Soldier])

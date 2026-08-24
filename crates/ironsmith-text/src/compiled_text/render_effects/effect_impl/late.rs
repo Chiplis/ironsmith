@@ -1973,10 +1973,12 @@
             } else {
                 "a"
             };
-            let addition = if copy.added_card_types.is_empty() && !copy.added_subtypes.is_empty() {
-                " in addition to its other creature types"
-            } else if !copy.added_card_types.is_empty() {
+            let addition = if copy.set_base_power_toughness.is_some()
+                || !copy.added_card_types.is_empty()
+            {
                 " in addition to its other types"
+            } else if !copy.added_subtypes.is_empty() {
+                " in addition to its other creature types"
             } else {
                 ""
             };
@@ -2079,6 +2081,11 @@
         );
         if target_text.contains("instant or sorcery") && !target_text.contains(" spell") {
             target_text = target_text.replacen("instant or sorcery", "instant or sorcery spell", 1);
+        }
+        if target_text == "it"
+            && copy_spell.target_reference_kind == Some(StackObjectKind::Spell)
+        {
+            target_text = "that spell".to_string();
         }
         if matches!(copy_spell.count, Value::Fixed(1)) {
             if matches!(copy_spell.target, ChooseSpec::Iterated) {

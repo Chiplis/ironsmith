@@ -1,4 +1,3 @@
-use ironsmith::cards::builders::CardDefinitionBuilder;
 use ironsmith::events::{KeywordActionEvent, KeywordActionKind};
 use ironsmith::special_actions;
 use ironsmith::triggers::Trigger;
@@ -9,6 +8,7 @@ use ironsmith::{
     apply_state_based_actions, check_state_based_actions, check_triggers, put_triggers_on_stack,
     resolve_stack_entry,
 };
+use ironsmith_registry::cards::builders::CardDefinitionBuilder;
 
 fn planar_card(name: &str, trigger: Option<KeywordActionKind>) -> CardDefinition {
     let mut definition = CardDefinition::new(

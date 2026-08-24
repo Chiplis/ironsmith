@@ -1,5 +1,5 @@
 use crate::ConditionExpr;
-use crate::ability::{Ability, AbilityKind, ActivationTiming, ManaUsageRestriction};
+use crate::ability::ActivationTiming;
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cost::OptionalCost;
 use crate::effect::{EffectPredicate, Value};
@@ -8,7 +8,24 @@ use crate::zone::Zone;
 use super::ast::{EffectAst, StaticAbilityAst, TriggerSpec};
 use super::facts::{LineInfo, LineSemanticFacts};
 use super::reference_state::ReferenceImports;
-use crate::{KeywordAction, TotalCost};
+use crate::KeywordAction;
+
+pub type CompilerAbilityCore = ironsmith_core::Ability<
+    crate::model::CompilerStaticAbilityCore,
+    TriggerSpec,
+    EffectAst,
+    crate::model::CompilerCost,
+>;
+pub type CompilerAbilityKindCore = ironsmith_core::AbilityKind<
+    crate::model::CompilerStaticAbilityCore,
+    TriggerSpec,
+    EffectAst,
+    crate::model::CompilerCost,
+>;
+pub type CompilerTriggeredAbilityCore = ironsmith_core::TriggeredAbility<TriggerSpec, EffectAst>;
+pub type CompilerActivatedAbilityCore =
+    ironsmith_core::ActivatedAbility<EffectAst, crate::model::CompilerCost>;
+pub type CompilerManaUsageRestriction = ironsmith_core::ManaUsageRestriction<EffectAst>;
 
 #[derive(Debug, Clone)]
 pub enum GiftTimingAst {
@@ -60,33 +77,20 @@ pub struct AdditionalCostChoiceOptionAst<Effect = EffectAst> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParsedAbility {
-    pub ability:
-        crate::model::CompilerAbilityPayload<Ability, EffectAst, ReferenceImports, TriggerSpec>,
+    pub ability: Box<CompilerAbilityCore>,
     pub text: Option<String>,
     pub effects_ast: Option<Vec<EffectAst>>,
     pub reference_imports: ReferenceImports,
-    pub trigger_spec: Option<TriggerSpec>,
+    pub trigger_spec: Option<Box<TriggerSpec>>,
 }
 
 impl ParsedAbility {
-    pub fn runtime(&self) -> &Ability {
-        self.ability.legacy()
+    pub fn kind(&self) -> &CompilerAbilityKindCore {
+        &self.ability.kind
     }
 
-    pub fn runtime_mut(&mut self) -> &mut Ability {
-        self.ability.legacy_mut()
-    }
-
-    pub fn into_runtime(self) -> Ability {
-        self.ability.into_legacy()
-    }
-
-    pub fn kind(&self) -> &AbilityKind {
-        &self.runtime().kind
-    }
-
-    pub fn kind_mut(&mut self) -> &mut AbilityKind {
-        &mut self.runtime_mut().kind
+    pub fn kind_mut(&mut self) -> &mut CompilerAbilityKindCore {
+        &mut self.ability.kind
     }
 
     pub fn text(&self) -> &Option<String> {
@@ -98,30 +102,26 @@ impl ParsedAbility {
     }
 
     pub fn functional_zones_mut(&mut self) -> &mut Vec<Zone> {
-        &mut self.runtime_mut().functional_zones
-    }
-}
-
-impl From<Ability>
-    for crate::model::CompilerAbilityPayload<Ability, EffectAst, ReferenceImports, TriggerSpec>
-{
-    fn from(value: Ability) -> Self {
-        Self::from_legacy(value, None, ReferenceImports::default(), None)
+        &mut self.ability.functional_zones
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct ParsedOptionalCostAst {
-    runtime: OptionalCost,
+pub enum ParsedOptionalCostAst {
+    Compiler(crate::model::CompilerOptionalCost),
+    LegacyRuntime(OptionalCost),
 }
 
 impl ParsedOptionalCostAst {
     pub fn new(runtime: OptionalCost) -> Self {
-        Self { runtime }
+        Self::LegacyRuntime(runtime)
     }
 
     pub fn into_runtime(self) -> OptionalCost {
-        self.runtime
+        match self {
+            Self::LegacyRuntime(runtime) => runtime,
+            Self::Compiler(_) => panic!("compiler optional costs must be materialized by lowering"),
+        }
     }
 }
 
@@ -131,22 +131,41 @@ impl From<OptionalCost> for ParsedOptionalCostAst {
     }
 }
 
+impl From<crate::model::CompilerOptionalCost> for ParsedOptionalCostAst {
+    fn from(value: crate::model::CompilerOptionalCost) -> Self {
+        Self::Compiler(value)
+    }
+}
+
 #[derive(Debug, Clone)]
-pub struct ParsedAlternativeCastingMethodAst {
-    runtime: AlternativeCastingMethod,
+pub enum ParsedAlternativeCastingMethodAst {
+    Compiler(crate::model::CompilerAlternativeCastingMethod),
+    LegacyRuntime(AlternativeCastingMethod),
 }
 
 impl ParsedAlternativeCastingMethodAst {
     pub fn new(runtime: AlternativeCastingMethod) -> Self {
-        Self { runtime }
+        Self::LegacyRuntime(runtime)
     }
 
     pub fn as_runtime(&self) -> &AlternativeCastingMethod {
-        &self.runtime
+        match self {
+            Self::LegacyRuntime(runtime) => runtime,
+            Self::Compiler(_) => panic!("compiler alternative costs do not have a runtime view"),
+        }
     }
 
     pub fn into_runtime(self) -> AlternativeCastingMethod {
-        self.runtime
+        match self {
+            Self::LegacyRuntime(runtime) => runtime,
+            Self::Compiler(_) => panic!("compiler alternative costs must be lowered"),
+        }
+    }
+}
+
+impl From<crate::model::CompilerAlternativeCastingMethod> for ParsedAlternativeCastingMethodAst {
+    fn from(value: crate::model::CompilerAlternativeCastingMethod) -> Self {
+        Self::Compiler(value)
     }
 }
 
@@ -192,7 +211,7 @@ pub struct ParsedActivationRestriction {
     pub condition: Option<ConditionExpr>,
     pub text_only_condition: Option<ConditionExpr>,
     pub normalization: ActivationRestrictionNormalizationFact,
-    pub mana_usage_restriction: Option<ManaUsageRestriction>,
+    pub mana_usage_restriction: Option<CompilerManaUsageRestriction>,
     /// Oracle placed the once-per-turn clause after another activation
     /// restriction (for example, "... only if ... and only once each turn").
     pub once_per_turn_after_other_restrictions: bool,
@@ -210,7 +229,7 @@ pub struct ParsedManaRestriction {
     pub presentation_text: String,
     pub timing: ActivationTiming,
     pub condition: Option<ConditionExpr>,
-    pub usage_restriction: Option<ManaUsageRestriction>,
+    pub usage_restriction: Option<CompilerManaUsageRestriction>,
 }
 
 #[derive(Debug, Clone)]
@@ -267,7 +286,7 @@ pub struct ParsedConditionalModeChange {
 
 #[derive(Debug, Clone)]
 pub struct ParsedModalActivatedHeader {
-    pub mana_cost: TotalCost,
+    pub mana_cost: ironsmith_core::TotalCost<crate::model::CompilerCost>,
     pub functional_zones: Vec<Zone>,
     pub timing: ActivationTiming,
     pub is_loyalty_ability: bool,

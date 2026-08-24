@@ -1103,7 +1103,7 @@ impl WasmGame {
                 zone,
                 skip_triggers,
             } => {
-                self.registry.ensure_cards_loaded([card_name.as_str()]);
+                self.ensure_card_definitions_loaded([card_name.as_str()]);
                 match self.load_compilable_card_definition(card_name) {
                     Ok(definition) => self
                         .add_card_to_zone_with_dm(
@@ -1918,7 +1918,6 @@ impl WasmGame {
 mod live_action_rollback_tests {
     use super::*;
     use ironsmith::alternative_cast::CastingMethod;
-    use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::cost::OptionalCostsPaid;
     use ironsmith::decision::{LegalAction, compute_legal_actions};
     use ironsmith::decisions::context::SelectableOption;
@@ -1931,6 +1930,7 @@ mod live_action_rollback_tests {
     use ironsmith::provenance::ProvNodeId;
     use ironsmith::types::CardType;
     use ironsmith::zone::Zone;
+    use ironsmith_registry_test::cards::builders::CardDefinitionBuilder;
 
     fn dispatch_priority_action_matching<F>(wasm: &mut WasmGame, mut predicate: F)
     where
@@ -1961,6 +1961,32 @@ mod live_action_rollback_tests {
             },
         )
         .expect("priority action should dispatch");
+        confirm_pending_mana_payment(wasm);
+    }
+
+    fn confirm_pending_mana_payment(wasm: &mut WasmGame) {
+        let Some(DecisionContext::ManaPayment(payment)) = wasm.pending_decision.as_ref() else {
+            return;
+        };
+        let plan_id = payment.plan.id.to_string();
+        let request_hash = payment.plan.request_hash.to_string();
+        let pending_ctx = wasm
+            .pending_decision
+            .take()
+            .expect("expected authoritative mana-payment decision");
+        let command = UiCommand::ManaPayment {
+            response: ManaPaymentCommand::Confirm {
+                plan_id,
+                request_hash,
+            },
+        };
+        if wasm.pending_live_continuation.is_some() {
+            wasm.dispatch_live_priority_continuation(pending_ctx, command)
+                .expect("authoritative mana-payment plan should confirm");
+        } else {
+            wasm.dispatch_live_priority_response(pending_ctx, command)
+                .expect("authoritative mana-payment plan should confirm");
+        }
     }
 
     fn dispatch_pass_priority(wasm: &mut WasmGame) {
@@ -2729,7 +2755,12 @@ mod live_action_rollback_tests {
                 } if *spell_id == spell
             )
         });
-        dispatch_select_option(&mut wasm, 0);
+        if matches!(
+            wasm.pending_decision,
+            Some(DecisionContext::SelectOptions(_))
+        ) {
+            dispatch_select_option(&mut wasm, 0);
+        }
         dispatch_pass_priority(&mut wasm);
         dispatch_pass_priority(&mut wasm);
 
@@ -2830,6 +2861,7 @@ mod live_action_rollback_tests {
                 wasm.dispatch_live_priority_response(pending_ctx, command)
                     .expect("target selection should dispatch");
             }
+            confirm_pending_mana_payment(&mut wasm);
         }
         dispatch_pass_priority(&mut wasm);
         dispatch_pass_priority(&mut wasm);

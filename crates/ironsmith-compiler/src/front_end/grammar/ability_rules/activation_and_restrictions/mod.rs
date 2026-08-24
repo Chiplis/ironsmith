@@ -3,7 +3,6 @@ use super::activation_helpers::{
     parse_filter_comparison_tokens, parse_subtype_flexible, strip_leading_article_tokens,
     trim_edge_punctuation_tokens, value_contains_unbound_x,
 };
-use super::cst_lowering::lower_activation_cost_cst;
 use super::effect_ast_traversal::{for_each_nested_effects, for_each_nested_effects_mut};
 use super::effect_sentences::{
     parse_effect_sentence_lexed, parse_effect_sentences_lexed, parse_restriction_duration,
@@ -21,26 +20,30 @@ use super::lexer::{OwnedLexToken, TokenKind};
 use super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::token_primitives::{contains_window, lexed_head_words};
 use super::util::{
-    current_source_reference_name, is_source_reference_words, parse_card_type, parse_color,
-    parse_counter_type_from_tokens, parse_greater_than_or_equal_quantity_prefix, parse_non_type,
-    parse_number, parse_number_word_u32, parse_subject, parse_target_phrase,
-    parse_value_expr_words, source_reference_surface_for_span, source_reference_surface_for_words,
-    span_from_tokens, this_source_surface_for_words, trim_commas, words,
+    is_source_reference_words, parse_card_type, parse_color, parse_counter_type_from_tokens,
+    parse_greater_than_or_equal_quantity_prefix, parse_non_type, parse_number,
+    parse_number_word_u32, parse_subject, parse_target_phrase, parse_value_expr_words,
+    source_reference_surface_for_words, span_from_tokens, this_source_surface_for_words,
+    trim_commas, words,
 };
-use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
+use crate::ability::ActivationTiming;
 use crate::cards::builders::{
     CardTextError, DamageBySpec, EffectAst, IT_TAG, KeywordAction, ParsedAbility, PlayerAst,
-    PredicateAst, ReferenceImports, ReturnControllerAst, StaticAbilityAst, TagKey, TargetAst,
-    TextSpan, TriggerSpec,
+    PredicateAst, ReferenceImports, ReturnControllerAst, StaticAbilityAst, SubjectVerbActionAst,
+    SubjectVerbRoleAst, TagKey, TargetAst, TextSpan, TriggerSpec,
 };
 use crate::color::ColorSet;
 use crate::cost::TotalCost;
 use crate::effect::{ChoiceCount, Effect, Until, Value};
 use crate::filter::{TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::mana::{ManaCost, ManaSymbol};
+use crate::model::CompilerStaticAbilityCore as StaticAbility;
 use crate::model::ast::TriggerIntroSurfaceAst;
+use crate::model::compiler_semantic::{
+    CompilerAbilityCore as Ability, CompilerAbilityKindCore as AbilityKind,
+    CompilerActivatedAbilityCore as ActivatedAbility,
+};
 use crate::object::CounterType;
-use crate::static_abilities::StaticAbility;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
@@ -62,7 +65,8 @@ pub use activated_line_core::{
     color_from_color_set, combine_mana_activation_condition, is_activate_only_restriction_sentence,
     is_any_player_may_activate_sentence_lexed, is_trigger_only_restriction_sentence,
     parse_activated_line, parse_activation_cost, parse_all_creatures_able_to_block_source_line,
-    parse_cost_reduction_line, parse_devotion_value_from_add_clause, parse_enters_tapped_line,
+    parse_compiler_activation_cost, parse_cost_reduction_line,
+    parse_devotion_value_from_add_clause, parse_enters_tapped_line,
     parse_mana_usage_restriction_sentence_lexed, parse_named_number,
     parse_source_must_be_blocked_if_able_line, parse_triggered_times_each_turn_lexed,
     scale_dynamic_cost_modifier_value,
@@ -93,7 +97,7 @@ pub use choice_object_clauses::{
 use keyword_action_costs::*;
 pub use keyword_action_costs::{
     find_payment_alternative_or, normalize_cant_words, parse_ability_phrase,
-    parse_payment_clause_as_total_cost, parse_single_graveyard_bottom_library_payment,
+    parse_payment_clause_as_total_cost, parse_single_graveyard_bottom_library_compiler_payment,
     parse_single_word_keyword_action, target_ast_to_object_filter,
 };
 pub use keyword_activated_lines::{
@@ -103,6 +107,7 @@ pub use keyword_activated_lines::{
 use trigger_clause_core::*;
 pub use trigger_clause_core::{
     parse_leading_exactly_quantifier, parse_leading_or_more_quantifier, parse_trigger_clause_lexed,
+    parse_trigger_clause_lexed_with_context,
 };
 use trigger_subject_filters::*;
 pub use trigger_subject_filters::{

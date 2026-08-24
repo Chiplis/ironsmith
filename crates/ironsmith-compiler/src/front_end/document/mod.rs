@@ -23,7 +23,6 @@ use super::cst::{
     ModalBlockCst, ModalModeCst, RewriteDocumentCst, RewriteLineCst, SagaChapterLineCst,
     StatementLineCst, StaticLineCst, TriggerIntroCst, TriggeredLineCst, UnsupportedLineCst,
 };
-use super::cst_lowering::lower_activation_cost_cst;
 use super::cst_lowering::lower_non_metadata_rewrite_line_cst;
 use super::grammar::abilities::{
     is_activate_only_once_each_turn_line_lexed, is_doesnt_untap_during_your_untap_step_line_lexed,
@@ -269,8 +268,14 @@ impl TriggeredSplitCandidate {
         line: &PreprocessedLine,
         full_parse_tokens: &[OwnedLexToken],
     ) -> TriggeredLineCst {
+        let mut info = line.info.clone();
+        if let Some(intro_surface) =
+            super::grammar::trigger_surface::parse_trigger_intro_surface_tokens(full_parse_tokens)
+        {
+            info.semantic_facts.triggered_ability.intro_surface = Some(intro_surface);
+        }
         TriggeredLineCst {
-            info: line.info.clone(),
+            info,
             full_text: render_token_slice(full_parse_tokens).trim().to_string(),
             full_parse_tokens: full_parse_tokens.to_vec(),
             trigger_parse_tokens: self.trigger_parse_tokens,
@@ -482,18 +487,17 @@ fn sentence_is_static_after_trigger_effect(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn sentence_has_typed_become_copy_exception(tokens: &[OwnedLexToken]) -> bool {
-    let Some(become_idx) = tokens
-        .iter()
-        .position(|token| token.is_word("become") || token.is_word("becomes"))
-    else {
+    let Some(become_idx) = crate::slice_primitives::select_position(tokens, |token| {
+        token.is_word("become") || token.is_word("becomes")
+    }) else {
         return false;
     };
     let shape = effect_grammar::become_shapes::parse_become_rest_shape(&tokens[become_idx..]);
     shape.copy_exception.is_some()
-        && TokenWordView::new(&shape.body_tokens)
-            .word_refs()
-            .windows(2)
-            .any(|window| window == ["copy", "of"])
+        && crate::word_primitives::sequence_occurs(
+            &TokenWordView::new(&shape.body_tokens).word_refs(),
+            &["copy", "of"],
+        )
 }
 
 fn strip_non_keyword_label_prefix_lexed(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -672,9 +676,8 @@ fn parse_labeled_conditional_replacement_sentence_split(
             || (line_starts_with_trigger_intro_tokens(&sentence_line.tokens)
                 && !is_delayed_schedule)
         {
-            lines.push(RewriteLineCst::Triggered(parse_triggered_line_cst(
-                &sentence_line,
-            )?));
+            let triggered = parse_triggered_line_cst(&sentence_line)?;
+            lines.push(RewriteLineCst::Triggered(triggered));
         } else if let Some(statement_line) = parse_statement_line_cst(&sentence_line)? {
             lines.push(RewriteLineCst::Statement(statement_line));
         } else if let Some(static_line) = parse_static_line_cst(&sentence_line)? {
@@ -1072,41 +1075,35 @@ fn normalize_named_source_sentence_for_builder(
     text: &str,
 ) -> Option<String> {
     let trimmed = text.trim();
-    let subject = if builder
-        .card_builder
-        .card_types_ref()
-        .contains(&crate::types::CardType::Creature)
-    {
+    let subject = if crate::slice_primitives::contains(
+        builder.card_builder.card_types_ref(),
+        &crate::types::CardType::Creature,
+    ) {
         "this creature"
-    } else if builder
-        .card_builder
-        .card_types_ref()
-        .contains(&crate::types::CardType::Land)
-    {
+    } else if crate::slice_primitives::contains(
+        builder.card_builder.card_types_ref(),
+        &crate::types::CardType::Land,
+    ) {
         "this land"
-    } else if builder
-        .card_builder
-        .card_types_ref()
-        .contains(&crate::types::CardType::Artifact)
-    {
+    } else if crate::slice_primitives::contains(
+        builder.card_builder.card_types_ref(),
+        &crate::types::CardType::Artifact,
+    ) {
         "this artifact"
-    } else if builder
-        .card_builder
-        .card_types_ref()
-        .contains(&crate::types::CardType::Enchantment)
-    {
+    } else if crate::slice_primitives::contains(
+        builder.card_builder.card_types_ref(),
+        &crate::types::CardType::Enchantment,
+    ) {
         "this enchantment"
-    } else if builder
-        .card_builder
-        .card_types_ref()
-        .contains(&crate::types::CardType::Planeswalker)
-    {
+    } else if crate::slice_primitives::contains(
+        builder.card_builder.card_types_ref(),
+        &crate::types::CardType::Planeswalker,
+    ) {
         "this planeswalker"
-    } else if builder
-        .card_builder
-        .card_types_ref()
-        .contains(&crate::types::CardType::Battle)
-    {
+    } else if crate::slice_primitives::contains(
+        builder.card_builder.card_types_ref(),
+        &crate::types::CardType::Battle,
+    ) {
         "this battle"
     } else {
         "this permanent"
@@ -1150,12 +1147,17 @@ fn normalize_named_source_sentence_for_builder(
         // the follow-up sentence prevents the two sentences from being parsed
         // as one typed as-enters program. Once the leading source has been
         // normalized, normalize source references in the follow-up as well.
-        let normalized_as_enters_subject = rewritten
-            .strip_prefix("as ")
-            .and_then(|rest| rest.split_once(" enters,").map(|(subject, _)| subject))
-            .filter(|subject| *subject == "this" || subject.starts_with("this "));
+        let normalized_as_enters_subject =
+            crate::string_primitives::strip_prefix(&rewritten, "as ")
+                .and_then(|rest| {
+                    crate::string_primitives::split_once(rest, " enters,")
+                        .map(|(subject, _)| subject)
+                })
+                .filter(|subject| {
+                    *subject == "this" || crate::string_primitives::starts_with(subject, "this ")
+                });
         if let Some(as_enters_subject) = normalized_as_enters_subject
-            && let Some((head, tail)) = rewritten.split_once(". ")
+            && let Some((head, tail)) = crate::string_primitives::split_once(&rewritten, ". ")
         {
             let mut normalized_tail = tail.to_string();
             for name_lower in &names {
@@ -1205,6 +1207,37 @@ fn normalize_named_source_sentence_for_builder(
     None
 }
 
+fn normalize_explicit_named_source_references_for_builder(
+    builder: &CardDefinitionBuilder,
+    text: &str,
+) -> Option<String> {
+    let lower = text.trim().to_ascii_lowercase();
+    let subject = named_source_subject_for_builder(builder);
+    let aliases = source_name_aliases_for_builder(builder);
+    let mut rewritten = lower.clone();
+    for alias in &aliases {
+        rewritten =
+            replace_named_source_aliases_from_set(&rewritten, alias, subject, &aliases, false);
+    }
+    rewritten = normalize_named_source_enter_agreement(&rewritten, subject);
+    (rewritten != lower).then_some(rewritten)
+}
+
+pub(crate) fn normalize_named_source_sentence_with_context(
+    context: ParseContextView<'_>,
+    text: &str,
+) -> Option<String> {
+    let mut builder = CardDefinitionBuilder::new(
+        crate::ids::CardId::new(),
+        context.source().card_name.as_str(),
+    )
+    .card_types(context.card().card_types.clone());
+    if !context.card().subtypes.is_empty() {
+        builder = builder.subtypes(context.card().subtypes.clone());
+    }
+    normalize_explicit_named_source_references_for_builder(&builder, text)
+}
+
 fn normalize_named_source_trigger_for_builder(
     builder: &CardDefinitionBuilder,
     text: &str,
@@ -1222,9 +1255,6 @@ fn normalize_named_source_trigger_for_builder(
             (lower, false)
         };
     if let Some((trigger_head, effect_body)) = split_first_comma_lexed(lower.as_str()) {
-        if trigger_head_is_source_alias_leaves_battlefield(builder, trigger_head.as_str()) {
-            return None;
-        }
         let mut changed = leading_full_name_changed;
         let rewritten_head = if let Some(rewritten_head) =
             normalize_named_source_trigger_head_for_builder(builder, trigger_head.as_str())
@@ -1236,7 +1266,7 @@ fn normalize_named_source_trigger_for_builder(
         };
         let names = source_name_aliases_for_builder(builder);
         let mut rewritten_body = effect_body;
-        if !names.is_empty() && !mentions_named_reference(rewritten_body.as_str()) {
+        if !names.is_empty() {
             let subject = named_source_subject_for_builder(builder);
             for name_lower in &names {
                 let next_body = replace_named_source_aliases_from_set(
@@ -1244,7 +1274,7 @@ fn normalize_named_source_trigger_for_builder(
                     name_lower,
                     subject,
                     &names,
-                    document_grammar::parse_alias_face_separator(name_lower).is_some(),
+                    false,
                 );
                 if next_body != rewritten_body {
                     changed = true;
@@ -1266,7 +1296,7 @@ fn normalize_comma_bearing_leading_source_trigger(
     text: &str,
 ) -> Option<String> {
     let full_name = builder.card_builder.name_ref().trim().to_ascii_lowercase();
-    if !full_name.contains(',') {
+    if full_name.is_empty() {
         return None;
     }
 
@@ -1292,17 +1322,6 @@ fn normalize_comma_bearing_leading_source_trigger(
     }
 
     None
-}
-
-fn trigger_head_is_source_alias_leaves_battlefield(
-    builder: &CardDefinitionBuilder,
-    trigger_head: &str,
-) -> bool {
-    let Ok(tokens) = lex_line(trigger_head.trim(), 0) else {
-        return false;
-    };
-    document_grammar::parse_source_leaves_battlefield_surface(&tokens).is_some()
-        && normalized_line_mentions_source_alias(builder, trigger_head)
 }
 
 fn named_source_subject_for_builder(builder: &CardDefinitionBuilder) -> &'static str {
@@ -1362,6 +1381,13 @@ fn normalized_line_mentions_source_alias(builder: &CardDefinitionBuilder, text: 
     })
 }
 
+fn normalized_line_mentions_explicit_source_alias(
+    builder: &CardDefinitionBuilder,
+    text: &str,
+) -> bool {
+    normalize_explicit_named_source_references_for_builder(builder, text).is_some()
+}
+
 fn normalize_named_source_trigger_head_for_builder(
     builder: &CardDefinitionBuilder,
     text: &str,
@@ -1378,15 +1404,11 @@ fn normalize_named_source_trigger_head_for_builder(
     }
 
     let names = source_name_aliases_for_builder(builder);
-    if !names.is_empty() && !mentions_named_reference(trimmed) {
+    if !names.is_empty() {
         let mut rewritten = trimmed.to_string();
         for name_lower in &names {
             rewritten = replace_named_source_aliases_from_set(
-                &rewritten,
-                name_lower,
-                subject,
-                &names,
-                document_grammar::parse_alias_face_separator(name_lower).is_some(),
+                &rewritten, name_lower, subject, &names, false,
             );
         }
         rewritten = normalize_named_source_enter_agreement(&rewritten, subject);
@@ -1403,9 +1425,10 @@ fn source_alias_prefix_looks_like_effect_verb(alias: &str, remainder: &str) -> b
 }
 
 fn lexed_word_strings(text: &str) -> Option<Vec<String>> {
-    lex_line(text.trim(), 0)
-        .ok()
-        .map(|tokens| TokenWordView::new(&tokens).owned_words())
+    match lex_line(text.trim(), 0) {
+        Ok(tokens) => Some(TokenWordView::new(&tokens).owned_words()),
+        Err(_) => None,
+    }
 }
 
 fn strip_named_source_prefix_lexed(text: &str, name: &str) -> Option<String> {
@@ -1510,6 +1533,12 @@ fn replace_named_source_aliases_with_options(
             || source_alias_occurrence_is_name_override_surface_lexed(&pieces, word_idx, end_word)
             || source_alias_occurrence_is_created_token_name_lexed(&pieces, word_idx, end_word)
             || source_alias_occurrence_is_typed_subtype_noun_lexed(&pieces, word_idx, end_word)
+            || source_alias_occurrence_is_rules_term_lexed(&pieces, word_idx, end_word)
+            || (!pieces[end_word - 1].possessive
+                && matches!(
+                    pieces.get(end_word).map(|piece| piece.text),
+                    Some("counter" | "counters")
+                ))
             || (preserve_surface_hints
                 && source_alias_occurrence_should_preserve_surface_lexed(
                     &pieces, word_idx, end_word,
@@ -1550,7 +1579,8 @@ fn source_alias_word_pieces(tokens: &[OwnedLexToken]) -> Vec<SourceAliasWordPiec
             sentence += 1;
             continue;
         }
-        let possessive = token.slice.contains('\'') || token.slice.contains('’');
+        let possessive = crate::string_primitives::contains_char(token.slice.as_str(), '\'')
+            || crate::string_primitives::contains_char(token.slice.as_str(), '’');
         pieces.extend(
             token
                 .parser_word_pieces()
@@ -1585,6 +1615,26 @@ fn source_alias_word_span_matches(
                             && piece.text.strip_suffix('s') == Some(expected))
                 })
         })
+}
+
+fn source_alias_occurrence_is_rules_term_lexed(
+    pieces: &[SourceAliasWordPiece<'_>],
+    start_word: usize,
+    end_word: usize,
+) -> bool {
+    let previous_word = start_word
+        .checked_sub(1)
+        .and_then(|idx| pieces.get(idx))
+        .map(|piece| piece.text);
+    let next_word = pieces.get(end_word).map(|piece| piece.text);
+    let matched_word = (end_word == start_word + 1)
+        .then(|| pieces.get(start_word).map(|piece| piece.text))
+        .flatten();
+
+    (matched_word == Some("control")
+        && matches!(previous_word, Some("gain" | "gains" | "lose" | "loses"))
+        && next_word == Some("of"))
+        || (matched_word == Some("combat") && next_word == Some("damage"))
 }
 
 fn source_alias_occurrence_is_typed_subtype_noun_lexed(
@@ -1654,6 +1704,31 @@ fn source_alias_occurrence_should_preserve_surface_lexed(
         .map(|piece| piece.text);
     let next_word = pieces.get(end_word).map(|piece| piece.text);
 
+    // A source alias can be identical to a registered multiword creature
+    // subtype. Without explicit source identity, a sentence-leading surface
+    // such as "Time Lord gains vigilance" is ambiguous and must remain
+    // authored so the typed filter grammar can own it. Builder/context-aware
+    // callers use the non-preserving rewrite when they know the occurrence is
+    // the source card itself.
+    let begins_sentence = start_word == 0
+        || pieces
+            .get(start_word - 1)
+            .zip(pieces.get(start_word))
+            .is_some_and(|(previous, current)| previous.sentence != current.sentence);
+    let alias = pieces
+        .get(start_word..end_word)
+        .unwrap_or_default()
+        .iter()
+        .map(|piece| piece.text)
+        .collect::<Vec<_>>()
+        .join(" ");
+    if end_word > start_word + 1
+        && begins_sentence
+        && parse_subtype_flexible(&alias).is_some_and(|subtype| subtype.is_creature_type())
+    {
+        return true;
+    }
+
     let is_modal_may = end_word == start_word + 1
         && pieces
             .get(start_word)
@@ -1701,21 +1776,7 @@ fn source_alias_occurrence_should_preserve_surface_lexed(
         return true;
     }
 
-    let is_control_action_noun = end_word == start_word + 1
-        && pieces
-            .get(start_word)
-            .is_some_and(|piece| piece.text == "control")
-        && matches!(previous_word, Some("gain" | "gains" | "lose" | "loses"))
-        && next_word == Some("of");
-    let is_combat_damage_rules_term = end_word == start_word + 1
-        && pieces
-            .get(start_word)
-            .is_some_and(|piece| piece.text == "combat")
-        && next_word == Some("damage");
-
-    is_control_action_noun
-        || is_combat_damage_rules_term
-        || next_word == Some(TOKEN_NAME_SUFFIX_WORD)
+    next_word == Some(TOKEN_NAME_SUFFIX_WORD)
         // A named vote option remains option data in later references such as
         // "cards equal to the number of truth votes". It cannot denote the
         // source here because only players vote.
@@ -2009,9 +2070,14 @@ fn parse_labeled_qualified_ability_trigger_cst(
 ) -> Option<TriggeredLineCst> {
     let (trigger_with_intro, effect_tokens) = grammar::split_lexed_once_on_comma(&line.tokens)?;
     let trigger_tokens = trigger_with_intro.get(1..)?;
-    let trigger = crate::parse_loss::capture(|| parse_trigger_clause_lexed(trigger_tokens))
-        .0
-        .ok()?;
+    // This is a deliberately speculative fast-path probe. A diagnostic from
+    // either half means only that this narrow qualified-trigger shape does
+    // not own the line; the committing triggered-line parser runs below.
+    let trigger = match crate::parse_loss::capture(|| parse_trigger_clause_lexed(trigger_tokens)).0
+    {
+        Ok(trigger) => trigger,
+        Err(_) => return None,
+    };
     if !matches!(
         trigger,
         crate::model::ast::TriggerSpec::AbilityTriggered {
@@ -2022,14 +2088,24 @@ fn parse_labeled_qualified_ability_trigger_cst(
     ) {
         return None;
     }
-    let effects = crate::parse_loss::capture(|| parse_effect_sentences_lexed(effect_tokens))
-        .0
-        .ok()?;
+    let effects = match crate::parse_loss::capture(|| parse_effect_sentences_lexed(effect_tokens)).0
+    {
+        Ok(effects) => effects,
+        Err(_) => return None,
+    };
     if effects.is_empty() {
         return None;
     }
     let candidate = render_triggered_split_candidate(trigger_tokens, effect_tokens, None, None)?;
     Some(candidate.into_cst(line, &line.tokens))
+}
+
+fn probe_triggered_line_cst(line: &PreprocessedLine) -> Option<TriggeredLineCst> {
+    #[allow(clippy::manual_ok_err)]
+    match parse_triggered_line_cst(line) {
+        Ok(triggered) => Some(triggered),
+        Err(_) => None,
+    }
 }
 
 fn normalize_activation_cost_tokens_for_builder(
@@ -2051,6 +2127,20 @@ fn normalize_activation_cost_tokens_for_builder(
         return Ok(cost_tokens);
     };
     Ok(rewrite_line_normalized(line, rewritten.as_str())?.tokens)
+}
+
+fn normalize_activation_effect_tokens_for_builder(
+    builder: &CardDefinitionBuilder,
+    line: &PreprocessedLine,
+    effect_tokens: &[OwnedLexToken],
+) -> Result<Vec<OwnedLexToken>, CardTextError> {
+    let effect_text = render_token_slice(effect_tokens);
+    let Some(normalized) =
+        normalize_explicit_named_source_references_for_builder(builder, effect_text.as_str())
+    else {
+        return Ok(effect_tokens.to_vec());
+    };
+    lex_line(normalized.as_str(), line.info.line_index)
 }
 
 fn rewrite_line_normalized(
@@ -2151,16 +2241,17 @@ fn restore_authored_named_source_trigger_subject(
 
     let generic_subject = named_source_subject_for_builder(builder);
     let trigger_text = render_token_slice(&triggered.trigger_parse_tokens);
-    let rest = trigger_text.strip_prefix(generic_subject).or_else(|| {
-        // Preprocessing and some typed trigger shapes canonicalize a named
-        // source to the source-only subject "this". Restore its authored
-        // provenance after either canonicalization.
-        trigger_text.strip_prefix("this").filter(|rest| {
-            rest.chars()
-                .next()
-                .is_some_and(|ch| ch.is_whitespace() || ch == '\'' || ch == '’')
-        })
-    });
+    let rest =
+        crate::string_primitives::strip_prefix(&trigger_text, generic_subject).or_else(|| {
+            // Preprocessing and some typed trigger shapes canonicalize a named
+            // source to the source-only subject "this". Restore its authored
+            // provenance after either canonicalization.
+            crate::string_primitives::strip_prefix(&trigger_text, "this").filter(|rest| {
+                rest.chars()
+                    .next()
+                    .is_some_and(|ch| ch.is_whitespace() || ch == '\'' || ch == '’')
+            })
+        });
     if let Some(rest) = rest {
         triggered.trigger_parse_tokens =
             lex_line(&format!("{authored_subject}{rest}"), line.info.line_index)?;
@@ -2198,9 +2289,10 @@ fn leading_named_source_trigger_subject_for_builder(
 }
 
 fn line_mentions_this_permanent_token_phrase(text: &str) -> bool {
-    lex_line(text.trim(), 0)
-        .ok()
-        .is_some_and(|tokens| document_grammar::parse_this_permanent_surface(&tokens).is_some())
+    match lex_line(text.trim(), 0) {
+        Ok(tokens) => document_grammar::parse_this_permanent_surface(&tokens).is_some(),
+        Err(_) => false,
+    }
 }
 
 fn line_starts_with_lparen_token(line: &PreprocessedLine) -> bool {
@@ -2374,7 +2466,7 @@ fn try_parse_labeled_line_dispatch(
         let is_eminence = label.eq_ignore_ascii_case("eminence");
         let mut authored_trigger = parse_labeled_qualified_ability_trigger_cst(&body_line);
         if authored_trigger.is_none() && is_eminence {
-            authored_trigger = parse_triggered_line_cst(&body_line).ok();
+            authored_trigger = probe_triggered_line_cst(&body_line);
         }
         if authored_trigger.is_none() && is_eminence {
             let authored_body = render_original_text_for_token_slice(line, body_tokens)
@@ -2498,9 +2590,9 @@ fn try_parse_labeled_line_dispatch(
         .is_some_and(|(cost_tokens, _)| looks_like_activation_cost_prefix(cost_tokens));
 
     if line_starts_with_trigger_intro_tokens(&body_line.tokens) {
-        if let Some(mut triggered) = parse_labeled_qualified_ability_trigger_cst(&body_line)
-            .or_else(|| parse_triggered_line_cst(&body_line).ok())
-        {
+        let triggered = parse_labeled_qualified_ability_trigger_cst(&body_line)
+            .or_else(|| probe_triggered_line_cst(&body_line));
+        if let Some(mut triggered) = triggered {
             restore_authored_named_source_trigger_subject(
                 &preprocessed.builder,
                 line,
@@ -2577,6 +2669,11 @@ fn try_parse_labeled_line_dispatch(
         )?;
         match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
             Ok(cost) => {
+                let effect_parse_tokens = normalize_activation_effect_tokens_for_builder(
+                    &preprocessed.builder,
+                    line,
+                    &effect_parse_tokens,
+                )?;
                 return Ok(Some(LineDispatchResult::single(
                     RewriteLineCst::Activated(ActivatedLineCst {
                         info: line.info.clone(),
@@ -2612,15 +2709,37 @@ fn try_parse_labeled_line_dispatch(
     }
 
     if should_prefer_statement_before_static_for_nonpermanent_spell(preprocessed, &body_line.tokens)
-        && let Some(mut statement_line) = parse_statement_line_cst(&body_line)?
     {
-        apply_labeled_statement_surface_facts(&mut statement_line, line, presentation.clone());
-        let (statement_line, next_idx) =
-            extend_statement_line_with_result_followups(&preprocessed.items, idx, statement_line);
-        return Ok(Some(LineDispatchResult::single(
-            RewriteLineCst::Statement(statement_line),
-            next_idx,
-        )));
+        match parse_statement_line_cst(&body_line) {
+            Ok(Some(mut statement_line)) => {
+                apply_labeled_statement_surface_facts(
+                    &mut statement_line,
+                    line,
+                    presentation.clone(),
+                );
+                let (statement_line, next_idx) = extend_statement_line_with_result_followups(
+                    &preprocessed.items,
+                    idx,
+                    statement_line,
+                );
+                return Ok(Some(LineDispatchResult::single(
+                    RewriteLineCst::Statement(statement_line),
+                    next_idx,
+                )));
+            }
+            Ok(None) => {}
+            Err(_)
+                if normalized_line_mentions_source_alias(
+                    &preprocessed.builder,
+                    body_line.info.normalized.normalized.as_str(),
+                ) =>
+            {
+                // The authored proper-name subject is normalized by the
+                // builder-aware branch below. Do not let a context-free
+                // statement probe commit to a suffix of that name first.
+            }
+            Err(error) => return Err(error),
+        }
     }
     if let Some(split_result) =
         parse_labeled_conditional_replacement_sentence_split(&body_line, idx)?
@@ -2651,6 +2770,18 @@ fn try_parse_labeled_line_dispatch(
             return Ok(Some(LineDispatchResult::single(
                 RewriteLineCst::Static(static_line),
                 idx + 1,
+            )));
+        }
+        if let Some(mut statement_line) = parse_statement_line_cst(&rewritten_body_line)? {
+            apply_labeled_statement_surface_facts(&mut statement_line, line, presentation.clone());
+            let (statement_line, next_idx) = extend_statement_line_with_result_followups(
+                &preprocessed.items,
+                idx,
+                statement_line,
+            );
+            return Ok(Some(LineDispatchResult::single(
+                RewriteLineCst::Statement(statement_line),
+                next_idx,
             )));
         }
     }
@@ -2711,6 +2842,11 @@ fn try_parse_labeled_line_dispatch(
         )?;
         match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
             Ok(cost) => {
+                let effect_parse_tokens = normalize_activation_effect_tokens_for_builder(
+                    &preprocessed.builder,
+                    line,
+                    &effect_parse_tokens,
+                )?;
                 return Ok(Some(LineDispatchResult::single(
                     RewriteLineCst::Activated(ActivatedLineCst {
                         info: line.info.clone(),
@@ -2888,7 +3024,11 @@ fn try_parse_triggered_line_dispatch(
     // name as the trigger/effect boundary.
     if (normalize_comma_bearing_leading_source_trigger(&preprocessed.builder, &line.info.raw_line)
         .is_some()
-        || preserve_reciprocal_token_lifecycle)
+        || preserve_reciprocal_token_lifecycle
+        || normalized_line_mentions_explicit_source_alias(
+            &preprocessed.builder,
+            line.info.normalized.normalized.as_str(),
+        ))
         && let Some(triggered) = try_parse_triggered_line_with_named_source_rewrite(
             &preprocessed.builder,
             line,
@@ -3362,6 +3502,11 @@ pub fn parse_document_cst_with_context(
                         cost_tokens.clone(),
                     )?;
                     let cost = parse_activation_cost_tokens_rewrite(&normalized_cost_tokens)?;
+                    let effect_parse_tokens = normalize_activation_effect_tokens_for_builder(
+                        &preprocessed.builder,
+                        line,
+                        &effect_parse_tokens,
+                    )?;
                     let cst = RewriteLineCst::Activated(ActivatedLineCst {
                         info: suffix_line.info.clone(),
                         cost,
@@ -3690,6 +3835,7 @@ mod tests {
         strip_trailing_trigger_cap_suffix_tokens, tokens_after_non_keyword_label_prefix,
         trigger_presentation_from_line_tokens,
         triggered_effect_tokens_have_trailing_static_sentences,
+        try_parse_triggered_line_with_named_source_rewrite,
     };
 
     fn parse_text_to_semantic_document(
@@ -4419,7 +4565,8 @@ mod tests {
         let effects = super::parse_effect_sentences_lexed(&groups[0])
             .expect("typed energy payment threshold bundle should lower");
         let debug = format!("{effects:#?}");
-        assert!(debug.contains("PendingEffectMetric"), "{debug}");
+        assert!(debug.contains("EventValue"), "{debug}");
+        assert!(debug.contains("LessThanOrEqualExpr"), "{debug}");
         assert!(debug.contains("PayAnyEnergy"), "{debug}");
         assert!(
             parse_statement_line_cst(&line)?.is_some(),
@@ -4967,7 +5114,7 @@ mod tests {
         );
         assert_eq!(
             render_token_slice(&parsed.effect_parse_tokens),
-            "you may copy that ability. You may choose new targets for the copy."
+            "you may copy that ability. you may choose new targets for the copy."
         );
     }
 
@@ -5109,16 +5256,23 @@ mod tests {
         let [crate::ir::RewriteSemanticItem::ParsedLine(line)] = semantic.items.as_slice() else {
             panic!("expected one parsed Eminence line: {semantic:#?}");
         };
-        assert!(
-            matches!(
-                line.chunks.as_slice(),
-                [crate::cards::builders::LineAst::Ability(ability)]
-                    if matches!(ability.kind(), crate::ability::AbilityKind::Triggered(triggered)
-                        if triggered.intervening_if.is_some())
-            ),
-            "{:#?}",
-            line.chunks
-        );
+        let [crate::cards::builders::LineAst::Ability(ability)] = line.chunks.as_slice() else {
+            panic!("expected one typed Eminence ability: {:#?}", line.chunks);
+        };
+        assert!(matches!(
+            ability.trigger_spec.as_deref(),
+            Some(crate::cards::builders::TriggerSpec::BeginningOfCombat(
+                crate::target::PlayerFilter::You
+            ))
+        ));
+        assert!(matches!(
+            ability.effects_ast.as_deref(),
+            Some([crate::cards::builders::EffectAst::Conditional {
+                predicate: crate::cards::builders::PredicateAst::SourceMatches(filter),
+                if_true,
+                ..
+            }]) if filter.any_of.len() == 2 && !if_true.is_empty()
+        ));
     }
 
     #[test]
@@ -5733,6 +5887,17 @@ mod tests {
             ),
             "the player to your right gains control of this artifact."
         );
+        assert_eq!(
+            replace_named_source_aliases_from_set(
+                "The player to your right gains control of this artifact.",
+                "control",
+                "this permanent",
+                &["control".to_string()],
+                false,
+            ),
+            "the player to your right gains control of this artifact.",
+            "explicit source normalization must also preserve the gain-control rules term",
+        );
     }
 
     #[test]
@@ -5820,26 +5985,29 @@ mod tests {
 
     #[test]
     fn named_source_leaves_trigger_keeps_original_head_for_surface_rendering() {
-        crate::util::with_source_reference_context("Emrakul, the World Anew", || {
-            let document = preprocess_document(
-                CardDefinitionBuilder::new(CardId::from_raw(1), "Emrakul, the World Anew")
-                    .card_types(vec![CardType::Creature]),
-                "When Emrakul leaves the battlefield, sacrifice all creatures you control.",
-            )
-            .expect("named source leaves line should preprocess");
-            let line = match document.items.first().expect("expected one line") {
-                PreprocessedItem::Line(line) => line,
-                other => panic!("expected preprocessed line, got {other:?}"),
-            };
+        let document = preprocess_document(
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Emrakul, the World Anew")
+                .card_types(vec![CardType::Creature]),
+            "When Emrakul leaves the battlefield, sacrifice all creatures you control.",
+        )
+        .expect("named source leaves line should preprocess");
+        let line = match document.items.first().expect("expected one line") {
+            PreprocessedItem::Line(line) => line,
+            other => panic!("expected preprocessed line, got {other:?}"),
+        };
 
-            let parsed = parse_triggered_line_cst(line)
-                .expect("named source leaves trigger should parse as triggered CST");
+        let parsed = try_parse_triggered_line_with_named_source_rewrite(
+            &document.builder,
+            line,
+            line.info.raw_line.as_str(),
+        )
+        .expect("named source leaves rewrite should not fail")
+        .expect("named source leaves trigger should parse as triggered CST");
 
-            assert_eq!(
-                render_token_slice(&parsed.trigger_parse_tokens),
-                "emrakul leaves the battlefield"
-            );
-        });
+        assert_eq!(
+            render_token_slice(&parsed.trigger_parse_tokens),
+            "Emrakul leaves the battlefield"
+        );
     }
 
     #[test]

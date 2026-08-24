@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(ironsmith_runtime_parser_tests)]
 const HISTORICAL_BLOCK_REANIMATION: &str = "Destroy all creatures that were blocked by target Wall this turn. They can't be regenerated. For each creature that died this way, put a creature card from the graveyard of the player who controlled that creature the last time it became blocked by that Wall onto the battlefield under its owner's control";
 
 #[cfg(ironsmith_runtime_parser_tests)]

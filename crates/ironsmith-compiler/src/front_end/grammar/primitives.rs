@@ -974,7 +974,7 @@ pub fn match_word_prefix<'a>(tokens: &'a [LexToken], expected: &[&str]) -> Optio
         return Some(tokens);
     }
     let view = TokenWordView::new(tokens);
-    if !view.starts_with(expected) {
+    if !view.parses_prefix(expected) {
         return None;
     }
     let token_end = view.token_index_after_words(expected.len())?;

@@ -199,32 +199,29 @@ fn parses_one_or_more_excess_recipients_as_a_grouped_trigger() {
 #[test]
 fn named_source_or_another_dies_stays_two_matcher_branches() {
     let tokens = tokenize_line("Blood Artist or another creature dies", 0);
-    let parsed = crate::util::with_card_source_reference_context(
+    let context = crate::parse_context::ParseContext::for_fragment(
         "Blood Artist",
-        &[CardType::Creature],
-        &[Subtype::Vampire],
-        || crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens),
+        vec![CardType::Creature],
+        vec![Subtype::Vampire],
+        "Blood Artist or another creature dies",
+    );
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
+        context.view(),
+        &tokens,
     )
     .expect("named source-or-another dies trigger should parse");
 
     let crate::model::ast::TriggerSpec::Either(source, other) = parsed else {
         panic!("expected distinct source and another-object branches");
     };
-    let crate::model::ast::TriggerSpec::Dies(source_filter) = *source else {
-        panic!("expected source dies branch");
-    };
+    assert!(
+        matches!(*source, crate::model::ast::TriggerSpec::ThisDies),
+        "expected canonical source-dies branch, got {source:#?}"
+    );
     let crate::model::ast::TriggerSpec::Dies(other_filter) = *other else {
         panic!("expected another-creature dies branch");
     };
 
-    assert!(source_filter.source, "{source_filter:#?}");
-    assert_eq!(
-        source_filter.source_surface,
-        Some(crate::target::SourceReferenceSurface::FullName(
-            "Blood Artist".to_string()
-        )),
-        "{source_filter:#?}"
-    );
     assert!(!other_filter.source, "{other_filter:#?}");
     assert!(other_filter.other, "{other_filter:#?}");
     assert_eq!(other_filter.card_types, [CardType::Creature]);
@@ -250,11 +247,15 @@ fn normalized_this_or_another_dies_stays_two_matcher_branches() {
 #[test]
 fn parses_generic_sticker_trigger_with_source_recipient() {
     let tokens = tokenize_line("you put a sticker on this enchantment", 0);
-    let parsed = crate::util::with_card_source_reference_context(
+    let context = crate::parse_context::ParseContext::for_fragment(
         "_____ Balls of Fire",
-        &[CardType::Enchantment],
-        &[],
-        || crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens),
+        vec![CardType::Enchantment],
+        vec![],
+        "you put a sticker on this enchantment",
+    );
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
+        context.view(),
+        &tokens,
     )
     .expect("generic sticker trigger should parse");
 
@@ -320,11 +321,15 @@ fn parses_split_possessive_unpaid_cumulative_upkeep_trigger() {
         "a player doesn't pay this enchantment's cumulative upkeep",
         0,
     );
-    let parsed = crate::util::with_card_source_reference_context(
+    let context = crate::parse_context::ParseContext::for_fragment(
         "Heart of Bogardan",
-        &[CardType::Enchantment],
-        &[],
-        || crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens),
+        vec![CardType::Enchantment],
+        vec![],
+        "a player doesn't pay this enchantment's cumulative upkeep",
+    );
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
+        context.view(),
+        &tokens,
     )
     .expect("unpaid cumulative upkeep trigger should parse");
 
@@ -654,7 +659,7 @@ fn shared_spell_cast_or_copy_subject_is_preserved_on_both_trigger_arms() {
     else {
         panic!("expected spell-cast and spell-copied trigger arms");
     };
-    let enchanted = PlayerFilter::TaggedPlayer(crate::tag::TagKey::from("enchanted"));
+    let enchanted = PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.key());
     assert_eq!(caster, enchanted);
     assert_eq!(copier, enchanted);
     assert_eq!(min_spells_this_turn, Some(2));
@@ -683,11 +688,22 @@ fn targets_only_relation_preserves_named_source_exclusion() {
         "a player casts a spell that targets only a single creature other than Ivy",
         0,
     );
-    let parsed = crate::util::with_card_source_reference_context(
+    let context = crate::parse_context::ParseContext::for_fragment(
         "Ivy, Gleeful Spellthief",
-        &[CardType::Creature],
-        &[Subtype::Faerie, Subtype::Rogue],
-        || crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens),
+        vec![CardType::Creature],
+        vec![Subtype::Faerie, Subtype::Rogue],
+        "a player casts a spell that targets only a single creature other than Ivy",
+    );
+    let normalized =
+        crate::util::normalize_source_reference_tokens_with_context(context.view(), &tokens)
+            .expect("source exclusion should normalize");
+    assert_eq!(
+        crate::lexer::render_token_slice(&normalized),
+        "a player casts a spell that targets only a single creature other than this creature"
+    );
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
+        context.view(),
+        &tokens,
     )
     .expect("source-excluding single-target spell trigger should parse");
 
@@ -714,10 +730,11 @@ fn targets_only_relation_preserves_named_source_exclusion() {
     );
     assert_eq!(
         target.source_surface,
-        Some(crate::target::SourceReferenceSurface::ShortName(
-            "Ivy".to_string()
+        Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+            "this creature".to_string()
         ))
     );
+    assert_eq!(context.source().card_name, "Ivy, Gleeful Spellthief");
 }
 
 #[test]
@@ -738,11 +755,15 @@ fn parses_counter_spans_and_recipient() {
 #[test]
 fn parses_numbered_counter_placement_as_an_ordinal_trigger() {
     let tokens = tokenize_line("the fourth plan counter is put on this enchantment", 0);
-    let parsed = crate::util::with_card_source_reference_context(
+    let context = crate::parse_context::ParseContext::for_fragment(
         "Plan Probe",
-        &[CardType::Enchantment],
-        &[],
-        || crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens),
+        vec![CardType::Enchantment],
+        vec![],
+        "the fourth plan counter is put on this enchantment",
+    );
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
+        context.view(),
+        &tokens,
     )
     .expect("ordinal counter trigger should parse");
 
@@ -762,11 +783,15 @@ fn parses_numbered_counter_placement_as_an_ordinal_trigger() {
 #[test]
 fn parses_last_named_counter_removed_from_typed_source() {
     let tokens = tokenize_line("the last ore counter is removed from this Aura", 0);
-    let parsed = crate::util::with_card_source_reference_context(
+    let context = crate::parse_context::ParseContext::for_fragment(
         "Mine Probe",
-        &[CardType::Enchantment],
-        &[crate::types::Subtype::Aura],
-        || crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens),
+        vec![CardType::Enchantment],
+        vec![crate::types::Subtype::Aura],
+        "the last ore counter is removed from this Aura",
+    );
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
+        context.view(),
+        &tokens,
     )
     .expect("last named counter trigger should parse");
     let crate::model::ast::TriggerSpec::CounterRemovedFrom {
@@ -788,11 +813,15 @@ fn parses_last_named_counter_removed_from_typed_source() {
 #[test]
 fn parses_grouped_loyalty_counters_removed_from_named_source() {
     let tokens = tokenize_line("one or more loyalty counters are removed from Chandra", 0);
-    let parsed = crate::util::with_card_source_reference_context(
+    let context = crate::parse_context::ParseContext::for_fragment(
         "Chandra, Fire Artisan",
-        &[CardType::Planeswalker],
-        &[crate::types::Subtype::Chandra],
-        || crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens),
+        vec![CardType::Planeswalker],
+        vec![crate::types::Subtype::Chandra],
+        "one or more loyalty counters are removed from Chandra",
+    );
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
+        context.view(),
+        &tokens,
     )
     .expect("named grouped loyalty-removal trigger should parse");
     let crate::model::ast::TriggerSpec::CounterRemovedFrom {
@@ -1757,7 +1786,7 @@ fn repeated_attack_intro_resolves_enchanted_player_pronoun_on_both_branches() {
     else {
         panic!("expected enchanted-player counterattack branch, got {right:#?}");
     };
-    let enchanted = PlayerFilter::TaggedPlayer(crate::TagKey::from("enchanted"));
+    let enchanted = PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.key());
     assert_eq!(
         left_filter
             .attacking_player_or_planeswalker_controlled_by
@@ -1897,54 +1926,58 @@ fn leaves_without_dying_keeps_excluded_destination_and_batch_count() {
 }
 
 #[test]
-fn combat_damage_recipients_prefer_registered_source_names_over_subtypes() {
-    crate::util::with_source_reference_context("Vraska the Unseen", || {
-        for (recipient, expected_surface) in [
-            (
-                "Vraska the Unseen",
-                crate::target::SourceReferenceSurface::FullName("Vraska the Unseen".to_string()),
-            ),
-            (
-                "Vraska",
-                crate::target::SourceReferenceSurface::ShortName("Vraska".to_string()),
-            ),
-        ] {
-            let tokens =
-                tokenize_line(&format!("a creature deals combat damage to {recipient}"), 0);
-            let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
-                .unwrap_or_else(|error| panic!("failed to parse {recipient:?}: {error}"));
-            let crate::model::ast::TriggerSpec::DealsCombatDamageTo { target, .. } = parsed else {
-                panic!("expected combat-damage-to trigger for {recipient:?}: {parsed:#?}");
-            };
+fn combat_damage_recipients_resolve_registered_source_names_before_subtypes() {
+    let context = crate::parse_context::ParseContext::for_fragment(
+        "Vraska the Unseen",
+        vec![CardType::Planeswalker],
+        vec![],
+        "a creature deals combat damage to Vraska",
+    );
+    for recipient in ["Vraska the Unseen", "Vraska"] {
+        let tokens = tokenize_line(&format!("a creature deals combat damage to {recipient}"), 0);
+        let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
+            context.view(),
+            &tokens,
+        )
+        .unwrap_or_else(|error| panic!("failed to parse {recipient:?}: {error}"));
+        let crate::model::ast::TriggerSpec::DealsCombatDamageTo { target, .. } = parsed else {
+            panic!("expected combat-damage-to trigger for {recipient:?}: {parsed:#?}");
+        };
 
-            assert!(target.source, "{recipient:?} must resolve to the source");
-            assert_eq!(target.source_surface, Some(expected_surface));
-            assert!(
-                target.subtypes.is_empty(),
-                "{recipient:?} must not fall through to subtype parsing: {target:#?}"
-            );
-        }
-    });
+        assert!(target.source, "{recipient:?} must resolve to the source");
+        assert_eq!(
+            target.source_surface,
+            Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+                "this planeswalker".to_string(),
+            ))
+        );
+        assert!(
+            target.subtypes.is_empty(),
+            "{recipient:?} must not fall through to subtype parsing: {target:#?}"
+        );
+    }
+    assert_eq!(context.source().card_name, "Vraska the Unseen");
 }
 
 #[test]
-fn named_source_attack_trigger_preserves_its_authored_short_name() {
-    crate::util::with_source_reference_context("Altaïr Ibn-La'Ahad", || {
-        let tokens = tokenize_line("Altaïr attacks", 0);
-        let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
-            .expect("named-source attack trigger should parse");
-        let crate::model::ast::TriggerSpec::Attacks(filter) = parsed else {
-            panic!("expected a surfaced source attack trigger, got {parsed:#?}");
-        };
-
-        assert!(filter.source);
-        assert_eq!(
-            filter.source_surface,
-            Some(crate::target::SourceReferenceSurface::ShortName(
-                "Altaïr".to_string()
-            ))
-        );
-    });
+fn named_source_attack_trigger_uses_explicit_context_identity() {
+    let context = crate::parse_context::ParseContext::for_fragment(
+        "Altaïr Ibn-La'Ahad",
+        vec![CardType::Creature],
+        vec![],
+        "Altaïr attacks",
+    );
+    let tokens = tokenize_line("Altaïr attacks", 0);
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
+        context.view(),
+        &tokens,
+    )
+    .expect("named-source attack trigger should parse");
+    assert!(
+        matches!(parsed, crate::model::ast::TriggerSpec::ThisAttacks),
+        "expected canonical source attack trigger, got {parsed:#?}"
+    );
+    assert_eq!(context.source().card_name, "Altaïr Ibn-La'Ahad");
 }
 
 #[test]

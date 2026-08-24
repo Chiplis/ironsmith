@@ -37,14 +37,13 @@ const DRAFTED_COLOR_QUALIFIER: &[&str] = &[
     "one", "or", "more", "of", "the", "colors", "chosen", "as", "you", "drafted", "cards", "named",
 ];
 
-fn split_drafted_color_qualifier_tokens(
+pub(crate) fn split_drafted_color_qualifier_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, String)> {
     let view = TokenWordView::new(tokens);
     let words = view.to_word_refs();
-    let qualifier_start = words
-        .windows(DRAFTED_COLOR_QUALIFIER.len())
-        .position(|window| window == DRAFTED_COLOR_QUALIFIER)?;
+    let qualifier_start =
+        crate::word_primitives::parse_sequence_start(&words, DRAFTED_COLOR_QUALIFIER)?;
     let name_start = qualifier_start + DRAFTED_COLOR_QUALIFIER.len();
     if qualifier_start == 0 || name_start >= words.len() {
         return None;
@@ -57,8 +56,8 @@ fn split_drafted_color_qualifier_tokens(
     if base_word_end == 0 {
         return None;
     }
-    let base_token_end = view.token_boundary_for_word_or_end(base_word_end)?;
-    let name_token_start = view.token_boundary_for_word_or_end(name_start)?;
+    let base_token_end = view.map_word_or_end_to_token_boundary(base_word_end)?;
+    let name_token_start = view.map_word_or_end_to_token_boundary(name_start)?;
     let name = render_token_slice(tokens.get(name_token_start..)?)
         .trim()
         .trim_end_matches('.')
@@ -85,27 +84,27 @@ fn split_distinct_combat_damage_controller_tokens(
 
     let view = TokenWordView::new(tokens);
     let words = view.to_word_refs();
-    let prefix_start = words
-        .windows(PREFIX.len())
-        .position(|window| window == PREFIX)?;
-    if prefix_start == 0 || !words.ends_with(TURN_SUFFIX) {
+    let prefix_start = crate::word_primitives::parse_sequence_start(&words, PREFIX)?;
+    if prefix_start == 0 || !crate::word_primitives::parse_sequence_suffix(&words, TURN_SUFFIX) {
         return None;
     }
     let threshold_start = prefix_start + PREFIX.len();
-    if words.get(threshold_start + 1..threshold_start + 3) != Some(["or", "more"].as_slice()) {
+    if !words
+        .get(threshold_start + 1..)
+        .is_some_and(|tail| crate::word_primitives::parse_sequence_prefix(tail, &["or", "more"]))
+    {
         return None;
     }
-    let minimum = parse_number_word_u32(words.get(threshold_start).copied()?)
-        .or_else(|| words[threshold_start].parse::<u32>().ok())?;
+    let minimum = parse_number_word_u32(words.get(threshold_start).copied()?)?;
     let source_start = threshold_start + 3;
     let source_end = words.len().checked_sub(TURN_SUFFIX.len())?;
     if minimum == 0 || source_start >= source_end {
         return None;
     }
 
-    let base_end = view.token_boundary_for_word_or_end(prefix_start)?;
-    let source_token_start = view.token_boundary_for_word_or_end(source_start)?;
-    let source_token_end = view.token_boundary_for_word_or_end(source_end)?;
+    let base_end = view.map_word_or_end_to_token_boundary(prefix_start)?;
+    let source_token_start = view.map_word_or_end_to_token_boundary(source_start)?;
+    let source_token_end = view.map_word_or_end_to_token_boundary(source_end)?;
     Some((
         super::util::trim_commas(&tokens[..base_end]),
         super::util::trim_commas(&tokens[source_token_start..source_token_end]),
@@ -117,12 +116,12 @@ fn split_sacrificed_as_it_entered_tokens(tokens: &[OwnedLexToken]) -> Option<Vec
     let word_view = TokenWordView::new(tokens);
     let words = word_view.to_word_refs();
     if words.len() <= SACRIFICED_AS_IT_ENTERED_SUFFIX.len()
-        || !words.ends_with(SACRIFICED_AS_IT_ENTERED_SUFFIX)
+        || !crate::word_primitives::parse_sequence_suffix(&words, SACRIFICED_AS_IT_ENTERED_SUFFIX)
     {
         return None;
     }
     let base_word_count = words.len() - SACRIFICED_AS_IT_ENTERED_SUFFIX.len();
-    let base_token_end = word_view.token_boundary_for_word_or_end(base_word_count)?;
+    let base_token_end = word_view.map_word_or_end_to_token_boundary(base_word_count)?;
     Some(super::util::trim_commas(&tokens[..base_token_end]))
 }
 
@@ -144,16 +143,20 @@ fn apply_sacrificed_card_type_relation(
     tokens: &[OwnedLexToken],
 ) -> ObjectFilter {
     let words = TokenWordView::new(tokens).to_word_refs();
-    let shares_card_type = words.windows(4).any(|window| {
-        matches!(window, ["shares", "a", "card", "type"])
-            || matches!(window, ["shares", "card", "type", "with"])
-    });
-    let references_sacrificed_permanent = words.windows(3).any(|window| {
-        matches!(window, ["sacrificed", "permanent", _])
-            || matches!(window, ["the", "sacrificed", "permanent"])
-    }) || words
-        .windows(2)
-        .any(|window| matches!(window, ["sacrificed", "permanent"]));
+    let shares_card_type = crate::word_primitives::any_sequence_occurs(
+        &words,
+        &[
+            &["shares", "a", "card", "type"],
+            &["shares", "card", "type", "with"],
+        ],
+    );
+    let references_sacrificed_permanent = crate::word_primitives::any_sequence_occurs(
+        &words,
+        &[
+            &["sacrificed", "permanent"],
+            &["the", "sacrificed", "permanent"],
+        ],
+    );
     if shares_card_type && references_sacrificed_permanent {
         filter = filter.match_tagged("sacrificed_0", TaggedOpbjectRelation::SharesCardType);
     }
@@ -214,7 +217,7 @@ fn split_original_printing_set_tokens(
     let word_view = TokenWordView::new(tokens);
     let words = word_view.to_word_refs();
     let (suffix_start, set_words) = original_printing_set_word_span(&words)?;
-    let suffix_token_start = word_view.token_boundary_for_word_or_end(suffix_start)?;
+    let suffix_token_start = word_view.map_word_or_end_to_token_boundary(suffix_start)?;
     let set_tokens = word_view.token_span_for_words(set_words.start, set_words.end)?;
     let set_name = title_case_set_surface(&render_token_slice(&tokens[set_tokens]));
     if set_name.is_empty() {
@@ -240,27 +243,30 @@ fn apply_original_printing_set(mut filter: ObjectFilter, set_name: Option<String
 }
 
 fn split_trailing_where_x_filter_clause(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    let comma = tokens.windows(4).position(|window| {
-        window[0].is_comma()
-            && window[1].is_word("where")
-            && window[2].is_word("x")
-            && window[3].is_word("is")
-    })?;
-    (comma > 0 && comma + 4 < tokens.len()).then_some(&tokens[..comma])
+    let view = TokenWordView::new(tokens);
+    let where_word = view.parse_phrase_start(&["where", "x", "is"])?;
+    let where_token = view.map_word_to_token_start(where_word)?;
+    let comma = where_token.checked_sub(1)?;
+    (comma > 0
+        && tokens.get(comma).is_some_and(OwnedLexToken::is_comma)
+        && view.len() > where_word + 3)
+        .then_some(&tokens[..comma])
 }
 
 fn excluded_cast_origin_zone(tokens: &[OwnedLexToken]) -> Option<crate::Zone> {
     let words = parser_token_word_refs(tokens);
-    let origin_start = words
-        .windows(4)
-        .rposition(|window| window == ["that", "wasnt", "cast", "from"])
-        .map(|index| index + 4)
-        .or_else(|| {
-            words
-                .windows(5)
-                .rposition(|window| window == ["that", "was", "not", "cast", "from"])
-                .map(|index| index + 5)
-        })?;
+    let origin_start = crate::word_primitives::parse_last_sequence_start(
+        &words,
+        &["that", "wasnt", "cast", "from"],
+    )
+    .map(|index| index + 4)
+    .or_else(|| {
+        crate::word_primitives::parse_last_sequence_start(
+            &words,
+            &["that", "was", "not", "cast", "from"],
+        )
+        .map(|index| index + 5)
+    })?;
     let origin_words = words.get(origin_start..)?;
 
     let last = origin_words.last().copied()?;
@@ -272,28 +278,39 @@ fn excluded_cast_origin_zone(tokens: &[OwnedLexToken]) -> Option<crate::Zone> {
         "battlefield" => Some(crate::Zone::Battlefield),
         "stack" => Some(crate::Zone::Stack),
         "ante" => Some(crate::Zone::Ante),
-        "game" if origin_words.ends_with(&["outside", "the", "game"]) => {
+        "game"
+            if crate::word_primitives::parse_sequence_suffix(
+                origin_words,
+                &["outside", "the", "game"],
+            ) =>
+        {
             Some(crate::Zone::OutsideGame)
         }
-        "zone" if origin_words.ends_with(&["command", "zone"]) => Some(crate::Zone::Command),
+        "zone"
+            if crate::word_primitives::parse_sequence_suffix(
+                origin_words,
+                &["command", "zone"],
+            ) =>
+        {
+            Some(crate::Zone::Command)
+        }
         _ => None,
     }
 }
 
 fn positive_cast_origin_zone(tokens: &[OwnedLexToken]) -> Option<crate::Zone> {
     let words = parser_token_word_refs(tokens);
-    let from = words
-        .windows(2)
-        .rposition(|window| window == ["cast", "from"])
+    let from = crate::word_primitives::parse_last_sequence_start(&words, &["cast", "from"])
         .map(|index| index + 2)?;
     let origin_words = words.get(from..)?;
 
-    if origin_words.starts_with(&["outside", "the", "game"]) {
+    if crate::word_primitives::parse_sequence_prefix(origin_words, &["outside", "the", "game"]) {
         return Some(crate::Zone::OutsideGame);
     }
-    if origin_words.starts_with(&["the", "command", "zone"])
-        || origin_words.starts_with(&["command", "zone"])
-    {
+    if crate::word_primitives::parse_any_sequence_prefix(
+        origin_words,
+        &[&["the", "command", "zone"], &["command", "zone"]],
+    ) {
         return Some(crate::Zone::Command);
     }
     // The origin is a prefix of the remaining subject, not necessarily its
@@ -326,14 +343,23 @@ fn preserve_union_surface(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
     let words = parser_token_word_refs(tokens);
     let is_selector_member = |word: &str| {
         parse_card_type(word).is_some_and(|card_type| {
-            filter.card_types.contains(&card_type) || filter.all_card_types.contains(&card_type)
+            filter.card_types.iter().any(|item| item == &card_type)
+                || filter.all_card_types.iter().any(|item| item == &card_type)
         }) || parse_subtype_flexible(word).is_some_and(|subtype| {
-            filter.subtypes.contains(&subtype) || filter.all_subtypes.contains(&subtype)
+            filter.subtypes.iter().any(|item| item == &subtype)
+                || filter.all_subtypes.iter().any(|item| item == &subtype)
         }) || parse_supertype_word(word)
-            .is_some_and(|supertype| filter.supertypes.contains(&supertype))
+            .is_some_and(|supertype| filter.supertypes.iter().any(|item| item == &supertype))
     };
-    let has_plain_and = words.windows(3).any(|window| {
-        window[1] == "and" && is_selector_member(window[0]) && is_selector_member(window[2])
+    let has_plain_and = words.iter().enumerate().any(|(index, word)| {
+        *word == "and"
+            && index > 0
+            && words
+                .get(index - 1)
+                .is_some_and(|left| is_selector_member(left))
+            && words
+                .get(index + 1)
+                .is_some_and(|right| is_selector_member(right))
     });
     let has_disjunction = tokens
         .iter()
@@ -353,12 +379,13 @@ fn preserve_union_surface(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
     let serial_or = subtype_member_count >= 3
         && filter.union_connective() == ObjectFilterUnionConnective::Or
         && tokens.iter().any(OwnedLexToken::is_comma)
-        && words.contains(&"or");
+        && crate::word_primitives::sequence_occurs(&words, &["or"]);
     filter.set_serial_or_list_surface(serial_or);
 
-    let first_member = words.iter().position(|word| {
+    let first_member = crate::slice_primitives::select_position(&words, |word| {
         parse_subtype_flexible(word).is_some_and(|subtype| {
-            filter.subtypes.contains(&subtype) || filter.excluded_subtypes.contains(&subtype)
+            filter.subtypes.iter().any(|item| item == &subtype)
+                || filter.excluded_subtypes.iter().any(|item| item == &subtype)
         })
     });
     let shared_article = first_member
@@ -379,8 +406,8 @@ fn preserve_controller_qualifier_order_words(filter: &mut ObjectFilter, words: &
     // to keyword-ability tails. Numeric comparisons ("with power 4 or
     // greater") and chosen-characteristic predicates ("of the chosen type")
     // need the same ordering treatment.
-    let qualifier = words.iter().enumerate().position(|(idx, word)| {
-        matches!(
+    let qualifier = words.iter().enumerate().find_map(|(idx, word)| {
+        (matches!(
             *word,
             "with" | "without" | "chosen" | "that's" | "named" | "attached" | "cast" | "put"
         ) || matches!(*word, "that" | "which")
@@ -402,11 +429,12 @@ fn preserve_controller_qualifier_order_words(filter: &mut ObjectFilter, words: &
                         | "blocked"
                         | "died"
                 )
-            })
+            }))
+        .then_some(idx)
     });
-    let controller = words
-        .iter()
-        .position(|word| matches!(*word, "control" | "controls"));
+    let controller = crate::slice_primitives::select_position(words, |word| {
+        matches!(*word, "control" | "controls")
+    });
     filter.set_controller_after_qualifiers_surface(
         matches!((qualifier, controller), (Some(qualifier), Some(controller)) if qualifier < controller),
     );
@@ -441,7 +469,7 @@ fn parse_generic_card_tail_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilt
     let split = parse_filter_tail_decoration_tokens(tokens)?;
     let base_words = parser_token_word_refs(&split.base_tokens);
     let base_words = non_article_word_refs(&base_words);
-    if !matches!(base_words.as_slice(), ["card"] | ["cards"]) {
+    if !crate::word_primitives::parse_any_sequence_complete(&base_words, &[&["card"], &["cards"]]) {
         return None;
     }
 
@@ -472,7 +500,9 @@ fn normalize_generic_card_ability_tail(tokens: &[OwnedLexToken], filter: &mut Ob
     // word inside the ability name (for example, Doctor in "doctor's
     // companion"). Explicit source locations such as "card with cycling from
     // your graveyard" are semantic and must survive this normalization.
-    if filter.zone == Some(crate::Zone::Battlefield) && !words.contains(&"battlefield") {
+    if filter.zone == Some(crate::Zone::Battlefield)
+        && !crate::word_primitives::sequence_occurs(&words, &["battlefield"])
+    {
         filter.zone = None;
     }
     filter.card_types.clear();
@@ -543,7 +573,9 @@ fn parse_explicit_card_filter_disjunction(
     let shared_owner = arms.last().and_then(|arm| arm.owner.clone());
     if let Some(shared_zone) = shared_zone
         && arms[..arms.len() - 1].iter().all(|arm| {
-            arm.zone == Some(Zone::Battlefield) && arm.owner.is_none() && arm.controller.is_none()
+            matches!(arm.zone, None | Some(Zone::Battlefield))
+                && arm.owner.is_none()
+                && arm.controller.is_none()
         })
     {
         for arm in &mut arms {
@@ -642,7 +674,8 @@ pub fn has_shared_terminal_object_noun(tokens: &[OwnedLexToken]) -> bool {
             || token.is_word("permanent")
             || token.is_word("permanents")
     };
-    let Some(noun_idx) = tokens.iter().rposition(is_shared_noun) else {
+    let Some(noun_idx) = crate::slice_primitives::select_last_position(tokens, is_shared_noun)
+    else {
         return false;
     };
     if tokens[..=noun_idx]
@@ -729,6 +762,80 @@ fn preserve_explicit_spell_domain(filter: &mut ObjectFilter, tokens: &[OwnedLexT
     }
 }
 
+fn preserve_public_spell_filter_facts(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
+    if let Some(zone) = excluded_cast_origin_zone(tokens) {
+        filter.excluded_cast_origin_zone = Some(zone);
+        preserve_explicit_spell_domain(filter, tokens);
+    }
+
+    let words = parser_token_word_refs(tokens);
+    if filter.zone == Some(Zone::Stack)
+        && filter.stack_kind == Some(crate::filter::StackObjectKind::Spell)
+        && crate::word_primitives::parse_sequence_suffix(&words, &["with", "a", "single", "target"])
+    {
+        filter.target_count = Some(crate::effect::ChoiceCount::exactly(1));
+    }
+}
+
+fn preserve_terminal_characteristic_union_domain(
+    filter: &mut ObjectFilter,
+    tokens: &[OwnedLexToken],
+) {
+    let words = parser_token_word_refs(tokens);
+    let has_one_shared_card_noun = words
+        .iter()
+        .filter(|word| matches!(**word, "card" | "cards"))
+        .count()
+        == 1;
+    let characteristic_only_union = filter.any_of.len() >= 2
+        && filter.any_of.iter().all(|branch| {
+            branch.card_types.is_empty()
+                && branch.all_card_types.is_empty()
+                && branch.controller.is_none()
+                && (!branch.supertypes.is_empty() || !branch.subtypes.is_empty())
+        });
+    if !has_one_shared_card_noun || !characteristic_only_union {
+        return;
+    }
+
+    let mut shared_zone = filter.zone;
+    if shared_zone.is_none() {
+        for branch in &filter.any_of {
+            if let Some(zone) = branch.zone
+                && zone != Zone::Battlefield
+            {
+                shared_zone = Some(zone);
+                break;
+            }
+        }
+    }
+    let shared_owner = filter
+        .owner
+        .clone()
+        .or_else(|| filter.any_of.iter().find_map(|branch| branch.owner.clone()));
+    if shared_zone.is_none() && shared_owner.is_none() {
+        return;
+    }
+
+    filter.zone = shared_zone;
+    filter.owner = shared_owner;
+    for branch in &mut filter.any_of {
+        branch.zone = None;
+        branch.owner = None;
+    }
+}
+
+fn finalize_public_object_filter(
+    mut filter: ObjectFilter,
+    tokens: &[OwnedLexToken],
+) -> ObjectFilter {
+    apply_phyrexian_mana_cost_predicate(&mut filter, tokens);
+    super::grammar::filters::apply_supertype_or_mana_capability_union(&mut filter, tokens);
+    preserve_public_spell_filter_facts(&mut filter, tokens);
+    preserve_terminal_characteristic_union_domain(&mut filter, tokens);
+    deduplicate_tagged_constraints(filter)
+}
+
 pub fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
@@ -736,28 +843,29 @@ pub fn parse_object_filter(
     if let Some((base_tokens, card_name)) = split_drafted_color_qualifier_tokens(tokens) {
         let mut filter = parse_object_filter_inner(&base_tokens, other)?;
         filter.colors_chosen_while_drafting_named = Some(card_name);
-        apply_phyrexian_mana_cost_predicate(&mut filter, &base_tokens);
-        super::grammar::filters::apply_supertype_or_mana_capability_union(
-            &mut filter,
-            &base_tokens,
-        );
-        return Ok(deduplicate_tagged_constraints(filter));
+        return Ok(finalize_public_object_filter(filter, &base_tokens));
     }
-    let mut filter = parse_object_filter_inner(tokens, other)?;
-    apply_phyrexian_mana_cost_predicate(&mut filter, tokens);
-    super::grammar::filters::apply_supertype_or_mana_capability_union(&mut filter, tokens);
-    Ok(deduplicate_tagged_constraints(filter))
+    let filter = parse_object_filter_inner(tokens, other)?;
+    Ok(finalize_public_object_filter(filter, tokens))
 }
 
 fn apply_phyrexian_mana_cost_predicate(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
-    if tokens.windows(5).any(|window| {
-        window[0]
+    if tokens.iter().enumerate().any(|(index, token)| {
+        token
             .mana_group_inner()
             .is_some_and(|inner| inner.eq_ignore_ascii_case("H"))
-            && window[1].is_word("in")
-            && (window[2].is_word("its") || window[2].is_word("their"))
-            && window[3].is_word("mana")
-            && window[4].is_word("cost")
+            && tokens
+                .get(index + 1)
+                .is_some_and(|token| token.is_word("in"))
+            && tokens
+                .get(index + 2)
+                .is_some_and(|token| token.is_word("its") || token.is_word("their"))
+            && tokens
+                .get(index + 3)
+                .is_some_and(|token| token.is_word("mana"))
+            && tokens
+                .get(index + 4)
+                .is_some_and(|token| token.is_word("cost"))
     }) {
         filter.has_mana_cost = true;
         filter.has_phyrexian_mana_symbol = true;
@@ -872,7 +980,7 @@ pub fn parse_object_filter_words(
 ) -> Result<ObjectFilter, CardTextError> {
     let (entry_sacrifice_words, sacrificed_as_it_entered) = if word_refs.len()
         > SACRIFICED_AS_IT_ENTERED_SUFFIX.len()
-        && word_refs.ends_with(SACRIFICED_AS_IT_ENTERED_SUFFIX)
+        && crate::word_primitives::parse_sequence_suffix(word_refs, SACRIFICED_AS_IT_ENTERED_SUFFIX)
     {
         (
             &word_refs[..word_refs.len() - SACRIFICED_AS_IT_ENTERED_SUFFIX.len()],
@@ -931,23 +1039,21 @@ pub fn parse_object_filter_lexed(
     if let Some((base_tokens, card_name)) = split_drafted_color_qualifier_tokens(tokens) {
         let mut filter = parse_object_filter_lexed_inner(&base_tokens, other)?;
         filter.colors_chosen_while_drafting_named = Some(card_name);
-        apply_phyrexian_mana_cost_predicate(&mut filter, &base_tokens);
-        super::grammar::filters::apply_supertype_or_mana_capability_union(
-            &mut filter,
-            &base_tokens,
-        );
-        return Ok(deduplicate_tagged_constraints(filter));
+        return Ok(finalize_public_object_filter(filter, &base_tokens));
     }
-    let mut filter = parse_object_filter_lexed_inner(tokens, other)?;
-    apply_phyrexian_mana_cost_predicate(&mut filter, tokens);
-    super::grammar::filters::apply_supertype_or_mana_capability_union(&mut filter, tokens);
-    Ok(deduplicate_tagged_constraints(filter))
+    let filter = parse_object_filter_lexed_inner(tokens, other)?;
+    Ok(finalize_public_object_filter(filter, tokens))
 }
 
 fn parse_object_filter_lexed_inner(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if super::grammar::filters::is_attack_destination_relation(tokens) {
+        return super::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(
+            tokens, other,
+        );
+    }
     if let Some((base_tokens, source_tokens, minimum)) =
         split_distinct_combat_damage_controller_tokens(tokens)
     {
@@ -965,15 +1071,15 @@ fn parse_object_filter_lexed_inner(
     if let Some(base_tokens) = split_trailing_where_x_filter_clause(tokens) {
         return parse_object_filter_lexed(base_tokens, other);
     }
-    if let Some(filter) = parse_explicit_card_filter_disjunction(tokens, other)? {
-        return Ok(filter);
-    }
     if let Some(mut filter) =
         super::grammar::filters::parse_elided_shared_domain_union(tokens, other)
     {
         preserve_union_surface(&mut filter, tokens);
         preserve_controller_qualifier_order(&mut filter, tokens);
         preserve_filter_counter_constraint_surface_tokens(&mut filter, tokens);
+        return Ok(filter);
+    }
+    if let Some(filter) = parse_explicit_card_filter_disjunction(tokens, other)? {
         return Ok(filter);
     }
     let has_shared_terminal_noun = has_shared_terminal_object_noun(tokens);
@@ -1059,9 +1165,10 @@ fn tokens_contain_permanent_or_suspended_card_disjunction(tokens: &[OwnedLexToke
     let has_permanent = words
         .iter()
         .any(|word| matches!(*word, "permanent" | "permanents"));
-    let has_suspended_card = words
-        .windows(2)
-        .any(|window| matches!(window, ["suspended", "card"] | ["suspended", "cards"]));
+    let has_suspended_card = crate::word_primitives::any_sequence_occurs(
+        &words,
+        &[&["suspended", "card"], &["suspended", "cards"]],
+    );
     let has_connector = words
         .iter()
         .any(|word| matches!(*word, "and" | "or" | "and/or"));
@@ -1359,7 +1466,7 @@ mod tests {
             );
             assert_eq!(
                 filter.description(),
-                "an instant or sorcery spell with a single target"
+                "instant or sorcery spell with a single target"
             );
         }
 
@@ -1385,7 +1492,7 @@ mod tests {
         assert!(filter.could_have_attacked_this_turn, "{filter:#?}");
         assert_eq!(
             filter.description(),
-            "an untapped creature that didn't attack this turn, except for creatures that couldn't attack"
+            "untapped creature that didn't attack this turn, except for creatures that couldn't attack"
         );
     }
 
@@ -1777,10 +1884,11 @@ mod tests {
 
     #[test]
     fn parse_object_filter_preserves_named_draft_color_history() {
-        let tokens = tokenize_line(
+        let tokens = crate::lexer::lex_line(
             "creature that's one or more of the colors chosen as you drafted cards named Draft Test",
             0,
-        );
+        )
+        .expect("draft-color filter should lex losslessly");
         let filter =
             parse_object_filter_lexed(&tokens, false).expect("draft-color qualifier should parse");
 
@@ -1918,11 +2026,18 @@ mod tests {
         assert!(!filter.card_types.contains(&CardType::Creature));
         assert_eq!(filter.owner, Some(PlayerFilter::You));
         assert_eq!(filter.zone, Some(Zone::Graveyard));
-        assert!(matches!(
-            filter.mana_value.as_ref(),
-            Some(crate::filter::Comparison::LessThanOrEqualExpr(value))
-                if value.unhinted() == &crate::effect::Value::SourcePower
-        ));
+        assert!(
+            matches!(
+                filter.mana_value.as_ref(),
+                Some(crate::filter::Comparison::LessThanOrEqualExpr(value))
+                    if matches!(
+                        value.unhinted(),
+                        crate::effect::Value::PowerOf(spec)
+                            if matches!(spec.unhinted(), crate::target::ChooseSpec::Source)
+                    )
+            ),
+            "{filter:#?}"
+        );
     }
 
     #[test]
@@ -2375,11 +2490,11 @@ mod tests {
 
         assert_eq!(filter.card_types, vec![CardType::Creature]);
         assert!(!filter.excluded_chosen_creature_type);
-        assert!(filter.excluded_any_chosen_creature_type);
-        assert!(filter.has_chosen_type_this_way_surface());
+        assert!(filter.excluded_any_chosen_creature_type, "{filter:#?}");
+        assert!(filter.has_chosen_type_this_way_surface(), "{filter:#?}");
         assert_eq!(
             filter.description(),
-            "a creature that aren't of a type chosen this way"
+            "creature that aren't of a type chosen this way"
         );
     }
 
@@ -2616,8 +2731,16 @@ mod tests {
 
         let filter = parse_object_filter(&tokens, false).expect("object filter should parse");
 
-        assert_eq!(filter.zone, Some(crate::zone::Zone::Graveyard));
-        assert_eq!(filter.owner, Some(crate::target::PlayerFilter::You));
+        assert_eq!(
+            filter.zone,
+            Some(crate::zone::Zone::Graveyard),
+            "{filter:#?}"
+        );
+        assert_eq!(
+            filter.owner,
+            Some(crate::target::PlayerFilter::You),
+            "{filter:#?}"
+        );
         assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
         assert!(filter.any_of.iter().any(|branch| {
             branch.supertypes == [crate::types::Supertype::Legendary] && branch.subtypes.is_empty()
@@ -2647,7 +2770,7 @@ mod tests {
             .tagged_constraints
             .iter()
             .filter(|constraint| {
-                constraint.tag == TagKey::from("sacrificed_0")
+                constraint.tag == crate::tag::CompilerReferenceTag::Sacrificed0.key()
                     && constraint.relation == TaggedOpbjectRelation::SharesCardType
             })
             .count();
@@ -2733,21 +2856,18 @@ mod tests {
 
     #[test]
     fn compound_subtype_outranks_matching_current_source_alias_in_object_filters() {
-        crate::util::with_source_reference_context("Time Lord Regeneration", || {
-            let target =
-                parse_object_filter_lexed(&tokenize_line("target Time Lord you control", 0), false)
-                    .expect("typed target should parse");
-            assert!(!target.source, "{target:#?}");
-            assert_eq!(target.subtypes, [Subtype::TimeLord]);
-            assert_eq!(target.controller, Some(PlayerFilter::You));
+        let target =
+            parse_object_filter_lexed(&tokenize_line("target Time Lord you control", 0), false)
+                .expect("typed target should parse");
+        assert!(!target.source, "{target:#?}");
+        assert_eq!(target.subtypes, [Subtype::TimeLord]);
+        assert_eq!(target.controller, Some(PlayerFilter::You));
 
-            let card =
-                parse_object_filter_lexed(&tokenize_line("a Time Lord creature card", 0), false)
-                    .expect("typed card should parse");
-            assert!(!card.source, "{card:#?}");
-            assert_eq!(card.subtypes, [Subtype::TimeLord]);
-            assert_eq!(card.card_types, [CardType::Creature]);
-        });
+        let card = parse_object_filter_lexed(&tokenize_line("a Time Lord creature card", 0), false)
+            .expect("typed card should parse");
+        assert!(!card.source, "{card:#?}");
+        assert_eq!(card.subtypes, [Subtype::TimeLord]);
+        assert_eq!(card.card_types, [CardType::Creature]);
     }
 
     #[test]

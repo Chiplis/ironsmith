@@ -1,5 +1,5 @@
 use crate::ability::{PresentationKeyword, PresentationLabel};
-use crate::host::{EffectAst, TriggerSpec};
+use crate::host::EffectAst;
 
 type AnthemNormalizedWords<'a> = crate::grammar::primitives::TokenWordView<'a>;
 
@@ -716,7 +716,10 @@ fn split_union_grant_subjects(
             continue;
         }
         let left_words = crate::lexer::parser_token_word_refs(&left);
-        let left_subject = if left_words == ["you"] {
+        let left_subject = if crate::word_primitives::parse_sequence_complete(
+            &left_words,
+            &["you"],
+        ) {
             UnionGrantSubject::PlayerYou
         } else if anthem_grant_grammar::is_source_it_subject(&left)
             || is_source_reference_words(&left_words)
@@ -821,15 +824,15 @@ pub fn parse_granted_keyword_static_line(
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     fn extract_grant_spec_from_subject(
         subject_tokens: &[OwnedLexToken],
-        grantable: crate::grant::Grantable,
-    ) -> Result<Option<crate::grant::GrantSpec>, CardTextError> {
+        grantable: crate::model::CompilerGrantableCore,
+    ) -> Result<Option<crate::model::CompilerGrantSpecCore>, CardTextError> {
         let subject = parse_anthem_subject(subject_tokens)?;
         let AnthemSubjectAst::Filter(mut filter) = subject else {
             return Ok(None);
         };
         let zone = filter.zone.unwrap_or(Zone::Battlefield);
         filter.zone = None;
-        Ok(Some(crate::grant::GrantSpec::new(grantable, filter, zone)))
+        Ok(Some(crate::model::CompilerGrantSpecCore::new(grantable, filter, zone)))
     }
 
     fn parse_granted_escape_cost_tail(
@@ -905,7 +908,7 @@ pub fn parse_granted_keyword_static_line(
                 }
                 extract_grant_spec_from_subject(
                     subject_tokens,
-                    crate::grant::Grantable::flashback_from_cards_mana_cost(),
+                    crate::model::CompilerGrantableCore::flashback_from_cards_mana_cost(),
                 )?
             }
             Some(anthem_grant_grammar::GrantedAlternativeCastKeyword::Blitz) => {
@@ -927,7 +930,7 @@ pub fn parse_granted_keyword_static_line(
                 };
                 extract_grant_spec_from_subject(
                     subject_tokens,
-                    crate::grant::Grantable::miracle_from_cards_mana_cost_reduced_by(reduction),
+                    crate::model::CompilerGrantableCore::miracle_from_cards_mana_cost_reduced_by(reduction),
                 )?
             }
             Some(anthem_grant_grammar::GrantedAlternativeCastKeyword::Escape) => {
@@ -936,7 +939,7 @@ pub fn parse_granted_keyword_static_line(
                 };
                 extract_grant_spec_from_subject(
                     subject_tokens,
-                    crate::grant::Grantable::escape(exile_count),
+                    crate::model::CompilerGrantableCore::escape(exile_count),
                 )?
             }
             None => None,
@@ -1160,7 +1163,10 @@ pub fn parse_granted_keyword_static_line(
         condition.map(|condition| bind_attachment_condition_to_subject(condition, &subject));
 
     let keyword_words = crate::lexer::token_word_refs(&keyword_tokens);
-    if keyword_words == ["bands", "with", "other", "legendary", "creatures"] {
+    if crate::word_primitives::parse_sequence_complete(
+        &keyword_words,
+        &["bands", "with", "other", "legendary", "creatures"],
+    ) {
         let ability = StaticAbilityAst::Static(StaticAbility::bands_with_other(
             ObjectFilter::creature().with_supertype(Supertype::Legendary),
             "bands with other legendary creatures",
@@ -1392,7 +1398,9 @@ pub fn parse_subject_loses_keywords_line(
             return Ok(None);
         };
         if actions.len() != gain_actions.len()
-            || actions.iter().any(|action| !gain_actions.contains(action))
+            || actions
+                .iter()
+                .any(|action| !gain_actions.iter().any(|gain| gain == action))
         {
             return Ok(None);
         }
@@ -1602,13 +1610,15 @@ pub fn parse_lose_all_abilities_and_transform_base_pt_line(
             continue;
         }
         if let Some(card_type) = parse_card_type(descriptor) {
-            if !set_card_types.contains(&card_type) {
+            if !set_card_types.iter().any(|existing| existing == &card_type) {
                 set_card_types.push(card_type);
             }
             continue;
         }
         if let Some(subtype) = parse_subtype_flexible(descriptor) {
-            if !creature_subtypes.contains(&subtype)
+            if !creature_subtypes
+                .iter()
+                .any(|existing| existing == &subtype)
             {
                 creature_subtypes.push(subtype);
             }
@@ -1622,7 +1632,9 @@ pub fn parse_lose_all_abilities_and_transform_base_pt_line(
     }
 
     if !creature_subtypes.is_empty()
-        && !set_card_types.contains(&CardType::Creature)
+        && !set_card_types
+            .iter()
+            .any(|existing| *existing == CardType::Creature)
     {
         set_card_types.push(CardType::Creature);
     }
@@ -1760,7 +1772,8 @@ pub fn parse_lose_all_abilities_and_base_pt_line(
         return Ok(None);
     };
     if shape.becomes {
-        let Some(becomes_word) = words.iter().position(|word| *word == "becomes") else {
+        let Some(becomes_word) = crate::word_primitives::parse_sequence_start(&words, &["becomes"])
+        else {
             return Ok(None);
         };
         let Some(power_toughness) =
@@ -1988,8 +2001,8 @@ fn granted_blitz_abilities_from_subject(
     let (filter, zones) = normalize_granted_alternative_spell_filter(filter);
     let mut abilities = Vec::new();
     for zone in zones {
-        let spec = crate::grant::GrantSpec::new(
-            crate::grant::Grantable::blitz_from_cards_mana_cost(),
+        let spec = crate::model::CompilerGrantSpecCore::new(
+            crate::model::CompilerGrantableCore::blitz_from_cards_mana_cost(),
             filter.clone(),
             zone,
         );
@@ -2027,8 +2040,8 @@ fn granted_emerge_abilities_from_subject(
         if zone != Zone::Hand {
             continue;
         }
-        let spec = crate::grant::GrantSpec::new(
-            crate::grant::Grantable::emerge_from_cards_mana_cost(),
+        let spec = crate::model::CompilerGrantSpecCore::new(
+            crate::model::CompilerGrantableCore::emerge_from_cards_mana_cost(),
             filter.clone(),
             zone,
         );
@@ -2059,23 +2072,24 @@ fn granted_scavenge_abilities_from_subject(
         return Ok(None);
     }
 
-    let target = ChooseSpec::target(ChooseSpec::creature());
     let ability = Ability {
-        kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
-            mana_cost: TotalCost::from_costs(vec![
-                crate::costs::Cost::dynamic_mana(
+        kind: AbilityKind::Activated(crate::model::compiler_semantic::CompilerActivatedAbilityCore {
+            mana_cost: ironsmith_core::TotalCost::from_costs(vec![
+                crate::model::CompilerCost::DynamicMana(
                     ironsmith_core::DynamicManaCost::from_source_mana_cost(),
                 ),
-                crate::costs::Cost::exile_self(),
+                crate::model::CompilerCost::ExileSelf { from_graveyard: false },
             ]),
-            effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                Effect::put_counters(
+            effects: ironsmith_core::ResolutionProgram::from_effects(vec![
+                EffectAst::subject_verb_put_counters(
                     CounterType::PlusOnePlusOne,
                     Value::SourcePower,
-                    target.clone(),
+                    TargetAst::Object(ObjectFilter::creature(), None, None),
+                    None,
+                    false,
                 ),
             ]),
-            choices: vec![target],
+            choices: vec![],
             timing: crate::ability::ActivationTiming::SorcerySpeed,
             additional_restrictions: Vec::new(),
             activation_restrictions: Vec::new(),
@@ -2365,7 +2379,7 @@ fn parse_enchanted_player_controls_subject(
         return Ok(None);
     };
     let mut filter = parse_object_filter(prefix_tokens, false)?;
-    filter.controller = Some(PlayerFilter::TaggedPlayer(crate::TagKey::from("enchanted")));
+    filter.controller = Some(PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.key()));
     Ok(Some(filter))
 }
 
@@ -3691,12 +3705,14 @@ pub fn parse_anthem_clause(
     }
 
     let tail_words = crate::lexer::token_word_refs(anthem_tail_tokens);
-    let count_belongs_to_affected_controller = tail_words.windows(2).any(|words| {
-        matches!(
-            words,
-            ["its", "controller"] | ["its", "controllers"] | ["its", "controller's"]
-        )
-    });
+    let count_belongs_to_affected_controller = crate::word_primitives::any_sequence_occurs(
+        &tail_words,
+        &[
+            &["its", "controller"],
+            &["its", "controllers"],
+            &["its", "controller's"],
+        ],
+    );
     if count_belongs_to_affected_controller
         && let Some(AnthemCountExpression::MatchingFilter(filter)) = scale.as_mut()
     {
@@ -3826,9 +3842,10 @@ pub fn parse_anthem_clause(
         tokens.get(get_idx + 1..tail_end).unwrap_or_default(),
     );
     let additional_surface = modifier_shape.additional_surface
-        || modifier_words
-            .windows(2)
-            .any(|words| words == ["a", "additional"] || words == ["an", "additional"]);
+        || crate::word_primitives::any_sequence_occurs(
+            &modifier_words,
+            &[&["a", "additional"], &["an", "additional"]],
+        );
 
     Ok(ParsedAnthemClause {
         subject,
@@ -4052,7 +4069,7 @@ pub fn parse_type_color_addition_clause(
 
         if let Some(card_type) = parse_card_type(descriptor) {
             if allow_types {
-                if !card_types.contains(&card_type) {
+                if !card_types.iter().any(|existing| existing == &card_type) {
                     card_types.push(card_type);
                 }
                 continue;
@@ -4066,7 +4083,7 @@ pub fn parse_type_color_addition_clause(
 
         if let Some(subtype) = parse_subtype_flexible(descriptor) {
             if allow_types {
-                if !subtypes.contains(&subtype) {
+                if !subtypes.iter().any(|existing| existing == &subtype) {
                     subtypes.push(subtype);
                 }
                 continue;
@@ -4190,7 +4207,7 @@ pub fn parse_soulbond_shared_line(
             parse_granted_activated_or_triggered_ability_for_gain(ability_tokens, &clause_words)?
         {
             return Ok(Some(vec![StaticAbilityAst::SoulbondSharedObjectAbility {
-                ability,
+                ability: *ability,
             }]));
         }
 

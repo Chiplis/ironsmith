@@ -367,121 +367,19 @@ fn parse_base_power_toughness_type_addition_lexed<'a>(
     })
 }
 
-fn parse_base_power_grant_lexed<'a>(input: &mut LexStream<'a>) -> WResult<BasePowerGrantShape<'a>> {
-    let initial_len = input.len();
-    let _subject_tokens = take_until_have.parse_next(input)?;
-    parse_have.parse_next(input)?;
-    let has_token = initial_len.saturating_sub(input.len() + 1);
-    primitives::phrase(&["base", "power"]).parse_next(input)?;
-    let raw = primitives::word_parser_text.parse_next(input)?;
-    let power = leaf::parse_number_i32_complete(raw)
-        .map_err(|_| primitives::backtrack_err("base power", "fixed signed power"))?;
-    primitives::kw("and").parse_next(input)?;
-    alt((
-        primitives::kw("have"),
-        primitives::kw("has"),
-        primitives::kw("gain"),
-        primitives::kw("gains"),
-    ))
-    .parse_next(input)?;
-    let ability_tokens: &'a [OwnedLexToken] = rest.parse_next(input)?;
-    let ability_tokens = trim_lexed_commas(ability_tokens);
-    if ability_tokens.is_empty() {
-        return Err(primitives::backtrack_err(
-            "base-power grant",
-            "nonempty granted ability",
-        ));
-    }
-    Ok(BasePowerGrantShape {
-        has_token,
-        power,
-        ability_tokens,
-    })
-}
-
-fn parse_isnt_creature_lexed<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken]> {
-    let subject_tokens = repeat_till(1.., any.void(), peek(parse_negated_creature_tail))
-        .map(|((), _)| ())
-        .take()
-        .parse_next(input)?;
-    parse_negated_creature_tail.parse_next(input)?;
-    eof.parse_next(input)?;
-    Ok(trim_lexed_commas(subject_tokens))
-}
-
-fn parse_negated_creature_tail(input: &mut LexStream<'_>) -> WResult<()> {
-    alt((
-        alt((primitives::kw("isnt"), primitives::kw("isn't"))).void(),
-        (
-            alt((primitives::kw("is"), primitives::kw("are"))),
-            primitives::kw("not"),
-        )
-            .void(),
-        (
-            alt((primitives::kw("is"), primitives::kw("are"))),
-            primitives::phrase(&["no", "longer"]),
-        )
-            .void(),
-    ))
-    .parse_next(input)?;
-    winnow::combinator::opt(alt((primitives::kw("a"), primitives::kw("an")))).parse_next(input)?;
-    alt((primitives::kw("creature"), primitives::kw("creatures")))
-        .void()
-        .parse_next(input)
-}
-
-fn take_until_have<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken]> {
-    repeat_till(1.., any.void(), peek(parse_have))
-        .map(|((), _)| ())
-        .take()
-        .parse_next(input)
-}
-
-fn parse_have(input: &mut LexStream<'_>) -> WResult<()> {
-    alt((primitives::kw("has"), primitives::kw("have")))
-        .void()
-        .parse_next(input)
-}
-
-fn parse_fixed_power_toughness(input: &mut LexStream<'_>) -> WResult<(i32, i32)> {
-    let raw = primitives::word_parser_text.parse_next(input)?;
-    let parsed = leaf::parse_leaf_power_toughness_complete(raw).map_err(|_| {
-        primitives::backtrack_err("base power/toughness", "fixed power/toughness value")
-    })?;
-    match (parsed.power, parsed.toughness) {
-        (PtValue::Fixed(power), PtValue::Fixed(toughness)) => Ok((power, toughness)),
-        _ => Err(primitives::backtrack_err(
-            "base power/toughness",
-            "fixed numeric power/toughness value",
-        )),
-    }
-}
-
-fn contains_parser<'a, P, F>(tokens: &'a [OwnedLexToken], make_parser: F) -> bool
-where
-    F: Fn() -> P,
-    P: Parser<LexStream<'a>, (), winnow::error::ErrMode<winnow::error::ContextError>>,
-{
-    let mut input = LexStream::new(tokens);
-    loop {
-        let mut candidate = input.clone();
-        if make_parser().parse_next(&mut candidate).is_ok() {
-            return true;
-        }
-        if take_token(&mut input).is_err() {
-            return false;
-        }
-    }
-}
-
-fn take_token<'a>(input: &mut LexStream<'a>) -> WResult<&'a OwnedLexToken> {
-    any.parse_next(input)
-}
-
-fn has_prefix(tokens: &[OwnedLexToken], words: &'static [&'static str]) -> bool {
-    primitives::parse_prefix(tokens, primitives::phrase(words)).is_some()
-}
-
 #[cfg(test)]
 #[path = "tail_static_shapes_tests.rs"]
 mod tests;
+
+#[path = "tail_static_shapes/core_programs.rs"]
+mod core_programs;
+use core_programs::{
+    contains_parser, has_prefix, parse_fixed_power_toughness, parse_have,
+    parse_isnt_creature_lexed, parse_negated_creature_tail, take_until_have,
+};
+#[path = "tail_static_shapes/object_action_programs.rs"]
+mod object_action_programs;
+use object_action_programs::take_token;
+#[path = "tail_static_shapes/ability_programs.rs"]
+mod ability_programs;
+use ability_programs::parse_base_power_grant_lexed;

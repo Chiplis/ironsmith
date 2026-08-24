@@ -2,7 +2,7 @@ use ironsmith_compiler::Zone;
 use ironsmith_compiler::ability::{AbilityKind, ActivationTiming};
 use ironsmith_compiler::cards::CardDefinitionBuilder;
 use ironsmith_compiler::effect::Value;
-use ironsmith_compiler::effects::SearchLibraryEffect;
+use ironsmith_compiler::effects::{ChooseObjectsEffect, PutOntoBattlefieldEffect, SequenceEffect};
 use ironsmith_compiler::filter::Comparison;
 use ironsmith_compiler::ids::CardId;
 use ironsmith_compiler::target::ChooseSpec;
@@ -35,10 +35,14 @@ fn transfigure_lowers_to_a_sorcery_speed_sacrifice_and_lki_search() {
     let [effect] = activated.effects.flattened_default_effects() else {
         panic!("Transfigure should contain one search effect: {activated:#?}");
     };
-    let search = effect
-        .downcast_ref::<SearchLibraryEffect>()
-        .expect("Transfigure should search the library");
-    assert_eq!(search.destination, Zone::Battlefield);
+    let sequence = effect.downcast_ref::<SequenceEffect>().expect(
+        "Transfigure should keep its choose, battlefield move, and shuffle in one sequence",
+    );
+    let search = sequence.effects[0]
+        .downcast_ref::<ChooseObjectsEffect>()
+        .expect("Transfigure should choose a searched creature card");
+    assert!(search.is_search);
+    assert_eq!(search.zone, Some(Zone::Library));
     assert_eq!(search.filter.card_types, vec![CardType::Creature]);
     assert!(matches!(
         search.filter.mana_value.as_ref(),
@@ -46,6 +50,20 @@ fn transfigure_lowers_to_a_sorcery_speed_sacrifice_and_lki_search() {
             if matches!(value.unhinted(), Value::ManaValueOf(spec)
                 if matches!(spec.base(), ChooseSpec::Source))
     ));
+    fn contains_battlefield_move(effect: &ironsmith_compiler::effect::Effect) -> bool {
+        if effect.downcast_ref::<PutOntoBattlefieldEffect>().is_some() {
+            return true;
+        }
+        let mut found = false;
+        effect.visit_child_effects(&mut |child| {
+            found |= contains_battlefield_move(child);
+        });
+        found
+    }
+    assert!(
+        sequence.effects.iter().any(contains_battlefield_move),
+        "Transfigure should put the searched card onto the battlefield: {sequence:#?}"
+    );
 }
 
 #[test]

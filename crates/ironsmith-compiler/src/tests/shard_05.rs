@@ -1127,7 +1127,7 @@ pub(super) fn rewrite_activation_cost_parses_sacrifice_segments() {
         .expect("rewrite activation-cost parser should parse sacrifice segments");
     let lowered = lower_activation_cost_cst(&cst)
         .expect("rewrite sacrifice segment should lower to TotalCost");
-    assert!(!lowered.is_free());
+    assert!(!lowered.costs().is_some_and(|costs| costs.is_empty()));
 
     let another = parse_activation_cost_rewrite("Sacrifice another creature")
         .expect("rewrite activation-cost parser should preserve 'another creature'");
@@ -1344,7 +1344,8 @@ pub(super) fn rewrite_activation_cost_parses_loyalty_shorthand_without_fallback_
     assert!(
         lower_activation_cost_cst(&zero)
             .expect("zero loyalty shorthand should lower")
-            .is_free()
+            .costs()
+            .is_some_and(|costs| costs.is_empty())
     );
 }
 
@@ -1383,7 +1384,12 @@ pub(super) fn rewrite_activation_cost_preserves_alternative_and_dynamic_life_bra
     assert_eq!(alternative.alternative_branches.len(), 2);
     let lowered = lower_activation_cost_cst(&alternative)
         .expect("alternative activation cost should lower recursively");
-    let branches = lowered
+    assert_eq!(
+        lowered.relationship,
+        crate::model::CostRelationship::Alternative
+    );
+    let lowered_core = lowered.to_core_total_cost();
+    let branches = lowered_core
         .as_one_of()
         .expect("alternative activation cost should lower to TotalCost::OneOf");
     assert_eq!(branches.len(), 2);
@@ -1548,18 +1554,19 @@ pub(super) fn rewrite_activation_cost_preserves_top_only_graveyard_selection_thr
 
     let lowered = crate::activation_and_restrictions::parse_activation_cost(&tokens)
         .expect("ordered graveyard activation cost should lower");
-    let choose = lowered
+    let [
+        crate::model::CompilerCost::ExileChosen {
+            filter, top_only, ..
+        },
+    ] = lowered
         .as_all()
         .expect("ordered graveyard activation cost should be sequential")
-        .iter()
-        .find_map(|cost| {
-            cost.effect_ref()
-                .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
-        })
-        .expect("ordered graveyard activation cost should retain its choice effect");
-    assert!(choose.top_only);
-    assert_eq!(choose.filter.zone, Some(Zone::Graveyard));
-    assert_eq!(choose.filter.card_types, vec![CardType::Creature]);
+    else {
+        panic!("expected one typed exile choice cost: {lowered:#?}");
+    };
+    assert!(*top_only);
+    assert_eq!(filter.zone, Some(Zone::Graveyard));
+    assert_eq!(filter.card_types, vec![CardType::Creature]);
 }
 
 #[test]
@@ -1656,21 +1663,15 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exi
         .expect("lexer should classify exile-from-hand activation cost");
     let lowered = crate::activation_and_restrictions::parse_activation_cost(&exile_hand_tokens)
         .expect("activation-cost parser should support exiling a filtered card from hand");
-    let hand_choice = lowered
+    let [crate::model::CompilerCost::ExileChosen { filter, .. }] = lowered
         .as_all()
         .expect("exile-from-hand activation cost should lower to sequential costs")
-        .iter()
-        .find_map(|cost| {
-            cost.effect_ref()
-                .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
-        })
-        .expect("exile-from-hand activation cost should choose a card to exile");
-    assert_eq!(hand_choice.filter.zone, Some(Zone::Hand));
-    assert_eq!(
-        hand_choice.filter.owner,
-        Some(crate::target::PlayerFilter::You)
-    );
-    assert_eq!(hand_choice.filter.excluded_card_types, vec![CardType::Land]);
+    else {
+        panic!("expected one typed hand exile choice: {lowered:#?}");
+    };
+    assert_eq!(filter.zone, Some(Zone::Hand));
+    assert_eq!(filter.owner, Some(crate::target::PlayerFilter::You));
+    assert_eq!(filter.excluded_card_types, vec![CardType::Land]);
 
     let exile_spell_tokens = lex_line("Exile an instant or sorcery spell you control", 0)
         .expect("lexer should classify exile-spell activation cost");
@@ -1725,7 +1726,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_counter_variants()
         lower_activation_cost_cst(&put_cst).expect("chosen counter-placement cost should lower")
     );
     assert!(
-        put_lowered.contains("PutCountersEffect")
+        put_lowered.contains("PutCounters")
             && put_lowered.contains("ObjectFilter")
             && !put_lowered.contains("target: Source"),
         "chosen counter-placement cost must not collapse onto the source: {put_lowered}"
@@ -1744,11 +1745,11 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_counter_variants()
             .expect("singular dynamic counter removal should lower")
     );
     assert!(
-        singular_remove_lowered.contains("RemoveAnyCountersAmongEffect")
+        singular_remove_lowered.contains("RemoveCounters")
             && singular_remove_lowered.contains("single_object: true")
             && singular_remove_lowered.contains("Artifact")
             && singular_remove_lowered.contains("Creature")
-            && !singular_remove_lowered.contains("RemoveAnyCountersFromSourceEffect"),
+            && singular_remove_lowered.contains("filter: Some"),
         "singular counter removal must preserve its chosen-object filter: {singular_remove_lowered}"
     );
 
@@ -1881,13 +1882,13 @@ pub(super) fn rewrite_activation_cost_shared_parser_supports_blight_costs() {
     );
     assert_eq!(
         lowered.costs().len(),
-        2,
-        "blight cost should lower to choose-then-put-counter costs"
+        1,
+        "blight cost should remain one compiler-owned cost component"
     );
     let lowered_raw = format!("{lowered:#?}");
     assert!(
-        lowered_raw.contains("ChooseObjects") && lowered_raw.contains("MinusOneMinusOne"),
-        "blight cost should choose your creature and apply -1/-1 counters, got {lowered_raw}"
+        lowered_raw.contains("Blight") && lowered_raw.contains("count: 1"),
+        "blight cost should preserve its typed count until lowering, got {lowered_raw}"
     );
 }
 
@@ -3778,10 +3779,9 @@ pub(super) fn rewrite_lexed_triggered_line_preserves_attacking_looked_card_bundl
     let text = "Look at the top eight cards of your library. You may put a creature card from among them onto the battlefield tapped and attacking that player. Put the rest on the bottom of your library in a random order.";
     let sentences = registry_sentence_inputs(text);
 
-    let matched =
-        super::super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
-            .expect("registry lookup should not error")
-            .expect("registry should match attacking looked-card battlefield/bottom sequence");
+    let matched = super::super::effect_sentences::try_parse_document_program(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match attacking looked-card battlefield/bottom sequence");
     let debug = format!("{:?}", matched.effects);
 
     assert_eq!(matched.consumed_sentences, 3);
@@ -3820,10 +3820,7 @@ pub(super) fn rewrite_lexed_static_grant_line_ignores_inner_has_in_quoted_trigge
         debug.contains("PlayerHasNoOpponentWithMoreLifeThan"),
         "{debug}"
     );
-    assert!(
-        debug.contains("ThisAttacksTrigger") || debug.contains("this_attacks"),
-        "{debug}"
-    );
+    assert!(debug.contains("ThisAttacks"), "{debug}");
     assert!(
         debug.contains("intervening_if: Some")
             || debug.contains("Conditional { predicate: PlayerHasNoOpponentWithMoreLifeThan"),

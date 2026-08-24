@@ -2964,6 +2964,7 @@ fn source_damage_recipient_filters_persist_across_turns_and_keep_exact_identity(
         .build();
     let planeswalker = CardBuilder::new(CardId::from_raw(60_121), "History Target")
         .card_types(vec![CardType::Planeswalker])
+        .loyalty(3)
         .build();
     let source = game.create_object_from_card(&creature, alice, Zone::Battlefield);
     let damaged_planeswalker = game.create_object_from_card(&planeswalker, bob, Zone::Battlefield);
@@ -3077,8 +3078,16 @@ fn source_damage_recipient_filters_persist_across_turns_and_keep_exact_identity(
         .expect("historical planeswalker loop should resolve");
     assert_eq!(game.player(bob).expect("Bob").life, 19);
     assert_eq!(game.player(cara).expect("Cara").life, 20);
-    assert_eq!(game.damage_on(damaged_planeswalker), 1);
-    assert_eq!(game.damage_on(untouched_planeswalker), 0);
+    assert_eq!(
+        game.object(damaged_planeswalker)
+            .and_then(|object| object.loyalty()),
+        Some(2)
+    );
+    assert_eq!(
+        game.object(untouched_planeswalker)
+            .and_then(|object| object.loyalty()),
+        Some(3)
+    );
 }
 
 #[test]

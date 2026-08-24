@@ -1,7 +1,6 @@
 use crate::PowerToughness;
 use crate::ability::ActivationTiming;
 use crate::color::ColorSet;
-use crate::cost::TotalCost;
 use crate::effect::Value;
 use crate::filter::ObjectFilter;
 use crate::mana::ManaCost;
@@ -18,6 +17,7 @@ pub enum KeywordAction {
     Improvise,
     Convoke,
     AffinityForArtifacts,
+    CantBeCountered,
     Delve,
     Dredge(u32),
     FirstStrike,
@@ -70,7 +70,7 @@ pub enum KeywordAction {
     Scavenge(ManaCost),
     Unearth(ManaCost),
     Embalm(ManaCost),
-    Eternalize(TotalCost),
+    Eternalize(ironsmith_core::TotalCost<crate::model::CompilerCost>),
     Emerge(ManaCost),
     Ninjutsu(ManaCost),
     Backup(u32),
@@ -96,11 +96,11 @@ pub enum KeywordAction {
     Spectacle(ManaCost),
     Foretell(ManaCost),
     Echo {
-        total_cost: TotalCost,
+        total_cost: ironsmith_core::TotalCost<crate::model::CompilerCost>,
         text: String,
     },
     CumulativeUpkeep {
-        total_cost: TotalCost,
+        total_cost: ironsmith_core::TotalCost<crate::model::CompilerCost>,
         text: String,
     },
     Casualty(u32),
@@ -208,6 +208,7 @@ impl KeywordAction {
                 | Self::Improvise
                 | Self::Convoke
                 | Self::AffinityForArtifacts
+                | Self::CantBeCountered
                 | Self::Delve
                 | Self::Dredge(_)
                 | Self::FirstStrike
@@ -334,6 +335,7 @@ impl KeywordAction {
             Self::Improvise => "Improvise".to_string(),
             Self::Convoke => "Convoke".to_string(),
             Self::AffinityForArtifacts => "Affinity for artifacts".to_string(),
+            Self::CantBeCountered => "This spell can't be countered".to_string(),
             Self::Delve => "Delve".to_string(),
             Self::Dredge(amount) => format!("Dredge {amount}"),
             Self::FirstStrike => "First strike".to_string(),

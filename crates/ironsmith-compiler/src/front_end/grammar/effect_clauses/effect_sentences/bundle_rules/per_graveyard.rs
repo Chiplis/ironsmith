@@ -31,7 +31,7 @@ pub(super) fn parse_choose_each_graveyard_then_owner_shuffle_bundle(
     // This is a collection selected inside a player loop, not the loop's
     // implicit `__it__` object. Give it a distinct tag so lowering preserves
     // the collection instead of rewriting the reference to `Iterated`.
-    let chosen_tag = TagKey::from("__each_graveyard_chosen");
+    let chosen_tag = crate::tag::CompilerReferenceTag::EachGraveyardChosen.key();
     let chosen_target = TargetAst::Tagged(chosen_tag.clone(), span_from_tokens(shuffle_sentence));
 
     Ok(Some(vec![EffectAst::ForEachPlayer {

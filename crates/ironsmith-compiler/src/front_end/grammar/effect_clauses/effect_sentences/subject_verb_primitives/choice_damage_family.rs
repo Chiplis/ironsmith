@@ -163,9 +163,14 @@ pub fn parse_sentence_exile_multi_target(
         if let Some(surface) = crate::util::source_reference_surface_for_words(&first_words)
             .or_else(|| crate::util::this_source_surface_for_words(&first_words))
         {
-            crate::util::record_source_reference_surface(first_clause.span(), surface);
+            TargetAst::Object(
+                ObjectFilter::source_with_surface(surface),
+                None,
+                first_clause.span(),
+            )
+        } else {
+            TargetAst::Source(first_clause.span())
         }
-        TargetAst::Source(first_clause.span())
     } else {
         parse_target_phrase(first_clause.tokens())?
     };
@@ -585,7 +590,10 @@ pub fn parse_sentence_damage_unless_controller_has_source_deal_damage(
     };
     let deal_tail = deal_tail_clause.tokens();
     let deal_words = deal_tail_clause.word_refs();
-    let alt_amount = if deal_words.starts_with(&["damage", "to", "them", "equal", "to"]) {
+    let alt_amount = if crate::word_primitives::parse_sequence_prefix(
+        &deal_words,
+        &["damage", "to", "them", "equal", "to"],
+    ) {
         let amount_tokens = deal_tail.get(5..).unwrap_or_default();
         let Some((amount, used)) = parse_value(amount_tokens) else {
             return Ok(None);
@@ -682,250 +690,10 @@ pub fn parse_sentence_damage_to_that_player_unless_enchanted_attacked(
     }]))
 }
 
-pub fn parse_sentence_unless_pays(
-    clause: SubjectVerbPrimitiveClause<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    // This causative alternative is an action choice, not a payment. Keep it
-    // ahead of the broad unless parser even when a caller reaches this rule
-    // through a generic conditional-dispatch path.
-    if let Some(effects) = parse_sentence_damage_unless_controller_has_source_deal_damage(clause)? {
-        return Ok(Some(effects));
-    }
-    let Some(shape) = choice_shapes::parse_unless_sentence_shape(clause.tokens()) else {
-        return Ok(None);
-    };
-    let unless_idx = shape.unless_token;
-
-    if unless_idx == 0 {
-        let Some((unless_clause, effect_clause)) = clause.split_once_on_comma() else {
-            return Ok(None);
-        };
-        if effect_clause.is_empty() {
-            return Ok(None);
-        }
-
-        let effects = parse_effect_chain(effect_clause.tokens())?;
-        if effects.is_empty() {
-            return Ok(None);
-        }
-
-        if let Some(unless_effect) = try_build_unless(effects, unless_clause, 0)? {
-            return Ok(Some(vec![unless_effect]));
-        }
-        return Ok(None);
-    }
-
-    let before_unless_clause = SubjectVerbPrimitiveClause::new(shape.action_tokens);
-    let before_words = before_unless_clause.word_refs();
-
-    if choice_shapes::first_choice_damage_word_is(&before_words, "counter") {
-        return Ok(None);
-    }
-    if choice_shapes::is_create_token_sacrifice_counter_shape(&before_unless_clause.word_refs()) {
-        return Ok(None);
-    }
-
-    // In `A, then B unless you pay C`, only the final action B is replaced
-    // by the payment. Parsing the entire prefix as the UnlessPays body both
-    // weakens the temporal boundary and lets a prefix-tolerant parser claim A
-    // while silently dropping B. Split only on the grammar-proven comma/then
-    // boundary, retain every earlier action, and wrap the final action in the
-    // payment choice.
-    let comma_then_segments =
-        super::super::lex_chain_helpers::split_segments_on_comma_then_lexed(vec![
-            shape.action_tokens,
-        ]);
-    if comma_then_segments.len() > 1 {
-        let (last, leading) = comma_then_segments
-            .split_last()
-            .expect("comma/then split has at least two segments");
-        let mut effects = Vec::new();
-        for segment in leading {
-            effects.extend(parse_effect_chain(segment)?);
-        }
-        let final_effects = parse_effect_chain(last)?;
-        if effects.is_empty() || final_effects.is_empty() {
-            return Ok(None);
-        }
-        let Some(unless_effect) = try_build_unless(final_effects, clause, unless_idx)? else {
-            return Ok(None);
-        };
-        effects.push(unless_effect);
-        return Ok(Some(effects));
-    }
-
-    let sentence_words = clause.word_refs();
-    if let Some(special) =
-        choice_shapes::parse_each_opponent_return_unless_draw_shape(&sentence_words)
-    {
-        let Some(target_clause) = clause
-            .after_words(special.target_start_word)
-            .and_then(|tail| {
-                tail.before_word(
-                    special
-                        .target_end_word
-                        .saturating_sub(special.target_start_word),
-                )
-            })
-            .map(SubjectVerbPrimitiveClause::trimmed)
-        else {
-            return Ok(None);
-        };
-        let target = parse_target_phrase(target_clause.tokens())?;
-        return Ok(Some(vec![EffectAst::ForEachOpponent {
-            effects: vec![
-                EffectAst::subject_verb_target_only(target),
-                EffectAst::UnlessAction {
-                    effects: vec![EffectAst::subject_verb_return_to_hand(
-                        TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                        false,
-                    )],
-                    alternative: vec![EffectAst::subject_verb(
-                        SubjectVerbRoleAst::AffectedPlayer,
-                        PlayerAst::You,
-                        SubjectVerbActionAst::Draw {
-                            count: Value::Fixed(1),
-                        },
-                    )],
-                    player: PlayerAst::ItsController,
-                },
-            ],
-        }]));
-    }
-
-    let each_prefix = choice_shapes::parse_choice_damage_scope(&before_unless_clause.word_refs());
-    if let Some(prefix_kind) = each_prefix {
-        let inner_clause = before_unless_clause
-            .after_words(2)
-            .unwrap_or_else(|| before_unless_clause.from(2));
-        if let Ok(inner_effects) = parse_effect_chain(inner_clause.tokens())
-            && !inner_effects.is_empty()
-            && let Some(unless_effect) = try_build_unless(inner_effects, clause, unless_idx)?
-        {
-            let wrapper = match prefix_kind {
-                choice_shapes::ChoiceDamageScope::Opponent => EffectAst::ForEachOpponent {
-                    effects: vec![unless_effect],
-                },
-                choice_shapes::ChoiceDamageScope::Player => EffectAst::ForEachPlayer {
-                    effects: vec![unless_effect],
-                },
-            };
-            return Ok(Some(vec![wrapper]));
-        }
-        return Ok(None);
-    }
-
-    let effect_clause = before_unless_clause;
-    if let Some((timing_start_word, _timing_end_word, step, player)) =
-        delayed_next_step_marker(effect_clause)
-    {
-        let Some(delayed_effect_clause) = effect_clause
-            .before_word(timing_start_word)
-            .map(SubjectVerbPrimitiveClause::trimmed)
-        else {
-            return Ok(None);
-        };
-        if delayed_effect_clause.is_empty() {
-            return Ok(None);
-        }
-        let delayed_effects = parse_effect_chain(delayed_effect_clause.tokens())?;
-        if delayed_effects.is_empty() {
-            return Ok(None);
-        }
-        if let Some(unless_effect) = try_build_unless(delayed_effects, clause, unless_idx)? {
-            return Ok(Some(vec![wrap_delayed_next_step_unless_pays(
-                step,
-                player,
-                vec![unless_effect],
-            )]));
-        }
-    }
-
-    let effects = parse_effect_chain(effect_clause.tokens())?;
-    if effects.is_empty() {
-        return Ok(None);
-    }
-
-    if let Some(unless_effect) = try_build_unless(effects, clause, unless_idx)? {
-        return Ok(Some(vec![unless_effect]));
-    }
-    Ok(None)
-}
-
 #[cfg(test)]
-mod opponent_choice_target_tests {
-    use super::*;
-    use crate::lexer::lex_line;
+#[path = "choice_damage_family_inline_opponent_choice_target_tests.rs"]
+mod opponent_choice_target_tests;
 
-    #[test]
-    fn damage_unless_participant_places_counter_stays_one_typed_choice() {
-        let tokens = lex_line(
-            "This enchantment deals 3 damage to that player unless the player puts a -1/-1 counter on a creature they control.",
-            0,
-        )
-        .expect("damage-unless clause should lex");
-        let shape =
-            choice_shapes::parse_unless_sentence_shape(&tokens).expect("unless sentence shape");
-        let prefix = parse_effect_chain(shape.action_tokens)
-            .expect("damage prefix should parse independently");
-        assert!(!prefix.is_empty(), "damage prefix should not be empty");
-        let built = try_build_unless(
-            prefix,
-            SubjectVerbPrimitiveClause::new(&tokens),
-            shape.unless_token,
-        )
-        .expect("payment tail should parse");
-        assert!(
-            built.is_some(),
-            "payment tail should form an unless wrapper"
-        );
-        let parsed = parse_sentence_unless_pays(SubjectVerbPrimitiveClause::new(&tokens))
-            .expect("damage-unless clause should parse")
-            .expect("unless parser should claim the complete clause");
-        assert!(
-            matches!(parsed.as_slice(), [EffectAst::UnlessPays { .. }]),
-            "expected one typed unless-payment around the damage: {parsed:#?}"
-        );
-    }
-
-    #[test]
-    fn multi_target_destroy_keeps_opponent_chooser_on_second_target() {
-        let tokens = lex_line(
-            "Destroy target nonbasic land you don't control and target nonbasic land of an opponent's choice you don't control.",
-            0,
-        )
-        .expect("destroy pair should lex");
-        let parsed = parse_sentence_destroy_multi_target(SubjectVerbPrimitiveClause::new(&tokens))
-            .expect("destroy pair should parse")
-            .expect("multi-target destroy rule should claim the sentence");
-        let [EffectAst::Coordinated { effects, .. }] = parsed.as_slice() else {
-            panic!("expected one coordinated destroy pair: {parsed:#?}");
-        };
-        let [_, EffectAst::Sequence { effects: chosen }] = effects.as_slice() else {
-            panic!("the second destroy must retain its delegated choice: {effects:#?}");
-        };
-        let [
-            EffectAst::SubjectVerb(target_only),
-            EffectAst::SubjectVerb(destroy),
-        ] = chosen.as_slice()
-        else {
-            panic!("expected target declaration followed by destroy: {chosen:#?}");
-        };
-        assert_eq!(target_only.subject.role, SubjectVerbRoleAst::Chooser);
-        assert_eq!(target_only.subject.player, PlayerAst::Opponent);
-        assert!(matches!(
-            target_only.action,
-            SubjectVerbActionAst::TargetOnly {
-                explicit_declaration: true,
-                ..
-            }
-        ));
-        assert!(matches!(
-            destroy.action,
-            SubjectVerbActionAst::Destroy {
-                target: TargetAst::Tagged(_, _),
-                ..
-            }
-        ));
-    }
-}
+#[path = "choice_damage_family/resource_programs.rs"]
+mod resource_programs;
+pub use resource_programs::parse_sentence_unless_pays;

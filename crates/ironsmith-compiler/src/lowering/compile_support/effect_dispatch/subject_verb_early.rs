@@ -212,6 +212,64 @@ pub(super) fn compile_subject_verb_early(
             vec![Effect::emit_keyword_action(*action, *amount)],
             Vec::new(),
         )),
+        SubjectVerbActionAst::ReorderTopPlanarDeck { count } => Ok((
+            vec![Effect::new(
+                crate::effects::ReorderTopPlanarDeckEffect::you(*count),
+            )],
+            Vec::new(),
+        )),
+        SubjectVerbActionAst::ReturnSourceTransformedFromExile => Ok((
+            vec![
+                Effect::new(
+                    crate::effects::MoveToZoneEffect::new(
+                        ChooseSpec::Source,
+                        Zone::Battlefield,
+                        false,
+                    )
+                    .under_owner_control()
+                    .transfer_exiled_with_source_links(),
+                ),
+                Effect::transform(ChooseSpec::Source),
+            ],
+            Vec::new(),
+        )),
+        SubjectVerbActionAst::Reconfigure { target } => {
+            compile_effect_for_target(target, ctx, |spec| {
+                Effect::new(crate::effects::ReconfigureEffect::new(spec))
+            })
+        }
+        SubjectVerbActionAst::CumulativeUpkeep { cost } => {
+            let total_cost =
+                crate::lowering::cost_materialization::materialize_compiler_core_total_cost(cost)?;
+            let payment_effects = crate::costs::total_cost_to_payment_effects(&total_cost);
+            Ok((
+                vec![Effect::cumulative_upkeep(
+                    payment_effects,
+                    PlayerFilter::You,
+                    vec![Effect::sacrifice_source()],
+                )],
+                Vec::new(),
+            ))
+        }
+        SubjectVerbActionAst::Casualty { power } => {
+            let mut creature_filter = ObjectFilter::creature().you_control();
+            creature_filter.power =
+                Some(crate::filter::Comparison::GreaterThanOrEqual(*power as i32));
+            Ok((
+                vec![Effect::may(vec![
+                    Effect::sacrifice(creature_filter, 1),
+                    Effect::with_id(
+                        0,
+                        Effect::new(crate::effects::CopySpellEffect::single(ChooseSpec::Source)),
+                    ),
+                    Effect::may_choose_new_targets_player(
+                        crate::effect::EffectId(0),
+                        PlayerFilter::You,
+                    ),
+                ])],
+                Vec::new(),
+            ))
+        }
         SubjectVerbActionAst::Amass { subtype, amount } => {
             let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
             let mut effect = Effect::amass(*subtype, amount);
@@ -398,7 +456,7 @@ pub(super) fn compile_subject_verb_early(
             membership_filter
                 .tagged_constraints
                 .push(TaggedObjectConstraint {
-                    tag: TagKey::from("__it__"),
+                    tag: crate::tag::CompilerReferenceTag::It.key(),
                     relation: TaggedOpbjectRelation::SameStableId,
                 });
             let in_it = Condition::TaggedObjectMatches(TagKey::from(IT_TAG), membership_filter);

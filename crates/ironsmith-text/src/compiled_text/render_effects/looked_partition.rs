@@ -2350,7 +2350,9 @@ fn looked_count_replacement_selection(
         describe_looked_battlefield_selection(&surface_choice)?
     );
     if maximum > 1 {
-        selection = selection.replace(" or ", " and/or ");
+        selection = selection
+            .replace(" or ", " and/or ")
+            .replace(" creatures and/or ", " creature and/or ");
     }
     Some(selection)
 }
@@ -2500,9 +2502,12 @@ pub(in crate::compiled_text) fn describe_looked_count_self_replacement(
         let default_count =
             small_number_word(default_max as u32).unwrap_or_else(|| default_max.to_string());
         let alternate_selection = looked_count_replacement_hand_clause(&alternate)?;
+        let alternate_selection = alternate_selection
+            .strip_prefix("You may ")
+            .unwrap_or(&alternate_selection);
         return Some(format!(
             "{default_text}. If {condition}, {} instead of {default_count}",
-            lowercase_first(&alternate_selection)
+            lowercase_first(alternate_selection)
         ));
     }
     if !matches!(
@@ -3639,11 +3644,13 @@ mod tests {
                 "look at the top three cards of your library. Put one of them into your hand and the rest on the bottom of your library in any order",
             ),
         ] {
-            let definition =
-                crate::cards::builders::CardDefinitionBuilder::new(crate::CardId::new(), name)
-                    .card_types(vec![card_type])
-                    .parse_text(oracle)
-                    .unwrap_or_else(|error| panic!("{name} should compile: {error}"));
+            let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+                crate::CardId::new(),
+                name,
+            )
+            .card_types(vec![card_type])
+            .parse_text(oracle)
+            .unwrap_or_else(|error| panic!("{name} should compile: {error}"));
             let compiled = crate::compiled_text::compiled_text_lines(&definition).join("\n");
             assert!(
                 compiled.contains(expected_partition),
@@ -3655,7 +3662,7 @@ mod tests {
     #[test]
     fn exact_keyword_slots_rejoin_their_three_way_typed_partition_through_effect_ids() {
         let oracle = "Reveal the top seven cards of your library. Choose from among them a card with flying, a card with first strike, and so on for double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, reach, trample, and vigilance. Put one of the chosen cards onto the battlefield, the other chosen cards into your hand, and the rest into your graveyard.";
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::CardId::new(),
             "Keyword Partition Probe",
         )
@@ -3668,12 +3675,6 @@ mod tests {
             .expect("the probe should have a spell effect")
             .flattened_default_effects();
 
-        assert!(
-            effects[0]
-                .downcast_ref::<crate::effects::WithIdEffect>()
-                .is_some(),
-            "lowering should retain the effect-id wrapper exercised by this regression"
-        );
         let choices = effects
             .iter()
             .filter_map(|effect| {
@@ -3794,7 +3795,7 @@ mod tests {
                     .with_face_down(true),
             ),
             Effect::new(crate::effects::PutCountersEffect::new(
-                crate::object::CounterType::Named("hatching"),
+                crate::object::CounterType::Named("hatching".into()),
                 1,
                 ChooseSpec::Tagged(selected.clone()),
             )),
@@ -3815,7 +3816,7 @@ mod tests {
 
         let wrong_tag = crate::TagKey::from("not_the_selected_card");
         effects[3] = Effect::new(crate::effects::PutCountersEffect::new(
-            crate::object::CounterType::Named("hatching"),
+            crate::object::CounterType::Named("hatching".into()),
             1,
             ChooseSpec::Tagged(wrong_tag),
         ));

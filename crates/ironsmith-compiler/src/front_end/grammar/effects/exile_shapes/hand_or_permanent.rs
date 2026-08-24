@@ -80,112 +80,22 @@ fn each_opponent_exiles(input: &mut LexStream<'_>) -> WResult<()> {
         .parse_next(input)
 }
 
-fn each_player_or_opponent_exiles(input: &mut LexStream<'_>) -> WResult<EachPlayerExileGroup> {
-    primitives::kw("each").parse_next(input)?;
-    let group = alt((
-        primitives::kw("player").value(EachPlayerExileGroup::Player),
-        primitives::kw("players").value(EachPlayerExileGroup::Player),
-        primitives::kw("opponent").value(EachPlayerExileGroup::Opponent),
-        primitives::kw("opponents").value(EachPlayerExileGroup::Opponent),
-    ))
-    .parse_next(input)?;
-    alt((primitives::kw("exile"), primitives::kw("exiles")))
-        .void()
-        .parse_next(input)?;
-    Ok(group)
-}
-
-fn and_or(input: &mut LexStream<'_>) -> WResult<()> {
-    alt((
-        primitives::kw("and/or").void(),
-        primitives::phrase(&["and", "or"]),
-    ))
-    .parse_next(input)
-}
-
-fn counted_permanents_and_or_hand_cards(input: &mut LexStream<'_>) -> WResult<()> {
-    primitives::kw("x").parse_next(input)?;
-    alt((primitives::kw("permanent"), primitives::kw("permanents")))
-        .void()
-        .parse_next(input)?;
-    permanent_controller.parse_next(input)?;
-    alt((primitives::kw("control"), primitives::kw("controls")))
-        .void()
-        .parse_next(input)?;
-    and_or.parse_next(input)?;
-    alt((primitives::kw("card"), primitives::kw("cards")))
-        .void()
-        .parse_next(input)?;
-    primitives::kw("from").parse_next(input)?;
-    hand_owner.parse_next(input)?;
-    primitives::kw("hand").parse_next(input)?;
-    finish_non_words(input)
-}
-
-pub fn is_exile_hand_or_permanent_choice_shape(tokens: &[OwnedLexToken]) -> bool {
-    primitives::parse_all(
-        tokens,
-        hand_or_permanent_choice,
-        "exile-hand-or-permanent-choice",
-    )
-    .is_ok()
-}
-
-pub fn parse_each_opponent_exile_choice_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<EachOpponentExileChoiceShape> {
-    let ((), choice) = primitives::parse_prefix(tokens, each_opponent_exiles)?;
-    is_exile_hand_or_permanent_choice_shape(choice).then(|| EachOpponentExileChoiceShape {
-        choice: choice.to_vec(),
-    })
-}
-
-pub fn parse_each_player_exile_counted_hand_permanent_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<EachPlayerExileCountedHandPermanentShape> {
-    let mut input = LexStream::new(tokens);
-    let group = each_player_or_opponent_exiles.parse_next(&mut input).ok()?;
-    counted_permanents_and_or_hand_cards
-        .parse_next(&mut input)
-        .ok()?;
-    input
-        .is_empty()
-        .then_some(EachPlayerExileCountedHandPermanentShape { group })
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::lexer::lex_line;
+#[path = "hand_or_permanent_inline_tests.rs"]
+mod tests;
 
-    fn lex(raw: &str) -> Vec<OwnedLexToken> {
-        lex_line(raw, 0).unwrap()
-    }
-
-    #[test]
-    fn parses_each_opponent_hand_or_permanent_choice() {
-        let parsed = parse_each_opponent_exile_choice_shape(&lex(
-            "Each opponent exiles a card from their hand or a permanent they control",
-        ))
-        .unwrap();
-        assert!(is_exile_hand_or_permanent_choice_shape(&parsed.choice));
-        assert!(is_exile_hand_or_permanent_choice_shape(&lex(
-            "card from that player's hand or permanent that player controls"
-        )));
-    }
-
-    #[test]
-    fn parses_each_player_counted_permanents_and_or_hand_cards() {
-        let parsed = parse_each_player_exile_counted_hand_permanent_shape(&lex(
-            "Each player exiles X permanents they control and/or cards from their hand",
-        ))
-        .unwrap();
-        assert_eq!(parsed.group, EachPlayerExileGroup::Player);
-
-        let split_connector = parse_each_player_exile_counted_hand_permanent_shape(&lex(
-            "Each opponent exiles X permanents they control and or cards from their hand",
-        ))
-        .unwrap();
-        assert_eq!(split_connector.group, EachPlayerExileGroup::Opponent);
-    }
-}
+#[path = "hand_or_permanent/reference_programs.rs"]
+mod reference_programs;
+use reference_programs::each_player_or_opponent_exiles;
+pub use reference_programs::parse_each_player_exile_counted_hand_permanent_shape;
+#[path = "hand_or_permanent/choice_programs.rs"]
+mod choice_programs;
+pub use choice_programs::{
+    is_exile_hand_or_permanent_choice_shape, parse_each_opponent_exile_choice_shape,
+};
+#[path = "hand_or_permanent/library_programs.rs"]
+mod library_programs;
+use library_programs::counted_permanents_and_or_hand_cards;
+#[path = "hand_or_permanent/core_programs.rs"]
+mod core_programs;
+use core_programs::and_or;

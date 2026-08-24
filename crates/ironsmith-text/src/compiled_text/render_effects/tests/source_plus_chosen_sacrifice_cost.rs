@@ -8,17 +8,19 @@ fn source_plus_any_number_sacrifice_renders_as_one_compound_cost() {
         .in_zone(Zone::Battlefield);
     let cost = crate::cost::TotalCost::from_costs(vec![
         crate::costs::Cost::sacrifice_self(),
-        crate::costs::Cost::validated_effect(Effect::choose_objects(
+        crate::costs::Cost::try_from_runtime_effect(Effect::choose_objects(
             chosen,
             ChoiceCount::any_number(),
             PlayerFilter::You,
             tag.clone(),
-        )),
-        crate::costs::Cost::validated_effect(Effect::sacrifice_player(
+        ))
+        .expect("object choice should be a valid cost effect"),
+        crate::costs::Cost::try_from_runtime_effect(Effect::sacrifice_player(
             ObjectFilter::tagged(tag.clone()),
             Value::Count(ObjectFilter::tagged(tag)),
             PlayerFilter::You,
-        )),
+        ))
+        .expect("sacrifice should be a valid cost effect"),
     ]);
 
     assert_eq!(
@@ -34,7 +36,8 @@ fn chosen_set_then_source_sacrifice_renders_in_authored_order() {
         .you_control()
         .in_zone(Zone::Battlefield);
     let cost = crate::cost::TotalCost::from_costs(vec![
-        crate::costs::Cost::validated_effect(Effect::sacrifice(lands, 2)),
+        crate::costs::Cost::try_from_runtime_effect(Effect::sacrifice(lands, 2))
+            .expect("sacrifice should be a valid cost effect"),
         crate::costs::Cost::sacrifice_self(),
     ]);
 
@@ -46,14 +49,16 @@ fn chosen_set_then_source_sacrifice_renders_in_authored_order() {
 
 #[test]
 fn two_ordinary_sacrifice_costs_do_not_inherit_the_source_compactor() {
-    let land = crate::costs::Cost::validated_effect(Effect::sacrifice(
+    let land = crate::costs::Cost::try_from_runtime_effect(Effect::sacrifice(
         ObjectFilter::default().with_type(CardType::Land),
         1,
-    ));
-    let artifact = crate::costs::Cost::validated_effect(Effect::sacrifice(
+    ))
+    .expect("land sacrifice should be a valid cost effect");
+    let artifact = crate::costs::Cost::try_from_runtime_effect(Effect::sacrifice(
         ObjectFilter::default().with_type(CardType::Artifact),
         1,
-    ));
+    ))
+    .expect("artifact sacrifice should be a valid cost effect");
     let cost = crate::cost::TotalCost::from_costs(vec![land, artifact]);
 
     assert_eq!(
@@ -132,11 +137,13 @@ fn source_plus_any_number_sacrifice_preserves_the_result_set() {
                   {T}, Sacrifice this artifact and any number of creatures you control: \
                   This artifact deals X damage to any target, where X is the total power of the \
                   creatures sacrificed this way, then exile this artifact and those creature cards.";
-    let definition =
-        crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Sword of the Ages")
-            .card_types(vec![CardType::Artifact])
-            .parse_text(oracle)
-            .expect("source-plus-chosen sacrifice ability should parse");
+    let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(),
+        "Sword of the Ages",
+    )
+    .card_types(vec![CardType::Artifact])
+    .parse_text(oracle)
+    .expect("source-plus-chosen sacrifice ability should parse");
 
     let debug = format!("{definition:#?}");
     assert!(

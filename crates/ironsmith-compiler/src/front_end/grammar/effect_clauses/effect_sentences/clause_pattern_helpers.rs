@@ -93,10 +93,9 @@ pub fn parse_double_counters_clause(
             surface,
         } => {
             let span = span_from_tokens(holder_tokens);
-            crate::util::record_source_reference_surface(span, surface);
             EffectAst::subject_verb_double_counters_on_target(
                 shape.counter_type,
-                TargetAst::Source(span),
+                TargetAst::Object(ObjectFilter::source_with_surface(surface), None, span),
             )
         }
         clause_shapes::DoubleCounterHolderShape::Target(holder_tokens) => {
@@ -194,11 +193,11 @@ pub fn parse_copy_spell_clause(
 ) -> Result<Option<EffectAst>, CardTextError> {
     fn parse_copy_for_each_count(tokens: &[OwnedLexToken]) -> Result<Value, CardTextError> {
         let words = crate::lexer::token_word_refs(tokens);
-        let among = words.iter().position(|word| *word == "among");
+        let among = crate::slice_primitives::select_position(&words, |word| *word == "among");
         if let Some(among) = among
-            && matches!(
+            && crate::word_primitives::parse_any_sequence_complete(
                 &words[..among],
-                ["kind", "of", "counter"] | ["kinds", "of", "counters"]
+                &[&["kind", "of", "counter"], &["kinds", "of", "counters"]],
             )
         {
             let filter_tokens = LexedClause::new(tokens)
@@ -226,7 +225,7 @@ pub fn parse_copy_spell_clause(
                 )
         {
             let mut value = Value::CommanderCastCount(player);
-            if words.windows(2).any(|window| window == ["a", "commander"]) {
+            if crate::word_primitives::sequence_occurs(&words, &["a", "commander"]) {
                 value = value.with_surface_hint(
                     ironsmith_core::ValueSurfaceHint::IndefiniteCommanderReference,
                 );
@@ -292,12 +291,14 @@ pub fn parse_copy_spell_clause(
     fn target_from_shape(shape: clause_shapes::CopyTargetShape<'_>) -> Option<TargetAst> {
         match shape {
             clause_shapes::CopyTargetShape::Source => Some(TargetAst::Source(None)),
-            clause_shapes::CopyTargetShape::Triggering => {
-                Some(TargetAst::Tagged(TagKey::from("triggering"), None))
-            }
-            clause_shapes::CopyTargetShape::TriggeringSource => {
-                Some(TargetAst::Tagged(TagKey::from("triggering_source"), None))
-            }
+            clause_shapes::CopyTargetShape::Triggering => Some(TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::Triggering.key(),
+                None,
+            )),
+            clause_shapes::CopyTargetShape::TriggeringSource => Some(TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::TriggeringSource.key(),
+                None,
+            )),
             clause_shapes::CopyTargetShape::TaggedIt => {
                 Some(TargetAst::Tagged(TagKey::from(IT_TAG), None))
             }
@@ -1278,13 +1279,12 @@ pub fn parse_can_attack_as_though_no_defender_clause(
     // parser own those compound sentences and reserve this helper for a real
     // standalone subject.
     let subject_words = crate::lexer::parser_token_word_refs(subject_tokens);
-    if subject_words
-        .iter()
-        .any(|word| matches!(*word, "get" | "gets" | "gain" | "gains"))
-    {
+    if crate::slice_primitives::contains_any(&subject_words, &["get", "gets", "gain", "gains"]) {
         return Ok(None);
     }
-    let target = if subject_tokens.is_empty() || subject_words.as_slice() == ["it"] {
+    let target = if subject_tokens.is_empty()
+        || crate::word_primitives::parse_sequence_complete(&subject_words, &["it"])
+    {
         TargetAst::Tagged(TagKey::from(IT_TAG), Some(TextSpan::synthetic()))
     } else if let Ok(target) = parse_target_phrase(subject_tokens) {
         target
@@ -1317,7 +1317,8 @@ pub fn parse_prevent_next_time_damage_sentence(
         let compatible_reference = match shape.destroyed_reference {
             clause_shapes::DestroyDamageTargetReference::It => true,
             clause_shapes::DestroyDamageTargetReference::Creature => {
-                target_filter.card_types.as_slice() == [CardType::Creature]
+                target_filter.card_types.len() == 1
+                    && target_filter.card_types.first() == Some(&CardType::Creature)
             }
             clause_shapes::DestroyDamageTargetReference::Permanent => {
                 !target_filter.card_types.is_empty() || !target_filter.subtypes.is_empty()
@@ -2025,16 +2026,9 @@ pub fn parse_keyword_mechanic_clause(
                 clause_shapes::KeywordSubjectShape::Source(subject_tokens) => {
                     let span = span_from_tokens(subject_tokens);
                     let subject_words = crate::lexer::token_word_refs(subject_tokens);
-                    if let Some(
-                        surface @ (crate::target::SourceReferenceSurface::FullName(_)
-                        | crate::target::SourceReferenceSurface::ShortName(_)),
-                    ) = crate::util::source_reference_surface_for_words(&subject_words)
+                    if let Some(surface) =
+                        crate::util::source_reference_surface_for_words(&subject_words)
                     {
-                        crate::util::record_source_reference_surface(span, surface.clone());
-                        // The source-reference context's span map exists only
-                        // during parsing. Carry the grammar-proven proper-name
-                        // surface on the typed source filter as well so public
-                        // lowering can preserve it without consulting raw text.
                         TargetAst::Object(ObjectFilter::source_with_surface(surface), None, span)
                     } else {
                         TargetAst::Source(span)
@@ -2108,7 +2102,7 @@ pub fn parse_connive_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst
     let target_tokens = match shape.subject {
         clause_shapes::ConniveSubjectShape::ConvokedThisSpell => {
             return Ok(Some(EffectAst::ForEachTagged {
-                tag: TagKey::from("convoked_this_spell"),
+                tag: crate::tag::CompilerReferenceTag::ConvokedThisSpell.key(),
                 effects: vec![EffectAst::subject_verb_connive_iterated()],
             }));
         }

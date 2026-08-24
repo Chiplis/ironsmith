@@ -106,7 +106,9 @@ pub use source_references::{
     strip_leaf_source_possessive_suffix,
 };
 pub use source_references::{
-    LeafSourceReferenceAlias, parse_leaf_source_reference_aliases_for_name,
+    LeafSourceReferenceAlias, parse_leaf_source_reference_alias_words,
+    parse_leaf_source_reference_aliases_for_name,
+    parse_leaf_source_reference_possessive_alias_words,
 };
 pub use targets::parse_leaf_target_head_tokens;
 

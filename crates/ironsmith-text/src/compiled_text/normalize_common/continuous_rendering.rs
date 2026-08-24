@@ -1474,26 +1474,6 @@ pub(crate) fn describe_apply_continuous_clauses(
     describe_apply_continuous_clauses_with_self_subject(effect, plural_target, self_subject)
 }
 
-/// Strip the self-referential subject off a rule-restriction surface so it can be
-/// rendered as a predicate on the object the effect already names. Returns `None`
-/// unless the surface is exactly "<self pronoun> <prohibition>", which is the only
-/// shape where dropping the subject cannot change who the restriction binds.
-fn restriction_predicate_about_self(display: &str) -> Option<String> {
-    let trimmed = display.trim().trim_end_matches(['.', '!', '?']);
-    let rest = ["it ", "they "]
-        .iter()
-        .find_map(|pronoun| trimmed.strip_prefix(*pronoun))?;
-    // Anything beyond a bare prohibition (a nested trigger, a second sentence, an
-    // activated ability) still belongs in quotes as an ability the object gains.
-    if rest.contains(". ") || rest.contains(':') || rest.contains('"') {
-        return None;
-    }
-    ["can't ", "cannot ", "doesn't ", "does not "]
-        .iter()
-        .any(|prohibition| rest.starts_with(*prohibition))
-        .then(|| rest.to_string())
-}
-
 pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
     effect: &crate::effects::ApplyContinuousEffect,
     plural_target: bool,
@@ -2517,7 +2497,16 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
                 ability_text.push(lowercase_first(&ability.display()));
             }
             crate::continuous::Modification::AddAbilityGeneric(ability) => {
-                has_quoted_generic_ability = true;
+                // A bare keyword is quoted only because it travels through the
+                // generic ability model; it is still a clause fragment, so its
+                // duration stays at the end. Sentence-shaped granted abilities
+                // retain the leading-duration form used to keep punctuation
+                // inside their quotes coherent.
+                has_quoted_generic_ability = !matches!(
+                    &ability.kind,
+                    crate::ability::AbilityKind::Static(static_ability)
+                        if static_ability.is_keyword()
+                );
                 let mut rendered = capitalize_first(&describe_inline_ability_with_self_subject(
                     ability,
                     "this creature",
@@ -2870,7 +2859,7 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
         // of the authored-leading marker, keep the duration after the quoted
         // granted ability; `apply_continuous_text_with_tail` will move the
         // quote's sentence period outside before appending it.
-        apply_continuous_text_with_tail(text, tail, false)
+        apply_continuous_text_with_tail(text, tail, has_quoted_generic_ability)
     };
     if let Some(where_clause) = pt_where_clause {
         text.push_str(", where X is ");

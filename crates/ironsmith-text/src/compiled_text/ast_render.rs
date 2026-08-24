@@ -2460,7 +2460,10 @@ fn describe_structural_repeated_cascade_grant_pair(
         return None;
     }
 
-    Some((format!("{subject} {verb} \"Cascade, cascade.\""), 2))
+    Some((
+        capitalize_first(&format!("{subject} {verb} \"Cascade, cascade.\"")),
+        2,
+    ))
 }
 
 #[cfg(test)]
@@ -2769,7 +2772,7 @@ mod quoted_static_grant_bundle_tests {
 
     #[test]
     fn complete_static_rules_granted_to_one_filter_render_as_quoted_abilities() {
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Static Grant Probe",
         )
@@ -2790,7 +2793,7 @@ mod quoted_static_grant_bundle_tests {
 
     #[test]
     fn keyword_grants_remain_unquoted() {
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Keyword Grant Probe",
         )
@@ -2806,7 +2809,7 @@ mod quoted_static_grant_bundle_tests {
 
     #[test]
     fn attached_mixed_keyword_and_quoted_grants_restore_one_authored_list() {
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Attached Grant Probe",
         )
@@ -4341,6 +4344,17 @@ fn owned_nonbattlefield_card_union_subject(filter: &ObjectFilter) -> Option<Stri
 /// all-subtypes grant. The three filters retain distinct runtime zones while
 /// the identical subtype family proves the "same is true" relationship.
 fn describe_structural_all_subtypes_scope_ladder(abilities: &[Ability]) -> Option<(String, usize)> {
+    // "The same is true" starts a second authored static sentence. PR-33's
+    // source-line provenance marker therefore sits between the first scope
+    // and the two shared-predicate scopes; bridge only that exact 1 + marker
+    // + 2 layout before applying the ordinary three-member matcher.
+    if let [first, marker, second, third, ..] = abilities
+        && source_line_static_group_count(marker) == Some(2)
+    {
+        let flattened = vec![first.clone(), second.clone(), third.clone()];
+        let (text, consumed) = describe_structural_all_subtypes_scope_ladder(&flattened)?;
+        return (consumed == 3).then_some((text, 4));
+    }
     let [battlefield, stack, nonbattlefield, ..] = abilities else {
         return None;
     };
@@ -4380,7 +4394,7 @@ mod all_subtypes_scope_ladder_tests {
     #[test]
     fn battlefield_spell_and_owned_card_scopes_rejoin_with_same_is_true() {
         let oracle = "Creatures you control are every creature type. The same is true for creature spells you control and creature cards you own that aren't on the battlefield.";
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "All Subtypes Scope Probe",
         )
@@ -4390,7 +4404,9 @@ mod all_subtypes_scope_ladder_tests {
 
         assert_eq!(
             crate::compiled_text::compiled_text_lines(&definition),
-            vec![oracle.to_string()]
+            vec![oracle.to_string()],
+            "{:#?}",
+            definition.abilities,
         );
     }
 }
@@ -4806,14 +4822,18 @@ mod linked_return_enter_window_tests {
 
     #[test]
     fn linked_return_window_rejects_provenance_surface_and_cardinality_near_misses() {
-        for segments in [
+        for (case, segments) in [
             linked_return_segments("other_return", true, ChoiceCount::up_to(1)),
             linked_return_segments("returned_0", false, ChoiceCount::up_to(1)),
             linked_return_segments("returned_0", true, ChoiceCount::exactly(1)),
-        ] {
+        ]
+        .into_iter()
+        .enumerate()
+        {
             assert_eq!(
                 describe_cross_segment_return_then_linked_enter_return_window(&segments, 0),
-                None
+                None,
+                "near-miss case {case}: {segments:#?}"
             );
         }
     }
@@ -4996,7 +5016,7 @@ mod random_source_exiled_owner_hand_window_tests {
     #[test]
     fn parsed_source_linked_choice_keeps_typed_program_and_exact_surface() {
         let oracle = "When Skyship Weatherlight enters, search your library for any number of artifact and/or creature cards, exile them, then shuffle.\n{4}, {T}: Choose a card at random that was exiled with Skyship Weatherlight. Put that card into its owner's hand.";
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Skyship Weatherlight",
         )
@@ -6417,7 +6437,7 @@ mod linked_attachment_death_replacement_surface_tests {
     #[test]
     fn public_three_sentence_route_keeps_shared_creature_antecedent() {
         let oracle = "Linked Attachment Probe deals 5 damage to target creature. Exile up to one target Equipment attached to that creature. If that creature would die this turn, exile it instead.";
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Linked Attachment Probe",
         )
@@ -7922,15 +7942,20 @@ fn describe_cross_segment_reciprocal_characteristic_damage_window(
             {
                 return None;
             }
-            let [choice_effect] = choice_segment.default_effects.as_slice() else {
-                return None;
-            };
-            let choice_sequence = choice_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
-            if choice_sequence.surface != ironsmith_core::SequenceSurface::Coordinated {
-                return None;
-            }
-            let [first_choice, second_choice] = choice_sequence.effects.as_slice() else {
-                return None;
+            let (first_choice, second_choice) = match choice_segment.default_effects.as_slice() {
+                [choice_effect] => {
+                    let choice_sequence =
+                        choice_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+                    if choice_sequence.surface != ironsmith_core::SequenceSurface::Coordinated {
+                        return None;
+                    }
+                    let [first_choice, second_choice] = choice_sequence.effects.as_slice() else {
+                        return None;
+                    };
+                    (first_choice, second_choice)
+                }
+                [first_choice, second_choice] => (first_choice, second_choice),
+                _ => return None,
             };
             let [damage_effect] = damage_segment.default_effects.as_slice() else {
                 return None;
@@ -8077,7 +8102,7 @@ mod reciprocal_characteristic_damage_surface_tests {
     #[test]
     fn parsed_reciprocal_toughness_damage_dispatches_the_exact_two_segment_surface() {
         let oracle = "Choose target creature you control and target creature an opponent controls. Each of those creatures deals damage equal to its toughness to the other.";
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Reciprocal Toughness Damage Probe",
         )
@@ -8849,7 +8874,7 @@ mod cross_segment_shuffle_reveal_repeated_permanent_groups_tests {
     #[test]
     fn public_no_mana_cost_suspend_spell_keeps_authored_order_and_grouping() {
         let oracle = "Suspend 3—{R}{R}\nShuffle all permanents you own into your library, then reveal that many cards from the top of your library. Put all non-Aura permanent cards revealed this way onto the battlefield, then do the same for Aura cards, then put the rest on the bottom of your library in a random order.";
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Shuffle Reveal Groups Probe",
         )
@@ -9248,6 +9273,26 @@ fn describe_cross_segment_exile_then_free_cast_while_exiled_window(
 /// cast-the-copy permission when source-sentence preservation placed them in
 /// adjacent resolution segments. The effect-list renderer requires the exact
 /// shared exile tag, so unrelated permissions cannot be folded together.
+fn graveyard_exile_copy_surface_effect(
+    segment: &crate::resolution::ResolutionSegment,
+) -> Option<(Effect, &[Effect])> {
+    let (last, preceding) = segment.default_effects.split_last()?;
+    if structural_unwrap_render_wrappers(last)
+        .downcast_ref::<crate::effects::CopySpellEffect>()
+        .is_some()
+    {
+        let (exile, provenance) = preceding.split_last()?;
+        return Some((
+            Effect::new(crate::effects::SequenceEffect::coordinated(vec![
+                exile.clone(),
+                last.clone(),
+            ])),
+            provenance,
+        ));
+    }
+    Some((last.clone(), preceding))
+}
+
 fn describe_cross_segment_graveyard_exile_copy_cast_window(
     segments: &[crate::resolution::ResolutionSegment],
     start: usize,
@@ -9260,7 +9305,7 @@ fn describe_cross_segment_graveyard_exile_copy_cast_window(
         return None;
     }
 
-    let (exile_effect, provenance_effects) = exile_segment.default_effects.split_last()?;
+    let (exile_effect, provenance_effects) = graveyard_exile_copy_surface_effect(exile_segment)?;
     if provenance_effects.iter().any(|effect| {
         let inner = structural_unwrap_render_wrappers(effect);
         inner
@@ -9276,10 +9321,10 @@ fn describe_cross_segment_graveyard_exile_copy_cast_window(
         return None;
     };
 
-    super::render_effects::render_graveyard_exile_copy_cast_pair(exile_effect, may_cast_effect)
+    super::render_effects::render_graveyard_exile_copy_cast_pair(&exile_effect, may_cast_effect)
         .or_else(|| {
             super::render_effects::render_conditional_graveyard_exile_copy_cast_pair(
-                exile_effect,
+                &exile_effect,
                 may_cast_effect,
             )
         })
@@ -9307,7 +9352,7 @@ fn describe_cross_segment_graveyard_exile_copy_cast_result_window(
         return None;
     }
 
-    let (exile_effect, provenance_effects) = exile_segment.default_effects.split_last()?;
+    let (exile_effect, provenance_effects) = graveyard_exile_copy_surface_effect(exile_segment)?;
     if provenance_effects.iter().any(|effect| {
         let inner = structural_unwrap_render_wrappers(effect);
         inner
@@ -9338,7 +9383,7 @@ fn describe_cross_segment_graveyard_exile_copy_cast_result_window(
     }
 
     let copy_cast = super::render_effects::render_graveyard_exile_copy_cast_pair(
-        exile_effect,
+        &exile_effect,
         &with_id.effect,
     )?;
     let result_text = describe_effect_list(&result.then);
@@ -9478,10 +9523,11 @@ mod graveyard_exile_copy_cast_window_tests {
     #[test]
     fn public_attack_route_keeps_prowess_and_one_copy_clause() {
         let oracle = "Creatures you control have prowess.\nWhenever Narset attacks, exile target noncreature, nonland card with mana value less than Narset's power from a graveyard and copy it. You may cast the copy without paying its mana cost.";
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Narset, Enlightened Exile",
         )
+        .supertypes(vec![Supertype::Legendary])
         .card_types(vec![CardType::Creature])
         .power_toughness(crate::card::PowerToughness::fixed(3, 4))
         .parse_text(oracle)
@@ -9496,7 +9542,7 @@ mod graveyard_exile_copy_cast_window_tests {
     #[test]
     fn public_crime_trigger_keeps_copy_cast_and_if_you_do_in_one_semantic_program() {
         let oracle = "Whenever you commit a crime, exile up to one target black card from your graveyard and copy it. You may cast the copy. If you do, you lose 2 life.";
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Crime Copy-Cast Probe",
         )
@@ -9829,6 +9875,9 @@ fn describe_cross_segment_locked_set_tap_untap_window(
     let [card_type] = tapped_filter.card_types.as_slice() else {
         return None;
     };
+    if tapped_filter.explicit_card_type_noun() != Some(*card_type) {
+        return None;
+    }
     let mut exact_filter = ObjectFilter::default()
         .with_type(*card_type)
         .in_zone(Zone::Battlefield);
@@ -11339,8 +11388,11 @@ fn describe_cross_segment_treasure_look_exile_permission_window(
     };
     let sequence = structural_unwrap_render_wrappers(sequence_effect)
         .downcast_ref::<crate::effects::SequenceEffect>()?;
-    if sequence.surface != ironsmith_core::SequenceSurface::CommaThen
-        || sequence.result_label.is_some()
+    if !matches!(
+        sequence.surface,
+        ironsmith_core::SequenceSurface::CommaThen
+            | ironsmith_core::SequenceSurface::RepeatedCommaThen
+    ) || sequence.result_label.is_some()
     {
         return None;
     }
@@ -11453,7 +11505,7 @@ mod cross_segment_treasure_look_exile_permission_tests {
     const LINE: &str = "Whenever one or more creatures you control deal combat damage to a player, create a Treasure token, then look at the top card of that player's library and exile it face down. You may cast that card for as long as it remains exiled.";
 
     fn program() -> crate::resolution::ResolutionProgram {
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Treasure Observation Probe",
         )
@@ -11482,7 +11534,7 @@ mod cross_segment_treasure_look_exile_permission_tests {
             )),
             "{exact:#?}"
         );
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Treasure Observation Probe",
         )
@@ -12095,7 +12147,7 @@ mod split_for_players_cross_segment_surface_tests {
     #[test]
     fn sentence_leading_then_keeps_correlated_type_slot_choices_together() {
         let oracle = "For each player, you choose from among the permanents that player controls an artifact, a creature, an enchantment, and a planeswalker. Then each player sacrifices all other nonland permanents they control.";
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Correlated Type Slot Probe",
         )
@@ -12317,7 +12369,7 @@ mod cross_segment_two_target_creature_fight_tests {
     const LINE: &str = "Choose two target creatures that share no creature types. Those creatures fight each other.";
 
     fn parsed_program() -> crate::resolution::ResolutionProgram {
-        crate::cards::builders::CardDefinitionBuilder::new(
+        crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Cross-Segment Fight Probe",
         )
@@ -12333,7 +12385,8 @@ mod cross_segment_two_target_creature_fight_tests {
         let program = parsed_program();
         assert_eq!(
             describe_cross_segment_two_target_creature_fight_program(&program).as_deref(),
-            Some(LINE.trim_end_matches('.'))
+            Some(LINE.trim_end_matches('.')),
+            "{program:#?}"
         );
 
         let mut changed_arity = program;
@@ -13198,7 +13251,9 @@ fn describe_target_player_life_loss_then_gain_and_create_program(
 
     let create_text = describe_effect(create_effect);
     let (create_main, token_ability) = create_text.split_once(". They have ")?;
-    let create_main = create_main.strip_prefix("Create ")?;
+    let create_main = create_main
+        .strip_prefix("You create ")
+        .or_else(|| create_main.strip_prefix("Create "))?;
     let create_main = if let Value::Fixed(count) = create.count {
         let numeric_prefix = format!("{count} ");
         create_main
@@ -13466,7 +13521,8 @@ fn describe_search_partition_count_self_replacement_program(
         small_number_word(default_max as u32).unwrap_or_else(|| default_max.to_string());
     let condition = describe_condition(&branch.condition);
     let rendered = format!(
-        "{default_search_text}, reveal those cards, and put one onto the battlefield tapped and the rest into your hand. Then shuffle. If {condition}, {replacement_search_text} instead of {default_count}"
+        "{}, reveal those cards, and put one onto the battlefield tapped and the rest into your hand. Then shuffle. If {condition}, {replacement_search_text} instead of {default_count}",
+        capitalize_first(default_search_text)
     );
     Some(apply_self_replacement_presentation_label(branch, rendered))
 }
@@ -14940,7 +14996,7 @@ mod chosen_creatures_sacrifice_return_tests {
     use super::*;
 
     fn exact_program() -> crate::resolution::ResolutionProgram {
-        crate::cards::builders::CardDefinitionBuilder::new(
+        crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Chosen Creature Return Probe",
         )
@@ -16334,7 +16390,7 @@ mod reveal_optional_cast_decline_bottom_tests {
 
     fn program() -> crate::resolution::ResolutionProgram {
         let oracle = "At the beginning of your upkeep, reveal the top card of your library. If it's a creature card that shares a creature type with a creature you control, you may cast it without paying its mana cost. If you don't cast it, put it on the bottom of your library.";
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Characteristic Consult Probe",
         )
@@ -20465,7 +20521,7 @@ fn describe_trailing_same_target_fixed_pt_self_replacement(
     }
     Some(format!(
         "{}. That creature{replacement_tail} instead if {condition}",
-        default_text.trim().trim_end_matches('.')
+        capitalize_first(default_text.trim().trim_end_matches('.'))
     ))
 }
 
@@ -22996,7 +23052,7 @@ mod source_line_program_tests {
     fn cleave_card_renderer_preserves_cast_origin_restriction_brackets() {
         let oracle =
             "Cleave {1}{U}{U}\nCounter target spell [that wasn't cast from its owner's hand].";
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Wash Away",
         )
@@ -23013,7 +23069,7 @@ mod source_line_program_tests {
     #[test]
     fn cleave_card_renderer_preserves_mana_value_restriction_brackets() {
         let oracle = "Cleave {4}{W}{B}\nDestroy all creatures [with mana value 2 or less].";
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Path of Peril",
         )
@@ -23046,11 +23102,13 @@ mod source_line_program_tests {
                 "Cleave {5}{W}\nDestroy target [attacking] creature.",
             ),
         ] {
-            let definition =
-                crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), name)
-                    .card_types(vec![card_type])
-                    .parse_text(oracle)
-                    .expect("frozen Cleave card should compile");
+            let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+                crate::ids::CardId::new(),
+                name,
+            )
+            .card_types(vec![card_type])
+            .parse_text(oracle)
+            .expect("frozen Cleave card should compile");
 
             assert_eq!(
                 crate::compiled_text::compiled_text_lines(&definition).join("\n"),
@@ -23838,11 +23896,11 @@ mod source_possessive_tests {
 
     fn card(name: &str, legendary: bool) -> crate::card::Card {
         crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), name)
-            .supertypes(
-                legendary
-                    .then(|| vec![Supertype::Legendary])
-                    .unwrap_or_default(),
-            )
+            .supertypes(if legendary {
+                vec![Supertype::Legendary]
+            } else {
+                Vec::new()
+            })
             .card_types(vec![CardType::Creature])
             .build()
             .card
@@ -26567,7 +26625,7 @@ mod triggering_card_type_exile_permission_tests {
     use super::*;
 
     fn exact_ability() -> Ability {
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Triggering Card Permission Probe",
         )
@@ -27111,19 +27169,16 @@ fn describe_structural_discard_equip(ability: &Ability) -> Option<String> {
     let [segment] = activated.effects.segments.as_slice() else {
         return None;
     };
-    let [attach] = segment.default_effects.as_slice() else {
-        return None;
-    };
-    let attach = attach.downcast_ref::<crate::effects::AttachToEffect>()?;
+    let target = super::render_effects::structural_equip_target(activated)?;
     if discard.count != Value::Fixed(1)
         || discard.player != PlayerFilter::You
         || discard.random
         || discard.any_number
         || discard.card_filter.is_some()
         || activated.timing != crate::ability::ActivationTiming::SorcerySpeed
-        || activated.choices.as_slice() != [attach.target.clone()]
+        || !(activated.choices.is_empty() || activated.choices.as_slice() == [target.clone()])
         || !segment.self_replacements.is_empty()
-        || attach.target
+        || target
             != ChooseSpec::target(ChooseSpec::Object(
                 ObjectFilter::creature().controlled_by(PlayerFilter::You),
             ))
@@ -27214,7 +27269,7 @@ mod pact_and_keyword_pt_ladder_tests {
     #[test]
     fn keyword_pt_ladder_requires_every_typed_branch() {
         let oracle = "At the beginning of each combat, until end of turn, each other creature you control gets +1/+1 if it has flying, +1/+1 if it has first strike, and so on for double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, protection, reach, trample, vigilance, and partner.";
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Keyword P/T Ladder Probe",
         )
@@ -27231,16 +27286,27 @@ mod pact_and_keyword_pt_ladder_tests {
         let AbilityKind::Triggered(triggered) = &mut missing_partner.kind else {
             panic!("expected triggered ability");
         };
-        triggered.effects.segments[0].default_effects.pop();
+        triggered
+            .effects
+            .segments
+            .iter_mut()
+            .rev()
+            .find(|segment| !segment.default_effects.is_empty())
+            .expect("keyword ladder should retain a final effect segment")
+            .default_effects
+            .pop();
+        triggered.effects =
+            crate::resolution::ResolutionProgram::new(triggered.effects.segments.clone());
         assert_eq!(
             describe_structural_each_combat_keyword_pt_ladder(&missing_partner),
             None,
+            "{missing_partner:#?}"
         );
     }
 
     #[test]
     fn pact_surfaces_require_the_complete_typed_program() {
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Pact Surface Probe",
         )
@@ -27251,9 +27317,15 @@ mod pact_and_keyword_pt_ladder_tests {
         assert!(describe_structural_attached_zero_life_rule(&definition.abilities[0]).is_some());
         assert!(
             describe_structural_equipped_draw_reveal_mana_value_pump(&definition.abilities[1])
-                .is_some()
+                .is_some(),
+            "{:#?}",
+            definition.abilities[1]
         );
-        assert!(describe_structural_discard_equip(&definition.abilities[2]).is_some());
+        assert!(
+            describe_structural_discard_equip(&definition.abilities[2]).is_some(),
+            "{:#?}",
+            definition.abilities[2]
+        );
         assert_eq!(
             crate::compiled_text::compiled_text_lines(&definition).join("\n"),
             "As long as this Equipment is attached to a creature, you don't lose the game for having 0 or less life.\nWhenever equipped creature attacks, draw a card and reveal it. The creature gets +X/+X until end of turn and you lose X life, where X is that card's mana value.\nEquip—Discard a card.",
@@ -27306,7 +27378,7 @@ mod each_combat_keyword_grant_ladder_tests {
     #[test]
     fn all_matching_keyword_branches_rejoin_across_direct_and_wrapped_conditions() {
         let oracle = "At the beginning of each combat, creatures you control gain first strike until end of turn if a creature you control has first strike. The same is true for flying, deathtouch, double strike, haste, hexproof, indestructible, lifelink, menace, reach, skulk, trample, and vigilance.";
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Combat Keyword Ladder Probe",
         )
@@ -28709,7 +28781,7 @@ mod source_line_grant_keyword_loss_tests {
     const LINE: &str = "Enchanted creature has defender and loses flying.";
 
     fn parsed_definition() -> crate::CardDefinition {
-        crate::cards::builders::CardDefinitionBuilder::new(
+        crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Attached Keyword Grant-Loss Probe",
         )
@@ -30045,7 +30117,7 @@ mod source_line_keyword_attack_dynamic_anthem_tests {
     const LINE: &str = "Each Skeleton you control has trample, attacks each combat if able, and gets +X/+0, where X is the number of other Skeletons you control.";
 
     fn parsed_definition() -> crate::CardDefinition {
-        crate::cards::builders::CardDefinitionBuilder::new(
+        crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Shared Skeleton Static Probe",
         )
@@ -30090,7 +30162,7 @@ mod source_line_keyword_attack_dynamic_anthem_tests {
     #[test]
     fn public_enchantment_keeps_shared_static_subject_and_token_count_replacement() {
         let oracle = "Each Skeleton you control has trample, attacks each combat if able, and gets +X/+0, where X is the number of other Skeletons you control.\nAt the beginning of your end step, create a tapped 1/1 black Skeleton creature token. If a creature died this turn, create two of those tokens instead.";
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Skeleton Swarm Probe",
         )
@@ -30208,7 +30280,7 @@ mod attached_land_reset_source_group_tests {
     const LINE: &str = "Enchanted land loses all land types and abilities and has \"{T}: Add {C}\" and \"{T}, Pay 1 life: Add one mana of any color.\"";
 
     fn parsed_members() -> Vec<Ability> {
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Attached Land Reset Probe",
         )
@@ -30245,7 +30317,7 @@ mod attached_land_reset_source_group_tests {
 
     #[test]
     fn parsed_land_reset_dispatches_as_one_exact_source_line() {
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Attached Land Reset Probe",
         )
@@ -30254,7 +30326,9 @@ mod attached_land_reset_source_group_tests {
         .expect("attached land reset source line should parse");
         assert_eq!(
             crate::compiled_text::compiled_text_lines(&definition),
-            vec![LINE]
+            vec![LINE],
+            "{:#?}",
+            definition.abilities
         );
     }
 }
@@ -30277,10 +30351,7 @@ fn describe_source_line_graveyard_permission_dynamic_surcharge_group(
     let AbilityKind::Static(surcharge) = &surcharge.kind else {
         return None;
     };
-    let permission_model = permission.compiled_model()?;
-    let ironsmith_core::StaticAbilityPayload::Grants(grant) = &permission_model.payload else {
-        return None;
-    };
+    let grant = permission.grant_spec()?;
     if !matches!(&grant.grantable, ironsmith_core::Grantable::PlayFrom)
         || grant.zone != Zone::Graveyard
         || grant.beneficiary != PlayerFilter::You
@@ -30307,18 +30378,14 @@ fn describe_source_line_graveyard_permission_dynamic_surcharge_group(
         return None;
     }
 
-    let surcharge_model = surcharge.compiled_model()?;
-    let ironsmith_core::StaticAbilityPayload::CostIncrease(increase) = &surcharge_model.payload
-    else {
-        return None;
-    };
+    let increase = surcharge.cost_increase()?;
     if increase.condition.is_some()
         || increase.per_target
         || increase.filter != ObjectFilter::source()
     {
         return None;
     }
-    let (counted, multiplier) = match increase.amount.unhinted() {
+    let (counted, multiplier) = match increase.increase.unhinted() {
         Value::Count(filter) => (filter, 1),
         Value::CountScaled(filter, multiplier) if *multiplier > 0 => (filter, *multiplier),
         _ => return None,
@@ -30380,14 +30447,14 @@ mod source_graveyard_dynamic_surcharge_render_tests {
 
     #[test]
     fn renders_only_matching_source_graveyard_permission_and_counted_tax() {
+        let exact_fixture = fixture(PlayerFilter::You);
         assert_eq!(
-            describe_source_line_graveyard_permission_dynamic_surcharge_group(&fixture(
-                PlayerFilter::You
-            ))
-            .as_deref(),
+            describe_source_line_graveyard_permission_dynamic_surcharge_group(&exact_fixture)
+                .as_deref(),
             Some(
                 "You may cast this creature from your graveyard if you pay {1} more to cast it for each other creature card in your graveyard"
-            )
+            ),
+            "{exact_fixture:#?}"
         );
         assert!(
             describe_source_line_graveyard_permission_dynamic_surcharge_group(&fixture(
@@ -30524,7 +30591,7 @@ mod source_line_grant_loss_tests {
 
     #[test]
     fn labeled_grant_and_all_other_loss_rejoin_one_authored_static_line() {
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Static Grant And Loss Probe",
         )
@@ -31223,7 +31290,7 @@ mod attached_turtle_transform_bundle_tests {
     const LINE: &str = "Enchanted creature is a Turtle with base power and toughness 0/1. It can't attack and loses all abilities. (It also loses all other creature types.)";
 
     fn bundle_members() -> Vec<Ability> {
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Attached Turtle Probe",
         )
@@ -32480,7 +32547,7 @@ mod counter_linked_cross_segment_rendering_tests {
         ] {
             let target_tag = TagKey::from("targeted_0");
             let put = Effect::new(crate::effects::PutCountersEffect::new(
-                CounterType::Named("test"),
+                CounterType::Named("test".into()),
                 Value::Fixed(1),
                 ChooseSpec::target(ChooseSpec::Object(filter)),
             ))
@@ -32497,7 +32564,7 @@ mod counter_linked_cross_segment_rendering_tests {
                 crate::continuous::Modification::AddAbilityGeneric(granted_trigger),
                 Until::ForAsLongAs(
                     ironsmith_core::ContinuousDurationPredicate::affected_object_has_counter(
-                        CounterType::Named("test"),
+                        CounterType::Named("test".into()),
                     ),
                 ),
             ))
@@ -32536,7 +32603,7 @@ mod counter_linked_cross_segment_rendering_tests {
             )
             .with_entry_counter(
                 ironsmith_core::BattlefieldEntryCounterSpec::new(
-                    CounterType::Named("mannequin"),
+                    CounterType::Named("mannequin".into()),
                     Value::Fixed(1),
                     ironsmith_core::BattlefieldEntryCounterSurface::Inline,
                 )
@@ -32549,7 +32616,7 @@ mod counter_linked_cross_segment_rendering_tests {
             crate::continuous::Modification::AddAbilityGeneric(granted_sacrifice_trigger()),
             Until::ForAsLongAs(
                 ironsmith_core::ContinuousDurationPredicate::affected_object_has_counter(
-                    CounterType::Named("mannequin"),
+                    CounterType::Named("mannequin".into()),
                 ),
             ),
         ))
@@ -33527,7 +33594,7 @@ mod self_replacement_rendering_tests {
     #[test]
     fn same_target_zone_sequence_uses_pronoun_then_card_referent() {
         let oracle = "{2}{W}: Return target permanent you control to its owner's hand. If it has unearth, instead exile it, then return that card to its owner's hand. Activate only during your turn.";
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Meticulous Excavation",
         )
@@ -33549,20 +33616,20 @@ mod self_replacement_rendering_tests {
             vec![oracle.to_string()]
         );
 
-        let mut mismatched_tag = segment.clone();
-        let filter = match &mismatched_tag.self_replacements[0].condition {
-            Condition::TaggedObjectMatches(_, filter) => filter.clone(),
-            condition => panic!("expected a tagged-object condition, found {condition:?}"),
+        let mut mismatched_condition = segment.clone();
+        let mut filter = match &mismatched_condition.self_replacements[0].condition {
+            Condition::TargetMatches(filter) => filter.clone(),
+            condition => panic!("expected a target condition, found {condition:?}"),
         };
-        mismatched_tag.self_replacements[0].condition =
-            Condition::TaggedObjectMatches(TagKey::from("unrelated"), filter);
-        let mismatched_text = describe_single_self_replacement_segment(&mismatched_tag)
+        filter.ability_markers = vec!["cycling".to_string()];
+        mismatched_condition.self_replacements[0].condition = Condition::TargetMatches(filter);
+        let mismatched_text = describe_single_self_replacement_segment(&mismatched_condition)
             .expect("the conservative fallback should still render");
         assert!(
             !mismatched_text.contains("If it has unearth"),
-            "an unrelated result tag must not be rewritten as the action target: {mismatched_text}"
+            "a changed target condition must not borrow the original surface: {mismatched_text}"
         );
-        assert!(mismatched_text.contains("unrelated"), "{mismatched_text}");
+        assert!(mismatched_text.contains("cycling"), "{mismatched_text}");
     }
 
     #[test]
@@ -33732,11 +33799,13 @@ mod self_replacement_rendering_tests {
                 "Electrostatic Bolt deals 2 damage to target creature. If it's an artifact creature, Electrostatic Bolt deals 4 damage to it instead.",
             ),
         ] {
-            let definition =
-                crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), name)
-                    .card_types(vec![CardType::Instant])
-                    .parse_text(oracle)
-                    .expect("the typed damage self-replacement should compile");
+            let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+                crate::ids::CardId::new(),
+                name,
+            )
+            .card_types(vec![CardType::Instant])
+            .parse_text(oracle)
+            .expect("the typed damage self-replacement should compile");
             let raw_condition = definition
                 .spell_effect
                 .as_ref()
@@ -33755,7 +33824,7 @@ mod self_replacement_rendering_tests {
     #[test]
     fn optional_zone_replacement_reuses_its_typed_target() {
         let oracle = "Put target creature on top of its owner's library. If that creature is red, you may put it on the bottom of its owner's library instead.";
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Ether Well Variant",
         )
@@ -33772,7 +33841,7 @@ mod self_replacement_rendering_tests {
     #[test]
     fn named_spell_damage_replacement_rejects_mismatched_target_or_source() {
         let oracle = "Shape Probe deals 1 damage to target creature. If that creature is white, Shape Probe deals 4 damage to it instead.";
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Shape Probe",
         )
@@ -33984,9 +34053,9 @@ mod keyword_surface_merge_tests {
             "independent Cascade source lines must not acquire grouped punctuation",
         );
 
-        let marker = Ability::static_ability(
-            crate::static_abilities::StaticAbility::source_line_keyword_group(2),
-        )
+        let marker = Ability::static_ability(crate::static_abilities::StaticAbility::from_model(
+            ironsmith_core::StaticAbility::source_line_keyword_group(2),
+        ))
         .in_zones(Vec::new());
         let cascade = || {
             Ability::static_ability(crate::static_abilities::StaticAbility::cascade())
@@ -35411,7 +35480,7 @@ mod keyword_maximum_blocker_bundle_tests {
     use super::*;
 
     fn parsed_equipment_abilities(text: &str) -> Vec<Ability> {
-        crate::cards::builders::CardDefinitionBuilder::new(
+        crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Keyword Maximum Blocker Probe",
         )
@@ -35420,6 +35489,9 @@ mod keyword_maximum_blocker_bundle_tests {
         .parse_text(text)
         .expect("compound Equipment grant should parse")
         .abilities
+        .into_iter()
+        .skip(1)
+        .collect()
     }
 
     #[test]
@@ -35458,7 +35530,7 @@ mod threshold_source_modifier_bundle_tests {
     use super::*;
 
     fn threshold_abilities() -> Vec<Ability> {
-        crate::cards::builders::CardDefinitionBuilder::new(
+        crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Threshold Source Modifier Probe",
         )
@@ -35468,6 +35540,9 @@ mod threshold_source_modifier_bundle_tests {
         )
         .expect("threshold source modifier should parse")
         .abilities
+        .into_iter()
+        .skip(1)
+        .collect()
     }
 
     fn mutate_model(
@@ -35594,7 +35669,7 @@ mod conditioned_source_anthem_keyword_bundle_tests {
     use super::*;
 
     fn conditioned_source_modifier_abilities() -> Vec<Ability> {
-        crate::cards::builders::CardDefinitionBuilder::new(
+        crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Conditioned Source Modifier Probe",
         )
@@ -35604,6 +35679,9 @@ mod conditioned_source_anthem_keyword_bundle_tests {
         )
         .expect("conditioned source modifier should parse")
         .abilities
+        .into_iter()
+        .skip(1)
+        .collect()
     }
 
     fn mutate_model(
@@ -35641,7 +35719,7 @@ mod conditioned_source_anthem_keyword_bundle_tests {
 
     #[test]
     fn delirium_three_way_source_modifier_recombines() {
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Delirium Source Modifier Probe",
         )
@@ -35653,7 +35731,7 @@ mod conditioned_source_anthem_keyword_bundle_tests {
 
         assert_eq!(
             describe_structural_conditioned_source_anthem_keyword_bundle(
-                &definition.abilities,
+                &definition.abilities[1..],
                 "this creature",
             ),
             Some((
@@ -35739,7 +35817,7 @@ mod station_threshold_static_surface_tests {
     use super::*;
 
     fn station_definition(text: &str) -> CardDefinition {
-        crate::cards::builders::CardDefinitionBuilder::new(
+        crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Station Static Surface Probe",
         )
@@ -35780,8 +35858,13 @@ mod station_threshold_static_surface_tests {
         let land = station_definition(
             "Station\n3+ | You may play an additional land on each of your turns.",
         );
+        let land_members = if source_line_static_group_count(&land.abilities[1]).is_some() {
+            &land.abilities[2..]
+        } else {
+            &land.abilities[1..]
+        };
         assert_eq!(
-            describe_labeled_static_bundle(&land.abilities[1..], "this artifact"),
+            describe_labeled_static_bundle(land_members, "this artifact"),
             Some((
                 "3+ | You may play an additional land on each of your turns".to_string(),
                 1,
@@ -35789,8 +35872,13 @@ mod station_threshold_static_surface_tests {
         );
 
         let keywords = station_definition("Station\n8+ | Flying, haste");
+        let keyword_members = if source_line_static_group_count(&keywords.abilities[1]).is_some() {
+            &keywords.abilities[2..]
+        } else {
+            &keywords.abilities[1..]
+        };
         assert_eq!(
-            describe_labeled_static_bundle(&keywords.abilities[1..], "this artifact"),
+            describe_labeled_static_bundle(keyword_members, "this artifact"),
             Some(("8+ | Flying, haste".to_string(), 2)),
         );
     }
@@ -35837,7 +35925,7 @@ mod source_counter_threshold_static_surface_tests {
         subtypes: Vec<Subtype>,
         text: &str,
     ) -> CardDefinition {
-        crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), name)
+        crate::compiler_test_support::CardDefinitionBuilder::new(crate::ids::CardId::new(), name)
             .card_types(card_types)
             .subtypes(subtypes)
             .parse_text(text)
@@ -35848,7 +35936,7 @@ mod source_counter_threshold_static_surface_tests {
     fn typed_condition_shapes_render_no_a_and_numbered_thresholds() {
         let named = Condition::CountComparison {
             count: ironsmith_core::AnthemCountExpression::CountersOnSourceWithSurface {
-                counter_type: CounterType::Named("shell"),
+                counter_type: CounterType::Named("shell".into()),
                 surface: crate::target::SourceReferenceSurface::ThisPermanentType(
                     "this creature".to_string(),
                 ),
@@ -35892,7 +35980,7 @@ mod source_counter_threshold_static_surface_tests {
 
         let masculine = Condition::CountComparison {
             count: ironsmith_core::AnthemCountExpression::CountersOnSourceWithPronoun {
-                counter_type: CounterType::Named("conqueror"),
+                counter_type: CounterType::Named("conqueror".into()),
                 pronoun: ironsmith_core::SourceCounterPronounSurface::Him,
             },
             comparison: Comparison::GreaterThanOrEqual(1),
@@ -35967,11 +36055,21 @@ mod source_counter_threshold_static_surface_tests {
         for (name, card_types, subtypes, oracle, expected, expected_consumed) in cases {
             let definition = parsed_definition(name, card_types, subtypes, oracle);
             let subject = subject_for_card(&definition.card);
-            let (surface, consumed) = describe_structural_source_counter_threshold_static_bundle(
-                &definition.abilities,
-                subject,
-            )
-            .unwrap_or_else(|| panic!("typed counter-threshold renderer should match {name}"));
+            let abilities = if definition
+                .abilities
+                .first()
+                .and_then(source_line_static_group_count)
+                .is_some()
+            {
+                &definition.abilities[1..]
+            } else {
+                &definition.abilities
+            };
+            let (surface, consumed) =
+                describe_structural_source_counter_threshold_static_bundle(abilities, subject)
+                    .unwrap_or_else(|| {
+                        panic!("typed counter-threshold renderer should match {name}")
+                    });
             assert_eq!(consumed, expected_consumed, "{name}: {surface}");
             assert_eq!(
                 crate::compiled_text::compiled_text_lines(&definition),
@@ -35987,7 +36085,7 @@ mod conditioned_source_animation_annihilator_bundle_tests {
     use super::*;
 
     fn animation_definition() -> CardDefinition {
-        crate::cards::builders::CardDefinitionBuilder::new(
+        crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Conditioned Source Animation Probe",
         )
@@ -36003,7 +36101,7 @@ mod conditioned_source_animation_annihilator_bundle_tests {
         let definition = animation_definition();
         assert_eq!(
             describe_structural_conditioned_source_animation_annihilator_bundle(
-                &definition.abilities,
+                &definition.abilities[1..],
             ),
             Some((
                 "As long as this artifact has eight or more +1/+1 counters on it, it's a 0/0 creature in addition to its other types and it has annihilator 2"
@@ -36023,7 +36121,7 @@ mod conditioned_source_animation_annihilator_bundle_tests {
     #[test]
     fn mismatched_grant_condition_does_not_recombine() {
         let mut definition = animation_definition();
-        let AbilityKind::Static(grant_static) = &definition.abilities[2].kind else {
+        let AbilityKind::Static(grant_static) = &definition.abilities[3].kind else {
             panic!("expected annihilator grant");
         };
         let mut model = grant_static
@@ -36036,12 +36134,12 @@ mod conditioned_source_animation_annihilator_bundle_tests {
             panic!("expected typed grant payload");
         };
         grant.condition = Some(Condition::YourTurn);
-        definition.abilities[2].kind =
+        definition.abilities[3].kind =
             AbilityKind::Static(crate::static_abilities::StaticAbility::from_model(model));
 
         assert_eq!(
             describe_structural_conditioned_source_animation_annihilator_bundle(
-                &definition.abilities,
+                &definition.abilities[1..],
             ),
             None,
         );
@@ -36054,7 +36152,7 @@ mod target_player_life_loss_then_gain_and_create_tests {
 
     #[test]
     fn coordinated_gain_and_token_sentence_retains_actor_and_boundaries() {
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Life And Token Probe",
         )
@@ -36091,7 +36189,7 @@ mod shared_x_cross_segment_exile_permission_tests {
 
     #[test]
     fn reduction_and_exile_top_share_one_where_x_basis_across_source_sentences() {
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Shared X Exile Permission Probe",
         )
@@ -36117,7 +36215,7 @@ mod prototype_surface_tests {
 
     #[test]
     fn prototype_frame_line_keeps_separator_and_precedes_other_abilities() {
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Prototype Surface Probe",
         )

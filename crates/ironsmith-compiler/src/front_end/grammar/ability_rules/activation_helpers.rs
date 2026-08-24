@@ -431,95 +431,18 @@ fn parse_add_mana_colors_among_filter(
     Ok(Some(filter))
 }
 
-fn parse_add_one_mana_any_color_among_filter(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<ObjectFilter>, CardTextError> {
-    let Some(span) = activation_grammar::parse_any_color_among_span(tokens) else {
-        return Ok(None);
-    };
-    Ok(Some(parse_object_filter(span.filter_tokens, false)?))
-}
-
-pub fn mana_symbol_to_color(symbol: ManaSymbol) -> Option<crate::color::Color> {
-    match symbol {
-        ManaSymbol::White => Some(crate::color::Color::White),
-        ManaSymbol::Blue => Some(crate::color::Color::Blue),
-        ManaSymbol::Black => Some(crate::color::Color::Black),
-        ManaSymbol::Red => Some(crate::color::Color::Red),
-        ManaSymbol::Green => Some(crate::color::Color::Green),
-        _ => None,
-    }
-}
-
-pub fn parse_or_mana_color_choices(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<crate::color::Color>>, CardTextError> {
-    Ok(activation_grammar::parse_or_mana_color_choices(tokens))
-}
-
-pub fn parse_any_combination_mana_colors(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<crate::color::Color>>, CardTextError> {
-    let clause_words = TokenWordView::new(tokens).to_word_refs();
-    activation_grammar::parse_any_combination_mana_colors(tokens).map_err(|error| {
-        let detail = match error {
-            activation_grammar::AnyCombinationManaError::MissingColors => {
-                "missing color options".to_string()
-            }
-            activation_grammar::AnyCombinationManaError::UnsupportedSymbol(word) => {
-                format!("unsupported restricted mana symbol '{word}'")
-            }
-            activation_grammar::AnyCombinationManaError::NonColoredSymbol(word) => {
-                format!("unsupported non-colored mana symbol '{word}'")
-            }
-        };
-        CardTextError::ParseError(format!(
-            "{detail} in any-combination mana clause (clause: '{}')",
-            clause_words.join(" ")
-        ))
-    })
-}
-
-pub fn trim_leading_commas(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    let start = first_non_comma_token_index(tokens);
-    &tokens[start..]
-}
-
-pub fn is_mana_pool_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
-    activation_grammar::is_mana_pool_tail(tokens)
-}
-
-pub fn parse_land_could_produce_filter(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<(ObjectFilter, crate::effects::ManaTypeSource)>, CardTextError> {
-    let words = TokenWordView::new(tokens).to_word_refs();
-    let Some(shape) = activation_grammar::parse_land_could_produce_shape(tokens) else {
-        return Ok(None);
-    };
-    let (filter_tokens, mana_type_source) = match shape {
-        activation_grammar::LandCouldProduceShape::CouldProduceFilter(filter_tokens) => (
-            filter_tokens,
-            crate::effects::ManaTypeSource::MatchingLandsCouldProduce,
-        ),
-        activation_grammar::LandCouldProduceShape::TriggeringEventProducedFilter(filter_tokens) => {
-            (
-                filter_tokens,
-                crate::effects::ManaTypeSource::TriggeringEventProduced,
-            )
-        }
-        activation_grammar::LandCouldProduceShape::UnsupportedTrailing => {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported trailing mana clause (tail: '{}')",
-                words.join(" ")
-            )));
-        }
-    };
-    if filter_tokens.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "missing land filter in mana clause (tail: '{}')",
-            words.join(" ")
-        )));
-    }
-    let filter = parse_object_filter(filter_tokens, false)?;
-    Ok(Some((filter, mana_type_source)))
-}
+#[path = "activation_helpers/reference_programs.rs"]
+mod reference_programs;
+use reference_programs::parse_add_one_mana_any_color_among_filter;
+pub use reference_programs::parse_land_could_produce_filter;
+#[path = "activation_helpers/resource_programs.rs"]
+mod resource_programs;
+pub use resource_programs::{
+    is_mana_pool_tail_tokens, mana_symbol_to_color, parse_any_combination_mana_colors,
+};
+#[path = "activation_helpers/core_programs.rs"]
+mod core_programs;
+pub use core_programs::trim_leading_commas;
+#[path = "activation_helpers/choice_programs.rs"]
+mod choice_programs;
+pub use choice_programs::parse_or_mana_color_choices;

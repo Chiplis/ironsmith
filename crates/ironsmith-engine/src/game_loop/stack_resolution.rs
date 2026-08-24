@@ -2099,19 +2099,34 @@ mod tests {
     }
 
     fn tangle_wire_definition() -> crate::cards::CardDefinition {
+        const TANGLE_WIRE_SELECTION: &str = "tangle_wire_selection";
+        let permanents = ObjectFilter::default()
+            .in_zone(Zone::Battlefield)
+            .with_type(CardType::Artifact)
+            .with_type(CardType::Creature)
+            .with_type(CardType::Land)
+            .controlled_by(crate::target::PlayerFilter::Active)
+            .untapped();
+        let choose_for_fade_counters = Effect::new(
+            crate::effects::ChooseObjectsEffect::new(
+                permanents,
+                crate::effect::ChoiceCount::exactly(0),
+                crate::target::PlayerFilter::Active,
+                TANGLE_WIRE_SELECTION,
+            )
+            .with_count_value(crate::effect::Value::CountersOnSource(CounterType::Fade)),
+        );
+        let tap_selection = Effect::tap(ChooseSpec::tagged(TANGLE_WIRE_SELECTION));
         CardDefinitionBuilder::new(CardId::from_raw(3_694), "Tangle Wire")
             .mana_cost(crate::mana::ManaCost::from_pips(vec![vec![
                 crate::mana::ManaSymbol::Generic(3),
             ]]))
             .card_types(vec![CardType::Artifact])
-            .parse_text(concat!(
-                "Fading 4 (This artifact enters with four fade counters on it. ",
-                "At the beginning of your upkeep, remove a fade counter from it. ",
-                "If you can't, sacrifice it.)\n",
-                "At the beginning of each player's upkeep, that player taps an untapped artifact, ",
-                "creature, or land they control for each fade counter on this artifact."
+            .with_ability(Ability::triggered(
+                Trigger::beginning_of_upkeep(crate::target::PlayerFilter::Any),
+                vec![choose_for_fade_counters, tap_selection],
             ))
-            .expect("Tangle Wire should parse for runtime test")
+            .build()
     }
 
     fn create_creature(

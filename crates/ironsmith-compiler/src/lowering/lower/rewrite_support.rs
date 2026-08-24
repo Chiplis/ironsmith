@@ -1,4 +1,6 @@
 use super::*;
+use crate::effect::Value;
+use crate::target::PlayerFilter;
 
 pub fn infer_triggered_ability_functional_zones_from_facts(
     trigger: &TriggerSpec,
@@ -133,7 +135,7 @@ pub(super) fn rewrite_normalize_selected_sacrifice_tags(
         _ => return effects,
     };
 
-    let sacrificed_tag = TagKey::from("sacrificed_0");
+    let sacrificed_tag = crate::tag::CompilerReferenceTag::Sacrificed0.key();
     let mut replaced = false;
     for effect in rest {
         match effect {
@@ -608,6 +610,151 @@ fn normalize_ordered_revealed_partition_tags(program: &mut ResolutionProgram) {
     disposition.default_effects = vec![rewritten];
 }
 
+/// Correlate a singular selection from a freshly exiled pool with the
+/// immediately following permission for "that card". Every guard is over
+/// materialized typed effects; no source recognition occurs here.
+fn bind_selected_exile_card_play_permission(program: &mut crate::resolution::ResolutionProgram) {
+    let mut pool_tag = None;
+    let mut selected_tag = None;
+    let mut grant_location = None;
+
+    for (segment_index, segment) in program.segments.iter().enumerate() {
+        for (effect_index, effect) in segment.default_effects.iter().enumerate() {
+            if let Some(exile) = effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
+                && exile.player == PlayerFilter::You
+                && exile.moved_tags.len() == 1
+                && exile.accumulated_tags.is_empty()
+            {
+                if pool_tag.is_some() {
+                    return;
+                }
+                pool_tag = exile.moved_tags.first().cloned();
+                continue;
+            }
+            if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+                && choose.count == crate::effect::ChoiceCount::exactly(1)
+                && choose.chooser == PlayerFilter::You
+                && choose.zone == Some(Zone::Exile)
+                && choose.additional_zones.is_empty()
+                && !choose.is_search
+            {
+                let Some(pool) = pool_tag.as_ref() else {
+                    continue;
+                };
+                let has_exact_pool_constraint = choose.filter.tagged_constraints.len() == 1
+                    && choose.filter.tagged_constraints[0]
+                        == crate::filter::TaggedObjectConstraint {
+                            tag: pool.clone(),
+                            relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+                        };
+                if has_exact_pool_constraint {
+                    selected_tag = Some(choose.tag.clone());
+                }
+                continue;
+            }
+            if let Some(grant) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                && pool_tag.as_ref() == Some(&grant.tag)
+                && grant.player == PlayerFilter::You
+                && grant.duration == crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
+                && grant.allow_land
+                && grant.filter.is_none()
+                && grant.max_plays.is_none()
+                && grant.cast_pool_is_plural
+            {
+                if grant_location.is_some() {
+                    return;
+                }
+                grant_location = Some((segment_index, effect_index));
+            }
+        }
+    }
+
+    let (Some(selected_tag), Some((segment_index, effect_index))) = (selected_tag, grant_location)
+    else {
+        return;
+    };
+    let Some(mut grant) = program.segments[segment_index].default_effects[effect_index]
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        .cloned()
+    else {
+        return;
+    };
+    grant.tag = selected_tag;
+    grant.cast_pool_is_plural = false;
+    grant.surface = Some(
+        ironsmith_core::GrantPlayTaggedSurface::default()
+            .with_object(ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard),
+    );
+    program.segments[segment_index].default_effects[effect_index] =
+        crate::effect::Effect::new(grant);
+}
+
+/// Convert the exact typed Bolas cast-trigger program into a stable
+/// next-entry counter registration. This is a runtime materialization
+/// correlation and deliberately has no lexical guard.
+fn bind_graveyard_cast_trigger_to_triggering_permanent_entry(ability: &mut Ability) {
+    let AbilityKind::Triggered(triggered) = &mut ability.kind else {
+        return;
+    };
+    let (filter, caster) = match &triggered.trigger.kind {
+        ironsmith_core::TriggerKind::SpellCast { filter, caster }
+        | ironsmith_core::TriggerKind::SpellCastQualified { filter, caster, .. } => {
+            (filter.as_ref(), caster)
+        }
+        _ => return,
+    };
+    let Some(filter) = filter else {
+        return;
+    };
+    if caster != &PlayerFilter::You
+        || !matches!(
+            filter.card_types.as_slice(),
+            [crate::types::CardType::Planeswalker]
+        )
+        || !matches!(filter.subtypes.as_slice(), [crate::types::Subtype::Bolas])
+    {
+        return;
+    }
+    let [segment] = triggered.effects.segments.as_slice() else {
+        return;
+    };
+    if !segment.self_replacements.is_empty() {
+        return;
+    }
+    let [move_effect, counter_effect] = segment.default_effects.as_slice() else {
+        return;
+    };
+    let Some(movement) = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>() else {
+        return;
+    };
+    let Some(counter) = counter_effect.downcast_ref::<crate::effects::PutCountersEffect>() else {
+        return;
+    };
+    if movement.target != ChooseSpec::Source
+        || movement.zone != Zone::Exile
+        || counter.counter_type != crate::object::CounterType::Loyalty
+        || counter.amount.unhinted() != &Value::Fixed(1)
+        || counter.target
+            != ChooseSpec::Tagged(crate::tag::TagKey::from(crate::tag::SOURCE_EXILED_TAG))
+    {
+        return;
+    }
+
+    let triggering_tag = crate::tag::CompilerReferenceTag::TriggeringPermanentSpell.key();
+    let register = crate::effects::RegisterNextBatchEnterWithCountersEffect::new(
+        ObjectFilter::planeswalker(),
+        crate::object::CounterType::Loyalty,
+        Value::Fixed(1),
+    )
+    .same_stable_id_as_tag(triggering_tag.clone());
+    triggered.effects = crate::resolution::ResolutionProgram::from_effects(vec![
+        crate::effect::Effect::tag_triggering_object(triggering_tag),
+        move_effect.clone(),
+        crate::effect::Effect::new(register),
+    ]);
+    ability.functional_zones = vec![Zone::Graveyard];
+}
+
 pub(super) fn rewrite_finalize_lowered_card(
     mut builder: CardDefinitionBuilder,
     state: &mut RewriteLoweredCardState,
@@ -619,34 +766,223 @@ pub(super) fn rewrite_finalize_lowered_card(
         normalize_ordered_revealed_partition_tags(spell_effect);
         preserve_looked_collection_self_replacement_preludes(spell_effect);
         bind_quantified_player_damage_values(spell_effect);
+        correlate_clash_win_return_replacement(spell_effect);
         correlate_additional_cost_damage_replacement(spell_effect);
         correlate_additional_cost_chosen_type_search_destination(spell_effect);
+        strip_terminal_unconsumed_damage_aggregate_id(spell_effect);
     }
     for ability in &mut builder.abilities {
-        super::line_lowering::bind_graveyard_cast_trigger_to_triggering_permanent_entry(
-            ability,
-            &[],
-        );
+        bind_graveyard_cast_trigger_to_triggering_permanent_entry(ability);
         match &mut ability.kind {
             AbilityKind::Triggered(triggered) => {
                 preserve_looked_collection_self_replacement_preludes(&mut triggered.effects);
                 bind_quantified_player_damage_values(&mut triggered.effects);
-                super::line_lowering::bind_selected_exile_card_play_permission(
-                    &mut triggered.effects,
-                );
+                bind_selected_exile_card_play_permission(&mut triggered.effects);
             }
             AbilityKind::Activated(activated) => {
                 preserve_looked_collection_self_replacement_preludes(&mut activated.effects);
                 bind_quantified_player_damage_values(&mut activated.effects);
-                super::line_lowering::bind_selected_exile_card_play_permission(
-                    &mut activated.effects,
-                );
+                bind_selected_exile_card_play_permission(&mut activated.effects);
             }
             _ => {}
         }
     }
     reconcile_alternative_cast_condition_references(&mut builder);
     builder
+}
+
+fn is_runtime_damage_aggregate_member(effect: &crate::effect::Effect) -> bool {
+    if effect
+        .downcast_ref::<crate::effects::DealDamageEffect>()
+        .is_some()
+    {
+        return true;
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return is_runtime_damage_aggregate_member(&tagged.effect);
+    }
+    if let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachObject>() {
+        return !for_each.effects.is_empty()
+            && for_each
+                .effects
+                .iter()
+                .all(is_runtime_damage_aggregate_member);
+    }
+    false
+}
+
+/// A terminal coordinated damage aggregate is exported defensively so a
+/// later source statement can consume its result. Once the complete card is
+/// materialized and the aggregate is still the final instruction, no later
+/// consumer exists; remove the otherwise-obscuring observation wrapper.
+fn strip_terminal_unconsumed_damage_aggregate_id(
+    program: &mut crate::resolution::ResolutionProgram,
+) {
+    let Some(segment) = program.segments.last_mut() else {
+        return;
+    };
+    if !segment.self_replacements.is_empty() {
+        return;
+    }
+    let Some(effect) = segment.default_effects.last_mut() else {
+        return;
+    };
+    let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() else {
+        return;
+    };
+    let Some(sequence) = with_id
+        .effect
+        .downcast_ref::<crate::effects::SequenceEffect>()
+    else {
+        return;
+    };
+    if sequence.surface != ironsmith_core::SequenceSurface::Coordinated
+        || sequence.effects.len() < 2
+        || !sequence
+            .effects
+            .iter()
+            .all(is_runtime_damage_aggregate_member)
+    {
+        return;
+    }
+    *effect = with_id.effect.as_ref().clone();
+    *program = crate::resolution::ResolutionProgram::new(program.segments.clone());
+}
+
+fn tagged_return_to_hand(
+    effect: &crate::effect::Effect,
+) -> Option<(&crate::tag::TagKey, &crate::effects::ReturnToHandEffect)> {
+    let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let returned = tagged
+        .effect
+        .downcast_ref::<crate::effects::ReturnToHandEffect>()?;
+    Some((&tagged.tag, returned))
+}
+
+/// A clash result can be observed before the later member of one authored
+/// coordination. The following win sentence replaces that return's
+/// destination; it does not execute a second move. Fold the two typed source
+/// segments into an observed clash plus a local zone rewrite.
+fn correlate_clash_win_return_replacement(program: &mut crate::resolution::ResolutionProgram) {
+    let [clash_segment, win_segment] = program.segments.as_slice() else {
+        return;
+    };
+    if !clash_segment.self_replacements.is_empty()
+        || !win_segment.self_replacements.is_empty()
+        || clash_segment.default_effects.len() != 1
+        || win_segment.default_effects.len() != 1
+    {
+        return;
+    }
+    let Some(sequence) =
+        clash_segment.default_effects[0].downcast_ref::<crate::effects::SequenceEffect>()
+    else {
+        return;
+    };
+    if sequence.surface != ironsmith_core::SequenceSurface::CommaThen
+        || sequence.result_label.is_some()
+    {
+        return;
+    }
+    let [observed_clash, returned_effect] = sequence.effects.as_slice() else {
+        return;
+    };
+    let Some(observed_clash) = observed_clash.downcast_ref::<crate::effects::WithIdEffect>() else {
+        return;
+    };
+    if observed_clash
+        .effect
+        .downcast_ref::<crate::effects::ClashEffect>()
+        .is_none()
+    {
+        return;
+    }
+    let Some((returned_tag, _)) = tagged_return_to_hand(returned_effect) else {
+        return;
+    };
+    let Some(win) = win_segment.default_effects[0].downcast_ref::<crate::effects::IfEffect>()
+    else {
+        return;
+    };
+    if win.condition != observed_clash.id
+        || win.predicate != crate::effect::EffectPredicate::Happened
+        || !win.else_.is_empty()
+        || win.per_player_result
+        || win.prior_result_replacement_surface
+    {
+        return;
+    }
+    let [may_move] = win.then.as_slice() else {
+        return;
+    };
+    let Some(may_move) =
+        may_move.downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>()
+    else {
+        return;
+    };
+    if may_move.decider.as_ref() != Some(&PlayerFilter::You) {
+        return;
+    }
+    let [move_effect] = may_move.effects.as_slice() else {
+        return;
+    };
+    let Some(tagged_move) = move_effect.downcast_ref::<crate::effects::TaggedEffect>() else {
+        return;
+    };
+    let Some(move_to_zone) = tagged_move
+        .effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+    else {
+        return;
+    };
+    let references_returned_object = match move_to_zone.target.unhinted() {
+        ChooseSpec::Object(filter) => filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == *returned_tag
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        }),
+        ChooseSpec::Tagged(tag) => tag == returned_tag,
+        _ => false,
+    };
+    if !references_returned_object
+        || move_to_zone.zone != Zone::Library
+        || !move_to_zone.to_top
+        || move_to_zone.library_order.is_some()
+        || move_to_zone.enters_tapped
+        || move_to_zone.enters_attacking
+        || move_to_zone.enters_face_down
+        || move_to_zone.enters_transformed
+    {
+        return;
+    }
+
+    let replacement = crate::effects::RegisterZoneReplacementEffect::new(
+        ChooseSpec::Tagged(returned_tag.clone()),
+        Some(Zone::Battlefield),
+        Some(Zone::Hand),
+        Zone::Library,
+        crate::effects::ReplacementApplyMode::OneShot,
+    )
+    .with_library_placement(ironsmith_core::ZoneReplacementLibraryPlacement::Top)
+    .optional("put it on top of its owner's library");
+    let local_rewrite = crate::effect::Effect::new(crate::effects::LocalRewriteEffect::new(
+        returned_effect.clone(),
+        vec![replacement],
+    ));
+    let conditional = crate::effect::Effect::new(crate::effects::IfEffect::new(
+        observed_clash.id,
+        crate::effect::EffectPredicate::Value(crate::effect::Comparison::GreaterThan(0)),
+        vec![local_rewrite],
+        vec![returned_effect.clone()],
+    ));
+
+    let mut clash_segment = clash_segment.clone();
+    clash_segment.default_effects = vec![crate::effect::Effect::with_id(
+        observed_clash.id.0,
+        observed_clash.effect.as_ref().clone(),
+    )];
+    let mut win_segment = win_segment.clone();
+    win_segment.default_effects = vec![conditional];
+    *program = crate::resolution::ResolutionProgram::new(vec![clash_segment, win_segment]);
 }
 
 /// A searched card is still in the library when its destination is chosen.
@@ -677,7 +1013,10 @@ fn correlate_additional_cost_chosen_type_search_destination(
     };
     if search.destination != Zone::Hand
         || !search.reveal
-        || search.filter.card_types != [crate::types::CardType::Creature]
+        || !matches!(
+            search.filter.card_types.as_slice(),
+            [crate::types::CardType::Creature]
+        )
     {
         return;
     }

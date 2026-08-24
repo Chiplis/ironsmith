@@ -10,7 +10,8 @@ use crate::lexer::{LexStream, OwnedLexToken, TokenKind};
 use crate::object::CounterType;
 use crate::target::{PlayerFilter, SourceReferenceSurface};
 use crate::util::{
-    source_reference_surface_for_possessive_words, source_reference_surface_for_words,
+    source_reference_surface_for_possessive_words,
+    source_reference_surface_for_possessive_words_with_context, source_reference_surface_for_words,
     this_source_surface_for_words,
 };
 
@@ -245,6 +246,7 @@ fn parse_counter_noun<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 
 fn parse_referential_counter_count_shape(
     tokens: &[OwnedLexToken],
+    context: Option<crate::parse_context::ParseContextView<'_>>,
 ) -> Option<ReferentialCounterCountShape> {
     if let Some((source, rest)) = primitives::parse_prefix(
         tokens,
@@ -273,6 +275,18 @@ fn parse_referential_counter_count_shape(
             return None;
         }
         let descriptor_end = rest.len().checked_sub(after_noun.len())?;
+        let source_prefix_end = source_consumed + noun_idx;
+        let source_prefix_words =
+            primitives::TokenWordView::new(&tokens[..source_prefix_end]).to_word_refs();
+        if source == CounterReferenceSource::Source
+            && source_reference_surface_for_possessive_words(&source_prefix_words).is_some()
+        {
+            return Some(ReferentialCounterCountShape {
+                source,
+                counter_type: None,
+                consumed: source_consumed + descriptor_end,
+            });
+        }
         let counter_type = filters::parse_counter_type_from_tokens(&rest[..descriptor_end])?;
         return Some(ReferentialCounterCountShape {
             source,
@@ -281,25 +295,42 @@ fn parse_referential_counter_count_shape(
         });
     }
 
-    let (noun_idx, (), after_noun) = primitives::find_prefix(tokens, || parse_counter_noun)?;
-    let noun_end = tokens.len().checked_sub(after_noun.len())?;
-    for source_end in (1..=noun_idx).rev() {
-        let source_words = primitives::TokenWordView::new(&tokens[..source_end]).to_word_refs();
-        if source_reference_surface_for_possessive_words(&source_words).is_none() {
+    // A source name may itself begin with "Counter". Search counter nouns
+    // from the end so `Counter Bear's counters` binds the plural noun after
+    // the possessive source instead of claiming the first name word.
+    for noun_idx in (1..tokens.len()).rev() {
+        let Some(((), after_noun)) =
+            primitives::parse_prefix(&tokens[noun_idx..], parse_counter_noun)
+        else {
             continue;
-        }
-        let counter_type = if source_end == noun_idx {
-            None
-        } else {
-            Some(filters::parse_counter_type_from_tokens(
-                &tokens[source_end..noun_end],
-            )?)
         };
-        return Some(ReferentialCounterCountShape {
-            source: CounterReferenceSource::Source,
-            counter_type,
-            consumed: noun_end,
-        });
+        let noun_end = tokens.len().checked_sub(after_noun.len())?;
+        for source_end in (1..=noun_idx).rev() {
+            let source_words = primitives::TokenWordView::new(&tokens[..source_end]).to_word_refs();
+            let source_surface = context
+                .and_then(|context| {
+                    source_reference_surface_for_possessive_words_with_context(
+                        context,
+                        &source_words,
+                    )
+                })
+                .or_else(|| source_reference_surface_for_possessive_words(&source_words));
+            if source_surface.is_none() {
+                continue;
+            }
+            let counter_type = if source_end == noun_idx {
+                None
+            } else {
+                Some(filters::parse_counter_type_from_tokens(
+                    &tokens[source_end..noun_end],
+                )?)
+            };
+            return Some(ReferentialCounterCountShape {
+                source: CounterReferenceSource::Source,
+                counter_type,
+                consumed: noun_end,
+            });
+        }
     }
     None
 }
@@ -327,6 +358,20 @@ fn equal_value_shape(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], bool
 }
 
 pub fn parse_counter_count_prefix_shape(tokens: &[OwnedLexToken]) -> CounterCountPrefixShape<'_> {
+    parse_counter_count_prefix_shape_with_optional_context(tokens, None)
+}
+
+pub fn parse_counter_count_prefix_shape_with_context<'tokens>(
+    context: crate::parse_context::ParseContextView<'_>,
+    tokens: &'tokens [OwnedLexToken],
+) -> CounterCountPrefixShape<'tokens> {
+    parse_counter_count_prefix_shape_with_optional_context(tokens, Some(context))
+}
+
+fn parse_counter_count_prefix_shape_with_optional_context<'tokens>(
+    tokens: &'tokens [OwnedLexToken],
+    context: Option<crate::parse_context::ParseContextView<'_>>,
+) -> CounterCountPrefixShape<'tokens> {
     if let Some(((), inner_tokens)) =
         primitives::parse_prefix(tokens, primitives::phrase(&["up", "to"]).void())
     {
@@ -346,7 +391,7 @@ pub fn parse_counter_count_prefix_shape(tokens: &[OwnedLexToken]) -> CounterCoun
     if primitives::parse_prefix(tokens, primitives::kw("another")).is_some() {
         return CounterCountPrefixShape::Another;
     }
-    if let Some(shape) = parse_referential_counter_count_shape(tokens) {
+    if let Some(shape) = parse_referential_counter_count_shape(tokens, context) {
         return CounterCountPrefixShape::Referential(shape);
     }
     if let Some(((), _)) =
@@ -750,238 +795,17 @@ fn possessive_surface_kw<'a>(
     .void()
 }
 
-fn parse_half_starting_life<'a>(input: &mut LexStream<'a>) -> WResult<HalfStartingLifeShape> {
-    primitives::kw("half").parse_next(input)?;
-    let player = half_starting_life_player.parse_next(input)?;
-    primitives::phrase(&["starting", "life", "total"]).parse_next(input)?;
-    opt(primitives::comma()).parse_next(input)?;
-    let rounding = opt((
-        primitives::kw("rounded"),
-        alt((
-            primitives::kw("up").value(HalfStartingLifeRounding::Up),
-            primitives::kw("down").value(HalfStartingLifeRounding::Down),
-        )),
-    ))
-    .map(|rounding| {
-        rounding
-            .map(|(_, value)| value)
-            .unwrap_or(HalfStartingLifeRounding::Up)
-    })
-    .parse_next(input)?;
-    primitives::sentence_end().parse_next(input)?;
-    Ok(HalfStartingLifeShape { player, rounding })
-}
-
-pub fn parse_half_starting_life_shape(tokens: &[OwnedLexToken]) -> Option<HalfStartingLifeShape> {
-    primitives::parse_all(
-        trim_shape_edges(tokens),
-        parse_half_starting_life,
-        "half starting life total",
-    )
-    .ok()
-}
-
-fn exact_self_reference(tokens: &[OwnedLexToken]) -> bool {
-    primitives::parse_all(
-        trim_shape_edges(tokens),
-        (
-            alt((
-                primitives::kw("it").void(),
-                primitives::kw("this").void(),
-                (
-                    primitives::kw("this"),
-                    alt((
-                        primitives::kw("creature"),
-                        primitives::kw("land"),
-                        primitives::kw("permanent"),
-                    )),
-                )
-                    .void(),
-            )),
-            primitives::sentence_end(),
-        )
-            .void(),
-        "transform self reference",
-    )
-    .is_ok()
-}
-
-pub fn parse_transform_target_shape(tokens: &[OwnedLexToken]) -> TransformTargetShape<'_> {
-    let tokens = trim_shape_edges(tokens);
-    if tokens.is_empty() {
-        return TransformTargetShape::ImplicitSource;
-    }
-    if let Some((_, filter_tokens)) =
-        primitives::parse_prefix(tokens, alt((primitives::kw("all"), primitives::kw("each"))))
-    {
-        return TransformTargetShape::EachObject {
-            filter_tokens: trim_shape_edges(filter_tokens),
-        };
-    }
-    let words = primitives::TokenWordView::new(tokens).to_word_refs();
-    if exact_self_reference(tokens) {
-        return TransformTargetShape::Source {
-            surface: this_source_surface_for_words(&words),
-        };
-    }
-    if let Some(surface) =
-        source_reference_surface_for_words(&words).or_else(|| this_source_surface_for_words(&words))
-    {
-        return TransformTargetShape::Source {
-            surface: Some(surface),
-        };
-    }
-    let fallback_to_source = words.len() <= 3
-        && !words.iter().any(|word| {
-            matches!(
-                *word,
-                "target" | "another" | "other" | "each" | "all" | "that" | "those"
-            )
-        });
-    TransformTargetShape::Target {
-        target_tokens: tokens,
-        fallback_to_source,
-    }
-}
-
-pub fn source_spec_for_reference(source: CounterReferenceSource) -> crate::ChooseSpec {
-    match source {
-        CounterReferenceSource::TaggedIt => crate::ChooseSpec::Tagged(crate::TagKey::from(IT_TAG)),
-        CounterReferenceSource::Source => crate::ChooseSpec::Source,
-    }
-}
-
-pub fn player_filter_for_half_reference(player: PlayerAst) -> Option<PlayerFilter> {
-    match player {
-        PlayerAst::You | PlayerAst::Implicit => Some(PlayerFilter::You),
-        PlayerAst::Active => Some(PlayerFilter::Active),
-        PlayerAst::Any => Some(PlayerFilter::Any),
-        PlayerAst::Opponent => Some(PlayerFilter::Opponent),
-        PlayerAst::PlayerToYourLeft => Some(PlayerFilter::PlayerToYourLeft),
-        PlayerAst::PlayerToYourRight => Some(PlayerFilter::PlayerToYourRight),
-        PlayerAst::NotYou => Some(PlayerFilter::NotYou),
-        PlayerAst::Target => Some(PlayerFilter::target_player()),
-        PlayerAst::TargetOpponent => Some(PlayerFilter::target_opponent()),
-        PlayerAst::That => Some(PlayerFilter::IteratedPlayer),
-        PlayerAst::Chosen => Some(PlayerFilter::ChosenPlayer),
-        PlayerAst::Defending => Some(PlayerFilter::Defending),
-        PlayerAst::Attacking => Some(PlayerFilter::Attacking),
-        PlayerAst::MostCardsInHand => Some(PlayerFilter::MostCardsInHand),
-        PlayerAst::MostLifeTied => Some(PlayerFilter::MostLifeTied),
-        PlayerAst::LowestLifeTied => Some(PlayerFilter::LowestLifeTied),
-        PlayerAst::ThatPlayerOrTargetController
-        | PlayerAst::ItsController
-        | PlayerAst::ItsOwner
-        | PlayerAst::Enchanted => None,
-        PlayerAst::TriggeringSourceController => Some(PlayerFilter::ControllerOf(
-            crate::filter::ObjectRef::tagged("triggering_source"),
-        )),
-    }
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::lexer::lex_line;
+#[path = "zone_counter_shapes_inline_tests.rs"]
+mod tests;
 
-    fn tokens(text: &str) -> Vec<OwnedLexToken> {
-        lex_line(text, 0).unwrap()
-    }
-
-    #[test]
-    fn parses_dynamic_counts_as_typed_facts() {
-        assert_eq!(
-            parse_dynamic_counter_count_shape(&tokens("two life lost this way")),
-            Some(DynamicCounterCountShape::LifeLostThisWay { group_size: 2 })
-        );
-        assert_eq!(
-            parse_dynamic_counter_count_shape(&tokens("spells you cast this turn")),
-            Some(DynamicCounterCountShape::SpellsCastThisTurn {
-                player: PlayerFilter::You,
-                other_than_first: false,
-            })
-        );
-    }
-
-    #[test]
-    fn parses_target_counts_and_half_life() {
-        let target_tokens = tokens("each of up to X target creatures");
-        assert_eq!(
-            parse_counter_target_count_shape(&target_tokens),
-            Some((ChoiceCount::up_to_dynamic_x(), 5))
-        );
-        assert_eq!(
-            parse_half_starting_life_shape(&tokens(
-                "half target player's starting life total, rounded down"
-            )),
-            Some(HalfStartingLifeShape {
-                player: PlayerFilter::target_player(),
-                rounding: HalfStartingLifeRounding::Down,
-            })
-        );
-    }
-
-    #[test]
-    fn parses_counter_surfaces() {
-        assert!(is_named_source_power_shape(&tokens("Krenko's power")));
-        assert!(is_him_or_her_counter_target(&tokens("him or her")));
-        assert_eq!(
-            parse_counter_count_prefix_shape(&tokens("this's counters on that creature")),
-            CounterCountPrefixShape::Referential(ReferentialCounterCountShape {
-                source: CounterReferenceSource::Source,
-                counter_type: None,
-                consumed: 2,
-            })
-        );
-        crate::util::with_source_reference_context("Counter Bear", || {
-            assert_eq!(
-                parse_counter_count_prefix_shape(&tokens(
-                    "Counter Bear's counters on that creature"
-                )),
-                CounterCountPrefixShape::Referential(ReferentialCounterCountShape {
-                    source: CounterReferenceSource::Source,
-                    counter_type: None,
-                    consumed: 3,
-                })
-            );
-        });
-        let counter_tokens = tokens("+1/+1 counters on target creature equal to the difference");
-        let shape = parse_put_counter_target_shape(&counter_tokens).unwrap();
-        assert!(shape.equal_to_difference);
-
-        let counter_tokens = tokens(
-            "X +1/+1 counters on target creature you control, where X is the mana value of that card",
-        );
-        let shape = parse_put_counter_target_shape(&counter_tokens).unwrap();
-        assert_eq!(
-            primitives::TokenWordView::new(shape.target_tokens).to_word_refs(),
-            ["target", "creature", "you", "control"]
-        );
-    }
-
-    #[test]
-    fn preserves_distinct_target_in_until_leaves_suffix() {
-        let tokens = tokens(
-            "target creature or enchantment you don't control until target enchantment you control leaves the battlefield",
-        );
-        let (exiled, watcher) =
-            split_until_target_leaves_shape(&tokens).expect("target watcher suffix");
-
-        assert_eq!(
-            primitives::TokenWordView::new(exiled).to_word_refs(),
-            [
-                "target",
-                "creature",
-                "or",
-                "enchantment",
-                "you",
-                "dont",
-                "control"
-            ]
-        );
-        assert_eq!(
-            primitives::TokenWordView::new(watcher).to_word_refs(),
-            ["target", "enchantment", "you", "control"]
-        );
-    }
-}
+#[path = "zone_counter_shapes/reference_programs.rs"]
+mod reference_programs;
+use reference_programs::exact_self_reference;
+pub use reference_programs::{
+    parse_transform_target_shape, player_filter_for_half_reference, source_spec_for_reference,
+};
+#[path = "zone_counter_shapes/resource_programs.rs"]
+mod resource_programs;
+use resource_programs::parse_half_starting_life;
+pub use resource_programs::parse_half_starting_life_shape;

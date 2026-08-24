@@ -15,6 +15,38 @@ pub(super) fn conditional_effect_parts(
     &[crate::cards::builders::EffectAst],
 ) {
     match effect {
+        crate::cards::builders::EffectAst::ControlFlow(control) => {
+            let crate::model::ControlFlowNodeAst::Condition {
+                condition,
+                consequence_program,
+                alternative_program,
+                ..
+            } = &control.node
+            else {
+                panic!("expected a conditional control-flow node, got {control:?}");
+            };
+            let crate::model::ControlPredicateAst::State(predicate) = &condition.predicate else {
+                panic!("expected a state predicate, got {condition:?}");
+            };
+            let if_true = &control
+                .program(*consequence_program)
+                .expect("conditional consequence program")
+                .effects;
+            let if_false = alternative_program
+                .map(|program| {
+                    control
+                        .program(program)
+                        .expect("conditional alternative program")
+                        .effects
+                        .as_slice()
+                })
+                .unwrap_or(&[]);
+            if condition.negated_surface {
+                (predicate, if_false, if_true)
+            } else {
+                (predicate, if_true, if_false)
+            }
+        }
         crate::cards::builders::EffectAst::Conditional {
             predicate,
             if_true,
@@ -440,15 +472,18 @@ pub(super) fn attach_any_number_equipment_to_it_lowers_without_targeting_equipme
         .find_map(|effect| effect.downcast_ref::<crate::effects::AttachObjectsEffect>())
         .expect("attach effect should be present");
 
-    assert!(matches!(
-        &attach.objects,
-        crate::target::ChooseSpec::WithCount(inner, count)
-            if *count == ChoiceCount::any_number()
-                && matches!(inner.as_ref(), crate::target::ChooseSpec::All(filter)
-                    if filter.subtypes.contains(&Subtype::Equipment)
-                        && filter.controller == Some(crate::target::PlayerFilter::You)
-                        && filter.zone == Some(Zone::Battlefield))
-    ));
+    assert!(
+        matches!(
+            &attach.objects,
+            crate::target::ChooseSpec::WithCount(inner, count)
+                if *count == ChoiceCount::any_number()
+                    && matches!(inner.as_ref(), crate::target::ChooseSpec::Object(filter)
+                        if filter.subtypes.contains(&Subtype::Equipment)
+                            && filter.controller == Some(crate::target::PlayerFilter::You)
+                            && filter.zone == Some(Zone::Battlefield))
+        ),
+        "{attach:#?}"
+    );
     assert!(
         !effects.iter().any(|effect| effect
             .downcast_ref::<crate::effects::TargetOnlyEffect>()
@@ -674,6 +709,11 @@ pub(super) fn rewrite_exile_from_hand_or_graveyard_preserves_both_choice_zones()
     assert!(debug.contains("Hand"), "{debug}");
     assert!(debug.contains("Graveyard"), "{debug}");
     assert!(debug.contains("cage"), "{debug}");
+    assert!(debug.contains("Coordination"), "{debug}");
+    assert!(
+        !debug.contains("Disjunction"),
+        "the zone union must not become alternate executable effects: {debug}"
+    );
 }
 
 #[test]
@@ -982,7 +1022,14 @@ pub(super) fn rewrite_etb_where_x_source_stat_normalizes_apostrophe_shapes() {
 
     let parsed = super::super::keyword_static::parse_where_x_source_stat_value(&tokens);
 
-    assert!(matches!(parsed, Some(crate::effect::Value::SourcePower)));
+    assert!(
+        matches!(parsed.as_ref(), Some(crate::effect::Value::SourcePower))
+            || matches!(
+                parsed.as_ref(),
+                Some(crate::effect::Value::PowerOf(source))
+                    if matches!(source.unhinted(), crate::target::ChooseSpec::Source)
+            )
+    );
 }
 
 #[test]
@@ -990,9 +1037,8 @@ pub(super) fn rewrite_etb_where_x_named_source_stat_preserves_surface_hint() {
     let tokens = lex_line("Where X is Amy Rose's power", 0)
         .expect("rewrite lexer should classify where-x named source-stat clause");
 
-    let parsed = super::super::util::with_source_reference_context("Amy Rose", || {
-        super::super::keyword_static::parse_where_x_source_stat_value(&tokens)
-    });
+    let parsed =
+        super::super::keyword_static::parse_where_x_named_source_stat_value(&tokens, "Amy Rose");
 
     assert!(
         format!("{parsed:?}").contains("ShortName(\"Amy Rose\")")
@@ -1438,13 +1484,37 @@ pub(super) fn optional_exile_pair_keeps_repeated_article_filters_independent() {
         | [crate::cards::builders::EffectAst::MayByPlayer { effects, .. }] => effects,
         _ => panic!("expected one optional effect, got {parsed:#?}"),
     };
-    let [crate::cards::builders::EffectAst::Coordinated { effects, .. }] =
+    let [crate::cards::builders::EffectAst::Coordination(coordination)] =
         optional_effects.as_slice()
     else {
         panic!("expected one coordinated pair, got {optional_effects:#?}");
     };
+    fn leaf_effects<'a>(
+        effect: &'a crate::cards::builders::EffectAst,
+        output: &mut Vec<&'a crate::cards::builders::EffectAst>,
+    ) {
+        match effect {
+            crate::cards::builders::EffectAst::Coordination(nested) => {
+                for effect in nested.effects() {
+                    leaf_effects(effect, output);
+                }
+            }
+            crate::cards::builders::EffectAst::Sequence { effects }
+            | crate::cards::builders::EffectAst::CommaThen { effects }
+            | crate::cards::builders::EffectAst::Coordinated { effects, .. } => {
+                for effect in effects {
+                    leaf_effects(effect, output);
+                }
+            }
+            effect => output.push(effect),
+        }
+    }
+    let mut effects = Vec::new();
+    for effect in coordination.effects() {
+        leaf_effects(effect, &mut effects);
+    }
     let [first, second] = effects.as_slice() else {
-        panic!("expected two independent exile selections, got {effects:#?}");
+        panic!("expected two independent exile selections, got {coordination:#?}");
     };
     fn exile_filter(effect: &crate::cards::builders::EffectAst) -> &crate::target::ObjectFilter {
         let crate::cards::builders::EffectAst::SubjectVerb(
@@ -1502,11 +1572,50 @@ pub(super) fn rewrite_zone_handlers_parse_mixed_target_and_all_exile_list() {
 
     let parsed = parse_effect_sentence_lexed(&tokens).expect("mixed exile list should parse");
 
-    let [crate::cards::builders::EffectAst::Sequence { effects }] = parsed.as_slice() else {
-        panic!("expected mixed exile list to parse as a sequence, got {parsed:#?}");
+    let [crate::cards::builders::EffectAst::Coordination(coordination)] = parsed.as_slice() else {
+        panic!("expected mixed exile list to parse as typed coordination, got {parsed:#?}");
     };
-    let [source_exile, battlefield_exile, graveyard_exile] = effects.as_slice() else {
-        panic!("expected source plus two exile-all effects, got {effects:#?}");
+    fn leaf_effects<'a>(
+        effect: &'a crate::cards::builders::EffectAst,
+        output: &mut Vec<&'a crate::cards::builders::EffectAst>,
+    ) {
+        match effect {
+            crate::cards::builders::EffectAst::Coordination(nested) => {
+                for effect in nested.effects() {
+                    leaf_effects(effect, output);
+                }
+            }
+            crate::cards::builders::EffectAst::Sequence { effects }
+            | crate::cards::builders::EffectAst::CommaThen { effects }
+            | crate::cards::builders::EffectAst::Coordinated { effects, .. } => {
+                for effect in effects {
+                    leaf_effects(effect, output);
+                }
+            }
+            effect => output.push(effect),
+        }
+    }
+    let mut effects = Vec::new();
+    for effect in coordination.effects() {
+        leaf_effects(effect, &mut effects);
+    }
+    let exile_effects = effects
+        .into_iter()
+        .filter(|effect| {
+            matches!(
+                effect,
+                crate::cards::builders::EffectAst::SubjectVerb(
+                    crate::cards::builders::SubjectVerbEffectAst {
+                        action: crate::cards::builders::SubjectVerbActionAst::Exile { .. }
+                            | crate::cards::builders::SubjectVerbActionAst::ExileAll { .. },
+                        ..
+                    }
+                )
+            )
+        })
+        .collect::<Vec<_>>();
+    let [source_exile, battlefield_exile, graveyard_exile] = exile_effects.as_slice() else {
+        panic!("expected source plus two exile-all effects, got {coordination:#?}");
     };
     assert!(matches!(
         source_exile,
@@ -2030,52 +2139,52 @@ pub(super) fn assert_source_counter_surface(value: &Value, expected_surface: &st
 
 #[test]
 pub(super) fn card_source_reference_context_registers_this_type_and_subtype_surfaces() {
-    super::super::util::with_card_source_reference_context(
+    let context = crate::parse_context::ParseContext::for_fragment(
         "Opaline Bracers",
-        &[CardType::Artifact],
-        &[Subtype::Equipment],
-        || {
-            assert_eq!(
-                super::super::util::source_reference_surface_for_words(&["this", "artifact"]),
-                Some(crate::target::SourceReferenceSurface::ThisPermanentType(
-                    "this artifact".to_string()
-                ))
-            );
-            assert_eq!(
-                super::super::util::source_reference_surface_for_words(&["this", "equipment"]),
-                Some(crate::target::SourceReferenceSurface::ThisPermanentType(
-                    "this Equipment".to_string()
-                ))
-            );
-            assert_eq!(
-                super::super::util::source_reference_surface_for_words(&["this", "adventure"]),
-                None
-            );
-        },
+        vec![CardType::Artifact],
+        vec![Subtype::Equipment],
+        "",
+    );
+    assert_eq!(
+        super::super::util::source_reference_surface_for_words_with_context(
+            context.view(),
+            &["this", "artifact"],
+        ),
+        Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+            "this artifact".to_string()
+        ))
+    );
+    assert_eq!(
+        super::super::util::source_reference_surface_for_words_with_context(
+            context.view(),
+            &["this", "equipment"],
+        ),
+        Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+            "this Equipment".to_string()
+        ))
+    );
+    assert_eq!(
+        super::super::util::source_reference_surface_for_words_with_context(
+            context.view(),
+            &["this", "adventure"],
+        ),
+        None
     );
 }
 
 #[test]
 pub(super) fn object_filter_source_reference_preserves_this_subtype_surface_hint() {
-    super::super::util::with_card_source_reference_context(
-        "Opaline Bracers",
-        &[CardType::Artifact],
-        &[Subtype::Equipment],
-        || {
-            let tokens =
-                lex_line("this Equipment", 0).expect("source-reference fixture should lex");
-            let filter = crate::object_filters::parse_object_filter_lexed(&tokens, false)
-                .expect("source-reference object filter should parse");
-            assert!(filter.source, "expected source object filter: {filter:?}");
-            assert_eq!(
-                filter.source_surface,
-                Some(crate::target::SourceReferenceSurface::ThisPermanentType(
-                    "this Equipment".to_string()
-                ))
-            );
-            assert_eq!(filter.description(), "this Equipment");
-        },
+    let tokens = lex_line("this Equipment", 0).expect("source-reference fixture should lex");
+    let filter = crate::object_filters::parse_object_filter_lexed(&tokens, false)
+        .expect("source-reference object filter should parse");
+    assert!(filter.source, "expected source object filter: {filter:?}");
+    assert_eq!(
+        filter.source_surface,
+        Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+            "this Equipment".to_string()
+        ))
     );
+    assert_eq!(filter.description(), "this Equipment");
 }
 
 #[test]
@@ -2096,23 +2205,16 @@ pub(super) fn raw_this_source_surfaces_singularize_possessive_normalized_nouns()
 
 pub(super) fn assert_source_counter_surface_in_card_context(
     text: &str,
-    card_types: &[CardType],
-    subtypes: &[Subtype],
+    _card_types: &[CardType],
+    _subtypes: &[Subtype],
     expected_surface: &str,
 ) {
-    super::super::util::with_card_source_reference_context(
-        "Self Reference Fixture",
-        card_types,
-        subtypes,
-        || {
-            let tokens = lex_line(text, 0)
-                .expect("rewrite lexer should classify source counter reference value");
-            let parsed =
-                super::super::grammar::shared_util::value_semantics::parse_equal_to_number_of_counters_on_reference_value(&tokens)
-                    .expect("source counter reference value should parse");
-            assert_source_counter_surface(&parsed, expected_surface);
-        },
-    );
+    let tokens =
+        lex_line(text, 0).expect("rewrite lexer should classify source counter reference value");
+    let parsed =
+        super::super::grammar::shared_util::value_semantics::parse_equal_to_number_of_counters_on_reference_value(&tokens)
+            .expect("source counter reference value should parse");
+    assert_source_counter_surface(&parsed, expected_surface);
 }
 
 #[test]
@@ -2165,11 +2267,10 @@ pub(super) fn rewrite_grammar_add_mana_equal_amount_value_entrypoint_matches_par
         grammar_parsed,
         Some(crate::effect::Value::Add(
             Box::new(crate::effect::Value::ToughnessOf(Box::new(
-                crate::target::ChooseSpec::Tagged(crate::TagKey::from("__it__")).with_surface_hint(
-                    crate::target::ChooseSpecSurfaceHint::SourceReference(
+                crate::target::ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())
+                    .with_surface_hint(crate::target::ChooseSpecSurfaceHint::SourceReference(
                         crate::target::SourceReferenceSurface::ThisPermanentType("it".to_string()),
-                    )
-                ),
+                    )),
             ))),
             Box::new(crate::effect::Value::Fixed(2)),
         ))
@@ -2623,7 +2724,7 @@ pub(super) fn rewrite_lexed_permission_helpers_cover_flash_and_free_cast_grants(
             player: crate::cards::builders::PlayerAst::You,
             spec,
             lifetime: crate::permission_helpers::PermissionLifetime::Static,
-        })) if spec == crate::grant::GrantSpec::flash_to_spells_matching(
+        })) if spec == crate::model::CompilerGrantSpecCore::flash_to_spells_matching(
             crate::target::ObjectFilter {
                 card_types: vec![CardType::Creature],
                 ..crate::target::ObjectFilter::default()
@@ -2683,7 +2784,7 @@ pub(super) fn rewrite_lexed_permission_helpers_parse_once_each_turn_top_library_
             spec,
             lifetime: crate::permission_helpers::PermissionLifetime::Static,
         })) if spec.zone == crate::zone::Zone::Library
-            && matches!(spec.grantable, crate::grant::Grantable::PlayFrom)
+            && matches!(spec.grantable, crate::model::CompilerGrantableCore::PlayFrom)
             && spec.usage_limit == Some(crate::grant::GrantUsageLimit::OnceEachTurn)
             && spec.filter.tagged_constraints.iter().any(|constraint|
                 constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
@@ -2694,7 +2795,7 @@ pub(super) fn rewrite_lexed_permission_helpers_parse_once_each_turn_top_library_
 
 #[test]
 pub(super) fn rewrite_lexed_top_library_permissions_preserve_cast_and_land_domains() {
-    fn parse_grant(line: &str) -> crate::grant::GrantSpec {
+    fn parse_grant(line: &str) -> crate::model::CompilerGrantSpecCore {
         let tokens = lex_line(line, 0).expect("top-library permission should lex");
         match super::super::permission_helpers::parse_permission_clause_spec_lexed(&tokens) {
             Ok(Some(crate::permission_helpers::PermissionClauseSpec::GrantBySpec {
@@ -2876,7 +2977,7 @@ pub(super) fn rewrite_lexed_permission_helpers_route_subject_filters_through_gra
             player: crate::cards::builders::PlayerAst::You,
             spec,
             lifetime: crate::permission_helpers::PermissionLifetime::Static,
-        })) if spec == crate::grant::GrantSpec::flash_to_spells_matching(
+        })) if spec == crate::model::CompilerGrantSpecCore::flash_to_spells_matching(
             crate::target::ObjectFilter {
                 card_types: vec![CardType::Creature],
                 ..crate::target::ObjectFilter::default()
@@ -3315,6 +3416,17 @@ pub(super) fn rewrite_lexed_parse_brain_in_a_jar_free_cast_clause_with_counter_v
     };
     let has_counter_gate = |filter: &crate::cards::builders::ObjectFilter| {
         filter.mana_value_eq_counters_on_source == Some(crate::object::CounterType::Charge)
+            || matches!(
+                filter.mana_value.as_ref(),
+                Some(crate::filter::Comparison::EqualExpr(value))
+                    if matches!(
+                        value.unhinted(),
+                        crate::effect::Value::CountersOn(
+                            _,
+                            Some(crate::object::CounterType::Charge)
+                        )
+                    )
+            )
             || filter.any_of.iter().any(|branch| {
                 branch.mana_value_eq_counters_on_source == Some(crate::object::CounterType::Charge)
             })
@@ -3764,13 +3876,14 @@ pub(super) fn rewrite_lexed_permission_helpers_parse_while_exiled_tail_lifetime(
 #[test]
 pub(super) fn rewrite_lexed_permission_helpers_parse_while_exiled_you_may_spend_mana_suffix() {
     let tokens = lex_line(
-        "cast that card for as long as it remains exiled and you may spend mana as though it were mana of any color to cast that spell",
+        "You may cast that card for as long as it remains exiled, and you may spend mana as though it were mana of any color to cast that spell",
         0,
     )
     .expect("rewrite lexer should classify while-exiled tagged cast permission");
 
     let parsed = super::super::permission_helpers::parse_cast_or_play_tagged_clause(&tokens)
-        .expect("while-exiled tagged permission should parse");
+        .expect("while-exiled tagged permission should parse")
+        .expect("while-exiled tagged permission should produce a typed effect");
     let debug = format!("{parsed:?}");
 
     assert!(
@@ -3782,6 +3895,9 @@ pub(super) fn rewrite_lexed_permission_helpers_parse_while_exiled_you_may_spend_
             || debug.contains("allow_any_color_for_cast: AnyType"),
         "{debug}"
     );
+    let sentence = parse_effect_sentence_lexed(&tokens)
+        .expect("while-exiled tagged permission should parse through the public sentence route");
+    assert!(!sentence.is_empty(), "{sentence:#?}");
 }
 
 #[test]
@@ -3984,12 +4100,134 @@ pub(super) fn lonis_keeps_the_target_opponent_as_the_revealed_library_owner()
 
 #[test]
 pub(super) fn blue_dragon_keeps_three_independent_target_slots() -> Result<(), CardTextError> {
-    let def = CardDefinitionBuilder::new(CardId::new(), "Blue Dragon")
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Blue Dragon")
         .mana_cost(super::super::util::parse_scryfall_mana_cost("{5}{U}{U}").unwrap())
-        .card_types(vec![CardType::Creature])
-        .parse_text(
-            "Flying\nLightning Breath — When this creature enters, until your next turn, target creature an opponent controls gets -3/-0, up to one other target creature gets -2/-0, and up to one other target creature gets -1/-0.",
-        )?;
+        .card_types(vec![CardType::Creature]);
+    let text = "Flying\nLightning Breath — When this creature enters, until your next turn, target creature an opponent controls gets -3/-0, up to one other target creature gets -2/-0, and up to one other target creature gets -1/-0.";
+    let (semantic, _) = parse_text_to_semantic_document(builder.clone(), text.to_string(), false)?;
+    let semantic_ability = semantic
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            crate::ir::RewriteSemanticItem::ParsedLine(line) => Some(&line.chunks),
+            _ => None,
+        })
+        .flatten()
+        .find_map(|chunk| match chunk {
+            crate::cards::builders::LineAst::Ability(ability) if ability.effects_ast.is_some() => {
+                Some(ability)
+            }
+            _ => None,
+        })
+        .expect("Blue Dragon trigger should retain its semantic effect AST");
+    let effects_ast = semantic_ability.effects_ast.as_deref().unwrap();
+    assert!(
+        !matches!(
+            effects_ast,
+            [crate::cards::builders::EffectAst::Coordinated { effects, .. }]
+                if matches!(effects.as_slice(), [crate::cards::builders::EffectAst::Coordinated { .. }])
+        ),
+        "semantic normalization must not retain redundant coordination: {effects_ast:#?}"
+    );
+    if let crate::model::CompilerAbilityKindCore::Triggered(triggered) = semantic_ability.kind()
+        && !triggered.effects.is_empty()
+    {
+        let [coordinated] = triggered.effects.flattened_default_effects() else {
+            panic!("semantic trigger should contain one coordinated effect: {triggered:#?}");
+        };
+        let crate::cards::builders::EffectAst::Coordinated { effects, .. } = coordinated else {
+            panic!("semantic trigger should retain coordinated execution: {triggered:#?}");
+        };
+        assert_eq!(
+            effects.len(),
+            3,
+            "front-end runtime compatibility payload must not nest coordination: {triggered:#?}"
+        );
+    }
+    let parsed_card = crate::compiler_pipeline::parse_semantic_document(semantic.clone())?;
+    let parsed_effects = parsed_card
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            crate::model::compiler_semantic::ParsedCardItem::Line(line) => Some(&line.chunks),
+            _ => None,
+        })
+        .flatten()
+        .find_map(|chunk| match chunk {
+            crate::cards::builders::LineAst::Ability(ability) if ability.effects_ast.is_some() => {
+                ability.effects_ast.as_deref()
+            }
+            _ => None,
+        })
+        .expect("parsed card should retain the Blue Dragon effect AST");
+    assert!(
+        !matches!(
+            parsed_effects,
+            [crate::cards::builders::EffectAst::Coordinated { effects, .. }]
+                if matches!(effects.as_slice(), [crate::cards::builders::EffectAst::Coordinated { .. }])
+        ),
+        "reference resolution must not introduce redundant coordination: {parsed_effects:#?}"
+    );
+    let normalized_card = crate::compiler_pipeline::prepare_parsed_document(parsed_card)?;
+    let normalized_prepared = normalized_card
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            crate::effect_pipeline::NormalizedCardItem::Line(line) => Some(&line.chunks),
+            _ => None,
+        })
+        .flatten()
+        .find_map(|chunk| match chunk {
+            crate::effect_pipeline::NormalizedLineChunk::Ability(ability) => {
+                match ability.prepared.as_ref() {
+                    Some(crate::effect_pipeline::NormalizedPreparedAbility::Triggered {
+                        prepared,
+                        ..
+                    }) => Some(&prepared.prepared),
+                    _ => None,
+                }
+            }
+            _ => None,
+        })
+        .expect("Blue Dragon trigger should have typed prepared effects");
+    assert!(
+        !matches!(
+            normalized_prepared.effects.as_slice(),
+            [crate::cards::builders::EffectAst::Coordinated { effects, .. }]
+                if matches!(effects.as_slice(), [crate::cards::builders::EffectAst::Coordinated { .. }])
+        ),
+        "preparation must not introduce redundant coordination: {normalized_prepared:#?}"
+    );
+    assert!(
+        !matches!(
+            normalized_prepared.annotated.effects.as_slice(),
+            [annotated]
+                if matches!(
+                    &annotated.effect,
+                    crate::cards::builders::EffectAst::Coordinated { effects, .. }
+                        if matches!(effects.as_slice(), [crate::cards::builders::EffectAst::Coordinated { .. }])
+                )
+        ),
+        "reference annotation must not introduce redundant coordination: {normalized_prepared:#?}"
+    );
+    let (normalized_lowered, _) = crate::compile_support::materialize_prepared_triggered_effects(
+        &crate::effect_pipeline::PreparedTriggeredEffectsForLowering {
+            prepared: normalized_prepared.clone(),
+            intervening_if: None,
+        },
+    )?;
+    let [coordinated] = normalized_lowered.effects.flattened_default_effects() else {
+        panic!("prepared Blue Dragon trigger should contain one effect: {normalized_lowered:#?}");
+    };
+    let coordinated = coordinated
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .expect("prepared Blue Dragon trigger should lower as coordination");
+    assert_eq!(
+        coordinated.effects.len(),
+        3,
+        "prepared effect materialization must retain all coordination members: {normalized_lowered:#?}"
+    );
+    let def = builder.parse_text(text)?;
 
     let triggered = def
         .abilities
@@ -4011,7 +4249,7 @@ pub(super) fn blue_dragon_keeps_three_independent_target_slots() -> Result<(), C
     assert_eq!(
         sequence.effects.len(),
         3,
-        "the required leading target and both optional targets must remain executable children"
+        "the required leading target and both optional targets must remain executable children: {triggered:#?}"
     );
     assert!(
         sequence
@@ -4071,7 +4309,7 @@ pub(super) fn rewrite_lowering_exile_bottom_card_of_each_opponent_library_face_d
     assert!(debug.contains("ForPlayersEffect"), "{debug}");
     assert!(debug.contains("filter: Opponent"), "{debug}");
     assert!(
-        debug.contains("zone: Some(\n                                                    Library"),
+        debug.contains("zone: Some(") && debug.contains("Library"),
         "{debug}"
     );
     assert!(debug.contains("chooser: IteratedPlayer"), "{debug}");
@@ -4263,8 +4501,17 @@ pub(super) fn flashback_keyword_accepts_non_mana_total_cost() {
     let debug = format!("{parsed:#?}");
 
     assert!(debug.contains("Flashback"), "{debug}");
-    assert!(debug.contains("Sacrifice"), "{debug}");
-    assert!(debug.contains("count: 3"), "{debug}");
+    let crate::model::CompilerAlternativeCastingMethod::Flashback { total_cost } = parsed else {
+        panic!("expected compiler-owned flashback cost: {debug}");
+    };
+    let costs = total_cost
+        .as_all()
+        .expect("non-mana flashback should have one ordered cost branch");
+    assert!(matches!(
+        costs,
+        [crate::model::CompilerCost::Sacrifice { count, .. }]
+            if count.min == 3 && count.max == Some(3)
+    ));
     assert!(!debug.contains("Mana("), "{debug}");
 }
 
@@ -4384,7 +4631,7 @@ pub(super) fn demilich_graveyard_cast_additional_exile_cost_permission_parses() 
     let debug = format!("{parsed:#?}");
 
     assert!(debug.contains("GraveyardCastFromCardManaCost"), "{debug}");
-    assert!(debug.contains("ExileFromGraveyard"), "{debug}");
+    assert!(debug.contains("ExileChosen"), "{debug}");
     assert!(debug.contains("Instant"), "{debug}");
     assert!(debug.contains("Sorcery"), "{debug}");
 }

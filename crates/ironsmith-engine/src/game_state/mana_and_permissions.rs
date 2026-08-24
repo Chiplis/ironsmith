@@ -977,9 +977,19 @@ impl GameState {
         let Some(mana_source) = self.object(unit.source) else {
             return false;
         };
-        let filter_ctx =
-            self.filter_context_for(self.controller_of(mana_source), Some(unit.source));
-        filter.matches(source_obj, &filter_ctx, self)
+        let controller = self.controller_of(mana_source);
+        let filter_ctx = self
+            .filter_context_for(controller, Some(unit.source))
+            .with_caster(Some(controller));
+        let mut stack_filter = filter.clone();
+        if stack_filter.zone == Some(Zone::Battlefield) {
+            stack_filter.zone = Some(Zone::Stack);
+        }
+        stack_filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+        stack_filter.matches(source_obj, &filter_ctx, self)
+            || self
+                .cast_origin_snapshot(source_id)
+                .is_some_and(|origin| filter.matches_snapshot(origin, &filter_ctx, self))
     }
 
     fn activate_ability_source_filter_matches_payment_source(
@@ -1025,6 +1035,13 @@ impl GameState {
                 reason.mana_payment_purpose() == *purpose
             }
             crate::ability::ManaPaymentPredicate::SourceMatches(filter) => {
+                if reason == crate::costs::PaymentReason::CastSpell {
+                    return self.cast_spell_filter_matches_payment_source(
+                        unit,
+                        filter,
+                        payment_source,
+                    );
+                }
                 let Some(source_id) = payment_source else {
                     return false;
                 };
@@ -1037,11 +1054,6 @@ impl GameState {
                     .unwrap_or_else(|| self.controller_of(source_obj));
                 let filter_ctx = self.filter_context_for(controller, Some(unit.source));
                 filter.matches(source_obj, &filter_ctx, self)
-                    || (reason == crate::costs::PaymentReason::CastSpell
-                        && source_obj.zone == Zone::Stack
-                        && self.cast_origin_snapshot(source_id).is_some_and(|origin| {
-                            filter.matches_snapshot(origin, &filter_ctx, self)
-                        }))
             }
             crate::ability::ManaPaymentPredicate::CostContains(symbol) => effective_cost
                 .is_some_and(|cost| cost.pips().iter().any(|pip| pip.contains(symbol))),
@@ -1872,6 +1884,99 @@ impl GameState {
         }
     }
 
+    fn apply_cast_spell_mana_bonus(
+        &mut self,
+        payer: PlayerId,
+        payment_source: Option<ObjectId>,
+        reason: crate::costs::PaymentReason,
+        unit: &crate::ability::RestrictedManaUnit,
+    ) {
+        if reason != crate::costs::PaymentReason::CastSpell {
+            return;
+        }
+        let Some(spell_id) = payment_source else {
+            return;
+        };
+        let bonuses = unit
+            .restrictions
+            .iter()
+            .filter_map(|restriction| match restriction {
+                crate::ability::ManaUsageRestriction::CastSpellWithManaBonus {
+                    filter,
+                    condition: _,
+                    grant_uncounterable,
+                    enters_with_counters,
+                    granted_abilities,
+                    granted_keywords,
+                } if self.cast_spell_filter_matches_payment_source(
+                    unit,
+                    filter,
+                    Some(spell_id),
+                ) =>
+                {
+                    Some((
+                        *grant_uncounterable,
+                        enters_with_counters.clone(),
+                        granted_abilities.clone(),
+                        granted_keywords.clone(),
+                    ))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        for (grant_uncounterable, enters_with_counters, granted_abilities, granted_keywords) in
+            bonuses
+        {
+            if grant_uncounterable {
+                let ability = crate::static_abilities::StaticAbility::uncounterable();
+                self.grant_temporary_static_ability_payload_to_object_until_end_of_turn(
+                    spell_id,
+                    ability.id(),
+                    Some(ability),
+                );
+            }
+            for (counter_type, count) in enters_with_counters {
+                let ability = crate::static_abilities::StaticAbility::enters_with_counters(
+                    counter_type,
+                    count,
+                );
+                if let Some(spell) = self.object_mut(spell_id) {
+                    spell
+                        .abilities_mut()
+                        .push(crate::ability::Ability::static_ability(ability));
+                }
+            }
+            for (ability, duration) in granted_abilities {
+                match duration {
+                    crate::ability::ManaSpendAbilityGrantDuration::UntilEndOfTurn => self
+                        .grant_temporary_static_ability_to_object_until_end_of_turn(
+                            spell_id, ability,
+                        ),
+                    crate::ability::ManaSpendAbilityGrantDuration::UntilYourNextTurn => {
+                        let expires_end_of_turn = self.next_turn_number_if_player_stayed(payer);
+                        self.grant_temporary_static_ability_to_object_through_turn(
+                            spell_id,
+                            ability,
+                            expires_end_of_turn,
+                        );
+                    }
+                }
+            }
+            for keyword in granted_keywords {
+                match keyword {
+                    crate::ability::ManaSpendGrantedKeyword::Riot => {
+                        if let Some(spell) = self.object_mut(spell_id) {
+                            spell
+                                .abilities_mut()
+                                .push(crate::cards::builders::riot_triggered_ability());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn publish_spent_mana_unit(
         &mut self,
@@ -1905,6 +2010,7 @@ impl GameState {
         let Some(restriction) = restriction else {
             return;
         };
+        self.apply_cast_spell_mana_bonus(payer, payment_source, reason, &restriction);
         for payload in restriction
             .restrictions
             .iter()

@@ -17,7 +17,7 @@ const SENTENCE_HELPER_EXILED_TAG_PREFIX: &str = "__sentence_helper_exiled";
 const SENTENCE_HELPER_CONSULT_MATCH_TAG_PREFIX: &str = "__sentence_helper_consult_match";
 
 fn tag_str_has_prefix(tag: &str, prefix: &str) -> bool {
-    tag.strip_prefix(prefix).is_some()
+    tag.starts_with(prefix)
 }
 
 pub fn is_revealed_collection_tag(tag: &str) -> bool {
@@ -49,7 +49,7 @@ pub fn is_exiled_collection_tag(tag: &str) -> bool {
 }
 
 fn total_cost_values_any(
-    cost: &crate::cost::TotalCost,
+    cost: &ironsmith_core::TotalCost<crate::model::CompilerCost>,
     predicate: impl Fn(&Value) -> bool + Copy,
 ) -> bool {
     match cost.kind() {
@@ -63,20 +63,54 @@ fn total_cost_values_any(
 }
 
 fn cost_component_values_any(
-    component: &crate::costs::Cost,
+    component: &crate::model::CompilerCost,
     predicate: impl Fn(&Value) -> bool + Copy,
 ) -> bool {
     match component {
-        crate::costs::Cost::DynamicMana(dynamic) => {
+        crate::model::CompilerCost::DynamicMana(dynamic) => {
             dynamic.x_value.as_ref().is_some_and(predicate)
                 || dynamic.additional_generic.as_ref().is_some_and(predicate)
                 || dynamic.multiplier.as_ref().is_some_and(predicate)
         }
-        crate::costs::Cost::Energy(value)
-        | crate::costs::Cost::Mill(value)
-        | crate::costs::Cost::Life(value) => predicate(value),
+        crate::model::CompilerCost::Life(value) => predicate(value),
+        crate::model::CompilerCost::Effect(effect)
+        | crate::model::CompilerCost::ValidatedEffect(effect) => {
+            effect_ast_values_any(effect, predicate)
+        }
         _ => false,
     }
+}
+
+fn effect_ast_values_any(effect: &EffectAst, predicate: impl Fn(&Value) -> bool + Copy) -> bool {
+    let mut found = match effect {
+        EffectAst::SubjectVerb(subject_verb) => {
+            subject_verb_action_value(&subject_verb.action).is_some_and(predicate)
+        }
+        EffectAst::RepeatEffects { count, .. } => predicate(count),
+        EffectAst::ChooseObjects {
+            count_value: Some(value),
+            ..
+        }
+        | EffectAst::ChooseObjectsBottomOfLibrary {
+            count_value: Some(value),
+            ..
+        }
+        | EffectAst::ChooseObjectsTopOfLibrary {
+            count_value: Some(value),
+            ..
+        }
+        | EffectAst::ChooseObjectsAcrossZones {
+            count_value: Some(value),
+            ..
+        } => predicate(value),
+        _ => false,
+    };
+    for_each_nested_effects(effect, true, |nested| {
+        found |= nested
+            .iter()
+            .any(|effect| effect_ast_values_any(effect, predicate));
+    });
+    found
 }
 
 pub fn effects_reference_tag(effects: &[EffectAst], tag: &str) -> bool {
@@ -1123,6 +1157,11 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::CreateEmblem { .. }
         | SubjectVerbActionAst::LoseGame
         | SubjectVerbActionAst::WinGame
+        | SubjectVerbActionAst::ReorderTopPlanarDeck { .. }
+        | SubjectVerbActionAst::ReturnSourceTransformedFromExile
+        | SubjectVerbActionAst::Reconfigure { .. }
+        | SubjectVerbActionAst::CumulativeUpkeep { .. }
+        | SubjectVerbActionAst::Casualty { .. }
         | SubjectVerbActionAst::PayAnyEnergy { .. }
         | SubjectVerbActionAst::PayAnyLife { .. }
         | SubjectVerbActionAst::DiscardHand

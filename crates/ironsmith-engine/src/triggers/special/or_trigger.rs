@@ -1326,7 +1326,7 @@ mod tests {
     }
 
     #[test]
-    fn display_compacts_matching_named_source_enters_or_attacks() {
+    fn matching_and_changed_named_source_arms_stay_structurally_distinct() {
         let surface = crate::target::SourceReferenceSurface::FullName("Kang Prime".to_string());
         let enters = Trigger::new(
             ZoneChangeTrigger::this_enters_battlefield().this_surface(surface.clone()),
@@ -1335,7 +1335,18 @@ mod tests {
         let trigger = Trigger::or(vec![enters, attacks])
             .with_intro_surface(crate::triggers::TriggerIntroSurface::Whenever);
 
-        assert_eq!(trigger.display(), "Whenever Kang Prime enters or attacks");
+        let union = trigger
+            .downcast_ref::<OrTrigger>()
+            .expect("expected an or trigger");
+        assert_eq!(union.triggers.len(), 2);
+        let enters = union.triggers[0]
+            .downcast_ref::<ZoneChangeTrigger>()
+            .expect("first arm should be a zone-change trigger");
+        let attacks = union.triggers[1]
+            .downcast_ref::<AttacksTrigger>()
+            .expect("second arm should be an attacks trigger");
+        assert_eq!(enters.this_object_surface, Some(surface.clone()));
+        assert_eq!(attacks.filter.source_surface, Some(surface.clone()));
 
         let changed = Trigger::or(vec![
             Trigger::new(ZoneChangeTrigger::this_enters_battlefield().this_surface(surface)),
@@ -1344,9 +1355,17 @@ mod tests {
             )),
         ])
         .with_intro_surface(crate::triggers::TriggerIntroSurface::Whenever);
+        let changed = changed
+            .downcast_ref::<OrTrigger>()
+            .expect("expected an or trigger");
+        let changed_attacks = changed.triggers[1]
+            .downcast_ref::<AttacksTrigger>()
+            .expect("second arm should be an attacks trigger");
         assert_eq!(
-            changed.display(),
-            "Whenever Kang Prime enters or Other Name attacks"
+            changed_attacks.filter.source_surface,
+            Some(crate::target::SourceReferenceSurface::FullName(
+                "Other Name".to_string()
+            ))
         );
     }
 

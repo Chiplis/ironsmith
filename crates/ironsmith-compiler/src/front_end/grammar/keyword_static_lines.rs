@@ -53,3 +53,7 @@ pub use permission_counter_shapes::*;
 #[path = "keyword_static_lines/exile_replacement_shapes.rs"]
 mod exile_replacement_shapes;
 pub use exile_replacement_shapes::*;
+
+#[path = "keyword_static_lines/companion.rs"]
+mod companion;
+pub use companion::*;

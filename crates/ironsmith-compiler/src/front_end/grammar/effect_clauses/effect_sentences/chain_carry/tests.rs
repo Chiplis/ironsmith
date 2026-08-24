@@ -5,6 +5,11 @@ use crate::cards::builders::{
 };
 use crate::effect::{ChoiceCount, Value};
 use crate::ids::CardId;
+use crate::model::control_flow::{CompilerDurationAst, ControlFlowNodeAst};
+use crate::model::coordination::{
+    CarryKindAst, CoordinationAst, CoordinationKindAst, CoordinationOperatorAst,
+    EffectDependencyAst,
+};
 use crate::target::PlayerFilter;
 use crate::target::TaggedOpbjectRelation;
 use crate::types::{CardType, Subtype};
@@ -13,14 +18,50 @@ use crate::zone::Zone;
 use super::super::super::lexer::lex_line;
 use super::super::dispatch_entry::parse_effect_sentences_lexed;
 use super::super::dispatch_inner::parse_fully_typed_mixed_restriction_action_chain;
-use super::super::{parse_effect_sentence_inner_lexed, parse_effect_sentence_lexed};
+use super::super::{
+    parse_effect_sentence_inner_lexed, parse_effect_sentence_lexed,
+    parse_effect_sentence_lexed_with_context,
+};
 use super::{
     maybe_apply_carried_player_with_clause_lexed, parse_effect_chain_lexed,
     parse_effect_chain_with_subject_verb_primitives_lexed,
     parse_effect_clause_with_trailing_if_lexed, parse_leading_player_may_lexed,
     preserve_coordinated_effect_chain_surface, starts_like_create_fragment_lexed,
 };
-use crate::util::with_source_reference_context;
+
+fn named_source_parse_context(
+    name: &str,
+    card_types: Vec<CardType>,
+) -> crate::parse_context::ParseContext {
+    crate::parse_context::ParseContext::new(
+        crate::parse_context::SourceIdentity {
+            unit: crate::parse_context::SourceUnitId(0),
+            card_name: name.to_string(),
+            face_index: 0,
+            source_len: 0,
+            source_line_count: 1,
+        },
+        crate::parse_context::CardFaceMetadata {
+            card_types,
+            ..Default::default()
+        },
+        crate::parse_context::ParseFeatures::default(),
+    )
+}
+
+fn sole_typed_coordination(effects: &[EffectAst]) -> &CoordinationAst {
+    let [EffectAst::Coordination(coordination)] = effects else {
+        panic!("expected one typed coordination program, got {effects:#?}");
+    };
+    coordination
+}
+
+fn unwrap_tagged_runtime_effect(mut effect: &crate::effect::Effect) -> &crate::effect::Effect {
+    while let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        effect = tagged.effect.as_ref();
+    }
+    effect
+}
 
 #[test]
 fn each_player_optional_hand_reveal_preserves_selected_collection() {
@@ -91,8 +132,30 @@ fn shared_target_player_graveyard_x_draw_and_loss_declares_one_target() {
     .expect("independent target slots should lex");
     let independent =
         parse_effect_sentences_lexed(&independent).expect("independent target slots should parse");
+    let [EffectAst::Coordination(independent_coordination)] = independent.as_slice() else {
+        panic!("expected canonical target coordination: {independent:#?}");
+    };
+    let explicit_target_subjects = independent_coordination
+        .effects()
+        .filter(|effect| {
+            matches!(
+                effect,
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    subject: crate::cards::builders::SubjectVerbSubjectAst {
+                        player: PlayerAst::Target,
+                        ..
+                    },
+                    ..
+                })
+            )
+        })
+        .count();
     assert!(
-        format!("{independent:#?}").matches("TargetOnly").count() >= 2,
+        explicit_target_subjects >= 2
+            && independent_coordination
+                .boundaries
+                .iter()
+                .all(|boundary| matches!(boundary.dependency, EffectDependencyAst::Independent)),
         "independently authored targets must remain distinct: {independent:#?}"
     );
 }
@@ -136,7 +199,13 @@ fn for_each_object_payload_keeps_any_opponent_life_payment_inside_the_loop() {
             ..
         })]
     ));
-    assert!(format!("{cost:#?}").contains("PayLife"), "{cost:#?}");
+    assert!(
+        matches!(
+            cost.as_all(),
+            Some([crate::model::CompilerCost::Life(Value::Fixed(3))])
+        ),
+        "{cost:#?}"
+    );
 }
 
 #[test]
@@ -207,16 +276,19 @@ fn leading_duration_scaled_target_then_pronoun_grant_keeps_both_actions() {
     .expect("scaled target/grant chain should lex");
     let effects =
         parse_effect_sentence_lexed(&tokens).expect("scaled target/grant chain should parse");
-    let [
-        EffectAst::Coordinated {
-            effects: coordinated,
-            leading_duration: true,
-            ..
-        },
-    ] = effects.as_slice()
-    else {
-        panic!("expected one leading-duration coordinated chain, got {effects:#?}");
+    let [EffectAst::ControlFlow(control)] = effects.as_slice() else {
+        panic!("expected one typed duration control-flow node, got {effects:#?}");
     };
+    let ControlFlowNodeAst::Duration {
+        duration: CompilerDurationAst::UntilEndOfTurn,
+        program,
+    } = &control.node
+    else {
+        panic!("expected an end-of-turn duration node, got {control:#?}");
+    };
+    let coordinated = sole_typed_coordination(&control.programs[*program].effects)
+        .effects()
+        .collect::<Vec<_>>();
     assert!(
         matches!(
             coordinated.as_slice(),
@@ -244,15 +316,10 @@ fn mixed_cant_and_becomes_chain_keeps_the_shared_target_and_both_actions() {
     .expect("mixed restriction and subtype chain should lex");
     let effects = parse_effect_sentence_inner_lexed(&tokens)
         .expect("mixed restriction and subtype chain should parse completely");
-    let [
-        EffectAst::Coordinated {
-            effects: coordinated,
-            ..
-        },
-    ] = effects.as_slice()
-    else {
+    let [EffectAst::Coordination(coordination)] = effects.as_slice() else {
         panic!("expected one coordinated restriction/action chain, got {effects:#?}");
     };
+    let coordinated = coordination.effects().collect::<Vec<_>>();
     let debug = format!("{coordinated:#?}");
     assert_eq!(
         debug.matches("TargetOnly").count(),
@@ -326,8 +393,13 @@ fn multicolor_source_animation_then_unblockable_keeps_both_typed_arms() {
     };
     assert_eq!(power, &Value::Fixed(2));
     assert_eq!(toughness, &Value::Fixed(2));
-    assert!(matches!(target, TargetAst::Source(_)), "{target:#?}");
-    assert_eq!(card_types, &[CardType::Artifact, CardType::Creature]);
+    assert!(
+        matches!(target, TargetAst::Object(filter, _, _) if filter.source),
+        "the canonical object selection must identify the ability source: {target:#?}"
+    );
+    assert_eq!(card_types.len(), 2);
+    assert!(card_types.contains(&CardType::Artifact));
+    assert!(card_types.contains(&CardType::Creature));
     assert_eq!(subtypes, &[Subtype::Horror]);
     assert_eq!(
         *colors,
@@ -336,10 +408,11 @@ fn multicolor_source_animation_then_unblockable_keeps_both_typed_arms() {
     assert_eq!(duration, &crate::effect::Until::EndOfTurn);
     assert_eq!(restriction_duration, &crate::effect::Until::EndOfTurn);
     assert!(
-        restricted.tagged_constraints.iter().any(|constraint| {
-            constraint.tag.as_str() == crate::cards::builders::IT_TAG
-                && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
-        }),
+        restricted.source
+            && matches!(
+                restricted.source_surface,
+                Some(crate::target::SourceReferenceSurface::ThisPermanentType(_))
+            ),
         "the bare restriction must retain its shared-source reference: {restricted:#?}"
     );
 }
@@ -372,9 +445,11 @@ fn activated_effect_body_routes_multicolor_animation_before_broad_cant() {
         ironsmith_core::SequenceSurface::Coordinated
     );
     assert!(
-        sequence.effects.iter().any(|effect| effect
-            .downcast_ref::<crate::effects::ApplyContinuousEffect>()
-            .is_some()),
+        sequence.effects.iter().any(|effect| {
+            unwrap_tagged_runtime_effect(effect)
+                .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+                .is_some()
+        }),
         "the animation arm must survive lowering: {sequence:#?}"
     );
     assert!(
@@ -410,19 +485,20 @@ fn generic_comma_then_chain_keeps_a_distinct_typed_boundary() {
     .expect("comma-then chain should lex");
     let effects =
         parse_effect_chain_lexed(&comma_then).expect("comma-then chain should parse completely");
-    let [EffectAst::CommaThen { effects: nested }] = effects.as_slice() else {
-        panic!("expected typed comma-then wrapper, got {effects:#?}");
-    };
+    let coordination = sole_typed_coordination(&effects);
+    assert_eq!(coordination.kind, CoordinationKindAst::SharedSubject);
+    assert!(
+        coordination
+            .boundaries
+            .iter()
+            .any(|boundary| boundary.operator == CoordinationOperatorAst::CommaThen),
+        "{coordination:#?}"
+    );
+    let nested = coordination.effects().cloned().collect::<Vec<_>>();
     let debug = format!("{nested:#?}");
     assert!(debug.contains("Draw"), "{debug}");
     assert!(debug.contains("Discard"), "{debug}");
-    assert!(
-        matches!(
-            preserve_coordinated_effect_chain_surface(&comma_then, nested.clone()).as_slice(),
-            [EffectAst::CommaThen { .. }]
-        ),
-        "whole-line surface preservation should retain the same typed comma-then boundary"
-    );
+    assert_eq!(nested.len(), 2, "{coordination:#?}");
 
     let coordinated = lex_line(
         "Target player draws cards equal to the number of cards in their hand and discards that many cards.",
@@ -445,11 +521,17 @@ fn repeated_comma_then_chain_keeps_all_ordered_actions() {
         .expect("three-action scry chain should lex");
     let effects =
         parse_effect_chain_lexed(&tokens).expect("three-action scry chain should parse completely");
-    let [EffectAst::CommaThen { effects: sequence }] = effects.as_slice() else {
-        panic!("expected one typed comma-then sequence, got {effects:#?}");
-    };
-    let counts = sequence
-        .iter()
+    let coordination = sole_typed_coordination(&effects);
+    assert_eq!(coordination.kind, CoordinationKindAst::Sequence);
+    assert!(
+        coordination
+            .boundaries
+            .iter()
+            .all(|boundary| boundary.operator == CoordinationOperatorAst::CommaThen),
+        "{coordination:#?}"
+    );
+    let counts = coordination
+        .effects()
         .map(|effect| match effect {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action: SubjectVerbActionAst::Scry { count },
@@ -484,7 +566,10 @@ fn repeated_comma_then_chain_lowers_every_action_into_the_runtime_sequence() {
     let sequence = effect
         .downcast_ref::<crate::effects::SequenceEffect>()
         .expect("comma-then chain should lower as a runtime sequence");
-    assert_eq!(sequence.surface, ironsmith_core::SequenceSurface::CommaThen);
+    assert_eq!(
+        sequence.surface,
+        ironsmith_core::SequenceSurface::RepeatedCommaThen
+    );
     let counts = sequence
         .effects
         .iter()
@@ -626,20 +711,23 @@ fn specialist_pronoun_chain_keeps_its_authored_comma_then_surface() {
         lex_line("It explores, then it explores again.", 0).expect("explore chain should lex");
     let effects =
         parse_effect_sentence_lexed(&tokens).expect("explore chain should parse completely");
-    let [EffectAst::CommaThen { effects: nested }] = effects.as_slice() else {
-        panic!("expected a typed comma-then explore chain, got {effects:#?}");
-    };
-    assert_eq!(nested.len(), 2, "{nested:#?}");
+    let coordination = sole_typed_coordination(&effects);
+    assert_eq!(coordination.kind, CoordinationKindAst::Carry);
+    assert_eq!(coordination.members.len(), 2, "{coordination:#?}");
+    assert_eq!(
+        coordination.boundaries[0].operator,
+        CoordinationOperatorAst::CommaThen
+    );
 
     let coordinated =
         lex_line("It explores and it explores again.", 0).expect("coordinated chain should lex");
     let effects = parse_effect_sentence_lexed(&coordinated)
         .expect("coordinated explore chain should parse completely");
-    assert!(
-        effects
-            .iter()
-            .all(|effect| !matches!(effect, EffectAst::CommaThen { .. })),
-        "{effects:#?}"
+    let coordination = sole_typed_coordination(&effects);
+    assert_eq!(coordination.kind, CoordinationKindAst::Carry);
+    assert_eq!(
+        coordination.boundaries[0].operator,
+        CoordinationOperatorAst::And
     );
 }
 
@@ -730,16 +818,45 @@ fn activated_conditional_instead_chain_lowers_every_replacement_action() {
             "{2}{W}: Return target permanent you control to its owner's hand. If it has unearth, instead exile it, then return that card to its owner's hand. Activate only during your turn.",
         )
         .expect("conditional activated replacement should compile");
-    let debug = format!("{definition:#?}");
+    let activated = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("the fixture should produce an activated ability");
+    let [segment] = activated.effects.segments.as_slice() else {
+        panic!("the activated instruction should stay in one segment: {activated:#?}");
+    };
+    let [replacement] = segment.self_replacements.as_slice() else {
+        panic!("the conditional instead clause should be a typed self-replacement: {segment:#?}");
+    };
     assert!(
-        debug.contains("ability_markers: [\n")
-            && debug.contains("\"unearth\"")
-            && debug.contains("MoveToZoneEffect")
-            && debug.contains("zone: Exile")
-            && debug.contains("ReturnToHandEffect")
-            && debug.contains("condition: TaggedObjectMatches")
-            && !debug.contains("condition: SourceMatches"),
-        "lowering must retain both actions from the replacement branch: {debug}"
+        matches!(
+            &replacement.condition,
+            crate::effect::Condition::TargetMatches(filter)
+                if filter.ability_markers.iter().any(|marker| marker == "unearth")
+        ),
+        "the replacement predicate must inspect the activated ability's target: {replacement:#?}"
+    );
+    let [replacement_root] = replacement.replacement_effects.as_slice() else {
+        panic!("the replacement actions should share one sequence: {replacement:#?}");
+    };
+    let replacement_sequence = replacement_root
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .expect("the exile and return actions should stay ordered");
+    assert!(
+        replacement_sequence.effects.iter().any(|effect| {
+            unwrap_tagged_runtime_effect(effect)
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+                .is_some_and(|movement| movement.zone == Zone::Exile)
+        }) && replacement_sequence.effects.iter().any(|effect| {
+            unwrap_tagged_runtime_effect(effect)
+                .downcast_ref::<crate::effects::ReturnToHandEffect>()
+                .is_some()
+        }),
+        "lowering must retain both actions from the replacement branch: {replacement_sequence:#?}"
     );
 }
 
@@ -923,25 +1040,29 @@ fn created_tokens_then_source_deals_where_x_keeps_both_actions() {
         debug.contains("subtypes: [\n") && debug.contains("Hamster"),
         "the damage amount must retain its Hamster count basis: {debug}"
     );
+    let [EffectAst::Coordination(coordination)] = effects.as_slice() else {
+        panic!("the comma-then chain must use typed coordination: {effects:#?}");
+    };
+    let [created, damage] = coordination.members.as_slice() else {
+        panic!("the typed coordination must retain both members: {coordination:#?}");
+    };
+    assert!(matches!(
+        created.effects.as_slice(),
+        [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::CreateTokenWithMods { .. },
+            ..
+        })]
+    ));
     assert!(
         matches!(
-            effects.as_slice(),
-            [EffectAst::CommaThen { effects }] if matches!(
-                effects.as_slice(),
-                [
-                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                        action: SubjectVerbActionAst::CreateTokenWithMods { .. },
-                        ..
-                    }),
-                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                        action: SubjectVerbActionAst::DealDamageEqualToPower {
-                            source: crate::cards::builders::TargetAst::Source(_),
-                            ..
-                        },
-                        ..
-                    }),
-                ]
-            )
+            damage.effects.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::DealDamageEqualToPower {
+                    source: crate::cards::builders::TargetAst::Source(_),
+                    ..
+                },
+                ..
+            })]
         ),
         "the singular damage pronoun after a plural token result must bind to the source: {debug}"
     );
@@ -1378,30 +1499,32 @@ fn hollow_specter_dependent_result_arms_stay_flat() {
     else {
         panic!("expected one if-result wrapper, got {effects:#?}");
     };
-    assert_eq!(conditional_effects.len(), 2, "{conditional_effects:#?}");
-    assert!(
-        conditional_effects
-            .iter()
-            .all(|effect| !matches!(effect, EffectAst::Coordinated { .. })),
-        "the revealed-card dependency must remain visible to the flat specialist: {conditional_effects:#?}"
-    );
+    let coordination = sole_typed_coordination(conditional_effects);
+    assert_eq!(coordination.kind, CoordinationKindAst::Conjunction);
+    let coordinated_effects = coordination.effects().collect::<Vec<_>>();
+    assert_eq!(coordinated_effects.len(), 2, "{coordination:#?}");
+    let [boundary] = coordination.boundaries.as_slice() else {
+        panic!("expected one authored conjunction boundary: {coordination:#?}");
+    };
+    assert_eq!(boundary.operator, CoordinationOperatorAst::And);
+    assert_eq!(boundary.dependency, EffectDependencyAst::Independent);
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action: SubjectVerbActionAst::RevealCardsFromHand { tag, .. },
         ..
-    }) = &conditional_effects[0]
+    }) = coordinated_effects[0]
     else {
-        panic!("expected the first arm to reveal tagged hand cards: {conditional_effects:#?}");
+        panic!("expected the first arm to reveal tagged hand cards: {coordination:#?}");
     };
-    let EffectAst::ChooseObjects { filter, .. } = &conditional_effects[1] else {
-        panic!("expected the second arm to choose from those cards: {conditional_effects:#?}");
+    let EffectAst::ChooseObjects { filter, .. } = coordinated_effects[1] else {
+        panic!("expected the second arm to choose from those cards: {coordination:#?}");
     };
     assert!(
         filter
             .tagged_constraints
             .iter()
             .any(|constraint| constraint.tag.as_str() == tag.as_str()),
-        "the second arm must consume the first arm's reveal tag: {conditional_effects:#?}"
+        "the second arm must consume the first arm's reveal tag: {coordination:#?}"
     );
 }
 
@@ -1424,20 +1547,14 @@ fn moku_safe_existing_coordination_becomes_a_result_conjunction() {
     else {
         panic!("expected one if-result wrapper, got {effects:#?}");
     };
-    let [
-        EffectAst::Coordinated {
-            effects: coordinated_effects,
-            leading_duration: false,
-            result_conjunction: true,
-        },
-    ] = conditional_effects.as_slice()
-    else {
-        panic!(
-            "expected Moku's safe authored 'and' body to be a result conjunction: {conditional_effects:#?}"
-        );
+    let coordination = sole_typed_coordination(conditional_effects);
+    assert_eq!(coordination.kind, CoordinationKindAst::Conjunction);
+    assert_eq!(coordination.members.len(), 2, "{coordination:#?}");
+    let [boundary] = coordination.boundaries.as_slice() else {
+        panic!("expected one authored conjunction boundary: {coordination:#?}");
     };
-    assert_eq!(coordinated_effects.len(), 2, "{coordinated_effects:#?}");
-    let debug = format!("{coordinated_effects:#?}");
+    assert_eq!(boundary.operator, CoordinationOperatorAst::And);
+    let debug = format!("{coordination:#?}");
     assert!(debug.contains("Pump"), "{debug}");
     assert!(debug.contains("GrantAbilitiesAll"), "{debug}");
 }
@@ -1520,17 +1637,10 @@ fn leading_if_result_scopes_every_coordinated_effect_arm() {
     else {
         panic!("expected one if-result wrapper, got {effects:#?}");
     };
-    let [
-        EffectAst::Coordinated {
-            effects: coordinated_effects,
-            leading_duration: false,
-            result_conjunction: true,
-        },
-    ] = conditional_effects.as_slice()
-    else {
+    let [EffectAst::Coordination(coordination)] = conditional_effects.as_slice() else {
         panic!("expected coordinated result body, got {conditional_effects:#?}");
     };
-    assert_eq!(coordinated_effects.len(), 2, "{coordinated_effects:#?}");
+    assert_eq!(coordination.effects().count(), 2, "{coordination:#?}");
 }
 
 #[test]
@@ -1549,17 +1659,10 @@ fn leading_when_result_scopes_every_coordinated_effect_arm() {
     else {
         panic!("expected one when-result wrapper, got {effects:#?}");
     };
-    let [
-        EffectAst::Coordinated {
-            effects: coordinated_effects,
-            leading_duration: false,
-            result_conjunction: true,
-        },
-    ] = conditional_effects.as_slice()
-    else {
+    let [EffectAst::Coordination(coordination)] = conditional_effects.as_slice() else {
         panic!("expected coordinated result body, got {conditional_effects:#?}");
     };
-    assert_eq!(coordinated_effects.len(), 2, "{coordinated_effects:#?}");
+    assert_eq!(coordination.effects().count(), 2, "{coordination:#?}");
 }
 
 #[test]
@@ -1581,18 +1684,21 @@ fn effect_sentence_inner_preserves_overseer_counter_grant_coordination() {
     else {
         panic!("expected one when-result wrapper, got {effects:#?}");
     };
-    let [
-        EffectAst::Coordinated {
-            effects: coordinated_effects,
-            leading_duration: false,
-            result_conjunction: true,
-        },
-    ] = conditional_effects.as_slice()
-    else {
-        panic!("expected one coordinated result body, got {conditional_effects:#?}");
+    let coordination = sole_typed_coordination(conditional_effects);
+    assert_eq!(coordination.kind, CoordinationKindAst::Carry);
+    assert_eq!(coordination.members.len(), 2, "{coordination:#?}");
+    let [boundary] = coordination.boundaries.as_slice() else {
+        panic!("expected one authored conjunction boundary: {coordination:#?}");
     };
-    assert_eq!(coordinated_effects.len(), 2, "{coordinated_effects:#?}");
-    let debug = format!("{coordinated_effects:#?}");
+    assert_eq!(boundary.operator, CoordinationOperatorAst::And);
+    assert!(
+        boundary
+            .carries
+            .iter()
+            .any(|carry| carry.fact.kind() == CarryKindAst::Reference),
+        "{boundary:#?}"
+    );
+    let debug = format!("{coordination:#?}");
     assert!(debug.contains("PutCounters"), "{debug}");
     assert!(debug.contains("GrantAbilitiesToTarget"), "{debug}");
 }
@@ -1607,18 +1713,25 @@ fn direct_counter_followup_preserves_its_authored_conjunction() {
 
     let effects = parse_effect_sentence_lexed(&tokens)
         .expect("counter-followup conjunction should parse through sentence dispatch");
-    let [
-        EffectAst::Coordinated {
-            effects: coordinated,
-            leading_duration: false,
-            result_conjunction: false,
-        },
-    ] = effects.as_slice()
-    else {
-        panic!("expected one coordinated counter-followup clause, got {effects:#?}");
+    let coordination = sole_typed_coordination(&effects);
+    assert_eq!(coordination.kind, CoordinationKindAst::Carry);
+    assert_eq!(coordination.members.len(), 2, "{coordination:#?}");
+    let [boundary] = coordination.boundaries.as_slice() else {
+        panic!("expected one authored conjunction boundary: {coordination:#?}");
     };
-    assert_eq!(coordinated.len(), 2, "{coordinated:#?}");
-    let debug = format!("{coordinated:#?}");
+    assert_eq!(boundary.operator, CoordinationOperatorAst::And);
+    assert_eq!(
+        boundary.dependency,
+        EffectDependencyAst::DependsOnMembers(vec![0])
+    );
+    assert!(
+        boundary
+            .carries
+            .iter()
+            .any(|carry| carry.fact.kind() == CarryKindAst::Reference),
+        "{boundary:#?}"
+    );
+    let debug = format!("{coordination:#?}");
     assert!(debug.contains("PutCounters"), "{debug}");
     assert!(debug.contains("GrantAbilitiesToTarget"), "{debug}");
 }
@@ -1633,36 +1746,32 @@ fn absolving_lammasu_one_clause_actions_keep_coordinated_surface() {
 
     let effects =
         parse_effect_sentence_lexed(&tokens).expect("Absolving Lammasu effect should parse");
-    let [
-        EffectAst::Coordinated {
-            effects: coordinated,
-            leading_duration: false,
-            result_conjunction: false,
-        },
-    ] = effects.as_slice()
-    else {
-        panic!("expected one coordinated Lammasu clause, got {effects:#?}");
+    let coordination = sole_typed_coordination(&effects);
+    assert_eq!(coordination.kind, CoordinationKindAst::Conjunction);
+    assert_eq!(coordination.members.len(), 2, "{coordination:#?}");
+    let [boundary] = coordination.boundaries.as_slice() else {
+        panic!("expected one authored conjunction boundary: {coordination:#?}");
     };
-    assert_eq!(coordinated.len(), 2, "{coordinated:#?}");
+    assert_eq!(boundary.operator, CoordinationOperatorAst::And);
     assert!(
-        coordinated.iter().any(|effect| matches!(
+        coordination.effects().any(|effect| matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action: SubjectVerbActionAst::GainLife { .. },
                 ..
             })
         )),
-        "{coordinated:#?}"
+        "{coordination:#?}"
     );
     assert!(
-        coordinated.iter().any(|effect| matches!(
+        coordination.effects().any(|effect| matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action: SubjectVerbActionAst::Suspect { .. },
                 ..
             })
         )),
-        "{coordinated:#?}"
+        "{coordination:#?}"
     );
 }
 
@@ -1809,6 +1918,15 @@ fn triggered_lowering_keeps_sentences_separate_and_one_clause_coordinated() {
 
 #[test]
 fn leading_may_land_play_permission_does_not_lower_to_may_effect() {
+    let tokens = lex_line("You may play an additional land this turn.", 0)
+        .expect("Explore-style permission should lex");
+    let direct = parse_effect_sentence_lexed(&tokens)
+        .expect("Explore-style permission should parse through sentence dispatch");
+    assert!(
+        format!("{direct:#?}").contains("AdditionalLandPlays"),
+        "direct permission route should retain the typed land-play effect: {direct:#?}"
+    );
+
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Explore")
         .parse_text("You may play an additional land this turn.\nDraw a card.")
         .expect("explore-style text should parse");
@@ -1889,17 +2007,10 @@ fn source_damage_then_keyword_grant_keeps_coordinated_surface() {
     let effects =
         parse_effect_chain_lexed(&tokens).expect("source damage-and-grant fixture should parse");
 
-    let [
-        EffectAst::Coordinated {
-            effects: coordinated,
-            leading_duration: false,
-            result_conjunction: false,
-        },
-    ] = effects.as_slice()
-    else {
-        panic!("expected coordinated source damage-and-grant clause, got {effects:#?}");
-    };
-    let debug = format!("{coordinated:#?}");
+    let coordination = sole_typed_coordination(&effects);
+    assert_eq!(coordination.kind, CoordinationKindAst::SharedSubject);
+    assert_eq!(coordination.members.len(), 2, "{coordination:#?}");
+    let debug = format!("{coordination:#?}");
     assert!(debug.contains("DealDamage"), "{debug}");
     assert!(debug.contains("GrantAbilitiesToTarget"), "{debug}");
     assert!(debug.contains("Indestructible"), "{debug}");
@@ -1915,18 +2026,10 @@ fn source_damage_then_tagged_keyword_loss_keeps_both_coordinated_actions() {
     let effects =
         parse_effect_chain_lexed(&tokens).expect("source damage-and-loss fixture should parse");
 
-    let [
-        EffectAst::Coordinated {
-            effects: coordinated,
-            leading_duration: false,
-            result_conjunction: false,
-        },
-    ] = effects.as_slice()
-    else {
-        panic!("expected coordinated source damage-and-loss clause, got {effects:#?}");
-    };
-    assert_eq!(coordinated.len(), 2, "{coordinated:#?}");
-    let debug = format!("{coordinated:#?}");
+    let coordination = sole_typed_coordination(&effects);
+    assert_eq!(coordination.kind, CoordinationKindAst::Carry);
+    assert_eq!(coordination.members.len(), 2, "{coordination:#?}");
+    let debug = format!("{coordination:#?}");
     assert!(debug.contains("DealDamage"), "{debug}");
     assert!(debug.contains("RemoveAbilitiesFromTarget"), "{debug}");
     assert!(debug.contains("Flying"), "{debug}");
@@ -1942,16 +2045,9 @@ fn trailing_duration_applies_to_both_gain_and_loss_arms() {
     let effects =
         parse_effect_chain_lexed(&tokens).expect("gain-and-loss duration fixture should parse");
 
-    let [
-        EffectAst::Coordinated {
-            effects: coordinated,
-            leading_duration: false,
-            result_conjunction: false,
-        },
-    ] = effects.as_slice()
-    else {
-        panic!("expected coordinated gain-and-loss clause, got {effects:#?}");
-    };
+    let coordination = sole_typed_coordination(&effects);
+    assert_eq!(coordination.kind, CoordinationKindAst::SharedSubject);
+    let coordinated = coordination.effects().collect::<Vec<_>>();
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
@@ -1971,7 +2067,7 @@ fn trailing_duration_applies_to_both_gain_and_loss_arms() {
         }),
     ] = coordinated.as_slice()
     else {
-        panic!("expected source gain followed by source loss, got {coordinated:#?}");
+        panic!("expected source gain followed by source loss, got {coordination:#?}");
     };
     assert_eq!(first_duration, &crate::effect::Until::EndOfTurn);
     assert_eq!(second_duration, &crate::effect::Until::EndOfTurn);
@@ -2061,7 +2157,7 @@ fn perch_protection_full_card_public_builder_keeps_paid_label_consequence() {
     let debug = format!("{definition:#?}");
     assert_eq!(debug.matches("ConditionalEffect").count(), 2, "{debug}");
     assert!(debug.contains("ThisSpellPaidLabel"), "{debug}");
-    assert!(debug.contains("PhaseOutAll"), "{debug}");
+    assert!(debug.contains("PhaseOutEffect"), "{debug}");
     assert!(debug.contains("ChangeLifeTotal"), "{debug}");
     assert!(debug.contains("BeTargetedPlayer"), "{debug}");
     assert!(debug.contains("PreventAllDamageToTarget"), "{debug}");
@@ -2120,16 +2216,9 @@ fn trailing_duration_applies_to_ability_loss_before_type_change() {
     let effects =
         parse_effect_chain_lexed(&tokens).expect("loss-and-type duration fixture should parse");
 
-    let [
-        EffectAst::Coordinated {
-            effects: coordinated,
-            leading_duration: false,
-            result_conjunction: false,
-        },
-    ] = effects.as_slice()
-    else {
-        panic!("expected coordinated loss-and-type clause, got {effects:#?}");
-    };
+    let coordination = sole_typed_coordination(&effects);
+    assert_eq!(coordination.kind, CoordinationKindAst::SharedSubject);
+    let coordinated = coordination.effects().collect::<Vec<_>>();
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
@@ -2153,7 +2242,7 @@ fn trailing_duration_applies_to_ability_loss_before_type_change() {
         }),
     ] = coordinated.as_slice()
     else {
-        panic!("expected source loss followed by source type change, got {coordinated:#?}");
+        panic!("expected source loss followed by source type change, got {coordination:#?}");
     };
     assert_eq!(first_duration, &crate::effect::Until::EndOfTurn);
     assert_eq!(second_duration, &crate::effect::Until::EndOfTurn);
@@ -2169,17 +2258,10 @@ fn tap_then_next_untap_conjunction_keeps_coordinated_surface() {
     let effects =
         parse_effect_chain_lexed(&tokens).expect("freeze conjunction fixture should parse");
 
-    let [
-        EffectAst::Coordinated {
-            effects: coordinated,
-            leading_duration: false,
-            result_conjunction: false,
-        },
-    ] = effects.as_slice()
-    else {
-        panic!("expected coordinated tap/freeze clause, got {effects:#?}");
-    };
-    assert_eq!(coordinated.len(), 2, "{coordinated:#?}");
+    let coordination = sole_typed_coordination(&effects);
+    assert_eq!(coordination.kind, CoordinationKindAst::Carry);
+    let coordinated = coordination.effects().collect::<Vec<_>>();
+    assert_eq!(coordinated.len(), 2, "{coordination:#?}");
     assert!(
         matches!(
             coordinated.first(),
@@ -2188,7 +2270,7 @@ fn tap_then_next_untap_conjunction_keeps_coordinated_surface() {
                 ..
             }))
         ),
-        "{coordinated:#?}"
+        "{coordination:#?}"
     );
     assert!(
         matches!(
@@ -2203,7 +2285,7 @@ fn tap_then_next_untap_conjunction_keeps_coordinated_surface() {
                 ..
             }))
         ),
-        "{coordinated:#?}"
+        "{coordination:#?}"
     );
 }
 
@@ -2281,9 +2363,9 @@ fn coordinated_tap_named_source_set_stays_one_antecedent() {
         0,
     )
     .expect("coordinated named-source tap chain should lex");
-    let effects =
-        with_source_reference_context("Rohgahh of Kher Keep", || parse_effect_chain_lexed(&tokens))
-            .expect("coordinated named-source tap chain should parse");
+    let context = named_source_parse_context("Rohgahh of Kher Keep", vec![CardType::Creature]);
+    let effects = super::parse_effect_chain_lexed_with_context(context.view(), &tokens)
+        .expect("coordinated named-source tap chain should parse");
     let [EffectAst::CommaThen { effects: sequence }] = effects.as_slice() else {
         panic!("expected a typed comma-then tap/control sequence, got {effects:#?}");
     };
@@ -2297,10 +2379,9 @@ fn conditional_named_source_tap_set_stays_one_antecedent() {
         0,
     )
     .expect("conditional named-source tap chain should lex");
-    let effects = with_source_reference_context("Rohgahh of Kher Keep", || {
-        parse_effect_sentence_lexed(&tokens)
-    })
-    .expect("conditional named-source tap chain should parse");
+    let context = named_source_parse_context("Rohgahh of Kher Keep", vec![CardType::Creature]);
+    let effects = parse_effect_sentence_lexed_with_context(context.view(), &tokens)
+        .expect("conditional named-source tap chain should parse");
     assert!(
         matches!(
             effects.as_slice(),
@@ -2485,9 +2566,21 @@ fn gain_toughness_lose_power_then_put_keeps_all_three_actions() {
     .expect("life-stat chain should lex");
 
     let effects = parse_effect_chain_lexed(&tokens).expect("life-stat chain should parse");
-    let [EffectAst::CommaThen { effects: sequence }] = effects.as_slice() else {
-        panic!("expected a typed comma-then life-stat sequence, got {effects:#?}");
-    };
+    let coordination = sole_typed_coordination(&effects);
+    assert_eq!(coordination.kind, CoordinationKindAst::SharedSubject);
+    assert_eq!(
+        coordination
+            .boundaries
+            .iter()
+            .map(|boundary| boundary.operator)
+            .collect::<Vec<_>>(),
+        vec![
+            CoordinationOperatorAst::Comma,
+            CoordinationOperatorAst::CommaThen
+        ],
+        "{coordination:#?}"
+    );
+    let sequence = coordination.effects().collect::<Vec<_>>();
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::GainLife { amount: _ },
@@ -2506,7 +2599,7 @@ fn gain_toughness_lose_power_then_put_keeps_all_three_actions() {
         }),
     ] = sequence.as_slice()
     else {
-        panic!("expected gain-toughness, lose-power, then put-into-hand, got {sequence:#?}");
+        panic!("expected gain-toughness, lose-power, then put-into-hand, got {coordination:#?}");
     };
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -2514,7 +2607,7 @@ fn gain_toughness_lose_power_then_put_keeps_all_three_actions() {
             amount: gain_amount,
         },
         ..
-    }) = &sequence[0]
+    }) = sequence[0]
     else {
         unreachable!();
     };
@@ -2523,7 +2616,7 @@ fn gain_toughness_lose_power_then_put_keeps_all_three_actions() {
             amount: lose_amount,
         },
         ..
-    }) = &sequence[1]
+    }) = sequence[1]
     else {
         unreachable!();
     };
@@ -2618,8 +2711,8 @@ fn copy_then_gain_clause_keeps_the_explicit_gain_duration() {
 
     let effects = parse_effect_chain_lexed(&tokens).expect("copy-and-gain clause should parse");
     let gain_effects = match effects.as_slice() {
-        [EffectAst::Coordinated { effects, .. }] => effects.as_slice(),
-        _ => effects.as_slice(),
+        [EffectAst::Coordination(coordination)] => coordination.effects().collect::<Vec<_>>(),
+        _ => effects.iter().collect::<Vec<_>>(),
     };
     let gain = gain_effects
         .iter()
@@ -2644,21 +2737,21 @@ fn leading_action_keeps_following_get_and_gain_on_one_shared_object_set() {
 
     let effects = parse_effect_chain_lexed(&tokens)
         .expect("draw followed by shared-subject pump and grant should parse");
-    let [
-        EffectAst::Coordinated {
-            effects: shared_effects,
-            leading_duration: false,
-            result_conjunction: false,
-        },
-    ] = effects.as_slice()
-    else {
-        panic!("expected one coordinated draw/pump/grant clause, got {effects:#?}");
-    };
+    let coordination = sole_typed_coordination(&effects);
+    assert_eq!(coordination.kind, CoordinationKindAst::Conjunction);
+    let coordinated_effects = coordination.effects().collect::<Vec<_>>();
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::Draw { .. },
             ..
         }),
+        EffectAst::Coordination(shared_coordination),
+    ] = coordinated_effects.as_slice()
+    else {
+        panic!("expected a draw followed by one shared-subject group, got {effects:#?}");
+    };
+    let shared_effects = shared_coordination.effects().collect::<Vec<_>>();
+    let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::PumpAll {
@@ -2686,11 +2779,16 @@ fn leading_action_keeps_following_get_and_gain_on_one_shared_object_set() {
         constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
     }));
     assert!(abilities.iter().any(|ability| match ability {
-        crate::cards::builders::GrantedAbilityAst::KeywordAction(
-            crate::cards::builders::KeywordAction::Trample,
-        ) => true,
+        crate::cards::builders::GrantedAbilityAst::KeywordAction(action) => matches!(
+            action.as_ref(),
+            crate::cards::builders::KeywordAction::Trample
+        ),
         crate::cards::builders::GrantedAbilityAst::StaticAbility(ability) => {
-            ability.id() == crate::static_abilities::StaticAbilityId::Trample
+            matches!(
+                ability.as_ref(),
+                crate::cards::builders::StaticAbilityAst::Static(ability)
+                    if ability.id() == crate::static_abilities::StaticAbilityId::Trample
+            )
         }
         _ => false,
     }));
@@ -2802,10 +2900,8 @@ fn mass_destruction_trailing_source_power_condition_preempts_broad_destroy() {
         split.predicate,
         PredicateAst::ValueComparison { .. }
     ));
-    let effects = with_source_reference_context("Amalia Benavides Aguirre", || {
-        parse_effect_sentence_lexed(&tokens)
-    })
-    .expect("conditional mass destruction should parse through sentence dispatch");
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("conditional mass destruction should parse through sentence dispatch");
     let [
         EffectAst::TrailingIf {
             predicate:
@@ -3634,13 +3730,40 @@ fn descent_into_madness_exact_body_does_not_collapse_the_zone_arms() {
         0,
     )
     .expect("Descent into Madness body should lex");
+    let view = crate::rule_engine::LexClauseView::from_tokens(&tokens);
+    let words = crate::lexer::parser_token_word_refs(&tokens);
+    assert!(
+        super::super::subject_verb_special_recognizers::parse_cross_zone_where_x_fanout_rule_lexed(
+            &view,
+        )
+        .expect("cross-zone pre-diagnostic recognizer should not error")
+        .is_some(),
+        "cross-zone pre-diagnostic recognizer should claim the complete sentence: {words:?}"
+    );
+    parse_effect_chain_lexed(&tokens)
+        .expect("Descent into Madness body should parse through the direct chain route");
     let effects = parse_effect_sentence_lexed(&tokens)
         .expect("Descent into Madness body should parse through sentence dispatch");
-    let [EffectAst::CommaThen { effects: sequence }] = effects.as_slice() else {
-        panic!("expected a typed comma-then Descent sequence, got {effects:#?}");
-    };
-    let [_, EffectAst::ForEachPlayer { effects: nested }] = sequence.as_slice() else {
+    let coordination = sole_typed_coordination(&effects);
+    assert_eq!(coordination.kind, CoordinationKindAst::Sequence);
+    assert_eq!(
+        coordination.boundaries[0].operator,
+        CoordinationOperatorAst::CommaThen
+    );
+    let [_, fanout] = coordination.members.as_slice() else {
         panic!("expected counter placement followed by player fanout, got {effects:#?}");
+    };
+    let [
+        EffectAst::ForEachPlayer {
+            effects: fanout_effects,
+        },
+    ] = fanout.effects.as_slice()
+    else {
+        panic!("expected counter placement followed by player fanout, got {effects:#?}");
+    };
+    let nested = match fanout_effects.as_slice() {
+        [EffectAst::CommaThen { effects }] => effects.as_slice(),
+        effects => effects,
     };
     let [
         EffectAst::ChooseObjectsAcrossZones {
@@ -3650,7 +3773,7 @@ fn descent_into_madness_exact_body_does_not_collapse_the_zone_arms() {
             ..
         },
         _,
-    ] = nested.as_slice()
+    ] = nested
     else {
         panic!("expected Descent's coordinated across-zone choice, got {nested:#?}");
     };
@@ -3753,20 +3876,27 @@ fn quantified_subject_tail_stays_nested_after_prior_actions() {
     )
     .expect("nested fanout tail should lex");
     let effects = parse_effect_chain_lexed(&tokens).expect("nested fanout tail should parse");
-    let action_effects = match effects.as_slice() {
-        [EffectAst::Coordinated { effects, .. }] => effects.as_slice(),
-        effects => effects,
-    };
+    let coordination = sole_typed_coordination(&effects);
+    assert_eq!(coordination.kind, CoordinationKindAst::Sequence);
+    fn contains_opponent_draw(effect: &EffectAst) -> bool {
+        if matches!(effect, EffectAst::ForEachOpponent { effects } if matches!(
+            effects.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Draw { .. },
+                ..
+            })]
+        )) {
+            return true;
+        }
+        let mut found = false;
+        crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+            found |= nested.iter().any(contains_opponent_draw);
+        });
+        found
+    }
+    let has_opponent_draw = coordination.effects().any(contains_opponent_draw);
     assert!(
-        action_effects.iter().any(
-            |effect| matches!(effect, EffectAst::ForEachOpponent { effects } if matches!(
-                effects.as_slice(),
-                [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::Draw { .. },
-                    ..
-                })]
-            ))
-        ),
+        has_opponent_draw,
         "expected a typed opponent fanout after the copy actions, got {effects:#?}"
     );
 }
@@ -3844,6 +3974,16 @@ fn base_pt_where_x_full_chains_keep_duration_and_binding_together() {
         let tokens = lex_line(text, 0).expect("base-P/T where-X chain should lex");
         let effects = parse_effect_chain_lexed(&tokens)
             .unwrap_or_else(|error| panic!("{card} full effect chain should parse: {error}"));
+        let [EffectAst::ControlFlow(control)] = effects.as_slice() else {
+            panic!("{card} should lower through one typed duration node: {effects:#?}");
+        };
+        let ControlFlowNodeAst::Duration {
+            duration: CompilerDurationAst::UntilEndOfTurn,
+            program,
+        } = &control.node
+        else {
+            panic!("{card} should retain its authored leading duration: {control:#?}");
+        };
         let [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
@@ -3855,9 +3995,9 @@ fn base_pt_where_x_full_chains_keep_duration_and_binding_together() {
                     },
                 ..
             }),
-        ] = effects.as_slice()
+        ] = control.programs[*program].effects.as_slice()
         else {
-            panic!("{card} should lower to one typed base-P/T effect: {effects:#?}");
+            panic!("{card} should lower to one typed base-P/T effect: {control:#?}");
         };
 
         assert_eq!(duration, &crate::effect::Until::EndOfTurn, "{effects:#?}");
@@ -3989,7 +4129,7 @@ fn leading_venture_mechanic_keeps_the_coordinated_life_gain() {
 
     assert!(debug.contains("VentureIntoDungeon"), "{debug}");
     assert!(debug.contains("GainLife"), "{debug}");
-    assert!(debug.contains("Coordinated"), "{debug}");
+    assert!(debug.contains("Coordination"), "{debug}");
 }
 
 #[test]
@@ -4004,7 +4144,7 @@ fn trailing_venture_mechanic_keeps_the_coordinated_return() {
 
     assert!(debug.contains("Return"), "{debug}");
     assert!(debug.contains("VentureIntoDungeon"), "{debug}");
-    assert!(debug.contains("Coordinated"), "{debug}");
+    assert!(debug.contains("Coordination"), "{debug}");
 }
 #[test]
 fn opponent_choice_before_exile_keeps_source_exclusion_and_shared_tag() {
@@ -4014,6 +4154,10 @@ fn opponent_choice_before_exile_keeps_source_exclusion_and_shared_tag() {
     )
     .expect("opponent choice should lex");
     let effects = super::parse_effect_chain_lexed(&tokens).expect("opponent choice should parse");
+    let [EffectAst::Coordination(coordination)] = effects.as_slice() else {
+        panic!("expected one typed coordinated choice/exile program: {effects:#?}");
+    };
+    let coordinated = coordination.effects().collect::<Vec<_>>();
     let [
         EffectAst::ChooseObjects {
             filter,
@@ -4029,7 +4173,7 @@ fn opponent_choice_before_exile_keeps_source_exclusion_and_shared_tag() {
                 },
             ..
         }),
-    ] = effects.as_slice()
+    ] = coordinated.as_slice()
     else {
         panic!("expected linked opponent choice and exile: {effects:#?}");
     };

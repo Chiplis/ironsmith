@@ -348,7 +348,7 @@ fn bake(cards_dir: &Path, requested_workers: Option<usize>) -> Result<BakeSummar
                                         failed.fetch_add(1, Ordering::Relaxed);
                                     }
                                     let count = written.fetch_add(1, Ordering::Relaxed) + 1;
-                                    if count % 500 == 0 || count == pending_routes {
+                                    if count.is_multiple_of(500) || count == pending_routes {
                                         let elapsed = work_started.elapsed().as_secs_f64();
                                         let rate = count as f64 / elapsed.max(f64::EPSILON);
                                         println!(

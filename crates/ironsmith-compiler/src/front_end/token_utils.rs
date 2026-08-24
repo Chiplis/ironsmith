@@ -78,13 +78,13 @@ where
     crate::slice_primitives::iter_contains(items, expected)
 }
 
-pub fn iter_eq<I, J>(left: I, right: J) -> bool
+pub fn iterators_equal<I, J>(left: I, right: J) -> bool
 where
     I: IntoIterator,
     J: IntoIterator,
     I::Item: PartialEq<J::Item>,
 {
-    crate::slice_primitives::iter_eq(left, right)
+    crate::slice_primitives::iterators_equal(left, right)
 }
 
 pub fn slice_strip_prefix<'a, T: PartialEq>(items: &'a [T], prefix: &[T]) -> Option<&'a [T]> {
@@ -109,16 +109,16 @@ pub fn slice_strip_any_suffix<'a, 'p, T: PartialEq>(
     crate::slice_primitives::strip_any_suffix(items, patterns)
 }
 
-pub fn find_index<T>(items: &[T], predicate: impl FnMut(&T) -> bool) -> Option<usize> {
-    crate::slice_primitives::find_index(items, predicate)
+pub fn select_position<T>(items: &[T], predicate: impl FnMut(&T) -> bool) -> Option<usize> {
+    crate::slice_primitives::select_position(items, predicate)
 }
 
-pub fn rfind_index<T>(items: &[T], predicate: impl FnMut(&T) -> bool) -> Option<usize> {
-    crate::slice_primitives::rfind_index(items, predicate)
+pub fn select_last_position<T>(items: &[T], predicate: impl FnMut(&T) -> bool) -> Option<usize> {
+    crate::slice_primitives::select_last_position(items, predicate)
 }
 
-pub fn find_window_index<T: PartialEq>(items: &[T], window: &[T]) -> Option<usize> {
-    crate::slice_primitives::find_window_index(items, window)
+pub fn select_sequence_position<T: PartialEq>(items: &[T], window: &[T]) -> Option<usize> {
+    crate::slice_primitives::select_sequence_position(items, window)
 }
 
 pub fn find_window_by<T>(
@@ -135,36 +135,8 @@ pub fn contains_sequence<T: PartialEq>(items: &[T], window: &[T]) -> bool {
 
 pub use contains_sequence as contains_window;
 
-pub fn str_contains(text: &str, needle: &str) -> bool {
-    crate::string_primitives::contains(text, needle)
-}
-
-pub fn str_contains_char(text: &str, needle: char) -> bool {
-    crate::string_primitives::contains_char(text, needle)
-}
-
-pub fn str_starts_with(text: &str, prefix: &str) -> bool {
-    crate::string_primitives::starts_with(text, prefix)
-}
-
-pub fn str_starts_with_char(text: &str, expected: char) -> bool {
-    crate::string_primitives::starts_with_char(text, expected)
-}
-
-pub fn str_ends_with(text: &str, suffix: &str) -> bool {
-    crate::string_primitives::ends_with(text, suffix)
-}
-
-pub fn str_ends_with_char(text: &str, expected: char) -> bool {
-    crate::string_primitives::ends_with_char(text, expected)
-}
-
 pub fn str_ends_with_any_char(text: &str, expected: &[char]) -> bool {
     crate::string_primitives::ends_with_any_char(text, expected)
-}
-
-pub fn str_find(text: &str, needle: &str) -> Option<usize> {
-    crate::string_primitives::find(text, needle)
 }
 
 pub fn str_find_char(text: &str, needle: char) -> Option<usize> {
@@ -187,37 +159,29 @@ pub fn str_strip_suffix<'a>(text: &'a str, suffix: &str) -> Option<&'a str> {
     crate::string_primitives::strip_suffix(text, suffix)
 }
 
-pub fn str_strip_suffix_char(text: &str, suffix: char) -> Option<&str> {
-    crate::string_primitives::strip_suffix_char(text, suffix)
-}
-
 pub fn str_split_once<'a>(text: &'a str, needle: &str) -> Option<(&'a str, &'a str)> {
     crate::string_primitives::split_once(text, needle)
 }
 
-pub fn str_split_once_char(text: &str, needle: char) -> Option<(&str, &str)> {
-    crate::string_primitives::split_once_char(text, needle)
+pub fn parses_word_view_prefix(words: &TokenWordView<'_>, prefix: &[&str]) -> bool {
+    words.parses_prefix(prefix)
 }
 
-pub fn word_view_has_prefix(words: &TokenWordView<'_>, prefix: &[&str]) -> bool {
-    words.starts_with(prefix)
-}
-
-pub fn word_view_has_any_prefix(words: &TokenWordView<'_>, prefixes: &[&[&str]]) -> bool {
-    words.starts_with_any(prefixes)
+pub fn parses_any_word_view_prefix(words: &TokenWordView<'_>, prefixes: &[&[&str]]) -> bool {
+    words.parses_any_prefix(prefixes)
 }
 
 pub fn rewrite_followup_intro_to_if_lexed(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let mut rewritten = tokens.to_vec();
     let words = TokenWordView::new(&rewritten);
-    if !word_view_has_any_prefix(
+    if !parses_any_word_view_prefix(
         &words,
         &[&["when", "you", "do"], &["whenever", "you", "do"]],
     ) {
         return rewritten;
     }
 
-    let Some(first_word_idx) = words.token_index_for_word_index(0) else {
+    let Some(first_word_idx) = words.map_word_to_token_start(0) else {
         return rewritten;
     };
     rewritten[first_word_idx].replace_word("if");
@@ -286,7 +250,7 @@ pub fn remove_copy_exception_type_removal_lexed(tokens: &[OwnedLexToken]) -> Vec
         let words = TokenWordView::new(&rewritten);
         let mut removed_any = false;
         for (pattern, keep_words) in PATTERNS {
-            let Some(start_word_idx) = words.find_phrase_start(pattern) else {
+            let Some(start_word_idx) = words.parse_phrase_start(pattern) else {
                 continue;
             };
             let Some((remove_start, remove_end)) = token_range_for_word_span(
@@ -310,14 +274,14 @@ pub fn remove_copy_exception_type_removal_lexed(tokens: &[OwnedLexToken]) -> Vec
 
 pub fn lexed_tokens_contain_non_prefix_instead(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens);
-    words.find_word("instead").is_some() && !word_view_has_prefix(&words, &["if"])
+    words.parse_word_position("instead").is_some() && !parses_word_view_prefix(&words, &["if"])
 }
 
 pub fn strip_leading_if_you_do_lexed(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     let words = TokenWordView::new(tokens);
-    let Some(prefix_len) = (word_view_has_prefix(&words, &["if", "you", "do"]).then_some(3usize))
-        .or_else(|| word_view_has_prefix(&words, &["if", "they", "do"]).then_some(3usize))
-    else {
+    let Some(prefix_len) = (parses_word_view_prefix(&words, &["if", "you", "do"])
+        .then_some(3usize))
+    .or_else(|| parses_word_view_prefix(&words, &["if", "they", "do"]).then_some(3usize)) else {
         return tokens;
     };
     let start = words
@@ -403,7 +367,7 @@ pub fn parse_leading_may_action_lexed<'a>(
         (LeadingMayActor::ThatPlayer, 2usize, &["they", "may"][..]),
         (LeadingMayActor::Default, 1usize, &["may"][..]),
     ] {
-        if !word_view_has_prefix(&words, prefix) {
+        if !parses_word_view_prefix(&words, prefix) {
             continue;
         }
         for verb in verbs {
@@ -440,7 +404,9 @@ pub fn parse_leading_may_action_lexed<'a>(
 }
 
 pub fn lexed_head_words(tokens: &[OwnedLexToken]) -> Option<(&str, Option<&str>)> {
-    let mut words = tokens.iter().filter_map(OwnedLexToken::as_word);
+    let mut words = tokens
+        .iter()
+        .filter_map(|token| token.as_word().map(|_| token.parser_text()));
     let first = words.next()?;
     Some((first, words.next()))
 }
@@ -451,16 +417,16 @@ pub fn parse_common_sentence_head(
     let words = TokenWordView::new(tokens);
     let (head, _) = lexed_head_words(tokens)?;
     let consumed_words = match head {
-        "for" if words.starts_with(&["for", "each"]) => (CommonSentenceHead::ForEach, 2usize),
+        "for" if words.parses_prefix(&["for", "each"]) => (CommonSentenceHead::ForEach, 2usize),
         "each" => (CommonSentenceHead::ForEach, 1usize),
         "if" => (CommonSentenceHead::If, 1usize),
         "until" => (CommonSentenceHead::Until, 1usize),
-        "where" if words.starts_with(&["where", "x", "is"]) => {
+        "where" if words.parses_prefix(&["where", "x", "is"]) => {
             (CommonSentenceHead::WhereXIs, 3usize)
         }
         "target" => (CommonSentenceHead::Target, 1usize),
-        "up" if words.starts_with(&["up", "to"]) => (CommonSentenceHead::CountPrefix, 2usize),
-        "one" if words.starts_with_any(&[&["one", "or", "more"], &["one", "or", "both"]]) => {
+        "up" if words.parses_prefix(&["up", "to"]) => (CommonSentenceHead::CountPrefix, 2usize),
+        "one" if words.parses_any_prefix(&[&["one", "or", "more"], &["one", "or", "both"]]) => {
             (CommonSentenceHead::CountPrefix, 3usize)
         }
         "a" | "an" => (CommonSentenceHead::CountPrefix, 1usize),
@@ -534,7 +500,7 @@ pub fn parse_turn_duration_prefix(
 
     let words = TokenWordView::new(tokens);
     for (phrase, kind) in PHRASES {
-        if words.starts_with(phrase) {
+        if words.parses_prefix(phrase) {
             let rest_start = words
                 .token_index_after_words(phrase.len())
                 .unwrap_or(tokens.len());
@@ -575,7 +541,7 @@ pub fn parse_turn_duration_suffix(
     for (phrase, kind) in PHRASES {
         if words.len() >= phrase.len() && words.slice_eq(words.len() - phrase.len(), phrase) {
             let rest_token_end = words
-                .token_index_for_word_index(words.len() - phrase.len())
+                .map_word_to_token_start(words.len() - phrase.len())
                 .unwrap_or(tokens.len());
             return Some((&tokens[..rest_token_end], *kind));
         }
@@ -586,7 +552,7 @@ pub fn parse_turn_duration_suffix(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::front_end::lexer::lex_line;
+    use crate::lexer::lex_line;
 
     #[test]
     fn rewrite_followup_intro_turns_when_you_do_into_if() {

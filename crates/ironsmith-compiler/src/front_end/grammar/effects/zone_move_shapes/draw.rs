@@ -473,15 +473,18 @@ pub fn parse_draw_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Option<Valu
     // prior-action counts (notably "destroyed this way") deliberately retain
     // the effect-metric path below, which counts the producer's actual outcome.
     let words = primitives::TokenWordView::new(tokens).to_word_refs();
-    let counter_words = words
-        .strip_prefix(&["the", "number", "of"])
-        .or_else(|| words.strip_prefix(&["number", "of"]))
-        .unwrap_or(&words);
-    if let Some(counter_idx) = counter_words
-        .iter()
-        .position(|word| matches!(*word, "counter" | "counters"))
-        .filter(|counter_idx| *counter_idx <= 2)
-        && counter_words.get(counter_idx + 1..) == Some(&["removed", "this", "way"][..])
+    let counter_words = crate::word_primitives::strip_any_prefix(
+        &words,
+        &[&["the", "number", "of"], &["number", "of"]],
+    )
+    .map_or(words.as_slice(), |(_, tail)| tail);
+    if let Some(counter_idx) = crate::word_primitives::select_word_position(counter_words, |word| {
+        matches!(word, "counter" | "counters")
+    })
+    .filter(|counter_idx| *counter_idx <= 2)
+        && counter_words.get(counter_idx + 1..).is_some_and(|tail| {
+            crate::word_primitives::parse_sequence_complete(tail, &["removed", "this", "way"])
+        })
     {
         let counter_type = filters::parse_counter_type_words(&counter_words[..=counter_idx]);
         return Some(
@@ -496,8 +499,8 @@ pub fn parse_draw_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Option<Valu
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay),
         );
     }
-    let put_into_graveyard =
-        words.windows(2).any(|window| window == ["put", "into"]) && words.contains(&"graveyard");
+    let put_into_graveyard = crate::word_primitives::sequence_occurs(&words, &["put", "into"])
+        && crate::word_primitives::contains_word(&words, "graveyard");
     let mut for_each_words = vec!["for", "each"];
     for_each_words.extend(words.iter().copied());
     if let Some((value @ Value::PendingPriorEffectMetric(_), used)) =
@@ -514,15 +517,9 @@ pub fn parse_draw_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Option<Valu
         && used == for_each_words.len()
     {
         filter.zone = Some(Zone::Graveyard);
-        if words
-            .windows(2)
-            .any(|window| window == ["their", "graveyard"])
-        {
+        if crate::word_primitives::sequence_occurs(&words, &["their", "graveyard"]) {
             filter.owner = Some(PlayerFilter::IteratedPlayer);
-        } else if words
-            .windows(2)
-            .any(|window| window == ["your", "graveyard"])
-        {
+        } else if crate::word_primitives::sequence_occurs(&words, &["your", "graveyard"]) {
             filter.owner = Some(PlayerFilter::You);
         }
         return Some(Value::Count(filter));
@@ -532,7 +529,10 @@ pub fn parse_draw_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Option<Valu
         source: ironsmith_core::EffectMetricSource::Outcome,
         metric: ironsmith_core::EffectMetric::Count,
     };
-    if counter_words == ["opponents", "dealt", "damage", "this", "way"] {
+    if crate::word_primitives::parse_sequence_complete(
+        counter_words,
+        &["opponents", "dealt", "damage", "this", "way"],
+    ) {
         return Some(
             metric.with_surface_hint(ironsmith_core::ValueSurfaceHint::OpponentsDealtDamageThisWay),
         );
@@ -629,213 +629,16 @@ pub fn parse_draw_counter_reference_shape(tokens: &[OwnedLexToken]) -> Option<Va
     Some(Value::CountersOn(Box::new(choose), counter_type))
 }
 
-pub fn parse_draw_equal_shape(tokens: &[OwnedLexToken]) -> Option<DrawEqualShape<'_>> {
-    let tokens = trimmed(tokens);
-    let ((), value_tokens) =
-        primitives::parse_prefix(tokens, primitives::phrase(&["equal", "to"]).void())?;
-    let value_tokens = trimmed(value_tokens);
-    if exact_phrase(
-        value_tokens,
-        &[
-            "the",
-            "greatest",
-            "number",
-            "of",
-            "cards",
-            "a",
-            "player",
-            "discarded",
-            "this",
-            "way",
-        ],
-    ) {
-        return Some(DrawEqualShape::GreatestCardsDiscardedThisWay);
-    }
-    for (prefix, stat) in [
-        (&["power", "of"][..], DrawEqualStat::Power),
-        (&["the", "power", "of"][..], DrawEqualStat::Power),
-        (&["toughness", "of"][..], DrawEqualStat::Toughness),
-        (&["the", "toughness", "of"][..], DrawEqualStat::Toughness),
-        (&["mana", "value", "of"][..], DrawEqualStat::ManaValue),
-        (
-            &["the", "mana", "value", "of"][..],
-            DrawEqualStat::ManaValue,
-        ),
-    ] {
-        if let Some(((), target_tokens)) =
-            primitives::parse_prefix(value_tokens, semantic_phrase(prefix).void())
-        {
-            let target_tokens = trimmed(target_tokens);
-            if !target_tokens.is_empty() {
-                return Some(DrawEqualShape::StatOfTarget {
-                    stat,
-                    target_tokens,
-                });
-            }
-        }
-    }
-    Some(DrawEqualShape::Fallback {
-        references_this_way: primitives::find_prefix(value_tokens, || {
-            semantic_phrase(&["this", "way"])
-        })
-        .is_some(),
-    })
-}
-
-pub fn counter_same_name_graveyard_shape(tokens: &[OwnedLexToken]) -> bool {
-    let tokens = trimmed(tokens);
-    let Some((_, (), after_graveyard)) = primitives::find_prefix(tokens, || {
-        alt((primitives::kw("graveyard"), primitives::kw("graveyards"))).void()
-    }) else {
-        return false;
-    };
-    primitives::find_prefix(after_graveyard, || {
-        semantic_phrase(&["same", "name", "as", "the", "spell"])
-    })
-    .is_some()
-        || primitives::find_prefix(after_graveyard, || {
-            semantic_phrase(&["same", "name", "as", "that", "spell"])
-        })
-        .is_some()
-}
-
-pub fn same_name_graveyard_count_value() -> Value {
-    Value::Count(
-        crate::target::ObjectFilter::default()
-            .in_zone(Zone::Graveyard)
-            .match_tagged(
-                TagKey::from("triggering"),
-                TaggedOpbjectRelation::SameNameAsTagged,
-            ),
-    )
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::lexer::lex_line;
+#[path = "draw_inline_tests.rs"]
+mod tests;
 
-    fn tokens(text: &str) -> Vec<OwnedLexToken> {
-        lex_line(text, 0).unwrap()
-    }
-
-    #[test]
-    fn parses_draw_heads_and_counts() {
-        let head_tokens = tokens("that many cards minus one");
-        let head = parse_draw_head_shape(&head_tokens).unwrap();
-        assert_eq!(
-            head.count,
-            DrawHeadCountShape::Resolved(Value::EventValueOffset(EventValueSpec::Amount, -1))
-        );
-        assert_eq!(head.parsed_offset, Some(DrawCardCountOffset::MinusOne));
-        assert_eq!(
-            parse_draw_known_count_shape(&tokens("times this spell was kicked")),
-            Some(DrawKnownCountShape::KickCount)
-        );
-    }
-
-    #[test]
-    fn preserves_filtered_prior_action_counts() {
-        for (text, expected_filter) in [
-            (
-                "creature card put into their graveyard this way",
-                crate::target::ObjectFilter::creature()
-                    .in_zone(Zone::Graveyard)
-                    .owned_by(PlayerFilter::IteratedPlayer),
-            ),
-            (
-                "land card put into their graveyard this way",
-                crate::target::ObjectFilter::land()
-                    .in_zone(Zone::Graveyard)
-                    .owned_by(PlayerFilter::IteratedPlayer),
-            ),
-        ] {
-            let parsed = parse_draw_this_way_metric_shape(&tokens(text));
-            let expected = Value::Count(
-                expected_filter
-                    .match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject),
-            );
-            assert_eq!(parsed, Some(expected), "{text}");
-        }
-    }
-
-    #[test]
-    fn parses_equal_to_named_counters_removed_this_way_as_typed_metric() {
-        let parsed = parse_draw_equal_this_way_metric_shape(&tokens(
-            "equal to the number of stun counters removed this way",
-        ))
-        .expect("typed removed-counter metric");
-        assert!(
-            parsed.has_surface_hint(ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay,),
-            "{parsed:#?}"
-        );
-        let Value::PendingPriorEffectMetric(query) = parsed.unhinted() else {
-            panic!("expected pending prior-effect metric, got {parsed:#?}");
-        };
-        assert_eq!(
-            query.action,
-            Some(ironsmith_core::PriorEffectAction::Removed)
-        );
-        assert_eq!(query.counter_type, Some(crate::object::CounterType::Stun));
-    }
-
-    #[test]
-    fn preserves_opponents_dealt_damage_this_way_count_surface() {
-        let parsed = parse_draw_equal_this_way_metric_shape(&tokens(
-            "equal to the number of opponents dealt damage this way",
-        ))
-        .expect("grouped damaged-opponent count");
-
-        assert!(
-            parsed.has_surface_hint(ironsmith_core::ValueSurfaceHint::OpponentsDealtDamageThisWay,),
-            "{parsed:#?}"
-        );
-        assert!(matches!(
-            parsed.unhinted(),
-            Value::PendingEffectMetric {
-                source: ironsmith_core::EffectMetricSource::Outcome,
-                metric: ironsmith_core::EffectMetric::Count,
-            }
-        ));
-    }
-
-    #[test]
-    fn parses_article_draw_head() {
-        let draw_tokens = tokens("a card.");
-        let head = parse_draw_head_shape(&draw_tokens).expect("article draw head");
-        assert_eq!(head.count, DrawHeadCountShape::Resolved(Value::Fixed(1)));
-        assert!(!head.additional);
-        assert!(head.tail_tokens.is_empty());
-
-        let additional_tokens = tokens("an additional card.");
-        let additional =
-            parse_draw_head_shape(&additional_tokens).expect("additional article draw head");
-        assert_eq!(
-            additional.count,
-            DrawHeadCountShape::Resolved(Value::Fixed(1))
-        );
-        assert!(additional.additional);
-        assert!(additional.tail_tokens.is_empty());
-
-        let two_tokens = tokens("two additional cards.");
-        let two = parse_draw_head_shape(&two_tokens).expect("additional counted draw head");
-        assert_eq!(two.count, DrawHeadCountShape::Resolved(Value::Fixed(2)));
-        assert!(two.additional);
-        assert!(two.tail_tokens.is_empty());
-    }
-
-    #[test]
-    fn parses_draw_equal_and_counter_references() {
-        assert!(matches!(
-            parse_draw_equal_shape(&tokens("equal to the power of target creature")),
-            Some(DrawEqualShape::StatOfTarget {
-                stat: DrawEqualStat::Power,
-                ..
-            })
-        ));
-        assert!(matches!(
-            parse_draw_counter_reference_shape(&tokens("charge counters on this artifact")),
-            Some(Value::CountersOnSource(_))
-        ));
-    }
-}
+#[path = "draw/zone_programs.rs"]
+mod zone_programs;
+pub use zone_programs::same_name_graveyard_count_value;
+#[path = "draw/counter_programs.rs"]
+mod counter_programs;
+pub use counter_programs::counter_same_name_graveyard_shape;
+#[path = "draw/resource_programs.rs"]
+mod resource_programs;
+pub use resource_programs::parse_draw_equal_shape;

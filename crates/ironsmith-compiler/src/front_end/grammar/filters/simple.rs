@@ -122,6 +122,14 @@ pub fn parse_simple_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Option<ObjectFilter> {
+    if super::is_attack_destination_relation(tokens) {
+        // The trailing controller belongs to the attacked planeswalker, not
+        // to the candidate creature. The simple suffix grammar cannot retain
+        // that relationship, so leave the complete clause to the relational
+        // object-filter grammar.
+        return None;
+    }
+
     let word_view = TokenWordView::new(tokens);
     let saw_type_list_separator = tokens.iter().any(|token| token.kind == TokenKind::Comma);
     let mut filter = parse_simple_object_filter_words_with_list_marker(
@@ -173,7 +181,7 @@ pub fn preserve_branch_scoped_card_type_union(
     let mut branch_types = Vec::new();
     for branch in &branches {
         let card_type = branch.card_types[0];
-        if branch_types.contains(&card_type) {
+        if crate::slice_primitives::contains(&branch_types, &card_type) {
             return;
         }
         branch_types.push(card_type);
@@ -181,7 +189,7 @@ pub fn preserve_branch_scoped_card_type_union(
     if branch_types.len() != filter.card_types.len()
         || branch_types
             .iter()
-            .any(|card_type| !filter.card_types.contains(card_type))
+            .any(|card_type| !crate::slice_primitives::contains(&filter.card_types, card_type))
     {
         return;
     }
@@ -219,12 +227,12 @@ fn infer_card_type_union_branches(
         let segment_types = words
             .iter()
             .filter_map(|word| parse_card_type(word))
-            .filter(|card_type| filter.card_types.contains(card_type))
+            .filter(|card_type| crate::slice_primitives::contains(&filter.card_types, card_type))
             .collect::<Vec<_>>();
         if segment_types.len() != 1
-            || branches
-                .iter()
-                .any(|branch: &ObjectFilter| branch.card_types.as_slice() == [segment_types[0]])
+            || branches.iter().any(|branch: &ObjectFilter| {
+                branch.card_types.len() == 1 && branch.card_types.first() == segment_types.first()
+            })
         {
             return None;
         }
@@ -232,17 +240,17 @@ fn infer_card_type_union_branches(
         let mut branch = ObjectFilter::default().with_type(segment_types[0]);
         for word in &words {
             if let Some(card_type) = parse_non_type(word)
-                && filter.excluded_card_types.contains(&card_type)
+                && crate::slice_primitives::contains(&filter.excluded_card_types, &card_type)
             {
                 push_unique(&mut branch.excluded_card_types, card_type);
             }
             if let Some(subtype) = parse_non_subtype(word)
-                && filter.excluded_subtypes.contains(&subtype)
+                && crate::slice_primitives::contains(&filter.excluded_subtypes, &subtype)
             {
                 push_unique(&mut branch.excluded_subtypes, subtype);
             }
             if let Some(supertype) = parse_non_supertype(word)
-                && filter.excluded_supertypes.contains(&supertype)
+                && crate::slice_primitives::contains(&filter.excluded_supertypes, &supertype)
             {
                 push_unique(&mut branch.excluded_supertypes, supertype);
             }
@@ -250,26 +258,27 @@ fn infer_card_type_union_branches(
                 branch.excluded_colors = branch.excluded_colors.union(color);
             }
         }
-        for pair in words.windows(2) {
-            if pair[0] != "non" {
+        for pair_start in 0..words.len().saturating_sub(1) {
+            if words[pair_start] != "non" {
                 continue;
             }
-            if let Some(card_type) = parse_card_type(pair[1])
-                && filter.excluded_card_types.contains(&card_type)
+            let qualified = words[pair_start + 1];
+            if let Some(card_type) = parse_card_type(qualified)
+                && crate::slice_primitives::contains(&filter.excluded_card_types, &card_type)
             {
                 push_unique(&mut branch.excluded_card_types, card_type);
             }
-            if let Some(subtype) = parse_subtype_flexible(pair[1])
-                && filter.excluded_subtypes.contains(&subtype)
+            if let Some(subtype) = parse_subtype_flexible(qualified)
+                && crate::slice_primitives::contains(&filter.excluded_subtypes, &subtype)
             {
                 push_unique(&mut branch.excluded_subtypes, subtype);
             }
-            if let Some(supertype) = parse_supertype_word(pair[1])
-                && filter.excluded_supertypes.contains(&supertype)
+            if let Some(supertype) = parse_supertype_word(qualified)
+                && crate::slice_primitives::contains(&filter.excluded_supertypes, &supertype)
             {
                 push_unique(&mut branch.excluded_supertypes, supertype);
             }
-            if let Some(color) = parse_color(pair[1]) {
+            if let Some(color) = parse_color(qualified) {
                 branch.excluded_colors = branch.excluded_colors.union(color);
             }
         }
@@ -292,15 +301,15 @@ fn infer_card_type_union_branches(
         || filter
             .excluded_card_types
             .iter()
-            .any(|value| !assigned_card_types.contains(&value))
+            .any(|value| !crate::slice_primitives::contains(&assigned_card_types, &value))
         || filter
             .excluded_subtypes
             .iter()
-            .any(|value| !assigned_subtypes.contains(&value))
+            .any(|value| !crate::slice_primitives::contains(&assigned_subtypes, &value))
         || filter
             .excluded_supertypes
             .iter()
-            .any(|value| !assigned_supertypes.contains(&value))
+            .any(|value| !crate::slice_primitives::contains(&assigned_supertypes, &value))
         || branches.iter().fold(ColorSet::new(), |colors, branch| {
             colors.union(branch.excluded_colors)
         }) != filter.excluded_colors
@@ -400,9 +409,7 @@ fn card_type_branch_has_exclusion(branch: &ObjectFilter) -> bool {
 }
 
 fn tokens_contain_other_than(tokens: &[OwnedLexToken]) -> bool {
-    tokens
-        .windows(2)
-        .any(|window| window[0].is_word("other") && window[1].is_word("than"))
+    primitives::find_prefix(tokens, || primitives::phrase(&["other", "than"])).is_some()
 }
 
 fn parse_simple_object_filter_words_with_list_marker(
@@ -794,487 +801,31 @@ fn parse_split_non_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilter
     Ok(atom)
 }
 
-fn parse_typed_word_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterAtom> {
-    let checkpoint = *input;
-    let word = parse_any_word.parse_next(input)?;
-    // Flexible positive characteristic parsers intentionally tolerate several
-    // surface prefixes. Test the explicit `non-` forms first so a word such
-    // as `non-Equipment` cannot be recorded as both Equipment and an
-    // Equipment exclusion, producing an impossible branch.
-    let atom = if let Some(card_type) = parse_non_type(word) {
-        SimpleObjectFilterAtom::ExcludedCardType(card_type)
-    } else if let Some(subtype) = parse_non_subtype(word) {
-        SimpleObjectFilterAtom::ExcludedSubtype(subtype)
-    } else if let Some(supertype) = parse_non_supertype(word) {
-        SimpleObjectFilterAtom::ExcludedSupertype(supertype)
-    } else if let Some(color) = parse_non_color(word) {
-        SimpleObjectFilterAtom::ExcludedColor(color)
-    } else if let Some(card_type) = parse_card_type(word) {
-        SimpleObjectFilterAtom::CardType(card_type)
-    } else if let Some(subtype) = parse_subtype_flexible(word) {
-        SimpleObjectFilterAtom::Subtype(subtype)
-    } else if let Some(subtype) = super::super::leaf::classify_token_definition_subtype(word)
-        .filter(|_| {
-            input
-                .first()
-                .and_then(|next| parse_subtype_flexible(next))
-                .is_some()
-        })
-    {
-        // Ambiguous English nouns such as "Sand" are rejected by the broad
-        // subtype parser, but become unambiguous when immediately followed by
-        // another subtype in a compound type phrase ("Sand Warriors").
-        SimpleObjectFilterAtom::Subtype(subtype)
-    } else if let Some(supertype) = parse_supertype_word(word) {
-        SimpleObjectFilterAtom::Supertype(supertype)
-    } else if let Some(color) = parse_color(word) {
-        SimpleObjectFilterAtom::Color(color)
-    } else if is_outlaw_word(word) {
-        SimpleObjectFilterAtom::Outlaw
-    } else if is_non_outlaw_word(word) {
-        SimpleObjectFilterAtom::NonOutlaw
-    } else {
-        *input = checkpoint;
-        return Err(primitives::backtrack_err(
-            "simple object filter atom",
-            "typed card characteristic",
-        ));
-    };
-    Ok(atom)
-}
-
-fn parse_filter_face_state(input: &mut WordInput<'_>) -> WResult<FilterFaceState> {
-    alt((
-        word_phrase(&["face", "down"]).value(FilterFaceState::FaceDown),
-        primitives::word_slice_exact("face-down").value(FilterFaceState::FaceDown),
-        primitives::word_slice_exact("facedown").value(FilterFaceState::FaceDown),
-        word_phrase(&["face", "up"]).value(FilterFaceState::FaceUp),
-        primitives::word_slice_exact("face-up").value(FilterFaceState::FaceUp),
-        primitives::word_slice_exact("faceup").value(FilterFaceState::FaceUp),
-    ))
-    .parse_next(input)
-}
-
-fn parse_named_object_filter_atom(input: &mut WordInput<'_>) -> WResult<NamedObjectFilterAtom> {
-    alt((
-        word_phrase(&["chosen", "color"]).value(NamedObjectFilterAtom::ChosenColor),
-        word_phrase(&["that", "color"]).value(NamedObjectFilterAtom::ChosenColor),
-        word_phrase(&["chosen", "type"]).value(NamedObjectFilterAtom::ChosenType),
-        word_phrase(&["that", "type"]).value(NamedObjectFilterAtom::ChosenType),
-        word_phrase(&["nonchosen", "type"]).value(NamedObjectFilterAtom::NonChosenType),
-    ))
-    .parse_next(input)
-}
-
-fn apply_named_atom(filter: &mut ObjectFilter, atom: NamedObjectFilterAtom) {
-    match atom {
-        NamedObjectFilterAtom::ChosenColor => filter.chosen_color = true,
-        NamedObjectFilterAtom::ChosenType => filter.chosen_creature_type = true,
-        NamedObjectFilterAtom::NonChosenType => filter.excluded_chosen_creature_type = true,
-    }
-}
-
-fn contains_simple_filter_reject(words: &[&str]) -> bool {
-    for index in 0..words.len() {
-        let mut input: WordInput<'_> = &words[index..];
-        if parse_simple_filter_reject.parse_next(&mut input).is_ok() {
-            return true;
-        }
-    }
-    false
-}
-
-fn parse_simple_filter_reject(input: &mut WordInput<'_>) -> WResult<()> {
-    let checkpoint = *input;
-    let word = parse_any_word.parse_next(input)?;
-    if matches!(
-        word,
-        "target"
-            | "targets"
-            | "that"
-            | "which"
-            | "whose"
-            | "where"
-            | "there"
-            | "shares"
-            | "share"
-            | "dealt"
-            | "entered"
-            | "put"
-            | "this"
-            | "way"
-    ) {
-        Ok(())
-    } else {
-        *input = checkpoint;
-        Err(primitives::backtrack_err(
-            "simple object filter reject",
-            "word requiring complex object-filter grammar",
-        ))
-    }
-}
-
-fn parse_other_than_split<'a>(words: &'a [&'a str]) -> Option<OtherThanSplit<'a>> {
-    for delimiter_start in 0..words.len() {
-        let mut input: WordInput<'a> = &words[delimiter_start..];
-        if word_phrase(&["other", "than"])
-            .parse_next(&mut input)
-            .is_ok()
-        {
-            if delimiter_start == 0 {
-                return None;
-            }
-            let exclusions = words.get(delimiter_start + 2..)?;
-            if !exclusions.is_empty() {
-                return Some(OtherThanSplit {
-                    base: &words[..delimiter_start],
-                    exclusions,
-                });
-            }
-        }
-    }
-    None
-}
-
-fn parse_other_than_filter(split: OtherThanSplit<'_>, other: bool) -> Option<ObjectFilter> {
-    let mut filter = parse_simple_object_filter_words(split.base, other)?;
-    let mut input: WordInput<'_> = split.exclusions;
-    let mut saw_exclusion = false;
-    while !input.is_empty() {
-        match parse_excluded_object_filter_atom
-            .parse_next(&mut input)
-            .ok()?
-        {
-            ExcludedObjectFilterAtom::Separator => {}
-            ExcludedObjectFilterAtom::CardType(card_type) => {
-                push_unique(&mut filter.excluded_card_types, card_type);
-                saw_exclusion = true;
-            }
-            ExcludedObjectFilterAtom::Subtype(subtype) => {
-                push_unique(&mut filter.excluded_subtypes, subtype);
-                saw_exclusion = true;
-            }
-            ExcludedObjectFilterAtom::Supertype(supertype) => {
-                push_unique(&mut filter.excluded_supertypes, supertype);
-                saw_exclusion = true;
-            }
-            ExcludedObjectFilterAtom::Color(color) => {
-                filter.excluded_colors = filter.excluded_colors.union(color);
-                saw_exclusion = true;
-            }
-            ExcludedObjectFilterAtom::Outlaw => {
-                push_outlaw_subtypes(&mut filter.excluded_subtypes);
-                saw_exclusion = true;
-            }
-        }
-    }
-    saw_exclusion.then_some(filter)
-}
-
-fn parse_excluded_object_filter_atom(
-    input: &mut WordInput<'_>,
-) -> WResult<ExcludedObjectFilterAtom> {
-    let checkpoint = *input;
-    let word = parse_any_word.parse_next(input)?;
-    let atom = match word {
-        "and" | "or" => ExcludedObjectFilterAtom::Separator,
-        _ => {
-            if let Some(card_type) = parse_card_type(word) {
-                ExcludedObjectFilterAtom::CardType(card_type)
-            } else if let Some(subtype) = parse_subtype_flexible(word) {
-                ExcludedObjectFilterAtom::Subtype(subtype)
-            } else if let Some(supertype) = parse_supertype_word(word) {
-                ExcludedObjectFilterAtom::Supertype(supertype)
-            } else if let Some(color) = parse_color(word) {
-                ExcludedObjectFilterAtom::Color(color)
-            } else if is_outlaw_word(word) {
-                ExcludedObjectFilterAtom::Outlaw
-            } else {
-                *input = checkpoint;
-                return Err(primitives::backtrack_err(
-                    "simple object filter exclusion",
-                    "card type, subtype, supertype, color, or outlaw",
-                ));
-            }
-        }
-    };
-    Ok(atom)
-}
-
-fn parse_simple_object_filter_suffix(words: &[&str]) -> Option<(SimpleObjectFilterSuffix, usize)> {
-    for suffix_len in (5..=6).rev() {
-        let Some(tail) = suffix_tail(words, suffix_len) else {
-            continue;
-        };
-        if let Some(suffix) = parse_full_word_slice(tail, parse_controller_owner_suffix) {
-            return Some((suffix, suffix_len));
-        }
-    }
-    for suffix_len in (3..=4).rev() {
-        let Some(tail) = suffix_tail(words, suffix_len) else {
-            continue;
-        };
-        if let Some(suffix) = parse_full_word_slice(tail, parse_negated_controller_suffix) {
-            return Some((suffix, suffix_len));
-        }
-    }
-    for suffix_len in (2..=5).rev() {
-        let Some(tail) = suffix_tail(words, suffix_len) else {
-            continue;
-        };
-        if let Some(suffix) = parse_full_word_slice(tail, parse_location_suffix) {
-            return Some((suffix, suffix_len));
-        }
-    }
-    for suffix_len in (2..=7).rev() {
-        let Some(tail) = suffix_tail(words, suffix_len) else {
-            continue;
-        };
-        if let Some(suffix) = parse_full_word_slice(tail, parse_controller_suffix) {
-            return Some((suffix, suffix_len));
-        }
-    }
-    for suffix_len in (2..=3).rev() {
-        let Some(tail) = suffix_tail(words, suffix_len) else {
-            continue;
-        };
-        if let Some(suffix) = parse_full_word_slice(tail, parse_owner_suffix) {
-            return Some((suffix, suffix_len));
-        }
-    }
-    None
-}
-
-fn parse_controller_owner_suffix(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterSuffix> {
-    let controller = parse_controller_player.parse_next(input)?;
-    parse_control_action.parse_next(input)?;
-    primitives::word_slice_exact("but")
-        .void()
-        .parse_next(input)?;
-    parse_control_negation.parse_next(input)?;
-    parse_own_action.parse_next(input)?;
-    if controller != PlayerFilter::You {
-        return Err(primitives::backtrack_err(
-            "simple object filter suffix",
-            "you control but do not own",
-        ));
-    }
-    Ok(SimpleObjectFilterSuffix::ControllerOwner(
-        controller,
-        PlayerFilter::NotYou,
-    ))
-}
-
-fn parse_negated_controller_suffix(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterSuffix> {
-    primitives::word_slice_exact("you")
-        .void()
-        .parse_next(input)?;
-    parse_control_negation.parse_next(input)?;
-    parse_control_action.parse_next(input)?;
-    Ok(SimpleObjectFilterSuffix::Controller(PlayerFilter::NotYou))
-}
-
-fn parse_location_suffix(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterSuffix> {
-    alt((
-        primitives::word_slice_exact("in"),
-        primitives::word_slice_exact("from"),
-    ))
-    .void()
-    .parse_next(input)?;
-    let (owner, zone) = parse_location.parse_next(input)?;
-    Ok(match owner {
-        Some(owner) => SimpleObjectFilterSuffix::OwnerZone(owner, zone),
-        None => SimpleObjectFilterSuffix::Zone(zone),
-    })
-}
-
-fn parse_controller_suffix(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterSuffix> {
-    let controller = parse_controller_player.parse_next(input)?;
-    parse_control_action.parse_next(input)?;
-    Ok(SimpleObjectFilterSuffix::Controller(controller))
-}
-
-fn parse_owner_suffix(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterSuffix> {
-    primitives::word_slice_exact("you")
-        .void()
-        .parse_next(input)?;
-    parse_own_action.parse_next(input)?;
-    Ok(SimpleObjectFilterSuffix::Owner(PlayerFilter::You))
-}
-
-fn parse_controller_player(input: &mut WordInput<'_>) -> WResult<PlayerFilter> {
-    alt((
-        alt((
-            word_phrase(&["another", "target", "player"]).value(PlayerFilter::Target(Box::new(
-                PlayerFilter::excluding(PlayerFilter::Any, PlayerFilter::target_player()),
-            ))),
-            alt((
-                word_phrase(&["target", "opponent"]).value(PlayerFilter::target_opponent()),
-                word_phrase(&["target", "player"]).value(PlayerFilter::target_player()),
-                word_phrase(&["the", "chosen", "player"]).value(PlayerFilter::ChosenPlayer),
-                word_phrase(&["chosen", "player"]).value(PlayerFilter::ChosenPlayer),
-                word_phrase(&["that", "player"]).value(PlayerFilter::IteratedPlayer),
-                word_phrase(&["your", "team"]).map(|()| PlayerFilter::your_team()),
-                primitives::word_slice_exact("opponents").value(PlayerFilter::Opponent),
-                primitives::word_slice_exact("opponent").value(PlayerFilter::Opponent),
-                primitives::word_slice_exact("you").value(PlayerFilter::You),
-            )),
-        )),
-        parse_target_player_or_planeswalker_controller,
-    ))
-    .parse_next(input)
-}
-
-fn parse_target_player_or_planeswalker_controller(
-    input: &mut WordInput<'_>,
-) -> WResult<PlayerFilter> {
-    let checkpoint = *input;
-    let Some((player, consumed)) =
-        super::parse_player_relation_subject(input, &PlayerFilter::IteratedPlayer)
-    else {
-        return Err(primitives::backtrack_err(
-            "simple object filter controller",
-            "player-or-planeswalker target reference",
-        ));
-    };
-    if player != PlayerFilter::TargetPlayerOrControllerOfTarget {
-        return Err(primitives::backtrack_err(
-            "simple object filter controller",
-            "player-or-planeswalker target reference",
-        ));
-    }
-    *input = &checkpoint[consumed..];
-    Ok(player)
-}
-
-fn parse_control_action(input: &mut WordInput<'_>) -> WResult<()> {
-    alt((
-        primitives::word_slice_exact("control"),
-        primitives::word_slice_exact("controls"),
-    ))
-    .void()
-    .parse_next(input)
-}
-
-fn parse_own_action(input: &mut WordInput<'_>) -> WResult<()> {
-    alt((
-        primitives::word_slice_exact("own"),
-        primitives::word_slice_exact("owns"),
-    ))
-    .void()
-    .parse_next(input)
-}
-
-fn parse_control_negation(input: &mut WordInput<'_>) -> WResult<()> {
-    alt((
-        word_phrase(&["do", "not"]),
-        primitives::word_slice_exact("dont").void(),
-        primitives::word_slice_exact("don't").void(),
-    ))
-    .parse_next(input)
-}
-
-fn parse_location(input: &mut WordInput<'_>) -> WResult<(Option<PlayerFilter>, Zone)> {
-    alt((
-        alt((
-            parse_chosen_player_location,
-            word_phrase(&["defending", "player", "graveyard"])
-                .value((Some(PlayerFilter::Defending), Zone::Graveyard)),
-            word_phrase(&["defending", "players", "graveyard"])
-                .value((Some(PlayerFilter::Defending), Zone::Graveyard)),
-            word_phrase(&["your", "graveyard"]).value((Some(PlayerFilter::You), Zone::Graveyard)),
-            word_phrase(&["your", "hand"]).value((Some(PlayerFilter::You), Zone::Hand)),
-            word_phrase(&["your", "library"]).value((Some(PlayerFilter::You), Zone::Library)),
-        )),
-        alt((
-            word_phrase(&["all", "graveyards"]).value((None, Zone::Graveyard)),
-            primitives::word_slice_exact("graveyard").value((None, Zone::Graveyard)),
-            primitives::word_slice_exact("hand").value((None, Zone::Hand)),
-            primitives::word_slice_exact("library").value((None, Zone::Library)),
-            primitives::word_slice_exact("exile").value((None, Zone::Exile)),
-        )),
-    ))
-    .parse_next(input)
-}
-
-fn parse_chosen_player_location(
-    input: &mut WordInput<'_>,
-) -> WResult<(Option<PlayerFilter>, Zone)> {
-    opt(primitives::word_slice_exact("the"))
-        .void()
-        .parse_next(input)?;
-    primitives::word_slice_exact("chosen")
-        .void()
-        .parse_next(input)?;
-    alt((
-        primitives::word_slice_exact("player"),
-        primitives::word_slice_exact("players"),
-    ))
-    .void()
-    .parse_next(input)?;
-    let zone = alt((
-        primitives::word_slice_exact("graveyard").value(Zone::Graveyard),
-        primitives::word_slice_exact("hand").value(Zone::Hand),
-        primitives::word_slice_exact("library").value(Zone::Library),
-    ))
-    .parse_next(input)?;
-    Ok((Some(PlayerFilter::ChosenPlayer), zone))
-}
-
-fn apply_simple_object_filter_suffix(filter: &mut ObjectFilter, suffix: SimpleObjectFilterSuffix) {
-    match suffix {
-        SimpleObjectFilterSuffix::Controller(controller) => {
-            filter.controller = Some(controller);
-            filter.zone = Some(Zone::Battlefield);
-        }
-        SimpleObjectFilterSuffix::Owner(owner) => filter.owner = Some(owner),
-        SimpleObjectFilterSuffix::ControllerOwner(controller, owner) => {
-            filter.controller = Some(controller);
-            filter.owner = Some(owner);
-            filter.zone = Some(Zone::Battlefield);
-        }
-        SimpleObjectFilterSuffix::OwnerZone(owner, zone) => {
-            filter.owner = Some(owner);
-            filter.zone = Some(zone);
-        }
-        SimpleObjectFilterSuffix::Zone(zone) => filter.zone = Some(zone),
-    }
-}
-
-fn suffix_tail<'a>(words: &'a [&'a str], suffix_len: usize) -> Option<&'a [&'a str]> {
-    words.get(words.len().checked_sub(suffix_len)?..)
-}
-
-fn word_phrase<'a>(
-    expected: &'static [&'static str],
-) -> impl Parser<WordInput<'a>, (), ErrMode<ContextError>> {
-    move |input: &mut WordInput<'a>| {
-        let checkpoint = *input;
-        for word in expected {
-            if let Err(err) = primitives::word_slice_exact(word).void().parse_next(input) {
-                *input = checkpoint;
-                return Err(err);
-            }
-        }
-        Ok(())
-    }
-}
-
-fn parse_any_word<'a>(input: &mut WordInput<'a>) -> WResult<&'a str> {
-    let Some((word, rest)) = input.split_first() else {
-        return Err(primitives::backtrack_err(
-            "simple object filter word",
-            "word",
-        ));
-    };
-    *input = rest;
-    Ok(*word)
-}
-
-fn push_unique<T: Copy + PartialEq>(items: &mut Vec<T>, value: T) {
-    crate::slice_primitives::push_unique(items, value);
-}
-
 #[cfg(test)]
 #[path = "simple/tests.rs"]
 mod tests;
+
+#[path = "simple/simple_core_programs.rs"]
+mod simple_core_programs;
+use simple_core_programs::{
+    apply_named_atom, parse_any_word, parse_location, parse_location_suffix,
+    parse_other_than_split, parse_own_action, parse_owner_suffix, parse_typed_word_atom,
+    push_unique, suffix_tail, word_phrase,
+};
+#[path = "simple/simple_reference_programs.rs"]
+mod simple_reference_programs;
+use simple_reference_programs::{
+    apply_simple_object_filter_suffix, contains_simple_filter_reject, parse_controller_player,
+    parse_excluded_object_filter_atom, parse_filter_face_state, parse_named_object_filter_atom,
+    parse_other_than_filter, parse_simple_filter_reject, parse_simple_object_filter_suffix,
+    parse_target_player_or_planeswalker_controller,
+};
+#[path = "simple/simple_choice_programs.rs"]
+mod simple_choice_programs;
+use simple_choice_programs::parse_chosen_player_location;
+#[path = "simple/simple_object_action_programs.rs"]
+mod simple_object_action_programs;
+use simple_object_action_programs::{
+    parse_control_action, parse_control_negation, parse_controller_owner_suffix,
+    parse_controller_suffix, parse_negated_controller_suffix,
+};

@@ -201,12 +201,17 @@ mod tests {
     use crate::card::{LinkedFaceLayout, PowerToughness};
     use crate::cards::{CardDefinition, CardDefinitionBuilder};
     use crate::effects::ExecutionContext;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::events::EventKind;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::events::combat::CreatureAttackedEvent;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::events::phase::EndOfCombatEvent;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::snapshot::ObjectSnapshot;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::triggers::{
         AttackEventTarget, TransformsTrigger, TriggerContext, TriggerEvent, TriggerMatcher,
         TriggerQueue, check_triggers,

@@ -160,20 +160,16 @@ fn damage_cause_life_loss_restriction_from_tail(
 }
 
 pub fn format_negated_restriction_display(tokens: &[OwnedLexToken]) -> String {
-    let authored_self_surface = tokens
-        .iter()
-        .position(|token| {
-            token.is_word("can't")
-                || token.is_word("cant")
-                || token.is_word("cannot")
-                || token.is_word("can")
-        })
-        .and_then(|negation| {
-            source_reference_surface_for_span(span_from_tokens(&tokens[..negation])).or_else(|| {
-                let subject_words = words(&tokens[..negation]);
-                source_reference_surface_for_words(&subject_words)
-            })
-        });
+    let authored_self_surface = crate::slice_primitives::select_position(tokens, |token| {
+        token.is_word("can't")
+            || token.is_word("cant")
+            || token.is_word("cannot")
+            || token.is_word("can")
+    })
+    .and_then(|negation| {
+        let subject_words = words(&tokens[..negation]);
+        source_reference_surface_for_words(&subject_words)
+    });
     let words = crate::lexer::token_word_refs(tokens);
     let mut out = Vec::with_capacity(words.len());
     let mut idx = 0usize;
@@ -211,7 +207,7 @@ pub fn format_negated_restriction_display(tokens: &[OwnedLexToken]) -> String {
     }
     let rendered = out.join(" ");
     if let Some(surface) = authored_self_surface
-        && let Some((_, tail)) = rendered.split_once(" can't ")
+        && let Some((_, tail)) = crate::string_primitives::split_once(&rendered, " can't ")
     {
         return format!("{} can't {tail}", surface.display_text());
     }
@@ -695,7 +691,7 @@ fn parse_distributive_compound_subject_filter(
 
 fn token_is_type_adjective(token: &OwnedLexToken) -> bool {
     token.as_word().is_some_and(|word| {
-        let singular = word.strip_suffix('s').unwrap_or(word);
+        let singular = crate::word_primitives::strip_word_suffix(word, "s").unwrap_or(word);
         crate::util::parse_card_type(word).is_some()
             || crate::util::parse_card_type(singular).is_some()
     })
@@ -753,7 +749,9 @@ pub fn parse_type_adjective_conjunction_filter(
     // "instant and/or sorcery cards" is an inclusive type list, not a
     // distributive conjunction; the and-splitter would orphan the or-half.
     let words = crate::lexer::token_word_refs(tokens);
-    if words.contains(&"and/or") || words.windows(2).any(|pair| pair == ["and", "or"]) {
+    if crate::slice_primitives::contains(&words, &"and/or")
+        || crate::word_primitives::sequence_occurs(&words, &["and", "or"])
+    {
         return Ok(None);
     }
     let segments = grammar::split_lexed_slices_on_and(tokens);
@@ -881,58 +879,63 @@ pub fn parse_negated_object_restriction_clause(
         return Ok(None);
     }
 
-    let (mut filter, mut target, ability_scope) = if let Some(parsed) =
-        parse_activated_ability_subject(&subject_tokens)?
-    {
-        (parsed.filter, parsed.target, Some(parsed.scope))
-    } else if starts_with_target_indicator(&subject_tokens) {
-        let target = parse_target_phrase(&subject_tokens)?;
-        let mut filter = target_ast_to_object_filter(target.clone()).ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "unsupported target restriction subject (clause: '{}')",
-                crate::lexer::token_word_refs(tokens).join(" ")
-            ))
-        })?;
-        ensure_it_tagged_constraint(&mut filter);
-        (filter, Some(target), None)
-    } else if subject_tokens.is_empty() {
-        // Supports carried clauses like "... and can't be blocked this turn."
-        let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens));
-        (
-            ObjectFilter::tagged(TagKey::from(IT_TAG)),
-            Some(target),
-            None,
-        )
-    } else if matches!(
-        subject_words.as_slice(),
-        ["it"] | ["that", "creature"] | ["that", "permanent"] | ["them"] | ["those", "creatures"]
-    ) {
-        // A pronoun/demonstrative subject back-references the object the
-        // trigger introduced (e.g. "Whenever this blocks or becomes
-        // blocked, it can't be regenerated this turn"), not a filter over
-        // every creature. target=None keeps it on the plain
-        // cant-restriction path (no spurious "choose it").
-        (ObjectFilter::tagged(TagKey::from(IT_TAG)), None, None)
-    } else if bare_other_choice {
-        (
-            ObjectFilter::creature().not_tagged(TagKey::from(IT_TAG)),
-            None,
-            None,
-        )
-    } else if matches!(
-        restriction_grammar::parse_restriction_subject_surface_words(&subject_words),
-        Some(restriction_grammar::RestrictionSubjectSurface::Player)
-    ) {
-        (ObjectFilter::default(), None, None)
-    } else {
-        let Some(filter) = parse_subject_object_filter(&subject_tokens)? else {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported subject in negated restriction clause (clause: '{}')",
-                crate::lexer::token_word_refs(tokens).join(" ")
-            )));
+    let (mut filter, mut target, ability_scope) =
+        if let Some(parsed) = parse_activated_ability_subject(&subject_tokens)? {
+            (parsed.filter, parsed.target, Some(parsed.scope))
+        } else if starts_with_target_indicator(&subject_tokens) {
+            let target = parse_target_phrase(&subject_tokens)?;
+            let mut filter = target_ast_to_object_filter(target.clone()).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported target restriction subject (clause: '{}')",
+                    crate::lexer::token_word_refs(tokens).join(" ")
+                ))
+            })?;
+            ensure_it_tagged_constraint(&mut filter);
+            (filter, Some(target), None)
+        } else if subject_tokens.is_empty() {
+            // Supports carried clauses like "... and can't be blocked this turn."
+            let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens));
+            (
+                ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                Some(target),
+                None,
+            )
+        } else if crate::word_primitives::parse_any_sequence_complete(
+            &subject_words,
+            &[
+                &["it"],
+                &["that", "creature"],
+                &["that", "permanent"],
+                &["them"],
+                &["those", "creatures"],
+            ],
+        ) {
+            // A pronoun/demonstrative subject back-references the object the
+            // trigger introduced (e.g. "Whenever this blocks or becomes
+            // blocked, it can't be regenerated this turn"), not a filter over
+            // every creature. target=None keeps it on the plain
+            // cant-restriction path (no spurious "choose it").
+            (ObjectFilter::tagged(TagKey::from(IT_TAG)), None, None)
+        } else if bare_other_choice {
+            (
+                ObjectFilter::creature().not_tagged(TagKey::from(IT_TAG)),
+                None,
+                None,
+            )
+        } else if matches!(
+            restriction_grammar::parse_restriction_subject_surface_words(&subject_words),
+            Some(restriction_grammar::RestrictionSubjectSurface::Player)
+        ) {
+            (ObjectFilter::default(), None, None)
+        } else {
+            let Some(filter) = parse_subject_object_filter(&subject_tokens)? else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported subject in negated restriction clause (clause: '{}')",
+                    crate::lexer::token_word_refs(tokens).join(" ")
+                )));
+            };
+            (filter, None, None)
         };
-        (filter, None, None)
-    };
     // Several restriction-subject paths recognize controller-relative
     // phrases before the ordinary object-filter parser runs. Preserve the
     // authored head noun's number after those paths converge so
@@ -1278,7 +1281,8 @@ pub fn parse_subject_object_filter(
     if let Some(shape) = restriction_grammar::parse_dealt_damage_by_source_subject_words(&words_all)
     {
         let word_view = crate::grammar::primitives::TokenWordView::new(tokens);
-        let Some(base_end) = word_view.token_boundary_for_word_or_end(shape.base_word_count) else {
+        let Some(base_end) = word_view.map_word_or_end_to_token_boundary(shape.base_word_count)
+        else {
             return Ok(None);
         };
         let base_tokens = trim_commas(&tokens[..base_end]);
@@ -1340,16 +1344,9 @@ mod blocker_union_tests {
 
     #[test]
     fn named_self_subject_is_preserved_in_negated_restriction_display() {
-        let named = crate::util::with_card_source_reference_context(
-            "Locke, Treasure Hunter",
-            &[CardType::Creature],
-            &[],
-            || {
-                let tokens = lex_line("Locke can't be blocked by creatures with greater power.", 0)
-                    .expect("named restriction should lex");
-                format_negated_restriction_display(&tokens)
-            },
-        );
+        let tokens = lex_line("Locke can't be blocked by creatures with greater power.", 0)
+            .expect("named restriction should lex");
+        let named = format_negated_restriction_display(&tokens);
         assert_eq!(
             named,
             "Locke can't be blocked by creatures with greater power"

@@ -417,6 +417,34 @@ fn choose_spec_is_single_damage_recipient(spec: &ChooseSpec) -> bool {
     }
 }
 
+fn bind_iterated_source_stat_value(value: &Value) -> Value {
+    match value {
+        Value::PowerOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG) => {
+            Value::PowerOf(Box::new(
+                ChooseSpec::Iterated.with_surface_hints(spec.surface_hints().to_vec()),
+            ))
+        }
+        Value::ToughnessOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG) => {
+            Value::ToughnessOf(Box::new(
+                ChooseSpec::Iterated.with_surface_hints(spec.surface_hints().to_vec()),
+            ))
+        }
+        Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
+            value: Box::new(bind_iterated_source_stat_value(value)),
+            hints: hints.clone(),
+        },
+        Value::Add(left, right) => Value::Add(
+            Box::new(bind_iterated_source_stat_value(left)),
+            Box::new(bind_iterated_source_stat_value(right)),
+        ),
+        Value::Scaled(value, multiplier) => Value::Scaled(
+            Box::new(bind_iterated_source_stat_value(value)),
+            *multiplier,
+        ),
+        value => value.clone(),
+    }
+}
+
 /// Lower an authored "`Each <object> deals ... equal to its ...`" source set
 /// as the damage-source loop. The target is resolved before entering that loop
 /// so a demonstrative such as "that permanent" keeps referring to the prior
@@ -426,29 +454,41 @@ fn try_compile_for_each_object_as_damage_source(
     effects: &[EffectAst],
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
-    let [
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::DealDamageEqualToPower {
-                    source,
-                    amount,
-                    target,
-                    unpreventable,
-                },
-            ..
-        }),
-    ] = effects
-    else {
+    let [EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. })] = effects else {
         return Ok(None);
     };
 
-    let source_is_iterand = matches!(
-        source,
-        TargetAst::Object(source_filter, _, _) if source_filter == filter
-    ) || matches!(
-        source,
-        TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG
-    );
+    let (source, amount, target, unpreventable) = match action {
+        SubjectVerbActionAst::DealDamageEqualToPower {
+            source,
+            amount,
+            target,
+            unpreventable,
+        } => (Some(source), amount, target, unpreventable),
+        SubjectVerbActionAst::DealDamage {
+            amount,
+            target,
+            unpreventable,
+        } if matches!(
+            amount.unhinted(),
+            Value::PowerOf(spec) | Value::ToughnessOf(spec)
+                if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG)
+        ) =>
+        {
+            (None, amount, target, unpreventable)
+        }
+        _ => return Ok(None),
+    };
+
+    let source_is_iterand = source.is_none()
+        || matches!(
+            source,
+            Some(TargetAst::Object(source_filter, _, _)) if source_filter == filter
+        )
+        || matches!(
+            source,
+            Some(TargetAst::Tagged(tag, _)) if tag.as_str() == IT_TAG
+        );
     if !source_is_iterand {
         return Ok(None);
     }
@@ -463,7 +503,7 @@ fn try_compile_for_each_object_as_damage_source(
             filter.tagged_constraints[0].tag.as_str(),
             IT_TAG | ironsmith_core::CHOSEN_OBJECTS_TAG
         );
-    let (target_spec, choices) = if source == target {
+    let (target_spec, choices) = if source.is_some_and(|source| source == target) {
         (ChooseSpec::Iterated, Vec::new())
     } else if other_member_of_prior_set {
         // "The other" is an anaphoric member of the already chosen pair, not
@@ -480,7 +520,11 @@ fn try_compile_for_each_object_as_damage_source(
         return Ok(None);
     }
 
-    let resolved_amount = resolve_value_it_tag(amount, &refs)?;
+    let resolved_amount = if source.is_none() {
+        bind_iterated_source_stat_value(amount)
+    } else {
+        resolve_value_it_tag(amount, &refs)?
+    };
     let damage_amount = super::effect_dispatch::bind_source_value_to_damage_source(
         &resolved_amount,
         &ChooseSpec::Iterated,
@@ -734,7 +778,9 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             }
             let mut choices = inner_choices;
             choices.append(&mut player_choices);
-            let payer_relative_cost = normalize_unless_cost_for_payer(cost.clone());
+            let runtime_cost =
+                crate::lowering::cost_materialization::materialize_compiler_core_total_cost(cost)?;
+            let payer_relative_cost = normalize_unless_cost_for_payer(runtime_cost);
             let resolved_cost =
                 resolve_total_cost_it_tags(&payer_relative_cost, &current_reference_env(ctx))?;
             let effect = Effect::new(crate::effects::UnlessPaysEffect {
@@ -876,6 +922,38 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             (compiled, choices)
         }
         EffectAst::ForEachPlayer { effects } => {
+            if let [
+                EffectAst::May {
+                    effects: may_effects,
+                },
+            ] = effects.as_slice()
+                && let [EffectAst::Coordination(coordination)] = may_effects.as_slice()
+                && coordination.kind == crate::model::CoordinationKindAst::Sequence
+                && coordination.boundaries.last().is_some_and(|boundary| {
+                    boundary.operator == crate::model::CoordinationOperatorAst::CommaThen
+                })
+                && let Some((followup_member, antecedent_members)) =
+                    coordination.members.split_last()
+                && let [followup] = followup_member.effects.as_slice()
+                && matches!(followup, EffectAst::ForEachOpponentDoesNot { .. })
+            {
+                let antecedent_may_effects = antecedent_members
+                    .iter()
+                    .flat_map(|member| member.effects.iter().cloned())
+                    .collect::<Vec<_>>();
+                if !antecedent_may_effects.is_empty() {
+                    let antecedent = EffectAst::ForEachPlayer {
+                        effects: vec![EffectAst::May {
+                            effects: antecedent_may_effects,
+                        }],
+                    };
+                    if let Some((effects, choices)) =
+                        compile_if_do_with_opponent_doesnt(&antecedent, followup, ctx)?
+                    {
+                        return Ok(Some((effects, choices)));
+                    }
+                }
+            }
             if let [
                 EffectAst::May {
                     effects: may_effects,

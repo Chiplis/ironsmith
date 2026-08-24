@@ -590,13 +590,21 @@ mod tests {
     }
 
     fn xorn_definition() -> CardDefinition {
+        let oracle = "If you would create one or more Treasure tokens, instead create those tokens plus an additional Treasure token.";
         CardDefinitionBuilder::new(CardId::new(), "Xorn")
             .card_types(vec![CardType::Creature])
             .subtypes(vec![Subtype::Elemental])
-            .parse_text(
-                "If you would create one or more Treasure tokens, instead create those tokens plus an additional Treasure token.",
-            )
-            .expect("Xorn should parse strictly")
+            .oracle_text(oracle)
+            .with_ability(crate::ability::Ability::static_ability(
+                StaticAbility::add_token_creation_replacement(
+                    PlayerFilter::You,
+                    ObjectFilter::default().with_subtype(Subtype::Treasure),
+                    ironsmith_core::AdditionalTokenKind::Treasure,
+                    1,
+                    oracle.to_string(),
+                ),
+            ))
+            .build()
     }
 
     #[test]

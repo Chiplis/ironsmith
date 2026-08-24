@@ -356,7 +356,12 @@ fn coordinated_spell_and_ability_uses_the_complete_stack_domain() {
     assert!(!filter.has_mana_cost, "abilities do not have mana costs");
     assert!(filter.has_conjunctive_set_surface());
 
-    let near_miss = parse("spell or permanent your opponents control");
+    let near_miss_tokens = lex_line("spell or permanent your opponents control", 0).unwrap();
+    let near_miss = crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(
+        &near_miss_tokens,
+        false,
+    )
+    .expect("heterogeneous near miss should parse through the public route");
     assert_ne!(near_miss.stack_kind, Some(StackObjectKind::SpellOrAbility));
 }
 

@@ -1128,6 +1128,7 @@ pub fn run_replay_test_full_turn(
 mod tests {
     use super::*;
     use crate::decision::DecisionMaker;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::events::cause::EventCause;
 
     #[derive(Default)]

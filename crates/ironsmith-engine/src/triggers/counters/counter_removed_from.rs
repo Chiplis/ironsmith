@@ -193,10 +193,9 @@ mod tests {
         assert!(!trigger.matches(&still_has_one, &ctx));
         assert!(trigger.matches(&last, &ctx));
         assert!(!trigger.matches(&wrong_type, &ctx));
-        assert_eq!(
-            trigger.display(),
-            "When the last charge counter is removed from this"
-        );
+        assert!(trigger.last);
+        assert_eq!(trigger.counter_type, Some(CounterType::Charge));
+        assert!(trigger.filter.source);
     }
 
     #[test]

@@ -38,10 +38,10 @@ pub fn parse_cycling_line_lexed(
         return Ok(None);
     }
 
-    let base_cost = parse_activation_cost(first_group.cost_tokens)?;
+    let base_cost = parse_compiler_activation_cost(first_group.cost_tokens)?;
     let base_cost_display = base_cost.display();
     for group in cycling_groups.iter().skip(1) {
-        let next_cost = parse_activation_cost(group.cost_tokens)?;
+        let next_cost = parse_compiler_activation_cost(group.cost_tokens)?;
         if next_cost.display() != base_cost_display {
             return Err(CardTextError::ParseError(format!(
                 "unsupported mixed cycling costs (clause: '{clause_text}')",
@@ -50,15 +50,12 @@ pub fn parse_cycling_line_lexed(
     }
 
     let mut merged_costs = base_cost.costs().to_vec();
-    merged_costs.push(crate::costs::Cost::discard_source());
-    merged_costs.push(
-        crate::costs::payment_effect_to_cost(Effect::emit_keyword_action(
-            crate::events::KeywordActionKind::Cycle,
-            1,
-        ))
-        .map_err(CardTextError::ParseError)?,
-    );
-    let mana_cost = crate::cost::TotalCost::from_costs(merged_costs);
+    merged_costs.push(crate::model::CompilerCost::DiscardSource);
+    merged_costs.push(crate::model::CompilerCost::EmitKeywordAction {
+        kind: crate::events::KeywordActionKind::Cycle,
+        amount: 1,
+    });
+    let mana_cost = ironsmith_core::TotalCost::from_costs(merged_costs);
 
     let mut search_filter = parse_cycling_search_filter(first_group.keyword_tokens)?;
     for group in cycling_groups.iter().skip(1) {
@@ -74,9 +71,31 @@ pub fn parse_cycling_line_lexed(
         }
     }
     let effect = if let Some(filter) = search_filter {
-        Effect::search_library_to_hand(filter, true)
+        EffectAst::subject_verb_search_library(
+            filter,
+            Zone::Hand,
+            PlayerAst::You,
+            PlayerAst::You,
+            crate::effect::SearchSelectionMode::Exact,
+            true,
+            None,
+            true,
+            ChoiceCount::exactly(1),
+            None,
+            None,
+            crate::effect::SearchResultReferenceSurface::ThatCard,
+            false,
+            false,
+            false,
+        )
     } else {
-        Effect::draw(1)
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            PlayerAst::You,
+            SubjectVerbActionAst::Draw {
+                count: Value::Fixed(1),
+            },
+        )
     };
 
     let cost_text = first_group
@@ -100,9 +119,9 @@ pub fn parse_cycling_line_lexed(
 
     Ok(Some(ParsedAbility {
         ability: Ability {
-            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+            kind: AbilityKind::Activated(ActivatedAbility {
                 mana_cost,
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![effect]),
+                effects: ironsmith_core::ResolutionProgram::from_effects(vec![effect]),
                 choices: Vec::new(),
                 timing: ActivationTiming::AnyTime,
                 additional_restrictions: vec![],
@@ -163,26 +182,28 @@ pub fn parse_craft_line_lexed(
             )));
         }
     };
-    let base_cost = parse_activation_cost(spec.cost_tokens)?;
+    let base_cost = parse_compiler_activation_cost(spec.cost_tokens)?;
     let mut merged_costs = base_cost.costs().to_vec();
-    merged_costs.push(crate::costs::Cost::validated_effect(Effect::exile(
-        ChooseSpec::Object(material_filter).with_count(material_count),
-    )));
-    merged_costs.push(
-        crate::costs::payment_effect_to_cost(Effect::emit_keyword_action(
-            crate::events::KeywordActionKind::Craft,
-            1,
-        ))
-        .map_err(CardTextError::ParseError)?,
-    );
-    merged_costs.push(crate::costs::Cost::exile_self());
+    merged_costs.push(crate::model::CompilerCost::ExileChosen {
+        count: material_count,
+        filter: material_filter,
+        top_only: false,
+        turn_face_up: false,
+        binding: None,
+    });
+    merged_costs.push(crate::model::CompilerCost::EmitKeywordAction {
+        kind: crate::events::KeywordActionKind::Craft,
+        amount: 1,
+    });
+    merged_costs.push(crate::model::CompilerCost::ExileSelf {
+        from_graveyard: false,
+    });
 
-    let return_transformed = Effect::new(
-        crate::effects::MoveToZoneEffect::new(ChooseSpec::Source, Zone::Battlefield, false)
-            .under_owner_control()
-            .transfer_exiled_with_source_links(),
+    let return_transformed = EffectAst::subject_verb(
+        SubjectVerbRoleAst::Actor,
+        PlayerAst::Implicit,
+        SubjectVerbActionAst::ReturnSourceTransformedFromExile,
     );
-    let transform = Effect::transform(ChooseSpec::Source);
 
     let cost_text = base_cost
         .mana_cost()
@@ -191,12 +212,9 @@ pub fn parse_craft_line_lexed(
 
     Ok(Some(ParsedAbility {
         ability: Ability {
-            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
-                mana_cost: crate::cost::TotalCost::from_costs(merged_costs),
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    return_transformed,
-                    transform,
-                ]),
+            kind: AbilityKind::Activated(ActivatedAbility {
+                mana_cost: ironsmith_core::TotalCost::from_costs(merged_costs),
+                effects: ironsmith_core::ResolutionProgram::from_effects(vec![return_transformed]),
                 choices: Vec::new(),
                 timing: ActivationTiming::SorcerySpeed,
                 additional_restrictions: vec![],
@@ -374,7 +392,7 @@ pub fn parse_equip_line(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility
             mana_prefix,
             exact_mana_cost,
         } => {
-            let total_cost = parse_activation_cost(cost_tokens)?;
+            let total_cost = parse_compiler_activation_cost(cost_tokens)?;
             let cost_text = if exact_mana_cost {
                 mana_prefix.to_oracle()
             } else {
@@ -394,7 +412,7 @@ pub fn parse_equip_line(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility
             )))
         }
         EquipLineSpec::ActivationCost { cost_tokens } => {
-            let total_cost = parse_activation_cost(cost_tokens)?;
+            let total_cost = parse_compiler_activation_cost(cost_tokens)?;
             let tail_words = crate::lexer::token_word_refs(cost_tokens);
             if tail_words.is_empty() {
                 return Err(CardTextError::ParseError(
@@ -410,7 +428,12 @@ pub fn parse_equip_line(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility
     }
 }
 
-fn equip_mana_total_cost(cost: ManaCost) -> (TotalCost, String) {
+fn equip_mana_total_cost(
+    cost: ManaCost,
+) -> (
+    ironsmith_core::TotalCost<crate::model::CompilerCost>,
+    String,
+) {
     let mut saw_zero = false;
     let pips = cost
         .pips()
@@ -426,27 +449,27 @@ fn equip_mana_total_cost(cost: ManaCost) -> (TotalCost, String) {
         .collect::<Vec<_>>();
     if pips.is_empty() {
         let text = if saw_zero { "{0}" } else { "" }.to_string();
-        return (TotalCost::free(), text);
+        return (ironsmith_core::TotalCost::free(), text);
     }
     let mana_cost = ManaCost::from_pips(pips);
     let text = mana_cost.to_oracle();
-    (TotalCost::mana(mana_cost), text)
+    (ironsmith_core::TotalCost::mana(mana_cost), text)
 }
 
 fn build_equip_ability(
-    total_cost: TotalCost,
+    total_cost: ironsmith_core::TotalCost<crate::model::CompilerCost>,
     text: String,
     target_filter: ObjectFilter,
 ) -> ParsedAbility {
-    let target = ChooseSpec::target(ChooseSpec::Object(target_filter));
+    let target = TargetAst::Object(target_filter, None, None);
     ParsedAbility {
         ability: Ability {
-            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+            kind: AbilityKind::Activated(ActivatedAbility {
                 mana_cost: total_cost,
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    Effect::attach_to(target.clone()),
+                effects: ironsmith_core::ResolutionProgram::from_effects(vec![
+                    EffectAst::subject_verb_attach(TargetAst::Source(None), target),
                 ]),
-                choices: vec![target.clone()],
+                choices: vec![],
                 timing: ActivationTiming::SorcerySpeed,
                 additional_restrictions: vec![],
                 activation_restrictions: vec![],
@@ -482,8 +505,8 @@ pub fn parse_reconfigure_line_lexed(
             "reconfigure missing activation cost".to_string(),
         ));
     }
-    let total_cost = parse_activation_cost(spec.cost_tokens)?;
-    let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().you_control()));
+    let total_cost = parse_compiler_activation_cost(spec.cost_tokens)?;
+    let target = TargetAst::Object(ObjectFilter::creature().you_control(), None, None);
     let text = total_cost
         .mana_cost()
         .map(|mana| format!("Reconfigure {}", mana.to_oracle()))
@@ -491,11 +514,15 @@ pub fn parse_reconfigure_line_lexed(
 
     Ok(Some(ParsedAbility {
         ability: Ability {
-            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+            kind: AbilityKind::Activated(ActivatedAbility {
                 mana_cost: total_cost,
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
-                    crate::effects::ReconfigureEffect::new(target.clone()),
-                )]),
+                effects: ironsmith_core::ResolutionProgram::from_effects(vec![
+                    EffectAst::subject_verb(
+                        SubjectVerbRoleAst::Actor,
+                        PlayerAst::Implicit,
+                        SubjectVerbActionAst::Reconfigure { target },
+                    ),
+                ]),
                 choices: vec![],
                 timing: ActivationTiming::SorcerySpeed,
                 additional_restrictions: vec![],

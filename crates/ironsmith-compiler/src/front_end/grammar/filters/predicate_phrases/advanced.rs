@@ -36,18 +36,20 @@ fn turn_history_zone_clause(clause: LexedClause<'_>) -> Option<Zone> {
 
 fn without_this_turn(clause: LexedClause<'_>) -> Option<LexedClause<'_>> {
     let words = clause.word_refs();
-    words
-        .ends_with(&["this", "turn"])
+    crate::word_primitives::parse_sequence_suffix(&words, &["this", "turn"])
         .then(|| clause.between_words_trimmed(0, words.len().saturating_sub(2)))
 }
 
 fn parse_player_cast_spell_from_zone_body(clause: LexedClause<'_>) -> Option<(PlayerAst, Zone)> {
     let words = clause.word_refs();
-    let cast = words.iter().position(|word| *word == "cast")?;
+    let cast = crate::word_primitives::parse_sequence_start(&words, &["cast"])?;
     let player = turn_history_player_subject(clause.between_words_trimmed(0, cast))?;
     let tail = &words[cast + 1..];
-    let from = tail.iter().position(|word| *word == "from")?;
-    if !matches!(&tail[..from], ["spell"] | ["a", "spell"]) {
+    let from = crate::word_primitives::parse_sequence_start(tail, &["from"])?;
+    if !crate::word_primitives::parse_any_sequence_complete(
+        &tail[..from],
+        &[&["spell"], &["a", "spell"]],
+    ) {
         return None;
     }
     let zone_start = cast + 1 + from + 1;
@@ -66,12 +68,15 @@ fn parse_player_cast_spell_from_zone_body(clause: LexedClause<'_>) -> Option<(Pl
 
 fn parse_activated_ability_of_card_in_zone_tail(clause: LexedClause<'_>) -> Option<Zone> {
     let words = clause.word_refs();
-    let prefix_len = [
+    let prefixes = [
         &["activated", "an", "ability", "of", "a", "card", "in"][..],
         &["activated", "an", "ability", "of", "card", "in"][..],
-    ]
-    .into_iter()
-    .find_map(|prefix| words.starts_with(prefix).then_some(prefix.len()))?;
+    ];
+    let (prefix, start) = crate::word_primitives::find_any_phrase_start(&words, &prefixes)?;
+    if start != 0 {
+        return None;
+    }
+    let prefix_len = prefix.len();
     turn_history_zone_clause(clause.between_words_trimmed(prefix_len, words.len()))
 }
 
@@ -79,7 +84,7 @@ fn parse_player_activated_ability_of_card_in_zone_body(
     clause: LexedClause<'_>,
 ) -> Option<(PlayerAst, Zone)> {
     let words = clause.word_refs();
-    let activated = words.iter().position(|word| *word == "activated")?;
+    let activated = crate::word_primitives::parse_sequence_start(&words, &["activated"])?;
     let player = turn_history_player_subject(clause.between_words_trimmed(0, activated))?;
     let zone = parse_activated_ability_of_card_in_zone_tail(
         clause.between_words_trimmed(activated, words.len()),
@@ -95,7 +100,7 @@ fn parse_cast_or_activated_from_zone_this_turn_predicate(
 ) -> Option<PredicateAst> {
     let clause = without_this_turn(LexedClause::new(tokens))?;
     let words = clause.word_refs();
-    let or = words.iter().rposition(|word| *word == OR_WORD)?;
+    let or = crate::word_primitives::parse_last_sequence_start(&words, &[OR_WORD])?;
     let (player, cast_zone) =
         parse_player_cast_spell_from_zone_body(clause.between_words_trimmed(0, or))?;
     let activated_zone = parse_activated_ability_of_card_in_zone_tail(
@@ -405,8 +410,11 @@ fn parse_turn_history_intervening_predicate(
 
     // "mana from a Treasure was spent to cast it or activate it"
     if words.len() >= 11
-        && words[..2] == ["mana", "from"]
-        && words[words.len() - 8..] == ["was", "spent", "to", "cast", "it", "or", "activate", "it"]
+        && crate::word_primitives::parse_sequence_prefix(&words, &["mana", "from"])
+        && crate::word_primitives::parse_sequence_suffix(
+            &words,
+            &["was", "spent", "to", "cast", "it", "or", "activate", "it"],
+        )
     {
         let source_word_count = words.len() - 10;
         if let Some(source_clause) = clause.between_word_range(2, 2 + source_word_count) {
@@ -420,8 +428,14 @@ fn parse_turn_history_intervening_predicate(
     // Quantification over a different opponent from the controller of the
     // triggering spell's existing object target.
     if words.len() >= 11
-        && words[..6] == ["another", "opponent", "controls", "one", "or", "more"]
-        && words[words.len() - 4..] == ["that", "spell", "could", "target"]
+        && crate::word_primitives::parse_sequence_prefix(
+            &words,
+            &["another", "opponent", "controls", "one", "or", "more"],
+        )
+        && crate::word_primitives::parse_sequence_suffix(
+            &words,
+            &["that", "spell", "could", "target"],
+        )
         && let Some(filter_clause) = clause.between_word_range(6, words.len() - 4)
     {
         let filter = parse_object_filter(filter_clause.tokens(), false)?;
@@ -1674,7 +1688,8 @@ pub(super) fn parse_object_death_this_turn_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
     let words = crate::lexer::token_word_refs(tokens);
-    let explicit_one_or_more = words.starts_with(&["one", "or", "more"]);
+    let explicit_one_or_more =
+        crate::word_primitives::parse_sequence_prefix(&words, &["one", "or", "more"]);
     let condition = crate::grammar::conditions::parse_object_death_this_turn_condition(tokens)?;
     match condition.event {
         crate::grammar::conditions::ObjectDeathThisTurnEventAst::Died => {
@@ -2476,11 +2491,12 @@ pub(super) fn parse_this_spell_was_kicked_with_cost_shape(
     }
 
     let parsed_cost = parse_activation_cost_tokens(&tokens[cost_start..kicker_idx]).ok()?;
-    let lowered_cost = lower_activation_cost_cst(&parsed_cost).ok()?;
-    let cost_text = lowered_cost
+    let compiler_cost = crate::cst_lowering::recognize_activation_cost_cst(&parsed_cost).ok()?;
+    let compiler_cost = compiler_cost.to_core_total_cost();
+    let cost_text = compiler_cost
         .mana_cost()
         .map(|cost| cost.to_oracle())
-        .unwrap_or_else(|| lowered_cost.display());
+        .unwrap_or_else(|| compiler_cost.display());
     (!cost_text.is_empty())
         .then(|| PredicateAst::ThisSpellPaidLabel(format!("Kicker {cost_text}").into()))
 }
@@ -2630,17 +2646,21 @@ pub(super) fn parse_mana_spent_capture_predicate(tokens: &[OwnedLexToken]) -> Op
 fn parse_mana_from_source_spent_to_cast_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens).trimmed();
     let words = clause.word_refs();
-    let mana_idx = words.iter().position(|word| *word == "mana")?;
+    let mana_idx = crate::word_primitives::parse_sequence_start(&words, &["mana"])?;
     if words.len() < mana_idx + 8 || words.get(mana_idx + 1) != Some(&"from") {
         return None;
     }
-    let spent_idx = words
-        .windows(4)
-        .position(|window| matches!(window, ["was" | "were", "spent", "to", "cast"]))?;
+    let (_, spent_idx) = crate::word_primitives::find_any_phrase_start(
+        &words,
+        &[
+            &["was", "spent", "to", "cast"],
+            &["were", "spent", "to", "cast"],
+        ],
+    )?;
     if spent_idx <= mana_idx + 2
-        || !matches!(
+        || !crate::word_primitives::parse_any_sequence_complete(
             &words[spent_idx + 4..],
-            ["it"] | ["that", "spell"] | ["this", "spell"]
+            &[&["it"], &["that", "spell"], &["this", "spell"]],
         )
     {
         return None;
@@ -2817,7 +2837,7 @@ pub(super) fn parse_this_permanent_attached_to_shape(
             filter.card_types.push(CardType::Creature);
         }
         return Some(PredicateAst::TaggedMatches(
-            TagKey::from("enchanted"),
+            crate::tag::CompilerReferenceTag::Enchanted.key(),
             filter,
         ));
     }
@@ -3007,15 +3027,18 @@ fn parse_triggering_object_first_tap_this_turn_predicate(
     let words = TokenWordView::new(tokens).to_word_refs();
     let rest = if words.first() == Some(&"its") {
         &words[1..]
-    } else if words.starts_with(&["it", "is"]) {
+    } else if crate::word_primitives::parse_sequence_prefix(&words, &["it", "is"]) {
         &words[2..]
     } else {
         return None;
     };
     if rest.len() != 10
-        || rest[..4] != ["the", "first", "time", "that"]
+        || !crate::word_primitives::parse_sequence_prefix(rest, &["the", "first", "time", "that"])
         || !matches!(rest[4], "creature" | "object" | "permanent")
-        || rest[5..] != ["has", "become", "tapped", "this", "turn"]
+        || !crate::word_primitives::parse_sequence_complete(
+            &rest[5..],
+            &["has", "become", "tapped", "this", "turn"],
+        )
     {
         return None;
     }
@@ -3028,17 +3051,20 @@ fn parse_triggering_object_first_counters_this_turn_predicate(
     let words = TokenWordView::new(tokens).to_word_refs();
     let rest = if words.first() == Some(&"its") {
         &words[1..]
-    } else if words.starts_with(&["it", "is"]) {
+    } else if crate::word_primitives::parse_sequence_prefix(&words, &["it", "is"]) {
         &words[2..]
     } else {
         return None;
     };
     if rest.len() != 12
-        || rest[..3] != ["the", "first", "time"]
-        || rest[3..8] != ["counters", "have", "been", "put", "on"]
+        || !crate::word_primitives::parse_sequence_prefix(rest, &["the", "first", "time"])
+        || !crate::word_primitives::parse_sequence_prefix(
+            &rest[3..],
+            &["counters", "have", "been", "put", "on"],
+        )
         || rest[8] != "that"
         || !matches!(rest[9], "creature" | "object" | "permanent")
-        || rest[10..] != ["this", "turn"]
+        || !crate::word_primitives::parse_sequence_complete(&rest[10..], &["this", "turn"])
     {
         return None;
     }
@@ -4016,7 +4042,10 @@ pub(super) fn parse_counted_object_counter_constraint_clause(
         parse_filter_counter_constraint_words(&constraint_words)
     {
         let trailing_words = &constraint_words[consumed_words..];
-        if matches!(trailing_words, ["on", "it"] | ["on", "them"]) {
+        if crate::word_primitives::parse_any_sequence_complete(
+            trailing_words,
+            &[&["on", "it"], &["on", "them"]],
+        ) {
             return Some((counter_constraint, clause.tokens().len()));
         }
         let consumed_tokens = words.token_index_after_words(consumed_words)?;
@@ -4903,7 +4932,7 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_source_graveyard_cards_above_predicate(predicate_tokens) {
+    if let Some(predicate) = parse_source_graveyard_cards_above_predicate(predicate_tokens)? {
         return Ok(predicate);
     }
 
@@ -5360,7 +5389,7 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
                 }
                 if tagged_that_enchantment && match_time == DemonstrativeMatchTime::Current {
                     return Ok(PredicateAst::TaggedMatches(
-                        TagKey::from("triggering"),
+                        crate::tag::CompilerReferenceTag::Triggering.key(),
                         filter,
                     ));
                 }

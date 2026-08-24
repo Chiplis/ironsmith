@@ -39,3 +39,4 @@ paranoid-invariants = ["ironsmith/paranoid-invariants"]
 
 [dev-dependencies]
 ironsmith-registry-test = { package = "ironsmith-registry", path = "../ironsmith-registry", default-features = false, features = ["handwritten-parse-support"] }
+ironsmith-tools = { path = "../ironsmith-tools", default-features = false }

@@ -184,150 +184,19 @@ fn parse_target_player_choice_head(input: &mut LexStream<'_>) -> WResult<TargetP
     Ok(actor)
 }
 
-fn parse_player_target_prefix_words(words: &[&str]) -> bool {
-    let mut input: primitives::WordSliceInput<'_> = words;
-    (
-        primitives::word_slice_exact("target"),
-        alt((
-            primitives::word_slice_exact("player"),
-            primitives::word_slice_exact("opponent"),
-        )),
-    )
-        .parse_next(&mut input)
-        .is_ok()
-}
-
-fn parse_card_word<'a>(input: &mut primitives::WordSliceInput<'a>) -> WResult<()> {
-    alt((
-        primitives::word_slice_exact("card"),
-        primitives::word_slice_exact("cards"),
-    ))
-    .void()
-    .parse_next(input)
-}
-
-fn parse_graveyard_word<'a>(input: &mut primitives::WordSliceInput<'a>) -> WResult<()> {
-    alt((
-        primitives::word_slice_exact("graveyard"),
-        primitives::word_slice_exact("graveyards"),
-    ))
-    .void()
-    .parse_next(input)
-}
-
-fn parse_hand_word<'a>(input: &mut primitives::WordSliceInput<'a>) -> WResult<()> {
-    alt((
-        primitives::word_slice_exact("hand"),
-        primitives::word_slice_exact("hands"),
-    ))
-    .void()
-    .parse_next(input)
-}
-
-fn word_occurs<'a, P>(words: &'a [&'a str], parser: P) -> bool
-where
-    P: Parser<primitives::WordSliceInput<'a>, (), ErrMode<ContextError>>,
-{
-    let mut input: primitives::WordSliceInput<'a> = words;
-    repeat_till(0.., any.void(), peek(parser).void())
-        .map(|((), ())| ())
-        .parse_next(&mut input)
-        .is_ok()
-}
-
-fn phrase_occurs(words: &[&str], expected: &'static [&'static str]) -> bool {
-    let mut input: primitives::WordSliceInput<'_> = words;
-    repeat_till(0.., any.void(), peek(word_phrase(expected)).void())
-        .map(|((), ())| ())
-        .parse_next(&mut input)
-        .is_ok()
-}
-
-fn trim_punctuation_edges(mut tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    while tokens
-        .first()
-        .is_some_and(|token| matches!(token.kind, TokenKind::Comma | TokenKind::Period))
-    {
-        tokens = &tokens[1..];
-    }
-    while tokens
-        .last()
-        .is_some_and(|token| matches!(token.kind, TokenKind::Comma | TokenKind::Period))
-    {
-        tokens = &tokens[..tokens.len().saturating_sub(1)];
-    }
-    tokens
-}
-
 #[cfg(test)]
-mod tests {
-    use super::super::super::super::lexer::lex_line;
-    use super::*;
+#[path = "object_shapes_inline_tests.rs"]
+mod tests;
 
-    fn lex(raw: &str) -> Vec<OwnedLexToken> {
-        lex_line(raw, 0).unwrap()
-    }
-
-    #[test]
-    fn target_player_choice_head_returns_typed_actor_count_and_filter() {
-        let tokens = lex("Target opponent chooses up to two creatures from a graveyard or hand.");
-        let parsed = parse_target_player_choice_tokens(&tokens).unwrap().unwrap();
-
-        assert_eq!(parsed.actor, TargetPlayerChoiceActor::TargetOpponent);
-        assert_eq!(parsed.count, ChoiceCount::up_to(2));
-        assert_eq!(
-            TokenWordView::new(parsed.filter_tokens).word_refs()[0],
-            "creatures"
-        );
-        assert!(parsed.filter_facts.graveyard_and_hand);
-
-        let opponent = lex("An opponent chooses up to two nonland permanents they control.");
-        let opponent = parse_target_player_choice_tokens(&opponent)
-            .unwrap()
-            .expect("indefinite opponent choice should use the same typed grammar");
-        assert_eq!(opponent.actor, TargetPlayerChoiceActor::Opponent);
-        assert_eq!(opponent.count, ChoiceCount::up_to(2));
-
-        let article_tokens = lex("Target opponent chooses a card.");
-        let article = parse_target_player_choice_tokens(&article_tokens)
-            .unwrap()
-            .unwrap();
-        assert_eq!(article.count, ChoiceCount::exactly(1));
-        assert_eq!(
-            TokenWordView::new(article.filter_tokens).word_refs(),
-            vec!["card"]
-        );
-    }
-
-    #[test]
-    fn object_filter_facts_cover_tagged_disjunction_and_bare_card() {
-        let facts = parse_choice_object_filter_facts_words(&[
-            "card",
-            "from",
-            "it",
-            "or",
-            "a",
-            "card",
-            "from",
-            "a",
-            "graveyard",
-        ]);
-        assert!(facts.tagged_graveyard_disjunction);
-        assert!(facts.graveyard_arm_is_plain_card);
-        assert!(!facts.bare_card);
-
-        assert!(parse_choice_object_filter_facts_words(&["cards"]).bare_card);
-    }
-
-    #[test]
-    fn possessive_choice_keeps_zone_tail_and_choice_owner() {
-        let tokens = lex("a creature card of their choice from their graveyard");
-        let parsed = parse_possessive_object_choice_tokens(&tokens).unwrap();
-
-        assert_eq!(parsed.actor, PossessiveObjectChoiceActor::SubjectPlayer);
-        assert_eq!(
-            TokenWordView::new(&parsed.object_tokens).word_refs(),
-            vec!["a", "creature", "card", "from", "their", "graveyard"]
-        );
-    }
-}
+#[path = "object_shapes/core_programs.rs"]
+mod core_programs;
+use core_programs::{phrase_occurs, trim_punctuation_edges, word_occurs};
+#[path = "object_shapes/zone_programs.rs"]
+mod zone_programs;
+use zone_programs::{parse_graveyard_word, parse_hand_word};
+#[path = "object_shapes/library_programs.rs"]
+mod library_programs;
+use library_programs::parse_card_word;
+#[path = "object_shapes/reference_programs.rs"]
+mod reference_programs;
+use reference_programs::parse_player_target_prefix_words;

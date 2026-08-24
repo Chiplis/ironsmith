@@ -200,10 +200,10 @@ pub fn strip_not_on_battlefield_phrase(tokens: &mut Vec<OwnedLexToken>) -> bool 
     let Some(span) = parse_not_on_battlefield_span(&words) else {
         return false;
     };
-    let Some(token_start) = word_view.token_boundary_for_word_or_end(span.start) else {
+    let Some(token_start) = word_view.map_word_or_end_to_token_boundary(span.start) else {
         return false;
     };
-    let Some(token_end) = word_view.token_boundary_for_word_or_end(span.start + span.consumed)
+    let Some(token_end) = word_view.map_word_or_end_to_token_boundary(span.start + span.consumed)
     else {
         return false;
     };
@@ -400,7 +400,7 @@ fn parse_vote_winner_suffix_tokens(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexTok
     let Some(suffix_start) = parse_suffix_start(&words, VOTE_WINNER_SUFFIXES) else {
         return (tokens.to_vec(), false);
     };
-    let Some(token_end) = word_view.token_boundary_for_word_or_end(suffix_start) else {
+    let Some(token_end) = word_view.map_word_or_end_to_token_boundary(suffix_start) else {
         return (tokens.to_vec(), false);
     };
     (trim_commas(&tokens[..token_end]), true)

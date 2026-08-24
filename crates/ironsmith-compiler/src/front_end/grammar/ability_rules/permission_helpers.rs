@@ -15,7 +15,7 @@ use crate::grammar::shared_util::value_semantics::{
     parse_value_prefix_lexed, starts_explicit_ordered_comparison,
 };
 use crate::host::{CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, TagKey, TargetAst};
-use crate::static_abilities::StaticAbility;
+use crate::model::CompilerStaticAbilityCore as StaticAbility;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
 use crate::zone::Zone;
@@ -48,7 +48,7 @@ pub enum PermissionClauseSpec {
     },
     GrantBySpec {
         player: PlayerAst,
-        spec: crate::grant::GrantSpec,
+        spec: crate::model::CompilerGrantSpecCore,
         lifetime: PermissionLifetime,
     },
 }
@@ -284,10 +284,10 @@ fn combine_flash_permission_lifetime(
     }
 }
 
-fn grant_spec_grants_flash_to_hand(spec: &crate::grant::GrantSpec) -> bool {
+fn grant_spec_grants_flash_to_hand(spec: &crate::model::CompilerGrantSpecCore) -> bool {
     matches!(
         &spec.grantable,
-        crate::grant::Grantable::Ability(ability)
+        crate::model::CompilerGrantableCore::Ability(ability)
             if ability.id() == crate::static_abilities::StaticAbilityId::Flash
     ) && spec.zone == Zone::Hand
 }
@@ -567,7 +567,7 @@ fn parse_tagged_cast_or_play_target_tokens(
             TagKey::from(crate::tag::SOURCE_EXILED_TAG)
         }
         permission_tagged_facts::TaggedPermissionReference::LastRevealed => {
-            TagKey::from("__last_revealed__")
+            crate::tag::CompilerReferenceTag::LastRevealed.key()
         }
     };
     Some((
@@ -596,7 +596,7 @@ fn parse_until_source_exiles_another_permission(tokens: &[OwnedLexToken]) -> Opt
             TagKey::from(crate::tag::SOURCE_EXILED_TAG)
         }
         permission_tagged_facts::TaggedPermissionReference::LastRevealed => {
-            TagKey::from("__last_revealed__")
+            crate::tag::CompilerReferenceTag::LastRevealed.key()
         }
     };
     let object_surface = tagged_permission_object_surface(fact.target_surface)?;
@@ -672,7 +672,7 @@ fn parse_revealed_top_library_permission_clause(
             ..
         }) if matches!(player, PlayerAst::You | PlayerAst::Implicit) => {
             if tag.as_str() == IT_TAG {
-                tag = TagKey::from("__last_revealed__");
+                tag = crate::tag::CompilerReferenceTag::LastRevealed.key();
             }
             EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_while_on_top_of_library(
                 tag,
@@ -694,12 +694,14 @@ fn parse_revealed_top_library_permission_clause(
         effects: vec![
             EffectAst::subject_verb_grant_abilities_to_target_with_condition(
                 TargetAst::Source(None),
-                vec![GrantedAbilityAst::StaticAbility(
-                    StaticAbility::all_players_look_at_your_top_library_card(),
-                )],
+                vec![GrantedAbilityAst::StaticAbility(Box::new(
+                    crate::cards::builders::StaticAbilityAst::Static(
+                        StaticAbility::all_players_look_at_your_top_library_card(),
+                    ),
+                ))],
                 crate::effect::Until::EndOfTurn,
                 crate::ConditionExpr::TaggedObjectIsTopOfLibrary {
-                    tag: TagKey::from("__last_revealed__"),
+                    tag: crate::tag::CompilerReferenceTag::LastRevealed.key(),
                     player: crate::target::PlayerFilter::You,
                 },
             ),
@@ -772,7 +774,7 @@ fn build_temporary_tagged_permission_effect(
 fn parse_hand_free_cast_grant_spec_from_rest(
     rest_tokens: &[OwnedLexToken],
     allow_singular_spell_filter: bool,
-) -> Result<Option<crate::grant::GrantSpec>, CardTextError> {
+) -> Result<Option<crate::model::CompilerGrantSpecCore>, CardTextError> {
     let (filter_tokens, mana_value_comparison_tokens) = if let Some(parsed) =
         parse_mana_value_limited_free_cast_from_your_zone_rest_tokens(rest_tokens)
     {
@@ -824,13 +826,15 @@ fn parse_hand_free_cast_grant_spec_from_rest(
         ));
     }
     Ok(Some(
-        crate::grant::GrantSpec::cast_from_hand_without_paying_mana_cost_matching(filter),
+        crate::model::CompilerGrantSpecCore::cast_from_hand_without_paying_mana_cost_matching(
+            filter,
+        ),
     ))
 }
 
 fn parse_static_hand_free_cast_grant_spec_from_rest(
     rest_tokens: &[OwnedLexToken],
-) -> Result<Option<crate::grant::GrantSpec>, CardTextError> {
+) -> Result<Option<crate::model::CompilerGrantSpecCore>, CardTextError> {
     parse_hand_free_cast_grant_spec_from_rest(rest_tokens, false)
 }
 
@@ -848,7 +852,7 @@ pub fn parse_unsupported_play_cast_permission_clause(
 
 fn parse_graveyard_cast_additional_cost_tokens(
     tokens: &[OwnedLexToken],
-) -> Result<Option<crate::costs::Cost>, CardTextError> {
+) -> Result<Option<crate::model::CompilerCost>, CardTextError> {
     let Some(fact) = permission_graveyard_facts::parse_graveyard_additional_cost_tokens(tokens)
     else {
         return Ok(None);
@@ -860,14 +864,27 @@ fn parse_graveyard_cast_additional_cost_tokens(
             else {
                 return Ok(None);
             };
-            Ok(Some(crate::costs::Cost::sacrifice(filter.you_control())))
+            Ok(Some(crate::model::CompilerCost::Sacrifice {
+                count: crate::cards::builders::ChoiceCount::exactly(1),
+                filter: filter.you_control(),
+                all: false,
+                binding: None,
+            }))
         }
         permission_graveyard_facts::GraveyardAdditionalCostFact::ExileCards {
             count,
             card_types,
-        } => Ok(Some(crate::costs::Cost::exile_from_graveyard(
-            count, card_types,
-        ))),
+        } => Ok(Some(crate::model::CompilerCost::ExileChosen {
+            count: crate::cards::builders::ChoiceCount::exactly(count as usize),
+            filter: ObjectFilter {
+                zone: Some(Zone::Graveyard),
+                card_types,
+                ..ObjectFilter::default()
+            },
+            top_only: false,
+            turn_face_up: false,
+            binding: None,
+        })),
     }
 }
 
@@ -916,14 +933,14 @@ fn parse_once_each_turn_graveyard_cast_permission(
     };
 
     let grantable =
-        crate::grant::Grantable::once_each_turn_graveyard_cast_from_cards_mana_cost_exiles_after_resolution(
+        crate::model::CompilerGrantableCore::once_each_turn_graveyard_cast_from_cards_mana_cost_exiles_after_resolution(
             additional_costs,
             parsed.exiles_after_resolution,
         );
 
     Ok(Some(PermissionClauseSpec::GrantBySpec {
         player: PlayerAst::You,
-        spec: crate::grant::GrantSpec::new(grantable, filter, Zone::Graveyard),
+        spec: crate::model::CompilerGrantSpecCore::new(grantable, filter, Zone::Graveyard),
         lifetime: PermissionLifetime::Static,
     }))
 }
@@ -954,8 +971,8 @@ fn parse_once_each_turn_top_library_cast_shares_source_exiled_type_permission(
 
     Some(PermissionClauseSpec::GrantBySpec {
         player: PlayerAst::You,
-        spec: crate::grant::GrantSpec::new(
-            crate::grant::Grantable::play_from(),
+        spec: crate::model::CompilerGrantSpecCore::new(
+            crate::model::CompilerGrantableCore::play_from(),
             filter,
             Zone::Library,
         )
@@ -1018,14 +1035,17 @@ pub fn parse_permission_clause_spec_lexed(
             tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
-        let spec =
-            crate::grant::GrantSpec::new(crate::grant::Grantable::play_from(), filter, Zone::Exile)
-                .with_source_exiled_surface(crate::grant::SourceExiledGrantSurface {
-                    source: parsed.reference.surface,
-                    plural_spell_subject: true,
-                    generic_card_pool: true,
-                    generic_cast_this_way_subject: true,
-                });
+        let spec = crate::model::CompilerGrantSpecCore::new(
+            crate::model::CompilerGrantableCore::play_from(),
+            filter,
+            Zone::Exile,
+        )
+        .with_source_exiled_surface(crate::grant::SourceExiledGrantSurface {
+            source: parsed.reference.surface,
+            plural_spell_subject: true,
+            generic_card_pool: true,
+            generic_cast_this_way_subject: true,
+        });
         return Ok(Some(PermissionClauseSpec::GrantBySpec {
             player,
             spec,
@@ -1191,8 +1211,11 @@ pub fn parse_permission_clause_spec_lexed(
         };
         return Ok(Some(PermissionClauseSpec::GrantBySpec {
             player,
-            spec: crate::grant::GrantSpec::new(
-                crate::grant::Grantable::graveyard_cast_from_cards_mana_cost(vec![cost], false),
+            spec: crate::model::CompilerGrantSpecCore::new(
+                crate::model::CompilerGrantableCore::graveyard_cast_from_cards_mana_cost(
+                    vec![cost],
+                    false,
+                ),
                 ObjectFilter::source(),
                 Zone::Graveyard,
             ),
@@ -1203,8 +1226,8 @@ pub fn parse_permission_clause_spec_lexed(
     if let Some(parsed) = parse_source_cast_permission_tokens(rest_tokens) {
         return Ok(Some(PermissionClauseSpec::GrantBySpec {
             player,
-            spec: crate::grant::GrantSpec::new(
-                crate::grant::Grantable::play_from(),
+            spec: crate::model::CompilerGrantSpecCore::new(
+                crate::model::CompilerGrantableCore::play_from(),
                 ObjectFilter::source(),
                 parsed.zone,
             ),
@@ -1215,8 +1238,8 @@ pub fn parse_permission_clause_spec_lexed(
     if let Some(parsed) = parse_source_graveyard_die_roll_cast_permission_tokens(rest_tokens) {
         return Ok(Some(PermissionClauseSpec::GrantBySpec {
             player,
-            spec: crate::grant::GrantSpec::new(
-                crate::grant::Grantable::graveyard_cast_from_cards_mana_cost_with_condition(
+            spec: crate::model::CompilerGrantSpecCore::new(
+                crate::model::CompilerGrantableCore::graveyard_cast_from_cards_mana_cost_with_condition(
                     crate::static_abilities::ThisSpellCastCondition::ConditionExpr {
                         condition: crate::ConditionExpr::PlayerRolledResultThisTurn {
                             player: crate::target::PlayerFilter::You,
@@ -1236,8 +1259,8 @@ pub fn parse_permission_clause_spec_lexed(
     if allow_land && parse_lands_from_top_library_permission_rest_tokens(rest_tokens) {
         return Ok(Some(PermissionClauseSpec::GrantBySpec {
             player,
-            spec: crate::grant::GrantSpec::new(
-                crate::grant::Grantable::play_from(),
+            spec: crate::model::CompilerGrantSpecCore::new(
+                crate::model::CompilerGrantableCore::play_from(),
                 ObjectFilter {
                     card_types: vec![CardType::Land],
                     ..ObjectFilter::default()
@@ -1282,8 +1305,8 @@ pub fn parse_permission_clause_spec_lexed(
 
         return Ok(Some(PermissionClauseSpec::GrantBySpec {
             player,
-            spec: crate::grant::GrantSpec::new(
-                crate::grant::Grantable::play_from(),
+            spec: crate::model::CompilerGrantSpecCore::new(
+                crate::model::CompilerGrantableCore::play_from(),
                 filter,
                 Zone::Library,
             ),
@@ -1295,8 +1318,9 @@ pub fn parse_permission_clause_spec_lexed(
     // portions in one graveyard clause. It is a source-wide static
     // permission, not a tagged temporary play effect.
     if allow_land
-        && token_word_refs(rest_tokens)
-            == [
+        && crate::word_primitives::parse_sequence_complete(
+            &token_word_refs(rest_tokens),
+            &[
                 "lands",
                 "and",
                 "cast",
@@ -1304,11 +1328,12 @@ pub fn parse_permission_clause_spec_lexed(
                 "from",
                 "your",
                 "graveyard",
-            ]
+            ],
+        )
     {
         return Ok(Some(PermissionClauseSpec::GrantBySpec {
             player,
-            spec: crate::grant::GrantSpec::play_from_graveyard(),
+            spec: crate::model::CompilerGrantSpecCore::play_from_graveyard(),
             lifetime: prefixed_lifetime.unwrap_or(PermissionLifetime::Static),
         }));
     }
@@ -1343,8 +1368,8 @@ pub fn parse_permission_clause_spec_lexed(
             exclude_lands_from_spell_filter(&mut filter);
             return Ok(Some(PermissionClauseSpec::GrantBySpec {
                 player,
-                spec: crate::grant::GrantSpec::new(
-                    crate::grant::Grantable::play_from(),
+                spec: crate::model::CompilerGrantSpecCore::new(
+                    crate::model::CompilerGrantableCore::play_from(),
                     filter,
                     parsed.zone,
                 ),
@@ -1357,19 +1382,19 @@ pub fn parse_permission_clause_spec_lexed(
                 if permission_subject_facts::parse_exact_permission_subject(parsed.filter_tokens)
                     == Some(permission_subject_facts::ExactPermissionSubject::GenericSpells)
                 {
-                    crate::grant::GrantSpec::flash_to_spells()
+                    crate::model::CompilerGrantSpecCore::flash_to_spells()
                 } else if permission_subject_facts::parse_exact_permission_subject(
                     parsed.filter_tokens,
                 ) == Some(
                     permission_subject_facts::ExactPermissionSubject::NoncreatureSpells,
                 ) {
-                    crate::grant::GrantSpec::flash_to_noncreature_spells()
+                    crate::model::CompilerGrantSpecCore::flash_to_noncreature_spells()
                 } else if let Some(filter) =
                     permission_subject_facts::parse_permission_subject_filter_tokens(
                         parsed.filter_tokens,
                     )?
                 {
-                    crate::grant::GrantSpec::flash_to_spells_matching(filter)
+                    crate::model::CompilerGrantSpecCore::flash_to_spells_matching(filter)
                 } else {
                     return Ok(None);
                 };
@@ -1527,6 +1552,11 @@ pub fn parse_additional_land_plays_clause(
 pub fn parse_additional_land_plays_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    let tokens = if tokens.len() >= 2 && tokens[0].is_word("you") && tokens[1].is_word("may") {
+        &tokens[2..]
+    } else {
+        tokens
+    };
     let Some(parsed) = parse_additional_land_play_clause(tokens) else {
         return Ok(None);
     };
@@ -1576,11 +1606,11 @@ pub fn parse_cast_spells_as_though_they_had_flash_clause(
     }
 }
 
-fn grant_spec_is_free_cast_from_hand(spec: &crate::grant::GrantSpec) -> bool {
+fn grant_spec_is_free_cast_from_hand(spec: &crate::model::CompilerGrantSpecCore) -> bool {
     spec.zone == Zone::Hand
         && matches!(
             &spec.grantable,
-            crate::grant::Grantable::AlternativeCast(method)
+            crate::model::CompilerGrantableCore::AlternativeCast(method)
                 if method.mana_cost().is_none() && method.non_mana_costs().is_empty()
         )
 }
@@ -1613,9 +1643,7 @@ fn clause_is_singular_free_cast_from_hand(tokens: &[OwnedLexToken]) -> bool {
 
 fn rest_is_any_number_free_cast_from_hand(rest_tokens: &[OwnedLexToken]) -> bool {
     let words = token_word_refs(rest_tokens);
-    words
-        .windows(3)
-        .any(|window| window == ["any", "number", "of"])
+    crate::word_primitives::sequence_occurs(&words, &["any", "number", "of"])
         && parse_free_cast_from_your_zone_rest_tokens(rest_tokens)
             .is_some_and(|parsed| parsed.zone == Zone::Hand)
 }

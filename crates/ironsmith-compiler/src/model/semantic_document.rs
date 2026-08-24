@@ -102,7 +102,6 @@ pub type RewriteKeywordLineKind = KeywordLineKindCst;
 #[derive(Debug, Clone)]
 pub struct RewriteActivatedLine {
     pub info: LineInfo,
-    pub cost: TotalCost,
     pub compiler_cost: crate::model::CompilerTotalCost,
     pub cost_parse_tokens: Vec<OwnedLexToken>,
     pub effect_parse_tokens: Vec<OwnedLexToken>,

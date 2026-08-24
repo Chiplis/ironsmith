@@ -615,7 +615,28 @@ mod tests {
         assert_eq!(effects.len(), 2, "{debug}");
         assert!(debug.contains("action: Exile"), "{debug}");
         assert!(debug.contains("action: PutCounters"), "{debug}");
-        assert!(debug.contains("Named(\"memory\")"), "{debug}");
-        assert!(debug.contains("zone: Some(Graveyard)"), "{debug}");
+        assert!(matches!(
+            effects.get(1),
+            Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::PutCounters {
+                    counter_type: crate::CounterType::Named(name),
+                    ..
+                },
+                ..
+            })) if name.as_str() == "memory"
+        ));
+        assert!(matches!(
+            effects.first(),
+            Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Exile {
+                    target: TargetAst::WithCount(inner, _),
+                    ..
+                },
+                ..
+            })) if matches!(
+                inner.as_ref(),
+                TargetAst::Object(filter, ..) if filter.zone == Some(Zone::Graveyard)
+            )
+        ));
     }
 }

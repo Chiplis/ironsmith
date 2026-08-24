@@ -60,18 +60,16 @@ pub struct MovedObjectEntryFollowupShape {
 pub fn parse_moved_object_entry_followup_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<MovedObjectEntryFollowupShape> {
-    let words_with_indices = tokens
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, token)| token.as_word().map(|word| (idx, word)))
-        .collect::<Vec<_>>();
+    let words_with_indices = crate::lexer::parser_token_word_positions(tokens);
     let words = words_with_indices
         .iter()
         .map(|(_, word)| *word)
         .collect::<Vec<_>>();
-    if !words.starts_with(&["it", "enters", "tapped", "and", "attacking", "and", "gains"])
-        || words.len() <= 10
-        || !words.ends_with(&["until", "end", "of", "turn"])
+    if !crate::word_primitives::parse_sequence_prefix(
+        &words,
+        &["it", "enters", "tapped", "and", "attacking", "and", "gains"],
+    ) || words.len() <= 10
+        || !crate::word_primitives::parse_sequence_suffix(&words, &["until", "end", "of", "turn"])
     {
         return None;
     }
@@ -153,117 +151,23 @@ pub fn parse_create_more_prior_tokens(
     .ok()
 }
 
-fn conditional_followup_prefix<'a>(input: &mut LexStream<'a>) -> WResult<ConditionalFollowupKind> {
-    alt((
-        primitives::phrase(&[
-            "when", "one", "or", "more", "cards", "are", "milled", "this", "way",
-        ])
-        .value(ConditionalFollowupKind::WhenMilledThisWay),
-        primitives::phrase(&["if", "no", "one", "does"])
-            .value(ConditionalFollowupKind::IfNoOneDoes),
-        (
-            primitives::phrase(&["if", "you", "win"]),
-            alt((
-                primitives::phrase(&["the", "clash"]),
-                primitives::phrase(&["that", "clash"]),
-            )),
-            peek(primitives::comma()),
-        )
-            .value(ConditionalFollowupKind::IfYouWinClash),
-        (
-            primitives::phrase(&["if", "you", "win"]),
-            primitives::phrase(&["the", "flip"]),
-            peek(primitives::comma()),
-        )
-            .value(ConditionalFollowupKind::IfYouWinFlip),
-        (
-            primitives::phrase(&["if", "you", "win"]),
-            peek(primitives::comma()),
-        )
-            .value(ConditionalFollowupKind::IfYouWin),
-    ))
-    .parse_next(input)
-}
-
-fn parse_conditional_followup_lexed<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<ConditionalFollowupShape<'a>> {
-    let kind = conditional_followup_prefix.parse_next(input)?;
-    repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), peek(primitives::comma()))
-        .void()
-        .parse_next(input)?;
-    primitives::comma().parse_next(input)?;
-    let continuation_tokens = repeat::<_, _, (), _, _>(1.., any.void())
-        .take()
-        .parse_next(input)?;
-    eof.parse_next(input)?;
-    Ok(ConditionalFollowupShape {
-        kind,
-        continuation_tokens,
-    })
-}
-
-pub fn parse_conditional_followup(
-    tokens: &[OwnedLexToken],
-) -> Option<ConditionalFollowupShape<'_>> {
-    primitives::parse_all(
-        tokens,
-        parse_conditional_followup_lexed,
-        "conditional subject-verb followup",
-    )
-    .ok()
-}
-
-pub fn is_anaphoric_damage_self_replacement(tokens: &[OwnedLexToken]) -> bool {
-    let words = token_word_refs(tokens);
-    if !words.starts_with(&["it", "deals"]) || !words.contains(&"instead") {
-        return false;
-    }
-    if words
-        .windows(3)
-        .any(|window| window == ["to", "that", "creature"])
-    {
-        return true;
-    }
-
-    // "It deals N damage instead" omits both arguments because it repeats
-    // the source and target of the default damage event. Do not apply this to
-    // a clause that names a different destination explicitly.
-    let Some(damage_idx) = words.iter().position(|word| *word == "damage") else {
-        return false;
-    };
-    let Some(instead_idx) = words.iter().position(|word| *word == "instead") else {
-        return false;
-    };
-    damage_idx < instead_idx && !words[damage_idx + 1..instead_idx].contains(&"to")
-}
-
-fn lifecycle_head<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    alt((primitives::kw("exile"), primitives::kw("sacrifice")))
-        .void()
-        .parse_next(input)
-}
-
-fn pronoun_trigger_prefix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    alt((
-        primitives::phrase(&["when", "it"]),
-        primitives::phrase(&["whenever", "it"]),
-        primitives::phrase(&["when", "they"]),
-        primitives::phrase(&["whenever", "they"]),
-    ))
-    .parse_next(input)
-}
-
-pub fn token_reminder_followup_facts(tokens: &[OwnedLexToken]) -> TokenReminderFollowupFacts {
-    let lifecycle_head = primitives::parse_prefix(tokens, lifecycle_head).is_some();
-    let has_pronoun = marker_anywhere(tokens, alt((primitives::kw("it"), primitives::kw("them"))));
-    TokenReminderFollowupFacts {
-        lifecycle_head,
-        delayed_pronoun_lifecycle: lifecycle_head && has_pronoun,
-        pronoun_trigger_prefix: primitives::parse_prefix(tokens, pronoun_trigger_prefix).is_some(),
-    }
-}
-
 #[cfg(test)]
 #[path = "followup_shapes/tests.rs"]
 mod tests;
+
+#[path = "followup_shapes/object_action_programs.rs"]
+mod object_action_programs;
+pub use object_action_programs::token_reminder_followup_facts;
+#[path = "followup_shapes/trigger_programs.rs"]
+mod trigger_programs;
+use trigger_programs::pronoun_trigger_prefix;
+#[path = "followup_shapes/resource_programs.rs"]
+mod resource_programs;
+use resource_programs::lifecycle_head;
+#[path = "followup_shapes/combat_programs.rs"]
+mod combat_programs;
+pub use combat_programs::is_anaphoric_damage_self_replacement;
+#[path = "followup_shapes/condition_programs.rs"]
+mod condition_programs;
+pub use condition_programs::parse_conditional_followup;
+use condition_programs::{conditional_followup_prefix, parse_conditional_followup_lexed};

@@ -2617,11 +2617,6 @@ fn expand_finalized_ast_surface_line(line: String) -> Vec<String> {
 }
 
 #[cfg(test)]
-pub(crate) fn ability_surface_text_for_tests(ability: &Ability) -> String {
-    ability_surface_text(ability)
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -2762,7 +2757,7 @@ mod tests {
 
     #[test]
     fn poisoned_source_fields_do_not_affect_representative_compiled_text() {
-        let modal = crate::cards::CardDefinitionBuilder::new(
+        let modal = crate::cards::builders::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Source Poison Riot",
         )
@@ -2772,7 +2767,7 @@ mod tests {
         .build();
         assert_source_poison_does_not_change_compiled_text(modal);
 
-        let optional_cost = crate::cards::CardDefinitionBuilder::new(
+        let optional_cost = crate::cards::builders::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Source Poison Kicker",
         )
@@ -2784,7 +2779,7 @@ mod tests {
         .build();
         assert_source_poison_does_not_change_compiled_text(optional_cost);
 
-        let presentation = crate::cards::CardDefinitionBuilder::new(
+        let presentation = crate::cards::builders::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Source Poison Toxic",
         )
@@ -2794,7 +2789,7 @@ mod tests {
         .build();
         assert_source_poison_does_not_change_compiled_text(presentation);
 
-        let repeat = crate::cards::CardDefinitionBuilder::new(
+        let repeat = crate::cards::builders::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Source Poison Repeat",
         )
@@ -2825,7 +2820,7 @@ mod tests {
             }),
             functional_zones: vec![Zone::Battlefield],
         };
-        let definition = crate::cards::CardDefinitionBuilder::new(
+        let definition = crate::cards::builders::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Presentation Label Prefix",
         )

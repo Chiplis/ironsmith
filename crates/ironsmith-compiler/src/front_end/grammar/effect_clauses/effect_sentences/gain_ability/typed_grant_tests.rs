@@ -92,6 +92,11 @@ fn additional_pump_and_ability_grant_are_both_present_in_semantic_ast() {
                 leading_duration: _,
                 result_conjunction: _,
             } => effects.iter().find_map(find_pump),
+            EffectAst::Coordination(coordination) => coordination.effects().find_map(find_pump),
+            EffectAst::ControlFlow(control) => control
+                .programs
+                .iter()
+                .find_map(|program| program.effects.iter().find_map(find_pump)),
             _ => None,
         }
     }
@@ -125,6 +130,11 @@ fn additional_pump_and_ability_grant_are_both_present_in_semantic_ast() {
                 leading_duration: _,
                 result_conjunction: _,
             } => effects.iter().find_map(find_grant),
+            EffectAst::Coordination(coordination) => coordination.effects().find_map(find_grant),
+            EffectAst::ControlFlow(control) => control
+                .programs
+                .iter()
+                .find_map(|program| program.effects.iter().find_map(find_grant)),
             _ => None,
         }
     }
@@ -139,9 +149,15 @@ fn additional_pump_and_ability_grant_are_both_present_in_semantic_ast() {
     );
     assert_eq!(grant_duration, &Until::EndOfTurn);
     assert!(abilities.iter().any(|ability| match ability {
-        GrantedAbilityAst::KeywordAction(KeywordAction::Vigilance) => true,
+        GrantedAbilityAst::KeywordAction(action) => {
+            matches!(action.as_ref(), KeywordAction::Vigilance)
+        }
         GrantedAbilityAst::StaticAbility(ability) => {
-            ability.id() == StaticAbilityId::Vigilance
+            matches!(
+                ability.as_ref(),
+                crate::cards::builders::StaticAbilityAst::Static(ability)
+                    if ability.id() == StaticAbilityId::Vigilance
+            )
         }
         _ => false,
     }));

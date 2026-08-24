@@ -735,8 +735,8 @@ mod tests {
         let unrelated = create_creature(&mut game, "Unrelated", alice);
         let unrelated_snapshot =
             ObjectSnapshot::from_object(game.object(unrelated).unwrap(), &game);
-        ctx.tag_objects("wall", vec![unrelated_snapshot]);
-        ctx.tag_objects("destroyed", vec![destroyed_lki]);
+        ctx.set_tagged_objects("wall", vec![unrelated_snapshot]);
+        ctx.set_tagged_objects("destroyed", vec![destroyed_lki]);
         assert!(matches!(
             effect.execute(&mut game, &mut ctx),
             Err(ExecutionError::UnresolvableValue(_))

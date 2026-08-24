@@ -43,7 +43,7 @@ fn is_stack_object_targeting_predicate(predicate: &PredicateAst) -> bool {
     }
 }
 
-fn apply_trigger_intro_surface(
+pub(super) fn apply_trigger_intro_surface(
     trigger: TriggerSpec,
     intro: Option<TriggerIntroSurfaceAst>,
 ) -> TriggerSpec {
@@ -144,6 +144,22 @@ fn absorb_predicate_into_trigger(
     trigger: TriggerSpec,
     predicate: PredicateAst,
 ) -> (TriggerSpec, Option<PredicateAst>) {
+    fn mark_non_mana_only(trigger: &mut TriggerSpec) -> bool {
+        match trigger {
+            TriggerSpec::AbilityActivated { non_mana_only, .. } => {
+                *non_mana_only = true;
+                true
+            }
+            TriggerSpec::WithIntro { trigger, .. } => mark_non_mana_only(trigger),
+            TriggerSpec::Either(left, right) => {
+                let left_marked = mark_non_mana_only(left);
+                let right_marked = mark_non_mana_only(right);
+                left_marked || right_marked
+            }
+            _ => false,
+        }
+    }
+
     match predicate {
         PredicateAst::And(left, right) => {
             let (trigger, left_remainder) = absorb_predicate_into_trigger(trigger, *left);
@@ -199,6 +215,21 @@ fn absorb_predicate_into_trigger(
                     )
                 }
                 other => (other, Some(PredicateAst::ItMatches(filter))),
+            }
+        }
+        PredicateAst::Not(inner)
+            if matches!(
+                inner.as_ref(),
+                PredicateAst::TurnHistory(
+                    crate::model::ast::TurnHistoryPredicateAst::TriggeringAbilityIsManaAbility
+                )
+            ) =>
+        {
+            let mut trigger = trigger;
+            if mark_non_mana_only(&mut trigger) {
+                (trigger, None)
+            } else {
+                (trigger, Some(PredicateAst::Not(inner)))
             }
         }
         other => (trigger, Some(other)),
@@ -366,7 +397,7 @@ fn trigger_frequency_condition_from_facts(
 
 fn rewrite_do_this_trigger_frequency_surface(
     facts: &TriggeredLineSemanticFacts,
-    triggered: &mut crate::ability::TriggeredAbility,
+    triggered: &mut crate::model::compiler_semantic::CompilerTriggeredAbilityCore,
 ) {
     let Some(surface_count) = facts.frequency.do_this_limit_each_turn else {
         return;
@@ -446,16 +477,24 @@ pub fn apply_chosen_option_to_triggered_chunk(
             )))
         }
         LineAst::Ability(mut parsed) => {
-            if let AbilityKind::Triggered(triggered) = parsed.kind_mut()
-                && let Some(intro) = facts.intro_surface
-            {
-                triggered.trigger = triggered.trigger.clone().with_intro_surface(match intro {
-                    TriggerIntroSurfaceAst::When => crate::triggers::TriggerIntroSurface::When,
-                    TriggerIntroSurfaceAst::Whenever => {
-                        crate::triggers::TriggerIntroSurface::Whenever
+            if let Some(intro) = facts.intro_surface {
+                let trigger = parsed
+                    .trigger_spec
+                    .take()
+                    .map(|trigger| apply_trigger_intro_surface(*trigger, Some(intro)))
+                    .or_else(|| match parsed.kind() {
+                        AbilityKind::Triggered(triggered) => Some(apply_trigger_intro_surface(
+                            triggered.trigger.clone(),
+                            Some(intro),
+                        )),
+                        _ => None,
+                    });
+                if let Some(trigger) = trigger {
+                    parsed.trigger_spec = Some(Box::new(trigger.clone()));
+                    if let AbilityKind::Triggered(triggered) = parsed.kind_mut() {
+                        triggered.trigger = trigger;
                     }
-                    TriggerIntroSurfaceAst::At => crate::triggers::TriggerIntroSurface::At,
-                });
+                }
             }
             if let AbilityKind::Triggered(triggered) = parsed.kind_mut() {
                 rewrite_do_this_trigger_frequency_surface(facts, triggered);
@@ -494,153 +533,6 @@ pub fn apply_chosen_option_to_triggered_chunk(
     }
 }
 
-pub fn apply_explicit_intervening_if_to_triggered_chunk(
-    chunk: LineAst,
-    explicit_intervening_if: Option<PredicateAst>,
-) -> Result<LineAst, CardTextError> {
-    let Some(predicate) = explicit_intervening_if else {
-        return Ok(chunk);
-    };
-    match chunk {
-        LineAst::Triggered {
-            trigger,
-            effects,
-            max_triggers_per_turn,
-        } => {
-            let random_count_antecedent_predicate = predicate.clone();
-            let predicate = retarget_spell_cast_mana_spent_predicate(&trigger, predicate);
-            let (trigger, predicate) = absorb_predicate_into_trigger(trigger, predicate);
-            let (trigger, effects) =
-                absorb_single_conditional_effect_into_trigger(trigger, effects);
-            let mut effects = effects;
-            bind_random_count_condition_antecedent_in_effects(
-                &mut effects,
-                &random_count_antecedent_predicate,
-            );
-            let Some(predicate) = predicate else {
-                return Ok(LineAst::Triggered {
-                    trigger,
-                    effects,
-                    max_triggers_per_turn,
-                });
-            };
-            if let Some(antecedent) = predicate_object_filter_antecedent(&predicate) {
-                bind_condition_antecedent_in_effects(
-                    &mut effects,
-                    &antecedent,
-                    ConditionAntecedentBinding::TaggedItOnly,
-                );
-            }
-            bind_random_count_condition_antecedent_in_effects(&mut effects, &predicate);
-            if let Some(counter_type) = predicate_source_counter_antecedent(&predicate) {
-                bind_condition_counter_antecedent_in_effects(&mut effects, counter_type);
-            }
-            if predicate.establishes_source_object_antecedent() {
-                retarget_it_animations_to_source(&mut effects);
-            }
-            if matches!(
-                effects.as_slice(),
-                [EffectAst::Conditional { if_false, .. }] if if_false.is_empty()
-            ) {
-                Ok(LineAst::Triggered {
-                    trigger,
-                    effects,
-                    max_triggers_per_turn,
-                })
-            } else {
-                Ok(LineAst::Triggered {
-                    trigger,
-                    effects: vec![EffectAst::Conditional {
-                        predicate,
-                        if_true: effects,
-                        if_false: Vec::new(),
-                    }],
-                    max_triggers_per_turn,
-                })
-            }
-        }
-        LineAst::Ability(mut parsed) => {
-            if let Some(mut effects_ast) = parsed.effects_ast.take() {
-                parsed.reference_imports.source_object_antecedent |=
-                    predicate.establishes_source_object_antecedent();
-                if let Some(antecedent) = predicate_object_filter_antecedent(&predicate) {
-                    bind_condition_antecedent_in_effects(
-                        &mut effects_ast,
-                        &antecedent,
-                        ConditionAntecedentBinding::TaggedItOnly,
-                    );
-                }
-                bind_random_count_condition_antecedent_in_effects(&mut effects_ast, &predicate);
-                if let Some(counter_type) = predicate_source_counter_antecedent(&predicate) {
-                    bind_condition_counter_antecedent_in_effects(&mut effects_ast, counter_type);
-                }
-                if predicate.establishes_source_object_antecedent() {
-                    retarget_it_animations_to_source(&mut effects_ast);
-                }
-                parsed.effects_ast = Some(effects_ast);
-            }
-            if is_stack_object_targeting_predicate(&predicate) {
-                if let Some(effects_ast) = parsed.effects_ast.take() {
-                    if let [
-                        EffectAst::Conditional {
-                            predicate,
-                            if_true,
-                            if_false,
-                        },
-                    ] = effects_ast.as_slice()
-                        && if_false.is_empty()
-                        && is_stack_object_targeting_predicate(predicate)
-                    {
-                        parsed.effects_ast = Some(if_true.clone());
-                    } else {
-                        parsed.effects_ast = Some(effects_ast);
-                    }
-                }
-                return Ok(LineAst::Ability(parsed));
-            }
-            let mut reference_imports = parsed.reference_imports.clone();
-            let default_last_object_tag = reference_imports.last_object_tag.clone().or_else(|| {
-                parsed
-                    .trigger_spec
-                    .as_ref()
-                    .and_then(super::super::lowering_support::default_trigger_last_object_tag)
-                    .map(TagKey::from)
-            });
-            if reference_imports.last_object_tag.is_none() {
-                reference_imports.last_object_tag = default_last_object_tag.clone();
-            }
-            let compiled_condition = compile_condition_from_predicate_ast_with_env(
-                &predicate,
-                &ReferenceEnv::from_imports(&reference_imports, false, false, false, None),
-                default_last_object_tag.as_ref(),
-            );
-            if let Ok(condition) = compiled_condition {
-                if let AbilityKind::Triggered(triggered) = parsed.kind_mut() {
-                    triggered.intervening_if = Some(match triggered.intervening_if.take() {
-                        Some(existing) => {
-                            crate::ConditionExpr::And(Box::new(existing), Box::new(condition))
-                        }
-                        None => condition,
-                    });
-                }
-                if let Some(effects_ast) = parsed.effects_ast.take() {
-                    if let [
-                        EffectAst::Conditional {
-                            if_true, if_false, ..
-                        },
-                    ] = effects_ast.as_slice()
-                        && if_false.is_empty()
-                    {
-                        parsed.effects_ast = Some(if_true.clone());
-                    } else {
-                        parsed.effects_ast = Some(effects_ast);
-                    }
-                }
-            } else if let Some(effects_ast) = parsed.effects_ast.take() {
-                parsed.effects_ast = Some(effects_ast);
-            }
-            Ok(LineAst::Ability(parsed))
-        }
-        other => Ok(other),
-    }
-}
+#[path = "triggered_chunks/trigger_programs.rs"]
+mod trigger_programs;
+pub use trigger_programs::apply_explicit_intervening_if_to_triggered_chunk;

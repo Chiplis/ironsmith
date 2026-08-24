@@ -62,257 +62,33 @@ fn parses_counter_distribution_from_among_all_permanents() {
     assert_eq!(words(filter_tokens), vec!["permanents"]);
 }
 
-#[test]
-fn parses_number_of_counters_equal_to_referenced_card_mana_value() {
-    let tokens = lex_line(
-        "a number of loyalty counters equal to that card's mana value from Jace",
-        0,
-    )
-    .unwrap();
-    let RemoveClauseShape::Counters {
-        amount,
-        counter_descriptor,
-        destination,
-        ..
-    } = parse_remove_clause_shape(&tokens).unwrap()
-    else {
-        panic!("expected dynamic counter removal");
-    };
-    assert!(
-        matches!(amount.unhinted(), Value::ManaValueOf(_)),
-        "{amount:?}"
-    );
-    assert!(amount.has_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo));
-    assert_eq!(words(counter_descriptor), vec!["loyalty"]);
-    let RemoveCounterDestination::Single { target_tokens } = destination else {
-        panic!("expected source-named single destination");
-    };
-    assert_eq!(words(target_tokens), vec!["jace"]);
-}
-
-#[test]
-fn parses_each_of_any_number_as_an_optional_unbounded_subset() {
-    let tokens = lex_line(
-        "a loyalty counter from each of any number of permanents you control",
-        0,
-    )
-    .unwrap();
-    let RemoveClauseShape::Counters { destination, .. } =
-        parse_remove_clause_shape(&tokens).unwrap()
-    else {
-        panic!("expected counter removal");
-    };
-    let RemoveCounterDestination::EachOfAnyNumber { filter_tokens } = destination else {
-        panic!("expected an any-number subset, not an all-permanents destination");
-    };
-    assert_eq!(words(filter_tokens), vec!["permanents", "you", "control"]);
-}
-
-#[test]
-fn parses_destroy_all_and_delayed_shapes() {
-    let tokens = lex_line(
-        "all creatures except for artifacts at the beginning of the next end step",
-        0,
-    )
-    .unwrap();
-    let shape = parse_destroy_clause_shape(&tokens);
-    assert_eq!(shape.timing, Some(DelayedDestroyTimingShape::NextEndStep));
-    let DestroyClauseKind::All(DestroyAllShape::ExceptFor {
-        filter_tokens,
-        exception_tokens,
-    }) = shape.kind
-    else {
-        panic!("expected destroy-all exception");
-    };
-    assert_eq!(words(filter_tokens), vec!["creatures"]);
-    assert_eq!(words(exception_tokens), vec!["artifacts"]);
-}
-
-#[test]
-fn couldnt_attack_exception_stays_inside_the_destroy_filter_domain() {
-    let tokens = lex_line(
-        "all untapped creatures that didn't attack this turn except for creatures that couldn't attack",
-        0,
-    )
-    .unwrap();
-    let DestroyClauseKind::All(DestroyAllShape::Plain { filter_tokens }) =
-        parse_destroy_clause_shape(&tokens).kind
-    else {
-        panic!("attack eligibility must not become a card-type exclusion");
-    };
-    assert_eq!(
-        words(filter_tokens),
-        vec![
-            "untapped",
-            "creatures",
-            "that",
-            "didn't",
-            "attack",
-            "this",
-            "turn",
-            "except",
-            "for",
-            "creatures",
-            "that",
-            "couldn't",
-            "attack",
-        ]
-    );
-}
-
-#[test]
-fn parses_combat_history_and_blocked_targets() {
-    let tokens = lex_line("target creature that dealt damage to you this turn", 0).unwrap();
-    assert!(matches!(
-        parse_destroy_clause_shape(&tokens).kind,
-        DestroyClauseKind::CombatHistory(
-            DestroyCombatHistoryShape::DealtDamageToPlayerThisTurn { .. }
-        )
-    ));
-
-    let tokens = lex_line("all creatures that dealt damage to you this turn", 0).unwrap();
-    assert!(matches!(
-        parse_destroy_clause_shape(&tokens).kind,
-        DestroyClauseKind::All(DestroyAllShape::DealtDamageToPlayerThisTurn { .. })
-    ));
-
-    let tokens = lex_line("target blocked creature", 0).unwrap();
-    let DestroyClauseKind::Blocked { target_tokens } = parse_destroy_clause_shape(&tokens).kind
-    else {
-        panic!("expected blocked target");
-    };
-    assert_eq!(words(&target_tokens), vec!["target", "blocked", "creature"]);
-}
-
-#[test]
-fn parses_destroy_unless_target_color_sets_differ() {
-    let tokens = lex_line(
-        "two target nonblack creatures unless either one is a color the other isn't",
-        0,
-    )
-    .unwrap();
-    let DestroyClauseKind::UnlessTargetSetPredicate {
-        target_tokens,
-        predicate,
-    } = parse_destroy_clause_shape(&tokens).kind
-    else {
-        panic!("expected typed target-set destroy condition");
-    };
-    assert_eq!(
-        words(target_tokens),
-        vec!["two", "target", "nonblack", "creatures"]
-    );
-    assert_eq!(
-        predicate,
-        conditions::TargetSetPredicateAst::DifferentColorSets
-    );
-}
-
-#[test]
-fn parses_not_chosen_this_way_as_the_complement_set() {
-    let tokens = lex_line("each creature not chosen this way", 0).unwrap();
-    let DestroyClauseKind::All(DestroyAllShape::ChosenThisWay {
-        filter_tokens,
-        relation,
-    }) = parse_destroy_clause_shape(&tokens).kind
-    else {
-        panic!("expected tagged destroy-all complement");
-    };
-
-    assert_eq!(words(filter_tokens), vec!["creature"]);
-    assert_eq!(relation, TaggedDestroyRelation::ExceptMatching);
-}
-
-#[test]
-fn parses_not_chosen_by_any_player_as_the_complement_set() {
-    let tokens = lex_line("all Plains that weren't chosen this way by any player", 0).unwrap();
-    let DestroyClauseKind::All(DestroyAllShape::ChosenThisWay {
-        filter_tokens,
-        relation,
-    }) = parse_destroy_clause_shape(&tokens).kind
-    else {
-        panic!("expected tagged destroy-all complement");
-    };
-
-    assert_eq!(words(filter_tokens), vec!["plains"]);
-    assert_eq!(relation, TaggedDestroyRelation::ExceptMatching);
-}
-
-#[test]
-fn chosen_this_way_type_qualifier_remains_an_object_filter() {
-    let tokens = lex_line("all creatures that aren't of a type chosen this way", 0).unwrap();
-    let DestroyClauseKind::All(DestroyAllShape::Plain { filter_tokens }) =
-        parse_destroy_clause_shape(&tokens).kind
-    else {
-        panic!("chosen creature-type qualifier must not become an object-result tag");
-    };
-
-    assert_eq!(
-        words(filter_tokens),
-        vec![
-            "creatures",
-            "that",
-            "arent",
-            "of",
-            "a",
-            "type",
-            "chosen",
-            "this",
-            "way"
-        ]
-    );
-}
-
-#[test]
-fn parses_target_and_demonstrative_attached_object_set_as_one_destroy_shape() {
-    let tokens = lex_line(
-        "target creature with flying and all Equipment attached to that creature",
-        0,
-    )
-    .unwrap();
-    let DestroyClauseKind::TargetAndAttached(shape) = parse_destroy_clause_shape(&tokens).kind
-    else {
-        panic!("expected a target plus its attached-object set");
-    };
-
-    assert_eq!(
-        words(shape.target_tokens),
-        vec!["target", "creature", "with", "flying"]
-    );
-    assert_eq!(words(shape.attachment_filter_tokens), vec!["equipment"]);
-    assert_eq!(
-        shape.demonstrative_antecedent,
-        Some(ironsmith_core::DemonstrativeAntecedentSurface::Creature)
-    );
-}
-
-#[test]
-fn does_not_treat_unrelated_coordinated_destroy_subjects_as_attached_to_one_target() {
-    let tokens = lex_line(
-        "target creature and all Equipment attached to another creature",
-        0,
-    )
-    .unwrap();
-
-    assert!(!matches!(
-        parse_destroy_clause_shape(&tokens).kind,
-        DestroyClauseKind::TargetAndAttached(_)
-    ));
-}
-
-#[test]
-fn parses_inline_same_object_no_regeneration_rider() {
-    let tokens = lex_line("target Knight and it can't be regenerated", 0).unwrap();
-    let DestroyClauseKind::InlineNoRegeneration { target_tokens } =
-        parse_destroy_clause_shape(&tokens).kind
-    else {
-        panic!("expected inline no-regeneration destroy shape");
-    };
-    assert_eq!(words(target_tokens), vec!["target", "knight"]);
-
-    let near_miss = lex_line("target Knight and draw a card", 0).unwrap();
-    assert!(!matches!(
-        parse_destroy_clause_shape(&near_miss).kind,
-        DestroyClauseKind::InlineNoRegeneration { .. }
-    ));
-}
+#[path = "tests/reference_programs.rs"]
+mod reference_programs;
+use reference_programs::{
+    does_not_treat_unrelated_coordinated_destroy_subjects_as_attached_to_one_target,
+    parses_destroy_unless_target_color_sets_differ,
+    parses_inline_same_object_no_regeneration_rider,
+    parses_target_and_demonstrative_attached_object_set_as_one_destroy_shape,
+};
+#[path = "tests/choice_programs.rs"]
+mod choice_programs;
+use choice_programs::{
+    chosen_this_way_type_qualifier_remains_an_object_filter,
+    parses_not_chosen_by_any_player_as_the_complement_set,
+    parses_not_chosen_this_way_as_the_complement_set,
+};
+#[path = "tests/combat_programs.rs"]
+mod combat_programs;
+use combat_programs::{
+    couldnt_attack_exception_stays_inside_the_destroy_filter_domain,
+    parses_combat_history_and_blocked_targets,
+};
+#[path = "tests/trigger_programs.rs"]
+mod trigger_programs;
+use trigger_programs::parses_destroy_all_and_delayed_shapes;
+#[path = "tests/core_programs.rs"]
+mod core_programs;
+use core_programs::parses_each_of_any_number_as_an_optional_unbounded_subset;
+#[path = "tests/library_programs.rs"]
+mod library_programs;
+use library_programs::parses_number_of_counters_equal_to_referenced_card_mana_value;

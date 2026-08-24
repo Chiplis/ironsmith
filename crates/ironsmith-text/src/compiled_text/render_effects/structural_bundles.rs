@@ -317,7 +317,10 @@ fn describe_participant_loot_greatest_mana_value_followup(effects: &[Effect]) ->
     {
         return None;
     }
-    let followup = describe_effect(counter_effect);
+    let mut followup = describe_effect(counter_effect);
+    if counters.target.source_reference_surface().is_none() {
+        followup = followup.replace("this source", "this creature");
+    }
     Some(format!(
         "You and defending player each draw a card, then discard a card. {} if you discarded the card with the greatest mana value among those cards or tied for greatest",
         capitalize_first(followup.trim().trim_end_matches('.')),
@@ -3330,6 +3333,9 @@ fn exact_permanent_card_graveyard_filter(
     enters_under_controller: bool,
     tagged_constraint: Option<crate::filter::TaggedObjectConstraint>,
 ) -> bool {
+    if filter.has_enters_under_controller_surface() != enters_under_controller {
+        return false;
+    }
     let mut expected = ObjectFilter::default();
     expected.zone = Some(Zone::Graveyard);
     expected.owner = Some(owner);
@@ -4381,7 +4387,7 @@ pub(super) fn describe_stack_object_copy_target(target: &ChooseSpec) -> String {
         }
         _ => {
             let described = describe_choose_spec(target);
-            if described == "it" {
+            if described == "it" && !matches!(target.base(), ChooseSpec::Tagged(_)) {
                 "that spell".to_string()
             } else {
                 described

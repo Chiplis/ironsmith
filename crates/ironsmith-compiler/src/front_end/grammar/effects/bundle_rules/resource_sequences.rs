@@ -8,7 +8,7 @@ use crate::grammar::{filters, leaf, primitives};
 use crate::lexer::{LexStream, OwnedLexToken, TokenKind, trim_lexed_commas};
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
-use ironsmith_core::{EffectMetric, EffectMetricSource};
+use ironsmith_core::EventValueSpec;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TapControlledObjectsThenEmptyManaShape {
@@ -179,10 +179,7 @@ fn parse_energy_pay_any_destroy(input: &mut LexStream<'_>) -> WResult<EnergyPayA
     .map_err(|_| primitives::backtrack_err("energy destroy threshold", "object filter"))?;
     filter.zone = Some(Zone::Battlefield);
     filter.mana_value = Some(crate::filter::Comparison::LessThanOrEqualExpr(Box::new(
-        Value::PendingEffectMetric {
-            source: EffectMetricSource::Outcome,
-            metric: EffectMetric::Count,
-        },
+        Value::EventValue(EventValueSpec::Amount),
     )));
     Ok(EnergyPayAnyDestroyShape {
         energy,

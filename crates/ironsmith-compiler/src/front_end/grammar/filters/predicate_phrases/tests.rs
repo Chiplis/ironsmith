@@ -14,6 +14,17 @@ fn predicate_tokens_after_if(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
         .collect()
 }
 
+fn parse_predicate_for_source(card_name: &str, text: &str) -> Result<PredicateAst, CardTextError> {
+    let tokens = lex_line(text, 0)?;
+    let context =
+        crate::parse_context::ParseContext::for_fragment(card_name, Vec::new(), Vec::new(), text);
+    let predicate_tokens = predicate_tokens_after_if(&tokens);
+    crate::grammar::filters::parse_condition_predicate_lexed_with_context(
+        context.view(),
+        &predicate_tokens,
+    )
+}
+
 #[test]
 fn triggering_object_first_tap_predicate_is_per_object_history() -> Result<(), CardTextError> {
     for text in [
@@ -2023,7 +2034,7 @@ fn parse_predicate_tagged_state_uses_shared_capture_parser() -> Result<(), CardT
     let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
     match parsed {
         PredicateAst::TaggedMatches(tag, filter) => {
-            assert_eq!(tag, TagKey::from("enchanted"));
+            assert_eq!(tag, crate::tag::CompilerReferenceTag::Enchanted.key());
             assert!(
                 !filter.subtypes.is_empty() || !filter.card_types.is_empty(),
                 "{filter:?}"
@@ -2046,7 +2057,11 @@ fn parse_predicate_attached_tagged_uses_shared_capture_parser() -> Result<(), Ca
         let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
         match parsed {
             PredicateAst::TaggedMatches(tag, filter) => {
-                assert_eq!(tag, TagKey::from("enchanted"), "{text}");
+                assert_eq!(
+                    tag,
+                    crate::tag::CompilerReferenceTag::Enchanted.key(),
+                    "{text}"
+                );
                 assert!(!filter.card_types.is_empty(), "{text}: {filter:?}");
             }
             other => panic!("expected attached tagged predicate for {text}, got {other:?}"),
@@ -3520,22 +3535,18 @@ fn parse_predicate_source_counters_use_shared_capture_parser() -> Result<(), Car
         assert_eq!(parsed, expected, "{text}");
     }
 
-    crate::util::with_source_reference_context("Sarulf, Realm Eater", || {
-        let tokens = lex_line("If Sarulf has one or more +1/+1 counters on it", 0)?;
-        let predicate_tokens = predicate_tokens_after_if(&tokens);
-
-        let parsed = parse_predicate(&predicate_tokens)?;
-
-        assert_eq!(
-            parsed,
-            PredicateAst::SourceHasCounterAtLeast {
-                counter_type: CounterType::PlusOnePlusOne,
-                count: 1,
-                surface: crate::SourceCounterThresholdSurface::SourceHas,
-            }
-        );
-        Ok::<(), CardTextError>(())
-    })?;
+    let parsed = parse_predicate_for_source(
+        "Sarulf, Realm Eater",
+        "If Sarulf has one or more +1/+1 counters on it",
+    )?;
+    assert_eq!(
+        parsed,
+        PredicateAst::SourceHasCounterAtLeast {
+            counter_type: CounterType::PlusOnePlusOne,
+            count: 1,
+            surface: crate::SourceCounterThresholdSurface::SourceHas,
+        }
+    );
     Ok(())
 }
 
@@ -3702,10 +3713,7 @@ fn parse_predicate_intervening_if_low_score_cohort_is_typed() {
     let failures = cases
         .into_iter()
         .filter_map(|(card_name, text)| {
-            let result = crate::util::with_source_reference_context(card_name, || {
-                let tokens = lex_line(text, 0)?;
-                parse_predicate(&tokens)
-            });
+            let result = parse_predicate_for_source(card_name, text);
             result.err().map(|error| format!("{card_name}: {error}"))
         })
         .collect::<Vec<_>>();
@@ -3750,9 +3758,10 @@ fn parse_predicate_compares_object_count_with_source_counter_count() -> Result<(
     };
     assert_eq!(left, Value::Count(attacking_creatures));
     assert_eq!(operator, ValueComparisonOperator::GreaterThan);
-    let Value::CountersOnSource(CounterType::Quest) = right else {
+    let Value::CountersOn(spec, Some(CounterType::Quest)) = right else {
         panic!("expected quest counters on the source, got {right:?}");
     };
+    assert!(matches!(spec.base(), crate::target::ChooseSpec::Source));
     Ok(())
 }
 

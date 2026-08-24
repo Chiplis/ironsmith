@@ -2715,7 +2715,9 @@ pub(super) fn describe_may_cast_target_graveyard_spell_then_exile_replacement(
             " by paying {} in addition to its other costs",
             additional.to_oracle()
         )
-    } else if cast.without_paying_mana_cost {
+    } else if cast.without_paying_mana_cost
+        && cast.mana_spend_mode == ironsmith_core::value_model::ManaSpendMode::Normal
+    {
         " without paying its mana cost".to_string()
     } else {
         String::new()
@@ -3041,7 +3043,9 @@ fn describe_targeted_graveyard_cast_with_gated_replacement(effects: &[&Effect]) 
             " by paying {} in addition to its other costs",
             additional.to_oracle()
         )
-    } else if cast.without_paying_mana_cost {
+    } else if cast.without_paying_mana_cost
+        && cast.mana_spend_mode == ironsmith_core::value_model::ManaSpendMode::Normal
+    {
         " without paying its mana cost".to_string()
     } else {
         String::new()
@@ -5197,20 +5201,22 @@ mod simple_create_token_bundle_tests {
 
     #[test]
     fn compacts_direct_and_coordinated_full_typed_blueprint_lists() {
-        let snake = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Snake")
-            .token()
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Snake])
-            .color_indicator(crate::color::ColorSet::GREEN)
-            .power_toughness(crate::card::PowerToughness::fixed(1, 1))
-            .build();
-        let wolf = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Wolf")
-            .token()
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Wolf])
-            .color_indicator(crate::color::ColorSet::GREEN)
-            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
-            .build();
+        let snake =
+            crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Snake")
+                .token()
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Snake])
+                .color_indicator(crate::color::ColorSet::GREEN)
+                .power_toughness(crate::card::PowerToughness::fixed(1, 1))
+                .build();
+        let wolf =
+            crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Wolf")
+                .token()
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Wolf])
+                .color_indicator(crate::color::ColorSet::GREEN)
+                .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+                .build();
         let effects = vec![
             Effect::with_id(
                 0,
@@ -5242,18 +5248,21 @@ mod simple_create_token_bundle_tests {
             "Create a 1/1 green Snake creature token and a 2/2 green Wolf creature token"
         );
 
-        let halfling =
-            crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Halfling")
+        let halfling = crate::cards::builders::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Halfling",
+        )
+        .token()
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Halfling])
+        .color_indicator(crate::color::ColorSet::WHITE)
+        .power_toughness(crate::card::PowerToughness::fixed(1, 1))
+        .build();
+        let food =
+            crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Food")
                 .token()
-                .card_types(vec![CardType::Creature])
-                .subtypes(vec![Subtype::Halfling])
-                .color_indicator(crate::color::ColorSet::WHITE)
-                .power_toughness(crate::card::PowerToughness::fixed(1, 1))
+                .card_types(vec![CardType::Artifact])
                 .build();
-        let food = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Food")
-            .token()
-            .card_types(vec![CardType::Artifact])
-            .build();
         let dynamic = vec![Effect::new(crate::effects::SequenceEffect::coordinated(
             vec![
                 Effect::new(crate::effects::CreateTokenEffect::new(

@@ -17,23 +17,19 @@ use super::{
 
 #[cfg(test)]
 pub fn compile_statement_effects(effects: &[EffectAst]) -> Result<Vec<Effect>, CardTextError> {
-    crate::stack::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
-        Ok(
-            compile_statement_effects_with_imports(effects, &ReferenceImports::default())?
-                .effects
-                .to_vec(),
-        )
-    })
+    Ok(
+        compile_statement_effects_with_imports(effects, &ReferenceImports::default())?
+            .effects
+            .to_vec(),
+    )
 }
 
 pub fn compile_statement_effects_with_imports(
     effects: &[EffectAst],
     imports: &ReferenceImports,
 ) -> Result<LoweredEffects, CardTextError> {
-    crate::stack::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
-        let prepared = rewrite_prepare_effects_for_lowering(effects, imports.clone())?;
-        materialize_prepared_statement_effects(&prepared)
-    })
+    let prepared = rewrite_prepare_effects_for_lowering(effects, imports.clone())?;
+    materialize_prepared_statement_effects(&prepared)
 }
 
 pub fn materialize_prepared_statement_effects(
@@ -855,7 +851,10 @@ fn normalize_cross_segment_correlated_created_result_fights(
             || create.controller != PlayerFilter::You
             || create.controller_target.is_some()
             || producer.filter.zone != Some(crate::zone::Zone::Battlefield)
-            || producer.filter.card_types.as_slice() != [crate::types::CardType::Creature]
+            || !matches!(
+                producer.filter.card_types.as_slice(),
+                [crate::types::CardType::Creature]
+            )
             || !matches!(
                 producer.filter.controller.as_ref(),
                 Some(PlayerFilter::Opponent | PlayerFilter::NotYou)
@@ -893,7 +892,10 @@ fn normalize_cross_segment_correlated_created_result_fights(
         let it_tag = TagKey::from(IT_TAG);
         if !matches!(fight.creature1.base(), ChooseSpec::Iterated)
             || source_reference.zone != Some(crate::zone::Zone::Battlefield)
-            || source_reference.card_types.as_slice() != [crate::types::CardType::Creature]
+            || !matches!(
+                source_reference.card_types.as_slice(),
+                [crate::types::CardType::Creature]
+            )
             || !single_is_tagged_constraint(source_reference, &it_tag)
         {
             idx += 1;
@@ -967,6 +969,36 @@ fn normalize_coordinated_two_target_fight_window(
         return None;
     }
 
+    let conditional_effect = conditional.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let fight_effect = fight.downcast_ref::<crate::effects::FightEffect>()?;
+    let both_authored_group =
+        (choose_spec_has_authored_creature_group_surface(&fight_effect.creature1)
+            || choose_spec_references_tag(&fight_effect.creature1, CHOSEN_OBJECTS_TAG))
+            && (choose_spec_has_authored_creature_group_surface(&fight_effect.creature2)
+                || choose_spec_references_tag(&fight_effect.creature2, CHOSEN_OBJECTS_TAG));
+    if conditional_effect.if_false.is_empty()
+        && both_authored_group
+        && let Some(fixed_branch) = normalize_conditional_branch_target(
+            &conditional_effect.if_true,
+            first_tag,
+            first_filter,
+        )
+    {
+        return Some([
+            first_target.clone(),
+            second_target.clone(),
+            Effect::conditional(
+                conditional_effect.condition.clone(),
+                fixed_branch,
+                Vec::new(),
+            ),
+            Effect::fight(
+                ChooseSpec::Tagged(first_tag.clone()),
+                ChooseSpec::Tagged(second_tag.clone()),
+            ),
+        ]);
+    }
+
     let candidate = vec![
         first_target.clone(),
         second_target.clone(),
@@ -1005,7 +1037,10 @@ fn tagged_creature_damage_tag(effect: &Effect) -> Option<&TagKey> {
         return None;
     };
     (damage.target.is_target()
-        && filter.card_types.as_slice() == [crate::types::CardType::Creature])
+        && matches!(
+            filter.card_types.as_slice(),
+            [crate::types::CardType::Creature]
+        ))
     .then_some(&tagged.tag)
 }
 
@@ -1070,7 +1105,7 @@ fn retarget_death_replacement_from_exiled_attachment(
             || replacement.to_zone != Some(crate::zone::Zone::Graveyard)
             || replacement.replacement_zone != crate::zone::Zone::Exile
             || replacement.library_placement.is_some()
-            || replacement.mode != crate::effects::ReplacementApplyMode::OneShot
+            || replacement.mode != crate::effects::ReplacementApplyMode::UntilEndOfTurn
             || replacement.optional
             || replacement.choice_description.is_some()
             || !replacement.counters.is_empty()
@@ -1141,7 +1176,10 @@ pub fn rebind_returned_attachment_history_to_triggering_object(
         };
         if !aura_count.is_any_number()
             || movement.zone != crate::zone::Zone::Battlefield
-            || aura_filter.subtypes.as_slice() != [crate::types::Subtype::Aura]
+            || !matches!(
+                aura_filter.subtypes.as_slice(),
+                [crate::types::Subtype::Aura]
+            )
             || !aura_filter.tagged_constraints.iter().any(|constraint| {
                 constraint.tag == anchor_tag
                     && constraint.relation
@@ -1174,8 +1212,10 @@ pub fn rebind_returned_attachment_history_to_triggering_object(
         let ChooseSpec::Object(equipment_filter) = attach_history.objects.base() else {
             continue;
         };
-        if equipment_filter.subtypes.as_slice() != [crate::types::Subtype::Equipment]
-            || !matches!(attach_history.target.base(), ChooseSpec::Tagged(tag) if tag == &moved_tag)
+        if !matches!(
+            equipment_filter.subtypes.as_slice(),
+            [crate::types::Subtype::Equipment]
+        ) || !matches!(attach_history.target.base(), ChooseSpec::Tagged(tag) if tag == &moved_tag)
         {
             continue;
         }
@@ -1246,8 +1286,10 @@ fn normalize_controller_grouped_exile_search(compiled: Vec<Effect>) -> Vec<Effec
     } else {
         return compiled;
     };
-    if exile_filter.card_types.as_slice() != [crate::types::CardType::Creature]
-        || exile_filter.controller != Some(PlayerFilter::NotYou)
+    if !matches!(
+        exile_filter.card_types.as_slice(),
+        [crate::types::CardType::Creature]
+    ) || exile_filter.controller != Some(PlayerFilter::NotYou)
     {
         return compiled;
     }
@@ -1270,8 +1312,14 @@ fn normalize_controller_grouped_exile_search(compiled: Vec<Effect>) -> Vec<Effec
         || !search.count.is_single()
         || search.count_value.is_some()
         || search.filter.zone != Some(crate::zone::Zone::Library)
-        || search.filter.card_types.as_slice() != [crate::types::CardType::Land]
-        || search.filter.supertypes.as_slice() != [crate::types::Supertype::Basic]
+        || !matches!(
+            search.filter.card_types.as_slice(),
+            [crate::types::CardType::Land]
+        )
+        || !matches!(
+            search.filter.supertypes.as_slice(),
+            [crate::types::Supertype::Basic]
+        )
         || search.chooser
             != PlayerFilter::ControllerOf(ObjectRef::tagged(crate::cards::builders::IT_TAG))
     {
@@ -1670,19 +1718,43 @@ fn materialize_trailing_self_replacement(
             condition_env.source_object_antecedent = true;
         }
         let condition_imports = ReferenceExports::from_env(&condition_env).to_imports();
-        // `TargetMatches` is the parser's explicit marker that a conditional
-        // self-replacement tests the target shared by both branches. A
-        // triggered ability may also seed `last_object_tag` with its trigger
-        // subject; allowing that ambient tag to win here makes "that
-        // creature" test the attacker rather than the declared copy source.
-        let condition_tag =
-            if has_resolution_target && matches!(predicate, PredicateAst::TargetMatches(_)) {
-                None
-            } else {
-                implicit_condition_tag
-                    .as_ref()
-                    .or(condition_imports.last_object_tag.as_ref())
-            };
+        // Explicit target predicates stay relative to the target selected by
+        // this resolution. Candidate-ability predicates ("if it has
+        // unearth") do too: an ambient trigger/result tag must not steal that
+        // authored target from the replacement condition.
+        let explicitly_tests_resolution_target =
+            matches!(predicate, PredicateAst::TargetMatches(_));
+        let tests_candidate_ability_on_resolution_target = matches!(
+            predicate,
+            PredicateAst::ItMatches(filter) | PredicateAst::TargetMatches(filter)
+                if filter.has_trailing_candidate_ability_condition_surface()
+        );
+        let compares_target_to_prior_choice = matches!(
+            predicate,
+            PredicateAst::TargetMatches(filter)
+                if super::filter_references_tag(filter, crate::cards::builders::IT_TAG)
+        );
+        let default_action_condition_tag =
+            last_tagged_default_target(&default_effects).map(|(tag, _)| tag);
+        let condition_tag = if has_resolution_target
+            && (tests_candidate_ability_on_resolution_target || compares_target_to_prior_choice)
+        {
+            None
+        } else if has_resolution_target && explicitly_tests_resolution_target {
+            // A demonstrative condition ordinarily denotes the target of the
+            // default action, whose stable tag preserves authored identity
+            // surfaces. Some actions (notably token-copy source choices) do
+            // not export such a tag; their explicit TargetMatches predicate
+            // must remain resolution-target relative instead of falling back
+            // to an ambient trigger tag.
+            implicit_condition_tag
+                .as_ref()
+                .or(default_action_condition_tag.as_ref())
+        } else {
+            implicit_condition_tag
+                .as_ref()
+                .or(condition_imports.last_object_tag.as_ref())
+        };
         let condition = compile_condition_from_predicate_ast_with_env(
             predicate,
             &condition_env,
@@ -2296,6 +2368,41 @@ fn normalize_targeted_conditional_action_then_fight(effects: Vec<Effect>) -> Vec
     let mut rewritten = Vec::with_capacity(effects.len());
     let mut idx = 0;
     while idx < effects.len() {
+        if idx + 3 < effects.len()
+            && let Some((friendly_tag, friendly_target)) = tagged_target_only(&effects[idx])
+            && let Some((counter_tag, condition, counters)) =
+                single_conditional_tagged_put_counters(&effects[idx + 1])
+            && let Some(opposing_target) = untagged_target_only(&effects[idx + 2])
+            && let Some(friendly_filter) = explicit_target_object_filter(friendly_target)
+            && let Some(opposing_filter) = explicit_target_object_filter(opposing_target)
+            && is_opposing_then_friendly_creature_pair(opposing_filter, friendly_filter)
+            && choose_spec_is_first_target(&counters.target, friendly_tag, friendly_filter)
+            && (fight_references_counter_tag(&effects[idx + 3], counter_tag.as_str())
+                || fight_references_authored_it_and_target(&effects[idx + 3], opposing_target))
+        {
+            let opposing_tag = TagKey::from(format!("{}_opposing_target", friendly_tag.as_str()));
+            let mut fixed_counters = counters.clone();
+            fixed_counters.target = ChooseSpec::Tagged(friendly_tag.clone());
+            rewritten.push(effects[idx].clone());
+            rewritten.push(
+                Effect::new(crate::effects::TargetOnlyEffect::new(
+                    opposing_target.clone(),
+                ))
+                .tag(opposing_tag.as_str()),
+            );
+            rewritten.push(Effect::conditional(
+                rebind_tagged_condition(condition, counter_tag, friendly_tag),
+                vec![Effect::new(fixed_counters).tag(counter_tag.as_str())],
+                Vec::new(),
+            ));
+            rewritten.push(Effect::fight(
+                ChooseSpec::Tagged(friendly_tag.clone()),
+                ChooseSpec::Tagged(opposing_tag),
+            ));
+            idx += 4;
+            continue;
+        }
+
         // Oracle commonly introduces the friendly target and its conditional
         // action in one sentence, then introduces the opposing target in the
         // following fight sentence:
@@ -2421,8 +2528,14 @@ fn explicit_target_object_filter(spec: &ChooseSpec) -> Option<&ObjectFilter> {
 fn is_controlled_creature_fight_pair(first: &ObjectFilter, second: &ObjectFilter) -> bool {
     first.zone == Some(crate::zone::Zone::Battlefield)
         && second.zone == Some(crate::zone::Zone::Battlefield)
-        && first.card_types.as_slice() == [crate::types::CardType::Creature]
-        && second.card_types.as_slice() == [crate::types::CardType::Creature]
+        && matches!(
+            first.card_types.as_slice(),
+            [crate::types::CardType::Creature]
+        )
+        && matches!(
+            second.card_types.as_slice(),
+            [crate::types::CardType::Creature]
+        )
         && first.controller == Some(crate::target::PlayerFilter::You)
         && second.controller == Some(crate::target::PlayerFilter::NotYou)
 }
@@ -2433,8 +2546,14 @@ fn is_opposing_then_friendly_creature_pair(
 ) -> bool {
     opposing.zone == Some(crate::zone::Zone::Battlefield)
         && friendly.zone == Some(crate::zone::Zone::Battlefield)
-        && opposing.card_types.as_slice() == [crate::types::CardType::Creature]
-        && friendly.card_types.as_slice() == [crate::types::CardType::Creature]
+        && matches!(
+            opposing.card_types.as_slice(),
+            [crate::types::CardType::Creature]
+        )
+        && matches!(
+            friendly.card_types.as_slice(),
+            [crate::types::CardType::Creature]
+        )
         && matches!(
             &opposing.controller,
             Some(crate::target::PlayerFilter::NotYou) | Some(crate::target::PlayerFilter::Opponent)
@@ -2582,6 +2701,7 @@ fn fight_references_result_tag_or_authored_group(
             || choose_spec_references_tag(&fight.creature2, CHOSEN_OBJECTS_TAG);
     (first_is_result && (second_is_result || second_is_authored_group))
         || (first_is_authored_group && second_is_result)
+        || (first_is_authored_group && second_is_authored_group)
 }
 
 fn single_conditional_result_is_continuous(
@@ -2705,6 +2825,18 @@ fn fight_references_counter_tag(effect: &Effect, tag: &str) -> bool {
         return false;
     };
     fight_references_result_tag_or_authored_group(fight, tag)
+}
+
+fn fight_references_authored_it_and_target(effect: &Effect, target: &ChooseSpec) -> bool {
+    let Some(fight) = effect.downcast_ref::<crate::effects::FightEffect>() else {
+        return false;
+    };
+    matches!(fight.creature1.base(), ChooseSpec::Source)
+        && fight
+            .creature1
+            .source_reference_surface()
+            .is_some_and(|surface| surface.display_text().trim().eq_ignore_ascii_case("it"))
+        && &fight.creature2 == target
 }
 
 fn choose_spec_references_tag(spec: &ChooseSpec, tag: &str) -> bool {

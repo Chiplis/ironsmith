@@ -49,6 +49,13 @@ fn attached_color_condition_keeps_ability_loss_on_the_attached_creature() {
         0,
     )
     .expect("lex attachment-relative ability loss");
+    assert!(
+        parse_attached_conditional_loses_all_abilities_line(&tokens)
+            .expect("direct attachment-relative parser")
+            .is_some(),
+        "the specialist must recognize its exact owned surface: {:#?}",
+        crate::lexer::parser_token_word_refs(&tokens)
+    );
     let abilities = parse_static_ability_ast_line_lexed(&tokens)
         .expect("parse attachment-relative ability loss")
         .expect("attachment-relative ability loss should be recognized");
@@ -456,4 +463,9 @@ fn attached_land_reset_lowers_loss_and_each_quoted_mana_ability() {
         "{debug}"
     );
     assert!(debug.contains("Life"), "{debug}");
+
+    let dispatched = crate::keyword_static::parse_static_ability_ast_line_lexed(&tokens)
+        .expect("attached land reset should reach the public static registry")
+        .expect("attached land reset should be claimed by the public static registry");
+    assert_eq!(dispatched.len(), 4, "{dispatched:#?}");
 }

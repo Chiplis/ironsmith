@@ -33,18 +33,19 @@ fn extremum_direction(word: &str) -> Option<ExtremumDirection> {
 }
 
 fn extremum_characteristic(words: &[&str]) -> Option<(ExtremumCharacteristic, usize)> {
-    match words {
-        ["power", ..] => Some((ExtremumCharacteristic::Power, 1)),
-        ["toughness", ..] => Some((ExtremumCharacteristic::Toughness, 1)),
-        ["mana", "value", ..] => Some((ExtremumCharacteristic::ManaValue, 2)),
-        _ => None,
+    if crate::word_primitives::parse_sequence_prefix(words, &["power"]) {
+        Some((ExtremumCharacteristic::Power, 1))
+    } else if crate::word_primitives::parse_sequence_prefix(words, &["toughness"]) {
+        Some((ExtremumCharacteristic::Toughness, 1))
+    } else if crate::word_primitives::parse_sequence_prefix(words, &["mana", "value"]) {
+        Some((ExtremumCharacteristic::ManaValue, 2))
+    } else {
+        None
     }
 }
 
 fn tie_suffix_start(words: &[&str]) -> Option<usize> {
-    words
-        .windows(3)
-        .position(|window| window == ["or", "tied", "for"])
+    crate::word_primitives::parse_sequence_start(words, &["or", "tied", "for"])
 }
 
 fn parse_tie_suffix(
@@ -52,8 +53,8 @@ fn parse_tie_suffix(
     direction: ExtremumDirection,
     characteristic: ExtremumCharacteristic,
 ) -> Option<bool> {
-    let rest = words.strip_prefix(&["or", "tied", "for"])?;
-    let rest = rest.strip_prefix(&["the"]).unwrap_or(rest);
+    let rest = crate::word_primitives::strip_prefix(words, &["or", "tied", "for"])?;
+    let rest = crate::word_primitives::strip_prefix(rest, &["the"]).unwrap_or(rest);
     let (&direction_word, rest) = rest.split_first()?;
     if extremum_direction(direction_word) != Some(direction) {
         return None;

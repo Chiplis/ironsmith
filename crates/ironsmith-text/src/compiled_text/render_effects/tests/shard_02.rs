@@ -519,7 +519,7 @@ fn counter_and_draw_followups_preserve_conjoined_clause_composition() {
         Effect::draw(Value::Fixed(1)),
         Effect::new(crate::effects::LoseLifeEffect::you(1)),
         Effect::new(crate::effects::PutCountersEffect::new(
-            crate::object::CounterType::Named("plan"),
+            crate::object::CounterType::Named("plan".into()),
             1,
             ChooseSpec::Source,
         )),
@@ -1193,7 +1193,7 @@ fn modal_common_prefix_renders_once_in_the_header() {
 #[test]
 fn inline_named_token_creation_choice_renders_as_authored_or_instruction() {
     let named_artifact_token = |name, subtype| {
-        crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), name)
+        crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), name)
             .token()
             .card_types(vec![crate::types::CardType::Artifact])
             .subtypes(vec![subtype])

@@ -82,7 +82,7 @@ pub enum EffectAst {
     UnlessPays {
         effects: Vec<EffectAst>,
         player: PlayerAst,
-        cost: TotalCost,
+        cost: ironsmith_core::TotalCost<crate::model::CompilerCost>,
         /// The Oracle clause says the cost may be paid before the delayed
         /// step, rather than when the delayed consequence resolves.
         before_delayed_step: bool,
@@ -182,7 +182,7 @@ pub enum EffectAst {
     },
     ManaRestricted {
         effects: Vec<EffectAst>,
-        restrictions: Vec<crate::ability::ManaUsageRestriction>,
+        restrictions: Vec<crate::model::compiler_semantic::CompilerManaUsageRestriction>,
     },
     SelfReplacement {
         predicate: PredicateAst,
@@ -2184,7 +2184,7 @@ impl EffectAst {
         subtypes: Vec<Subtype>,
         subtype_families: Vec<SubtypeFamily>,
         colors: Option<ColorSet>,
-        abilities: Vec<StaticAbility>,
+        abilities: Vec<crate::model::CompilerStaticAbilityCore>,
         granted_abilities: Vec<GrantedAbilityAst>,
         preserve_other_types: bool,
         type_retention_surface: Option<ironsmith_core::TypeRetentionSurface>,
@@ -2789,7 +2789,7 @@ impl EffectAst {
 
     pub fn subject_verb_grant_to_target(
         target: TargetAst,
-        grantable: crate::grant::Grantable,
+        grantable: crate::model::CompilerGrantableCore,
         duration: crate::grant::GrantDuration,
     ) -> Self {
         Self::subject_verb(
@@ -2804,7 +2804,7 @@ impl EffectAst {
     }
 
     pub fn subject_verb_grant_by_spec(
-        spec: crate::grant::GrantSpec,
+        spec: crate::model::CompilerGrantSpecCore,
         player: PlayerAst,
         duration: crate::grant::GrantDuration,
     ) -> Self {
@@ -4890,7 +4890,10 @@ impl EffectAst {
         )
     }
 
-    pub fn subject_verb_counter_unless_pays(target: TargetAst, cost: TotalCost) -> Self {
+    pub fn subject_verb_counter_unless_pays(
+        target: TargetAst,
+        cost: ironsmith_core::TotalCost<crate::model::CompilerCost>,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,

@@ -93,9 +93,13 @@ fn parse_instant_and_sorcery_spells(tokens: &[OwnedLexToken]) -> Option<ObjectFi
 fn parse_attachment_state_qualified_subject(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
-    if let Some(relative_start) = words
-        .windows(4)
-        .rposition(|window| matches!(window, ["that", "is" | "are", "enchanted", "by"]))
+    if let Some(relative_start) =
+        crate::slice_primitives::find_last_window_by(&words, 4, |window| {
+            crate::word_primitives::parse_choice_sequence_complete(
+                window,
+                &[&["that"], &["is", "are"], &["enchanted"], &["by"]],
+            )
+        })
     {
         let base_token_end = view.token_index_after_words(relative_start)?;
         let attachment_token_start = view.token_index_after_words(relative_start + 4)?;
@@ -114,26 +118,41 @@ fn parse_attachment_state_qualified_subject(tokens: &[OwnedLexToken]) -> Option<
         return Some(filter);
     }
 
-    let attachment_tags: &[&str] =
-        if words.ends_with(&["that", "is", "enchanted", "or", "equipped"])
-            || words.ends_with(&["that", "are", "enchanted", "or", "equipped"])
-        {
-            &["enchanted", "equipped"]
-        } else if words.ends_with(&["that", "is", "equipped", "or", "enchanted"])
-            || words.ends_with(&["that", "are", "equipped", "or", "enchanted"])
-        {
-            &["equipped", "enchanted"]
-        } else if words.ends_with(&["that", "is", "enchanted"])
-            || words.ends_with(&["that", "are", "enchanted"])
-        {
-            &["enchanted"]
-        } else if words.ends_with(&["that", "is", "equipped"])
-            || words.ends_with(&["that", "are", "equipped"])
-        {
-            &["equipped"]
-        } else {
-            return None;
-        };
+    let attachment_tags: &[&str] = if crate::word_primitives::parse_choice_sequence_suffix(
+        &words,
+        &[
+            &["that"],
+            &["is", "are"],
+            &["enchanted"],
+            &["or"],
+            &["equipped"],
+        ],
+    ) {
+        &["enchanted", "equipped"]
+    } else if crate::word_primitives::parse_choice_sequence_suffix(
+        &words,
+        &[
+            &["that"],
+            &["is", "are"],
+            &["equipped"],
+            &["or"],
+            &["enchanted"],
+        ],
+    ) {
+        &["equipped", "enchanted"]
+    } else if crate::word_primitives::parse_choice_sequence_suffix(
+        &words,
+        &[&["that"], &["is", "are"], &["enchanted"]],
+    ) {
+        &["enchanted"]
+    } else if crate::word_primitives::parse_choice_sequence_suffix(
+        &words,
+        &[&["that"], &["is", "are"], &["equipped"]],
+    ) {
+        &["equipped"]
+    } else {
+        return None;
+    };
 
     let suffix_word_count = if attachment_tags.len() == 2 { 5 } else { 3 };
     let base_word_count = words.len().checked_sub(suffix_word_count)?;

@@ -92,7 +92,11 @@ enum VerbSearch {
     Become,
 }
 
-fn first_matching_verb(words: &[&str], search: VerbSearch) -> Option<(usize, GainAbilityVerb)> {
+/// Return the earliest lexical verb owned by this sentence shape.
+///
+/// This is source-order recognition within one rule, not registry dispatch:
+/// the caller has already selected the gain-ability grammar family.
+fn earliest_lexical_verb(words: &[&str], search: VerbSearch) -> Option<(usize, GainAbilityVerb)> {
     let mut offset = 0usize;
     while offset < words.len() {
         let mut input = &words[offset..];
@@ -114,7 +118,7 @@ fn first_matching_verb(words: &[&str], search: VerbSearch) -> Option<(usize, Gai
 }
 
 pub fn find_gain_ability_verb(words: &[&str]) -> Option<(usize, GainAbilityVerb)> {
-    first_matching_verb(words, VerbSearch::GainLoseHas)
+    earliest_lexical_verb(words, VerbSearch::GainLoseHas)
 }
 
 pub fn find_primary_gain_ability_verb(words: &[&str]) -> Option<(usize, GainAbilityVerb)> {
@@ -149,18 +153,18 @@ pub fn find_primary_gain_ability_verb(words: &[&str]) -> Option<(usize, GainAbil
 
 pub fn find_gain_or_lose_verb(words: &[&str], losing: bool) -> Option<(usize, GainAbilityVerb)> {
     if losing {
-        first_matching_verb(words, VerbSearch::Lose)
+        earliest_lexical_verb(words, VerbSearch::Lose)
     } else {
-        first_matching_verb(words, VerbSearch::Gain)
+        earliest_lexical_verb(words, VerbSearch::Gain)
     }
 }
 
 pub fn find_get_verb(words: &[&str]) -> Option<usize> {
-    first_matching_verb(words, VerbSearch::Get).map(|(offset, _)| offset)
+    earliest_lexical_verb(words, VerbSearch::Get).map(|(offset, _)| offset)
 }
 
 pub fn find_become_verb(words: &[&str]) -> Option<usize> {
-    first_matching_verb(words, VerbSearch::Become).map(|(offset, _)| offset)
+    earliest_lexical_verb(words, VerbSearch::Become).map(|(offset, _)| offset)
 }
 
 fn shared_tail_parser(input: &mut WordSliceInput<'_>) -> WResult<SharedAbilityTail> {
@@ -282,16 +286,23 @@ fn demonstrative_gain_subject_tail<'a>(words: &'a [&'a str]) -> Option<&'a [&'a 
             .iter()
             .find_map(|prefix| primitives::parse_word_sequence_prefix(words, prefix))
         })
-        .or_else(|| match words {
-            ["the", noun]
-                if matches!(
-                    *noun,
-                    "card" | "copy" | "creature" | "object" | "permanent" | "spell" | "token"
-                ) =>
-            {
-                Some(&words[1..])
-            }
-            _ => None,
+        .or_else(|| {
+            (words.len() == 2
+                && crate::word_primitives::first_is(words, "the")
+                && crate::word_primitives::at_is_any(
+                    words,
+                    1,
+                    &[
+                        "card",
+                        "copy",
+                        "creature",
+                        "object",
+                        "permanent",
+                        "spell",
+                        "token",
+                    ],
+                ))
+            .then(|| &words[1..])
         })
 }
 
@@ -484,62 +495,11 @@ pub fn find_gain_real_subject_start(words: &[&str], before_get: usize) -> usize 
 }
 
 pub fn gain_clause_is_defender_as_if_attack(words: &[&str]) -> bool {
-    let mut saw_can_attack = false;
-    let mut saw_as_though = false;
-    let mut saw_defender = false;
-    let mut offset = 0usize;
-    while offset < words.len() {
-        let mut input = &words[offset..];
-        saw_can_attack |= (
-            primitives::word_slice_exact("can"),
-            primitives::word_slice_exact("attack"),
-        )
-            .parse_next(&mut input)
-            .is_ok();
-        let mut input = &words[offset..];
-        saw_as_though |= (
-            primitives::word_slice_exact("as"),
-            primitives::word_slice_exact("though"),
-        )
-            .parse_next(&mut input)
-            .is_ok();
-        let mut input = &words[offset..];
-        saw_defender |= primitives::word_slice_exact("defender")
-            .parse_next(&mut input)
-            .is_ok();
-        offset += 1;
-    }
-    saw_can_attack && saw_as_though && saw_defender
+    crate::word_primitives::sequence_occurs(words, &["can", "attack"])
+        && crate::word_primitives::sequence_occurs(words, &["as", "though"])
+        && words.contains(&"defender")
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn classifies_verbs_tails_and_subjects() {
-        assert_eq!(
-            find_gain_ability_verb(&["target", "creature", "gains", "flying"]),
-            Some((2, GainAbilityVerb::Gain))
-        );
-        assert_eq!(
-            find_shared_ability_tail(&["flying", "and", "gets", "+1/+1"], SharedAbilityTail::Get),
-            Some(1)
-        );
-        let subject = classify_gain_subject(&["each", "of", "those", "creatures"]);
-        assert!(subject.demonstrative_object);
-        assert!(!subject.demonstrative_player);
-
-        let copy = classify_gain_subject(&["the", "copy"]);
-        assert!(copy.demonstrative_object);
-        assert!(!copy.demonstrative_player);
-    }
-
-    #[test]
-    fn gain_subject_start_prefers_complete_optional_count_prefix() {
-        assert_eq!(
-            find_gain_real_subject_start(&["up", "to", "one", "target", "creature"], 4,),
-            0
-        );
-    }
-}
+#[path = "words_inline_tests.rs"]
+mod tests;

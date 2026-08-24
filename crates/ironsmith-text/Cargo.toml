@@ -10,6 +10,11 @@ ironsmith-core = { path = "../ironsmith-core", default-features = false }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 stacker = "0.1.23"
 
+[dev-dependencies]
+ironsmith-compiled-artifact = { path = "../ironsmith-compiled-artifact", default-features = false }
+ironsmith-compiler = { path = "../ironsmith-compiler", default-features = false, features = ["serialization"] }
+ironsmith-runtime-catalog = { path = "../ironsmith-runtime-catalog", default-features = false }
+
 [features]
 default = []
 

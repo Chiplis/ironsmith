@@ -8,12 +8,18 @@ default = []
 handwritten-parse-support = []
 wasm-lean = []
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(ironsmith_runtime_parser_tests)"] }
+
 [dependencies]
 ironsmith-core = { path = "../ironsmith-core", default-features = false }
 ironsmith = { package = "ironsmith-engine", path = "../ironsmith-engine", default-features = false }
 ironsmith-runtime-catalog = { path = "../ironsmith-runtime-catalog", default-features = false }
 ironsmith-compiler = { path = "../ironsmith-compiler", default-features = false }
 ironsmith-compiler-runtime = { path = "../ironsmith-compiler-runtime", default-features = false }
+
+[dev-dependencies]
+ironsmith-text = { path = "../ironsmith-text", default-features = false }
 
 [lib]
 path = "src/lib.rs"
@@ -22,3 +28,23 @@ path = "src/lib.rs"
 name = "handwritten_registry"
 path = "tests/handwritten_registry.rs"
 required-features = ["handwritten-parse-support"]
+
+[[test]]
+name = "u061_planechase"
+path = "../ironsmith-engine/tests/u061_planechase.rs"
+
+[[test]]
+name = "u063_archenemy"
+path = "../ironsmith-engine/tests/u063_archenemy.rs"
+
+[[test]]
+name = "u064_conspiracy_draft"
+path = "../ironsmith-engine/tests/u064_conspiracy_draft.rs"
+
+[[test]]
+name = "u065_subgames"
+path = "../ironsmith-engine/tests/u065_subgames.rs"
+
+[[test]]
+name = "u066_contraptions"
+path = "../ironsmith-engine/tests/u066_contraptions.rs"

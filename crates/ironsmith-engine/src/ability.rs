@@ -294,10 +294,10 @@ mod tests {
         } else {
             panic!("Expected static ability");
         }
-        assert_eq!(
-            ability_surface_text_for_tests(&ability).as_deref(),
-            Some("Flying")
-        );
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            unreachable!("the variant was checked above")
+        };
+        assert_eq!(static_ability.display(), "Flying");
     }
 
     #[test]

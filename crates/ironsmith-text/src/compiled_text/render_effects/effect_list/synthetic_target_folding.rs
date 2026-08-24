@@ -798,6 +798,17 @@ pub(super) fn describe_single_consumer_synthetic_target_fold(effects: &[Effect])
         return Some(rendered);
     }
 
+    if effects.len() == 2
+        && let Some(draw) = structural_unwrap_render_wrappers(consumer)
+            .downcast_ref::<crate::effects::DrawCardsEffect>()
+        && draw.player == PlayerFilter::You
+    {
+        return Some(format!(
+            "Draw cards equal to {}",
+            describe_value(&draw.count)
+        ));
+    }
+
     let without_target = effects
         .iter()
         .enumerate()

@@ -403,6 +403,7 @@ impl EffectExecutor for EachPlayerScryEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::cards::CardDefinitionBuilder;
     use crate::decision::DecisionMaker;
     use crate::effects::ExecutionContext;

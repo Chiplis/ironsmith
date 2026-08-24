@@ -16,9 +16,6 @@ erased-serde = "0.4.9"
 serde = { version = "1.0.228", features = ["derive"] }
 winnow = { version = "1.0.1", default-features = false, features = ["std", "ascii"] }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-stacker = "0.1.23"
-
 [features]
 default = []
 serialization = []

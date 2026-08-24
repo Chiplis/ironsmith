@@ -446,29 +446,93 @@ pub(crate) fn describe_consult_choose_any_number_to_battlefield_rest_bottom(
     ))
 }
 
-pub(crate) fn is_all_permanent_card_types(filter: &ObjectFilter) -> bool {
-    let permanent_types = [
-        CardType::Artifact,
-        CardType::Creature,
-        CardType::Enchantment,
-        CardType::Land,
-        CardType::Planeswalker,
-        CardType::Battle,
-    ];
-    let explicitly_all_permanent_types = filter.card_types.len() == permanent_types.len()
-        && permanent_types
-            .iter()
-            .all(|card_type| filter.card_types.contains(card_type));
-    let implicit_battlefield_permanent = filter.zone == Some(Zone::Battlefield)
-        && filter.card_types.is_empty()
-        && filter.all_card_types.is_empty()
-        && filter.excluded_card_types.is_empty();
-    explicitly_all_permanent_types || implicit_battlefield_permanent
-}
-
 pub(crate) fn describe_shuffle_reveal_repeated_permanent_groups_rest_bottom(
     effects: &[&Effect],
 ) -> Option<String> {
+    if let [
+        shuffle_effect,
+        look_effect,
+        union_tag_effect,
+        move_effect,
+        bottom_effect,
+    ] = effects
+    {
+        let with_id = shuffle_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+        let shuffle = unwrap_wrapped_effect(shuffle_effect)
+            .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()?;
+        let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+        let tag_matching =
+            union_tag_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+        let bottom = bottom_effect
+            .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+        let shuffled_filter = match &shuffle.target {
+            ChooseSpec::Object(filter) | ChooseSpec::All(filter) => filter,
+            _ => return None,
+        };
+        let mut normalized_shuffled_filter = shuffled_filter.clone();
+        normalized_shuffled_filter.set_set_quantifier_surface(None);
+        let exact_shuffle = normalized_shuffled_filter
+            == ObjectFilter::permanent()
+                .in_zone(Zone::Battlefield)
+                .owned_by(PlayerFilter::You)
+            || normalized_shuffled_filter
+                == ObjectFilter::permanent_card()
+                    .in_zone(Zone::Battlefield)
+                    .owned_by(PlayerFilter::You);
+        if !exact_shuffle
+            || shuffle.player != PlayerFilter::You
+            || shuffle.owner_library_destination
+            || shuffle.possessive_owner_subject
+            || look.player != PlayerFilter::You
+            || !look.reveal
+            || !matches!(
+                look.count.unhinted(),
+                Value::EffectMetric {
+                    effect_id,
+                    source: crate::effect::EffectMetricSource::Outcome,
+                    metric: crate::effect::EffectMetric::Count,
+                } if *effect_id == with_id.id
+            )
+            || tag_matching.zone != Some(Zone::Library)
+            || !tag_matching.additional_zones.is_empty()
+            || tag_matching.filter.any_of.len() != 2
+            || !for_each_moves_iterated_to_battlefield(move_effect, &tag_matching.tag)
+            || bottom.tag != look.tag
+            || bottom.keep_tagged.as_ref() != Some(&tag_matching.tag)
+            || bottom.player != PlayerFilter::You
+            || bottom.order != crate::effects::consult_helpers::LibraryBottomOrder::Random
+        {
+            return None;
+        }
+
+        let tagged_revealed = |mut filter: ObjectFilter| {
+            filter
+                .tagged_constraints
+                .push(crate::filter::TaggedObjectConstraint {
+                    tag: look.tag.clone(),
+                    relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+                });
+            filter
+        };
+        let expected_union = |mut non_aura: ObjectFilter| {
+            non_aura = tagged_revealed(non_aura);
+            non_aura.set_explicit_card_noun(true);
+            non_aura.excluded_subtypes.push(crate::types::Subtype::Aura);
+            let mut aura =
+                tagged_revealed(ObjectFilter::default().with_subtype(crate::types::Subtype::Aura));
+            aura.set_explicit_card_noun(true);
+            let mut union = ObjectFilter::default();
+            union.any_of = vec![non_aura, aura];
+            union
+        };
+        if tag_matching.filter != expected_union(ObjectFilter::permanent())
+            && tag_matching.filter != expected_union(ObjectFilter::permanent_card())
+        {
+            return None;
+        }
+        return Some("Shuffle all permanents you own into your library, then reveal that many cards from the top of your library. Put all non-Aura permanent cards revealed this way onto the battlefield, then do the same for Aura cards, then put the rest on the bottom of your library in a random order".to_string());
+    }
+
     let [
         shuffle_effect,
         look_effect,
@@ -4171,21 +4235,27 @@ pub(crate) fn describe_destroy_all_then_target_players_each(effects: &[&Effect])
     ))
 }
 
-pub(crate) fn target_only_two_creatures(effect: &Effect) -> Option<(Option<&crate::TagKey>, bool)> {
-    let (tag, target_only) =
-        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
-            (
-                Some(&tagged.tag),
-                tagged
-                    .effect
-                    .downcast_ref::<crate::effects::TargetOnlyEffect>()?,
-            )
+pub(crate) fn target_only_two_creatures(effect: &Effect) -> Option<(Vec<&crate::TagKey>, bool)> {
+    let mut tags = Vec::new();
+    let mut target_only_effect = effect;
+    loop {
+        if let Some(with_id) = target_only_effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            target_only_effect = &with_id.effect;
+        } else if let Some(tag_all) =
+            target_only_effect.downcast_ref::<crate::effects::TagAllEffect>()
+        {
+            tags.push(&tag_all.tag);
+            target_only_effect = &tag_all.effect;
+        } else if let Some(tagged) =
+            target_only_effect.downcast_ref::<crate::effects::TaggedEffect>()
+        {
+            tags.push(&tagged.tag);
+            target_only_effect = &tagged.effect;
         } else {
-            (
-                None,
-                effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?,
-            )
-        };
+            break;
+        }
+    }
+    let target_only = target_only_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
     let ChooseSpec::WithCount(target, count) = &target_only.target else {
         return None;
     };
@@ -4199,7 +4269,7 @@ pub(crate) fn target_only_two_creatures(effect: &Effect) -> Option<(Option<&crat
         return None;
     };
     (filter.zone == Some(Zone::Battlefield) && filter.card_types == vec![CardType::Creature])
-        .then_some((tag, filter.distinct_creature_types))
+        .then_some((tags, filter.distinct_creature_types))
 }
 
 pub(crate) fn choose_spec_references_tag_constraint(
@@ -4229,7 +4299,7 @@ pub(crate) fn describe_two_target_creature_exchange_or_fight(
     let [target_effect, action_effect] = effects else {
         return None;
     };
-    let (target_tag, distinct_creature_types) = target_only_two_creatures(target_effect)?;
+    let (target_tags, distinct_creature_types) = target_only_two_creatures(target_effect)?;
     let action = unwrap_tag_wrappers(action_effect);
     if let Some(exchange) = action.downcast_ref::<crate::effects::ExchangeTextBoxesEffect>() {
         let exchange_targets_creatures = matches!(
@@ -4238,9 +4308,10 @@ pub(crate) fn describe_two_target_creature_exchange_or_fight(
                 if filter.zone == Some(Zone::Battlefield)
                     && filter.card_types == vec![CardType::Creature]
         );
-        if !target_tag.is_some_and(|target_tag| {
-            choose_spec_references_exact_tag(&exchange.target, target_tag)
-        }) && !exchange_targets_creatures
+        if !target_tags
+            .iter()
+            .any(|target_tag| choose_spec_references_exact_tag(&exchange.target, target_tag))
+            && !exchange_targets_creatures
         {
             return None;
         }
@@ -4250,10 +4321,11 @@ pub(crate) fn describe_two_target_creature_exchange_or_fight(
         );
     }
     if let Some(fight) = action.downcast_ref::<crate::effects::FightEffect>() {
-        let target_tag = target_tag?;
-        if !choose_spec_references_tag_constraint(&fight.creature1, target_tag)
-            || !choose_spec_references_tag_constraint(&fight.creature2, target_tag)
-        {
+        let same_target_set = target_tags.iter().any(|target_tag| {
+            choose_spec_references_tag_constraint(&fight.creature1, target_tag)
+                && choose_spec_references_tag_constraint(&fight.creature2, target_tag)
+        });
+        if !same_target_set {
             return None;
         }
         let target_text = if distinct_creature_types {

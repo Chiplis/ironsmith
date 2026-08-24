@@ -187,20 +187,18 @@ pub fn rewrite_lower_parsed_modal(
     for mode in modes {
         let point_cost = mode.point_cost.unwrap_or(1);
         let additional_mana_cost = mode.additional_mana_cost;
+        let mode_description = mode.description;
         let effects = match rewrite_lower_prepared_statement_effects(&mode.prepared) {
             Ok(lowered) => lowered.effects,
             Err(err) if allow_unsupported => {
-                builder = push_unsupported_marker(
-                    builder,
-                    mode.info.raw_line.as_str(),
-                    format!("{err:?}"),
-                );
+                builder =
+                    push_unsupported_marker(builder, mode_description.as_str(), format!("{err:?}"));
                 continue;
             }
             Err(err) => return Err(err),
         };
         compiled_modes.push(crate::effect::EffectMode {
-            source_text: mode.description,
+            source_text: mode_description.clone(),
             effects: effects.to_vec(),
         });
         mode_point_costs.push(point_cost);
@@ -208,7 +206,7 @@ pub fn rewrite_lower_parsed_modal(
             mode_additional_mana_costs.push(additional_mana_cost.ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "Costed modal mode '{}' is missing its typed additional mana cost",
-                    mode.info.raw_line
+                    mode_description
                 ))
             })?);
         }
@@ -324,37 +322,38 @@ pub fn rewrite_lower_parsed_modal(
         crate::effect::Effect::new(choose_mode)
     };
 
-    let choose_both_condition = if conditional_optional_range.is_some() {
-        None
-    } else if let Some((condition, _)) = &compiled_conditional_mode_change {
-        Some(condition.clone())
-    } else if commander_allows_both {
-        Some(crate::effect::Condition::YouControlCommander)
-    } else if let Some(life_total) = choose_both_exact_life_total {
-        Some(crate::effect::Condition::ValueComparison {
-            left: crate::effect::Value::LifeTotal(crate::target::PlayerFilter::You),
-            operator: crate::effect::ValueComparisonOperator::Equal,
-            right: crate::effect::Value::Fixed(life_total),
-        })
-    } else if choose_both_control_card_types.is_empty() {
-        None
-    } else {
-        let mut conditions = choose_both_control_card_types.iter().map(|card_type| {
-            crate::effect::Condition::PlayerControls {
-                player: crate::target::PlayerFilter::You,
-                filter: crate::filter::ObjectFilter {
-                    card_types: vec![*card_type],
-                    ..Default::default()
-                },
-            }
-        });
-        let first = conditions
-            .next()
-            .expect("non-empty card-type choose-both list");
-        Some(conditions.fold(first, |left, right| {
-            crate::effect::Condition::And(Box::new(left), Box::new(right))
-        }))
-    };
+    let choose_both_condition =
+        if if_kicked_choose_any_number || conditional_optional_range.is_some() {
+            None
+        } else if let Some((condition, _)) = &compiled_conditional_mode_change {
+            Some(condition.clone())
+        } else if commander_allows_both {
+            Some(crate::effect::Condition::YouControlCommander)
+        } else if let Some(life_total) = choose_both_exact_life_total {
+            Some(crate::effect::Condition::ValueComparison {
+                left: crate::effect::Value::LifeTotal(crate::target::PlayerFilter::You),
+                operator: crate::effect::ValueComparisonOperator::Equal,
+                right: crate::effect::Value::Fixed(life_total),
+            })
+        } else if choose_both_control_card_types.is_empty() {
+            None
+        } else {
+            let mut conditions = choose_both_control_card_types.iter().map(|card_type| {
+                crate::effect::Condition::PlayerControls {
+                    player: crate::target::PlayerFilter::You,
+                    filter: crate::filter::ObjectFilter {
+                        card_types: vec![*card_type],
+                        ..Default::default()
+                    },
+                }
+            });
+            let first = conditions
+                .next()
+                .expect("non-empty card-type choose-both list");
+            Some(conditions.fold(first, |left, right| {
+                crate::effect::Condition::And(Box::new(left), Box::new(right))
+            }))
+        };
 
     let modal_effect = if let Some(choose_both_condition) = choose_both_condition {
         let (min_both, max_both) = compiled_conditional_mode_change
@@ -385,14 +384,7 @@ pub fn rewrite_lower_parsed_modal(
             }
             effect
         } else {
-            #[cfg(not(feature = "serialization"))]
             let choose_up_to = crate::effect::Effect::choose_up_to_with_min(
-                crate::effect::Value::Fixed(max_both),
-                crate::effect::Value::Fixed(min_both),
-                compiled_modes.clone(),
-            );
-            #[cfg(feature = "serialization")]
-            let choose_up_to = crate::effect::Effect::choose_up_to(
                 crate::effect::Value::Fixed(max_both),
                 crate::effect::Value::Fixed(min_both),
                 compiled_modes.clone(),
@@ -428,12 +420,8 @@ pub fn rewrite_lower_parsed_modal(
             compiled_modes,
         ))
     } else {
-        #[cfg(not(feature = "serialization"))]
         let choose_up_to =
             crate::effect::Effect::choose_up_to_with_min(max.clone(), min.clone(), compiled_modes);
-        #[cfg(feature = "serialization")]
-        let choose_up_to =
-            crate::effect::Effect::choose_up_to(max.clone(), min.clone(), compiled_modes);
         apply_modal_metadata(choose_up_to)
     };
 
@@ -494,7 +482,7 @@ pub fn rewrite_lower_parsed_modal(
     )?;
 
     if let Some(trigger) = trigger {
-        let mut ability = rewrite_parsed_triggered_ability(
+        let mut ability = rewrite_lower_parsed_ability(rewrite_parsed_triggered_ability(
             trigger,
             Vec::new(),
             vec![Zone::Battlefield],
@@ -502,8 +490,7 @@ pub fn rewrite_lower_parsed_modal(
             None,
             None,
             ReferenceImports::default(),
-        )
-        .into_runtime();
+        ))?;
         if let AbilityKind::Triggered(triggered) = &mut ability.kind {
             triggered.effects = combined_effects.clone();
             triggered.choices = prefix_choices;
@@ -511,9 +498,13 @@ pub fn rewrite_lower_parsed_modal(
         }
         builder = builder.with_ability(ability);
     } else if let Some(activated) = activated {
+        let mana_cost =
+            crate::lowering::cost_materialization::materialize_compiler_core_total_cost(
+                &activated.mana_cost,
+            )?;
         builder = builder.with_ability(Ability {
             kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
-                mana_cost: activated.mana_cost,
+                mana_cost,
                 effects: combined_effects.clone(),
                 choices: prefix_choices,
                 timing: activated.timing,

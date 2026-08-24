@@ -2,10 +2,11 @@ use super::*;
 
 #[cfg(ironsmith_runtime_parser_tests)]
 fn rendered_card(name: &str, card_types: Vec<CardType>, oracle: &str) -> String {
-    let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), name)
-        .card_types(card_types)
-        .parse_text(oracle)
-        .unwrap_or_else(|error| panic!("{name} should parse: {error}"));
+    let definition =
+        crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), name)
+            .card_types(card_types)
+            .parse_text(oracle)
+            .unwrap_or_else(|error| panic!("{name} should parse: {error}"));
     crate::compiled_text::unprocessed_compiled_lines(&definition).join("\n")
 }
 
@@ -172,11 +173,12 @@ fn permanent_count_pump_keeps_the_plus_one_for_each_surface_and_owner_scope() {
                   Whenever Umbris or another Nightmare or Horror you control enters, \
                   target opponent exiles cards from the top of their library until they exile a \
                   land card.";
-    let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Umbris")
-        .supertypes(vec![crate::types::Supertype::Legendary])
-        .card_types(vec![CardType::Creature])
-        .parse_text(oracle)
-        .expect("Umbris should parse");
+    let definition =
+        crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Umbris")
+            .supertypes(vec![crate::types::Supertype::Legendary])
+            .card_types(vec![CardType::Creature])
+            .parse_text(oracle)
+            .expect("Umbris should parse");
 
     assert_eq!(
         crate::compiled_text::unprocessed_compiled_lines(&definition).join("\n"),

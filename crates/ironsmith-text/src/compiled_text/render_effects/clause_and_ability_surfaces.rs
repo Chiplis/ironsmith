@@ -1135,10 +1135,22 @@ pub(super) fn describe_shared_declared_target_grant_then_pt_pump(
         Effect::new(linked_pump).tag(pump_tag.clone()),
     ]));
     let rendered = describe_effect(&render_only);
-    (!rendered.is_empty()
-        && !rendered.to_ascii_lowercase().starts_with("choose ")
-        && !rendered.to_ascii_lowercase().contains(", then "))
-    .then_some(rendered)
+    if rendered.is_empty()
+        || rendered.to_ascii_lowercase().starts_with("choose ")
+        || rendered.to_ascii_lowercase().contains(", then ")
+    {
+        return None;
+    }
+
+    // The generic continuous-effect coordinator preserves a leading shared
+    // duration and an Oxford comma. This exact matcher has already proved
+    // that the grant and pump share one declared target and one trailing
+    // duration, so restore the authored single-subject surface here.
+    let rendered = rendered
+        .strip_prefix("Until end of turn, ")
+        .unwrap_or(&rendered)
+        .replace(", and gets ", " and gets ");
+    Some(capitalize_first(&rendered))
 }
 
 /// Render a temporary keyword grant and mana-value pump that share one
@@ -2088,7 +2100,7 @@ fn describe_typed_coordinated_clause_fallback(effects: &[Effect]) -> Option<Stri
         }
         parts[0] = capitalize_first(&normalize_imperative_you_clause(&parts[0]));
         for part in parts.iter_mut().skip(1) {
-            *part = lowercase_first(part);
+            *part = lowercase_first(&normalize_imperative_you_clause(part));
         }
         return join_coordinated_parts(&parts);
     }
@@ -2430,7 +2442,26 @@ fn describe_leading_result_conjunction_then_followups(effects: &[Effect]) -> Opt
 
     let leading = describe_typed_coordinated_result_branch(std::slice::from_ref(leading))?;
     let followups = describe_effect_list(followups);
-    let leading = leading.trim().trim_end_matches('.');
+    let mut leading = leading.trim().trim_end_matches('.').to_string();
+    for verb in [
+        "pay ",
+        "lose ",
+        "gain ",
+        "draw ",
+        "put ",
+        "discard ",
+        "sacrifice ",
+        "choose ",
+        "mill ",
+        "reveal ",
+        "scry ",
+        "search ",
+        "shuffle ",
+        "surveil ",
+        "attach ",
+    ] {
+        leading = leading.replace(&format!(" and you {verb}"), &format!(" and {verb}"));
+    }
     let followups = followups.trim().trim_end_matches('.');
     if leading.is_empty() || leading.contains(". ") || followups.is_empty() {
         return None;
@@ -3486,7 +3517,7 @@ fn describe_target_cant_block_then_add_subtypes(effects: &[Effect]) -> Option<St
     let duration = describe_apply_continuous_tail(subtype)?;
     Some(format!(
         "{} can't block this turn and {subtype_clause} {duration}",
-        subject
+        capitalize_first(&subject)
     ))
 }
 
@@ -3527,6 +3558,7 @@ fn describe_source_animation_then_unblockable(effects: &[Effect]) -> Option<Stri
     {
         return None;
     }
+    let source_reference_surface = animation.source_reference_surface.clone();
 
     let cant = structural_unwrap_render_wrappers(cant_effect)
         .downcast_ref::<crate::effects::CantEffect>()?;
@@ -3541,7 +3573,16 @@ fn describe_source_animation_then_unblockable(effects: &[Effect]) -> Option<Stri
     }
 
     let animation = describe_effect(animation_effect);
-    let animation = animation.trim().trim_end_matches('.');
+    let mut animation = animation.trim().trim_end_matches('.').to_string();
+    if let Some(crate::target::SourceReferenceSurface::ThisPermanentType(source_type)) =
+        source_reference_surface.as_ref()
+        && !source_type.to_ascii_lowercase().starts_with("this ")
+        && animation
+            .to_ascii_lowercase()
+            .starts_with(&format!("{} ", source_type.to_ascii_lowercase()))
+    {
+        animation = format!("This {}", lowercase_first(&animation));
+    }
     (!animation.is_empty() && !animation.contains(". "))
         .then(|| format!("{animation} and can't be blocked this turn"))
 }
@@ -3924,14 +3965,14 @@ pub(super) fn describe_coordinated_sequence(
                 .is_none()
         })
         .collect::<Vec<_>>();
-    if let [target, grant, pump] = visible_effects.as_slice()
-        && let Some(compact) =
-            describe_shared_declared_target_grant_then_pt_pump(target, grant, pump)
+    if let [target, first, second] = visible_effects.as_slice()
+        && let Some(compact) = describe_shared_target_trample_mana_value_pump(target, first, second)
     {
         return Some(compact);
     }
-    if let [target, first, second] = visible_effects.as_slice()
-        && let Some(compact) = describe_shared_target_trample_mana_value_pump(target, first, second)
+    if let [target, grant, pump] = visible_effects.as_slice()
+        && let Some(compact) =
+            describe_shared_declared_target_grant_then_pt_pump(target, grant, pump)
     {
         return Some(compact);
     }
@@ -4962,7 +5003,7 @@ mod coordinated_sequence_tests {
     #[test]
     fn counted_sacrifice_reflexive_rejoins_source_sentences() {
         let oracle = "Whenever this creature attacks, sacrifice any number of artifacts. When you sacrifice one or more artifacts this way, tap up to that many target creatures and draw that many cards.";
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Counted Sacrifice Reflexive",
         )
@@ -8194,12 +8235,7 @@ fn restore_as_enters_with_counter_surface(
 fn describe_exile_would_die_with_follow_up(
     static_ability: &crate::static_abilities::StaticAbility,
 ) -> Option<String> {
-    let ironsmith_core::StaticAbilityPayload::ExileWouldDieInstead {
-        follow_up_effects, ..
-    } = &static_ability.compiled_model()?.payload
-    else {
-        return None;
-    };
+    let (_, _, _, follow_up_effects) = static_ability.exile_would_die_instead_spec()?;
     if follow_up_effects.is_empty() {
         return None;
     }
@@ -8225,13 +8261,14 @@ fn describe_exile_would_die_with_follow_up(
 #[cfg(test)]
 #[test]
 fn exile_would_die_follow_up_renders_as_one_typed_replacement_clause() {
-    let zombie = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Zombie")
-        .token()
-        .card_types(vec![CardType::Creature])
-        .subtypes(vec![crate::types::Subtype::Zombie])
-        .color_indicator(crate::color::ColorSet::BLACK)
-        .power_toughness(crate::card::PowerToughness::fixed(2, 2))
-        .build();
+    let zombie =
+        crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Zombie")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![crate::types::Subtype::Zombie])
+            .color_indicator(crate::color::ColorSet::BLACK)
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .build();
     let ability = crate::static_abilities::StaticAbility::exile_would_die_instead_with_damage_source_and_follow_up(
         ObjectFilter::creature()
             .nontoken()
@@ -8251,6 +8288,41 @@ pub(crate) fn describe_static_ability_with_subject(
     static_ability: &crate::static_abilities::StaticAbility,
     subject: &str,
 ) -> String {
+    if let Some(ironsmith_core::StaticAbilityPayload::CharacteristicDefiningPt {
+        power,
+        toughness,
+    }) = static_ability.compiled_model().map(|model| &model.payload)
+    {
+        let possessive = possessive_subject(&capitalize_first(subject));
+        let power_text = describe_value(power);
+        if power.unhinted() == toughness.unhinted() {
+            return format!("{possessive} power and toughness are each equal to {power_text}");
+        }
+        let offset = match toughness.unhinted() {
+            Value::Add(left, right) if left.unhinted() == power.unhinted() => {
+                match right.unhinted() {
+                    Value::Fixed(offset) if *offset > 0 => Some(*offset),
+                    _ => None,
+                }
+            }
+            Value::Add(left, right) if right.unhinted() == power.unhinted() => {
+                match left.unhinted() {
+                    Value::Fixed(offset) if *offset > 0 => Some(*offset),
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        if let Some(offset) = offset {
+            return format!(
+                "{possessive} power is equal to {power_text} and its toughness is equal to that number plus {offset}"
+            );
+        }
+        return format!(
+            "{possessive} power is {power_text}, and its toughness is {}",
+            describe_value(toughness)
+        );
+    }
     if matches!(
         static_ability.compiled_model().map(|model| &model.payload),
         Some(ironsmith_core::StaticAbilityPayload::Companion(_))
@@ -8283,11 +8355,17 @@ pub(crate) fn describe_static_ability_with_subject(
         let granted = crate::static_abilities::StaticAbilityModelInterpreter::ability_from_model(
             &grant.ability,
         );
-        if matches!(
-            &granted.kind,
-            AbilityKind::Triggered(triggered)
-                if describe_structural_prowess_keyword(triggered).is_some()
-        ) {
+        if model.label.eq_ignore_ascii_case("prowess")
+            || match &granted.kind {
+                AbilityKind::Triggered(triggered) => {
+                    describe_structural_prowess_keyword(triggered).is_some()
+                }
+                AbilityKind::Static(static_ability) => {
+                    static_ability.id() == crate::static_abilities::StaticAbilityId::Prowess
+                }
+                _ => false,
+            }
+        {
             let (grant_subject, _) =
                 crate::static_abilities::grant_subject_with_set_quantifier(&grant.filter, None);
             return format!("{} have prowess", capitalize_first(&grant_subject));
@@ -9528,12 +9606,14 @@ mod optional_source_cant_attack_then_vigilance_rule_tests {
     #[test]
     fn legendary_source_round_trips_the_old_vigilance_surface() {
         let oracle = "At the beginning of combat on your turn, you may have Johan gain \"Johan can't attack\" until end of combat. If you do, attacking doesn't cause creatures you control to tap this combat if Johan is untapped.";
-        let definition =
-            crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Johan")
-                .supertypes(vec![crate::types::Supertype::Legendary])
-                .card_types(vec![crate::types::CardType::Creature])
-                .parse_text(oracle)
-                .expect("Johan-style combat choice should compile");
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Johan",
+        )
+        .supertypes(vec![crate::types::Supertype::Legendary])
+        .card_types(vec![crate::types::CardType::Creature])
+        .parse_text(oracle)
+        .expect("Johan-style combat choice should compile");
 
         assert_eq!(
             crate::compiled_text::compiled_text_lines(&definition),
@@ -9696,14 +9776,10 @@ fn describe_attack_grant_unblockable_unless_defender_sacrifices(
     let [cost] = unless.cost.as_all()? else {
         return None;
     };
-    let sacrifice = cost
-        .effect_ref()?
-        .downcast_ref::<crate::effects::SacrificeEffect>()?;
-    if sacrifice.filter != ObjectFilter::creature()
+    let sacrifice = sacrifice_view(cost.effect_ref()?)?;
+    if sacrifice.filter != &ObjectFilter::creature()
         || sacrifice.count.unhinted() != &Value::Fixed(1)
-        || sacrifice.player != PlayerFilter::You
-        || !sacrifice.event_object_tags.is_empty()
-        || !sacrifice.event_source_tags.is_empty()
+        || sacrifice.player != &PlayerFilter::You
     {
         return None;
     }
@@ -9717,28 +9793,25 @@ fn describe_attack_grant_unblockable_unless_defender_sacrifices(
         || grant.condition.is_some()
         || !grant.additional_modifications.is_empty()
         || !grant.runtime_modifications.is_empty()
-        || !matches!(grant.target, crate::continuous::EffectTarget::Source)
-        || grant
-            .target_spec
-            .as_ref()
-            .is_some_and(|target| !matches!(target.unhinted(), ChooseSpec::Source))
+        || !(matches!(grant.target, crate::continuous::EffectTarget::Source)
+            || grant
+                .target_spec
+                .as_ref()
+                .is_some_and(|target| matches!(target.unhinted(), ChooseSpec::Source)))
     {
         return None;
     }
     let crate::continuous::Modification::AddAbility(ability) = grant.modification.as_ref()? else {
         return None;
     };
-    let ironsmith_core::StaticAbilityPayload::RuleRestriction {
-        restriction: crate::effect::Restriction::BlockSpecificAttacker { blockers, attacker },
-        additional_restrictions,
-        ..
-    } = &ability.compiled_model()?.payload
+    let (crate::effect::Restriction::BlockSpecificAttacker { blockers, attacker }, _, condition) =
+        ability.rule_restriction_parts()?
     else {
         return None;
     };
-    if blockers != &ObjectFilter::creature()
+    if condition.is_some()
+        || blockers != &ObjectFilter::creature()
         || attacker != &ObjectFilter::source()
-        || !additional_restrictions.is_empty()
     {
         return None;
     }
@@ -10612,7 +10685,7 @@ mod last_counter_attached_land_resolution_tests {
         crate::ability::TriggeredAbility {
             trigger: crate::triggers::Trigger::new(
                 crate::triggers::CounterRemovedFromTrigger::new(ObjectFilter::source())
-                    .counter_type(crate::object::CounterType::Named("ore"))
+                    .counter_type(crate::object::CounterType::Named("ore".into()))
                     .one_or_more()
                     .last(),
             ),
@@ -10647,7 +10720,7 @@ mod last_counter_attached_land_resolution_tests {
         crate::ability::TriggeredAbility {
             trigger: crate::triggers::Trigger::new(
                 crate::triggers::CounterRemovedFromTrigger::new(ObjectFilter::source())
-                    .counter_type(crate::object::CounterType::Named("ore"))
+                    .counter_type(crate::object::CounterType::Named("ore".into()))
                     .one_or_more()
                     .last(),
             ),
@@ -13791,7 +13864,7 @@ mod active_player_postcombat_lost_life_mana_tests {
     #[test]
     fn belbe_surface_keeps_active_player_and_distinct_opponent_count() {
         let oracle = "At the beginning of each postcombat main phase, the active player adds {C}{C} for each of your opponents who lost life this turn.";
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Belbe, Corrupted Observer",
         )

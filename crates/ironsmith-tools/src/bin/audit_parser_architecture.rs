@@ -341,7 +341,7 @@ fn audit_forbidden_imports(
                     if rule
                         .fragments
                         .iter()
-                        .any(|fragment| line.contains(fragment))
+                        .any(|fragment| line_contains_fragment(line, fragment))
                     {
                         push_scanned_finding(
                             manifest,
@@ -360,6 +360,33 @@ fn audit_forbidden_imports(
     }
 }
 
+fn line_contains_fragment(line: &str, fragment: &str) -> bool {
+    if fragment == "crate::effects::" {
+        return line.match_indices(fragment).any(|(start, _)| {
+            let tail = &line[start + fragment.len()..];
+            let identifier = tail
+                .chars()
+                .take_while(|character| character.is_ascii_alphanumeric() || *character == '_')
+                .collect::<String>();
+            identifier.ends_with("Effect")
+        });
+    }
+    let requires_identifier_boundary = fragment
+        .as_bytes()
+        .last()
+        .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_');
+    line.match_indices(fragment).any(|(start, _)| {
+        if !requires_identifier_boundary {
+            return true;
+        }
+        let end = start + fragment.len();
+        !line
+            .as_bytes()
+            .get(end)
+            .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+    })
+}
+
 fn audit_patterns(
     manifest: &OwnershipManifest,
     completed_pr: u8,
@@ -371,7 +398,9 @@ fn audit_patterns(
             for path in rust_files(repo_root, root, &manifest.audit.excluded_path_fragments) {
                 let relative = relative_path(repo_root, &path);
                 scan_lines(&path, |line_number, line| {
-                    if rule.patterns.iter().any(|pattern| line.contains(pattern)) {
+                    if rule.patterns.iter().any(|pattern| line.contains(pattern))
+                        && pattern_rule_applies_at_path(rule, &relative)
+                    {
                         push_scanned_finding(
                             manifest,
                             completed_pr,
@@ -389,11 +418,41 @@ fn audit_patterns(
     }
 }
 
+/// The discarded-error rule protects semantic commitment boundaries, not
+/// ordinary fallible leaf conversion (for example, parsing a numeric level
+/// header). Leaf grammar modernization is enforced independently by
+/// `audit_manual_parser_sections`; keeping the scopes separate prevents a
+/// textual `.ok()` scan from misclassifying non-recognizer `Result` values.
+fn pattern_rule_applies_at_path(rule: &PatternRule, relative: &str) -> bool {
+    if rule.id != "discarded-recognizer-errors" {
+        return true;
+    }
+
+    relative == "crates/ironsmith-compiler/src/registry.rs"
+        || relative == "crates/ironsmith-compiler/src/front_end/rule_engine.rs"
+        || relative.starts_with("crates/ironsmith-compiler/src/front_end/document/")
+        || relative.rsplit('/').next().is_some_and(|name| {
+            name == "registry.rs"
+                || name.ends_with("_registry.rs")
+                || matches!(
+                    name,
+                    "line_dispatch.rs" | "clause_dispatch.rs" | "dispatch_entry.rs"
+                )
+        })
+}
+
 fn rust_files(repo_root: &Path, root: &str, excluded: &[String]) -> Vec<PathBuf> {
     let output = Command::new("git")
         .arg("-C")
         .arg(repo_root)
-        .args(["ls-files", "--", root])
+        .args([
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "--",
+            root,
+        ])
         .output()
         .unwrap_or_else(|error| panic!("failed to enumerate tracked parser sources: {error}"));
     assert!(

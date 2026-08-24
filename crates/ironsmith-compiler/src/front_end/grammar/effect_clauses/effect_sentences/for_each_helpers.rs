@@ -65,17 +65,22 @@ pub fn parse_for_each_object_filter(
     // restores this exact coordinated Stack domain. Reassert only the
     // grammar-proven terminal noun phrase here; ordinary spell filters must
     // retain their mana-cost predicate and Spell-only domain.
-    if words
-        .windows(3)
-        .any(|window| matches!(window, ["spell" | "spells", "and", "ability" | "abilities"]))
-    {
+    if crate::word_primitives::any_sequence_occurs(
+        &words,
+        &[
+            &["spell", "and", "ability"],
+            &["spell", "and", "abilities"],
+            &["spells", "and", "ability"],
+            &["spells", "and", "abilities"],
+        ],
+    ) {
         filter.zone = Some(crate::zone::Zone::Stack);
         filter.stack_kind = Some(crate::filter::StackObjectKind::SpellOrAbility);
         filter.has_mana_cost = false;
         filter.set_conjunctive_set_surface(true);
     }
-    let owner_index = words.windows(2).position(|window| window == ["you", "own"]);
-    let zone_index = words.iter().position(|word| {
+    let owner_index = crate::word_primitives::parse_sequence_start(&words, &["you", "own"]);
+    let zone_index = crate::slice_primitives::select_position(&words, |word| {
         matches!(
             *word,
             "battlefield" | "graveyard" | "hand" | "library" | "exile" | "command"
@@ -87,9 +92,9 @@ pub fn parse_for_each_object_filter(
     {
         filter.set_owner_before_zone_surface(true);
     }
-    let counter_index = words
-        .iter()
-        .rposition(|word| matches!(*word, "counter" | "counters"));
+    let counter_index = crate::slice_primitives::select_last_position(&words, |word| {
+        matches!(*word, "counter" | "counters")
+    });
     if zone_index
         .zip(counter_index)
         .is_some_and(|(zone, counter)| zone < counter)
@@ -442,14 +447,18 @@ fn parse_maybe_effects(
         };
     }
     let stripped = remove_first_word(tokens);
-    let scoped;
-    let may_tokens = if scope_may_to_that_player {
-        scoped = prepend_that_player_subject(&stripped);
-        scoped.as_slice()
-    } else {
-        stripped.as_slice()
-    };
-    let effects = parse_effect_chain_inner(may_tokens)?;
+    let mut effects = parse_effect_chain_inner(&stripped)?;
+    if scope_may_to_that_player {
+        // The quantified wrapper supplies the actor. Keep the inner Oracle
+        // imperative in its base-verb form (`copy`, `choose`, ...), then bind
+        // otherwise implicit player roles to the iterated participant. Adding
+        // a synthetic `that player` subject ahead of an uninflected verb
+        // creates invalid prose such as `that player copy that spell` and
+        // prevents the typed verb registry from claiming the action.
+        for effect in &mut effects {
+            bind_implicit_player_context(effect, PlayerAst::That);
+        }
+    }
     Ok(vec![EffectAst::May { effects }])
 }
 
@@ -461,6 +470,44 @@ fn parse_maybe_effects(
 fn parse_quantified_participant_actor_program(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    fn starts_object_domain_list_arm(words: &[&str]) -> bool {
+        let words = if crate::word_primitives::first_is_any(words, &["and", "or", "and/or"]) {
+            &words[1..]
+        } else {
+            words
+        };
+        let words = if crate::word_primitives::first_is_any(
+            words,
+            &["basic", "nonbasic", "token", "nontoken"],
+        ) {
+            &words[1..]
+        } else {
+            words
+        };
+        crate::word_primitives::first_is_any(
+            words,
+            &[
+                "artifact",
+                "artifacts",
+                "battle",
+                "battles",
+                "creature",
+                "creatures",
+                "enchantment",
+                "enchantments",
+                "instant",
+                "instants",
+                "land",
+                "lands",
+                "planeswalker",
+                "planeswalkers",
+                "sorcery",
+                "sorceries",
+                "kindred",
+            ],
+        )
+    }
+
     let plan = match super::super::grammar::effects::coordination::recognize_coordination(tokens) {
         crate::recognition::ParseOutcome::Match(matched) => matched.value,
         crate::recognition::ParseOutcome::NoMatch => return Ok(None),
@@ -468,9 +515,21 @@ fn parse_quantified_participant_actor_program(
             return Err(diagnostic.into_legacy_error());
         }
     };
-    let segments = plan
-        .materialized_segments()
-        .unwrap_or_else(|| plan.member_segments());
+    let raw_segments = plan.member_segments();
+    if raw_segments.len() > 1
+        && raw_segments.iter().skip(1).all(|segment| {
+            let words = crate::lexer::parser_token_word_refs(segment);
+            starts_object_domain_list_arm(&words)
+        })
+    {
+        // A comma-separated object-domain union is one operand of the
+        // quantified action, not a coordinated action program. Leave the
+        // complete clause to the ordinary subject/verb parser so qualifiers
+        // such as the terminal `nonbasic` in
+        // `artifacts, enchantments, and nonbasic lands` stay on their arm.
+        return Ok(None);
+    }
+    let segments = plan.materialized_segments().unwrap_or(raw_segments);
     if segments.len() < 2 {
         return Ok(None);
     }
@@ -478,18 +537,63 @@ fn parse_quantified_participant_actor_program(
     let mut effects = Vec::new();
     for segment in segments {
         let normalized = prepend_that_player_subject(&segment);
-        effects.extend(parse_maybe_effects(&normalized, true, true)?);
+        let mut segment_effects = parse_maybe_effects(&normalized, true, true)?;
+        if !segment.first().is_some_and(|token| token.is_word("you")) {
+            bind_quantified_participant_actor(&mut segment_effects);
+        }
+        effects.extend(segment_effects);
     }
     Ok(Some(effects))
 }
 
-fn find_word_phrase(tokens: &[OwnedLexToken], phrase: &[&str]) -> Option<usize> {
-    tokens.windows(phrase.len()).position(|window| {
-        window
-            .iter()
-            .zip(phrase)
-            .all(|(token, word)| token.is_word(word))
+fn bind_quantified_participant_actor(effects: &mut [EffectAst]) {
+    for effect in effects {
+        match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                subject,
+                action:
+                    SubjectVerbActionAst::CreateTokenWithMods { player, .. }
+                    | SubjectVerbActionAst::CreateTokenCopy { player, .. }
+                    | SubjectVerbActionAst::CreateTokenCopyFromSource { player, .. },
+            }) => {
+                if subject.role == SubjectVerbRoleAst::Actor
+                    && matches!(subject.player, PlayerAst::Implicit | PlayerAst::You)
+                {
+                    subject.player = PlayerAst::That;
+                }
+                if matches!(*player, PlayerAst::Implicit | PlayerAst::You) {
+                    *player = PlayerAst::That;
+                }
+            }
+            EffectAst::SubjectVerb(SubjectVerbEffectAst { subject, .. }) => {
+                if subject.role == SubjectVerbRoleAst::Actor
+                    && matches!(subject.player, PlayerAst::Implicit | PlayerAst::You)
+                {
+                    subject.player = PlayerAst::That;
+                }
+            }
+            EffectAst::ChooseObjects { player, .. }
+            | EffectAst::ChooseObjectsWithAggregateConstraint { player, .. }
+            | EffectAst::ChooseObjectsBottomOfLibrary { player, .. }
+            | EffectAst::ChooseObjectsTopOfLibrary { player, .. }
+            | EffectAst::ChooseObjectsAcrossZones { player, .. }
+            | EffectAst::ChooseTaggedObjectsInZone { player, .. } => {
+                if matches!(*player, PlayerAst::Implicit | PlayerAst::You) {
+                    *player = PlayerAst::That;
+                }
+            }
+            _ => for_each_nested_effects_mut(effect, true, |nested| {
+                bind_quantified_participant_actor(nested);
+            }),
+        }
+    }
+}
+
+fn find_word_phrase(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> Option<usize> {
+    super::super::grammar::primitives::find_prefix(tokens, || {
+        super::super::grammar::primitives::phrase(phrase)
     })
+    .map(|(idx, _, _)| idx)
 }
 
 /// Normalize Oracle's prose upper bound
@@ -531,1196 +635,38 @@ fn parse_participant_body_where_x_value(tokens: &[OwnedLexToken]) -> Option<Valu
         .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
 }
 
-fn parse_participant_choice_complement_effects(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let mut full_clause = Vec::with_capacity(tokens.len() + 2);
-    full_clause.push(OwnedLexToken::word(
-        "each".to_string(),
-        TextSpan::synthetic(),
-    ));
-    full_clause.push(OwnedLexToken::word(
-        "player".to_string(),
-        TextSpan::synthetic(),
-    ));
-    full_clause.extend_from_slice(tokens);
-
-    let Some(effect) = super::parse_choice_complement_subject_verb(&full_clause)? else {
-        return Ok(None);
-    };
-    let EffectAst::ForEachPlayer { effects } = effect else {
-        return Ok(None);
-    };
-    Ok(Some(effects))
-}
-
-fn opponent_filter(scope: ForEachParticipantScope) -> Option<PlayerFilter> {
-    match scope {
-        ForEachParticipantScope::Opponent => Some(PlayerFilter::Opponent),
-        ForEachParticipantScope::OpponentExceptDefending => Some(PlayerFilter::excluding(
-            PlayerFilter::Opponent,
-            PlayerFilter::Defending,
-        )),
-        ForEachParticipantScope::Player
-        | ForEachParticipantScope::PlayerExceptYou
-        | ForEachParticipantScope::PlayerExceptTarget
-        | ForEachParticipantScope::PlayerExceptItsController
-        | ForEachParticipantScope::PlayerOnYourTeam => None,
-    }
-}
-
-fn player_filter(scope: ForEachParticipantScope) -> Option<PlayerFilter> {
-    match scope {
-        ForEachParticipantScope::Player => Some(PlayerFilter::Any),
-        ForEachParticipantScope::PlayerExceptYou => Some(PlayerFilter::NotYou),
-        ForEachParticipantScope::PlayerExceptTarget => Some(PlayerFilter::excluding(
-            PlayerFilter::Any,
-            PlayerFilter::target_player(),
-        )),
-        ForEachParticipantScope::PlayerExceptItsController => Some(PlayerFilter::excluding(
-            PlayerFilter::Any,
-            PlayerFilter::ControllerOf(ObjectRef::tagged(TagKey::from(IT_TAG))),
-        )),
-        ForEachParticipantScope::PlayerOnYourTeam => Some(PlayerFilter::excluding(
-            PlayerFilter::Any,
-            PlayerFilter::Opponent,
-        )),
-        ForEachParticipantScope::Opponent | ForEachParticipantScope::OpponentExceptDefending => {
-            None
-        }
-    }
-}
-
-/// In `each other player may copy that spell`, "other" is relative to the
-/// player who controls the referenced spell, not necessarily the ability's
-/// controller. Keep ordinary `each other player` clauses controller-relative,
-/// but anchor this typed stack-copy shape to the triggering stack object.
-fn reanchor_other_player_copy_filter(filter: PlayerFilter, effects: &[EffectAst]) -> PlayerFilter {
-    if filter != PlayerFilter::NotYou || !effects.iter().any(effect_copies_triggering_stack_object)
-    {
-        return filter;
-    }
-    PlayerFilter::excluding(
-        PlayerFilter::Any,
-        PlayerFilter::AliasedControllerOf(ObjectRef::tagged("triggering")),
-    )
-}
-
-fn effect_copies_triggering_stack_object(effect: &EffectAst) -> bool {
-    if matches!(
-        effect,
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::CopySpell {
-                target: TargetAst::Tagged(tag, _),
-                ..
-            },
-            ..
-        }) if tag.as_str() == "triggering"
-    ) {
-        return true;
-    }
-    let mut found = false;
-    for_each_nested_effects(effect, true, |nested| {
-        if !found {
-            found = nested.iter().any(effect_copies_triggering_stack_object);
-        }
-    });
-    found
-}
-
-fn wrap_opponents(filter: &PlayerFilter, effects: Vec<EffectAst>) -> EffectAst {
-    if *filter == PlayerFilter::Opponent {
-        EffectAst::ForEachOpponent { effects }
-    } else {
-        EffectAst::ForEachPlayersFiltered {
-            filter: filter.clone(),
-            effects,
-        }
-    }
-}
-
-fn wrap_players(filter: &PlayerFilter, effects: Vec<EffectAst>) -> EffectAst {
-    if *filter == PlayerFilter::Any {
-        EffectAst::ForEachPlayer { effects }
-    } else {
-        EffectAst::ForEachPlayersFiltered {
-            filter: filter.clone(),
-            effects,
-        }
-    }
-}
-
-fn parse_relative_control_conditional(
-    relative: RelativeControlClauseShape<'_>,
-    participant_is_actor: bool,
-    clause_text: &str,
-) -> Result<EffectAst, CardTextError> {
-    let mut filter = parse_object_filter(relative.filter_tokens, false)?;
-    let mut branch_effects;
-    let participant_where_x = parse_participant_body_where_x_value(relative.effect_tokens);
-    let participant_choice_effects =
-        parse_participant_choice_complement_effects(relative.effect_tokens)?;
-    let predicate = if let Some(most_filter_tokens) = relative.fewer_than_most_filter_tokens {
-        filter.controller = Some(PlayerFilter::IteratedPlayer);
-        let mut most_filter = parse_object_filter(most_filter_tokens, false)?;
-        most_filter.controller = Some(PlayerFilter::Any);
-        let difference = Value::Add(
-            Box::new(Value::GreatestCount(most_filter.clone())),
-            Box::new(Value::Scaled(Box::new(Value::Count(filter.clone())), -1)),
-        )
-        .with_surface_hint(ValueSurfaceHint::Difference);
-
-        let rewritten = rewrite_difference_bounded_search(relative.effect_tokens);
-        branch_effects = if let Some(effects) = participant_choice_effects.clone() {
-            effects
-        } else {
-            parse_maybe_effects(
-                rewritten.as_deref().unwrap_or(relative.effect_tokens),
-                true,
-                false,
-            )?
-        };
-        if rewritten.is_some() {
-            replace_unbound_x_in_effects_anywhere(&mut branch_effects, &difference, clause_text)?;
-        }
-        PredicateAst::ValueComparison {
-            left: Value::Count(filter),
-            operator: crate::effect::ValueComparisonOperator::LessThan,
-            right: Value::GreatestCount(most_filter),
-        }
-    } else if relative.fewer_than_you {
-        filter.controller = Some(PlayerFilter::IteratedPlayer);
-        let mut your_filter = filter.clone();
-        your_filter.controller = Some(PlayerFilter::You);
-        branch_effects = if let Some(effects) = participant_choice_effects.clone() {
-            effects
-        } else {
-            parse_maybe_effects(relative.effect_tokens, true, false)?
-        };
-        PredicateAst::ValueComparison {
-            left: Value::Count(filter),
-            operator: crate::effect::ValueComparisonOperator::LessThan,
-            right: Value::Count(your_filter),
-        }
-    } else if let Some(comparison) = relative.count_comparison {
-        filter.controller = Some(PlayerFilter::IteratedPlayer);
-        branch_effects = if let Some(effects) = participant_choice_effects.clone() {
-            effects
-        } else {
-            parse_maybe_effects(relative.effect_tokens, true, false)?
-        };
-        let (operator, count) =
-            comparison_to_value_comparison_operator(comparison).ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "unsupported for-each control count comparison (clause: '{clause_text}')"
-                ))
-            })?;
-        PredicateAst::ValueComparison {
-            left: Value::Count(filter),
-            operator,
-            right: Value::Fixed(count),
-        }
-    } else if relative.controls_most {
-        branch_effects = if let Some(effects) = participant_choice_effects.clone() {
-            effects
-        } else {
-            parse_maybe_effects(relative.effect_tokens, true, false)?
-        };
-        PredicateAst::PlayerControlsMost {
-            player: PlayerAst::That,
-            filter,
-        }
-    } else {
-        branch_effects = if let Some(effects) = participant_choice_effects {
-            effects
-        } else {
-            parse_maybe_effects(relative.effect_tokens, true, false)?
-        };
-        PredicateAst::PlayerControls {
-            player: PlayerAst::That,
-            filter,
-        }
-    };
-    if let Some(where_x) = participant_where_x {
-        replace_unbound_x_in_effects_anywhere(&mut branch_effects, &where_x, clause_text)?;
-    }
-    if participant_is_actor {
-        for effect in &mut branch_effects {
-            bind_implicit_player_context(effect, PlayerAst::That);
-        }
-    }
-    Ok(EffectAst::Conditional {
-        predicate,
-        if_true: branch_effects,
-        if_false: Vec::new(),
-    })
-}
-
-pub fn parse_for_each_opponent_clause(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
-    // Voter-relative opponent sets are already represented by an event-
-    // populated player tag. Recognize that typed set before the ordinary
-    // quantified-opponent path wraps it in a second loop, which would apply
-    // the tagged-player action once for every opponent.
-    if let Some(mut effects) = super::dispatch_inner::parse_vote_affinity_subject_verb(tokens)? {
-        if effects.len() == 1 {
-            return Ok(effects.pop());
-        }
-        return Err(CardTextError::ParseError(
-            "voter-relative opponent clause produced multiple outer effects".to_string(),
-        ));
-    }
-
-    let Some(outer) = for_each_shapes::parse_participant_clause_shape(tokens) else {
-        return Ok(None);
-    };
-    let Some(iteration_filter) = opponent_filter(outer.scope) else {
-        return Ok(None);
-    };
-    let clause_text = LexedClause::new(tokens).text();
-    let slot_chooser = if outer.participant_is_actor {
-        PlayerAst::That
-    } else {
-        PlayerAst::You
-    };
-    if let Some(effects) =
-        super::parse_for_each_type_slot_choice_clause(outer.inner_tokens, slot_chooser)?
-    {
-        return Ok(Some(wrap_opponents(&iteration_filter, effects)));
-    }
-    if iteration_filter == PlayerFilter::Opponent
-        && let Some(effect) = parse_for_each_doesnt_control_lose_game(tokens, true)?
-    {
-        return Ok(Some(effect));
-    }
-
-    if let Some(relative) = for_each_shapes::parse_relative_control_clause_shape(outer.inner_tokens)
-    {
-        let conditional =
-            parse_relative_control_conditional(relative, outer.participant_is_actor, &clause_text)?;
-        return Ok(Some(wrap_opponents(&iteration_filter, vec![conditional])));
-    }
-
-    if let Some(effect) =
-        parse_combat_damage_history_participant(outer.inner_tokens, iteration_filter.clone())?
-    {
-        return Ok(Some(effect));
-    }
-
-    if let Some(special) = for_each_shapes::parse_opponent_special_shape(outer.inner_tokens)? {
-        match special {
-            OpponentSpecialShape::IgnoreScryOrSurveil => return Ok(None),
-            OpponentSpecialShape::ChooseReturnUnlessDraw { target_tokens } => {
-                let target = parse_target_phrase(target_tokens)?;
-                let return_target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
-                return Ok(Some(wrap_opponents(
-                    &iteration_filter,
-                    vec![
-                        EffectAst::subject_verb_target_only(target),
-                        EffectAst::UnlessAction {
-                            effects: vec![EffectAst::subject_verb_return_to_hand(
-                                return_target,
-                                false,
-                            )],
-                            alternative: vec![EffectAst::subject_verb(
-                                SubjectVerbRoleAst::AffectedPlayer,
-                                PlayerAst::You,
-                                SubjectVerbActionAst::Draw {
-                                    count: Value::Fixed(1),
-                                },
-                            )],
-                            player: PlayerAst::ItsController,
-                        },
-                    ],
-                )));
-            }
-            OpponentSpecialShape::LessLifeThanYou { effect_tokens } => {
-                if effect_tokens.is_empty() {
-                    return Err(CardTextError::ParseError(format!(
-                        "missing effect after 'each opponent who has less life than you' (clause: '{}')",
-                        clause_text
-                    )));
-                }
-                let mut branch_effects = parse_maybe_effects(effect_tokens, false, false)?;
-                force_implicit_token_controller_you(&mut branch_effects);
-                return Ok(Some(wrap_opponents(
-                    &iteration_filter,
-                    vec![EffectAst::Conditional {
-                        predicate: PredicateAst::PlayerHasLessLifeThanYou {
-                            player: PlayerAst::That,
-                        },
-                        if_true: branch_effects,
-                        if_false: Vec::new(),
-                    }],
-                )));
-            }
-            OpponentSpecialShape::PoisonCounters {
-                count,
-                effect_tokens,
-            } => {
-                if effect_tokens.is_empty() {
-                    return Err(CardTextError::ParseError(format!(
-                        "missing effect after 'each opponent who has ... poison counters' (clause: '{}')",
-                        clause_text
-                    )));
-                }
-                let mut branch_effects = parse_effect_chain(effect_tokens)?;
-                force_implicit_token_controller_you(&mut branch_effects);
-                return Ok(Some(wrap_opponents(
-                    &iteration_filter,
-                    vec![EffectAst::Conditional {
-                        predicate: PredicateAst::PlayerHasPoisonCountersOrMore {
-                            player: PlayerAst::That,
-                            count,
-                        },
-                        if_true: branch_effects,
-                        if_false: Vec::new(),
-                    }],
-                )));
-            }
-        }
-    }
-
-    if let Some(who) = for_each_shapes::parse_who_clause_shape(outer.inner_tokens) {
-        match who {
-            WhoClauseShape::TappedLandForMana { effect_tokens } => {
-                if effect_tokens.is_empty() {
-                    return Err(CardTextError::ParseError(format!(
-                        "missing effect after 'each player who tapped a land for mana this turn' (clause: '{}')",
-                        clause_text
-                    )));
-                }
-                let branch_effects = parse_maybe_effects(effect_tokens, true, false)?;
-                return Ok(Some(EffectAst::ForEachPlayer {
-                    effects: vec![EffectAst::Conditional {
-                        predicate: PredicateAst::PlayerTappedLandForManaThisTurn {
-                            player: PlayerAst::That,
-                        },
-                        if_true: branch_effects,
-                        if_false: Vec::new(),
-                    }],
-                }));
-            }
-            WhoClauseShape::Negated {
-                effect_tokens,
-                tagged_filter_tokens,
-            } => {
-                if effect_tokens.is_empty() {
-                    return Err(CardTextError::ParseError(format!(
-                        "missing effect in for each opponent who doesn't clause (clause: '{}')",
-                        clause_text
-                    )));
-                }
-                return Ok(Some(EffectAst::ForEachOpponentDoesNot {
-                    effects: parse_effect_chain_inner(effect_tokens)?,
-                    predicate: tagged_predicate(tagged_filter_tokens),
-                }));
-            }
-            WhoClauseShape::DidThisWay {
-                effect_tokens,
-                tagged_filter_tokens,
-            } => {
-                if effect_tokens.is_empty() {
-                    return Err(CardTextError::ParseError(format!(
-                        "missing effect after 'each opponent who ... this way' (clause: '{}')",
-                        clause_text
-                    )));
-                }
-                return Ok(Some(EffectAst::ForEachOpponentDid {
-                    effects: parse_effect_chain_inner(effect_tokens)?,
-                    predicate: tagged_predicate(tagged_filter_tokens),
-                    result_predicate: IfResultPredicate::Did,
-                }));
-            }
-            WhoClauseShape::DidAction {
-                effect_tokens,
-                implicit_player_is_you,
-            } => {
-                if effect_tokens.is_empty() {
-                    return Err(CardTextError::ParseError(format!(
-                        "missing effect after 'each opponent who does' (clause: '{}')",
-                        clause_text
-                    )));
-                }
-                let mut effects = parse_effect_chain_inner(effect_tokens)?;
-                let player = if implicit_player_is_you {
-                    PlayerAst::You
-                } else {
-                    PlayerAst::That
-                };
-                for effect in &mut effects {
-                    bind_implicit_player_context(effect, player);
-                }
-                return Ok(Some(EffectAst::ForEachOpponentDid {
-                    effects,
-                    predicate: None,
-                    result_predicate: IfResultPredicate::AcceptedChoice,
-                }));
-            }
-        }
-    }
-
-    let participant_may = outer.participant_is_actor
-        && outer
-            .inner_tokens
-            .first()
-            .is_some_and(|token| token.is_word("may"));
-    let participant_chooses = for_each_shapes::starts_choose(outer.inner_tokens);
-    let mut effects = if outer.participant_is_actor && !participant_may && !participant_chooses {
-        if let Some(effects) = parse_quantified_participant_actor_program(outer.inner_tokens)? {
-            effects
-        } else {
-            let normalized = prepend_that_player_subject(outer.inner_tokens);
-            parse_maybe_effects(&normalized, true, true)?
-        }
-    } else {
-        let normalized = prepend_that_player_life_total_subject(outer.inner_tokens);
-        parse_maybe_effects(&normalized, true, outer.participant_is_actor)?
-    };
-    if !outer.participant_is_actor {
-        // The quantified participant is the iteration key, not the actor, in
-        // imperative clauses such as "For each opponent, create a token."
-        // Resolve the otherwise implicit token controller to the effect
-        // controller before lowering enters iterated-player context.
-        force_implicit_token_controller_you(&mut effects);
-    }
-    if participant_chooses {
-        bind_implicit_choose_chooser(
-            &mut effects,
-            if outer.participant_is_actor {
-                PlayerAst::That
-            } else {
-                PlayerAst::You
-            },
-        );
-        stabilize_standalone_participant_choice_tag(&mut effects, outer.inner_tokens);
-    }
-    Ok(Some(wrap_opponents(&iteration_filter, effects)))
-}
-
-pub fn parse_for_each_target_players_clause(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
-    let Some(shape) = for_each_shapes::parse_for_each_target_players_shape(tokens) else {
-        return Ok(None);
-    };
-    if shape.effect_tokens.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "missing effect after target-player each clause (clause: '{}')",
-            LexedClause::new(tokens).text()
-        )));
-    }
-    // `target player <action> ... for each <counted set>` contains the same
-    // lexical markers as `N target players <qualifier> each <action>`. The
-    // shape parser intentionally keeps the qualifier open-ended, so require
-    // that its proposed target slice is actually a target phrase before
-    // claiming the clause. Otherwise the ordinary action family (for example,
-    // discard) must receive the complete `for each` count suffix.
-    let Ok(target) = parse_target_phrase(shape.target_tokens) else {
-        return Ok(None);
-    };
-    let filter = match target {
-        TargetAst::Player(filter, _) => filter,
-        TargetAst::WithCount(inner, _) => match *inner {
-            TargetAst::Player(filter, _) => filter,
-            _ => {
-                return Err(CardTextError::ParseError(format!(
-                    "expected player target in target-player each clause (clause: '{}')",
-                    LexedClause::new(tokens).text()
-                )));
-            }
-        },
-        _ => {
-            return Err(CardTextError::ParseError(format!(
-                "expected player target in target-player each clause (clause: '{}')",
-                LexedClause::new(tokens).text()
-            )));
-        }
-    };
-    // The participant after `each` is the actor of the trailing instruction.
-    // Supplying that subject before parsing also lets possessive dynamic
-    // values such as "half their library" bind to the iterated player rather
-    // than falling back to the spell's controller.
-    let effects = if for_each_shapes::contains_may(shape.effect_tokens) {
-        parse_maybe_effects(shape.effect_tokens, true, true)?
-    } else {
-        let normalized = prepend_that_player_subject(shape.effect_tokens);
-        parse_maybe_effects(&normalized, true, false)?
-    };
-    Ok(Some(EffectAst::ForEachTargetPlayers {
-        count: shape.count,
-        filter,
-        effects,
-    }))
-}
-
-pub fn parse_who_did_this_way_predicate(
-    inner_tokens: &[OwnedLexToken],
-) -> Result<Option<PredicateAst>, CardTextError> {
-    Ok(tagged_predicate(
-        for_each_shapes::parse_who_tagged_filter_shape(inner_tokens),
-    ))
-}
-
-fn parse_combat_damage_history_participant(
-    inner_tokens: &[OwnedLexToken],
-    iteration_filter: PlayerFilter,
-) -> Result<Option<EffectAst>, CardTextError> {
-    let Some(history) =
-        for_each_shapes::parse_combat_damage_history_player_clause_shape(inner_tokens)
-    else {
-        return Ok(None);
-    };
-    let sources = parse_object_filter(history.source_tokens, false)?;
-    let normalized = prepend_that_player_subject(history.effect_tokens);
-    let effects = parse_maybe_effects(&normalized, false, true)?;
-    Ok(Some(EffectAst::ForEachPlayersFiltered {
-        filter: PlayerFilter::was_dealt_combat_damage_by_sources_this_game(
-            iteration_filter,
-            sources,
-        ),
-        effects,
-    }))
-}
-
-pub fn parse_for_each_player_clause(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
-    let Some(outer) = for_each_shapes::parse_participant_clause_shape(tokens) else {
-        return Ok(None);
-    };
-    let Some(iteration_filter) = player_filter(outer.scope) else {
-        return Ok(None);
-    };
-    let clause_text = LexedClause::new(tokens).text();
-    let slot_chooser = if outer.participant_is_actor {
-        PlayerAst::That
-    } else {
-        PlayerAst::You
-    };
-    if let Some(effects) =
-        super::parse_for_each_type_slot_choice_clause(outer.inner_tokens, slot_chooser)?
-    {
-        return Ok(Some(wrap_players(&iteration_filter, effects)));
-    }
-    if iteration_filter == PlayerFilter::Any
-        && let Some(effect) = parse_for_each_doesnt_control_lose_game(tokens, false)?
-    {
-        return Ok(Some(effect));
-    }
-
-    if let Some(relative) = for_each_shapes::parse_relative_control_clause_shape(outer.inner_tokens)
-    {
-        let conditional =
-            parse_relative_control_conditional(relative, outer.participant_is_actor, &clause_text)?;
-        return Ok(Some(wrap_players(&iteration_filter, vec![conditional])));
-    }
-
-    if iteration_filter == PlayerFilter::Any
-        && let Some(source_attacked) =
-            for_each_shapes::parse_source_attacked_player_clause_shape(outer.inner_tokens)
-    {
-        let normalized = prepend_that_player_subject(source_attacked.effect_tokens);
-        let effects = parse_maybe_effects(&normalized, false, true)?;
-        return Ok(Some(EffectAst::ForEachPlayersFiltered {
-            filter: PlayerFilter::AttackedBySourceThisTurn,
-            effects,
-        }));
-    }
-
-    if let Some(effect) =
-        parse_combat_damage_history_participant(outer.inner_tokens, iteration_filter.clone())?
-    {
-        return Ok(Some(effect));
-    }
-
-    if let Some(who) = for_each_shapes::parse_who_clause_shape(outer.inner_tokens) {
-        match who {
-            WhoClauseShape::TappedLandForMana { effect_tokens } => {
-                if effect_tokens.is_empty() {
-                    return Err(CardTextError::ParseError(format!(
-                        "missing effect after 'each player who tapped a land for mana this turn' (clause: '{}')",
-                        clause_text
-                    )));
-                }
-                let branch_effects = parse_maybe_effects(effect_tokens, true, false)?;
-                return Ok(Some(wrap_players(
-                    &iteration_filter,
-                    vec![EffectAst::Conditional {
-                        predicate: PredicateAst::PlayerTappedLandForManaThisTurn {
-                            player: PlayerAst::That,
-                        },
-                        if_true: branch_effects,
-                        if_false: Vec::new(),
-                    }],
-                )));
-            }
-            WhoClauseShape::Negated {
-                effect_tokens,
-                tagged_filter_tokens,
-            } => {
-                if effect_tokens.is_empty() {
-                    return Err(CardTextError::ParseError(format!(
-                        "missing effect in for each player who doesn't clause (clause: '{}')",
-                        clause_text
-                    )));
-                }
-                return Ok(Some(EffectAst::ForEachPlayerDoesNot {
-                    effects: parse_effect_chain_inner(effect_tokens)?,
-                    predicate: tagged_predicate(tagged_filter_tokens),
-                }));
-            }
-            WhoClauseShape::DidThisWay {
-                effect_tokens,
-                tagged_filter_tokens,
-            } => {
-                if effect_tokens.is_empty() {
-                    return Err(CardTextError::ParseError(format!(
-                        "missing effect after 'each player who ... this way' (clause: '{}')",
-                        clause_text
-                    )));
-                }
-                return Ok(Some(EffectAst::ForEachPlayerDid {
-                    effects: parse_effect_chain_inner(effect_tokens)?,
-                    predicate: tagged_predicate(tagged_filter_tokens),
-                    result_predicate: IfResultPredicate::Did,
-                }));
-            }
-            WhoClauseShape::DidAction {
-                effect_tokens,
-                implicit_player_is_you,
-            } => {
-                if effect_tokens.is_empty() {
-                    return Err(CardTextError::ParseError(format!(
-                        "missing effect after 'each player who does' (clause: '{}')",
-                        clause_text
-                    )));
-                }
-                let mut effects = parse_effect_chain_inner(effect_tokens)?;
-                let player = if implicit_player_is_you {
-                    PlayerAst::You
-                } else {
-                    PlayerAst::That
-                };
-                for effect in &mut effects {
-                    bind_implicit_player_context(effect, player);
-                }
-                return Ok(Some(EffectAst::ForEachPlayerDid {
-                    effects,
-                    predicate: None,
-                    result_predicate: IfResultPredicate::AcceptedChoice,
-                }));
-            }
-        }
-    }
-
-    let participant_may = outer.participant_is_actor
-        && outer
-            .inner_tokens
-            .first()
-            .is_some_and(|token| token.is_word("may"));
-    let participant_chooses = for_each_shapes::starts_choose(outer.inner_tokens);
-    let mut effects = if outer.participant_is_actor && !participant_may && !participant_chooses {
-        if let Some(effects) = parse_quantified_participant_actor_program(outer.inner_tokens)? {
-            effects
-        } else {
-            let normalized = prepend_that_player_subject(outer.inner_tokens);
-            parse_maybe_effects(&normalized, true, true)?
-        }
-    } else {
-        let normalized = prepend_that_player_life_total_subject(outer.inner_tokens);
-        parse_maybe_effects(&normalized, true, outer.participant_is_actor)?
-    };
-    if !outer.participant_is_actor {
-        force_implicit_token_controller_you(&mut effects);
-    }
-    if participant_chooses {
-        bind_implicit_choose_chooser(
-            &mut effects,
-            if outer.participant_is_actor {
-                PlayerAst::That
-            } else {
-                PlayerAst::You
-            },
-        );
-        stabilize_standalone_participant_choice_tag(&mut effects, outer.inner_tokens);
-    }
-    let iteration_filter = reanchor_other_player_copy_filter(iteration_filter, &effects);
-    Ok(Some(wrap_players(&iteration_filter, effects)))
-}
+#[cfg(test)]
+#[path = "for_each_helpers_inline_dynamic_modifier_surface_tests.rs"]
+mod dynamic_modifier_surface_tests;
 
 #[cfg(test)]
-mod dynamic_modifier_surface_tests {
-    use super::*;
-    use crate::lexer::lex_line;
+#[path = "for_each_helpers_inline_participant_choice_ownership_tests_2.rs"]
+mod participant_choice_ownership_tests;
 
-    #[test]
-    fn resolving_gets_for_each_count_keeps_authored_surface() {
-        let tokens = lex_line("for each permanent card in your graveyard", 0)
-            .expect("for-each count should lex");
-        let count = parse_get_for_each_count_value(&tokens)
-            .expect("for-each count should parse")
-            .expect("for-each count should match");
-
-        assert!(count.has_surface_hint(ValueSurfaceHint::ForEach));
-        assert!(matches!(count.unhinted(), Value::Count(_)));
-    }
-
-    #[test]
-    fn each_player_choice_keeps_comma_separated_negative_modifiers_in_one_filter() {
-        let tokens = lex_line(
-            "Each player chooses two nontoken, non-Vehicle creatures they control.",
-            0,
-        )
-        .expect("participant choice should lex");
-        let effect = parse_for_each_player_clause(&tokens)
-            .expect("participant choice should parse")
-            .expect("participant choice should match");
-        let EffectAst::ForEachPlayer { effects } = effect else {
-            panic!("expected a player loop, got {effect:#?}");
-        };
-        let [EffectAst::ChooseObjects { filter, count, .. }] = effects.as_slice() else {
-            panic!("expected one object choice, got {effects:#?}");
-        };
-
-        assert_eq!(*count, ChoiceCount::exactly(2));
-        assert!(filter.nontoken, "{filter:#?}");
-        assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
-        assert_eq!(filter.excluded_subtypes, [crate::types::Subtype::Vehicle]);
-        assert_eq!(filter.controller, Some(PlayerFilter::IteratedPlayer));
-    }
-
-    #[test]
-    fn resolving_gets_for_each_count_keeps_serial_relative_subtype_surface() {
-        let tokens = lex_line(
-            "for each creature you control that's an Insect, Rat, Spider, or Squirrel",
-            0,
-        )
-        .expect("serial for-each count should lex");
-        let count = parse_get_for_each_count_value(&tokens)
-            .expect("serial for-each count should parse")
-            .expect("serial for-each count should match");
-        let Value::Count(filter) = count.unhinted() else {
-            panic!("expected an object count, got {count:#?}");
-        };
-
-        assert!(filter.has_serial_or_list_surface(), "{filter:#?}");
-        assert_eq!(
-            filter.description(),
-            "a creature you control that's an Insect, Rat, Spider, or Squirrel"
-        );
-    }
-
-    #[test]
-    fn exact_surface_reparse_preserves_specialized_cast_time_count_tag() {
-        let tokens = lex_line(
-            "for each modified creature you controlled as you cast this spell",
-            0,
-        )
-        .expect("cast-time for-each count should lex");
-        let count = parse_get_for_each_count_value(&tokens)
-            .expect("cast-time for-each count should parse")
-            .expect("cast-time for-each count should match");
-        let Value::Count(filter) = count.unhinted() else {
-            panic!("expected an object count, got {count:#?}");
-        };
-
-        assert!(matches!(
-            filter.tagged_constraints.as_slice(),
-            [constraint]
-                if constraint.tag.as_str() == ironsmith_core::CAST_MODIFIED_CREATURES_TAG
-                    && constraint.relation
-                        == crate::target::TaggedOpbjectRelation::IsTaggedObject
-        ));
-        assert!(filter.card_types.is_empty(), "{filter:#?}");
-    }
-
-    #[test]
-    fn targeted_discard_for_each_suffix_does_not_claim_target_player_iteration() {
-        for text in [
-            "Target player discards a card for each Swamp you control.",
-            "Target player discards a card for each charge counter on this artifact.",
-            "Target player discards a card for each Swamp returned this way.",
-        ] {
-            let tokens = lex_line(text, 0).expect("targeted discard clause should lex");
-            let parsed = parse_for_each_target_players_clause(&tokens)
-                .expect("ambiguous target-player shape should yield cleanly");
-
-            assert!(
-                parsed.is_none(),
-                "discard count suffix must not become a target-player iterator: {parsed:#?}"
-            );
-        }
-    }
-
-    #[test]
-    fn targeted_life_gain_for_each_suffix_does_not_claim_target_player_iteration() {
-        let tokens = lex_line(
-            "Target player gains 2 life for each creature on the battlefield.",
-            0,
-        )
-        .expect("Congregate life-gain clause should lex");
-        let parsed = parse_for_each_target_players_clause(&tokens)
-            .expect("ambiguous target-player life-gain shape should yield cleanly");
-
-        assert!(
-            parsed.is_none(),
-            "life-gain count suffix must not become a target-player iterator: {parsed:#?}"
-        );
-    }
-
-    #[test]
-    fn targeted_life_loss_for_each_suffix_does_not_claim_target_player_iteration() {
-        let tokens = lex_line(
-            "Target player loses 2 life plus 2 life for each Spirit sacrificed this way.",
-            0,
-        )
-        .expect("Devouring Greed life-loss clause should lex");
-        let parsed = parse_for_each_target_players_clause(&tokens)
-            .expect("ambiguous target-player life-loss shape should yield cleanly");
-
-        assert!(
-            parsed.is_none(),
-            "life-loss count suffix must not become a target-player iterator: {parsed:#?}"
-        );
-    }
-
-    #[test]
-    fn candlekeep_shape_binds_where_x_to_an_owned_multi_zone_count() {
-        let tokens = lex_line(
-            "Until end of turn, creatures you control have base power and toughness X/X, where X is the number of cards you own in exile and in your graveyard that are instant cards, are sorcery cards, and/or have an Adventure.",
-            0,
-        )
-        .expect("Candlekeep-style base-P/T clause should lex");
-        let effect = parse_has_base_power_toughness_clause(&tokens)
-            .expect("Candlekeep-style base-P/T clause should parse")
-            .expect("Candlekeep-style base-P/T clause should be recognized");
-        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::SetBasePowerToughness {
-                    power,
-                    toughness,
-                    target,
-                    duration,
-                    ..
-                },
-            ..
-        }) = effect
-        else {
-            panic!("expected typed base-P/T effect, got {effect:#?}");
-        };
-
-        assert_eq!(duration, Until::EndOfTurn);
-        assert_eq!(power, toughness);
-        assert!(power.has_surface_hint(ValueSurfaceHint::WhereXIs));
-        let Value::Count(filter) = power.unhinted() else {
-            panic!("expected a counted object-filter basis, got {power:#?}");
-        };
-        assert_eq!(filter.owner, Some(PlayerFilter::You));
-        assert_eq!(
-            filter.card_types,
-            vec![
-                crate::types::CardType::Instant,
-                crate::types::CardType::Sorcery
-            ]
-        );
-        assert_eq!(filter.subtypes, vec![crate::types::Subtype::Adventure]);
-        assert!(filter.type_or_subtype_union);
-        assert_eq!(filter.any_of.len(), 2);
-        assert!(
-            filter
-                .any_of
-                .iter()
-                .any(|branch| branch.zone == Some(crate::zone::Zone::Exile))
-        );
-        assert!(
-            filter
-                .any_of
-                .iter()
-                .any(|branch| { branch.zone == Some(crate::zone::Zone::Graveyard) })
-        );
-        assert!(matches!(target, TargetAst::Object(_, _, _)));
-    }
-
-    #[test]
-    fn jolrael_shape_binds_where_x_to_cards_in_hand() {
-        let tokens = lex_line(
-            "Until end of turn, creatures you control have base power and toughness X/X, where X is the number of cards in your hand.",
-            0,
-        )
-        .expect("Jolrael-style base-P/T clause should lex");
-        let effect = parse_has_base_power_toughness_clause(&tokens)
-            .expect("Jolrael-style base-P/T clause should parse")
-            .expect("Jolrael-style base-P/T clause should be recognized");
-        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::SetBasePowerToughness {
-                    power,
-                    toughness,
-                    target,
-                    duration,
-                    ..
-                },
-            ..
-        }) = effect
-        else {
-            panic!("expected typed base-P/T effect, got {effect:#?}");
-        };
-
-        assert_eq!(duration, Until::EndOfTurn);
-        assert_eq!(power, toughness);
-        assert!(power.has_surface_hint(ValueSurfaceHint::WhereXIs));
-        assert!(matches!(
-            power.unhinted(),
-            Value::CardsInHand(PlayerFilter::You)
-        ));
-        let TargetAst::Object(filter, _, _) = target else {
-            panic!("expected a creature-filter target, got {target:#?}");
-        };
-        assert_eq!(filter.card_types, vec![crate::types::CardType::Creature]);
-        assert_eq!(filter.controller, Some(PlayerFilter::You));
-    }
-}
-
-#[cfg(test)]
-mod participant_choice_ownership_tests {
-    use super::*;
-    use crate::lexer::lex_line;
-
-    fn parsed_debug(text: &str) -> String {
-        let tokens = lex_line(text, 0).expect("participant choice should lex");
-        let effect =
-            if text.starts_with("Each opponent") || text.starts_with("For each opponent") {
-                parse_for_each_opponent_clause(&tokens)
-            } else {
-                parse_for_each_player_clause(&tokens)
-            }
-            .expect("participant choice should parse")
-            .expect("participant choice shape should match");
-        format!("{effect:#?}")
-    }
-
-    #[test]
-    fn participant_subject_owns_choice_but_for_each_imperative_does_not() {
-        let each_opponent =
-            parsed_debug("Each opponent chooses a creature they control and sacrifices it.");
-        assert!(each_opponent.contains("player: That"), "{each_opponent}");
-        assert!(!each_opponent.contains("player: You"), "{each_opponent}");
-
-        let each_player = parsed_debug("Each player chooses a creature they control.");
-        assert!(each_player.contains("player: That"), "{each_player}");
-
-        let controller = parsed_debug("For each opponent, choose a creature they control.");
-        assert!(controller.contains("player: You"), "{controller}");
-    }
-
-    #[test]
-    fn imperative_for_each_keeps_iterated_player_inside_object_filter() {
-        let tokens = lex_line(
-            "For each opponent, you create a token that's a copy of up to one target creature that player controls.",
-            0,
-        )
-        .expect("quantified token-copy clause should lex");
-        let effect = parse_for_each_opponent_clause(&tokens)
-            .expect("quantified token-copy clause should parse")
-            .expect("quantified token-copy clause should match");
-        let EffectAst::ForEachOpponent { effects } = effect else {
-            panic!("expected opponent iteration, got {effect:#?}");
-        };
-        let [
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::CreateTokenCopyFromSource { source, player, .. },
-                ..
-            }),
-        ] = effects.as_slice()
-        else {
-            panic!("expected one token-copy action, got {effects:#?}");
-        };
-        let TargetAst::WithCount(source, _) = source else {
-            panic!("expected an up-to target, got {source:#?}");
-        };
-        let TargetAst::Object(filter, _, _) = source.as_ref() else {
-            panic!("expected an object-copy target, got {source:#?}");
-        };
-        assert_eq!(filter.controller, Some(PlayerFilter::IteratedPlayer));
-        assert_eq!(*player, PlayerAst::You);
-
-        let parsed = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
-            .expect("public effect parser should keep the quantified program");
-        let [EffectAst::ForEachOpponent { effects }] = parsed.as_slice() else {
-            panic!("public parser split the quantified program: {parsed:#?}");
-        };
-        assert_eq!(effects.len(), 1, "{effects:#?}");
-    }
-
-    #[test]
-    fn source_attacked_player_subject_keeps_runtime_filter() {
-        let tokens = lex_line(
-            "Each player this creature attacked this turn loses the game.",
-            0,
-        )
-        .expect("source-relative player clause should lex");
-        let effect = parse_for_each_player_clause(&tokens)
-            .expect("source-relative player clause should parse")
-            .expect("source-relative player clause should match");
-        let EffectAst::ForEachPlayersFiltered { filter, effects } = effect else {
-            panic!("expected filtered player iteration, got {effect:#?}");
-        };
-        assert_eq!(filter, PlayerFilter::AttackedBySourceThisTurn);
-        assert!(format!("{effects:#?}").contains("LoseGame"), "{effects:#?}");
-    }
-
-    #[test]
-    fn named_creature_combat_damage_history_keeps_filtered_participant() {
-        let tokens = lex_line(
-            "Each opponent dealt combat damage this game by a creature named Gollum, Obsessed Stalker loses life equal to the amount of life you gained this turn.",
-            0,
-        )
-        .expect("combat-history participant clause should lex");
-        let effect = parse_for_each_opponent_clause(&tokens)
-            .expect("combat-history participant clause should parse")
-            .expect("combat-history participant clause should match");
-        let EffectAst::ForEachPlayersFiltered { filter, effects } = effect else {
-            panic!("expected filtered player iteration, got {effect:#?}");
-        };
-        assert!(
-            matches!(
-                filter,
-                PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. }
-            ),
-            "{filter:#?}"
-        );
-        let PlayerFilter::WasDealtCombatDamageBySourcesThisGame { sources, .. } = &filter else {
-            unreachable!("typed history variant was already asserted")
-        };
-        assert_eq!(sources.name.as_deref(), Some("gollum obsessed stalker"));
-        assert!(format!("{effects:#?}").contains("LoseLife"), "{effects:#?}");
-    }
-
-    #[test]
-    fn other_players_copying_triggering_spell_exclude_its_controller() {
-        let tokens = lex_line(
-            "Each other player may copy that spell and may choose new targets for the copy they control.",
-            0,
-        )
-        .expect("triggering-spell fanout should lex");
-        let effect = parse_for_each_player_clause(&tokens)
-            .expect("triggering-spell fanout should parse")
-            .expect("triggering-spell fanout should match");
-        let EffectAst::ForEachPlayersFiltered { filter, effects } = effect else {
-            panic!("expected filtered player iteration, got {effect:#?}");
-        };
-        assert_eq!(
-            filter,
-            PlayerFilter::excluding(
-                PlayerFilter::Any,
-                PlayerFilter::AliasedControllerOf(ObjectRef::tagged("triggering")),
-            )
-        );
-        assert!(matches!(effects.as_slice(), [EffectAst::May { .. }]));
-    }
-
-    #[test]
-    fn standalone_participant_choices_use_an_aggregate_tag_but_nested_choices_remain_local() {
-        let standalone = parsed_debug("Each player chooses a creature they control.");
-        assert!(
-            standalone.contains("participant_choice_l0_s"),
-            "{standalone}"
-        );
-        assert!(!standalone.contains("\"__it__\""), "{standalone}");
-
-        let nested =
-            parsed_debug("Each opponent chooses a creature they control and sacrifices it.");
-        assert!(
-            !nested.contains("participant_choice_l0_s"),
-            "an immediate per-participant consumer must not share choices across iterations: \
-            {nested}"
-        );
-    }
-
-    #[test]
-    fn for_each_object_filter_preserves_typed_those_set_surface() {
-        let those_tokens = lex_line("those permanents", 0).expect("those filter should lex");
-        let those = parse_for_each_object_filter(&those_tokens).expect("those filter should parse");
-        assert_eq!(
-            those.set_quantifier_surface(),
-            Some(ironsmith_core::SetQuantifierSurface::Those)
-        );
-
-        let ordinary_tokens =
-            lex_line("permanent destroyed this way", 0).expect("ordinary filter should lex");
-        let ordinary =
-            parse_for_each_object_filter(&ordinary_tokens).expect("ordinary filter should parse");
-        assert_eq!(ordinary.set_quantifier_surface(), None);
-    }
-
-    #[test]
-    fn for_each_object_filter_preserves_owned_exile_counter_scope() {
-        let tokens = lex_line(
-            "creature card you own in exile with a memory counter on it",
-            0,
-        )
-        .expect("owned exile filter should lex");
-        let filter =
-            parse_for_each_object_filter(&tokens).expect("owned exile filter should parse");
-
-        assert_eq!(filter.zone, Some(crate::zone::Zone::Exile));
-        assert_eq!(filter.owner, Some(PlayerFilter::You));
-        assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
-        assert_eq!(
-            filter.with_counter,
-            Some(crate::filter::CounterConstraint::Typed(
-                crate::object::CounterType::Named("memory".into())
-            ))
-        );
-        assert!(filter.has_owner_before_zone_surface());
-        assert!(filter.has_counter_requirement_after_zone_surface());
-        assert_eq!(
-            filter.description(),
-            "a creature card you own in exile with a memory counter on it"
-        );
-    }
-
-    #[test]
-    fn for_each_object_filter_restores_only_the_exact_coordinated_stack_domain() {
-        let coordinated = lex_line("spell and ability your opponents control", 0)
-            .expect("coordinated Stack filter should lex");
-        let coordinated = parse_for_each_object_filter(&coordinated)
-            .expect("coordinated Stack filter should parse");
-        assert_eq!(coordinated.zone, Some(crate::zone::Zone::Stack));
-        assert_eq!(
-            coordinated.stack_kind,
-            Some(crate::filter::StackObjectKind::SpellOrAbility)
-        );
-        assert!(!coordinated.has_mana_cost);
-        assert!(coordinated.has_conjunctive_set_surface());
-
-        let ordinary =
-            lex_line("spell your opponents control", 0).expect("ordinary spell filter should lex");
-        let ordinary =
-            parse_for_each_object_filter(&ordinary).expect("ordinary spell filter should parse");
-        assert_eq!(
-            ordinary.stack_kind,
-            Some(crate::filter::StackObjectKind::Spell)
-        );
-        assert!(ordinary.has_mana_cost);
-        assert!(!ordinary.has_conjunctive_set_surface());
-    }
-
-    #[test]
-    fn relative_participant_count_compares_the_same_set_for_them_and_you() {
-        let effect =
-            parsed_debug("Each opponent who controls fewer creatures than you draws a card.");
-        let compact: String = effect.chars().filter(|ch| !ch.is_whitespace()).collect();
-
-        assert!(effect.contains("ValueComparison"), "{effect}");
-        assert!(effect.contains("operator: LessThan"), "{effect}");
-        assert!(
-            compact.contains("controller:Some(IteratedPlayer,)"),
-            "{effect}"
-        );
-        assert!(compact.contains("controller:Some(You,)"), "{effect}");
-        assert!(!effect.contains("PlayerControls {"), "{effect}");
-    }
-}
+#[path = "for_each_helpers/for_each_helpers_reference_programs.rs"]
+mod for_each_helpers_reference_programs;
+use for_each_helpers_reference_programs::{
+    opponent_filter, player_filter, reanchor_other_player_copy_filter, wrap_players,
+};
+pub use for_each_helpers_reference_programs::{
+    parse_for_each_player_clause, parse_for_each_target_players_clause,
+};
+#[path = "for_each_helpers/for_each_helpers_combat_programs.rs"]
+mod for_each_helpers_combat_programs;
+use for_each_helpers_combat_programs::parse_combat_damage_history_participant;
+#[path = "for_each_helpers/for_each_helpers_condition_programs.rs"]
+mod for_each_helpers_condition_programs;
+pub use for_each_helpers_condition_programs::parse_who_did_this_way_predicate;
+#[path = "for_each_helpers/for_each_helpers_core_programs.rs"]
+mod for_each_helpers_core_programs;
+pub use for_each_helpers_core_programs::parse_for_each_opponent_clause;
+use for_each_helpers_core_programs::wrap_opponents;
+#[path = "for_each_helpers/for_each_helpers_object_action_programs.rs"]
+mod for_each_helpers_object_action_programs;
+use for_each_helpers_object_action_programs::parse_relative_control_conditional;
+#[path = "for_each_helpers/for_each_helpers_trigger_programs.rs"]
+mod for_each_helpers_trigger_programs;
+use for_each_helpers_trigger_programs::effect_copies_triggering_stack_object;
+#[path = "for_each_helpers/for_each_helpers_choice_programs.rs"]
+mod for_each_helpers_choice_programs;
+use for_each_helpers_choice_programs::parse_participant_choice_complement_effects;

@@ -417,8 +417,15 @@ pub(super) fn compile_subject_verb_middle(
                 *allow_any_color_for_cast,
             )
             .with_max_plays(*max_plays);
-            if is_sentence_helper_exiled_collection_tag(resolved_tag.as_str())
-                && ctx.last_exiled_collection_is_plural
+            let surface_refers_to_plural_exiled_pool = surface.as_ref().is_some_and(|surface| {
+                matches!(
+                    surface.object,
+                    Some(ironsmith_core::GrantPlayTaggedObjectSurface::SpellsFromAmongThoseCards)
+                )
+            });
+            if ctx.last_exiled_collection_is_plural
+                && (is_sentence_helper_exiled_collection_tag(resolved_tag.as_str())
+                    || surface_refers_to_plural_exiled_pool)
             {
                 grant_play = grant_play.cast_pool_is_plural(true);
             }
@@ -801,7 +808,7 @@ pub(super) fn compile_subject_verb_middle(
                 if let Some(as_aura) = as_aura {
                     let mut attachment_filter = as_aura.attachment_filter.clone();
                     if !as_aura.granted_abilities.is_empty() {
-                        let attachment_tag = TagKey::from("enchanted");
+                        let attachment_tag = crate::tag::CompilerReferenceTag::Enchanted.key();
                         effects.push(Effect::choose_objects(
                             as_aura.attachment_filter.clone(),
                             1usize,
@@ -1162,7 +1169,7 @@ pub(super) fn compile_subject_verb_middle(
                 return Ok(Some((
                     vec![Effect::put_tagged_remainder_on_library_bottom(
                         TagKey::from(remainder_tag.as_str()),
-                        Some(TagKey::from("__source_exiled__")),
+                        Some(crate::tag::CompilerReferenceTag::SourceExiled.key()),
                         crate::effects::consult_helpers::LibraryBottomOrder::Random,
                         library_owner,
                     )],
@@ -1476,6 +1483,11 @@ pub(super) fn compile_subject_verb_middle(
         } => {
             let granted_modifications =
                 lower_granted_ability_grant_modifications(granted_abilities)?;
+            let abilities = abilities
+                .iter()
+                .cloned()
+                .map(crate::lowering_support::lower_compiler_static_ability_core)
+                .collect::<Result<Vec<_>, _>>()?;
             compile_tagged_effect_for_target(target, ctx, "animated_creature", |spec| {
                 let resolved_power = bind_iterated_value_to_choose_spec(power, &spec);
                 let resolved_toughness = bind_iterated_value_to_choose_spec(toughness, &spec);
@@ -1521,7 +1533,7 @@ pub(super) fn compile_subject_verb_middle(
                         crate::continuous::Modification::AddSubtypes(subtypes.clone()),
                     );
                 }
-                for ability in abilities {
+                for ability in &abilities {
                     apply = apply.with_additional_modification(
                         crate::continuous::Modification::AddAbility(ability.clone()),
                     );
@@ -1545,21 +1557,9 @@ pub(super) fn compile_subject_verb_middle(
             Effect::new(
                 crate::effects::ApplyContinuousEffect::with_spec(
                     spec,
-                    {
-                        #[cfg(not(feature = "serialization"))]
-                        {
-                            crate::continuous::Modification::SetPower {
-                                power: power.clone(),
-                                sublayer: crate::continuous::PtSublayer::Setting,
-                            }
-                        }
-                        #[cfg(feature = "serialization")]
-                        {
-                            crate::continuous::Modification::SetPower {
-                                value: power.clone(),
-                                sublayer: crate::continuous::PtSublayer::Setting,
-                            }
-                        }
+                    crate::continuous::Modification::SetPower {
+                        power: power.clone(),
+                        sublayer: crate::continuous::PtSublayer::Setting,
                     },
                     duration.clone(),
                 )
@@ -2158,9 +2158,13 @@ pub(super) fn compile_subject_verb_middle(
             target,
             grantable,
             duration,
-        } => compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
-            Effect::grant(grantable.as_ref().clone(), spec, *duration)
-        }),
+        } => {
+            let grantable =
+                crate::lowering_support::lower_compiler_grantable(grantable.as_ref().clone())?;
+            compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
+                Effect::grant(grantable.clone(), spec, *duration)
+            })
+        }
         SubjectVerbActionAst::GrantBySpec {
             spec,
             player,
@@ -2168,7 +2172,8 @@ pub(super) fn compile_subject_verb_middle(
         } => {
             let resolved_filter = resolve_it_tag(&spec.filter, &current_reference_env(ctx))?;
             let player = resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
-            let mut resolved_spec = spec.as_ref().clone();
+            let mut resolved_spec =
+                crate::lowering_support::lower_compiler_grant_spec(spec.as_ref().clone())?;
             resolved_spec.filter = resolved_filter;
             Ok((
                 vec![Effect::grant_by_spec(resolved_spec, player, *duration)],
@@ -2386,7 +2391,7 @@ pub(super) fn compile_subject_verb_middle(
                     .unwrap_or_else(|| player_filter.clone()),
             );
             let use_search_effect = *shuffle
-                && search_zones.as_slice() == [Zone::Library]
+                && matches!(search_zones.as_slice(), [Zone::Library])
                 && count.max == Some(1)
                 && count_value.is_none()
                 && *destination != Zone::Battlefield;
@@ -2811,7 +2816,13 @@ pub(super) fn compile_subject_verb_middle(
                 );
             }
             for ability in granted_abilities {
-                effect = effect.grant_static_ability(ability.clone());
+                let object_abilities =
+                    lower_granted_abilities_ast_to_object_abilities(std::slice::from_ref(ability))?;
+                for static_ability in
+                    object_abilities_to_static_carriers(object_abilities, String::new())?
+                {
+                    effect = effect.grant_static_ability(static_ability);
+                }
             }
             let mut effect = Effect::new(effect);
             if ctx.auto_tag_object_targets {
@@ -2965,7 +2976,13 @@ pub(super) fn compile_subject_verb_middle(
                 );
             }
             for ability in granted_abilities {
-                effect = effect.grant_static_ability(ability.clone());
+                let object_abilities =
+                    lower_granted_abilities_ast_to_object_abilities(std::slice::from_ref(ability))?;
+                for static_ability in
+                    object_abilities_to_static_carriers(object_abilities, String::new())?
+                {
+                    effect = effect.grant_static_ability(static_ability);
+                }
             }
 
             let mut effect = Effect::new(effect);
@@ -3050,7 +3067,7 @@ pub(super) fn compile_subject_verb_middle(
                         .is_some_and(|tag| tag.as_str() == "triggering")
                     {
                         (
-                            ChooseSpec::Tagged(crate::tag::TagKey::from("triggering")),
+                            ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::Triggering.key()),
                             Vec::new(),
                         )
                     } else {

@@ -3835,7 +3835,7 @@ mod manabrew_tests {
                 3,
                 vec![
                     (ironsmith::object::CounterType::PlusOnePlusOne, 2),
-                    (ironsmith::object::CounterType::Named("charge"), 3),
+                    (ironsmith::object::CounterType::Named("charge".into()), 3),
                 ],
             ));
         let (input, binding) = game.build_manabrew_prompt(&context).expect("prompt maps");

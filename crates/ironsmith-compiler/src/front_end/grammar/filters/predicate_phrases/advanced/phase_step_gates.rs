@@ -144,8 +144,8 @@ fn parse_turn_history_value_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAs
     }
 
     let words = clause.word_refs();
-    if words.starts_with(&["a", "counter", "was", "put", "on"])
-        && words.ends_with(&["this", "turn"])
+    if crate::word_primitives::parse_sequence_prefix(&words, &["a", "counter", "was", "put", "on"])
+        && crate::word_primitives::parse_sequence_suffix(&words, &["this", "turn"])
         && words.len() > 7
         && let Some(source) = clause.between_word_range(5, words.len() - 2)
         && is_source_reference_clause(source)
@@ -307,7 +307,8 @@ fn parse_turn_history_value_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAs
             ],
         ],
     ) {
-        let mut filter = if clause.word_refs().contains(&"creature") {
+        let clause_words = clause.word_refs();
+        let mut filter = if crate::word_primitives::contains_word(&clause_words, "creature") {
             ObjectFilter::creature()
         } else {
             ObjectFilter::default()
@@ -1076,36 +1077,44 @@ fn parse_existing_zone_history_gate(tokens: &[OwnedLexToken]) -> Option<Predicat
     // unions and ordinary permanent descriptors do not need one-off entries
     // here.
     let words = clause.word_refs();
-    if let Some(put_idx) = words
-        .iter()
-        .position(|word| matches!(*word, "was" | "were"))
+    if let Some(put_idx) =
+        crate::word_primitives::select_word_position(&words, |word| matches!(word, "was" | "were"))
     {
-        let graveyard_owner = match &words[put_idx..] {
-            [
-                "was" | "were",
-                "put",
-                "into",
-                "a" | "the",
-                "graveyard",
-                "from",
-                "the",
-                "battlefield",
-                "this",
-                "turn",
-            ] => None,
-            [
-                "was" | "were",
-                "put",
-                "into",
-                "your",
-                "graveyard",
-                "from",
-                "the",
-                "battlefield",
-                "this",
-                "turn",
-            ] => Some(PlayerFilter::You),
-            _ => return parse_existing_zone_history_gate_exact(clause),
+        let tail = &words[put_idx..];
+        let graveyard_owner = if crate::word_primitives::parse_choice_sequence_complete(
+            tail,
+            &[
+                &["was", "were"],
+                &["put"],
+                &["into"],
+                &["a", "the"],
+                &["graveyard"],
+                &["from"],
+                &["the"],
+                &["battlefield"],
+                &["this"],
+                &["turn"],
+            ],
+        ) {
+            None
+        } else if crate::word_primitives::parse_choice_sequence_complete(
+            tail,
+            &[
+                &["was", "were"],
+                &["put"],
+                &["into"],
+                &["your"],
+                &["graveyard"],
+                &["from"],
+                &["the"],
+                &["battlefield"],
+                &["this"],
+                &["turn"],
+            ],
+        ) {
+            Some(PlayerFilter::You)
+        } else {
+            return parse_existing_zone_history_gate_exact(clause);
         };
         let subject = clause.before_word(put_idx)?;
         if let Ok(mut filter) = parse_object_filter_lexed(subject.tokens(), false)

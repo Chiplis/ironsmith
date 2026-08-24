@@ -106,10 +106,15 @@ pub fn parse_token_reminder_sentence_kind_tokens(
 /// uses `have` even though the quoted rule contains `gain`.
 pub fn token_ability_sentence_uses_gain_verb(tokens: &[OwnedLexToken]) -> bool {
     let words = parser_token_word_refs(tokens);
-    words.starts_with(&["it", "gains"])
-        || words.starts_with(&["they", "gain"])
-        || words.starts_with(&["that", "token", "gains"])
-        || words.starts_with(&["those", "tokens", "gain"])
+    crate::word_primitives::parse_any_sequence_prefix(
+        &words,
+        &[
+            &["it", "gains"],
+            &["they", "gain"],
+            &["that", "token", "gains"],
+            &["those", "tokens", "gain"],
+        ],
+    )
 }
 
 #[derive(Debug, Clone, PartialEq)]

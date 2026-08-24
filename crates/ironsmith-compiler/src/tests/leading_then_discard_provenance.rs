@@ -64,7 +64,11 @@ fn leading_then_implicit_discard_keeps_the_explicit_you_actor_after_damage_trigg
     let (draw, _, discard) = draw_and_conditional_discard(&program);
 
     assert_eq!(draw.player, crate::target::PlayerFilter::You);
-    assert_eq!(discard.player, crate::target::PlayerFilter::You);
+    assert_eq!(
+        discard.player,
+        crate::target::PlayerFilter::You,
+        "{program:#?}"
+    );
 }
 
 #[test]
@@ -76,15 +80,18 @@ fn spell_cast_trigger_resolution_condition_refers_to_the_triggering_spell() {
 
     assert_eq!(draw.player, crate::target::PlayerFilter::You);
     assert_eq!(discard.player, crate::target::PlayerFilter::You);
-    assert!(matches!(
-        &conditional.condition,
-        crate::effect::Condition::Not(inner)
-            if matches!(
-                inner.as_ref(),
-                crate::effect::Condition::TriggeringSpellManaSpentToCastAtLeast {
-                    amount: 5,
-                    symbol: None,
-                }
-            )
-    ));
+    assert!(
+        matches!(
+            &conditional.condition,
+            crate::effect::Condition::Not(inner)
+                if matches!(
+                    inner.as_ref(),
+                    crate::effect::Condition::TriggeringSpellManaSpentToCastAtLeast {
+                        amount: 5,
+                        symbol: None,
+                    }
+                )
+        ),
+        "{program:#?}"
+    );
 }

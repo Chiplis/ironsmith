@@ -306,7 +306,9 @@ fn exact_remaining_move(
 /// `Then` provenance distinguishes the terse bare-rest form from the explicit
 /// non-cast complement, while the two-move shape proves Muse-style typed/rest
 /// partitioning without consulting source text or card identity.
-pub(super) fn describe_exiled_collection_partition(effects: &[Effect]) -> Option<String> {
+fn exiled_collection_partition_view(
+    effects: &[Effect],
+) -> Option<(String, crate::tag::TagKey, crate::tag::TagKey)> {
     let (effects, leading_then) = if let [effect] = effects {
         if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
             if sequence.surface != ironsmith_core::SequenceSurface::SentenceLeadingThen {
@@ -321,24 +323,33 @@ pub(super) fn describe_exiled_collection_partition(effects: &[Effect]) -> Option
     };
 
     if let [move_effect] = effects {
-        if let Some((RemainingKind::All, _, _)) =
+        if let Some((RemainingKind::All, exiled_tag, selected_tag)) =
             exact_remaining_move(move_effect, Zone::Graveyard, false)
         {
             return leading_then.then(|| {
-                "Then put all cards exiled this way that weren't cast into your graveyard"
-                    .to_string()
+                (
+                    "Then put all cards exiled this way that weren't cast into your graveyard"
+                        .to_string(),
+                    exiled_tag,
+                    selected_tag,
+                )
             });
         }
-        let (kind, _, _) = exact_remaining_move(move_effect, Zone::Library, true)?;
+        let (kind, exiled_tag, selected_tag) =
+            exact_remaining_move(move_effect, Zone::Library, true)?;
         if kind != RemainingKind::All {
             return None;
         }
-        return Some(if leading_then {
-            "Then put the rest on the bottom of your library in a random order".to_string()
-        } else {
-            "Put the exiled cards not cast this way on the bottom of your library in a random order"
-                .to_string()
-        });
+        return Some((
+            if leading_then {
+                "Then put the rest on the bottom of your library in a random order".to_string()
+            } else {
+                "Put the exiled cards not cast this way on the bottom of your library in a random order"
+                    .to_string()
+            },
+            exiled_tag,
+            selected_tag,
+        ));
     }
 
     let [hand_effect, bottom_effect] = effects else {
@@ -356,10 +367,106 @@ pub(super) fn describe_exiled_collection_partition(effects: &[Effect]) -> Option
     {
         return None;
     }
-    Some(
+    Some((
         "Then put the exiled instant and sorcery cards that weren't cast this way into your hand and the rest on the bottom of your library in a random order"
             .to_string(),
-    )
+        hand_exiled,
+        hand_selected,
+    ))
+}
+
+pub(super) fn describe_exiled_collection_partition(effects: &[Effect]) -> Option<String> {
+    exiled_collection_partition_view(effects).map(|(surface, _, _)| surface)
+}
+
+/// Rejoins the migrated flat executable form of an authored exile/collective
+/// cast/remainder program. Every boundary is proved by the sentence-helper
+/// tags: the exile producer feeds the choice, the choice feeds the iterator,
+/// and the remainder excludes that exact selected set.
+pub(super) fn describe_exiled_collection_program(effects: &[Effect]) -> Option<String> {
+    let [exile_effect, choose_effect, _for_each_effect, tail @ ..] = effects else {
+        return None;
+    };
+    if tail.len() > 2 {
+        return None;
+    }
+
+    let exile = structural_unwrap_render_wrappers(exile_effect)
+        .downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
+    let [exiled_tag] = exile.moved_tags.as_slice() else {
+        return None;
+    };
+    if exile.face_down || !exile.accumulated_tags.is_empty() {
+        return None;
+    }
+
+    let choice = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let [choice_membership] = choice.filter.tagged_constraints.as_slice() else {
+        return None;
+    };
+    if choice_membership.relation != crate::target::TaggedOpbjectRelation::IsTaggedObject
+        || choice_membership.tag != *exiled_tag
+    {
+        return None;
+    }
+    let cast_surface = describe_exiled_collection_cast_choice(&effects[1..3])?;
+
+    let mut parts = vec![
+        describe_effect(exile_effect)
+            .trim()
+            .trim_end_matches('.')
+            .to_string(),
+        cast_surface,
+    ];
+    if !tail.is_empty() {
+        let (remainder_surface, remainder_exiled, remainder_selected) = if let Some(view) =
+            exiled_collection_partition_view(tail)
+        {
+            view
+        } else {
+            match tail {
+                [remainder] => {
+                    let (kind, remainder_exiled, remainder_selected) =
+                        exact_remaining_move(remainder, Zone::Graveyard, false)?;
+                    if kind != RemainingKind::All {
+                        return None;
+                    }
+                    (
+                        "Then put all cards exiled this way that weren't cast into your graveyard"
+                            .to_string(),
+                        remainder_exiled,
+                        remainder_selected,
+                    )
+                }
+                [hand_effect, bottom_effect] => {
+                    let (hand_kind, hand_exiled, hand_selected) =
+                        exact_remaining_move(hand_effect, Zone::Hand, false)?;
+                    let (bottom_kind, bottom_exiled, bottom_selected) =
+                        exact_remaining_move(bottom_effect, Zone::Library, true)?;
+                    if hand_kind != RemainingKind::InstantOrSorcery
+                        || bottom_kind != RemainingKind::All
+                        || hand_exiled != bottom_exiled
+                        || hand_selected != bottom_selected
+                    {
+                        return None;
+                    }
+                    (
+                        "Then put the exiled instant and sorcery cards that weren't cast this way into your hand and the rest on the bottom of your library in a random order"
+                            .to_string(),
+                        hand_exiled,
+                        hand_selected,
+                    )
+                }
+                _ => return None,
+            }
+        };
+        if remainder_exiled != *exiled_tag || remainder_selected != choice.tag {
+            return None;
+        }
+        parts.push(remainder_surface);
+    }
+    Some(parts.join(". "))
 }
 
 #[cfg(test)]
@@ -542,11 +649,13 @@ mod tests {
         ];
 
         for (name, oracle) in cases {
-            let definition =
-                crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), name)
-                    .card_types(vec![CardType::Sorcery])
-                    .parse_text(oracle)
-                    .expect("typed exile/cast/complement collection should compile");
+            let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+                crate::ids::CardId::new(),
+                name,
+            )
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(oracle)
+            .expect("typed exile/cast/complement collection should compile");
 
             assert_eq!(
                 crate::compiled_text::compiled_text_lines(&definition),

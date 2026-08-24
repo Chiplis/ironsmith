@@ -335,6 +335,13 @@ fn triggering_spell_ordinal_fragment(
 
     let described = describe_spell_cast_condition_object(filter);
     let mut spell = strip_leading_article(&described).to_string();
+    if filter.stack_kind == Some(ironsmith_core::StackObjectKind::Spell)
+        && !spell
+            .split(|ch: char| !ch.is_ascii_alphabetic())
+            .any(|word| word.eq_ignore_ascii_case("spell"))
+    {
+        spell.push_str(" spell");
+    }
     if *exclude_source {
         if let Some(surface) = filter.source_surface.as_ref() {
             spell = format!("{spell} other than {}", surface.display_text());
@@ -1228,21 +1235,12 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             {
                 return text;
             }
-            // Lieutenant wording: "if you control your commander".
+            // Lieutenant wording owns the controlled commander's ownership.
             if filter.is_commander
                 && matches!(player, PlayerFilter::You)
                 && filter.card_types.is_empty()
                 && filter.subtypes.is_empty()
-                && filter.owner.as_ref().is_none_or(|owner| *owner == PlayerFilter::You)
-            {
-                return "you control your commander".to_string();
-            }
-            // Lieutenant wording: "if you control your commander".
-            if filter.is_commander
-                && matches!(player, PlayerFilter::You)
-                && filter.card_types.is_empty()
-                && filter.subtypes.is_empty()
-                && filter.owner.as_ref().is_none_or(|owner| *owner == PlayerFilter::You)
+                && filter.owner == Some(PlayerFilter::You)
             {
                 return "you control your commander".to_string();
             }

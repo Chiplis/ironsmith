@@ -156,12 +156,27 @@ fn bare_vanishing_adds_decay_triggers_without_entry_counter_ability() {
         }),
         "bare Vanishing must not invent an entry counter count"
     );
-    assert_eq!(
-        crate::runtime_display::unprocessed_compiled_lines(&def),
-        vec![
-            "At the beginning of your upkeep, remove a time counter from it.".to_string(),
-            "Whenever a counter is removed from this creature, if this creature doesn't have a time counter on it, sacrifice this creature.".to_string(),
-        ]
+    let triggered = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(format!("{triggered:?}")),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        triggered[0].contains("BeginningOfUpkeepTrigger")
+            && triggered[0].contains("RemoveCountersEffect")
+            && triggered[0].contains("Time"),
+        "the first decay trigger must remove a time counter: {}",
+        triggered[0]
+    );
+    assert!(
+        triggered[1].contains("CounterRemovedFromTrigger")
+            && triggered[1].contains("SourceHasNoCounter(Time)")
+            && triggered[1].contains("SacrificeTargetEffect"),
+        "the second decay trigger must sacrifice the counterless source: {}",
+        triggered[1]
     );
 }
 

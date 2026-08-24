@@ -22,6 +22,18 @@ use crate::zone::Zone;
 
 const TARGET_WORD: &str = "target";
 
+fn is_authored_named_source(tokens: &[OwnedLexToken]) -> bool {
+    let mut saw_word = false;
+    tokens.iter().all(|token| match token.kind {
+        TokenKind::Comma => true,
+        TokenKind::Word => {
+            saw_word = true;
+            token.slice.chars().next().is_some_and(char::is_uppercase)
+        }
+        _ => false,
+    }) && saw_word
+}
+
 fn trim_serial_modifier_tokens(mut tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     while tokens.first().is_some_and(|token| {
         matches!(token.kind, TokenKind::Comma | TokenKind::Period) || token.as_word() == Some("and")
@@ -89,10 +101,9 @@ pub fn parse_serial_target_pt_modifiers_sentence(
 
     let mut effects = Vec::with_capacity(segments.len());
     for segment in segments {
-        let Some(gets_idx) = segment
-            .iter()
-            .position(|token| token.is_any_word(&["get", "gets"]))
-        else {
+        let Some(gets_idx) = crate::slice_primitives::select_position(segment, |token| {
+            token.is_any_word(&["get", "gets"])
+        }) else {
             return Ok(None);
         };
         let target_tokens = trim_serial_modifier_tokens(&segment[..gets_idx]);
@@ -714,6 +725,29 @@ fn parse_damage_part(
     tokens: &[OwnedLexToken],
     player_context: Option<PlayerFilter>,
 ) -> Result<Option<CompoundDamagePart>, CardTextError> {
+    let reference_tokens = trim_edge_punctuation(tokens);
+    let reference_words = non_article_token_word_refs(&reference_tokens);
+    if crate::word_primitives::parse_sequence_complete(
+        &reference_words,
+        &["that", "player", "or", "planeswalker"],
+    ) {
+        return Ok(Some(CompoundDamagePart::Target(
+            TargetAst::PlayerOrPlaneswalker(PlayerFilter::TargetPlayerOrControllerOfTarget, None),
+        )));
+    }
+    if crate::word_primitives::parse_any_sequence_complete(
+        &reference_words,
+        &[
+            &["that", "creature"],
+            &["that", "planeswalker"],
+            &["that", "permanent"],
+        ],
+    ) {
+        return Ok(Some(CompoundDamagePart::Target(TargetAst::Tagged(
+            TagKey::from(IT_TAG),
+            None,
+        ))));
+    }
     let Some(shape) = fanout_grammar::parse_damage_part_shape(tokens, false) else {
         return Ok(None);
     };
@@ -804,9 +838,10 @@ fn parse_conditional_damage_pair_sentence(
 
     let first_if = if_indices[0];
     let second_if = if_indices[1];
-    let Some(and_idx) = tokens[first_if + 1..second_if]
-        .iter()
-        .position(|token| token.is_word("and"))
+    let Some(and_idx) =
+        crate::slice_primitives::select_position(&tokens[first_if + 1..second_if], |token| {
+            token.is_word("and")
+        })
         .map(|idx| first_if + 1 + idx)
     else {
         return Ok(None);
@@ -864,13 +899,25 @@ fn parse_conditional_damage_pair_sentence(
 pub fn parse_compound_damage_fanout_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if tokens
+        .first()
+        .is_some_and(|token| token.is_word("if") || token.is_word("unless"))
+    {
+        return Ok(None);
+    }
     if let Some(conditional_pair) = parse_conditional_damage_pair_sentence(tokens)? {
         return Ok(Some(conditional_pair));
     }
+    let tokens =
+        super::super::grammar::effects::zone_counter_shapes::strip_trailing_instead(tokens);
 
     if let Some(serial) = parse_serial_damage_fanout_tokens(tokens)? {
         let source_words = non_article_token_word_refs(&serial.source);
-        if !serial.source.is_empty() && !is_source_reference_words(&source_words) {
+        if !serial.source.is_empty()
+            && !crate::word_primitives::parse_sequence_complete(&source_words, &["it"])
+            && !is_source_reference_words(&source_words)
+            && !is_authored_named_source(&serial.source)
+        {
             return Ok(None);
         }
         let mut effects = Vec::with_capacity(serial.parts.len());
@@ -899,7 +946,11 @@ pub fn parse_compound_damage_fanout_sentence(
         return Ok(None);
     };
     let source_words = non_article_token_word_refs(&shape.source_tokens);
-    if !shape.source_tokens.is_empty() && !is_source_reference_words(&source_words) {
+    if !shape.source_tokens.is_empty()
+        && !crate::word_primitives::parse_sequence_complete(&source_words, &["it"])
+        && !is_source_reference_words(&source_words)
+        && !is_authored_named_source(&shape.source_tokens)
+    {
         // The fanout grammar locates the first `deal(s)` so it can parse a
         // compact shared-recipient clause. Text before that verb still has to
         // be the damage source, not an earlier action or a leading condition.
@@ -1014,7 +1065,7 @@ fn is_removed_counter_damage_fanout_member(effect: &EffectAst) -> bool {
 /// every arm to the same removal outcome. Requiring an all-damage tail and at
 /// least two replaced arms prevents an unrelated later damage instruction
 /// from inheriting this provenance.
-pub fn bind_removed_counter_damage_fanout(effects: &mut [EffectAst]) -> bool {
+fn bind_removed_counter_damage_fanout_flat(effects: &mut [EffectAst]) -> bool {
     let [removal, damage @ ..] = effects else {
         return false;
     };
@@ -1037,6 +1088,57 @@ pub fn bind_removed_counter_damage_fanout(effects: &mut [EffectAst]) -> bool {
     true
 }
 
+fn bind_removed_counter_damage_coordination(effect: &mut EffectAst) -> bool {
+    let EffectAst::Coordination(coordination) = effect else {
+        return false;
+    };
+    let [removal_member, damage_members @ ..] = coordination.members.as_mut_slice() else {
+        return false;
+    };
+    let [removal] = removal_member.effects.as_slice() else {
+        return false;
+    };
+    let Some(counter_type) = source_counter_removal(removal) else {
+        return false;
+    };
+    if damage_members.is_empty()
+        || damage_members.iter().any(|member| {
+            member.effects.is_empty()
+                || !member
+                    .effects
+                    .iter()
+                    .all(is_removed_counter_damage_fanout_member)
+        })
+    {
+        return false;
+    }
+
+    let mut rebound = damage_members.to_vec();
+    let bound = rebound
+        .iter_mut()
+        .flat_map(|member| member.effects.iter_mut())
+        .map(|damage| bind_damage_amount_to_removed_counter_count(damage, counter_type))
+        .sum::<usize>();
+    if bound < 2 {
+        return false;
+    }
+    damage_members.clone_from_slice(&rebound);
+    true
+}
+
+/// Bind removed-counter result provenance in either the legacy flat effect
+/// sequence or the canonical coordination/control-flow representation.
+pub fn bind_removed_counter_damage_fanout(effects: &mut [EffectAst]) -> bool {
+    let mut bound = bind_removed_counter_damage_fanout_flat(effects);
+    for effect in effects {
+        bound |= bind_removed_counter_damage_coordination(effect);
+        crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+            bound |= bind_removed_counter_damage_fanout(nested);
+        });
+    }
+    bound
+}
+
 /// Parse an authored result chain of the form
 /// `remove all [kind] counters from SOURCE, and it deals that much damage ...`.
 ///
@@ -1046,19 +1148,35 @@ pub fn bind_removed_counter_damage_fanout(effects: &mut [EffectAst]) -> bool {
 pub fn parse_remove_counters_then_shared_damage_fanout(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if tokens
+        .first()
+        .is_some_and(|token| token.is_word("if") || token.is_word("unless"))
+    {
+        // The conditional parser owns the complete consequence. It will call
+        // this specialist again with only the consequence tokens, ensuring
+        // every damage arm remains inside the condition.
+        return Ok(None);
+    }
     for (and_idx, token) in tokens.iter().enumerate() {
         if !token.is_word("and") {
             continue;
         }
         let first_tokens = trim_edge_punctuation(&tokens[..and_idx]);
         let second_tokens = trim_edge_punctuation(&tokens[and_idx + 1..]);
+        let Some(first_action_tokens) = first_tokens
+            .first()
+            .is_some_and(|token| token.is_word("remove"))
+            .then(|| trim_edge_punctuation(&first_tokens[1..]))
+        else {
+            continue;
+        };
         if !second_tokens
             .first()
             .is_some_and(|token| token.is_word("it"))
         {
             continue;
         }
-        let Ok(removal) = super::zone_handlers::parse_remove(&first_tokens) else {
+        let Ok(removal) = super::zone_handlers::parse_remove(&first_action_tokens) else {
             continue;
         };
         if source_counter_removal(&removal).is_none() {
@@ -1365,6 +1483,19 @@ mod coordinated_target_tests {
     }
 
     #[test]
+    fn leading_condition_keeps_a_terminal_instead_damage_pair_atomic() {
+        let tokens = lex_line(
+            "If you had a land enter the battlefield under your control this turn, this spell deals 3 damage to that player or planeswalker and 3 damage to that creature instead.",
+            0,
+        )
+        .unwrap();
+        let parsed = super::super::parse_effect_sentence_lexed(&tokens)
+            .expect("conditional replacement damage pair");
+        let debug = format!("{parsed:#?}");
+        assert_eq!(debug.matches("DealDamage").count(), 2, "{debug}");
+    }
+
+    #[test]
     fn repeated_damage_keeps_opponent_chooser_on_second_target() {
         let tokens = lex_line(
             "This spell deals 7 damage to target creature you don't control and 7 damage to target creature of an opponent's choice you don't control.",
@@ -1505,6 +1636,20 @@ mod coordinated_target_tests {
             "prepared choices: {:#?}\nprogram: {:#?}",
             lowered.choices,
             lowered.effects
+        );
+        let [coordinated] = lowered.effects.flattened_default_effects() else {
+            panic!(
+                "expected one coordinated runtime effect: {:#?}",
+                lowered.effects
+            );
+        };
+        let coordinated = coordinated
+            .downcast_ref::<crate::effects::SequenceEffect>()
+            .expect("serial modifiers should retain their coordinated runtime surface");
+        assert_eq!(
+            coordinated.effects.len(),
+            3,
+            "all independently targeted modifiers must remain executable: {coordinated:#?}"
         );
     }
 

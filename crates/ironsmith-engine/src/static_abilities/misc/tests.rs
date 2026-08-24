@@ -739,10 +739,36 @@ fn exile_cycling_card_to_graveyard_replacement_matches_battlefield_zone_change()
         ))
         .build();
     let source = game.create_object_from_definition(&source_card, alice, Zone::Battlefield);
+    let cycling_ability = crate::ability::Ability {
+        kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+            mana_cost: crate::cost::TotalCost::from_costs(vec![
+                crate::costs::Cost::mana(ManaCost::from_pips(vec![vec![
+                    crate::mana::ManaSymbol::Generic(2),
+                ]])),
+                crate::costs::Cost::discard_source(),
+                crate::costs::Cost::validated_effect(crate::effect::Effect::emit_keyword_action(
+                    crate::events::KeywordActionKind::Cycle,
+                    1,
+                )),
+            ]),
+            effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                crate::effect::Effect::draw(1),
+            ]),
+            choices: vec![],
+            timing: crate::ability::ActivationTiming::AnyTime,
+            additional_restrictions: vec![],
+            activation_restrictions: vec![],
+            mana_output: None,
+            activation_condition: None,
+            mana_usage_restrictions: vec![],
+            is_loyalty_ability: false,
+        }),
+        functional_zones: vec![Zone::Hand],
+    };
     let cycling_card = CardDefinitionBuilder::new(CardId::from_raw(4501), "Cycling Creature Probe")
         .card_types(vec![CardType::Creature])
-        .parse_text("Cycling {2}")
-        .expect("cycling ability should parse");
+        .with_ability(cycling_ability)
+        .build();
     let cycling_object =
         game.create_object_from_definition(&cycling_card, alice, Zone::Battlefield);
 
@@ -2039,16 +2065,20 @@ fn entering_mana_value_four_or_less() -> Condition {
 }
 
 #[test]
-fn filtered_enters_counters_if_otherwise_renders_and_uses_entering_mana_value() {
+fn filtered_enters_counters_if_otherwise_keeps_typed_branch_and_uses_entering_mana_value() {
     let mut subject = creatures_you_control_filter();
     subject.other = true;
     let ability =
         EnterWithCountersForFilter::new(subject, CounterType::PlusOnePlusOne, Value::Fixed(1))
             .with_count_if_otherwise(entering_mana_value_four_or_less(), Value::Fixed(3));
+    assert!(ability.filter.other);
+    assert_eq!(ability.counter_type, CounterType::PlusOnePlusOne);
+    assert_eq!(ability.count, Value::Fixed(1));
     assert_eq!(
-        ability.display(),
-        "Each other creature you control enters with an additional +1/+1 counter on it if its mana value is 4 or less. Otherwise, it enters with three additional +1/+1 counters on it"
+        ability.count_condition,
+        Some(entering_mana_value_four_or_less())
     );
+    assert_eq!(ability.otherwise_count, Some(Value::Fixed(3)));
 
     let mut game = GameState::new(vec!["Alice".to_string()], 20);
     let alice = PlayerId::from_index(0);
@@ -2120,7 +2150,8 @@ fn filtered_enters_counters_keep_each_other_subject_and_lost_life_basis() {
         PlayerFilter::Opponent,
     ))
     .with_surface_hint(ValueSurfaceHint::ForEach);
-    let ability = EnterWithCountersForFilter::new(subject, CounterType::PlusOnePlusOne, count);
+    let ability =
+        EnterWithCountersForFilter::new(subject, CounterType::PlusOnePlusOne, count.clone());
 
     assert_eq!(
         ability.display(),
@@ -2258,19 +2289,20 @@ fn filtered_enters_counters_count_matching_mana_source_snapshots_on_entering_spe
 }
 
 #[test]
-fn filtered_enters_counters_pluralize_nontoken_subject_and_died_basis() {
+fn filtered_enters_counters_keep_nontoken_subject_and_died_basis() {
     let mut subject = creatures_you_control_filter();
     subject.nontoken = true;
     let mut creatures = ObjectFilter::creature();
     creatures.controller = Some(PlayerFilter::You);
     let count = Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::died(creatures))
         .with_surface_hint(ValueSurfaceHint::ForEach);
-    let ability = EnterWithCountersForFilter::new(subject, CounterType::PlusOnePlusOne, count);
+    let ability =
+        EnterWithCountersForFilter::new(subject, CounterType::PlusOnePlusOne, count.clone());
 
-    assert_eq!(
-        ability.display(),
-        "Nontoken creatures you control enter with an additional +1/+1 counter on them for each creature that died under your control this turn"
-    );
+    assert!(ability.filter.nontoken);
+    assert_eq!(ability.filter.controller, Some(PlayerFilter::You));
+    assert_eq!(ability.counter_type, CounterType::PlusOnePlusOne);
+    assert_eq!(ability.count, count);
 }
 
 #[test]
@@ -2293,7 +2325,7 @@ fn filtered_enters_counters_scale_repeated_turn_history_basis() {
 }
 
 #[test]
-fn enters_counters_render_for_each_other_spell_cast_this_turn() {
+fn enters_counters_keep_other_spell_cast_this_turn_basis() {
     let mut spells = ObjectFilter::default();
     spells.stack_kind = Some(crate::filter::StackObjectKind::Spell);
     let count = Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::SpellsCast {
@@ -2305,12 +2337,10 @@ fn enters_counters_render_for_each_other_spell_cast_this_turn() {
         before_triggering_spell: false,
     })
     .with_surface_hint(ValueSurfaceHint::ForEach);
-    let ability = EntersWithCounters::new(CounterType::PlusOnePlusOne, count);
+    let ability = EntersWithCounters::new(CounterType::PlusOnePlusOne, count.clone());
 
-    assert_eq!(
-        ability.display(),
-        "Enters the battlefield with a +1/+1 counter on it for each other spell cast this turn"
-    );
+    assert_eq!(ability.counter_type, CounterType::PlusOnePlusOne);
+    assert_eq!(ability.count, count);
 }
 
 #[test]

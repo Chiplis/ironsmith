@@ -6,6 +6,11 @@ pub mod diagnostics {
 
 pub use ironsmith_compiler_syntax::lexer;
 
+#[path = "../../ironsmith-compiler/src/slice_primitives.rs"]
+pub mod slice_primitives;
+#[path = "../../ironsmith-compiler/src/string_primitives.rs"]
+pub mod string_primitives;
+
 pub mod model {
     pub use ironsmith_compiler_ast::provenance;
 }

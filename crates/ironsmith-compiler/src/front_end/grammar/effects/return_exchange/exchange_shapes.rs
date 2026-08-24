@@ -271,7 +271,10 @@ fn life_total_operand(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {
         .find_map(|(words, player)| exact_shape(tokens, words).then_some(*player))
 }
 
-fn source_stat_operand(tokens: &[OwnedLexToken]) -> Option<ExchangeValueKindShape> {
+fn source_stat_operand(
+    tokens: &[OwnedLexToken],
+    context: Option<crate::parse_context::ParseContextView<'_>>,
+) -> Option<ExchangeValueKindShape> {
     let source_heads = [
         &["its"][..],
         &["this"][..],
@@ -303,7 +306,15 @@ fn source_stat_operand(tokens: &[OwnedLexToken]) -> Option<ExchangeValueKindShap
         (&"toughness", source_words) => (source_words, ExchangeValueKindShape::Toughness),
         _ => return None,
     };
-    crate::util::source_reference_surface_for_possessive_words(source_words).map(|_| kind)
+    context
+        .and_then(|context| {
+            crate::util::source_reference_surface_for_possessive_words_with_context(
+                context,
+                source_words,
+            )
+        })
+        .or_else(|| crate::util::source_reference_surface_for_possessive_words(source_words))
+        .map(|_| kind)
 }
 
 fn target_stat_operand(tokens: &[OwnedLexToken]) -> Option<ExchangeValueOperandShape<'_>> {
@@ -328,11 +339,14 @@ fn target_stat_operand(tokens: &[OwnedLexToken]) -> Option<ExchangeValueOperandS
     None
 }
 
-fn classify_value_operand(tokens: &[OwnedLexToken]) -> Option<ExchangeValueOperandShape<'_>> {
+fn classify_value_operand<'tokens>(
+    tokens: &'tokens [OwnedLexToken],
+    context: Option<crate::parse_context::ParseContextView<'_>>,
+) -> Option<ExchangeValueOperandShape<'tokens>> {
     if let Some(player) = life_total_operand(tokens) {
         return Some(ExchangeValueOperandShape::LifeTotal(player));
     }
-    if let Some(kind) = source_stat_operand(tokens) {
+    if let Some(kind) = source_stat_operand(tokens, context) {
         return Some(ExchangeValueOperandShape::SourceStat {
             source_tokens: tokens,
             kind,
@@ -344,10 +358,30 @@ fn classify_value_operand(tokens: &[OwnedLexToken]) -> Option<ExchangeValueOpera
 pub fn parse_exchange_value_operands(
     tokens: &[OwnedLexToken],
 ) -> Option<(ExchangeValueOperandShape<'_>, ExchangeValueOperandShape<'_>)> {
+    parse_exchange_value_operands_with_optional_context(tokens, None)
+}
+
+pub fn parse_exchange_value_operands_with_context<'tokens>(
+    context: crate::parse_context::ParseContextView<'_>,
+    tokens: &'tokens [OwnedLexToken],
+) -> Option<(
+    ExchangeValueOperandShape<'tokens>,
+    ExchangeValueOperandShape<'tokens>,
+)> {
+    parse_exchange_value_operands_with_optional_context(tokens, Some(context))
+}
+
+fn parse_exchange_value_operands_with_optional_context<'tokens>(
+    tokens: &'tokens [OwnedLexToken],
+    context: Option<crate::parse_context::ParseContextView<'_>>,
+) -> Option<(
+    ExchangeValueOperandShape<'tokens>,
+    ExchangeValueOperandShape<'tokens>,
+)> {
     let (left, right) = split_on(tokens, &["with"]).or_else(|| split_on(tokens, &["and"]))?;
     Some((
-        classify_value_operand(left)?,
-        classify_value_operand(right)?,
+        classify_value_operand(left, context)?,
+        classify_value_operand(right, context)?,
     ))
 }
 

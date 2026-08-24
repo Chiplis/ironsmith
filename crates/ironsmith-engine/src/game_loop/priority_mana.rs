@@ -3117,6 +3117,12 @@ pub(super) fn finalize_spell_cast(
         cast_controlled_objects,
     );
 
+    // Cast-time trigger filters inspect the spell object itself. Preserve the
+    // same tagged LKI there that the stack entry carries through resolution.
+    if let Some(spell) = game.object_mut(new_id) {
+        spell.cast_tagged_objects = stack_entry_tagged_objects.clone();
+    }
+
     // Create stack entry with targets, X value, casting method, optional costs, and chosen modes
     let mut entry = StackEntry::new(new_id, caster)
         .with_provenance(provenance)

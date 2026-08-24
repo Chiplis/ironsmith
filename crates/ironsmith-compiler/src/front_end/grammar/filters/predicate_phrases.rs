@@ -4,7 +4,6 @@ use super::super::super::lexer::{
 };
 use super::*;
 use crate::cards::{TextSpan, builders::TargetAst};
-use crate::cst_lowering::lower_activation_cost_cst;
 use crate::grammar::activation_costs::parse_activation_cost_tokens;
 use crate::grammar::conditions::{
     parse_control_or_controlled_relation_clauses, parse_control_relation_clauses,
@@ -410,7 +409,7 @@ fn non_article_token_words_eq_any(tokens: &[OwnedLexToken], phrases: &[&[&str]])
 
 fn is_source_reference_clause(clause: LexedClause<'_>) -> bool {
     let words = clause.word_refs();
-    surface::exact_any(clause, &[&["it"], &["its"]]) || is_source_reference_words(&words)
+    surface::exact_any(clause, &[&["it"], &["its"], &["it's"]]) || is_source_reference_words(&words)
 }
 
 fn is_explicit_source_state_subject_clause(clause: LexedClause<'_>) -> bool {
@@ -458,41 +457,79 @@ fn parse_source_zone_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst>
 /// The object filter describes the cards above the source; its zone is supplied
 /// by the ordered graveyard traversal at runtime rather than by ordinary
 /// battlefield filter defaults.
-fn parse_source_graveyard_cards_above_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+fn parse_source_graveyard_cards_above_predicate(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<PredicateAst>, CardTextError> {
     let words = crate::lexer::token_word_refs(tokens);
     const PREFIX: [&str; 7] = ["this", "card", "is", "in", "your", "graveyard", "with"];
+    if !crate::word_primitives::parse_sequence_prefix(&words, &PREFIX) {
+        return Ok(None);
+    }
     if words.len() < PREFIX.len() + 5
-        || words[..PREFIX.len()] != PREFIX
         || words.get(8..10) != Some(&["or", "more"])
         || words.get(words.len().saturating_sub(2)..) != Some(&["above", "it"])
     {
-        return None;
+        return Err(CardTextError::ParseError(format!(
+            "malformed ordered-graveyard source predicate: {}",
+            words.join(" ")
+        )));
     }
-    let count = crate::util::parse_number_word_i32(words[7])?;
-    let count = u32::try_from(count).ok().filter(|count| *count > 0)?;
+    let count = crate::util::parse_number_word_i32(words[7]).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "invalid ordered-graveyard card count: {}",
+            words[7]
+        ))
+    })?;
+    let count = u32::try_from(count).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "ordered-graveyard card count must be positive: {}",
+            words[7]
+        ))
+    })?;
+    if count == 0 {
+        return Err(CardTextError::ParseError(
+            "ordered-graveyard card count must be positive".to_string(),
+        ));
+    }
 
-    let count_token = tokens.iter().position(|token| token.is_word(words[7]))?;
-    let or_token = tokens[count_token + 1..]
-        .iter()
-        .position(|token| token.is_word("or"))?
+    let count_token =
+        crate::slice_primitives::select_position(tokens, |token| token.is_word(words[7]))
+            .ok_or_else(|| {
+                CardTextError::ParseError("missing ordered-graveyard count token".to_string())
+            })?;
+    let or_token = crate::slice_primitives::select_position(&tokens[count_token + 1..], |token| {
+        token.is_word("or")
+    })
+    .ok_or_else(|| CardTextError::ParseError("missing ordered-graveyard comparison".to_string()))?
         + count_token
         + 1;
-    let above_token = tokens.iter().rposition(|token| token.is_word("above"))?;
+    let above_token =
+        crate::slice_primitives::select_last_position(tokens, |token| token.is_word("above"))
+            .ok_or_else(|| {
+                CardTextError::ParseError("missing ordered-graveyard position".to_string())
+            })?;
     if !tokens
         .get(or_token + 1)
         .is_some_and(|token| token.is_word("more"))
         || above_token <= or_token + 2
     {
-        return None;
+        return Err(CardTextError::ParseError(
+            "malformed ordered-graveyard comparison".to_string(),
+        ));
     }
-    let mut filter = parse_object_filter(&tokens[or_token + 2..above_token], false).ok()?;
+    let mut filter = parse_object_filter(&tokens[or_token + 2..above_token], false)?;
     if filter.zone == Some(Zone::Battlefield) {
         filter.zone = None;
     }
     if filter.zone.is_some() || filter.controller.is_some() || filter.owner.is_some() {
-        return None;
+        return Err(CardTextError::ParseError(
+            "ordered-graveyard filter cannot carry a zone or player scope".to_string(),
+        ));
     }
-    Some(PredicateAst::SourceInGraveyardWithCardsAbove { filter, count })
+    Ok(Some(PredicateAst::SourceInGraveyardWithCardsAbove {
+        filter,
+        count,
+    }))
 }
 
 fn parse_outlaw_shorthand_filter(clause: LexedClause<'_>) -> Option<ObjectFilter> {
@@ -712,15 +749,20 @@ fn parse_filter_keyword_constraint_tokens(
 pub fn parse_source_keyword_condition_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let relation = parse_has_relation_clauses(tokens)?;
     let subject_words = relation.subject_clause.words().word_refs();
-    let explicit_this_type = matches!(
-        subject_words.as_slice(),
-        ["this", "creature"]
-            | ["this", "permanent"]
-            | ["this", "artifact"]
-            | ["this", "enchantment"]
-            | ["this", "land"]
-            | ["this", "spell"]
-            | ["this", "source"]
+    let explicit_this_type = crate::word_primitives::parse_choice_sequence_complete(
+        &subject_words,
+        &[
+            &["this"],
+            &[
+                "creature",
+                "permanent",
+                "artifact",
+                "enchantment",
+                "land",
+                "spell",
+                "source",
+            ],
+        ],
     );
     if !is_source_reference_clause(relation.subject_clause) && !explicit_this_type {
         return None;
@@ -732,7 +774,7 @@ pub fn parse_source_keyword_condition_filter(tokens: &[OwnedLexToken]) -> Option
     }
     let mut filter = ObjectFilter::default();
     apply_filter_keyword_constraint(&mut filter, constraint, false);
-    if subject_words.as_slice() == ["it"] {
+    if crate::word_primitives::parse_sequence_complete(&subject_words, &["it"]) {
         filter.set_trailing_candidate_ability_condition_surface(true);
     }
     Some(filter)
@@ -1305,7 +1347,6 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
 /// predicate remains executable and can be promoted to an intervening-if gate.
 fn parse_triggering_object_source_stat_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let words = LexedClause::new(tokens).word_refs();
-    let words = words.as_slice();
 
     let triggering_stat_filter = |power: bool| {
         let mut filter = ObjectFilter::default();
@@ -1323,24 +1364,27 @@ fn parse_triggering_object_source_stat_predicate(tokens: &[OwnedLexToken]) -> Op
         PredicateAst::ItMatches(filter)
     };
 
-    let single_stat = matches!(
-        words,
-        [
-            "that",
-            "creatures",
-            "power",
-            "is",
-            "greater",
-            "than",
-            "this",
-            "creatures"
-        ] | ["its", "power", "is", "greater", "than", "this", "creatures"]
+    let single_stat = crate::word_primitives::parse_any_sequence_complete(
+        &words,
+        &[
+            &[
+                "that",
+                "creatures",
+                "power",
+                "is",
+                "greater",
+                "than",
+                "this",
+                "creatures",
+            ],
+            &["its", "power", "is", "greater", "than", "this", "creatures"],
+        ],
     );
     if single_stat {
         return Some(triggering_stat_filter(true));
     }
 
-    let has_idx = words.iter().position(|word| *word == "has")?;
+    let has_idx = crate::word_primitives::parse_sequence_start(&words, &["has"])?;
     let comparison_tail = &words[has_idx..];
     let explicit_source_reference = surface::exact_words(
         comparison_tail,
@@ -2617,7 +2661,7 @@ fn ability_resolution_ordinal_disjunction_counts(clause: LexedClause<'_>) -> Opt
     ];
 
     let words = clause.word_refs();
-    if !words.starts_with(PREFIX) {
+    if !crate::word_primitives::parse_sequence_prefix(&words, PREFIX) {
         return None;
     }
     let mut start = PREFIX.len();
@@ -2626,7 +2670,9 @@ fn ability_resolution_ordinal_disjunction_counts(clause: LexedClause<'_>) -> Opt
     }
 
     for suffix in SUFFIXES {
-        if !words.ends_with(suffix) || words.len() <= start + suffix.len() {
+        if !crate::word_primitives::parse_sequence_suffix(&words, suffix)
+            || words.len() <= start + suffix.len()
+        {
             continue;
         }
         let ordinal_words = &words[start..words.len() - suffix.len()];
@@ -3640,6 +3686,9 @@ fn parse_demonstrative_or_descriptor_predicate(
     let Some(or_idx) = token_index_for_word(&descriptor_tokens, OR_WORD) else {
         return Ok(None);
     };
+    if crate::object_filters::is_comparison_or_delimiter(&descriptor_tokens, or_idx) {
+        return Ok(None);
+    }
     let left_tokens = &descriptor_tokens[..or_idx];
     let right_tokens = &descriptor_tokens[or_idx + 1..];
     if left_tokens.is_empty() || right_tokens.is_empty() {
@@ -4041,10 +4090,9 @@ fn parse_shared_suffix_exact_count_or(
         {
             continue;
         }
-        let Some(have_idx) = left_tokens
-            .iter()
-            .rposition(|token| token_word_is(token, "has") || token_word_is(token, "have"))
-        else {
+        let Some(have_idx) = crate::slice_primitives::select_last_position(left_tokens, |token| {
+            token_word_is(token, "has") || token_word_is(token, "have")
+        }) else {
             continue;
         };
         let subject_and_verb = &left_tokens[..=have_idx];

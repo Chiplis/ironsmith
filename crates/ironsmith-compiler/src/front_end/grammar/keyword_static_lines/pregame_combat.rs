@@ -66,12 +66,13 @@ pub fn parse_pregame_reveal_from_opening_hand_tokens(
 
     let positions = parser_token_word_positions(tokens);
     let words = positions.iter().map(|(_, word)| *word).collect::<Vec<_>>();
-    if !words.starts_with(INTRO) {
+    if !crate::word_primitives::parse_sequence_prefix(&words, INTRO) {
         return None;
     }
 
     let tail = &words[INTRO.len()..];
-    let prefix_shape = [
+    let mut prefix_shape = None;
+    for (phrase, timing) in [
         (FIRST_UPKEEP, PregameRevealTiming::FirstUpkeep),
         (
             YOUR_FIRST_MAIN,
@@ -81,9 +82,12 @@ pub fn parse_pregame_reveal_from_opening_hand_tokens(
             EACH_OPPONENT_FIRST_SPELL,
             PregameRevealTiming::EachOpponentFirstSpellOfGame,
         ),
-    ]
-    .into_iter()
-    .find(|(phrase, _)| tail.starts_with(phrase));
+    ] {
+        if crate::word_primitives::parse_sequence_prefix(tail, phrase) {
+            prefix_shape = Some((phrase, timing));
+            break;
+        }
+    }
 
     if let Some((phrase, timing)) = prefix_shape {
         let effect_word = INTRO.len() + phrase.len();
@@ -95,7 +99,9 @@ pub fn parse_pregame_reveal_from_opening_hand_tokens(
         });
     }
 
-    if tail.len() > YOUR_FIRST_UPKEEP.len() && tail.ends_with(YOUR_FIRST_UPKEEP) {
+    if tail.len() > YOUR_FIRST_UPKEEP.len()
+        && crate::word_primitives::parse_sequence_suffix(tail, YOUR_FIRST_UPKEEP)
+    {
         let timing_word = words.len() - YOUR_FIRST_UPKEEP.len();
         let effect_start = positions.get(INTRO.len())?.0;
         let effect_end = positions.get(timing_word)?.0;

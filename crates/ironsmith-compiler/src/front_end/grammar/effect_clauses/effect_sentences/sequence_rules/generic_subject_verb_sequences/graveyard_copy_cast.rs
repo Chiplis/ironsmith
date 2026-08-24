@@ -151,6 +151,50 @@ fn exact_terminal_card_copy_tag(effect: &EffectAst) -> Option<TagKey> {
         .filter(|tag| crate::util::is_sentence_helper_tag(tag.as_str(), "exiled"))
 }
 
+fn retag_single_card_copy(effect: &mut EffectAst, tag: TagKey) -> bool {
+    if exact_single_card_copy_tag(effect).is_none() {
+        return false;
+    }
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::CopySpell {
+                target: TargetAst::Tagged(copy_tag, _),
+                ..
+            },
+        ..
+    }) = effect
+    else {
+        return false;
+    };
+    *copy_tag = tag;
+    true
+}
+
+fn take_binary_coordination(effects: Vec<EffectAst>) -> Option<(EffectAst, EffectAst)> {
+    let [effect] = effects.try_into().ok()?;
+    let members = match effect {
+        EffectAst::Coordinated {
+            effects,
+            leading_duration: false,
+            result_conjunction: false,
+        } => effects,
+        EffectAst::Coordination(coordination) => coordination
+            .members
+            .into_iter()
+            .map(|member| member.effects)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|effects| {
+                let [effect]: [EffectAst; 1] = effects.try_into().ok()?;
+                Some(effect)
+            })
+            .collect::<Option<Vec<_>>>()?,
+        _ => return None,
+    };
+    let [first, second] = members.try_into().ok()?;
+    Some((first, second))
+}
+
 /// Composes the card-copy procedure
 ///
 /// `exile <target card> from a graveyard and copy it. You may cast the copy`
@@ -163,33 +207,35 @@ pub fn parse_graveyard_exile_copy_then_may_cast_copy(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Ok(mut first_effects) =
+    let Ok(first_effects) =
         effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
     else {
         return Ok(None);
     };
-    for effect in &mut first_effects {
-        normalize_shared_graveyard_union_exile(effect);
-    }
-    let [
-        EffectAst::Coordinated {
-            effects: coordinated,
-            leading_duration: false,
-            result_conjunction: false,
-        },
-    ] = first_effects.as_mut_slice()
-    else {
+    let Some((mut exile_effect, mut copy_effect)) = take_binary_coordination(first_effects) else {
         return Ok(None);
     };
-    let [exile_effect, copy_effect] = coordinated.as_slice() else {
+    normalize_shared_graveyard_union_exile(&mut exile_effect);
+    let exiled_tag = if let Some(tag) = exact_terminal_card_copy_tag(&copy_effect)
+        && is_exact_tagged_graveyard_exile(&exile_effect, &tag)
+    {
+        tag
+    } else if exact_single_card_copy_tag(&copy_effect)
+        .is_some_and(|tag| tag.as_str() == crate::cards::builders::IT_TAG)
+        && is_exact_graveyard_exile(&exile_effect)
+    {
+        let tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "exiled");
+        exile_effect = EffectAst::TagAffected {
+            effect: Box::new(exile_effect),
+            tag: tag.clone(),
+        };
+        if !retag_single_card_copy(&mut copy_effect, tag.clone()) {
+            return Ok(None);
+        }
+        tag
+    } else {
         return Ok(None);
     };
-    let Some(exiled_tag) = exact_terminal_card_copy_tag(copy_effect) else {
-        return Ok(None);
-    };
-    if !is_exact_tagged_graveyard_exile(exile_effect, &exiled_tag) {
-        return Ok(None);
-    }
 
     let Some(mut cast) = parse_may_cast_it_sentence(sentences[sentence_idx + 1].lowered()) else {
         return Ok(None);
@@ -199,7 +245,6 @@ pub fn parse_graveyard_exile_copy_then_may_cast_copy(
     }
     cast.tag = exiled_tag;
 
-    let exile_effect = coordinated.remove(0);
     Ok(Some(vec![
         exile_effect,
         build_may_cast_tagged_effect(&cast),
@@ -291,13 +336,13 @@ mod tests {
     use super::*;
     use crate::lexer::{lex_line, split_lexed_sentences};
 
-    fn registry_match(text: &str) -> super::super::super::SequenceRuleMatch {
+    fn registry_match(text: &str) -> super::super::super::DocumentProgramMatch {
         let tokens = lex_line(text, 0).expect("graveyard copy/cast fixture should lex");
         let sentences = split_lexed_sentences(&tokens)
             .into_iter()
             .map(SentenceInput::from_lexed)
             .collect::<Vec<_>>();
-        super::super::super::try_parse_subject_verb_sequence_rule(&sentences, 0)
+        super::super::super::try_parse_document_program(&sentences, 0)
             .expect("graveyard copy/cast registry should not error")
             .expect("graveyard copy/cast registry should match")
     }

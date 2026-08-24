@@ -591,9 +591,54 @@ impl WasmGame {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         let priority_state = PriorityLoopState::new(2);
+        #[cfg(test)]
+        let registry = {
+            static FIXTURE_REGISTRY: std::sync::OnceLock<CardRegistry> =
+                std::sync::OnceLock::new();
+            FIXTURE_REGISTRY
+                .get_or_init(|| {
+                    let mut registry = CardRegistry::new();
+                    ironsmith_registry_test::cards::register_builtin_handwritten_cards_if(
+                        &mut registry,
+                        |constructor| {
+                            matches!(
+                                constructor,
+                                "basic_forest"
+                                    | "basic_island"
+                                    | "basic_mountain"
+                                    | "basic_plains"
+                                    | "basic_swamp"
+                                    | "black_lotus"
+                                    | "blood_artist"
+                                    | "breaking"
+                                    | "command_tower"
+                                    | "culling_the_weak"
+                                    | "emrakul_the_promised_end"
+                                    | "entering"
+                                    | "gemstone_caverns"
+                                    | "grizzly_bears"
+                                    | "lightning_bolt"
+                                    | "ornithopter"
+                                    | "phyrexian_tower"
+                                    | "polluted_delta"
+                                    | "serum_powder"
+                                    | "sol_ring"
+                                    | "stoke_the_flames"
+                                    | "tainted_pact"
+                                    | "urzas_saga"
+                                    | "yawgmoth_thran_physician"
+                            )
+                        },
+                    );
+                    registry
+                })
+                .clone()
+        };
+        #[cfg(not(test))]
+        let registry = CardRegistry::new();
         Self {
             game: GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20),
-            registry: CardRegistry::new(),
+            registry,
             trigger_queue: TriggerQueue::new(),
             priority_state,
             pregame: None,
@@ -1321,8 +1366,7 @@ impl WasmGame {
                 "hidden card commitment does not match reveal",
             ));
         }
-        self.registry
-            .ensure_cards_loaded([input.card_name.as_str()]);
+        self.ensure_card_definitions_loaded([input.card_name.as_str()]);
         let definition = self
             .find_card_definition(&input.card_name)
             .cloned()
@@ -1373,8 +1417,7 @@ impl WasmGame {
                 "hidden card commitment does not match reveal",
             ));
         }
-        self.registry
-            .ensure_cards_loaded([input.card_name.as_str()]);
+        self.ensure_card_definitions_loaded([input.card_name.as_str()]);
         let definition = self
             .find_card_definition(&input.card_name)
             .cloned()
@@ -1401,8 +1444,7 @@ impl WasmGame {
     pub fn reveal_hidden_position(&mut self, input: JsValue) -> Result<JsValue, JsValue> {
         let input: RevealHiddenPositionInput = serde_wasm_bindgen::from_value(input)
             .map_err(|e| JsValue::from_str(&format!("invalid reveal input: {e}")))?;
-        self.registry
-            .ensure_cards_loaded([input.card_name.as_str()]);
+        self.ensure_card_definitions_loaded([input.card_name.as_str()]);
         let reveal = self.validate_hidden_position_reveal(&input)?;
         self.apply_validated_hidden_position_reveal(&reveal)?;
         self.finish_hidden_card_reveal(input.recompute_decision)
@@ -1415,8 +1457,9 @@ impl WasmGame {
         if input.reveals.is_empty() {
             return self.snapshot();
         }
-        self.registry
-            .ensure_cards_loaded(input.reveals.iter().map(|reveal| reveal.card_name.as_str()));
+        self.ensure_card_definitions_loaded(
+            input.reveals.iter().map(|reveal| reveal.card_name.as_str()),
+        );
         let mut seen_objects = HashSet::new();
         let mut reveals = Vec::with_capacity(input.reveals.len());
         for reveal_input in &input.reveals {
@@ -2405,7 +2448,7 @@ impl WasmGame {
             return Err(JsValue::from_str("card name cannot be empty"));
         }
 
-        self.registry.ensure_cards_loaded([query]);
+        self.ensure_card_definitions_loaded([query]);
         let definition = self.load_compilable_card_definition(query)?;
 
         let object_id = self.game.create_object_from_catalog_definition(
@@ -2570,7 +2613,7 @@ impl WasmGame {
         self.validate_commander_manual_zone_addition(zone)
             .map_err(|error| JsValue::from_str(&error))?;
 
-        self.registry.ensure_cards_loaded([query]);
+        self.ensure_card_definitions_loaded([query]);
         let definition = self.load_compilable_card_definition(query)?;
 
         if zone == Zone::Battlefield && !skip_triggers {
@@ -2665,8 +2708,7 @@ impl WasmGame {
             }
         }
 
-        self.registry
-            .ensure_cards_loaded(definition_queries.iter().map(String::as_str));
+        self.ensure_card_definitions_loaded(definition_queries.iter().map(String::as_str));
         let mut definitions: Vec<(String, CardDefinition)> = Vec::new();
         for query in &definition_queries {
             let definition = self.load_compilable_card_definition(query)?;
@@ -2900,11 +2942,9 @@ impl WasmGame {
         let mut accepted_sideboards = vec![Vec::new(); decks.len()];
 
         for (player_index, deck) in decks.iter().enumerate() {
-            self.registry
-                .ensure_cards_loaded(deck.iter().map(|name| name.as_str()));
+            self.ensure_card_definitions_loaded(deck.iter().map(|name| name.as_str()));
             if let Some(sideboard) = sideboards.get(player_index) {
-                self.registry
-                    .ensure_cards_loaded(sideboard.iter().map(|name| name.as_str()));
+                self.ensure_card_definitions_loaded(sideboard.iter().map(|name| name.as_str()));
             }
 
             for name in deck {

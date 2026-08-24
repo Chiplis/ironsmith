@@ -1,7 +1,7 @@
 use super::*;
 
 fn beast_token() -> crate::cards::CardDefinition {
-    crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Phyrexian")
+    crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Phyrexian")
         .token()
         .card_types(vec![CardType::Creature])
         .subtypes(vec![Subtype::Phyrexian, Subtype::Beast])

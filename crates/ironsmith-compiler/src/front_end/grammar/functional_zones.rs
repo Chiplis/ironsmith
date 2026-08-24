@@ -1,6 +1,6 @@
 use crate::zone::Zone;
 
-use super::super::lexer::OwnedLexToken;
+use super::super::lexer::{OwnedLexToken, is_authored_proper_name_phrase};
 use super::shared_util::reference_shapes;
 use super::{abilities, leaf, primitives};
 
@@ -177,134 +177,29 @@ pub struct TriggerFunctionalZoneFacts {
     pub discards_this_card: bool,
 }
 
-pub fn parse_activated_functional_zones_tokens(
-    cost_tokens: &[OwnedLexToken],
-    effect_sentences: &[&[OwnedLexToken]],
-) -> Vec<Zone> {
-    if effect_sentences.iter().any(|sentence| {
-        abilities::is_any_player_may_activate_sentence_lexed(sentence)
-            && primitives::find_prefix(sentence, || primitives::phrase(&["on", "the", "stack"]))
-                .is_some()
-    }) {
-        return vec![Zone::Stack];
-    }
-
-    let cost_words = normalized_activated_zone_words(cost_tokens);
-    let effect_words = effect_sentences
-        .iter()
-        .map(|sentence| normalized_activated_zone_words(sentence))
-        .collect::<Vec<_>>();
-    let any_effect = |predicate: fn(&[&str]) -> bool| {
-        effect_words.iter().any(|words| predicate(words.as_slice()))
-    };
-
-    let returns_source_from_graveyard_or_exile = effect_words.iter().any(|words| {
-        words.windows(8).any(|window| {
-            window
-                == [
-                    "return",
-                    "this",
-                    "card",
-                    "from",
-                    "your",
-                    "graveyard",
-                    "or",
-                    "from",
-                ]
-                && words.contains(&"exile")
-        })
-    });
-
-    if returns_source_from_graveyard_or_exile {
-        vec![Zone::Graveyard, Zone::Exile]
-    } else if reference_shapes::contains_source_from_your_graveyard(&cost_words)
-        || any_effect(reference_shapes::contains_source_from_your_graveyard)
-    {
-        vec![Zone::Graveyard]
-    } else if reference_shapes::contains_source_from_command_zone(&cost_words)
-        || any_effect(reference_shapes::contains_source_from_command_zone)
-    {
-        vec![Zone::Command]
-    } else if reference_shapes::contains_source_from_your_hand(&cost_words)
-        || reference_shapes::contains_discard_source(&cost_words)
-        || any_effect(reference_shapes::contains_source_from_your_hand)
-    {
-        vec![Zone::Hand]
-    } else {
-        vec![Zone::Battlefield]
-    }
-}
-
-fn normalized_activated_zone_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
-    primitives::TokenWordView::new(tokens)
-        .word_refs()
-        .into_iter()
-        .filter(|word| leaf::parse_leaf_article_complete(word).is_err())
-        .collect()
-}
-
-fn has_phrase(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> bool {
-    primitives::find_prefix(tokens, || primitives::phrase(phrase)).is_some()
-}
-
-fn has_any_phrase(tokens: &[OwnedLexToken], phrases: &'static [&'static [&'static str]]) -> bool {
-    phrases.iter().any(|phrase| has_phrase(tokens, phrase))
-}
-
-fn parse_trigger_zone_hint_tokens(tokens: &[OwnedLexToken]) -> Option<Zone> {
-    for (phrase, zone) in TRIGGER_ZONE_HINT_PHRASES {
-        if has_phrase(tokens, phrase) {
-            return Some(*zone);
-        }
-    }
-    None
-}
-
-pub fn parse_static_functional_zones_tokens(tokens: &[OwnedLexToken]) -> Option<Vec<Zone>> {
-    if has_any_phrase(tokens, SOURCE_NOT_ON_BATTLEFIELD_PHRASES) {
-        return Some(vec![
-            Zone::Hand,
-            Zone::Stack,
-            Zone::Graveyard,
-            Zone::Exile,
-            Zone::Library,
-            Zone::Command,
-        ]);
-    }
-    if has_any_phrase(tokens, STATIC_LIBRARY_SEARCH_ZONE_PHRASES)
-        && has_phrase(tokens, FROM_YOUR_LIBRARY_PHRASE)
-    {
-        return Some(vec![Zone::Library]);
-    }
-    if has_any_phrase(tokens, CAST_OR_PLAY_SELF_FROM_GRAVEYARD_PHRASES) {
-        return Some(vec![Zone::Graveyard]);
-    }
-    if has_any_phrase(tokens, CAST_OR_PLAY_SELF_FROM_EXILE_PHRASES) {
-        return Some(vec![Zone::Exile]);
-    }
-    if has_phrase(tokens, CAUSES_YOU_TO_DISCARD_THIS_CARD_PHRASE)
-        && has_phrase(tokens, INSTEAD_OF_PUTTING_IT_INTO_YOUR_GRAVEYARD_PHRASE)
-    {
-        return Some(vec![Zone::Hand]);
-    }
-
-    let zones = STATIC_ZONE_HINT_PHRASES
-        .iter()
-        .filter(|(phrase, _)| has_phrase(tokens, phrase))
-        .map(|(_, zone)| *zone)
-        .collect::<Vec<_>>();
-    (!zones.is_empty()).then_some(zones)
-}
-
-pub fn parse_trigger_functional_zone_facts_tokens(
-    tokens: &[OwnedLexToken],
-) -> TriggerFunctionalZoneFacts {
-    TriggerFunctionalZoneFacts {
-        explicit_zone: parse_trigger_zone_hint_tokens(tokens),
-        returns_self_from_graveyard: has_any_phrase(tokens, RETURN_SELF_FROM_GRAVEYARD_PHRASES),
-        discards_this_card: has_phrase(tokens, DISCARD_THIS_CARD_PHRASE),
-    }
-}
-
 #[cfg(test)]
 mod tests;
+
+#[path = "functional_zones/trigger_programs.rs"]
+mod trigger_programs;
+pub use trigger_programs::parse_trigger_functional_zone_facts_tokens;
+use trigger_programs::parse_trigger_zone_hint_tokens;
+#[path = "functional_zones/object_action_programs.rs"]
+mod object_action_programs;
+pub use object_action_programs::parse_static_functional_zones_tokens;
+#[path = "functional_zones/core_programs.rs"]
+mod core_programs;
+use core_programs::{has_any_phrase, has_phrase};
+#[path = "functional_zones/permission_programs.rs"]
+mod permission_programs;
+use permission_programs::normalized_activated_zone_words;
+#[path = "functional_zones/reference_programs.rs"]
+mod reference_programs;
+use reference_programs::{
+    contains_named_source_command_zone_move, is_named_or_normalized_source_surface,
+    trim_named_source_surface,
+};
+
+#[path = "functional_zones/activated_zone_resolution.rs"]
+mod activated_zone_resolution;
+pub use activated_zone_resolution::parse_activated_functional_zones_tokens;

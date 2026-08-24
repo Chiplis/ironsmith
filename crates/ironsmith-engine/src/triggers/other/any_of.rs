@@ -166,7 +166,7 @@ mod tests {
     }
 
     #[test]
-    fn serial_shared_opponent_union_uses_one_subject_and_oxford_or() {
+    fn serial_shared_opponent_union_keeps_three_typed_branches() {
         let mut attacking = ObjectFilter::creature().controlled_by(PlayerFilter::Opponent);
         attacking.attacking_player_or_planeswalker_controlled_by = Some(PlayerFilter::You);
         attacking.targets_only_player = Some(PlayerFilter::You);
@@ -187,9 +187,15 @@ mod tests {
             ],
         });
 
-        assert_eq!(
-            trigger.display(),
-            "Whenever an opponent attacks you with two or more creatures, draws their second card each turn, or casts their second spell each turn"
-        );
+        let union = trigger
+            .downcast_ref::<AnyOfTrigger>()
+            .expect("expected a typed trigger union");
+        assert_eq!(union.branches.len(), 3);
+        let attacks = union.branches[0]
+            .downcast_ref::<crate::triggers::combat::AttacksTrigger>()
+            .expect("first branch should be an attacks trigger");
+        assert_eq!(attacks.min_total_attackers, 2);
+        assert_eq!(attacks.filter.controller, Some(PlayerFilter::Opponent));
+        assert_eq!(attacks.filter.targets_only_player, Some(PlayerFilter::You));
     }
 }

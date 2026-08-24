@@ -6139,10 +6139,9 @@ fn split_common_clause_conjunctions(text: &str) -> String {
         let left_lower = left_trimmed.to_ascii_lowercase();
         let right_trimmed = right.trim_end_matches('.').trim();
         let right_lower = right_trimmed.to_ascii_lowercase();
-        if left_lower.starts_with("tap target ") && right_lower.contains(" on it") {
-            normalized = format!("{left_trimmed} and put {right_trimmed}");
-        } else if (left_lower.ends_with("draw a card") || left_lower.ends_with("you draw a card"))
-            && right_lower.contains(" counter on ")
+        if (left_lower.starts_with("tap target ") && right_lower.contains(" on it"))
+            || ((left_lower.ends_with("draw a card") || left_lower.ends_with("you draw a card"))
+                && right_lower.contains(" counter on "))
         {
             normalized = format!("{left_trimmed} and put {right_trimmed}");
         }

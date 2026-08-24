@@ -1,7 +1,10 @@
 //! Card definition for Command Tower.
 
 use super::CardDefinitionBuilder;
+use crate::ability::Ability;
 use crate::cards::CardDefinition;
+use crate::cost::TotalCost;
+use crate::effect::Effect;
 use crate::ids::CardId;
 use crate::types::CardType;
 
@@ -13,8 +16,12 @@ use crate::types::CardType;
 pub fn command_tower() -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Command Tower")
         .card_types(vec![CardType::Land])
-        .parse_text("{T}: Add one mana of any color in your commander's color identity.")
-        .expect("Card text should be supported")
+        .oracle_text("{T}: Add one mana of any color in your commander's color identity.")
+        .with_ability(Ability::mana_with_effects(
+            TotalCost::free(),
+            vec![Effect::add_mana_from_commander_color_identity(1)],
+        ))
+        .build()
 }
 
 #[cfg(all(test, ironsmith_runtime_parser_tests))]

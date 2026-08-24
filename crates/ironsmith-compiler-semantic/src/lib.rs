@@ -1,4 +1,10 @@
-#![expect(clippy::type_complexity, clippy::too_many_arguments)]
+// Canonical semantic nodes intentionally carry complete value/filter subtrees. Boxing each
+// variant solely for lint-size uniformity would make the shared AST API allocation-driven.
+#![allow(
+    clippy::large_enum_variant,
+    clippy::too_many_arguments,
+    clippy::type_complexity
+)]
 #![allow(ambiguous_glob_reexports)]
 
 //! Recursive compiled-value graph shared by compiler grammar and lowering.
@@ -99,8 +105,8 @@ pub mod cards {
 
         #[derive(Debug, Clone, PartialEq)]
         pub enum GrantedAbilityAst {
-            KeywordAction(KeywordAction),
-            StaticAbility(StaticAbility),
+            KeywordAction(Box<KeywordAction>),
+            StaticAbility(Box<StaticAbilityAst>),
             ThisAbility,
             MustAttack,
             MustBlock,
@@ -109,14 +115,14 @@ pub mod cards {
                 additional: usize,
             },
             ParsedObjectAbility {
-                ability: crate::model::compiler_semantic::ParsedAbility,
+                ability: Box<crate::model::compiler_semantic::ParsedAbility>,
                 display: String,
             },
         }
 
         impl From<KeywordAction> for GrantedAbilityAst {
             fn from(action: KeywordAction) -> Self {
-                Self::KeywordAction(action)
+                Self::KeywordAction(Box::new(action))
             }
         }
 

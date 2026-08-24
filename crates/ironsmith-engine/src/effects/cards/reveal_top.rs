@@ -56,10 +56,12 @@ impl EffectExecutor for RevealTopEffect {
 mod tests {
     use super::*;
     use crate::card::CardBuilder;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::cards::CardDefinitionBuilder;
     use crate::decision::DecisionMaker;
     use crate::effects::ExecutionContext;
     use crate::ids::{CardId, PlayerId};
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::tag::TagKey;
     use crate::test_prelude::*;
     use crate::types::CardType;

@@ -1,8 +1,11 @@
 //! Llanowar Elves card definition.
 
 use super::CardDefinitionBuilder;
+use crate::ability::Ability;
 use crate::card::PowerToughness;
 use crate::cards::CardDefinition;
+use crate::cost::TotalCost;
+use crate::costs::Cost;
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::types::{CardType, Subtype};
@@ -16,8 +19,11 @@ pub fn llanowar_elves() -> CardDefinition {
         .card_types(vec![CardType::Creature])
         .subtypes(vec![Subtype::Elf, Subtype::Druid])
         .power_toughness(PowerToughness::fixed(1, 1))
-        .parse_text("{T}: Add {G}.")
-        .expect("Card text should be supported")
+        .with_ability(Ability::mana(
+            TotalCost::from_cost(Cost::tap()),
+            vec![ManaSymbol::Green],
+        ))
+        .build()
 }
 
 #[cfg(all(test, ironsmith_runtime_parser_tests))]

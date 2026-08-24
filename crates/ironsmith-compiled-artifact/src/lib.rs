@@ -163,6 +163,10 @@ pub struct WireEmblemDescription {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "wire variants preserve the canonical runtime value shapes without allocation-only schema wrappers"
+)]
 pub enum WireRuntimeModification {
     ModifyPowerToughness {
         power: ironsmith_core::Value,

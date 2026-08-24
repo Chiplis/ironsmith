@@ -15,7 +15,7 @@ use super::util::join_sentences_with_period;
 
 #[path = "cst_lowering/activation_costs.rs"]
 pub mod activation_costs;
-pub use activation_costs::{lower_activation_cost_cst, recognize_activation_cost_cst};
+pub use activation_costs::recognize_activation_cost_cst;
 
 fn parsed_line_item(
     info: crate::model::facts::LineInfo,
@@ -118,12 +118,9 @@ fn lower_activated_line(
             return Err(err);
         }
     };
-    let cost =
-        crate::lowering::cost_materialization::materialize_compiler_total_cost(&compiler_cost)?;
     let info = activated.info;
     let parsed = crate::semantic_line_parsing::parse_activated_line(
         info.clone(),
-        cost,
         compiler_cost,
         activated.cost_parse_tokens,
         activated.effect_parse_tokens,

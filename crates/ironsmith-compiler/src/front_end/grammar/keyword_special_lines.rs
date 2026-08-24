@@ -208,118 +208,15 @@ fn inline_partner_label_head(input: &mut LexStream<'_>) -> WResult<()> {
     .parse_next(input)
 }
 
-fn parse_optional_cost_with_cast_trigger_lexed<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<OptionalCostWithCastTriggerShape<'a>> {
-    primitives::phrase(&[
-        "as",
-        "an",
-        "additional",
-        "cost",
-        "to",
-        "cast",
-        "this",
-        "spell",
-    ])
-    .parse_next(input)?;
-    opt(primitives::comma()).parse_next(input)?;
-
-    let label_tokens = (
-        primitives::phrase(&["you", "may"]),
-        repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::period())).void(),
-    )
-        .take()
-        .parse_next(input)?;
-    let (_, optional_cost_effect_tokens) =
-        primitives::parse_prefix(label_tokens, primitives::phrase(&["you", "may"]))
-            .ok_or_else(|| primitives::backtrack_err("optional additional cost", "you may"))?;
-    primitives::period().parse_next(input)?;
-    primitives::phrase(&["when", "you", "do"]).parse_next(input)?;
-    opt(primitives::comma()).parse_next(input)?;
-    let followup_effect_tokens =
-        repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::sentence_end()))
-            .map(|((), ())| ())
-            .take()
-            .parse_next(input)?;
-    primitives::sentence_end().parse_next(input)?;
-
-    Ok(OptionalCostWithCastTriggerShape {
-        label_tokens,
-        optional_cost_effect_tokens,
-        followup_effect_tokens,
-    })
-}
-
-fn parse_optional_keyword_additional_cost_lexed<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<OptionalKeywordAdditionalCostShape<'a>> {
-    primitives::phrase(&[
-        "as",
-        "an",
-        "additional",
-        "cost",
-        "to",
-        "cast",
-        "this",
-        "spell",
-    ])
-    .parse_next(input)?;
-    opt(primitives::comma()).parse_next(input)?;
-    primitives::phrase(&["you", "may"]).parse_next(input)?;
-    let cost_tokens = (
-        alt((
-            primitives::kw("behold").value(OptionalKeywordCostKind::Behold),
-            primitives::kw("blight").value(OptionalKeywordCostKind::Blight),
-        )),
-        repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::sentence_end()))
-            .void(),
-    )
-        .take()
-        .parse_next(input)?;
-    let kind = if cost_tokens
-        .first()
-        .is_some_and(|token| token.is_word("behold"))
-    {
-        OptionalKeywordCostKind::Behold
-    } else {
-        OptionalKeywordCostKind::Blight
-    };
-    primitives::sentence_end().parse_next(input)?;
-    Ok(OptionalKeywordAdditionalCostShape {
-        kind,
-        cost_tokens,
-        behold_subtype: None,
-    })
-}
-
-fn parse_behold_and_exile_additional_cost_lexed<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<&'a [OwnedLexToken]> {
-    primitives::phrase(&[
-        "as",
-        "an",
-        "additional",
-        "cost",
-        "to",
-        "cast",
-        "this",
-        "spell",
-    ])
-    .parse_next(input)?;
-    opt(primitives::comma()).parse_next(input)?;
-    let behold_tokens = repeat_till::<_, _, (), _, _, _, _>(
-        1..,
-        any.void(),
-        peek(primitives::phrase(&["and", "exile", "it"])),
-    )
-    .void()
-    .take()
-    .parse_next(input)?;
-    primitives::phrase(&["and", "exile", "it"]).parse_next(input)?;
-    primitives::sentence_end().parse_next(input)?;
-    Ok(behold_tokens)
-}
-
 #[cfg(test)]
 #[path = "keyword_special_lines/tests.rs"]
 mod tests;
+
+#[path = "keyword_special_lines/resource_programs.rs"]
+mod resource_programs;
+use resource_programs::{
+    parse_behold_and_exile_additional_cost_lexed, parse_optional_keyword_additional_cost_lexed,
+};
+#[path = "keyword_special_lines/trigger_programs.rs"]
+mod trigger_programs;
+use trigger_programs::parse_optional_cost_with_cast_trigger_lexed;

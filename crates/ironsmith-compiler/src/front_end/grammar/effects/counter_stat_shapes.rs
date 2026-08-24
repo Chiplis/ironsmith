@@ -575,105 +575,19 @@ pub fn parse_life_equal_surface(words: &[&str]) -> Option<LifeEqualSurface> {
     }
 }
 
-pub fn parse_possessive_target_stat(tokens: &[OwnedLexToken]) -> Option<PossessiveTargetStatShape> {
-    let words = TokenWordView::new(tokens).word_refs();
-    let (stat_words, stat) = if permission_shapes::suffix_words(&words, &["mana", "value"]) {
-        (2, TargetStatKind::ManaValue)
-    } else if permission_shapes::suffix_words(&words, &["toughness"]) {
-        (1, TargetStatKind::Toughness)
-    } else if permission_shapes::suffix_words(&words, &["power"]) {
-        (1, TargetStatKind::Power)
-    } else {
-        return None;
-    };
-    let target_word_count = words.len().checked_sub(stat_words)?;
-    let target_end = TokenWordView::new(tokens).token_index_after_words(target_word_count)?;
-    let mut target_tokens = tokens.get(..target_end)?.to_vec();
-    let possessive = target_tokens.last_mut()?;
-    let stem = parse_possessive_stem.parse(possessive.as_word()?).ok()?;
-    if !possessive.replace_word(stem) {
-        return None;
-    }
-    Some(PossessiveTargetStatShape {
-        target_tokens,
-        stat,
-    })
-}
-
-pub fn parse_counter_reference(tokens: &[OwnedLexToken]) -> Option<CounterReferenceShape<'_>> {
-    let words = TokenWordView::new(tokens).word_refs();
-    let prefix = parse_prefix(&words, &[&["for", "each"]])?;
-    let counter = find_word(&words[prefix.end..], &["counter", "counters"])? + prefix.end;
-    if counter <= prefix.end || words.get(counter + 1) != Some(&"on") {
-        return None;
-    }
-    let reference = words.get(counter + 2..)?;
-    const SOURCE: &[&[&str]] = &[
-        &["it"],
-        &["this"],
-        &["this", "artifact"],
-        &["this", "aura"],
-        &["this", "battle"],
-        &["this", "card"],
-        &["this", "creature"],
-        &["this", "enchantment"],
-        &["this", "land"],
-        &["this", "permanent"],
-        &["this", "planeswalker"],
-        &["this", "source"],
-    ];
-    const TAGGED: &[&[&str]] = &[
-        &["that"],
-        &["that", "creature"],
-        &["that", "permanent"],
-        &["that", "object"],
-        &["those"],
-        &["those", "creatures"],
-        &["those", "permanents"],
-    ];
-    let type_start = TokenWordView::new(tokens).token_index_after_words(prefix.end)?;
-    let type_end = TokenWordView::new(tokens).token_index_after_words(counter + 1)?;
-    let counter_type_tokens = tokens.get(type_start..type_end)?;
-    if parse_exact(reference, SOURCE).is_some() {
-        Some(CounterReferenceShape::Source {
-            counter_type_tokens,
-        })
-    } else if parse_exact(reference, TAGGED).is_some() {
-        Some(CounterReferenceShape::Tagged {
-            counter_type_tokens,
-        })
-    } else {
-        None
-    }
-}
-
-pub fn parse_half_life(words: &[&str]) -> Option<HalfLifeShape> {
-    if parse_prefix(words, &[&["half"]]).is_none()
-        || find_word(words, &["life"]).is_none()
-        || find_word(words, &["lost"]).is_some()
-    {
-        return None;
-    }
-    Some(HalfLifeShape {
-        rounded_down: find_phrase(words, &[&["rounded", "down"]]).is_some(),
-    })
-}
-
-fn words_after_first<'a>(words: &'a [&'a str]) -> &'a [&'a str] {
-    words.get(1..).unwrap_or_default()
-}
-
-fn parse_possessive_stem(input: &mut &str) -> WResult<String> {
-    let stem: &str = take_till(1.., |character: char| matches!(character, '\'' | '’' | '‘'))
-        .parse_next(input)?;
-    alt((literal("'s"), literal("’s"), literal("‘s"))).parse_next(input)?;
-    eof.parse_next(input)?;
-    let mut output = String::new();
-    output.push_str(stem);
-    let _: &str = rest.parse_next(input)?;
-    Ok(output)
-}
-
 #[cfg(test)]
 #[path = "counter_stat_shapes/tests.rs"]
 mod tests;
+
+#[path = "counter_stat_shapes/core_programs.rs"]
+mod core_programs;
+use core_programs::{parse_possessive_stem, words_after_first};
+#[path = "counter_stat_shapes/resource_programs.rs"]
+mod resource_programs;
+pub use resource_programs::parse_half_life;
+#[path = "counter_stat_shapes/counter_programs.rs"]
+mod counter_programs;
+pub use counter_programs::parse_counter_reference;
+#[path = "counter_stat_shapes/reference_programs.rs"]
+mod reference_programs;
+pub use reference_programs::parse_possessive_target_stat;

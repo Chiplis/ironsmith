@@ -4,7 +4,9 @@ use winnow::prelude::*;
 use winnow::token::any;
 
 use super::super::super::super::lexer::{LexStream, OwnedLexToken, TokenKind, token_word_refs};
-use super::super::super::super::util::starts_filter_keyword_list_continuation_words;
+use super::super::super::super::util::{
+    parse_filter_keyword_constraint_words, starts_filter_keyword_list_continuation_words,
+};
 use super::super::super::{leaf, primitives};
 use super::AndPreservation;
 use super::verbs::find_chain_verb_tokens;
@@ -292,9 +294,29 @@ pub fn preserve_and_reason(
     if color_pair_boundary(current, remaining) {
         return Some(AndPreservation::ColorPair);
     }
+    // `tapped and attacking` is one token-entry modifier. At this boundary
+    // the token noun is necessarily in the right-hand slice, so the generic
+    // "current clause contains token" guard below cannot recognize it yet.
+    if starts_any(current, &[&["create"], &["creates"]])
+        && ends_any(current, &[&["tapped"]])
+        && starts_any(remaining, &[&["attacking"]])
+        && (contains_any(current, &["token", "tokens"])
+            || contains_any(remaining, &["token", "tokens"]))
+    {
+        return Some(AndPreservation::TokenRules);
+    }
     if (is_token_creation_context_tokens(current) || has_inline_token_rules_context(current))
         && starts_with_inline_token_rules_tail_tokens(remaining)
     {
+        return Some(AndPreservation::TokenRules);
+    }
+    if is_token_creation_context_tokens(current)
+        && primitives::contains_word(current, "with")
+        && parse_filter_keyword_constraint_words(&token_word_refs(remaining)).is_some()
+    {
+        // In `a token with flying and haste`, the second keyword is still
+        // part of the token blueprint. It is not an independent granted
+        // ability or a second action in the resolution chain.
         return Some(AndPreservation::TokenRules);
     }
     // A token-copy exception owns all of its characteristic modifiers.
@@ -304,9 +326,20 @@ pub fn preserve_and_reason(
     // executable. Keep this narrow copy-only modifier inside the create
     // clause so copy lowering can set its typed `loses_soulbond` flag.
     if is_token_creation_context_tokens(current)
-        && primitives::contains_word(current, "copy")
+        && contains_any(current, &["copy", "copies"])
         && primitives::contains_word(current, "except")
         && starts_any(remaining, &[&["lose", "soulbond"], &["loses", "soulbond"]])
+    {
+        return Some(AndPreservation::TokenRules);
+    }
+    if is_token_creation_context_tokens(current)
+        && contains_any(current, &["copy", "copies"])
+        && primitives::contains_word(current, "except")
+        && contains_all(current, &["half", "power"])
+        && starts_any(
+            remaining,
+            &[&["their", "base", "toughness"], &["their", "toughness"]],
+        )
     {
         return Some(AndPreservation::TokenRules);
     }
@@ -355,6 +388,9 @@ pub fn preserve_and_reason(
     }
     if is_card_type_list_boundary(current, remaining) {
         return Some(AndPreservation::CardTypeList);
+    }
+    if is_creature_subtype_subject_list_boundary(current, remaining) {
+        return Some(AndPreservation::CreatureSubtypeList);
     }
     if extended
         && ends_any(
@@ -597,7 +633,16 @@ pub(super) fn comma_boundary_facts(
     let inline_token_rules = (is_token_creation_context_tokens(before)
         || has_inline_token_rules_context(before))
         && (starts_with_inline_token_rules_tail_tokens(after)
-            || first_word(after).is_some_and(|word| INLINE_CONTINUATION_WORDS.contains(&word)));
+            || first_word(after).is_some_and(|word| {
+                crate::slice_primitives::contains(INLINE_CONTINUATION_WORDS, &word)
+            }));
+    let token_copy_exception = contains_any(before, &["create", "creates"])
+        && contains_any(before, &["token", "tokens"])
+        && contains_any(before, &["copy", "copies"])
+        && starts_any(
+            after,
+            &[&["except", "it"], &["except", "its"], &["except", "their"]],
+        );
     let named_token_appositive =
         is_create_named_token_prefix(before) && starts_like_named_token_appositive(after);
     let filter_keyword_list =
@@ -611,6 +656,7 @@ pub(super) fn comma_boundary_facts(
             || target_card_type_list
             || filter_keyword_list
             || inline_token_rules
+            || token_copy_exception
             || named_token_appositive,
     }
 }
@@ -774,14 +820,15 @@ fn starts_with_nonverb_effect_head(tokens: &[OwnedLexToken]) -> bool {
             &["after", "this", "phase"],
             &["after", "this", "main", "phase"],
         ],
-    ) || first_word(tokens).is_some_and(|word| NONVERB_EFFECT_HEAD_WORDS.contains(&word))
+    ) || first_word(tokens)
+        .is_some_and(|word| crate::slice_primitives::contains(NONVERB_EFFECT_HEAD_WORDS, &word))
         || contains_any(tokens, KEYWORD_ACTION_WORDS)
 }
 
 fn is_cant_restriction(tokens: &[OwnedLexToken]) -> bool {
     contains_any(tokens, &["cant", "can't", "cannot"])
         && (contains_any(tokens, &["attack", "attacks"])
-            || contains_any(tokens, &["block", "blocks"]))
+            || contains_any(tokens, &["block", "blocks", "blocked"]))
 }
 
 fn is_life_total_change_restriction(tokens: &[OwnedLexToken]) -> bool {
@@ -835,274 +882,64 @@ fn is_card_type_list_boundary(current: &[OwnedLexToken], remaining: &[OwnedLexTo
             || contains_any(current, &["or", "and/or"]))
 }
 
-fn life_equal_followup(tokens: &[OwnedLexToken]) -> bool {
-    starts_any(
-        tokens,
-        &[
-            &["you", "gain", "life", "equal", "to", "that"],
-            &["you", "gain", "life", "equal", "to", "its"],
-            &["you", "gain", "life", "equal", "to", "their"],
-            &["you", "lose", "life", "equal", "to", "that"],
-            &["you", "lose", "life", "equal", "to", "its"],
-            &["you", "lose", "life", "equal", "to", "their"],
-            &["gain", "life", "equal", "to", "that"],
-            &["gain", "life", "equal", "to", "its"],
-            &["gain", "life", "equal", "to", "their"],
-            &["gains", "life", "equal", "to", "that"],
-            &["gains", "life", "equal", "to", "its"],
-            &["gains", "life", "equal", "to", "their"],
-            &["lose", "life", "equal", "to", "that"],
-            &["lose", "life", "equal", "to", "its"],
-            &["lose", "life", "equal", "to", "their"],
-            &["loses", "life", "equal", "to", "that"],
-            &["loses", "life", "equal", "to", "its"],
-            &["loses", "life", "equal", "to", "their"],
-        ],
-    )
-}
-
-fn damage_equal_followup(tokens: &[OwnedLexToken]) -> bool {
-    starts_any(
-        tokens,
-        &[
-            &["it", "deal", "damage", "equal", "to"],
-            &["it", "deals", "damage", "equal", "to"],
-            &["that", "creature", "deal", "damage", "equal", "to"],
-            &["that", "creature", "deals", "damage", "equal", "to"],
-            &["that", "objects", "deal", "damage", "equal", "to"],
-            &["that", "objects", "deals", "damage", "equal", "to"],
-        ],
-    ) || (find_chain_verb_tokens(tokens)
-        .is_some_and(|found| found.kind == super::ChainVerbKind::Deal)
-        && contains_all(tokens, &["damage", "equal", "to"]))
-}
-
-fn exact_tail_from_any_word(
-    tokens: &[OwnedLexToken],
-    words: &'static [&'static str],
-    tails: &'static [&'static [&'static str]],
+/// Preserve the final conjunction in a serial creature-subtype subject.
+///
+/// The ordinary chain splitter searches the entire right-hand slice for a
+/// verb, so `Birds, Frogs, Otters, and Rats you control get ...` otherwise
+/// looks like a completed left action followed by `Rats ... get ...`. Require
+/// every word on the left to be a known creature subtype and require the
+/// right-hand slice to begin with another subtype before a later verb. This
+/// keeps the subject union atomic without swallowing a real coordinated
+/// action whose left side already contains a verb.
+pub fn is_creature_subtype_subject_list_boundary(
+    current: &[OwnedLexToken],
+    remaining: &[OwnedLexToken],
 ) -> bool {
-    find_any_word(tokens, words).is_some_and(|(idx, _, _)| exact_any(&tokens[idx..], tails))
-}
-
-fn find_any_word<'a>(
-    tokens: &'a [OwnedLexToken],
-    words: &'static [&'static str],
-) -> Option<(usize, (), &'a [OwnedLexToken])> {
-    primitives::find_prefix(tokens, || {
-        move |input: &mut LexStream<'a>| {
-            for word in words {
-                let mut probe = input.clone();
-                if primitives::kw(word).parse_next(&mut probe).is_ok() {
-                    *input = probe;
-                    return Ok(());
-                }
-            }
-            Err(ErrMode::Backtrack(ContextError::new()))
-        }
-    })
-}
-
-fn starts_any(tokens: &[OwnedLexToken], phrases: &[&[&str]]) -> bool {
-    phrases
-        .iter()
-        .any(|phrase| primitives::match_word_prefix(tokens, phrase).is_some())
-}
-
-fn ends_any(tokens: &[OwnedLexToken], phrases: &[&[&str]]) -> bool {
-    phrases
-        .iter()
-        .any(|phrase| primitives::match_word_suffix(tokens, phrase).is_some())
-}
-
-fn exact_any(tokens: &[OwnedLexToken], phrases: &'static [&'static [&'static str]]) -> bool {
-    phrases.iter().any(|phrase| {
-        primitives::parse_all(
-            tokens,
-            (primitives::phrase(phrase), primitives::sentence_end()).void(),
-            "chain exact phrase",
-        )
-        .is_ok()
-    })
-}
-
-fn has_any_phrase(tokens: &[OwnedLexToken], phrases: &'static [&'static [&'static str]]) -> bool {
-    phrases
-        .iter()
-        .any(|phrase| primitives::find_phrase_start(tokens, phrase).is_some())
-}
-
-fn contains_any(tokens: &[OwnedLexToken], words: &'static [&'static str]) -> bool {
-    words
-        .iter()
-        .any(|word| primitives::contains_word(tokens, word))
-}
-
-fn contains_all(tokens: &[OwnedLexToken], words: &'static [&'static str]) -> bool {
-    words
-        .iter()
-        .all(|word| primitives::contains_word(tokens, word))
-}
-
-fn first_word(tokens: &[OwnedLexToken]) -> Option<&str> {
-    let mut input = LexStream::new(tokens);
-    loop {
-        let parsed: WResult<&OwnedLexToken> = any.parse_next(&mut input);
-        let token = parsed.ok()?;
-        if let Some(word) = token.as_word() {
-            return Some(word);
-        }
+    if find_chain_verb_tokens(current).is_some() {
+        return false;
     }
-}
 
-fn nth_word(tokens: &[OwnedLexToken], wanted: usize) -> Option<&str> {
-    let mut input = LexStream::new(tokens);
-    let mut index = 0usize;
-    loop {
-        let parsed: WResult<&OwnedLexToken> = any.parse_next(&mut input);
-        let token = parsed.ok()?;
-        if let Some(word) = token.as_word() {
-            if index == wanted {
-                return Some(word);
-            }
-            index += 1;
-        }
+    let current_words = token_word_refs(current);
+    if current_words.is_empty()
+        || !current_words.iter().all(|word| {
+            *word == "other"
+                || leaf::parse_leaf_subtype_flexible_complete(word)
+                    .is_ok_and(|subtype| subtype.is_creature_type())
+        })
+    {
+        return false;
     }
-}
 
-fn last_word(tokens: &[OwnedLexToken]) -> Option<&str> {
-    let mut input = LexStream::new(tokens);
-    let mut last = None;
-    loop {
-        let parsed: WResult<&OwnedLexToken> = any.parse_next(&mut input);
-        let Ok(token) = parsed else {
-            return last;
-        };
-        if let Some(word) = token.as_word() {
-            last = Some(word);
-        }
-    }
-}
-
-fn last_non_quantifier_word(tokens: &[OwnedLexToken]) -> Option<&str> {
-    let mut input = LexStream::new(tokens);
-    let mut last = None;
-    loop {
-        let parsed: WResult<&OwnedLexToken> = any.parse_next(&mut input);
-        let Ok(token) = parsed else {
-            return last;
-        };
-        if let Some(word) = token.as_word()
-            && !matches!(word, "a" | "an" | "the" | "all" | "each")
-        {
-            last = Some(word);
-        }
-    }
-}
-
-fn has_zone_word(tokens: &[OwnedLexToken]) -> bool {
-    token_word_refs(tokens)
-        .iter()
-        .any(|word| is_zone_word(word))
-}
-
-fn is_zone_word(word: &str) -> bool {
-    leaf::parse_leaf_zone_complete(word).is_ok()
-}
-
-fn is_card_type_word(word: &str) -> bool {
-    CARD_TYPE_WORDS.contains(&word)
-}
-
-fn is_color_word(word: &str) -> bool {
-    matches!(
-        word,
-        "white" | "blue" | "black" | "red" | "green" | "colorless"
-    )
+    let Some(first_remaining) = first_word(remaining) else {
+        return false;
+    };
+    leaf::parse_leaf_subtype_flexible_complete(first_remaining)
+        .is_ok_and(|subtype| subtype.is_creature_type())
+        && find_chain_verb_tokens(remaining).is_some_and(|found| found.word_index > 0)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::super::super::super::super::lexer::lex_line;
-    use super::*;
+#[path = "recognition_inline_tests.rs"]
+mod tests;
 
-    #[test]
-    fn recognizes_effect_heads_and_preserved_and_boundaries() {
-        let tokens = lex_line(
-            "Prevent the next 3 damage that would be dealt to any target this turn.",
-            0,
-        )
-        .unwrap();
-        assert!(has_extended_effect_head_tokens(&tokens));
-
-        let tokens = lex_line("Create a white and blue creature token.", 0).unwrap();
-        let and_idx = tokens
-            .iter()
-            .position(|token| token.is_word("and"))
-            .unwrap();
-        assert_eq!(
-            preserve_and_reason(&tokens[..and_idx], &tokens[and_idx + 1..], true),
-            Some(AndPreservation::ColorPair)
-        );
-
-        let tokens = lex_line(
-            r#"You get an emblem with "You have no maximum hand size." and "{T}: Draw a card.""#,
-            0,
-        )
-        .unwrap();
-        let and_idx = tokens
-            .iter()
-            .position(|token| token.is_word("and"))
-            .unwrap();
-        assert_eq!(
-            preserve_and_reason(&tokens[..and_idx], &tokens[and_idx + 1..], true),
-            Some(AndPreservation::QuotedAbility)
-        );
-
-        let tokens = lex_line(
-            "Until end of turn, target creature gains trample and \"Whenever this creature attacks, draw a card.\"",
-            0,
-        )
-        .unwrap();
-        let and_idx = tokens
-            .iter()
-            .position(|token| token.is_word("and"))
-            .unwrap();
-        assert_eq!(
-            preserve_and_reason(&tokens[..and_idx], &tokens[and_idx + 1..], true),
-            Some(AndPreservation::QuotedAbility)
-        );
-    }
-
-    #[test]
-    fn named_source_damage_equal_followup_is_an_effect_boundary() {
-        let before = lex_line("Destroy target land", 0).unwrap();
-        let after = lex_line(
-            "Roiling Terrain deals damage to that land's controller equal to the number of land cards in that player's graveyard.",
-            0,
-        )
-        .unwrap();
-
-        assert!(then_followup_facts(&before, &after, false).should_split(false));
-    }
-
-    #[test]
-    fn transform_back_reference_is_an_executable_then_boundary() {
-        let before = lex_line("Untap it", 0).unwrap();
-        let after = lex_line("transform it", 0).unwrap();
-
-        assert!(then_followup_facts(&before, &after, false).should_split(false));
-    }
-
-    #[test]
-    fn result_amount_damage_is_an_executable_then_boundary() {
-        let before = lex_line("Put them into their owners' graveyards", 0).unwrap();
-        let after = lex_line(
-            "this enchantment deals that much damage to each opponent",
-            0,
-        )
-        .unwrap();
-
-        assert!(then_followup_facts(&before, &after, false).should_split(false));
-    }
-}
+#[path = "recognition/core_programs.rs"]
+mod core_programs;
+use core_programs::{
+    contains_all, contains_any, ends_any, exact_any, exact_tail_from_any_word, find_any_word,
+    first_word, has_any_phrase, is_color_word, last_word, nth_word, starts_any,
+};
+#[path = "recognition/library_programs.rs"]
+mod library_programs;
+use library_programs::is_card_type_word;
+#[path = "recognition/zone_programs.rs"]
+mod zone_programs;
+use zone_programs::{has_zone_word, is_zone_word};
+#[path = "recognition/condition_programs.rs"]
+mod condition_programs;
+use condition_programs::last_non_quantifier_word;
+#[path = "recognition/combat_programs.rs"]
+mod combat_programs;
+use combat_programs::damage_equal_followup;
+#[path = "recognition/resource_programs.rs"]
+mod resource_programs;
+use resource_programs::life_equal_followup;

@@ -65,12 +65,7 @@ fn repeated_counter_placements_preserve_each_any_number_target_cardinality() {
         })
         .expect("the enters line should produce a triggered ability");
     let flattened = triggered.effects.flattened_default_effects();
-    let sequence = flattened
-        .iter()
-        .find_map(|effect| super::find_nested_effect::<crate::effects::SequenceEffect>(effect))
-        .expect("the two coordinated placements should remain a typed sequence");
-    let puts = sequence
-        .effects
+    let puts = flattened
         .iter()
         .filter_map(|effect| super::find_nested_effect::<crate::effects::PutCountersEffect>(effect))
         .collect::<Vec<_>>();
@@ -104,12 +99,7 @@ fn repeated_each_counter_placements_apply_to_both_complete_sets() {
         })
         .expect("the loyalty line should produce an activated ability");
     let effects = activated.effects.flattened_default_effects();
-    let sequence = effects
-        .iter()
-        .find_map(|effect| super::find_nested_effect::<crate::effects::SequenceEffect>(effect))
-        .expect("the paired each-set placements should remain a typed sequence");
-    let fanouts = sequence
-        .effects
+    let fanouts = effects
         .iter()
         .filter_map(|effect| super::find_nested_effect::<crate::effects::ForEachObject>(effect))
         .collect::<Vec<_>>();
@@ -300,12 +290,11 @@ fn counted_sacrifice_reflexive_keeps_typed_gate_and_one_shared_count() {
         }
     }
 
+    let source_text = "Whenever this creature attacks, sacrifice any number of artifacts. \
+         When you sacrifice one or more artifacts this way, tap up to that many target creatures and draw that many cards.";
     let definition = CardDefinitionBuilder::new(CardId::new(), "Counted Sacrifice Reflexive")
         .card_types(vec![CardType::Creature])
-        .parse_text(
-            "Whenever this creature attacks, sacrifice any number of artifacts. \
-             When you sacrifice one or more artifacts this way, tap up to that many target creatures and draw that many cards.",
-        )
+        .parse_text(source_text)
         .expect("the counted sacrifice reflexive trigger should parse");
     let triggered = definition
         .abilities
@@ -384,5 +373,5 @@ fn counted_sacrifice_reflexive_keeps_typed_gate_and_one_shared_count() {
         .expect("the draw count should reference the sacrifice result");
 
     assert_eq!(tap_count, sacrifice_id);
-    assert_eq!(draw_count, sacrifice_id);
+    assert_eq!(draw_count, sacrifice_id, "{:#?}", triggered.effects);
 }

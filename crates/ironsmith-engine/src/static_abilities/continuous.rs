@@ -281,7 +281,7 @@ fn split_subject_suffix(subject: &str) -> (&str, &str) {
     (subject, "")
 }
 
-fn pluralized_subject_text(filter: &ObjectFilter) -> String {
+pub(crate) fn pluralized_subject_text(filter: &ObjectFilter) -> String {
     if let Some(subject) = shared_head_characteristic_anthem_subject(filter) {
         return subject;
     }

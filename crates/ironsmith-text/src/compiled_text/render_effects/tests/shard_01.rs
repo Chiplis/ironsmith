@@ -1126,7 +1126,7 @@ pub(super) fn describe_effect_list_compacts_typed_exile_with_linked_counters() {
     );
     let exile = Effect::new(crate::effects::ExileEffect::with_spec(source.clone()));
     let counters = Effect::new(crate::effects::PutCountersEffect::new(
-        CounterType::Named("memory"),
+        CounterType::Named("memory".into()),
         1,
         source,
     ));
@@ -1137,7 +1137,7 @@ pub(super) fn describe_effect_list_compacts_typed_exile_with_linked_counters() {
     );
 
     let wrong_object = Effect::new(crate::effects::PutCountersEffect::new(
-        CounterType::Named("memory"),
+        CounterType::Named("memory".into()),
         1,
         ChooseSpec::Tagged(TagKey::from("another_object")),
     ));
@@ -1420,7 +1420,7 @@ pub(super) fn describe_token_copy_preserves_typed_antecedent_surface() {
 pub(super) fn describe_destroy_random_countered_permanent_uses_those_permanents() {
     let mut filter = ObjectFilter::permanent().controlled_by(PlayerFilter::NotYou);
     filter.with_counter = Some(crate::filter::CounterConstraint::Typed(
-        crate::object::CounterType::Named("aim"),
+        crate::object::CounterType::Named("aim".into()),
     ));
     let target = ChooseSpec::all(filter).with_count(ChoiceCount::exactly(1).at_random());
 
@@ -2549,13 +2549,14 @@ pub(super) fn describe_effect_list_compacts_nonbasic_name_multi_zone_search_rewa
             tag: searched_tag.clone(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
-    let zombie = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Zombie")
-        .token()
-        .card_types(vec![CardType::Creature])
-        .subtypes(vec![Subtype::Zombie])
-        .color_indicator(crate::color::ColorSet::BLACK)
-        .power_toughness(crate::card::PowerToughness::fixed(2, 2))
-        .build();
+    let zombie =
+        crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Zombie")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Zombie])
+            .color_indicator(crate::color::ColorSet::BLACK)
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .build();
     let create = crate::effects::CreateTokenEffect::new(
         zombie,
         Value::Count(count_filter),
@@ -3287,11 +3288,14 @@ pub(super) fn describe_effect_list_compacts_target_graveyard_return_with_additio
 #[test]
 pub(super) fn describe_effect_list_compacts_created_role_token_attachment() {
     let created = TagKey::from("created_0");
-    let role = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Cursed Role")
-        .token()
-        .card_types(vec![CardType::Enchantment])
-        .subtypes(vec![Subtype::Aura, Subtype::Role])
-        .build();
+    let role = crate::cards::builders::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(),
+        "Cursed Role",
+    )
+    .token()
+    .card_types(vec![CardType::Enchantment])
+    .subtypes(vec![Subtype::Aura, Subtype::Role])
+    .build();
     let create = Effect::new(crate::effects::CreateTokenEffect::new(
         role,
         Value::Fixed(1),
@@ -3999,14 +4003,16 @@ pub(super) fn describe_effect_list_compacts_gain_control_create_token_attach_seq
         ObjectFilter::default().with_subtype(Subtype::Equipment),
     )));
 
-    let token =
-        crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Phyrexian Germ")
-            .token()
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Phyrexian, Subtype::Germ])
-            .color_indicator(crate::color::ColorSet::BLACK)
-            .power_toughness(crate::card::PowerToughness::fixed(0, 0))
-            .build();
+    let token = crate::cards::builders::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(),
+        "Phyrexian Germ",
+    )
+    .token()
+    .card_types(vec![CardType::Creature])
+    .subtypes(vec![Subtype::Phyrexian, Subtype::Germ])
+    .color_indicator(crate::color::ColorSet::BLACK)
+    .power_toughness(crate::card::PowerToughness::fixed(0, 0))
+    .build();
     let mut equipment_filter = ObjectFilter::default().with_subtype(Subtype::Equipment);
     equipment_filter
         .tagged_constraints
@@ -4708,7 +4714,7 @@ pub(super) fn counter_linked_grant_uses_typed_producer_kind_for_nested_self_subj
     ] {
         let target_tag = TagKey::from("targeted_0");
         let put = Effect::new(crate::effects::PutCountersEffect::new(
-            CounterType::Named("test"),
+            CounterType::Named("test".into()),
             Value::Fixed(1),
             ChooseSpec::target(ChooseSpec::Object(filter)),
         ))
@@ -4725,7 +4731,7 @@ pub(super) fn counter_linked_grant_uses_typed_producer_kind_for_nested_self_subj
             crate::continuous::Modification::AddAbilityGeneric(granted_trigger),
             Until::ForAsLongAs(
                 ironsmith_core::ContinuousDurationPredicate::affected_object_has_counter(
-                    CounterType::Named("test"),
+                    CounterType::Named("test".into()),
                 ),
             ),
         ))

@@ -111,8 +111,10 @@ pub fn parse_source_damage_to_decider(
     }
     let damage = parsed.capture_clause_by_role(PermissionCaptureRole::Tail, clause)?;
     let words = damage.word_refs();
-    let recipient_is_decider =
-        words.ends_with(&["to", "them"]) || words.ends_with(&["to", "that", "player"]);
+    let recipient_is_decider = crate::word_primitives::parse_any_sequence_suffix(
+        &words,
+        &[&["to", "them"], &["to", "that", "player"]],
+    );
     recipient_is_decider.then_some(SourceDamageToDeciderShape {
         damage_tokens: damage.tokens(),
     })

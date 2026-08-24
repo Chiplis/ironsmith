@@ -1,15 +1,18 @@
-use crate::ability::{Ability, AbilityKind, ActivationTiming};
+use crate::ability::ActivationTiming;
 use crate::activation_and_restrictions::activated_line_core::parse_activation_cost;
-use crate::activation_and_restrictions::parse_payment_clause_as_total_cost;
-use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cards::builders::{CardTextError, ParsedAbility, ReferenceImports};
-use crate::cost::{OptionalCost, TotalCost};
 use crate::costs::Cost;
-use crate::effect::{Effect, Value};
+use crate::effect::Value;
 use crate::filter::Comparison;
 use crate::grammar::{leaf, permission_shapes};
 use crate::lexer::{OwnedLexToken, TokenKind, TokenWordView, render_token_slice};
-use crate::static_abilities::StaticAbility;
+use crate::model::CompilerAlternativeCastingMethod as AlternativeCastingMethod;
+use crate::model::CompilerCost;
+use crate::model::CompilerOptionalCost as OptionalCost;
+use crate::model::CompilerStaticAbilityCore as StaticAbility;
+use crate::model::compiler_semantic::{
+    CompilerAbilityCore as Ability, CompilerAbilityKindCore as AbilityKind,
+};
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
 
@@ -36,7 +39,7 @@ pub fn parse_buyback(tokens: &[OwnedLexToken]) -> Result<Option<OptionalCost>, C
 pub fn parse_optional_cost(
     tokens: &[OwnedLexToken],
     keyword: &str,
-    constructor: fn(TotalCost) -> OptionalCost,
+    constructor: fn(ironsmith_core::TotalCost<CompilerCost>) -> OptionalCost,
 ) -> Result<Option<OptionalCost>, CardTextError> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
@@ -79,13 +82,20 @@ impl MorphKind {
         }
     }
 
-    fn static_ability(self, cost: TotalCost) -> StaticAbility {
+    fn static_ability(self, cost: ironsmith_core::TotalCost<CompilerCost>) -> StaticAbility {
         match self {
             Self::Morph => StaticAbility::morph(cost),
             Self::Megamorph => StaticAbility::megamorph(cost),
             Self::Disguise => StaticAbility::disguise(cost),
         }
     }
+}
+
+fn parse_compiler_total_cost(
+    tokens: &[OwnedLexToken],
+) -> Result<ironsmith_core::TotalCost<CompilerCost>, CardTextError> {
+    let cst = crate::grammar::activation_costs::parse_activation_cost_tokens(tokens)?;
+    Ok(crate::cst_lowering::recognize_activation_cost_cst(&cst)?.to_core_total_cost())
 }
 
 pub fn parse_morph(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility>, CardTextError> {
@@ -113,12 +123,12 @@ pub fn parse_morph(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility>, Ca
             render_token_slice(cost_tokens).trim()
         ))
     };
-    let cost = match parse_activation_cost(cost_tokens) {
+    let cost = match parse_compiler_total_cost(cost_tokens) {
         Ok(cost) if !cost.is_free() => cost,
         _ if leaf::parse_leaf_mana_cost_prefix_tokens(cost_tokens).is_some() => {
             return Err(unsupported());
         }
-        _ => parse_payment_clause_as_total_cost(cost_tokens)?.ok_or_else(unsupported)?,
+        _ => return Err(unsupported()),
     };
     if cost.is_free() {
         return Err(CardTextError::ParseError(format!(
@@ -211,7 +221,15 @@ pub fn parse_escape(
     Ok(Some(AlternativeCastingMethod::Escape {
         cost: Some(mana_cost),
         exile_count: count,
-        additional_cost: TotalCost::from_cost(Cost::exile_from_graveyard(count, Vec::new())),
+        additional_cost: ironsmith_core::TotalCost::from_cost(CompilerCost::ExileChosen {
+            count: crate::effect::ChoiceCount::exactly(count as usize),
+            filter: ObjectFilter::default()
+                .owned_by(crate::target::PlayerFilter::You)
+                .in_zone(Zone::Graveyard),
+            top_only: false,
+            turn_face_up: false,
+            binding: None,
+        }),
     }))
 }
 
@@ -220,7 +238,16 @@ pub fn parse_jump_start(tokens: &[OwnedLexToken]) -> Option<AlternativeCastingMe
     (permission_shapes::prefix_words(&words, &["jumpstart"])
         || permission_shapes::prefix_words(&words, &["jump", "start"]))
     .then(|| AlternativeCastingMethod::JumpStart {
-        additional_cost: TotalCost::from_cost(Cost::discard(1, None)),
+        additional_cost: ironsmith_core::TotalCost::from_cost(CompilerCost::Discard {
+            count: 1,
+            card_types: Vec::new(),
+            supertypes: Vec::new(),
+            filter: None,
+            random: false,
+            name: None,
+            other: false,
+            binding: None,
+        }),
     })
 }
 
@@ -233,7 +260,7 @@ pub fn parse_bestow(
     let mana_prefix = leaf::parse_leaf_mana_cost_prefix_tokens(&tokens[1..])
         .ok_or_else(|| CardTextError::ParseError("bestow keyword missing mana cost".to_string()))?;
     let mana_cost = mana_prefix.cost;
-    let mut total_cost = TotalCost::mana(mana_cost.clone());
+    let mut total_cost = ironsmith_core::TotalCost::<CompilerCost>::mana(mana_cost.clone());
     let mut cost_tokens = tokens[1..1 + mana_prefix.consumed].to_vec();
     let tail = tokens.get(1 + mana_prefix.consumed..).unwrap_or_default();
     if tail.first().is_some_and(OwnedLexToken::is_comma) {
@@ -258,7 +285,7 @@ pub fn parse_blitz(
     let mana_prefix = leaf::parse_leaf_mana_cost_prefix_tokens(&tokens[1..])
         .ok_or_else(|| CardTextError::ParseError("blitz keyword missing mana cost".to_string()))?;
     let mana_cost = mana_prefix.cost;
-    let mut total_cost = TotalCost::mana(mana_cost.clone());
+    let mut total_cost = ironsmith_core::TotalCost::<CompilerCost>::mana(mana_cost.clone());
     let mut cost_tokens = tokens[1..1 + mana_prefix.consumed].to_vec();
     let tail = tokens.get(1 + mana_prefix.consumed..).unwrap_or_default();
     if tail.first().is_some_and(OwnedLexToken::is_comma) {
@@ -274,12 +301,12 @@ pub fn parse_blitz(
         && !total_cost
             .costs()
             .iter()
-            .any(|cost| matches!(cost, Cost::Life(_)))
+            .any(|cost| matches!(cost, CompilerCost::Life(_)))
         && let Some(amount) = words.get(pay + 1).and_then(|word| parse_fixed_word(word))
     {
         let mut components = total_cost.costs().to_vec();
-        components.push(Cost::life(Value::Fixed(amount as i32)));
-        total_cost = TotalCost::from_costs(components);
+        components.push(CompilerCost::Life(Value::Fixed(amount as i32)));
+        total_cost = ironsmith_core::TotalCost::from_costs(components);
     }
     Ok(Some(AlternativeCastingMethod::Blitz { total_cost }))
 }
@@ -299,9 +326,10 @@ pub fn parse_transmute(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility>
         ))
     })?;
     let base_mana_cost = mana_prefix.cost;
-    let mut merged_costs = TotalCost::mana(base_mana_cost.clone()).costs().to_vec();
-    merged_costs.push(Cost::discard_source());
-    let mana_cost = TotalCost::from_costs(merged_costs);
+    let mana_cost = ironsmith_core::TotalCost::from_costs(vec![
+        CompilerCost::Mana(base_mana_cost.clone()),
+        CompilerCost::DiscardSource,
+    ]);
     let parsed_mana_value = permission_shapes::find_words(&words, &["mana", "value"])
         .and_then(|word| view.token_start_indices().get(word + 2).copied())
         .and_then(|token| leaf::parse_leaf_number_prefix_tokens(&tokens[token..]))
@@ -314,81 +342,46 @@ pub fn parse_transmute(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility>
         )))
     };
     let text = format!("Transmute {}", base_mana_cost.to_oracle());
+    let effects_ast = vec![
+        crate::cards::builders::EffectAst::subject_verb_search_library(
+            filter,
+            Zone::Hand,
+            crate::cards::builders::PlayerAst::You,
+            crate::cards::builders::PlayerAst::You,
+            crate::effect::SearchSelectionMode::Exact,
+            true,
+            None,
+            true,
+            crate::effect::ChoiceCount::exactly(1),
+            None,
+            None,
+            crate::effect::SearchResultReferenceSurface::ThatCard,
+            false,
+            false,
+            false,
+        ),
+    ];
     Ok(Some(ParsedAbility {
         ability: Ability {
-            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
-                mana_cost,
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    Effect::search_library_to_hand(filter, true),
-                ]),
-                choices: Vec::new(),
-                timing: ActivationTiming::SorcerySpeed,
-                additional_restrictions: Vec::new(),
-                activation_restrictions: Vec::new(),
-                mana_output: None,
-                activation_condition: None,
-                mana_usage_restrictions: vec![],
-                is_loyalty_ability: false,
-            }),
+            kind: AbilityKind::Activated(
+                crate::model::compiler_semantic::CompilerActivatedAbilityCore {
+                    mana_cost,
+                    effects: ironsmith_core::ResolutionProgram::default(),
+                    choices: Vec::new(),
+                    timing: ActivationTiming::SorcerySpeed,
+                    additional_restrictions: Vec::new(),
+                    activation_restrictions: Vec::new(),
+                    mana_output: None,
+                    activation_condition: None,
+                    mana_usage_restrictions: vec![],
+                    is_loyalty_ability: false,
+                },
+            ),
             functional_zones: vec![Zone::Hand],
         }
         .into(),
         text: Some(text),
-        effects_ast: None,
-        reference_imports: ReferenceImports::default(),
-        trigger_spec: None,
-    }))
-}
-
-pub fn parse_transfigure(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility>, CardTextError> {
-    let view = TokenWordView::new(tokens);
-    let words = view.word_refs();
-    if !permission_shapes::prefix_words(&words, &["transfigure"])
-        || words.iter().any(|word| matches!(*word, "has" | "have"))
-    {
-        return Ok(None);
-    }
-    let mana_prefix = leaf::parse_leaf_mana_cost_prefix_tokens(&tokens[1..]).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "transfigure keyword missing mana cost (clause: '{}')",
-            words.join(" ")
-        ))
-    })?;
-    let base_mana_cost = mana_prefix.cost;
-    let mut merged_costs = TotalCost::mana(base_mana_cost.clone()).costs().to_vec();
-    merged_costs.push(Cost::sacrifice_self());
-    let mana_cost = TotalCost::from_costs(merged_costs);
-    let filter = ObjectFilter::default()
-        .with_type(crate::types::CardType::Creature)
-        .with_mana_value(Comparison::EqualExpr(Box::new(Value::ManaValueOf(
-            Box::new(ChooseSpec::Source),
-        ))));
-    let text = format!("Transfigure {}", base_mana_cost.to_oracle());
-    Ok(Some(ParsedAbility {
-        ability: Ability {
-            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
-                mana_cost,
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
-                    crate::effects::SearchLibraryEffect::to_battlefield(
-                        filter,
-                        crate::target::PlayerFilter::You,
-                        false,
-                    ),
-                )]),
-                choices: Vec::new(),
-                timing: ActivationTiming::SorcerySpeed,
-                additional_restrictions: Vec::new(),
-                activation_restrictions: Vec::new(),
-                mana_output: None,
-                activation_condition: None,
-                mana_usage_restrictions: vec![],
-                is_loyalty_ability: false,
-            }),
-            functional_zones: vec![Zone::Battlefield],
-        }
-        .into(),
-        text: Some(text),
-        effects_ast: None,
+        effects_ast: Some(effects_ast),
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,
     }))
@@ -400,91 +393,13 @@ enum ReminderBoundary {
     MayPayOrPeriod,
 }
 
-fn keyword_cost_clause(
-    tokens: &[OwnedLexToken],
-    first_cost_token: usize,
-    boundary: ReminderBoundary,
-) -> &[OwnedLexToken] {
-    let mut start = first_cost_token.min(tokens.len());
-    if tokens
-        .get(start)
-        .is_some_and(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
-    {
-        start += 1;
-    }
-    let tail = tokens.get(start..).unwrap_or_default();
-    let view = TokenWordView::new(tail);
-    let words = view.word_refs();
-    let reminder_word = permission_shapes::find_words(&words, &["you", "may", "pay"])
-        .or_else(|| permission_shapes::find_words(&words, &["you", "may"]));
-    let reminder_token = reminder_word
-        .and_then(|word| view.token_start_indices().get(word).copied())
-        .unwrap_or(tail.len());
-    let period = match boundary {
-        ReminderBoundary::MayPay => tail.len(),
-        ReminderBoundary::MayPayOrPeriod => {
-            first_kind_after(tail, 0, TokenKind::Period).unwrap_or(tail.len())
-        }
-    };
-    trim_edge_commas(&tail[..reminder_token.min(period)])
-}
-
-fn morph_cost_clause(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    let tail = tokens.get(1..).unwrap_or_default();
-    let view = TokenWordView::new(tail);
-    let words = view.word_refs();
-    let reminder_word = permission_shapes::find_words(&words, &["you", "may", "cast"])
-        .or_else(|| permission_shapes::find_words(&words, &["turn", "it", "face", "up"]));
-    let reminder = reminder_word
-        .and_then(|word| view.token_start_indices().get(word).copied())
-        .unwrap_or(tail.len());
-    let period = first_kind_after(tail, 0, TokenKind::Period).unwrap_or(tail.len());
-    trim_edge_commas(&tail[..reminder.min(period)])
-}
-
-fn ensure_mana_component(parsed: TotalCost, mana_cost: crate::mana::ManaCost) -> TotalCost {
-    if parsed.mana_cost().is_some() {
-        return parsed;
-    }
-    let mut components = parsed.costs().to_vec();
-    components.insert(0, Cost::mana(mana_cost));
-    TotalCost::from_costs(components)
-}
-
-fn parse_fixed_word(word: &str) -> Option<u32> {
-    leaf::parse_leaf_number_prefix_words(&[word])?
-        .into_fixed()
-        .map(|(value, _)| value)
-}
-
-fn starts_with_keyword(tokens: &[OwnedLexToken], keyword: &str) -> bool {
-    TokenWordView::new(tokens)
-        .word_refs()
-        .first()
-        .is_some_and(|word| permission_shapes::exact_words(&[*word], &[keyword]))
-}
-
-fn first_kind_after(tokens: &[OwnedLexToken], start: usize, kind: TokenKind) -> Option<usize> {
-    tokens
-        .iter()
-        .enumerate()
-        .skip(start)
-        .find_map(|(index, token)| (token.kind == kind).then_some(index))
-}
-
-fn trim_edge_commas(mut tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    while tokens.first().is_some_and(OwnedLexToken::is_comma) {
-        tokens = &tokens[1..];
-    }
-    while tokens.last().is_some_and(OwnedLexToken::is_comma) {
-        tokens = &tokens[..tokens.len() - 1];
-    }
-    tokens
-}
-
-fn unsupported_escape(words: &[&str]) -> CardTextError {
-    CardTextError::ParseError(format!(
-        "unsupported escape clause tail (clause: '{}')",
-        words.join(" ")
-    ))
-}
+#[path = "keyword_cost_lines/core_programs.rs"]
+mod core_programs;
+pub use core_programs::parse_transfigure;
+use core_programs::{first_kind_after, parse_fixed_word, trim_edge_commas, unsupported_escape};
+#[path = "keyword_cost_lines/ability_programs.rs"]
+mod ability_programs;
+use ability_programs::starts_with_keyword;
+#[path = "keyword_cost_lines/resource_programs.rs"]
+mod resource_programs;
+use resource_programs::{ensure_mana_component, keyword_cost_clause, morph_cost_clause};

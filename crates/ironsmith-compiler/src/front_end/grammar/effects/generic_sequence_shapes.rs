@@ -528,180 +528,24 @@ pub fn parse_prevention_exile_top_followup_shape(tokens: &[OwnedLexToken]) -> bo
         && primitives::find_prefix(clause, || prevented_amount).is_some()
 }
 
-fn untap_prefix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    alt((
-        primitives::phrase(&["they", "dont", "untap", "during"]),
-        primitives::phrase(&["they", "don't", "untap", "during"]),
-        primitives::phrase(&["those", "permanents", "dont", "untap", "during"]),
-        primitives::phrase(&["those", "permanents", "don't", "untap", "during"]),
-    ))
-    .void()
-    .parse_next(input)
-}
-
-fn source_tapped_duration<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    primitives::phrase(&["for", "as", "long", "as"])
-        .void()
-        .parse_next(input)
-}
-
-fn remains_tapped<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    primitives::phrase(&["remains", "tapped"])
-        .void()
-        .parse_next(input)
-}
-
-fn source_marker<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    alt((
-        primitives::kw("this"),
-        primitives::kw("thiss"),
-        primitives::kw("source"),
-        primitives::kw("artifact"),
-        primitives::kw("creature"),
-        primitives::kw("permanent"),
-    ))
-    .void()
-    .parse_next(input)
-}
-
-pub fn parse_source_tapped_lock_shape(tokens: &[OwnedLexToken]) -> bool {
-    let clause = trimmed(tokens);
-    primitives::parse_prefix(clause, untap_prefix).is_some()
-        && primitives::find_prefix(clause, || source_tapped_duration).is_some()
-        && primitives::find_prefix(clause, || remains_tapped).is_some()
-        && primitives::find_prefix(clause, || source_marker).is_some()
-}
-
-pub fn parse_untap_clause_prefix_shape(tokens: &[OwnedLexToken]) -> bool {
-    primitives::parse_prefix(trimmed(tokens), untap_prefix).is_some()
-}
-
-fn upkeep_pay_prefix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    alt((
-        primitives::phrase(&["at", "the", "beginning", "of", "your", "next", "upkeep"]),
-        primitives::phrase(&["at", "the", "beginning", "of", "the", "next", "upkeep"]),
-    ))
-    .void()
-    .parse_next(input)?;
-    winnow::combinator::opt(primitives::comma())
-        .void()
-        .parse_next(input)?;
-    primitives::kw("pay").void().parse_next(input)
-}
-
-pub fn parse_delayed_upkeep_payment_shape(
-    upkeep_tokens: &[OwnedLexToken],
-    lose_tokens: &[OwnedLexToken],
-) -> Option<DelayedUpkeepPaymentShape> {
-    let ((), mana_tokens) = primitives::parse_prefix(trimmed(upkeep_tokens), upkeep_pay_prefix)?;
-    let mana_tokens = trimmed(mana_tokens);
-    if mana_tokens.is_empty()
-        || !super::delayed_step_shapes::is_delayed_lose_game_unless_paid_shape(lose_tokens)
-    {
-        return None;
-    }
-    let mana = leaf::parse_leaf_mana_cost_tokens(mana_tokens).ok()?;
-    Some(DelayedUpkeepPaymentShape { mana })
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::lexer::{LexedClause, lex_line};
+#[path = "generic_sequence_shapes_inline_tests.rs"]
+mod tests;
 
-    fn lex(raw: &str) -> Vec<OwnedLexToken> {
-        lex_line(raw, 0).unwrap()
-    }
-
-    #[test]
-    fn parses_flashback_and_prevention_followups() {
-        let first = lex("Target card gains flashback until end of turn");
-        let second = lex("The flashback cost is equal to its mana cost");
-        let shape = parse_flashback_grant_shape(&first, &second).unwrap();
-        assert_eq!(
-            LexedClause::new(shape.target_tokens).word_refs(),
-            vec!["target", "card"]
-        );
-        assert!(parse_prevention_reflect_followup_shape(&lex(
-            "If damage is prevented this way, this creature deals that much damage to any target"
-        )));
-    }
-
-    #[test]
-    fn parses_punctuated_iterative_library_sequence() {
-        let first = lex("Exile the top card of your library.");
-        let second = lex(
-            "You may put that card into your hand unless it has the same name as another card exiled this way.",
-        );
-        let third = lex(
-            "Repeat this process until you put a card into your hand or you exile two cards with the same name, whichever comes first.",
-        );
-        assert!(parse_iterative_library_sequence_shape(
-            &first, &second, &third
-        ));
-    }
-
-    #[test]
-    fn parses_punctuated_each_player_pay_life_sequence() {
-        let first = lex("Starting with you, each player may pay any amount of life.");
-        let second = lex("Repeat this process until no one pays life.");
-        let third = lex(
-            "Each player creates a 1/1 black Rat creature token for each 1 life they paid this way.",
-        );
-        assert!(parse_each_player_pay_life_sequence_shape(
-            &first, &second, &third
-        ));
-    }
-
-    #[test]
-    fn parses_generic_starting_each_player_optional_repeat() {
-        let eureka_first = lex(
-            "Starting with you, each player may put a permanent card from their hand onto the battlefield.",
-        );
-        let eureka_repeat =
-            lex("Repeat this process until no one puts a card onto the battlefield.");
-        let eureka =
-            parse_starting_each_player_optional_repeat_shape(&eureka_first, &eureka_repeat)
-                .expect("the repeated optional action should be recognized");
-        assert_eq!(
-            LexedClause::new(eureka.each_player_clause_tokens).word_refs(),
-            vec![
-                "each",
-                "player",
-                "may",
-                "put",
-                "a",
-                "permanent",
-                "card",
-                "from",
-                "their",
-                "hand",
-                "onto",
-                "the",
-                "battlefield",
-            ]
-        );
-
-        let pay_first = lex("Starting with you, each player may pay any amount of life.");
-        let pay_repeat = lex("Repeat this process until no one pays life.");
-        assert!(
-            parse_starting_each_player_optional_repeat_shape(&pay_first, &pay_repeat).is_some(),
-            "the recognizer should be action-generic and tolerate third-person verb agreement"
-        );
-    }
-
-    #[test]
-    fn rejects_unrelated_repeat_action() {
-        let first = lex("Starting with you, each player may discard a card.");
-        let second = lex("Repeat this process until no one draws a card.");
-        assert!(parse_starting_each_player_optional_repeat_shape(&first, &second).is_none());
-    }
-
-    #[test]
-    fn parses_delayed_upkeep_payment() {
-        let upkeep = lex("At the beginning of your next upkeep, pay {2}{U}");
-        let lose = lex("If you don't, you lose the game");
-        let shape = parse_delayed_upkeep_payment_shape(&upkeep, &lose).unwrap();
-        assert_eq!(shape.mana.to_oracle(), "{2}{U}");
-    }
-}
+#[path = "generic_sequence_shapes/trigger_programs.rs"]
+mod trigger_programs;
+pub use trigger_programs::parse_delayed_upkeep_payment_shape;
+#[path = "generic_sequence_shapes/resource_programs.rs"]
+mod resource_programs;
+use resource_programs::upkeep_pay_prefix;
+#[path = "generic_sequence_shapes/core_programs.rs"]
+mod core_programs;
+pub use core_programs::parse_untap_clause_prefix_shape;
+use core_programs::{remains_tapped, untap_prefix};
+#[path = "generic_sequence_shapes/reference_programs.rs"]
+mod reference_programs;
+pub use reference_programs::parse_source_tapped_lock_shape;
+use reference_programs::source_tapped_duration;
+#[path = "generic_sequence_shapes/counter_programs.rs"]
+mod counter_programs;
+use counter_programs::source_marker;

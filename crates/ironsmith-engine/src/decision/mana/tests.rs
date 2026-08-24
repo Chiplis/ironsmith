@@ -1,4 +1,5 @@
 use super::*;
+#[cfg(ironsmith_runtime_parser_tests)]
 use crate::ability::AbilityKind;
 use crate::alternative_cast::CastingMethod;
 use crate::card::{CardBuilder, PowerToughness};
@@ -6,7 +7,9 @@ use crate::cards::builders::CardDefinitionBuilder;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::target::{ObjectFilter, PlayerFilter};
-use crate::types::{CardType, Subtype, Supertype};
+#[cfg(ironsmith_runtime_parser_tests)]
+use crate::types::Subtype;
+use crate::types::{CardType, Supertype};
 use crate::zone::Zone;
 
 #[test]

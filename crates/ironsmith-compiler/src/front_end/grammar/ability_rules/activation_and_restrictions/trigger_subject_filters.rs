@@ -12,7 +12,7 @@ fn trigger_controller_player_filter(
         TriggerControllerReference::NotYou => PlayerFilter::NotYou,
         TriggerControllerReference::ChosenPlayer => PlayerFilter::ChosenPlayer,
         TriggerControllerReference::EnchantedPlayer => {
-            PlayerFilter::TaggedPlayer(crate::tag::TagKey::from("enchanted"))
+            PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.key())
         }
         TriggerControllerReference::EffectController => PlayerFilter::EffectController,
         TriggerControllerReference::AnyPlayer => PlayerFilter::Any,
@@ -151,7 +151,7 @@ pub fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFilter {
 
     match crate::grammar::trigger_subjects::parse_possessive_player_reference(words) {
         PossessivePlayerReference::EnchantedPlayer => {
-            PlayerFilter::TaggedPlayer(TagKey::from("enchanted"))
+            PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.key())
         }
         PossessivePlayerReference::AttachedController(subject) => {
             let tag = match subject {
@@ -172,7 +172,7 @@ pub fn parse_subject_clause_player_filter(words: &[&str]) -> PlayerFilter {
     if facts.on_your_team || facts.contains_you {
         PlayerFilter::You
     } else if facts.contains_enchanted_player {
-        PlayerFilter::TaggedPlayer(TagKey::from("enchanted"))
+        PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.key())
     } else if facts.contains_chosen_player {
         PlayerFilter::ChosenPlayer
     } else if facts.contains_opponent {
@@ -544,12 +544,15 @@ pub fn parse_attack_trigger_subject_filter_lexed(
     // itself (while reconfigured) or its bearer.
     {
         let word_refs = crate::lexer::token_word_refs(subject_tokens);
-        if matches!(
-            word_refs.as_slice(),
-            ["this", "or", "equipped", "creature"]
-                | ["this", "creature", "or", "equipped", "creature"]
-                | ["this", "permanent", "or", "equipped", "creature"]
-        ) && let Some(or_token_idx) = subject_tokens.iter().position(|t| t.is_word("or"))
+        if crate::word_primitives::parse_any_sequence_complete(
+            &word_refs,
+            &[
+                &["this", "or", "equipped", "creature"],
+                &["this", "creature", "or", "equipped", "creature"],
+                &["this", "permanent", "or", "equipped", "creature"],
+            ],
+        ) && let Some(or_token_idx) =
+            crate::slice_primitives::select_position(subject_tokens, |token| token.is_word("or"))
             && let Some(equipped) =
                 parse_trigger_subject_filter_lexed(&subject_tokens[or_token_idx + 1..])?
         {
@@ -670,9 +673,18 @@ pub fn parse_spell_activity_trigger(
                         Some(SpellOwnerSurface::SubjectActor) => {
                             filter.owner = Some(actor.clone());
                         }
-                        Some(SpellOwnerSurface::SubjectActorPronoun) => {
-                            filter.owner = Some(PlayerFilter::IteratedPlayer);
+                        // `their` agrees with the actor already carried by
+                        // SpellCast. Preserve that correlation when the
+                        // actor is a concrete relative player class. An
+                        // unconstrained `a player` remains on SpellCast
+                        // because ObjectFilter cannot bind an arbitrary
+                        // actor identity on its own.
+                        Some(SpellOwnerSurface::SubjectActorPronoun)
+                            if !matches!(actor, PlayerFilter::Any) =>
+                        {
+                            filter.owner = Some(actor.clone());
                         }
+                        Some(SpellOwnerSurface::SubjectActorPronoun) => {}
                         Some(SpellOwnerSurface::Opponent) => {
                             filter.owner = Some(PlayerFilter::Opponent);
                         }
@@ -690,15 +702,16 @@ pub fn parse_spell_activity_trigger(
                             if matches!(
                                 filter_facts.owner,
                                 Some(SpellOwnerSurface::SubjectActorPronoun)
-                            ) {
+                            ) && matches!(actor, PlayerFilter::Any)
+                            {
                                 // The generic object-filter parser has no
                                 // trigger actor and interprets `their` as an
                                 // opponent possessive. At this boundary the
-                                // casting actor is already typed; spell-cast
-                                // matching evaluates IteratedPlayer as that
-                                // caster, preserving the exact owner/caster
-                                // correlation without choosing an opponent.
-                                filter.owner = Some(PlayerFilter::IteratedPlayer);
+                                // casting actor is already typed by
+                                // SpellCast, so clear the redundant owner
+                                // constraint instead of inventing an
+                                // IteratedPlayer binding.
+                                filter.owner = None;
                             } else if filter.owner.is_none() {
                                 filter.owner = origin_filter.owner;
                             }
@@ -848,7 +861,9 @@ pub fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<MayCastTag
             (subject_tag.unwrap_or_else(|| TagKey::from(IT_TAG)), false)
         }
         MayCastSurfaceReference::ExiledCard => (TagKey::from(crate::tag::SOURCE_EXILED_TAG), false),
-        MayCastSurfaceReference::RevealedCard => (TagKey::from("__last_revealed__"), false),
+        MayCastSurfaceReference::RevealedCard => {
+            (crate::tag::CompilerReferenceTag::LastRevealed.key(), false)
+        }
         MayCastSurfaceReference::Copy => (TagKey::from(IT_TAG), true),
     };
     let (without_paying_mana_cost, predicate) = match facts.tail {
@@ -1155,22 +1170,26 @@ pub fn strip_embedded_token_rules_text(tokens: &[OwnedLexToken]) -> Vec<OwnedLex
     // quoted suffix that contains its own verbs and activation colon. The
     // untouched source tokens are used later to attach the quoted rule to the
     // token blueprint.
-    let opening_quote = tokens
-        .iter()
-        .position(|token| token.kind == crate::lexer::TokenKind::Quote);
+    let opening_quote = crate::slice_primitives::select_position(tokens, |token| {
+        token.kind == crate::lexer::TokenKind::Quote
+    });
     if let Some(opening_quote) = opening_quote
-        && tokens[opening_quote + 1..]
-            .iter()
-            .any(|token| token.kind == crate::lexer::TokenKind::Quote)
-        && tokens[..opening_quote]
-            .iter()
-            .any(|token| token.is_word("create"))
-        && tokens[..opening_quote]
-            .iter()
-            .any(|token| token.is_any_word(&["token", "tokens"]))
-        && let Some(with_idx) = tokens[..opening_quote]
-            .iter()
-            .rposition(|token| token.is_word("with"))
+        && crate::slice_primitives::select_position(&tokens[opening_quote + 1..], |token| {
+            token.kind == crate::lexer::TokenKind::Quote
+        })
+        .is_some()
+        && crate::slice_primitives::select_position(&tokens[..opening_quote], |token| {
+            token.is_word("create")
+        })
+        .is_some()
+        && crate::slice_primitives::select_position(&tokens[..opening_quote], |token| {
+            token.is_any_word(&["token", "tokens"])
+        })
+        .is_some()
+        && let Some(with_idx) =
+            crate::slice_primitives::select_last_position(&tokens[..opening_quote], |token| {
+                token.is_word("with")
+            })
         && with_idx + 1 < opening_quote
     {
         let mut prefix_end = opening_quote;
@@ -1225,13 +1244,14 @@ pub fn append_token_reminder_to_last_create_effect(
     // claim such a sentence keeps the keywords but silently discards the
     // quoted rule. Route those sentences through the generic granted-ability
     // parser first, which models the full keyword-plus-quoted-rule list.
-    let has_quoted_enters_rule = tokens.windows(5).any(|window| {
+    let has_quoted_enters_rule = crate::slice_primitives::find_window_by(tokens, 5, |window| {
         window[0].kind == crate::lexer::TokenKind::Quote
             && matches!(window[1].as_word(), Some("when" | "whenever"))
             && window[2].as_word() == Some("this")
             && window[3].as_word() == Some("token")
             && window[4].as_word() == Some("enters")
-    });
+    })
+    .is_some();
     for effect in effects.iter_mut().rev() {
         // A pronoun rule sentence that mixes an ordinary keyword, a quoted
         // attached-object rule, and a trailing activation must be parsed as
@@ -1322,7 +1342,7 @@ fn append_token_granted_ability_to_effect(
                 && definition.has_intrinsic_abilities()
                 && granted_abilities.is_empty();
             for ability in parsed {
-                if !granted_abilities.contains(&ability) {
+                if !crate::slice_primitives::contains(granted_abilities, &ability) {
                     granted_abilities.push(ability);
                 }
             }
@@ -1740,7 +1760,7 @@ mod typed_trigger_subject_migration_tests {
         };
         assert_eq!(caster, PlayerFilter::Any);
         assert_eq!(filter.zone, Some(Zone::Hand));
-        assert_eq!(filter.owner, Some(PlayerFilter::IteratedPlayer));
+        assert_eq!(filter.owner, None);
     }
 
     #[test]

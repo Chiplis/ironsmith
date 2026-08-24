@@ -212,6 +212,8 @@ pub(super) fn matches_surface(words: &[&str], surface: TargetSurface) -> bool {
                 &["the", "rest"],
                 &["rest", "of", "revealed", "cards"],
                 &["the", "rest", "of", "revealed", "cards"],
+                &["rest", "of", "the", "revealed", "cards"],
+                &["the", "rest", "of", "the", "revealed", "cards"],
             ],
         ),
         TargetSurface::SourcePtPrefix => prefix_one_of(

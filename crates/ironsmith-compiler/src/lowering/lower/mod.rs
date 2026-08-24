@@ -15,6 +15,7 @@ mod damage_and_cost_rewrites;
 mod line_lowering;
 mod modal_and_level_lowering;
 mod normalization_support;
+mod restriction_support;
 #[cfg(test)]
 mod rewrite_sentence_grouping;
 mod rewrite_support;
@@ -54,7 +55,8 @@ use super::effect_pipeline::{
 use super::lowering_support::{
     rewrite_apply_delayed_trigger_followup_statement_to_last_ability,
     rewrite_apply_instead_followup_statement_to_last_ability,
-    rewrite_lower_keyword_action_to_object_abilities, rewrite_lower_prepared_ability,
+    rewrite_lower_keyword_action_to_object_abilities, rewrite_lower_parsed_ability,
+    rewrite_lower_prepared_ability,
     rewrite_lower_prepared_additional_cost_choice_modes_with_exports,
     rewrite_lower_prepared_statement_effects, rewrite_lower_static_abilities_ast,
     rewrite_lower_static_ability_ast, rewrite_parsed_triggered_ability,
@@ -64,6 +66,6 @@ use super::lowering_support::{
     rewrite_static_ability_for_keyword_action,
     rewrite_validate_iterated_player_bindings_in_lowered_effects,
 };
-use super::restriction_support::{apply_pending_restrictions_to_ability, is_restrictable_ability};
 use crate::model::reference_state::LoweredEffects;
 use crate::model::reference_state::ReferenceExports;
+use restriction_support::{apply_pending_restrictions_to_ability, is_restrictable_ability};

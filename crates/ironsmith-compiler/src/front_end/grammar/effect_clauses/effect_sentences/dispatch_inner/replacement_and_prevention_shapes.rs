@@ -433,7 +433,7 @@ pub fn parse_you_and_each_opponent_voted_with_you_sentence(
     };
 
     let opponent_effect = EffectAst::ForEachTaggedPlayer {
-        tag: TagKey::from("voted_with_you"),
+        tag: crate::tag::CompilerReferenceTag::VotedWithYou.key(),
         effects: vec![EffectAst::May {
             effects: vec![EffectAst::subject_verb(
                 SubjectVerbRoleAst::Chooser,

@@ -7,15 +7,15 @@ use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::types::{CardType, Subtype};
 
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 use crate::effect::Effect;
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 use crate::effect::Until;
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 use crate::effects::ExecutionContext;
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 use crate::static_abilities::StaticAbility;
-#[cfg(test)]
+#[cfg(all(test, ironsmith_runtime_parser_tests))]
 use crate::target::ObjectFilter;
 
 /// Selfless Spirit - {1}{W}

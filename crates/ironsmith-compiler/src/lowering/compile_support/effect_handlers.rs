@@ -203,6 +203,12 @@ pub fn compile_delayed_trigger_spec(
                 filter: filter.clone(),
             })
         }
+        TriggerSpec::YouDrawCard => Ok(ironsmith_core::DelayedTriggerSpec::PlayerDrawsCard(
+            PlayerFilter::You,
+        )),
+        TriggerSpec::PlayerDrawsCard(player) => Ok(
+            ironsmith_core::DelayedTriggerSpec::PlayerDrawsCard(player.clone()),
+        ),
         TriggerSpec::AbilityActivated {
             activator,
             filter,
@@ -899,7 +905,8 @@ pub(super) fn try_compile_timing_and_control_effect(
                 TriggerSpec::LeavesBattlefield(filter) => {
                     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
                     let watched_tag = watch_tag_from_filter(&resolved_filter).or_else(|| {
-                        filter_references_tag(filter, IT_TAG).then(|| TagKey::from("targeted_0"))
+                        filter_references_tag(filter, IT_TAG)
+                            .then(|| crate::tag::CompilerReferenceTag::Targeted0.key())
                     });
                     if let Some(watched_tag) = watched_tag {
                         let lowered = compile_trigger_effects_with_imports(

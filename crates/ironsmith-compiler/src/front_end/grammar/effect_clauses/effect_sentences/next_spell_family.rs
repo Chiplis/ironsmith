@@ -5,23 +5,25 @@ use super::super::grammar::effects::{
 };
 use super::super::lexer::OwnedLexToken;
 use crate::cards::builders::{CardTextError, EffectAst, GrantedAbilityAst};
-use crate::static_abilities::StaticAbility;
 
 fn parse_next_spell_grant_ability(
     surface: NextSpellGrantAbilitySurface<'_>,
 ) -> Option<GrantedAbilityAst> {
     if surface == NextSpellGrantAbilitySurface::CantBeCountered {
-        return Some(GrantedAbilityAst::StaticAbility(
-            StaticAbility::cant_be_countered_ability(),
-        ));
+        return Some(GrantedAbilityAst::KeywordAction(Box::new(
+            crate::payload::KeywordAction::CantBeCountered,
+        )));
     }
     let NextSpellGrantAbilitySurface::Keyword(tokens) = surface else {
         return None;
     };
-    if crate::lexer::token_word_refs(tokens) == ["affinity", "for", "artifacts"] {
-        return Some(GrantedAbilityAst::StaticAbility(
-            StaticAbility::affinity_for_artifacts(),
-        ));
+    if crate::word_primitives::parse_sequence_complete(
+        &crate::lexer::token_word_refs(tokens),
+        &["affinity", "for", "artifacts"],
+    ) {
+        return Some(GrantedAbilityAst::KeywordAction(Box::new(
+            crate::payload::KeywordAction::AffinityForArtifacts,
+        )));
     }
     let action = match parse_next_spell_keyword_action_tokens(tokens)? {
         NextSpellKeywordActionShape::Known(action) => action,
@@ -44,7 +46,7 @@ pub fn parse_next_spell_grant_sentence_lexed(
     // Parse the one-shot grant on the left before the broad static-grant
     // fallback can discard both `next` and `this turn`, then route the right
     // clause through the ordinary effect grammar.
-    let Some(split) = tokens.windows(3).position(|window| {
+    let Some(split) = crate::slice_primitives::find_window_by(tokens, 3, |window| {
         window[0].is_word("and") && window[1].is_word("you") && window[2].is_word("may")
     }) else {
         return Ok(None);
@@ -63,17 +65,24 @@ fn lower_next_spell_grant(
     shape: super::super::grammar::effects::NextSpellGrantShape<'_>,
 ) -> Option<Vec<EffectAst>> {
     let ability = parse_next_spell_grant_ability(shape.ability)?;
-    Some(
-        shape
-            .filters
-            .into_iter()
-            .map(|filter| {
-                EffectAst::subject_verb_grant_next_spell_ability_this_turn(
-                    shape.player,
-                    filter,
-                    ability.clone(),
-                )
-            })
-            .collect(),
-    )
+    let effects = shape
+        .filters
+        .into_iter()
+        .map(|filter| {
+            EffectAst::subject_verb_grant_next_spell_ability_this_turn(
+                shape.player,
+                filter,
+                ability.clone(),
+            )
+        })
+        .collect::<Vec<_>>();
+    Some(if effects.len() > 1 {
+        vec![EffectAst::Coordinated {
+            effects,
+            leading_duration: false,
+            result_conjunction: false,
+        }]
+    } else {
+        effects
+    })
 }

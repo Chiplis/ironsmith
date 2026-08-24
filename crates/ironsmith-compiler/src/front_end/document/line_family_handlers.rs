@@ -91,7 +91,9 @@ fn sticker_sheet_ticket_marker_static_line(ctx: &LineDispatchContext<'_>) -> Sta
         // row directly so trigger-shaped and keyword-shaped bodies cannot be
         // reclassified after the `Stickers` metadata line has identified it.
         parsed: Some(LineAst::StaticAbility(
-            crate::static_abilities::StaticAbility::keyword_marker(marker).into(),
+            crate::cards::builders::StaticAbilityAst::KeywordAction(
+                crate::payload::KeywordAction::StaticMarkerText(marker),
+            ),
         )),
     }
 }
@@ -177,6 +179,11 @@ pub(super) fn run_max_speed_labeled_line_family(
         )?;
         match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
             Ok(cost) => {
+                let effect_parse_tokens = normalize_activation_effect_tokens_for_builder(
+                    &ctx.preprocessed.builder,
+                    ctx.line,
+                    &effect_parse_tokens,
+                )?;
                 return Ok(Some(LineDispatchResult::single(
                     RewriteLineCst::Activated(ActivatedLineCst {
                         info: ctx.line.info.clone(),
@@ -589,6 +596,11 @@ pub(super) fn run_station_line_family(
         cost_tokens.clone(),
     )?;
     let cost = parse_activation_cost_tokens_rewrite(&normalized_cost_tokens)?;
+    let effect_parse_tokens = normalize_activation_effect_tokens_for_builder(
+        &ctx.preprocessed.builder,
+        ctx.line,
+        &effect_parse_tokens,
+    )?;
     let mut lines = vec![RewriteLineCst::Activated(ActivatedLineCst {
         info: ctx.line.info.clone(),
         cost,
@@ -691,6 +703,11 @@ pub(super) fn run_station_threshold_line_family(
             cost_tokens.clone(),
         )?;
         let cost = parse_activation_cost_tokens_rewrite(&normalized_cost_tokens)?;
+        let effect_parse_tokens = normalize_activation_effect_tokens_for_builder(
+            &ctx.preprocessed.builder,
+            ctx.line,
+            &effect_parse_tokens,
+        )?;
         lines.push(RewriteLineCst::Activated(ActivatedLineCst {
             info: ctx.line.info.clone(),
             cost,
@@ -935,6 +952,21 @@ pub(super) fn run_keyword_line_family(
         return Ok(None);
     }
 
+    if let Some(action) = crate::keyword_static::parse_dynamic_firebending_with_source(
+        &ctx.line.tokens,
+        Some(ctx.parse.source().card_name.as_str()),
+    ) {
+        return Ok(Some(LineDispatchResult::single(
+            RewriteLineCst::Static(StaticLineCst {
+                info: ctx.line.info.clone(),
+                parse_tokens: ctx.line.tokens.clone(),
+                chosen_option: None,
+                parsed: Some(LineAst::Abilities(vec![action])),
+            }),
+            ctx.idx + 1,
+        )));
+    }
+
     if matches!(
         parse_ability_line_lexed(&ctx.line.tokens).as_deref(),
         Some([crate::cards::builders::KeywordAction::CumulativeUpkeep { .. }])
@@ -970,11 +1002,9 @@ pub(super) fn run_keyword_line_family(
 fn split_kicker_x_minimum_line(
     line: &PreprocessedLine,
 ) -> Result<Option<Vec<RewriteLineCst>>, CardTextError> {
-    let Some(first_period) = line
-        .tokens
-        .iter()
-        .position(|token| token.kind == TokenKind::Period)
-    else {
+    let Some(first_period) = crate::slice_primitives::select_position(&line.tokens, |token| {
+        token.kind == TokenKind::Period
+    }) else {
         return Ok(None);
     };
     let kicker_tokens = &line.tokens[..=first_period];
@@ -988,13 +1018,17 @@ fn split_kicker_x_minimum_line(
         return Ok(None);
     }
 
-    let suffix_end = line.tokens[first_period + 1..]
-        .iter()
-        .position(|token| token.kind == TokenKind::LParen)
+    let suffix_end =
+        crate::slice_primitives::select_position(&line.tokens[first_period + 1..], |token| {
+            token.kind == TokenKind::LParen
+        })
         .map_or(line.tokens.len(), |offset| first_period + 1 + offset);
     let minimum_tokens = trim_lexed_commas(&line.tokens[first_period + 1..suffix_end]);
     let minimum_words = token_word_refs(minimum_tokens);
-    if !matches!(minimum_words.as_slice(), ["x", "cant" | "can't", "be", "0"]) {
+    if !crate::word_primitives::parse_choice_sequence_complete(
+        &minimum_words,
+        &[&["x"], &["cant", "can't"], &["be"], &["0"]],
+    ) {
         return Ok(None);
     }
 
@@ -1023,11 +1057,12 @@ fn split_same_line_and_or_kicker_keywords(
     let mut lines = Vec::new();
     for branch in branches {
         let parsed_cost = parse_activation_cost_tokens_rewrite(branch)?;
-        let lowered_cost = lower_activation_cost_cst(&parsed_cost)?;
-        let cost_text = lowered_cost
+        let compiler_cost = crate::cst_lowering::recognize_activation_cost_cst(&parsed_cost)?;
+        let compiler_cost = compiler_cost.to_core_total_cost();
+        let cost_text = compiler_cost
             .mana_cost()
             .map(|cost| cost.to_oracle())
-            .unwrap_or_else(|| lowered_cost.display());
+            .unwrap_or_else(|| compiler_cost.display());
         let label = format!("Kicker {cost_text}");
         let raw = label.clone();
         let mut tokens = Vec::with_capacity(branch.len() + 1);
@@ -1134,6 +1169,11 @@ pub(super) fn run_activation_line_family(
         )?;
         match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
             Ok(cost) => {
+                let effect_parse_tokens = normalize_activation_effect_tokens_for_builder(
+                    &ctx.preprocessed.builder,
+                    ctx.line,
+                    &effect_parse_tokens,
+                )?;
                 let activated = ActivatedLineCst {
                     info: ctx.line.info.clone(),
                     cost,
@@ -1585,33 +1625,29 @@ pub(super) fn run_non_turn_conditional_untap_line_family(
 }
 
 fn is_keyword_action_replacement_static_line(tokens: &[OwnedLexToken]) -> bool {
-    parse_static_ability_ast_line_lexed(tokens)
-        .ok()
-        .flatten()
-        .is_some_and(|abilities| {
-            abilities.iter().any(|ability| {
-                matches!(
-                    ability,
-                    crate::cards::builders::StaticAbilityAst::Static(static_ability)
-                        if static_ability.id()
-                            == crate::static_abilities::StaticAbilityId::KeywordActionReplacement
-                )
-            })
-        })
+    match parse_static_ability_ast_line_lexed(tokens) {
+        Ok(Some(abilities)) => abilities.iter().any(|ability| {
+            matches!(
+                ability,
+                crate::cards::builders::StaticAbilityAst::Static(static_ability)
+                    if static_ability.id()
+                        == crate::static_abilities::StaticAbilityId::KeywordActionReplacement
+            )
+        }),
+        Ok(None) | Err(_) => false,
+    }
 }
 
 fn is_lose_game_replacement_static_line(tokens: &[OwnedLexToken]) -> bool {
-    parse_static_ability_ast_line_lexed(tokens)
-        .ok()
-        .flatten()
-        .is_some_and(|abilities| {
-            abilities.iter().any(|ability| {
-                matches!(
-                    ability,
-                    crate::cards::builders::StaticAbilityAst::LoseGameReplacement { .. }
-                )
-            })
-        })
+    match parse_static_ability_ast_line_lexed(tokens) {
+        Ok(Some(abilities)) => abilities.iter().any(|ability| {
+            matches!(
+                ability,
+                crate::cards::builders::StaticAbilityAst::LoseGameReplacement { .. }
+            )
+        }),
+        Ok(None) | Err(_) => false,
+    }
 }
 
 pub(super) fn run_statement_probe_line_family(
@@ -1724,6 +1760,8 @@ pub(super) fn run_statement_probe_line_family(
 
     let linked_preference = line_grammar::parse_linked_statement_preference(&ctx.line.tokens);
     let static_preference = line_grammar::parse_statement_static_preference(&ctx.line.tokens);
+    let is_keyword_action_replacement = is_keyword_action_replacement_static_line(&ctx.line.tokens);
+    let is_lose_game_replacement = is_lose_game_replacement_static_line(&ctx.line.tokens);
     if (matches!(
         crate::grammar::structure::classify_statement_line_family_lexed(&ctx.line.tokens),
         Some(
@@ -1745,8 +1783,8 @@ pub(super) fn run_statement_probe_line_family(
                     | line_grammar::StatementStaticPreference::ConditionalKeywordTypeAddition
             )
         ) || prefer_statement_before_static)
-        && !is_keyword_action_replacement_static_line(&ctx.line.tokens)
-        && !is_lose_game_replacement_static_line(&ctx.line.tokens)
+        && !is_keyword_action_replacement
+        && !is_lose_game_replacement
         && let Some(mut statement_line) = parse_statement_line_cst(ctx.line)?
     {
         statement_line
@@ -1965,6 +2003,8 @@ fn try_parse_trailing_keyword_activation_dispatch(
     let normalized_cost_tokens =
         normalize_activation_cost_tokens_for_builder(builder, line, cost_tokens.clone())?;
     let cost = parse_activation_cost_tokens_rewrite(&normalized_cost_tokens)?;
+    let effect_parse_tokens =
+        normalize_activation_effect_tokens_for_builder(builder, line, &effect_parse_tokens)?;
     let activated = RewriteLineCst::Activated(ActivatedLineCst {
         info: suffix_line.info.clone(),
         cost,

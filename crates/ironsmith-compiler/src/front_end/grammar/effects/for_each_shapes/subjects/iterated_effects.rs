@@ -36,16 +36,23 @@ pub fn parse_for_each_mana_symbol_spent_effect_shape(
         return None;
     }
     let suffix_words = primitives::TokenWordView::new(suffix).to_word_refs();
-    let reference = match suffix_words.as_slice() {
-        ["spent", "to", "cast", "it"] => ironsmith_core::ManaSpentCastReferenceSurface::It,
-        ["spent", "to", "cast", "this", "spell"] => {
-            ironsmith_core::ManaSpentCastReferenceSurface::ThisSpell
-        }
-        ["spent", "to", "cast", "this", "creature"] => {
-            ironsmith_core::ManaSpentCastReferenceSurface::ThisCreature
-        }
-        _ => return None,
-    };
+    let reference = crate::word_primitives::matching_value(
+        &suffix_words,
+        &[
+            (
+                &["spent", "to", "cast", "it"][..],
+                ironsmith_core::ManaSpentCastReferenceSurface::It,
+            ),
+            (
+                &["spent", "to", "cast", "this", "spell"][..],
+                ironsmith_core::ManaSpentCastReferenceSurface::ThisSpell,
+            ),
+            (
+                &["spent", "to", "cast", "this", "creature"][..],
+                ironsmith_core::ManaSpentCastReferenceSurface::ThisCreature,
+            ),
+        ],
+    )?;
     let effect_tokens = trim_lexed_commas(effect_tokens);
     (!effect_tokens.is_empty()).then_some(ForEachManaSymbolSpentEffectShape {
         symbol,
@@ -64,22 +71,28 @@ pub fn parse_for_each_spent_mana_effect_shape(
         trim_lexed_commas(subject_tokens),
         primitives::phrase(&["for", "each", "mana", "from"]),
     )?;
-    let spent_index = after_prefix
-        .iter()
-        .position(|token| token.is_word("spent"))?;
+    let spent_index =
+        crate::slice_primitives::select_position(after_prefix, |token| token.is_word("spent"))?;
     let source_tokens = &after_prefix[..spent_index];
     let reference_words =
         primitives::TokenWordView::new(&after_prefix[spent_index..]).to_word_refs();
-    let reference = match reference_words.as_slice() {
-        ["spent", "to", "cast", "it"] => ironsmith_core::ManaSpentCastReferenceSurface::It,
-        ["spent", "to", "cast", "this", "spell"] => {
-            ironsmith_core::ManaSpentCastReferenceSurface::ThisSpell
-        }
-        ["spent", "to", "cast", "this", "creature"] => {
-            ironsmith_core::ManaSpentCastReferenceSurface::ThisCreature
-        }
-        _ => return None,
-    };
+    let reference = crate::word_primitives::matching_value(
+        &reference_words,
+        &[
+            (
+                &["spent", "to", "cast", "it"][..],
+                ironsmith_core::ManaSpentCastReferenceSurface::It,
+            ),
+            (
+                &["spent", "to", "cast", "this", "spell"][..],
+                ironsmith_core::ManaSpentCastReferenceSurface::ThisSpell,
+            ),
+            (
+                &["spent", "to", "cast", "this", "creature"][..],
+                ironsmith_core::ManaSpentCastReferenceSurface::ThisCreature,
+            ),
+        ],
+    )?;
     let source_tokens = trim_lexed_commas(source_tokens);
     let effect_tokens = trim_lexed_commas(effect_tokens);
     (!source_tokens.is_empty() && !effect_tokens.is_empty()).then_some(

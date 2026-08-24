@@ -200,26 +200,23 @@ pub fn parse_legend_rule_doesnt_apply_tokens(
 }
 
 pub fn parse_all_cards_spells_permanents_colorless_tokens(tokens: &[OwnedLexToken]) -> bool {
-    let words = tokens
-        .iter()
-        .filter_map(OwnedLexToken::as_word)
-        .collect::<Vec<_>>();
-    matches!(
-        words.as_slice(),
-        [
-            "all",
-            "cards",
-            "that",
-            "aren't" | "arent",
-            "on",
-            "the",
-            "battlefield",
-            "spells",
-            "and",
-            "permanents",
-            "are",
-            "colorless"
-        ]
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    crate::word_primitives::parse_choice_sequence_complete(
+        &words,
+        &[
+            &["all"],
+            &["cards"],
+            &["that"],
+            &["aren't", "arent"],
+            &["on"],
+            &["the"],
+            &["battlefield"],
+            &["spells"],
+            &["and"],
+            &["permanents"],
+            &["are"],
+            &["colorless"],
+        ],
     )
 }
 

@@ -108,13 +108,13 @@ pub fn parse_passive_color_type_addition_shape(
             continue;
         }
         if let Ok(card_type) = leaf::parse_leaf_card_type_complete(word) {
-            if !card_types.contains(&card_type) {
+            if !crate::slice_primitives::contains(&card_types, &card_type) {
                 card_types.push(card_type);
             }
             continue;
         }
         if let Ok(subtype) = leaf::parse_leaf_subtype_complete(word) {
-            if !subtypes.contains(&subtype) {
+            if !crate::slice_primitives::contains(&subtypes, &subtype) {
                 subtypes.push(subtype);
             }
             continue;

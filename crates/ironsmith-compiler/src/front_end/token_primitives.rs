@@ -221,7 +221,11 @@ pub fn parse_leading_may_action_lexed<'a>(
 }
 
 fn parse_head_words<'a>(input: &mut LexedInput<'a>) -> WResult<(&'a str, Option<&'a str>)> {
-    peek(seq!(parse_word_token, opt(parse_word_token))).parse_next(input)
+    peek(seq!(
+        grammar::word_parser_text,
+        opt(grammar::word_parser_text)
+    ))
+    .parse_next(input)
 }
 
 pub fn lexed_head_words(tokens: &[OwnedLexToken]) -> Option<(&str, Option<&str>)> {

@@ -3,9 +3,7 @@ pub fn parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>
         return Some(actions);
     }
     if let Some(parsed) =
-        crate::grammar::keyword_action_costs::parse_dynamic_soulshift_tokens(
-            tokens,
-        )
+        crate::grammar::keyword_action_costs::parse_dynamic_soulshift_tokens(tokens)
     {
         return Some(vec![KeywordAction::SoulshiftValue(
             crate::effect::Value::Count(parsed.count_filter),
@@ -26,9 +24,7 @@ pub fn parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>
             continue;
         }
 
-        if let Some(protection_actions) =
-            crate::clause_support::parse_protection_chain(segment)
-        {
+        if let Some(protection_actions) = crate::clause_support::parse_protection_chain(segment) {
             actions.extend(protection_actions);
             continue;
         }
@@ -69,20 +65,31 @@ pub fn parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>
 }
 
 pub fn parse_dynamic_firebending(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
+    parse_dynamic_firebending_with_source(tokens, None)
+}
+
+pub fn parse_dynamic_firebending_with_source(
+    tokens: &[OwnedLexToken],
+    source_name: Option<&str>,
+) -> Option<KeywordAction> {
     let view = crate::grammar::primitives::TokenWordView::new(tokens);
     let words = view.to_word_refs();
     if words.first().copied() != Some("firebending") || words.get(1).copied() != Some("x") {
         return None;
     }
-    let where_word = words.iter().position(|word| *word == "where")?;
+    let where_word = crate::word_primitives::select_word_position(&words, |word| word == "where")?;
     let binding_range = view.token_span_for_words(where_word, view.len())?;
-    let amount = parse_value_binding_clause(&tokens[binding_range])?;
+    let binding_tokens = &tokens[binding_range];
+    let amount = parse_value_binding_clause(binding_tokens).or_else(|| {
+        source_name.and_then(|source_name| {
+            parse_where_x_named_source_stat_value(binding_tokens, source_name)
+        })
+    })?;
     let surface_range = view.token_span_for_words(1, view.len())?;
-    let surface =
-        crate::lexer::render_token_slice(&tokens[surface_range])
-            .trim()
-            .trim_end_matches('.')
-            .to_string();
+    let surface = crate::lexer::render_token_slice(&tokens[surface_range])
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
     Some(KeywordAction::FirebendingValue { amount, surface })
 }
 

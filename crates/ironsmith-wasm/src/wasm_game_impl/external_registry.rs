@@ -299,8 +299,7 @@ impl WasmGame {
     ) -> Result<usize, String> {
         if !source.replace_existing {
             let definition_names = Self::external_source_definition_names(&source);
-            self.registry
-                .ensure_cards_loaded(definition_names.iter().copied());
+            self.ensure_card_definitions_loaded(definition_names.iter().copied());
 
             // Linked definitions are an atomic group: mixing an embedded face
             // with a newly compiled face would leave their CardIds pointing at
@@ -476,8 +475,7 @@ impl WasmGame {
             .map_err(|err| JsValue::from_str(&format!("invalid compiled artifact batch: {err}")))?;
         let definition_names = Self::external_source_definition_names(&source);
         if !source.replace_existing {
-            self.registry
-                .ensure_cards_loaded(definition_names.iter().copied());
+            self.ensure_card_definitions_loaded(definition_names.iter().copied());
             if definition_names
                 .iter()
                 .any(|name| self.registry.get(name).is_some())

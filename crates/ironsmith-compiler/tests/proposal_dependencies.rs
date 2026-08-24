@@ -23,7 +23,12 @@ fn kicked_choose_any_number_lowers_to_typed_conditional_mode_range() {
                 effect.downcast_ref::<ironsmith_compiler::effects::ChooseModeEffect>()
             })
         })
-        .expect("spell should contain a typed modal effect");
+        .unwrap_or_else(|| {
+            panic!(
+                "spell should contain a typed modal effect: {:#?}",
+                definition.spell_effect
+            )
+        });
     let range = modal
         .conditional_mode_range
         .as_ref()

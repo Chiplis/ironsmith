@@ -4718,9 +4718,10 @@ impl CardDefinitionBuilder {
             .oracle_text_ref()
             .split(|character: char| !character.is_ascii_alphanumeric())
             .any(|word| word.eq_ignore_ascii_case("ante"));
+        let canonical_text = self.card_builder.oracle_text_ref().to_string();
         let definition = finalize_backup_abilities(CardDefinition {
             card: self.card_builder.build(),
-            canonical_text: String::new(),
+            canonical_text,
             ability_labels: Vec::new(),
             abilities: self.abilities,
             spell_effect: self.spell_effect,
@@ -4769,6 +4770,17 @@ fn parse_standalone_bolster_marker(text: &str) -> Option<u32> {
         .filter(|_| parts.next().is_none())
 }
 
+fn scale_value(base: Value, factor: u32) -> Option<Value> {
+    if factor == 0 {
+        return None;
+    }
+    let mut value = base.clone();
+    for _ in 1..factor {
+        value = Value::Add(Box::new(value), Box::new(base.clone()));
+    }
+    Some(value)
+}
+
 #[cfg(all(test, ironsmith_runtime_legacy_parser_unit_tests))]
 mod delayed_trigger_finalization_tests;
 
@@ -4794,17 +4806,6 @@ mod target_parse_tests;
 
 #[cfg(all(test, ironsmith_runtime_legacy_parser_unit_tests))]
 mod effect_parse_tests;
-
-fn scale_value(base: Value, factor: u32) -> Option<Value> {
-    if factor == 0 {
-        return None;
-    }
-    let mut value = base.clone();
-    for _ in 1..factor {
-        value = Value::Add(Box::new(value), Box::new(base.clone()));
-    }
-    Some(value)
-}
 
 #[cfg(all(test, ironsmith_runtime_legacy_parser_unit_tests))]
 mod tests;

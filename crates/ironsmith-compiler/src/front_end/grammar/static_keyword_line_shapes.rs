@@ -348,7 +348,7 @@ fn first_token_word(tokens: &[OwnedLexToken], expected: &[&str]) -> Option<Token
         let Some(candidate) = token.as_word() else {
             continue;
         };
-        if expected.contains(&candidate) {
+        if crate::slice_primitives::contains(expected, &candidate) {
             return Some(TokenBoundary {
                 token: token_offset,
             });

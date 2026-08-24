@@ -73,6 +73,52 @@ impl<C> DerivedAlternativeCast<C> {
             _ => None,
         }
     }
+
+    pub fn try_map<C2, Error>(
+        self,
+        mut map_cost: impl FnMut(C) -> Result<C2, Error>,
+    ) -> Result<DerivedAlternativeCast<C2>, Error> {
+        Ok(match self {
+            Self::FlashbackFromCardManaCost { additional_costs } => {
+                DerivedAlternativeCast::FlashbackFromCardManaCost {
+                    additional_costs: additional_costs
+                        .into_iter()
+                        .map(&mut map_cost)
+                        .collect::<Result<Vec<_>, _>>()?,
+                }
+            }
+            Self::RetraceFromCardManaCost => DerivedAlternativeCast::RetraceFromCardManaCost,
+            Self::BlitzFromCardManaCost => DerivedAlternativeCast::BlitzFromCardManaCost,
+            Self::EmergeFromCardManaCost => DerivedAlternativeCast::EmergeFromCardManaCost,
+            Self::MiracleFromCardManaCostReducedBy { reduction } => {
+                DerivedAlternativeCast::MiracleFromCardManaCostReducedBy { reduction }
+            }
+            Self::EscapeFromCardManaCost { exile_count } => {
+                DerivedAlternativeCast::EscapeFromCardManaCost { exile_count }
+            }
+            Self::ManaValueAsGenericFromHand => DerivedAlternativeCast::ManaValueAsGenericFromHand,
+            Self::LifeEqualManaValueFromHand { usage_limit } => {
+                DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit }
+            }
+            Self::LifeEqualManaValueFromZone { zone, usage_limit } => {
+                DerivedAlternativeCast::LifeEqualManaValueFromZone { zone, usage_limit }
+            }
+            Self::GraveyardCastFromCardManaCost {
+                additional_costs,
+                usage_limit,
+                condition,
+                exiles_after_resolution,
+            } => DerivedAlternativeCast::GraveyardCastFromCardManaCost {
+                additional_costs: additional_costs
+                    .into_iter()
+                    .map(&mut map_cost)
+                    .collect::<Result<Vec<_>, _>>()?,
+                usage_limit,
+                condition,
+                exiles_after_resolution,
+            },
+        })
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -216,6 +262,29 @@ impl<SA, E, C, Cond> Grantable<SA, E, C, Cond> {
     /// Create a grantable for playing cards from a non-hand zone as if from hand.
     pub fn play_from() -> Self {
         Self::PlayFrom
+    }
+
+    pub fn try_map<SA2, E2, C2, Error>(
+        self,
+        mut map_static: impl FnMut(SA) -> Result<SA2, Error>,
+        mut map_effect: impl FnMut(E) -> Result<E2, Error>,
+        mut map_cost: impl FnMut(C) -> Result<C2, Error>,
+    ) -> Result<Grantable<SA2, E2, C2, Cond>, Error>
+    where
+        E2: Clone,
+        C: Clone,
+        C2: CostComponent,
+    {
+        Ok(match self {
+            Self::Ability(ability) => Grantable::Ability(map_static(ability)?),
+            Self::AlternativeCast(method) => {
+                Grantable::AlternativeCast(method.try_map(&mut map_effect, &mut map_cost)?)
+            }
+            Self::DerivedAlternativeCast(spec) => {
+                Grantable::DerivedAlternativeCast(spec.try_map(&mut map_cost)?)
+            }
+            Self::PlayFrom => Grantable::PlayFrom,
+        })
     }
 }
 
@@ -380,6 +449,35 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
             cast_this_way_filter: None,
             source_exiled_surface: None,
         }
+    }
+
+    pub fn try_map<SA2, E2, C2, Error>(
+        self,
+        mut map_static: impl FnMut(SA) -> Result<SA2, Error>,
+        mut map_effect: impl FnMut(E) -> Result<E2, Error>,
+        mut map_cost: impl FnMut(C) -> Result<C2, Error>,
+    ) -> Result<GrantSpec<SA2, E2, C2, Cond>, Error>
+    where
+        E2: Clone,
+        C: Clone,
+        C2: CostComponent,
+    {
+        Ok(GrantSpec {
+            grantable: self
+                .grantable
+                .try_map(&mut map_static, &mut map_effect, &mut map_cost)?,
+            filter: self.filter,
+            zone: self.zone,
+            beneficiary: self.beneficiary,
+            usage_limit: self.usage_limit,
+            cast_this_way_grants: self
+                .cast_this_way_grants
+                .into_iter()
+                .map(&mut map_static)
+                .collect::<Result<Vec<_>, _>>()?,
+            cast_this_way_filter: self.cast_this_way_filter,
+            source_exiled_surface: self.source_exiled_surface,
+        })
     }
 
     /// Return a copy of this grant specification with an explicit beneficiary.

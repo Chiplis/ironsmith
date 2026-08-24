@@ -127,10 +127,10 @@ pub fn parse_activated_line_with_raw(
             let mana_cost = if let Some(cost) = &loyalty_shorthand_cost {
                 cost.clone()
             } else {
-                parse_activation_cost(cost_tokens)?
+                parse_compiler_activation_cost(cost_tokens)?
             };
             let reference_imports =
-                super::super::util::activation_cost_reference_imports(&mana_cost);
+                super::super::util::compiler_activation_cost_reference_imports(&mana_cost);
 
             let mut extra_effects_ast = inline_effects_ast.clone();
             if effect_sentences.len() > 1 {
@@ -182,7 +182,7 @@ pub fn parse_activated_line_with_raw(
                 let ability = Ability {
                     kind: AbilityKind::Activated(ActivatedAbility {
                         mana_cost,
-                        effects: crate::resolution::ResolutionProgram::default(),
+                        effects: ironsmith_core::ResolutionProgram::default(),
                         choices: vec![],
                         timing: loyalty_timing,
                         is_loyalty_ability,
@@ -213,7 +213,7 @@ pub fn parse_activated_line_with_raw(
                     let ability = Ability {
                         kind: AbilityKind::Activated(ActivatedAbility {
                             mana_cost,
-                            effects: crate::resolution::ResolutionProgram::default(),
+                            effects: ironsmith_core::ResolutionProgram::default(),
                             choices: vec![],
                             timing: loyalty_timing,
                             is_loyalty_ability,
@@ -242,7 +242,7 @@ pub fn parse_activated_line_with_raw(
                 let ability = Ability {
                     kind: AbilityKind::Activated(ActivatedAbility {
                         mana_cost,
-                        effects: crate::resolution::ResolutionProgram::default(),
+                        effects: ironsmith_core::ResolutionProgram::default(),
                         choices: vec![],
                         timing: loyalty_timing,
                         is_loyalty_ability,
@@ -271,7 +271,7 @@ pub fn parse_activated_line_with_raw(
     let mana_cost = if let Some(cost) = &loyalty_shorthand_cost {
         cost.clone()
     } else {
-        parse_activation_cost(cost_tokens)?
+        parse_compiler_activation_cost(cost_tokens)?
     };
     let effect_tokens_joined = join_sentences_with_period(
         &effect_sentences
@@ -286,9 +286,9 @@ pub fn parse_activated_line_with_raw(
         return Ok(Some(ParsedAbility {
             ability: {
                 Ability {
-                    kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                    kind: AbilityKind::Activated(ActivatedAbility {
                         mana_cost,
-                        effects: crate::resolution::ResolutionProgram::default(),
+                        effects: ironsmith_core::ResolutionProgram::default(),
                         choices: vec![],
                         timing,
                         is_loyalty_ability: loyalty_shorthand_cost.is_some(),
@@ -320,7 +320,8 @@ pub fn parse_activated_line_with_raw(
     if effects_ast.is_empty() {
         return Ok(None);
     }
-    let reference_imports = super::super::util::activation_cost_reference_imports(&mana_cost);
+    let reference_imports =
+        super::super::util::compiler_activation_cost_reference_imports(&mana_cost);
     if loyalty_shorthand_cost.is_some() {
         timing = ActivationTiming::SorcerySpeed;
         for restriction in loyalty_additional_restrictions(true) {
@@ -340,9 +341,9 @@ pub fn parse_activated_line_with_raw(
     Ok(Some(ParsedAbility {
         ability: {
             Ability {
-                kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                kind: AbilityKind::Activated(ActivatedAbility {
                     mana_cost,
-                    effects: crate::resolution::ResolutionProgram::default(),
+                    effects: ironsmith_core::ResolutionProgram::default(),
                     choices: vec![],
                     timing,
                     is_loyalty_ability: loyalty_shorthand_cost.is_some(),
@@ -459,12 +460,14 @@ fn replace_removed_counter_metric_with_x(effect: &mut EffectAst) {
     });
 }
 
-fn activation_cost_removes_dynamic_counters(cost: &crate::cost::TotalCost) -> bool {
+fn activation_cost_removes_dynamic_counters(
+    cost: &ironsmith_core::TotalCost<crate::model::CompilerCost>,
+) -> bool {
     match cost.kind() {
         ironsmith_core::TotalCostKind::All(costs) => costs.iter().any(|cost| {
             matches!(
                 cost,
-                crate::costs::Cost::RemoveAnyCountersFromSource {
+                crate::model::CompilerCost::RemoveCounters {
                     display_x: true,
                     ..
                 }
@@ -539,18 +542,46 @@ pub fn mana_effect_contains_unbound_x(effect: &EffectAst) -> bool {
     }
 }
 
-pub fn parse_loyalty_shorthand_activation_cost(cost_tokens: &[OwnedLexToken]) -> Option<TotalCost> {
+pub fn parse_loyalty_shorthand_activation_cost(
+    cost_tokens: &[OwnedLexToken],
+) -> Option<ironsmith_core::TotalCost<crate::model::CompilerCost>> {
     match activated_line_grammar::parse_loyalty_shorthand_activation_tokens(cost_tokens)? {
-        ActivatedLoyaltyShorthand::Add(0) => Some(TotalCost::free()),
-        ActivatedLoyaltyShorthand::Add(amount) => Some(TotalCost::from_cost(
-            crate::costs::Cost::add_counters(CounterType::Loyalty, amount),
-        )),
-        ActivatedLoyaltyShorthand::RemoveX => Some(TotalCost::from_cost(
-            crate::costs::Cost::remove_any_counters_from_source(Some(CounterType::Loyalty), true),
-        )),
-        ActivatedLoyaltyShorthand::Remove(amount) => Some(TotalCost::from_cost(
-            crate::costs::Cost::remove_counters(CounterType::Loyalty, amount),
-        )),
+        ActivatedLoyaltyShorthand::Add(0) => {
+            Some(ironsmith_core::TotalCost::from_costs(Vec::new()))
+        }
+        ActivatedLoyaltyShorthand::Add(amount) => {
+            Some(ironsmith_core::TotalCost::from_costs(vec![
+                crate::model::CompilerCost::PutCounters {
+                    counter_type: CounterType::Loyalty,
+                    count: amount,
+                    filter: None,
+                },
+            ]))
+        }
+        ActivatedLoyaltyShorthand::RemoveX => Some(ironsmith_core::TotalCost::from_costs(vec![
+            crate::model::CompilerCost::RemoveCounters {
+                counter_type: Some(CounterType::Loyalty),
+                count: 0,
+                filter: None,
+                display_x: true,
+                dynamic: true,
+                single_object: true,
+                remove_all: false,
+            },
+        ])),
+        ActivatedLoyaltyShorthand::Remove(amount) => {
+            Some(ironsmith_core::TotalCost::from_costs(vec![
+                crate::model::CompilerCost::RemoveCounters {
+                    counter_type: Some(CounterType::Loyalty),
+                    count: amount,
+                    filter: None,
+                    display_x: false,
+                    dynamic: false,
+                    single_object: true,
+                    remove_all: false,
+                },
+            ]))
+        }
     }
 }
 
@@ -632,7 +663,7 @@ pub fn is_activate_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> 
 
 pub fn parse_mana_usage_restriction_sentence_lexed(
     tokens: &[OwnedLexToken],
-) -> Option<crate::ability::ManaUsageRestriction> {
+) -> Option<crate::model::compiler_semantic::CompilerManaUsageRestriction> {
     activated_sentence_parsers::parse_mana_usage_restriction_sentence_lexed(tokens)
 }
 
@@ -656,18 +687,22 @@ pub fn parse_named_number(word: &str) -> Option<u32> {
     parse_cardinal_u32(word)
 }
 
-pub fn parse_activation_cost(tokens: &[OwnedLexToken]) -> Result<TotalCost, CardTextError> {
-    // Give the grammar-proven graveyard-to-library payment first refusal.
-    // Otherwise the generic activation-cost CST interprets the leading
-    // "Put three cards" as a PutCounters cost before it can see the source
-    // and destination zones.
+pub fn parse_activation_cost(
+    tokens: &[OwnedLexToken],
+) -> Result<ironsmith_core::TotalCost<crate::model::CompilerCost>, CardTextError> {
+    parse_compiler_activation_cost(tokens)
+}
+
+pub fn parse_compiler_activation_cost(
+    tokens: &[OwnedLexToken],
+) -> Result<ironsmith_core::TotalCost<crate::model::CompilerCost>, CardTextError> {
     if let Some(cost) =
-        super::keyword_action_costs::parse_single_graveyard_bottom_library_payment(tokens)?
+        super::keyword_action_costs::parse_single_graveyard_bottom_library_compiler_payment(tokens)
     {
         return Ok(cost);
     }
     let cst = parse_activation_cost_tokens(tokens)?;
-    lower_activation_cost_cst(&cst)
+    Ok(crate::cst_lowering::recognize_activation_cost_cst(&cst)?.to_core_total_cost())
 }
 
 pub fn parse_devotion_value_from_add_clause(

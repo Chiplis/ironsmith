@@ -49,10 +49,9 @@ fn parse_postpositive_rounded_half_damage_head(
     if !tokens.first().is_some_and(|token| token.is_word("half")) {
         return None;
     }
-    let damage_idx = tokens
-        .iter()
-        .position(|token| token.is_word("damage"))
-        .filter(|idx| *idx > 1)?;
+    let damage_idx =
+        crate::slice_primitives::select_position(tokens, |token| token.is_word("damage"))
+            .filter(|idx| *idx > 1)?;
     let base_tokens = &tokens[1..damage_idx];
     let (base, used) =
         super::super::shared_util::value_semantics::parse_value_prefix_lexed(base_tokens)?;
@@ -130,12 +129,11 @@ fn parse_paired_damage_fanout_tokens(tokens: &[OwnedLexToken]) -> Option<SerialD
             continue;
         };
         let second_target = trim_damage_part_tokens(second_target);
-        let second_target = second_target
-            .iter()
-            .position(|token| token.is_word("where"))
-            .map_or(second_target, |where_idx| {
-                trim_damage_part_tokens(&second_target[..where_idx])
-            });
+        let second_target =
+            crate::slice_primitives::select_position(second_target, |token| token.is_word("where"))
+                .map_or(second_target, |where_idx| {
+                    trim_damage_part_tokens(&second_target[..where_idx])
+                });
         if first_target.is_empty() || second_target.is_empty() {
             continue;
         }

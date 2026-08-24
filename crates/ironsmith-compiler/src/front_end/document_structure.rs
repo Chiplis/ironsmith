@@ -464,14 +464,14 @@ fn class_level_prefix(
     Some((level, 0..header_end, body))
 }
 
-fn level_band_prefix(
-    text: &str,
-) -> Option<(
+type LevelBandPrefix = (
     u32,
     Option<u32>,
     std::ops::Range<usize>,
     Option<std::ops::Range<usize>>,
-)> {
+);
+
+fn level_band_prefix(text: &str) -> Option<LevelBandPrefix> {
     let lower = text.to_ascii_lowercase();
     let suffix = lower.strip_prefix("level ")?;
     let header_len = suffix

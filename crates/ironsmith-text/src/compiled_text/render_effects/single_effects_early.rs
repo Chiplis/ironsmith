@@ -1677,7 +1677,7 @@ pub(super) fn describe_target_controller_hand_difference_pt(
     }
     Some(format!(
         "{} gets -X/-X until end of turn, where X is {base} minus the number of cards in that creature's controller's hand",
-        describe_choose_spec(&modify.target)
+        capitalize_first(&describe_choose_spec(&modify.target))
     ))
 }
 
@@ -4035,7 +4035,8 @@ pub(crate) fn describe_search_choose_for_each(
                     describe_possessive_player_filter(search_owner_filter)
                 )
             };
-            if !choose.count.is_single() && choose.search_top_in_any_order_surface.unwrap_or(true) {
+            if !choose.count.is_single() && choose.search_top_in_any_order_surface.unwrap_or(false)
+            {
                 text.push_str(" in any order");
             }
         }

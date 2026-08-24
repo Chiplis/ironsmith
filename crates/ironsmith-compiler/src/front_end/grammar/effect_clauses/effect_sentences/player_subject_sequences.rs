@@ -65,7 +65,7 @@ pub(super) fn parse_each_player_exile_sacrifice_return_exiled(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, crate::cards::builders::CardTextError> {
     let words = parser_token_word_refs(tokens);
-    if !matches!(words.as_slice(), ["each", "player", ..]) {
+    if !crate::word_primitives::parse_sequence_prefix(&words, &["each", "player"]) {
         return Ok(None);
     }
     let Some(segments) = comma_then_segments(tokens) else {
@@ -107,25 +107,15 @@ pub(super) fn parse_each_player_exile_sacrifice_return_exiled(
     }
 
     let third_words = parser_token_word_refs(third_tokens);
-    let is_linked_return = third_words
-        .first()
-        .is_some_and(|word| matches!(*word, "puts" | "put"))
-        && third_words.contains(&"all")
-        && third_words
-            .iter()
-            .any(|word| matches!(*word, "card" | "cards"))
-        && third_words
-            .windows(3)
-            .any(|window| window == ["they", "exiled", "this"])
-        && third_words
-            .windows(2)
-            .any(|window| window == ["this", "way"])
-        && (third_words
-            .windows(2)
-            .any(|window| window == ["onto", "battlefield"])
-            || third_words
-                .windows(3)
-                .any(|window| window == ["onto", "the", "battlefield"]));
+    let is_linked_return = crate::word_primitives::first_is_any(&third_words, &["puts", "put"])
+        && crate::slice_primitives::contains(&third_words, &"all")
+        && crate::slice_primitives::contains_any(&third_words, &["card", "cards"])
+        && crate::word_primitives::sequence_occurs(&third_words, &["they", "exiled", "this"])
+        && crate::word_primitives::sequence_occurs(&third_words, &["this", "way"])
+        && crate::word_primitives::any_sequence_occurs(
+            &third_words,
+            &[&["onto", "battlefield"], &["onto", "the", "battlefield"]],
+        );
     if !is_linked_return {
         return Ok(None);
     }
@@ -161,8 +151,9 @@ pub(super) fn parse_each_player_exile_sacrifice_return_exiled(
 pub(super) fn parse_controller_and_defending_player_discard_or_sacrifice(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
-    if token_word_refs(tokens)
-        != [
+    if !crate::word_primitives::parse_sequence_complete(
+        &token_word_refs(tokens),
+        &[
             "you",
             "and",
             "defending",
@@ -175,8 +166,8 @@ pub(super) fn parse_controller_and_defending_player_discard_or_sacrifice(
             "sacrifice",
             "a",
             "permanent",
-        ]
-    {
+        ],
+    ) {
         return None;
     }
 
@@ -200,7 +191,7 @@ pub(super) fn parse_controller_and_defending_player_discard_or_sacrifice(
         }
     }
 
-    let moved_tag = TagKey::from("joint_discard_or_sacrifice");
+    let moved_tag = crate::tag::CompilerReferenceTag::JointDiscardOrSacrifice.key();
     Some(vec![EffectAst::TagAffected {
         effect: Box::new(EffectAst::Coordinated {
             effects: vec![
@@ -249,9 +240,7 @@ pub(super) fn split_explicit_player_subject_clauses(
             continue;
         }
 
-        let boundary_start = if token.kind == TokenKind::Comma
-            || token_word_refs(std::slice::from_ref(token)).as_slice() == ["and"]
-        {
+        let boundary_start = if token.kind == TokenKind::Comma || token.is_word("and") {
             idx + 1
         } else {
             continue;
@@ -292,7 +281,7 @@ fn starts_quantified_player_action(tokens: &[OwnedLexToken]) -> bool {
 
 fn starts_controller_action(tokens: &[OwnedLexToken]) -> bool {
     let words = token_word_refs(tokens);
-    matches!(words.as_slice(), ["you", ..])
+    crate::word_primitives::parse_sequence_prefix(&words, &["you"])
         && find_verb_lexed(tokens).is_some_and(|(_, verb_idx)| verb_idx == 1)
 }
 
@@ -469,10 +458,14 @@ mod tests {
         )
         .expect("player sequence should lex");
         let effects = parse_effect_sentence_lexed(&tokens).expect("player sequence should parse");
-        let effects = match effects.as_slice() {
-            [EffectAst::Coordinated { effects, .. }] => effects.as_slice(),
-            effects => effects,
+        let [EffectAst::Coordination(coordination)] = effects.as_slice() else {
+            panic!("expected canonical player-action coordination: {effects:#?}");
         };
+        let canonical_effects = coordination.effects().collect::<Vec<_>>();
+        assert_player_sequence(&canonical_effects);
+    }
+
+    fn assert_player_sequence(effects: &[&EffectAst]) {
         assert!(
             matches!(effects.first(), Some(EffectAst::ForEachOpponent { .. })),
             "{effects:#?}"

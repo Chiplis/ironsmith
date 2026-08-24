@@ -1,8 +1,12 @@
 //! Swamp basic land card definition.
 
 use super::CardDefinitionBuilder;
+use crate::ability::Ability;
 use crate::cards::CardDefinition;
+use crate::cost::TotalCost;
+use crate::costs::Cost;
 use crate::ids::CardId;
+use crate::mana::ManaSymbol;
 use crate::types::{CardType, Subtype, Supertype};
 
 /// Swamp - Basic Land — Swamp
@@ -11,8 +15,11 @@ pub fn basic_swamp() -> CardDefinition {
         .supertypes(vec![Supertype::Basic])
         .card_types(vec![CardType::Land])
         .subtypes(vec![Subtype::Swamp])
-        .parse_text("{T}: Add {B}.")
-        .expect("Card text should be supported")
+        .with_ability(Ability::mana(
+            TotalCost::from_cost(Cost::tap()),
+            vec![ManaSymbol::Black],
+        ))
+        .build()
 }
 
 #[cfg(all(test, ironsmith_runtime_parser_tests))]

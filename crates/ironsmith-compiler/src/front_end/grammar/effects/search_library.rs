@@ -427,7 +427,9 @@ pub struct SearchLibraryEffectRouting {
 /// The counter belongs to the enter event itself, not to a later instruction.
 fn search_library_battlefield_entry_counters(words: &[&str]) -> Vec<BattlefieldEntryCounterSpec> {
     let mut counters = Vec::new();
-    let Some(battlefield_idx) = words.iter().position(|word| *word == "battlefield") else {
+    let Some(battlefield_idx) =
+        crate::slice_primitives::select_position(words, |word| *word == "battlefield")
+    else {
         return counters;
     };
     // Restrict the scan to the destination clause. Filter text before the put
@@ -439,14 +441,16 @@ fn search_library_battlefield_entry_counters(words: &[&str]) -> Vec<BattlefieldE
             continue;
         }
         let with_idx = battlefield_idx + 1 + relative_with_idx;
-        let Some(counter_offset) = words[with_idx + 1..]
-            .iter()
-            .position(|word| matches!(*word, "counter" | "counters"))
+        let Some(counter_offset) =
+            crate::slice_primitives::select_position(&words[with_idx + 1..], |word| {
+                matches!(*word, "counter" | "counters")
+            })
         else {
             continue;
         };
         let counter_idx = with_idx + 1 + counter_offset;
-        if words.get(counter_idx + 1..counter_idx + 3) != Some(&["on", "it"][..]) {
+        if !crate::word_primitives::parse_sequence_prefix(&words[counter_idx + 1..], &["on", "it"])
+        {
             continue;
         }
         let descriptor = &words[with_idx + 1..=counter_idx];
@@ -1138,9 +1142,7 @@ pub fn derive_search_library_effect_routing_lexed(
     };
 
     let enters_under_your_control = put_clause_words.as_ref().is_some_and(|words| {
-        words
-            .windows(3)
-            .any(|window| window == ["under", "your", "control"])
+        crate::word_primitives::sequence_occurs(words, &["under", "your", "control"])
     });
 
     SearchLibraryEffectRouting {
@@ -1160,9 +1162,10 @@ pub fn derive_search_library_effect_routing_lexed(
             .and_then(|words| search_library_put_position_from_top_words(words)),
         result_reference_surface: search_library_reference_surface_after(&words_all, "put")
             .unwrap_or(crate::effect::SearchResultReferenceSurface::It),
-        search_top_in_any_order_surface: words_all
-            .windows(3)
-            .any(|words| words == ["in", "any", "order"]),
+        search_top_in_any_order_surface: crate::word_primitives::sequence_occurs(
+            &words_all,
+            &["in", "any", "order"],
+        ),
     }
 }
 
@@ -1211,11 +1214,14 @@ pub fn derive_search_library_subject_routing_lexed(
         } else {
             Some(PlayerFilter::You)
         };
-        let graveyard_first = search_body_words
-            .iter()
-            .position(|word| *word == "graveyard")
-            .zip(search_body_words.iter().position(|word| *word == "library"))
-            .is_some_and(|(graveyard, library)| graveyard < library);
+        let graveyard_first = crate::slice_primitives::select_position(search_body_words, |word| {
+            *word == "graveyard"
+        })
+        .zip(crate::slice_primitives::select_position(
+            search_body_words,
+            |word| *word == "library",
+        ))
+        .is_some_and(|(graveyard, library)| graveyard < library);
         search_zones_override = Some(if graveyard_first {
             vec![Zone::Graveyard, Zone::Library]
         } else {
@@ -1536,7 +1542,7 @@ pub fn parse_search_library_same_name_reference_lexed(
                 })?;
             Some(SearchLibrarySameNameReference::Choose {
                 filter: reference_filter,
-                tag: TagKey::from("same_name_reference"),
+                tag: crate::tag::CompilerReferenceTag::SameNameReference.key(),
             })
         };
     }
@@ -1571,10 +1577,11 @@ pub fn parse_search_library_object_filter_lexed(
         .map(|(_, word)| *word)
         .collect::<Vec<_>>();
     if let Some(named_idx) = search_library_word_index(&parser_word_refs, "named") {
-        let negated_named = parser_words[..named_idx]
-            .iter()
-            .rev()
-            .find_map(|(_, word)| (!is_article(word)).then_some(*word))
+        let negated_named = crate::slice_primitives::select_last_position(
+            &parser_words[..named_idx],
+            |(_, word)| !is_article(word),
+        )
+        .and_then(|idx| parser_words.get(idx).map(|(_, word)| *word))
             == Some("not");
         let base_token_end = if negated_named {
             last_non_article_parser_word_token_idx(&parser_words, named_idx).unwrap_or(0)
@@ -1633,9 +1640,10 @@ pub fn parse_search_library_object_filter_lexed(
         // filter grammar consume comparison-bearing phrases first; retain the
         // specialized disjunction parser as the fallback for real selector
         // unions.
-        let comparison_or = filter_words
-            .windows(2)
-            .any(|words| matches!(words, ["or", "less" | "more" | "greater"]));
+        let comparison_or = crate::word_primitives::any_sequence_occurs(
+            &filter_words,
+            &[&["or", "less"], &["or", "more"], &["or", "greater"]],
+        );
         let mut filter = if comparison_or {
             parse_object_filter(&filter_tokens, false)
                 .ok()
@@ -1653,9 +1661,10 @@ pub fn parse_search_library_object_filter_lexed(
         if comparison_or
             && filter.all_card_types.is_empty()
             && filter.card_types.len() >= 2
-            && let Some(qualifier_idx) = filter_tokens
-                .iter()
-                .position(|token| token.as_word() == Some("with"))
+            && let Some(qualifier_idx) =
+                crate::slice_primitives::select_position(&filter_tokens, |token| {
+                    token.as_word() == Some("with")
+                })
             && let Some(prefix_filter) = crate::grammar::filters::parse_simple_object_filter_lexed(
                 &filter_tokens[..qualifier_idx],
                 false,
@@ -1690,534 +1699,18 @@ pub fn parse_search_library_object_filter_lexed(
     }
 }
 
-pub fn split_search_named_item_filters_lexed(
-    filter_tokens: &[OwnedLexToken],
-    clause_display: &str,
-) -> Result<Option<Vec<ObjectFilter>>, CardTextError> {
-    if !crate::lexer::contains_token_word(filter_tokens, "named") {
-        return Ok(None);
-    }
-
-    let mut item_starts = Vec::new();
-    let mut cursor = 0usize;
-    while cursor < filter_tokens.len() {
-        while filter_tokens
-            .get(cursor)
-            .is_some_and(OwnedLexToken::is_comma)
-        {
-            cursor += 1;
-        }
-        if filter_tokens
-            .get(cursor)
-            .is_some_and(|token| search_library_token_is_any_word(token, &["and"]))
-        {
-            cursor += 1;
-            while filter_tokens
-                .get(cursor)
-                .is_some_and(OwnedLexToken::is_comma)
-            {
-                cursor += 1;
-            }
-        }
-        if cursor >= filter_tokens.len() {
-            break;
-        }
-
-        let item_start = cursor;
-        if filter_tokens
-            .get(cursor)
-            .is_some_and(|token| search_library_token_is_any_word(token, &["a", "an"]))
-        {
-            cursor += 1;
-        }
-        if !filter_tokens
-            .get(cursor)
-            .is_some_and(|token| search_library_token_is_any_word(token, &["card", "cards"]))
-            || !filter_tokens
-                .get(cursor + 1)
-                .is_some_and(|token| search_library_token_is_any_word(token, &["named"]))
-        {
-            return Ok(None);
-        }
-        item_starts.push(item_start);
-        cursor += 2;
-
-        while cursor < filter_tokens.len() {
-            let mut probe = cursor;
-            while filter_tokens
-                .get(probe)
-                .is_some_and(OwnedLexToken::is_comma)
-            {
-                probe += 1;
-            }
-            if filter_tokens
-                .get(probe)
-                .is_some_and(|token| search_library_token_is_any_word(token, &["and"]))
-            {
-                probe += 1;
-                while filter_tokens
-                    .get(probe)
-                    .is_some_and(OwnedLexToken::is_comma)
-                {
-                    probe += 1;
-                }
-            }
-            let mut phrase_probe = probe;
-            if filter_tokens
-                .get(phrase_probe)
-                .is_some_and(|token| search_library_token_is_any_word(token, &["a", "an"]))
-            {
-                phrase_probe += 1;
-            }
-            if filter_tokens
-                .get(phrase_probe)
-                .is_some_and(|token| search_library_token_is_any_word(token, &["card", "cards"]))
-                && filter_tokens
-                    .get(phrase_probe + 1)
-                    .is_some_and(|token| search_library_token_is_any_word(token, &["named"]))
-            {
-                break;
-            }
-            cursor += 1;
-        }
-    }
-    if item_starts.len() <= 1 {
-        return Ok(None);
-    }
-
-    let mut filters = Vec::new();
-    for (pos, start) in item_starts.iter().enumerate() {
-        let end = item_starts
-            .get(pos + 1)
-            .copied()
-            .unwrap_or(filter_tokens.len());
-        let item_tokens = trim_commas(&filter_tokens[*start..end]);
-        let item_filter = parse_search_library_object_filter_lexed(&item_tokens, clause_display)?;
-        if item_filter.name.is_none() {
-            return Ok(None);
-        }
-        filters.push(item_filter);
-    }
-    Ok(Some(filters))
-}
-
-pub fn parse_search_library_leading_effect_prelude_lexed<'a>(
-    subject_tokens: &'a [OwnedLexToken],
-    subject_starts_effect_lexed: fn(&[OwnedLexToken]) -> bool,
-    parse_leading_effects_lexed: fn(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
-) -> Result<SearchLibraryLeadingPrelude<'a>, CardTextError> {
-    let typed_effect_head = super::chain_splitting::find_chain_verb_tokens(subject_tokens)
-        .is_some()
-        || super::chain_splitting::has_extended_effect_head_tokens(subject_tokens);
-    if subject_tokens.is_empty()
-        || (!subject_starts_effect_lexed(subject_tokens) && !typed_effect_head)
-    {
-        return Ok(SearchLibraryLeadingPrelude {
-            subject_tokens,
-            leading_effects: Vec::new(),
-        });
-    }
-
-    let mut leading_tokens = trim_commas(subject_tokens);
-    while leading_tokens
-        .last()
-        .is_some_and(|token| search_library_token_is_any_word(token, &["and", "then"]))
-    {
-        leading_tokens.pop();
-    }
-    let leading_effects = if leading_tokens.is_empty() {
-        Vec::new()
-    } else {
-        parse_leading_effects_lexed(&leading_tokens)?
-    };
-
-    Ok(SearchLibraryLeadingPrelude {
-        subject_tokens: &[],
-        leading_effects,
-    })
-}
-
-pub fn search_library_has_unsupported_top_position_probe(words: &[&str]) -> bool {
-    word_slice_mentions_nth_from_top(words)
-        && !search_word_stream_matches_at_some_offset(words, ON_TOP_OF_LIBRARY_PHRASE)
-        && search_library_put_position_from_top_words(words).is_none()
-}
-
-pub fn search_library_has_unsupported_top_position_probe_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let words = parser_token_word_refs(tokens);
-    search_library_has_unsupported_top_position_probe(&words)
-}
-
-pub fn search_library_put_position_from_top_words(words: &[&str]) -> Option<Value> {
-    let mut idx = 0usize;
-    while idx < words.len() {
-        let Some((position, used)) = ironsmith_core::parse_ordinal_words(&words[idx..]) else {
-            idx += 1;
-            continue;
-        };
-        if idx + used + 2 < words.len()
-            && words[idx + used..].starts_with(FROM_THE_TOP_PREFIX)
-            && words[..idx]
-                .iter()
-                .any(|word| matches!(*word, "put" | "puts"))
-        {
-            return Some(Value::Fixed(position as i32));
-        }
-        idx += 1;
-    }
-    None
-}
-
-pub fn search_library_subject_wraps_each_target_player_lexed(
-    subject_tokens: &[OwnedLexToken],
-) -> bool {
-    token_word_refs(subject_tokens).as_slice() == EACH_OF_THEM_SUBJECT
-}
-
-pub fn search_library_subject_player_iteration_filter_lexed(
-    subject_tokens: &[OwnedLexToken],
-) -> Option<PlayerFilter> {
-    let words = token_word_refs(subject_tokens)
-        .into_iter()
-        .map(|word| word.to_ascii_lowercase())
-        .collect::<Vec<_>>();
-    match words
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>()
-        .as_slice()
-    {
-        ["each", "player"] | ["each", "players"] => Some(PlayerFilter::Any),
-        ["each", "opponent"] | ["each", "opponents"] => Some(PlayerFilter::Opponent),
-        ["each", "other", "player"] | ["each", "other", "players"] => Some(PlayerFilter::NotYou),
-        _ => None,
-    }
-}
-
-pub fn parse_search_library_iterated_object_subject_lexed(
-    subject_tokens: &[OwnedLexToken],
-) -> Result<Option<ObjectFilter>, CardTextError> {
-    const PLAYER_OR_OPPONENT_PREFIXES: &[&[&str]] = &[
-        &["player"],
-        &["players"],
-        &["opponent"],
-        &["opponents"],
-        &["target", "player"],
-        &["target", "players"],
-        &["target", "opponent"],
-        &["target", "opponents"],
-    ];
-
-    if subject_tokens.is_empty() {
-        return Ok(None);
-    }
-    if token_word_refs(subject_tokens).as_slice() == EACH_OF_THEM_SUBJECT {
-        return Ok(None);
-    }
-
-    let mut filter_tokens = if let Some((_, rest)) =
-        primitives::strip_lexed_prefix_phrases(subject_tokens, &[&["for", "each"]])
-    {
-        rest
-    } else if let Some((_, rest)) =
-        primitives::strip_lexed_prefix_phrases(subject_tokens, &[&["each"]])
-    {
-        rest
-    } else {
-        return Ok(None);
-    };
-
-    if filter_tokens
-        .first()
-        .is_some_and(|token| search_library_token_is_any_word(token, &["of"]))
-    {
-        filter_tokens = &filter_tokens[1..];
-    }
-
-    let filter_tokens = trim_commas(filter_tokens);
-    if filter_tokens.is_empty() {
-        return Ok(None);
-    }
-
-    if primitives::strip_lexed_prefix_phrases(&filter_tokens, PLAYER_OR_OPPONENT_PREFIXES).is_some()
-    {
-        return Ok(None);
-    }
-
-    Ok(Some(parse_object_filter_lexed(&filter_tokens, false)?))
-}
-
-pub fn search_library_starts_with_search_verb_lexed(search_tokens: &[OwnedLexToken]) -> bool {
-    primitives::parse_prefix(search_tokens, search_library_search_verb).is_some()
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::lexer::lex_line;
+#[path = "search_library_inline_tests.rs"]
+mod tests;
 
-    #[test]
-    fn prior_or_trigger_amount_drives_that_many_search_counts() {
-        for (surface, expected_used, up_to) in
-            [("that many", 2, false), ("up to that many", 4, true)]
-        {
-            let tokens = lex_line(surface, 0).expect("count surface should lex");
-            let parsed = parse_search_library_count_prefix_lexed(&tokens);
-
-            assert_eq!(parsed.count_used, expected_used);
-            assert_eq!(parsed.count.up_to_x, up_to);
-            assert_eq!(
-                parsed.count_value,
-                Some(Value::EventValue(crate::effect::EventValueSpec::Amount))
-            );
-        }
-    }
-
-    #[test]
-    fn explicit_exactly_search_count_retains_its_surface() {
-        let tokens = lex_line("exactly four legendary creature cards", 0)
-            .expect("exact search count should lex");
-        let parsed = parse_search_library_count_prefix_lexed(&tokens);
-
-        assert_eq!(
-            parsed.count,
-            ChoiceCount::exactly(4).with_explicit_exactly()
-        );
-        assert_eq!(parsed.count_used, 2);
-        assert_eq!(parsed.search_mode, SearchSelectionMode::Exact);
-    }
-
-    #[test]
-    fn refreshed_instead_trailing_random_discard_after_shuffle_has_a_strict_search_boundary() {
-        let tokens = lex_line(
-            "Search your library for up to three cards, put them into your hand, shuffle, then discard three cards at random.",
-            0,
-        )
-        .expect("search/discard fixture should lex");
-        let markers = scan_search_library_clause_markers_lexed(&tokens)
-            .expect("search/discard fixture should route");
-        let discard =
-            find_search_library_discard_after_shuffle_followup_lexed(&tokens, markers.put_idx)
-                .expect("trailing random discard should be isolated");
-        assert_eq!(
-            render_token_slice(discard),
-            "discard three cards at random."
-        );
-
-        let near_miss = lex_line(
-            "Search your library for a card, put it into your hand, shuffle, then draw a card, then discard a card.",
-            0,
-        )
-        .expect("intervening-effect near miss should lex");
-        let markers = scan_search_library_clause_markers_lexed(&near_miss)
-            .expect("near miss should still route as a search");
-        assert!(
-            find_search_library_discard_after_shuffle_followup_lexed(&near_miss, markers.put_idx,)
-                .is_none(),
-            "an intervening effect must not be absorbed into the search tail"
-        );
-    }
-
-    #[test]
-    fn that_players_library_remains_a_contextual_player_reference() {
-        let tokens = lex_line("search that player's library for a card", 0)
-            .expect("search surface should lex");
-        let routing = derive_search_library_subject_routing_lexed(&tokens, PlayerAst::Implicit)
-            .expect("that-player search should route");
-
-        assert_eq!(routing.player, PlayerAst::That);
-        assert_eq!(
-            routing.forced_library_owner,
-            Some(PlayerFilter::IteratedPlayer)
-        );
-        assert_eq!(routing.search_player_target, None);
-    }
-
-    #[test]
-    fn library_and_or_graveyard_search_keeps_both_typed_origins() {
-        let tokens = lex_line("search your library and/or graveyard for a card", 0)
-            .expect("multi-zone search surface should lex");
-        let routing = derive_search_library_subject_routing_lexed(&tokens, PlayerAst::Implicit)
-            .expect("multi-zone search should route");
-
-        assert_eq!(routing.forced_library_owner, Some(PlayerFilter::You));
-        assert_eq!(
-            routing.search_zones_override,
-            Some(vec![Zone::Library, Zone::Graveyard])
-        );
-    }
-
-    #[test]
-    fn graveyard_and_or_library_search_keeps_authored_origin_order() {
-        let tokens = lex_line("search your graveyard and/or library for a card", 0)
-            .expect("multi-zone search surface should lex");
-        let routing = derive_search_library_subject_routing_lexed(&tokens, PlayerAst::Implicit)
-            .expect("multi-zone search should route");
-
-        assert_eq!(
-            routing.search_zones_override,
-            Some(vec![Zone::Graveyard, Zone::Library])
-        );
-    }
-
-    #[test]
-    fn search_filter_keeps_shared_characteristic_relation() {
-        let tokens = lex_line(
-            "a card that shares a color with a legendary creature you control",
-            0,
-        )
-        .expect("search selector should lex");
-        let filter = parse_search_library_object_filter_lexed(&tokens, "relation probe")
-            .expect("search selector should parse");
-
-        assert_eq!(filter.characteristic_relations.len(), 1);
-        assert_eq!(
-            filter.description(),
-            "card that shares a color with a legendary creature you control"
-        );
-    }
-
-    #[test]
-    fn search_result_reference_keeps_authored_singular_surface() {
-        for (line, expected) in [
-            (
-                "search your library for a card, put it into your hand",
-                crate::effect::SearchResultReferenceSurface::It,
-            ),
-            (
-                "search your library for a card, put that card into your hand",
-                crate::effect::SearchResultReferenceSurface::ThatCard,
-            ),
-            (
-                "search your library for a card, put the card into your hand",
-                crate::effect::SearchResultReferenceSurface::TheCard,
-            ),
-        ] {
-            let tokens = lex_line(line, 0).expect("search surface should lex");
-            let markers = scan_search_library_clause_markers_lexed(&tokens)
-                .expect("search clauses should route");
-            let routing =
-                derive_search_library_effect_routing_lexed(&tokens, &tokens, markers, false);
-
-            assert_eq!(routing.result_reference_surface, expected, "{line}");
-        }
-    }
-
-    #[test]
-    fn search_result_reference_keeps_authored_plural_surface() {
-        for (line, expected, expected_reveal, expected_order) in [
-            (
-                "search your library for up to three creature cards, reveal them, then shuffle and put those cards on top in any order",
-                crate::effect::SearchResultReferenceSurface::ThoseCards,
-                Some(crate::effect::SearchResultReferenceSurface::Them),
-                true,
-            ),
-            (
-                "search your library for any number of creature cards, reveal those cards, then shuffle and put them on top",
-                crate::effect::SearchResultReferenceSurface::Them,
-                Some(crate::effect::SearchResultReferenceSurface::ThoseCards),
-                false,
-            ),
-        ] {
-            let tokens = lex_line(line, 0).expect("plural search surface should lex");
-            let markers = scan_search_library_clause_markers_lexed(&tokens)
-                .expect("plural search clauses should route");
-            let routing =
-                derive_search_library_effect_routing_lexed(&tokens, &tokens, markers, false);
-
-            assert_eq!(routing.result_reference_surface, expected, "{line}");
-            assert_eq!(routing.reveal_reference_surface, expected_reveal, "{line}");
-            assert_eq!(
-                routing.search_top_in_any_order_surface, expected_order,
-                "{line}"
-            );
-        }
-    }
-
-    #[test]
-    fn searched_battlefield_card_keeps_inline_entry_counter() {
-        let line = "search their library for a basic land card, put it onto the battlefield tapped with a stun counter on it, then shuffle";
-        let tokens = lex_line(line, 0).expect("countered search surface should lex");
-        let markers = scan_search_library_clause_markers_lexed(&tokens)
-            .expect("countered search clauses should route");
-        let routing = derive_search_library_effect_routing_lexed(&tokens, &tokens, markers, false);
-
-        assert_eq!(routing.destination, Zone::Battlefield);
-        assert!(routing.has_tapped_modifier);
-        let [counter] = routing.battlefield_entry_counters.as_slice() else {
-            panic!("expected one typed battlefield-entry counter");
-        };
-        assert_eq!(counter.counter_type, crate::object::CounterType::Stun);
-        assert_eq!(counter.amount, Value::Fixed(1));
-        assert_eq!(counter.surface, BattlefieldEntryCounterSurface::Inline);
-    }
-
-    #[test]
-    fn searched_battlefield_card_keeps_dynamic_additional_entry_counters_once() {
-        let line = "search your library and/or graveyard for an artifact creature card with mana value X or less and put it onto the battlefield with X additional +1/+1 counters on it";
-        let tokens = lex_line(line, 0).expect("dynamic countered search surface should lex");
-        let markers = scan_search_library_clause_markers_lexed(&tokens)
-            .expect("dynamic countered search clauses should route");
-        let routing = derive_search_library_effect_routing_lexed(&tokens, &tokens, markers, false);
-
-        let [counter] = routing.battlefield_entry_counters.as_slice() else {
-            panic!("expected exactly one typed battlefield-entry counter");
-        };
-        assert_eq!(
-            counter.counter_type,
-            crate::object::CounterType::PlusOnePlusOne
-        );
-        assert_eq!(counter.amount.unhinted(), &Value::X);
-        assert!(
-            counter
-                .amount
-                .has_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
-        );
-        assert_eq!(counter.surface, BattlefieldEntryCounterSurface::Inline);
-    }
-
-    #[test]
-    fn mana_value_or_less_does_not_widen_adjacent_card_types() {
-        let tokens = lex_line("an artifact creature card with mana value X or less", 0)
-            .expect("comparison-bearing search filter should lex");
-        let filter = parse_search_library_object_filter_lexed(&tokens, "test search")
-            .expect("comparison-bearing search filter should parse");
-
-        assert!(filter.card_types.is_empty(), "{filter:#?}");
-        assert_eq!(
-            filter.all_card_types,
-            [
-                crate::types::CardType::Artifact,
-                crate::types::CardType::Creature
-            ],
-            "adjacent card types are an intersection even when the later comparison uses `or`"
-        );
-        assert_eq!(
-            filter.mana_value,
-            Some(crate::filter::Comparison::LessThanOrEqualExpr(Box::new(
-                Value::X
-            )))
-        );
-    }
-
-    #[test]
-    fn search_filter_keeps_devotion_as_the_dynamic_mana_value_limit() {
-        let tokens = lex_line(
-            "a card with mana value less than or equal to your devotion to black",
-            0,
-        )
-        .expect("devotion-bounded search filter should lex");
-        let filter = parse_search_library_object_filter_lexed(&tokens, "devotion search")
-            .expect("devotion-bounded search filter should parse");
-
-        assert_eq!(
-            filter.mana_value,
-            Some(crate::filter::Comparison::LessThanOrEqualExpr(Box::new(
-                Value::Devotion {
-                    player: PlayerFilter::You,
-                    color: crate::color::Color::Black,
-                }
-            )))
-        );
-    }
-}
+#[path = "search_library/library_programs.rs"]
+mod library_programs;
+pub use library_programs::{
+    parse_search_library_iterated_object_subject_lexed,
+    parse_search_library_leading_effect_prelude_lexed,
+    search_library_has_unsupported_top_position_probe,
+    search_library_has_unsupported_top_position_probe_lexed,
+    search_library_put_position_from_top_words, search_library_starts_with_search_verb_lexed,
+    search_library_subject_player_iteration_filter_lexed,
+    search_library_subject_wraps_each_target_player_lexed, split_search_named_item_filters_lexed,
+};

@@ -251,9 +251,10 @@ fn where_x_split<'a>(
 pub fn parse_where_x_usage_shape_tokens(tokens: &[OwnedLexToken]) -> Option<WhereXUsageShape<'_>> {
     let (leading, full_binding_tokens) =
         primitives::parse_all(tokens, where_x_split, "where X binding").ok()?;
-    let binding_tokens = full_binding_tokens
-        .windows(2)
-        .position(|window| window[0].is_comma() && window[1].is_word("then"))
+    let binding_tokens =
+        crate::slice_primitives::find_window_by(full_binding_tokens, 2, |window| {
+            window[0].is_comma() && window[1].is_word("then")
+        })
         .map_or(full_binding_tokens, |split| &full_binding_tokens[..split]);
     let damage_or_life = marker_present(
         leading,

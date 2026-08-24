@@ -12,6 +12,7 @@ use crate::types::CardType;
 #[derive(Debug, Clone, PartialEq)]
 enum MaterializationCost {
     Mana(ManaCost),
+    DynamicMana(ironsmith_core::DynamicManaCost),
     Tap,
     TapChosen {
         count: u32,
@@ -71,6 +72,7 @@ enum MaterializationCost {
         count: u32,
     },
     RevealSourceFromHand,
+    RevealSourceFromHandUntilUpkeepEnds,
     RevealFromHand {
         count: crate::effect::Value,
         color_filter: Option<crate::color::ColorSet>,
@@ -84,6 +86,10 @@ enum MaterializationCost {
     MoveChosenToLibraryTop {
         filter: ObjectFilter,
     },
+    MoveChosenToLibraryBottom {
+        count: u32,
+        filter: ObjectFilter,
+    },
     MoveSelfToLibraryBottom {
         surface: crate::target::SourceReferenceSurface,
     },
@@ -91,6 +97,16 @@ enum MaterializationCost {
     ExertSelf {
         display_text: String,
     },
+    EmitKeywordAction {
+        kind: crate::events::KeywordActionKind,
+        amount: u32,
+    },
+    Crew {
+        amount: u32,
+    },
+    Sneak,
+    Effect(Box<crate::model::ast::EffectAst>),
+    ValidatedEffect(Box<crate::model::ast::EffectAst>),
     PutCounters {
         counter_type: CounterType,
         count: u32,
@@ -171,9 +187,31 @@ pub fn materialize_compiler_total_cost(
     }
 }
 
+/// Materialize the shared cost algebra when it is instantiated with the
+/// compiler-owned cost component. This is used by compiler ability/static
+/// nodes at the lowering boundary; recognition never receives the runtime
+/// cost value.
+pub fn materialize_compiler_core_total_cost(
+    cost: &ironsmith_core::TotalCost<CompilerCost>,
+) -> Result<TotalCost, CardTextError> {
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(components) => {
+            materialize_compiler_total_cost(&CompilerTotalCost::ordered(components.clone()))
+        }
+        ironsmith_core::TotalCostKind::OneOf(branches) => {
+            let branches = branches
+                .iter()
+                .map(materialize_compiler_core_total_cost)
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(TotalCost::one_of(branches))
+        }
+    }
+}
+
 fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
     match cost {
         CompilerCost::Mana(cost) => MaterializationCost::Mana(cost.clone()),
+        CompilerCost::DynamicMana(cost) => MaterializationCost::DynamicMana(cost.clone()),
         CompilerCost::VariableMana { .. } => {
             unreachable!("variable mana is handled at the total-cost boundary")
         }
@@ -287,6 +325,9 @@ fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
             MaterializationCost::ExileTopLibrary { count: *count }
         }
         CompilerCost::RevealSourceFromHand => MaterializationCost::RevealSourceFromHand,
+        CompilerCost::RevealSourceFromHandUntilUpkeepEnds => {
+            MaterializationCost::RevealSourceFromHandUntilUpkeepEnds
+        }
         CompilerCost::RevealFromHand {
             count,
             color_filter,
@@ -309,6 +350,12 @@ fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
                 filter: filter.clone(),
             }
         }
+        CompilerCost::MoveChosenToLibraryBottom { count, filter } => {
+            MaterializationCost::MoveChosenToLibraryBottom {
+                count: *count,
+                filter: filter.clone(),
+            }
+        }
         CompilerCost::MoveSelfToLibraryBottom { surface } => {
             MaterializationCost::MoveSelfToLibraryBottom {
                 surface: surface.clone(),
@@ -320,6 +367,20 @@ fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
         CompilerCost::ExertSelf { display } => MaterializationCost::ExertSelf {
             display_text: display.clone(),
         },
+        CompilerCost::EmitKeywordAction { kind, amount } => {
+            MaterializationCost::EmitKeywordAction {
+                kind: *kind,
+                amount: *amount,
+            }
+        }
+        CompilerCost::Crew { amount } => MaterializationCost::Crew {
+            amount: amount.clone(),
+        },
+        CompilerCost::Sneak => MaterializationCost::Sneak,
+        CompilerCost::Effect(effect) => MaterializationCost::Effect(effect.clone()),
+        CompilerCost::ValidatedEffect(effect) => {
+            MaterializationCost::ValidatedEffect(effect.clone())
+        }
         CompilerCost::PutCounters {
             counter_type,
             count,
@@ -403,6 +464,10 @@ fn lower_materialization_costs(
         match segment {
             MaterializationCost::Mana(cost) => {
                 pending_mana_pips.extend(cost.pips().to_vec());
+            }
+            MaterializationCost::DynamicMana(cost) => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                costs.push(Cost::dynamic_mana(cost.clone()));
             }
             MaterializationCost::Tap => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
@@ -721,22 +786,22 @@ fn lower_materialization_costs(
             }
             MaterializationCost::ExileTopLibrary { count } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                #[cfg(not(feature = "serialization"))]
                 costs.push(Cost::validated_effect(Effect::exile_top_of_library_player(
                     *count as i32,
                     PlayerFilter::You,
-                    crate::tag::TagKey::from("__cost_exiled_top__"),
+                    crate::tag::CompilerReferenceTag::CostExiledTop.key(),
                     None,
-                )));
-                #[cfg(feature = "serialization")]
-                costs.push(Cost::validated_effect(Effect::exile_top_of_library_player(
-                    *count as i32,
-                    PlayerFilter::You,
                 )));
             }
             MaterializationCost::RevealSourceFromHand => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::effect(Effect::reveal_source_from_hand()));
+            }
+            MaterializationCost::RevealSourceFromHandUntilUpkeepEnds => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                costs.push(Cost::effect(
+                    Effect::reveal_source_from_hand_until_upkeep_ends(),
+                ));
             }
             MaterializationCost::RevealFromHand {
                 count,
@@ -791,6 +856,22 @@ fn lower_materialization_costs(
                     true,
                 )));
             }
+            MaterializationCost::MoveChosenToLibraryBottom { count, filter } => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                let tag = format!("library_cost_{library_tag_id}");
+                library_tag_id += 1;
+                costs.push(Cost::validated_effect(Effect::choose_objects(
+                    filter.clone(),
+                    ChoiceCount::exactly(*count as usize),
+                    PlayerFilter::You,
+                    tag.clone(),
+                )));
+                costs.push(Cost::validated_effect(Effect::move_to_zone(
+                    crate::target::ChooseSpec::tagged(tag),
+                    crate::zone::Zone::Library,
+                    false,
+                )));
+            }
             MaterializationCost::MoveSelfToLibraryBottom { surface } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::validated_effect(Effect::move_to_zone(
@@ -825,6 +906,36 @@ fn lower_materialization_costs(
                 costs.push(Cost::effect(crate::effects::ExertCostEffect::new(
                     display_text.clone(),
                 )));
+            }
+            MaterializationCost::EmitKeywordAction { kind, amount } => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                costs.push(Cost::validated_effect(Effect::emit_keyword_action(
+                    *kind, *amount,
+                )));
+            }
+            MaterializationCost::Crew { amount } => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                costs.push(Cost::effect(Effect::new(
+                    crate::effects::CrewCostEffect::new(*amount),
+                )));
+            }
+            MaterializationCost::Sneak => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                costs.push(Cost::effect(Effect::new(
+                    crate::effects::SneakCostEffect::new(),
+                )));
+            }
+            MaterializationCost::Effect(effect) => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                costs.push(Cost::effect(
+                    crate::lowering_support::lower_compiler_child_effect((**effect).clone())?,
+                ));
+            }
+            MaterializationCost::ValidatedEffect(effect) => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                costs.push(Cost::validated_effect(
+                    crate::lowering_support::lower_compiler_child_effect((**effect).clone())?,
+                ));
             }
             MaterializationCost::PutCounters {
                 counter_type,

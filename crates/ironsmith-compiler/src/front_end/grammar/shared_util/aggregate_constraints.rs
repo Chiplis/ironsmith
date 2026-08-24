@@ -17,10 +17,7 @@ pub fn lift_total_mana_value_choice_constraint(
         .iter()
         .filter_map(OwnedLexToken::as_word)
         .collect::<Vec<_>>();
-    if !words
-        .windows(3)
-        .any(|window| window == ["total", "mana", "value"])
-    {
+    if !crate::word_primitives::sequence_occurs(&words, &["total", "mana", "value"]) {
         return None;
     }
 
@@ -33,20 +30,21 @@ pub fn lift_total_mana_value_choice_constraint(
         }
     };
 
-    if let Some(sacrificed_idx) = words.iter().position(|word| *word == "sacrificed") {
+    if let Some(sacrificed_idx) =
+        crate::word_primitives::select_word_position(&words, |word| word == "sacrificed")
+    {
         let object_kind = words
             .get(sacrificed_idx + 1)
             .map(|word| word.trim_end_matches("'s"))
             .filter(|word| !word.is_empty())
             .unwrap_or("permanent");
         maximum = Value::ManaValueOf(Box::new(
-            ChooseSpec::Tagged(TagKey::from("sacrifice_cost_0")).with_surface_hint(
-                crate::target::ChooseSpecSurfaceHint::SourceReference(
+            ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::SacrificeCost0.key())
+                .with_surface_hint(crate::target::ChooseSpecSurfaceHint::SourceReference(
                     SourceReferenceSurface::ThisPermanentType(format!(
                         "the sacrificed {object_kind}"
                     )),
-                ),
-            ),
+                )),
         ));
     }
 

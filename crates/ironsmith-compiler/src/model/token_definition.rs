@@ -1,6 +1,6 @@
-use crate::ability::ManaUsageRestriction;
 use crate::color::ColorSet;
 use crate::mana::ManaSymbol;
+use crate::model::CompilerManaUsageRestriction as ManaUsageRestriction;
 use crate::object::CounterType;
 use crate::target::SourceReferenceSurface;
 use crate::types::{CardType, Subtype};

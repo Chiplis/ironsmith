@@ -111,23 +111,10 @@ fn split_parse_line_variants(line: &str) -> Vec<String> {
         let second_without_reminder = strip_parenthetical_segments(second);
         let is_flashback_scoped_cost_adjustment = split.kind
             == preprocess_grammar::LineVariantSplitKind::CostAdjustmentFollowup
-            && lex_line(first, 0).ok().is_some_and(|tokens| {
-                split_lexed_sentences(&tokens)
-                    .first()
-                    .is_some_and(|sentence| {
-                        super::grammar::abilities::parse_flashback_keyword_line_spec_lexed(sentence)
-                            .is_some()
-                    })
-            })
-            && lex_line(second_without_reminder.as_str(), 0)
-                .ok()
-                .is_some_and(|tokens| {
-                    let words = super::lexer::TokenWordView::new(&tokens).word_refs();
-                    words.starts_with(&["this", "spell", "costs"])
-                        && words
-                            .windows(4)
-                            .any(|window| window == ["to", "cast", "this", "way"])
-                });
+            && preprocess_grammar::is_flashback_scoped_cost_adjustment(
+                first,
+                second_without_reminder.as_str(),
+            );
         if is_flashback_scoped_cost_adjustment {
             // The flashback parser binds "this way" to the alternative cast.
             // Splitting these sentences first silently broadens the reduction
@@ -135,12 +122,7 @@ fn split_parse_line_variants(line: &str) -> Vec<String> {
             return vec![line.to_string()];
         }
         if split.kind == preprocess_grammar::LineVariantSplitKind::ManaSpendFollowup
-            && lex_line(second_without_reminder.as_str(), 0)
-                .ok()
-                .is_some_and(|tokens| {
-                    super::grammar::abilities::parse_mana_spend_bonus_sentence_lexed(&tokens)
-                        .is_some()
-                })
+            && preprocess_grammar::is_mana_spend_bonus_followup(second_without_reminder.as_str())
         {
             return vec![line.to_string()];
         }
@@ -416,14 +398,14 @@ fn replace_names_with_map(
         idx: usize,
         len: usize,
     ) -> bool {
-        let sentence_start = bytes[..idx]
-            .iter()
-            .rposition(|byte| matches!(*byte, b'.' | b';'))
-            .map_or(0, |separator| separator + 1);
-        let sentence_end = bytes[idx + len..]
-            .iter()
-            .position(|byte| matches!(*byte, b'.' | b';'))
-            .map_or(bytes.len(), |separator| idx + len + separator);
+        let sentence_start = crate::slice_primitives::select_last_position(&bytes[..idx], |byte| {
+            matches!(*byte, b'.' | b';')
+        })
+        .map_or(0, |separator| separator + 1);
+        let sentence_end = crate::slice_primitives::select_position(&bytes[idx + len..], |byte| {
+            matches!(*byte, b'.' | b';')
+        })
+        .map_or(bytes.len(), |separator| idx + len + separator);
         let Some(sentence) = std::str::from_utf8(&bytes[sentence_start..sentence_end]).ok() else {
             return false;
         };
@@ -448,17 +430,20 @@ fn replace_names_with_map(
     }
 
     fn is_created_token_lifecycle_source(bytes: &[u8], idx: usize) -> bool {
-        let sentence_start = bytes[..idx]
-            .iter()
-            .rposition(|byte| matches!(*byte, b'.' | b';'))
-            .map_or(0, |separator| separator + 1);
+        let sentence_start = crate::slice_primitives::select_last_position(&bytes[..idx], |byte| {
+            matches!(*byte, b'.' | b';')
+        })
+        .map_or(0, |separator| separator + 1);
         let Some(prefix) = std::str::from_utf8(&bytes[sentence_start..idx]).ok() else {
             return false;
         };
         let Ok(tokens) = lex_line(prefix, 0) else {
             return false;
         };
-        crate::lexer::parser_token_word_refs(&tokens).ends_with(&["exile", "that", "token", "when"])
+        crate::word_primitives::parse_sequence_suffix(
+            &crate::lexer::parser_token_word_refs(&tokens),
+            &["exile", "that", "token", "when"],
+        )
     }
 
     fn should_preserve_source_surface_context(bytes: &[u8], idx: usize, len: usize) -> bool {

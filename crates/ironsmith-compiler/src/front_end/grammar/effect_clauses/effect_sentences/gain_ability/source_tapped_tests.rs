@@ -64,8 +64,8 @@ fn source_tapped_compound_pump_and_hexproof_share_the_typed_duration() {
         .expect("compound source-tapped grant should produce effects");
 
     let effect_slice = match effects.as_slice() {
-        [EffectAst::Coordinated { effects, .. }] => effects.as_slice(),
-        effects => effects,
+        [EffectAst::Coordination(coordination)] => coordination.effects().collect::<Vec<_>>(),
+        effects => effects.iter().collect::<Vec<_>>(),
     };
     assert_eq!(
         effect_slice.len(),

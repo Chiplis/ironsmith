@@ -177,7 +177,7 @@ pub(super) fn parse_sacrifice_any_number_then_draw_that_many_rule_lexed(
     } else {
         parse_object_filter(shape.filter_tokens, false)?
     };
-    let tag = TagKey::from("sacrificed_0");
+    let tag = crate::tag::CompilerReferenceTag::Sacrificed0.key();
 
     Ok(Some(vec![
         EffectAst::ChooseObjects {
@@ -199,7 +199,33 @@ pub(super) fn parse_sacrifice_any_number_then_draw_that_many_rule_lexed(
     ]))
 }
 
-pub(super) const SUBJECT_VERB_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 6] = [
+pub(super) fn parse_additional_land_play_rule_lexed(
+    view: &LexClauseView<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    Ok(
+        crate::permission_helpers::parse_additional_land_plays_clause_lexed(view.tokens)?
+            .map(|effect| vec![effect]),
+    )
+}
+
+pub(super) fn parse_cross_zone_where_x_fanout_rule_lexed(
+    view: &LexClauseView<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(view.tokens);
+    let proves_cross_zone_fanout =
+        crate::word_primitives::sequence_occurs(&words, &["each", "player", "exiles"])
+            && crate::word_primitives::sequence_occurs(&words, &["where", "x", "is"])
+            && crate::word_primitives::contains_all_words(
+                &words,
+                &["permanents", "cards", "hand", "then"],
+            );
+    if !proves_cross_zone_fanout {
+        return Ok(None);
+    }
+    super::chain_carry::parse_effect_chain_rule_lexed(view)
+}
+
+pub(super) const SUBJECT_VERB_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>; 8] = [
     LexRuleDef {
         metadata: RegistryRuleMetadata::distinct(
             RuleId::new("redirect-next-damage"),
@@ -247,6 +273,22 @@ pub(super) const SUBJECT_VERB_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<Effect
         ),
         shape_mask: 0,
         run: LexRuleHandler::Legacy(parse_sacrifice_any_number_then_draw_that_many_rule_lexed),
+    },
+    LexRuleDef {
+        metadata: RegistryRuleMetadata::distinct(
+            RuleId::new("additional-land-play"),
+            HeadDiscriminator::words(&["you"]),
+        ),
+        shape_mask: 0,
+        run: LexRuleHandler::Legacy(parse_additional_land_play_rule_lexed),
+    },
+    LexRuleDef {
+        metadata: RegistryRuleMetadata::distinct(
+            RuleId::new("cross-zone-where-x-fanout"),
+            HeadDiscriminator::words(&["put"]),
+        ),
+        shape_mask: 0,
+        run: LexRuleHandler::Legacy(parse_cross_zone_where_x_fanout_rule_lexed),
     },
 ];
 

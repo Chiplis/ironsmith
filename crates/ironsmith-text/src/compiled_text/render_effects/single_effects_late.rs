@@ -2902,6 +2902,76 @@ pub(super) fn cycling_keywords_for_search_filter(filter: &ObjectFilter) -> Vec<S
     keywords
 }
 
+fn equip_attachment_objects_are_source(spec: &ChooseSpec) -> bool {
+    match spec.unhinted() {
+        ChooseSpec::Source => true,
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => filter.source,
+        ChooseSpec::Target(inner)
+        | ChooseSpec::WithCount(inner, _)
+        | ChooseSpec::WithCountValue(inner, _, _) => equip_attachment_objects_are_source(inner),
+        _ => false,
+    }
+}
+
+/// Return the authored Equip destination from either the legacy direct attach
+/// effect or the compiler-owned target-declaration/attach sequence.
+pub(in crate::compiled_text) fn structural_equip_target(
+    activated: &crate::ability::ActivatedAbility,
+) -> Option<ChooseSpec> {
+    let [effect] = activated.effects.flattened_default_effects() else {
+        return None;
+    };
+    if let Some(attach) = effect.downcast_ref::<crate::effects::AttachToEffect>() {
+        return Some(attach.target.clone());
+    }
+
+    let sequence = effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    if !matches!(
+        sequence.surface,
+        ironsmith_core::SequenceSurface::Sequential | ironsmith_core::SequenceSurface::Coordinated
+    ) {
+        return None;
+    }
+    let [target_effect, attach_effect] = sequence.effects.as_slice() else {
+        return None;
+    };
+    let attach = structural_unwrap_render_wrappers(attach_effect)
+        .downcast_ref::<crate::effects::AttachObjectsEffect>()?;
+    if attach.individual_targets || !equip_attachment_objects_are_source(&attach.objects) {
+        return None;
+    }
+
+    if let Some(tagged) = target_effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        let target_only = tagged
+            .effect
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+        if target_only.explicit_declaration
+            || target_only.chooser.is_some()
+            || !choose_spec_references_exact_tag(&attach.target, &tagged.tag)
+        {
+            return None;
+        }
+        return Some(target_only.target.clone());
+    }
+
+    let choose = target_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose_exact_count(choose) != Some(1)
+        || choose.count_value.is_some()
+        || choose.aggregate_constraint.is_some()
+        || choose.chooser != PlayerFilter::You
+        || choose.zone.is_some()
+        || !choose.additional_zones.is_empty()
+        || choose.is_search
+        || choose.reveal
+        || !choose_spec_references_exact_tag(&attach.target, &choose.tag)
+    {
+        return None;
+    }
+    Some(ChooseSpec::target(ChooseSpec::Object(
+        choose.filter.clone(),
+    )))
+}
+
 pub(in crate::compiled_text) fn describe_structural_equip_keyword(
     activated: &crate::ability::ActivatedAbility,
 ) -> Option<String> {
@@ -2915,17 +2985,15 @@ pub(in crate::compiled_text) fn describe_structural_equip_keyword(
     }
     if activated.effects.segments.len() != 1
         || !activated.effects.segments[0].self_replacements.is_empty()
-        || activated.effects.segments[0].default_effects.len() != 1
     {
         return None;
     }
-    let attach = activated.effects.segments[0].default_effects[0]
-        .downcast_ref::<crate::effects::AttachToEffect>()?;
-    if !is_target_creature_you_control(&attach.target) {
+    let target = structural_equip_target(activated)?;
+    if !is_target_creature_you_control(&target) {
         return None;
     }
 
-    let qualifier = equip_target_qualifier_text(&attach.target);
+    let qualifier = equip_target_qualifier_text(&target);
     if let Some(branches) = activated.mana_cost.as_one_of() {
         let keyword = qualifier
             .map(|qualifier| format!("Equip {qualifier}"))
@@ -4187,13 +4255,34 @@ pub(super) fn describe_structural_exalted_keyword(
 pub(crate) fn describe_structural_prowess_keyword(
     triggered: &crate::ability::TriggeredAbility,
 ) -> Option<String> {
-    if triggered.intervening_if.is_some()
-        || !triggered.choices.is_empty()
-        || triggered.trigger.display() != "Whenever you cast a noncreature spell"
-        || triggered
-            .trigger
-            .downcast_ref::<crate::triggers::SpellCastTrigger>()
-            .is_none()
+    if triggered.intervening_if.is_some() || !triggered.choices.is_empty() {
+        return None;
+    }
+    let cast = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::SpellCastTrigger>()?;
+    let mut filter = cast.filter.clone()?;
+    // A land can never be a spell. The migrated spell-domain filter keeps
+    // that exclusion explicit, while the older runtime constructor omitted
+    // it; both encode the same noncreature-spell trigger.
+    filter
+        .excluded_card_types
+        .retain(|card_type| *card_type != CardType::Land);
+    if filter.excluded_card_types.as_slice() != [CardType::Creature] {
+        return None;
+    }
+    filter.excluded_card_types.clear();
+    if cast.caster != PlayerFilter::You
+        || filter != ObjectFilter::default()
+        || cast.same_name_card_in_zone.is_some()
+        || cast.mana_source_filter.is_some()
+        || cast.timing.is_some()
+        || cast.during_turn.is_some()
+        || cast.min_spells_this_turn.is_some()
+        || cast.exact_spells_this_turn.is_some()
+        || cast.count_all_spells_this_turn
+        || cast.from_not_hand
+        || cast.first_spell_of_game
     {
         return None;
     }

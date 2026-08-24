@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use ironsmith::cards::builders::CardDefinitionBuilder;
 use ironsmith::decision::{DecisionMaker, LegalAction};
 use ironsmith::special_actions::{SpecialAction, perform};
 use ironsmith::static_abilities::StaticAbilityId;
@@ -8,6 +7,7 @@ use ironsmith::{
     CardBuilder, CardDefinition, CardId, CardType, CastingMethod, ConspiracyDraftState,
     ConspiracySetupCard, DraftSelection, GameState, PlayerId, Supertype, Zone,
 };
+use ironsmith_registry::cards::builders::CardDefinitionBuilder;
 
 struct TestDecisionMaker;
 impl DecisionMaker for TestDecisionMaker {}

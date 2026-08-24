@@ -442,8 +442,7 @@ impl WasmGame {
             }
 
             if !deck.is_empty() {
-                self.registry
-                    .ensure_cards_loaded(deck.iter().map(|name| name.as_str()));
+                self.ensure_card_definitions_loaded(deck.iter().map(|name| name.as_str()));
                 let mut slots = manifest
                     .map(|manifest| manifest.slot_commitments.clone())
                     .unwrap_or_default();
@@ -532,8 +531,7 @@ impl WasmGame {
     fn populate_explicit_sideboards(&mut self, sideboards: &[Vec<String>]) -> Result<(), String> {
         let player_ids: Vec<PlayerId> = self.game.players.iter().map(|p| p.id).collect();
         for (&player_id, sideboard) in player_ids.iter().zip(sideboards.iter()) {
-            self.registry
-                .ensure_cards_loaded(sideboard.iter().map(|name| name.as_str()));
+            self.ensure_card_definitions_loaded(sideboard.iter().map(|name| name.as_str()));
 
             for name in sideboard {
                 let Some(definition) = self.find_card_definition(name).cloned() else {
@@ -553,8 +551,9 @@ impl WasmGame {
     fn populate_explicit_commanders(&mut self, commanders: &[Vec<String>]) -> Result<(), String> {
         let player_ids: Vec<PlayerId> = self.game.players.iter().map(|p| p.id).collect();
         for (&player_id, commander_names) in player_ids.iter().zip(commanders.iter()) {
-            self.registry
-                .ensure_cards_loaded(commander_names.iter().map(|name| name.as_str()));
+            self.ensure_card_definitions_loaded(
+                commander_names.iter().map(|name| name.as_str()),
+            );
 
             for name in commander_names {
                 let Some(definition) = self.find_card_definition(name).cloned() else {
@@ -652,7 +651,7 @@ impl WasmGame {
                 ));
             }
 
-            self.registry.ensure_cards_loaded(
+            self.ensure_card_definitions_loaded(
                 std::iter::once(name)
                     .chain(decks[player_index].iter().map(String::as_str))
                     .chain(
@@ -1192,7 +1191,7 @@ impl WasmGame {
         deck: &[String],
         sideboard: &[String],
     ) -> Result<(), String> {
-        self.registry.ensure_cards_loaded(
+        self.ensure_card_definitions_loaded(
             deck.iter()
                 .chain(sideboard.iter())
                 .map(|name| name.as_str()),
@@ -1584,7 +1583,7 @@ impl WasmGame {
         let commander_masters =
             products.contains(&ironsmith::CommanderDraftProduct::CommanderMasters);
         for player in 0..player_count {
-            self.registry.ensure_cards_loaded(
+            self.ensure_card_definitions_loaded(
                 setup.card_pools[player]
                     .iter()
                     .chain(decks[player].iter())
@@ -1744,8 +1743,7 @@ impl WasmGame {
                     ));
             }
 
-            self.registry
-                .ensure_cards_loaded(commander_list.iter().map(String::as_str));
+            self.ensure_card_definitions_loaded(commander_list.iter().map(String::as_str));
             let mut commander_definitions = Vec::with_capacity(commander_list.len());
             for commander_name in commander_list {
                 commander_definitions
@@ -1780,8 +1778,7 @@ impl WasmGame {
             }
 
             if !deck.is_empty() {
-                self.registry
-                    .ensure_cards_loaded(deck.iter().map(String::as_str));
+                self.ensure_card_definitions_loaded(deck.iter().map(String::as_str));
                 for card_name in deck {
                     let definition = self.load_compilable_card_definition_result(card_name)?;
                     self.validate_commander_deck_card(
@@ -4597,7 +4594,10 @@ mod conspiracy_setup_tests {
 
     fn conspiracy_config(game: &mut WasmGame) -> MatchSetupInput {
         let definition =
-            ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Drafted Secret")
+            ironsmith_registry_test::cards::builders::CardDefinitionBuilder::new(
+                CardId::new(),
+                "Drafted Secret",
+            )
                 .card_types(vec![CardType::Conspiracy])
                 .parse_text("Hidden agenda")
                 .expect("synthetic hidden-agenda conspiracy should compile");

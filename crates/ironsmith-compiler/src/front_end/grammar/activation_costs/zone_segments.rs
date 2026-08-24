@@ -102,9 +102,11 @@ pub fn parse_move_source_to_library_bottom_cost_tokens(
 ) -> Option<Result<ActivationCostSegmentCst, CardTextError>> {
     let words = TokenWordView::new(tokens).word_refs();
     if words.len() != 10
-        || words[0] != "put"
-        || words[1] != "this"
-        || words[3..] != ["on", "the", "bottom", "of", "its", "owners", "library"]
+        || !crate::word_primitives::parse_sequence_prefix(&words, &["put", "this"])
+        || !crate::word_primitives::parse_sequence_complete(
+            &words[3..],
+            &["on", "the", "bottom", "of", "its", "owners", "library"],
+        )
     {
         return None;
     }

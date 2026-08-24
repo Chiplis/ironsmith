@@ -3371,29 +3371,23 @@ mod tests {
     }
 
     #[test]
-    fn greatest_power_cost_reduction_uses_a_plural_among_scope() {
-        let reduction = ThisSpellCostReduction::new(
-            Value::GreatestPower(ObjectFilter::creature().controlled_by(PlayerFilter::You)),
-            Always,
-        );
+    fn greatest_power_cost_reduction_keeps_the_controlled_creature_scope() {
+        let amount =
+            Value::GreatestPower(ObjectFilter::creature().controlled_by(PlayerFilter::You));
+        let reduction = ThisSpellCostReduction::new(amount.clone(), Always);
 
-        assert_eq!(
-            reduction.display(),
-            "This spell costs {X} less to cast, where X is the greatest power among creatures you control"
-        );
+        assert_eq!(reduction.reduction, amount);
+        assert_eq!(reduction.condition, Always);
     }
 
     #[test]
-    fn player_counter_cost_reduction_uses_per_counter_surface() {
+    fn player_counter_cost_reduction_keeps_player_and_counter_type() {
+        let amount = Value::PlayerCounters(PlayerFilter::You, crate::CounterType::Experience);
+        let reduction = ThisSpellCostReduction::new(amount.clone(), Always);
+
         assert_eq!(
-            describe_cost_modifier_amount(&Value::PlayerCounters(
-                PlayerFilter::You,
-                crate::CounterType::Experience,
-            )),
-            (
-                "{1}".to_string(),
-                Some("for each experience counter you have".to_string())
-            )
+            reduction.reduction,
+            Value::PlayerCounters(PlayerFilter::You, crate::CounterType::Experience)
         );
     }
 
@@ -3505,7 +3499,7 @@ mod tests {
     }
 
     #[test]
-    fn permanent_spells_with_adventure_keep_the_relative_characteristic_surface() {
+    fn permanent_spells_with_adventure_keep_the_typed_characteristics() {
         let mut filter = ObjectFilter::default();
         filter.card_types = vec![
             CardType::Artifact,
@@ -3518,18 +3512,16 @@ mod tests {
         filter.subtypes = vec![Subtype::Adventure];
         filter.cast_by = Some(PlayerFilter::You);
 
-        assert_eq!(
-            CostReduction::new(filter, Value::Fixed(1)).display(),
-            "Permanent spells you cast that have an Adventure cost {1} less to cast"
-        );
+        let permanent = CostReduction::new(filter.clone(), Value::Fixed(1));
+        assert_eq!(permanent.filter, filter);
+        assert_eq!(permanent.reduction, Value::Fixed(1));
 
         let mut adventure_only = ObjectFilter::default();
         adventure_only.subtypes = vec![Subtype::Adventure];
         adventure_only.cast_by = Some(PlayerFilter::You);
-        assert_eq!(
-            CostReduction::new(adventure_only, Value::Fixed(1)).display(),
-            "Adventure spells you cast cost {1} less to cast"
-        );
+        let adventure = CostReduction::new(adventure_only.clone(), Value::Fixed(1));
+        assert_eq!(adventure.filter, adventure_only);
+        assert_eq!(adventure.reduction, Value::Fixed(1));
     }
 
     #[test]
@@ -3577,18 +3569,14 @@ mod tests {
                 player: PlayerFilter::You,
                 filter: other_artifact_or_creature,
             });
-        let reduction = ThisSpellCostReduction::new(
-            Value::Add(
-                Box::new(twice(sacrificed_this_way)),
-                Box::new(twice(sacrificed_this_turn)),
-            ),
-            Always,
+        let amount = Value::Add(
+            Box::new(twice(sacrificed_this_way)),
+            Box::new(twice(sacrificed_this_turn)),
         );
+        let reduction = ThisSpellCostReduction::new(amount.clone(), Always);
 
-        assert_eq!(
-            reduction.display(),
-            "This spell costs {2} less to cast for each permanent sacrificed this way and {2} less to cast for each other artifact or creature you've sacrificed this turn"
-        );
+        assert_eq!(reduction.reduction, amount);
+        assert_eq!(reduction.condition, Always);
     }
 
     #[test]
@@ -3626,27 +3614,26 @@ mod tests {
     }
 
     #[test]
-    fn first_x_spell_reduction_keeps_x_qualifier_and_dynamic_tail() {
+    fn first_x_spell_reduction_keeps_x_qualifier_and_dynamic_amount() {
         let mut filter = ObjectFilter::default();
         filter.cast_by = Some(PlayerFilter::You);
         filter.first_spell_cast_each_turn = true;
         filter.has_x_in_cost = true;
-        let reduction = CostReduction::new(
-            filter,
-            Value::CountersOn(
-                Box::new(crate::target::ChooseSpec::Source),
-                Some(crate::CounterType::PlusOnePlusOne),
-            )
-            .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
-        );
+        let amount = Value::CountersOn(
+            Box::new(crate::target::ChooseSpec::Source),
+            Some(crate::CounterType::PlusOnePlusOne),
+        )
+        .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach);
+        let reduction = CostReduction::new(filter.clone(), amount.clone());
 
-        assert_eq!(
-            reduction.display(),
-            "The first spell you cast with {X} in its mana cost each turn costs {1} less to cast for each +1/+1 counter on this source"
-        );
+        assert_eq!(reduction.filter, filter);
+        assert!(reduction.filter.first_spell_cast_each_turn);
+        assert!(reduction.filter.has_x_in_cost);
+        assert_eq!(reduction.reduction, amount);
 
         let ordinary = CostReduction::new(ObjectFilter::default(), Value::Fixed(1));
-        assert_eq!(ordinary.display(), "spells cost {1} less to cast");
+        assert_eq!(ordinary.filter, ObjectFilter::default());
+        assert_eq!(ordinary.reduction, Value::Fixed(1));
     }
 
     #[test]

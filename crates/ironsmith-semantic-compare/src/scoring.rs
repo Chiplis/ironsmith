@@ -490,10 +490,10 @@ fn tokens_match_subsetish_with_threshold(
         return false;
     }
     let has_non_placeholder_overlap = overlapping_tokens.iter().any(|token| {
-        !matches!(token, &"<mana>" | &"<num>" | &"<pt>")
-            && !is_number_token(token)
-            && !is_pt_token(token)
-            && !(token.starts_with('{') && token.ends_with('}'))
+        !(matches!(token, &"<mana>" | &"<num>" | &"<pt>")
+            || is_number_token(token)
+            || is_pt_token(token)
+            || (token.starts_with('{') && token.ends_with('}')))
     });
     if !has_non_placeholder_overlap {
         return false;
@@ -1516,7 +1516,7 @@ fn prepare_clause_comparison(oracle_text: &str, compiled_lines: &[String]) -> Cl
             || reminder_tokens.iter().any(|reminder| {
                 tokens_match_subsetish_with_threshold(tokens, reminder, reminder_match_threshold)
             });
-        !(matches_reminder && !matches_oracle)
+        !matches_reminder || matches_oracle
     });
     compiled_pairs.retain(|(_, tokens)| {
         !(has_reminder

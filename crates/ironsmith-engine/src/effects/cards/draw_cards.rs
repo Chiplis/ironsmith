@@ -23,6 +23,8 @@ fn execute_draw_replacement_effects(
     ctx: &mut ExecutionContext,
     effects: Vec<Effect>,
     effect_id: crate::replacement::ReplacementEffectId,
+    replacement_source: crate::ids::ObjectId,
+    replacement_controller: PlayerId,
     replaced_player: PlayerId,
 ) -> Result<EffectOutcome, ExecutionError> {
     let replacement_effect = game
@@ -30,10 +32,6 @@ fn execute_draw_replacement_effects(
         .replacement_effects
         .get_effect(effect_id)
         .cloned();
-    let (replacement_source, replacement_controller) = replacement_effect
-        .as_ref()
-        .map(|effect| (effect.source, effect.controller))
-        .unwrap_or((ctx.source, ctx.controller));
     let replacement_key = replacement_effect
         .as_ref()
         .map(|effect| effect.application_key());
@@ -340,10 +338,15 @@ impl EffectExecutor for DrawCardsEffect {
             ) {
                 TraitEventResult::Prevented => continue,
                 TraitEventResult::Replaced {
-                    effects, effect_id, ..
+                    effects,
+                    effect_id,
+                    source,
+                    controller,
+                    ..
                 } => {
-                    let replacement_outcome =
-                        execute_draw_replacement_effects(game, ctx, effects, effect_id, player_id)?;
+                    let replacement_outcome = execute_draw_replacement_effects(
+                        game, ctx, effects, effect_id, source, controller, player_id,
+                    )?;
                     replacement_count += replacement_outcome.count_or_zero();
                     events.extend(replacement_outcome.events);
                     continue;
@@ -856,8 +859,8 @@ mod tests {
         }
 
         for (choice, expected_hand, expected_counters) in [
-            ("Pursuit-style replacement", 0, 1),
-            ("Do not apply Pursuit-style replacement", 1, 0),
+            ("Replacement Source", 0, 1),
+            ("Do not apply Replacement Source", 1, 0),
         ] {
             let mut game = setup_game();
             let alice = PlayerId::from_index(0);

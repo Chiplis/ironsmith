@@ -792,6 +792,66 @@ fn wrap_terminal_runtime_result_producer(
     Some(Effect::new(sequence))
 }
 
+fn runtime_result_producer_count(effect: &Effect, producer: TerminalResultProducer) -> usize {
+    if runtime_effect_is_terminal_result_producer(effect, producer) {
+        return 1;
+    }
+    effect
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .map_or(0, |sequence| {
+            sequence
+                .effects
+                .iter()
+                .map(|effect| runtime_result_producer_count(effect, producer))
+                .sum()
+        })
+}
+
+fn wrap_unique_runtime_result_producer(
+    effect: &Effect,
+    producer: TerminalResultProducer,
+    id: EffectId,
+) -> Option<Effect> {
+    if runtime_effect_is_terminal_result_producer(effect, producer) {
+        return Some(Effect::with_id(id.0, effect.clone()));
+    }
+    let mut sequence = effect
+        .downcast_ref::<crate::effects::SequenceEffect>()?
+        .clone();
+    if runtime_result_producer_count(effect, producer) != 1 {
+        return None;
+    }
+    let index = crate::slice_primitives::select_position(&sequence.effects, |effect| {
+        runtime_result_producer_count(effect, producer) == 1
+    })?;
+    sequence.effects[index] =
+        wrap_unique_runtime_result_producer(&sequence.effects[index], producer, id)?;
+    Some(Effect::new(sequence))
+}
+
+pub(super) fn try_assign_effect_result_id_for_unique_producer(
+    effects: &mut [Effect],
+    producer: TerminalResultProducer,
+    id: EffectId,
+) -> bool {
+    let total = effects
+        .iter()
+        .map(|effect| runtime_result_producer_count(effect, producer))
+        .sum::<usize>();
+    if total != 1 {
+        return false;
+    }
+    let index = crate::slice_primitives::select_position(effects, |effect| {
+        runtime_result_producer_count(effect, producer) == 1
+    })
+    .expect("one result producer was counted");
+    let Some(wrapped) = wrap_unique_runtime_result_producer(&effects[index], producer, id) else {
+        return false;
+    };
+    effects[index] = wrapped;
+    true
+}
+
 pub(super) fn assign_effect_result_id_for_ast(
     effects: &mut Vec<Effect>,
     ast: &EffectAst,
@@ -799,6 +859,22 @@ pub(super) fn assign_effect_result_id_for_ast(
     error_message: &str,
 ) -> Result<(), CardTextError> {
     let Some(producer) = terminal_result_producer(ast) else {
+        // An authored coordination can put another instruction after the
+        // value-producing action while a later branch still refers to that
+        // action's typed result (for example, "clash, then return ... If you
+        // win ..."). An assigned result ID must observe the unique producer,
+        // not the presentation sequence that contains it.
+        if try_assign_effect_result_id_for_unique_producer(
+            effects,
+            TerminalResultProducer::Clash,
+            id,
+        ) || try_assign_effect_result_id_for_unique_producer(
+            effects,
+            TerminalResultProducer::FlipCoin,
+            id,
+        ) {
+            return Ok(());
+        }
         return assign_effect_result_id(effects, id, error_message);
     };
     let Some(terminal) = effects.last().cloned() else {
@@ -844,14 +920,14 @@ pub fn compile_result_followup(
     }
     let id = ctx.next_effect_id();
     if predicate == IfResultPredicate::DealtDamageToPlayer {
-        let damage_idx = first_effects
-            .iter()
-            .rposition(effect_contains_deal_damage)
-            .ok_or_else(|| {
-                CardTextError::ParseError(
-                    "damage-to-player result is missing a damage antecedent".to_string(),
-                )
-            })?;
+        let damage_idx = crate::slice_primitives::select_last_position(&first_effects, |effect| {
+            effect_contains_deal_damage(effect)
+        })
+        .ok_or_else(|| {
+            CardTextError::ParseError(
+                "damage-to-player result is missing a damage antecedent".to_string(),
+            )
+        })?;
         let mut antecedent_effects = first_effects.split_off(damage_idx);
         let antecedent = if antecedent_effects.len() == 1 {
             antecedent_effects.remove(0)
@@ -859,6 +935,16 @@ pub fn compile_result_followup(
             Effect::new(crate::effects::SequenceEffect::new(antecedent_effects))
         };
         first_effects.push(Effect::with_id(id.0, antecedent));
+    } else if predicate == IfResultPredicate::WonClash {
+        if !try_assign_effect_result_id_for_unique_producer(
+            &mut first_effects,
+            TerminalResultProducer::Clash,
+            id,
+        ) {
+            return Err(CardTextError::InvariantViolation(
+                "clash-win follow-up is missing its unique clash antecedent".to_string(),
+            ));
+        }
     } else {
         assign_effect_result_id_for_ast(
             &mut first_effects,

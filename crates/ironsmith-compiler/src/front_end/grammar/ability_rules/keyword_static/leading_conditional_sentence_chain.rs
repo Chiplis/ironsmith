@@ -35,19 +35,15 @@ fn words_without_exact_phrase(text: &str, phrase: &str) -> Option<Vec<String>> {
     let words = parser_token_word_refs(&tokens);
     let phrase_tokens = crate::lexer::lex_line(phrase, 0).ok()?;
     let phrase_words = parser_token_word_refs(&phrase_tokens);
-    let matching_starts = words
-        .windows(phrase_words.len())
-        .enumerate()
-        .filter_map(|(index, window)| (window == phrase_words.as_slice()).then_some(index))
-        .collect::<Vec<_>>();
-    let [start] = matching_starts.as_slice() else {
+    let start = crate::word_primitives::parse_sequence_start(&words, &phrase_words)?;
+    if crate::word_primitives::parse_sequence_start(&words[start + 1..], &phrase_words).is_some() {
         return None;
-    };
+    }
     Some(
         words
             .iter()
             .enumerate()
-            .filter(|(index, _)| *index < *start || *index >= *start + phrase_words.len())
+            .filter(|(index, _)| *index < start || *index >= start + phrase_words.len())
             .map(|(_, word)| (*word).to_string())
             .collect(),
     )
@@ -72,7 +68,10 @@ fn condition_matching_filter(
     else {
         return None;
     };
-    if filter.static_abilities.as_slice() != [required_id] || !filter.ability_markers.is_empty() {
+    if filter.static_abilities.len() != 1
+        || filter.static_abilities.first() != Some(&required_id)
+        || !filter.ability_markers.is_empty()
+    {
         return None;
     }
     filter.static_abilities.clear();
@@ -133,7 +132,7 @@ fn parse_borrowed_static_variant_chain(
         }
 
         for selector in sentence_selectors {
-            if !selectors.contains(&selector) {
+            if !crate::slice_primitives::contains(&selectors, &selector) {
                 selectors.push(selector);
             }
         }

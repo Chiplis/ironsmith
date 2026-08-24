@@ -1,8 +1,13 @@
 //! Phyrexian Tower card definition.
 
 use super::CardDefinitionBuilder;
+use crate::ability::Ability;
 use crate::cards::CardDefinition;
+use crate::cost::TotalCost;
+use crate::costs::Cost;
 use crate::ids::CardId;
+use crate::mana::ManaSymbol;
+use crate::target::ObjectFilter;
 use crate::types::{CardType, Supertype};
 
 /// Phyrexian Tower
@@ -13,8 +18,18 @@ pub fn phyrexian_tower() -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Phyrexian Tower")
         .card_types(vec![CardType::Land])
         .supertypes(vec![Supertype::Legendary])
-        .parse_text("{T}: Add {C}.\n{T}, Sacrifice a creature: Add {B}{B}.")
-        .unwrap()
+        .oracle_text("{T}: Add {C}.\n{T}, Sacrifice a creature: Add {B}{B}.")
+        .with_abilities(vec![
+            Ability::mana(
+                TotalCost::from_cost(Cost::tap()),
+                vec![ManaSymbol::Colorless],
+            ),
+            Ability::mana(
+                TotalCost::from_costs(vec![Cost::tap(), Cost::sacrifice(ObjectFilter::creature())]),
+                vec![ManaSymbol::Black, ManaSymbol::Black],
+            ),
+        ])
+        .build()
 }
 
 #[cfg(all(test, ironsmith_runtime_parser_tests))]

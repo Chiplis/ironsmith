@@ -2085,7 +2085,7 @@ mod tests {
     }
 
     #[test]
-    fn compiled_card_text_uses_normalized_surface_for_possessive_self_reference() {
+    fn typed_characteristic_ability_survives_object_construction() {
         let domain_value =
             crate::effect::Value::BasicLandTypesAmong(ObjectFilter::land().you_control());
         let definition =
@@ -2108,17 +2108,16 @@ mod tests {
             Zone::Battlefield,
         );
 
-        assert!(
-            obj.compiled_card_text
-                .contains("This creature's power and toughness are each equal"),
-            "expected normalized possessive wording, got {}",
-            obj.compiled_card_text
-        );
-        assert!(
-            !obj.compiled_card_text.contains("creature creature's"),
-            "object display text should not use debug-safe duplicated subject wording, got {}",
-            obj.compiled_card_text
-        );
+        assert!(obj.abilities.iter().any(|ability| {
+            matches!(
+                &ability.kind,
+                crate::ability::AbilityKind::Static(static_ability)
+                    if static_ability.id()
+                        == crate::static_abilities::StaticAbilityId::CharacteristicDefiningPT
+            )
+        }));
+        assert_eq!(obj.base_power, Some(PtValue::Star));
+        assert_eq!(obj.base_toughness, Some(PtValue::Star));
     }
 
     #[test]
@@ -2360,7 +2359,7 @@ mod tests {
         assert_eq!(CounterType::PlusOnePlusZero.description(), "+1/+0");
         assert_eq!(CounterType::DoubleStrike.description(), "double strike");
         assert_eq!(CounterType::Finality.description(), "finality");
-        assert_eq!(CounterType::Named("burden").description(), "burden");
+        assert_eq!(CounterType::Named("burden".into()).description(), "burden");
     }
 
     #[test]

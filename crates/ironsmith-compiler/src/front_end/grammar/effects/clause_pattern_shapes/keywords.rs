@@ -297,9 +297,10 @@ fn parse_phase<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a
             *word,
             "can't" | "cant" | "cannot" | "don't" | "dont" | "doesn't" | "doesnt"
         )
-    }) || subject_words
-        .windows(2)
-        .any(|window| matches!(window, ["can", "not"] | ["do", "not"] | ["does", "not"]));
+    }) || crate::word_primitives::any_sequence_occurs(
+        &subject_words,
+        &[&["can", "not"], &["do", "not"], &["does", "not"]],
+    );
     if has_negated_auxiliary {
         return Err(primitives::backtrack_err(
             "phase subject",
@@ -326,8 +327,9 @@ fn parse_open_attraction<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechan
     .parse_next(input)?;
     let trailing = tokens_before(input, 0, primitives::sentence_end())?;
     primitives::sentence_end().parse_next(input)?;
-    let reminder = crate::lexer::parser_token_word_refs(trailing).as_slice()
-        == [
+    let reminder = crate::word_primitives::parse_sequence_complete(
+        &crate::lexer::parser_token_word_refs(trailing),
+        &[
             "put",
             "the",
             "top",
@@ -339,7 +341,8 @@ fn parse_open_attraction<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechan
             "onto",
             "the",
             "battlefield",
-        ];
+        ],
+    );
     Ok(KeywordMechanicShape::OpenAttraction { reminder })
 }
 
@@ -552,97 +555,16 @@ fn parse_discover<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape
     Ok(KeywordMechanicShape::Discover { count_tokens })
 }
 
-fn parse_explore<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
-    let subject_tokens = tokens_before(
-        input,
-        0,
-        alt((primitives::kw("explore"), primitives::kw("explores"))).void(),
-    )?;
-    alt((primitives::kw("explore"), primitives::kw("explores"))).parse_next(input)?;
-    let repeat = if peek(primitives::sentence_end()).parse_next(input).is_ok() {
-        primitives::sentence_end().parse_next(input)?;
-        KeywordRepeatShape::Once
-    } else {
-        let mut again_probe = input.clone();
-        if primitives::kw("again").parse_next(&mut again_probe).is_ok()
-            && primitives::sentence_end()
-                .parse_next(&mut again_probe)
-                .is_ok()
-        {
-            *input = again_probe;
-            KeywordRepeatShape::Once
-        } else {
-            repeat_tail.parse_next(input)?
-        }
-    };
-    Ok(KeywordMechanicShape::Explore {
-        subject: classify_subject(subject_tokens),
-        repeat,
-    })
-}
-
-fn parse_endure<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
-    let subject_tokens = tokens_before(
-        input,
-        0,
-        alt((primitives::kw("endure"), primitives::kw("endures"))).void(),
-    )?;
-    alt((primitives::kw("endure"), primitives::kw("endures"))).parse_next(input)?;
-    let amount_tokens = tokens_before(input, 1, primitives::sentence_end())?;
-    primitives::sentence_end().parse_next(input)?;
-    Ok(KeywordMechanicShape::Endure {
-        subject: classify_subject(subject_tokens),
-        amount_tokens,
-    })
-}
-
-fn parse_keyword_mechanic_lexed<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<KeywordMechanicShape<'a>> {
-    opt(primitives::kw("then")).parse_next(input)?;
-    opt(primitives::kw("you")).parse_next(input)?;
-    alt((
-        parse_amass,
-        parse_forage,
-        parse_harness,
-        parse_roll_d6,
-        parse_odd_even_result,
-        parse_phase,
-        parse_open_attraction,
-        alt((
-            parse_behold,
-            parse_blight,
-            parse_manifest_dread,
-            parse_manifest_from_hand,
-            alt((
-                parse_cloak_top_you,
-                parse_manifest_top_you,
-                parse_cloak_top_that_player,
-                parse_manifest_top_that_player,
-            )),
-            parse_populate,
-            parse_meld,
-            alt((
-                parse_numeric_keyword,
-                parse_fateseal,
-                parse_discover,
-                parse_explore,
-                parse_endure,
-            )),
-        )),
-    ))
-    .parse_next(input)
-}
-
-pub fn parse_keyword_mechanic_tokens(tokens: &[OwnedLexToken]) -> Option<KeywordMechanicShape<'_>> {
-    primitives::parse_all(
-        tokens,
-        parse_keyword_mechanic_lexed,
-        "keyword mechanic clause",
-    )
-    .ok()
-}
-
 #[cfg(test)]
 #[path = "keywords/tests.rs"]
 mod tests;
+
+#[path = "keywords/object_action_programs.rs"]
+mod object_action_programs;
+pub use object_action_programs::parse_keyword_mechanic_tokens;
+#[path = "keywords/ability_programs.rs"]
+mod ability_programs;
+use ability_programs::parse_keyword_mechanic_lexed;
+#[path = "keywords/core_programs.rs"]
+mod core_programs;
+use core_programs::{parse_endure, parse_explore};

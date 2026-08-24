@@ -982,12 +982,19 @@ mod tests {
     use crate::ability::Ability;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::cards::CardDefinitionBuilder;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::cards::definitions::basic_mountain;
+    #[cfg(ironsmith_runtime_parser_tests)]
+    use crate::effect::Effect;
     use crate::effect::ExecutionFact;
-    use crate::effect::{Effect, Restriction};
+    use crate::effect::Restriction;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::effects::CostExecutableEffect;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::effects::EarthbendEffect;
-    use crate::effects::{ExecutionContext, execute_effect};
+    use crate::effects::ExecutionContext;
+    #[cfg(ironsmith_runtime_parser_tests)]
+    use crate::effects::execute_effect;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;

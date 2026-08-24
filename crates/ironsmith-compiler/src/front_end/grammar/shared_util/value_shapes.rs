@@ -10,6 +10,7 @@ use super::super::{leaf, primitives};
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AggregateValueMetric {
     BasicLandTypes,
+    CardTypes,
     CreatureTypes,
     Colors,
     ColorPairs,
@@ -116,14 +117,17 @@ fn parse_aggregate_metric(
         )
             .value(AggregateValueMetric::BasicLandTypes),
         (
-            primitives::word_slice_exact("creature"),
+            alt((
+                primitives::word_slice_exact("card").value(AggregateValueMetric::CardTypes),
+                primitives::word_slice_exact("creature").value(AggregateValueMetric::CreatureTypes),
+            )),
             alt((
                 primitives::word_slice_exact("type"),
                 primitives::word_slice_exact("types"),
             )),
             primitives::word_slice_exact("among"),
         )
-            .value(AggregateValueMetric::CreatureTypes),
+            .map(|(metric, _, _)| metric),
         (
             primitives::word_slice_exact("different"),
             primitives::word_slice_exact("color"),

@@ -1,6 +1,24 @@
 #![recursion_limit = "256"]
 #![expect(clippy::type_complexity, clippy::too_many_arguments)]
 #![allow(dead_code, unused_imports, ambiguous_glob_reexports)]
+// Grammar facts are assembled clause-by-clause and intentionally retain complete semantic
+// subtrees. These implementation shapes favor auditable recognition over allocation or builder
+// churn that would not change the canonical AST.
+#![allow(
+    clippy::clone_on_copy,
+    clippy::collapsible_match,
+    clippy::drop_non_drop,
+    clippy::enum_variant_names,
+    clippy::field_reassign_with_default,
+    clippy::large_enum_variant,
+    clippy::len_without_is_empty,
+    clippy::let_and_return,
+    clippy::new_without_default,
+    clippy::nonminimal_bool,
+    clippy::redundant_closure_call,
+    clippy::result_large_err,
+    clippy::result_unit_err
+)]
 
 //! Oracle grammar implementation layer.
 //!
@@ -129,6 +147,8 @@ pub mod object_filters;
 pub mod permission_helpers;
 #[path = "../../ironsmith-compiler/src/front_end/grammar/ability_rules/restriction_support.rs"]
 pub mod restriction_support;
+#[path = "../../ironsmith-compiler/src/lowering/runtime_static_ability_helpers.rs"]
+pub mod runtime_static_ability_helpers;
 #[path = "../../ironsmith-compiler/src/front_end/grammar/effect_clauses/search_library_support.rs"]
 pub mod search_library_support;
 #[path = "../../ironsmith-compiler/src/front_end/grammar/ability_rules/static_ability_helpers.rs"]
@@ -153,6 +173,8 @@ pub mod util;
 pub mod battlefield_entry_counter_fusion;
 #[path = "../../ironsmith-compiler/src/front_end/canonical_pipeline.rs"]
 pub mod canonical_pipeline;
+#[path = "../../ironsmith-compiler/src/cards/builders.rs"]
+pub mod card_builders;
 #[path = "../../ironsmith-compiler/src/lowering/compile_support.rs"]
 pub mod compile_support;
 #[path = "../../ironsmith-compiler/src/lowering/pipeline.rs"]
@@ -169,17 +191,12 @@ pub mod lower;
 pub mod lowering;
 #[path = "../../ironsmith-compiler/src/lowering/lowering_support.rs"]
 pub mod lowering_support;
-#[path = "../../ironsmith-compiler/src/model/modal_support.rs"]
+#[path = "../../ironsmith-compiler/src/front_end/grammar/modal_support.rs"]
 pub mod modal_support;
 #[path = "../../ironsmith-compiler/src/parse_loss.rs"]
 pub mod parse_loss;
 #[path = "../../ironsmith-compiler/src/front_end/semantic_document.rs"]
 pub mod semantic_document;
-#[path = "../../ironsmith-compiler/src/stack.rs"]
-pub mod stack;
-
-#[path = "../../ironsmith-compiler/src/cards/builders.rs"]
-pub mod card_builders;
 
 pub mod cards {
     pub use crate::card_builders::CardDefinitionBuilder;
@@ -254,17 +271,15 @@ pub fn compile_card_text_with_policy(
 ) -> Result<facade::CompiledCardText<CardDefinition>, CardTextError> {
     let text = text.into();
     util::with_cached_parser_trace(move || {
-        stack::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, move || {
-            let mut context = parse_context_for_builder(&builder, &text, allow_unsupported);
-            compiler_pipeline::parse_text_with_annotations_lowered_with_facts_context(
-                &mut context,
-                builder,
-                text,
-            )
-            .map(|lowered| facade::CompiledCardText {
-                definition: lowered.definition,
-                annotations: lowered.annotations,
-            })
+        let mut context = parse_context_for_builder(&builder, &text, allow_unsupported);
+        compiler_pipeline::parse_text_with_annotations_lowered_with_facts_context(
+            &mut context,
+            builder,
+            text,
+        )
+        .map(|lowered| facade::CompiledCardText {
+            definition: lowered.definition,
+            annotations: lowered.annotations,
         })
     })
 }

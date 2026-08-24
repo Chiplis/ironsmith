@@ -23,8 +23,8 @@ pub(super) fn parse_reveal_until_land_put_all_graveyard_bundle(
         bundle_grammar::RevealUntilLandPlayer::DefendingPlayer => (PlayerAst::Defending, None),
     };
 
-    let revealed_tag = TagKey::from("reveal_until_land_revealed");
-    let matched_tag = TagKey::from("reveal_until_land_matched");
+    let revealed_tag = crate::tag::CompilerReferenceTag::RevealUntilLandRevealed.key();
+    let matched_tag = crate::tag::CompilerReferenceTag::RevealUntilLandMatched.key();
     let mut land_card = ObjectFilter::default();
     land_card.card_types.push(CardType::Land);
     land_card.zone = None;
@@ -332,15 +332,30 @@ pub(super) fn parse_reveal_repeated_disposition_bundle(
     // tag. The grammar has already proved one revealed top-card collection,
     // so transport that tag directly.
     let all_tag = revealed_top_collection_tag(&effects)?;
+    effects.push(EffectAst::SnapshotLastObjectTag {
+        into: all_tag.clone(),
+    });
     let (mut repeated_effects, moved_tag) =
         lower_consult_repeated_move(shape.repeated, all_tag.clone(), &shape.reveal_tokens)?;
-    effects.append(&mut repeated_effects);
     append_consult_remainder(
-        &mut effects,
+        &mut repeated_effects,
         shape.remainder,
         all_tag,
         moved_tag,
         PlayerAst::You,
     );
-    Some(effects)
+    Some(vec![
+        EffectAst::SourceSentence {
+            effects,
+            leading_then: false,
+            starting_with_controller: false,
+        },
+        EffectAst::SourceSentence {
+            effects: vec![EffectAst::CommaThen {
+                effects: repeated_effects,
+            }],
+            leading_then: false,
+            starting_with_controller: false,
+        },
+    ])
 }

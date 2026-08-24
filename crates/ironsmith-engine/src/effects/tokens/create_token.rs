@@ -399,12 +399,12 @@ mod tests {
     use crate::ability::Ability;
     use crate::card::PowerToughness;
     use crate::cards::CardDefinitionBuilder;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::cards::definitions::tayam_luminous_enigma;
     use crate::cards::tokens::treasure_token_definition;
     use crate::color::{Color, ColorSet};
     use crate::ids::{CardId, PlayerId};
     use crate::object::{CounterType, ObjectKind};
-    use crate::runtime_display::canonical_compiled_lines;
     use crate::static_abilities::StaticAbility;
     use crate::test_prelude::*;
     use crate::types::{CardType, Subtype};
@@ -462,13 +462,21 @@ mod tests {
     }
 
     fn xorn_definition() -> CardDefinition {
+        let oracle = "If you would create one or more Treasure tokens, instead create those tokens plus an additional Treasure token.";
         CardDefinitionBuilder::new(CardId::new(), "Xorn")
             .card_types(vec![CardType::Creature])
             .subtypes(vec![Subtype::Elemental])
-            .parse_text(
-                "If you would create one or more Treasure tokens, instead create those tokens plus an additional Treasure token.",
-            )
-            .expect("Xorn should parse strictly")
+            .oracle_text(oracle)
+            .with_ability(Ability::static_ability(
+                StaticAbility::add_token_creation_replacement(
+                    PlayerFilter::You,
+                    ObjectFilter::default().with_subtype(Subtype::Treasure),
+                    ironsmith_core::AdditionalTokenKind::Treasure,
+                    1,
+                    oracle.to_string(),
+                ),
+            ))
+            .build()
     }
 
     fn fancy_treasure_token() -> CardDefinition {
@@ -482,11 +490,24 @@ mod tests {
     #[test]
     fn xorn_strict_parser_and_compiled_text_regression() {
         let def = xorn_definition();
-        let rendered = canonical_compiled_lines(&def).join(" ");
-
+        let replacement = def
+            .abilities
+            .iter()
+            .find_map(|ability| {
+                match &ability.kind {
+                crate::ability::AbilityKind::Static(static_ability)
+                    if static_ability.id()
+                        == crate::static_abilities::StaticAbilityId::AddTokenCreationReplacement =>
+                {
+                    Some(static_ability)
+                }
+                _ => None,
+            }
+            })
+            .expect("Xorn should carry the typed token-creation replacement");
         assert_eq!(
-            rendered,
-            "If you would create one or more treasure tokens, instead create those tokens plus an additional treasure token."
+            replacement.display(),
+            "If you would create one or more Treasure tokens, instead create those tokens plus an additional Treasure token."
         );
     }
 
@@ -568,7 +589,7 @@ mod tests {
     fn named_source_token_cda_tracks_the_creating_permanent() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
-        let slime = CounterType::Named("slime");
+        let slime = CounterType::Named("slime".into());
         let creator_definition = CardDefinitionBuilder::new(CardId::new(), "Slime Foundry")
             .card_types(vec![CardType::Enchantment])
             .build();

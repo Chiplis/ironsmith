@@ -127,6 +127,7 @@ pub fn parse_aggregate_scope_value_words(words: &[&str]) -> Option<Value> {
     let filter = parse_object_filter_words(surface.scope_words, false).ok()?;
     match surface.metric {
         AggregateValueMetric::BasicLandTypes => Some(Value::BasicLandTypesAmong(filter)),
+        AggregateValueMetric::CardTypes => Some(Value::CardTypesAmong(filter)),
         AggregateValueMetric::CreatureTypes => Some(Value::CreatureTypesAmong(filter)),
         AggregateValueMetric::Colors => Some(Value::ColorsAmong(filter)),
         AggregateValueMetric::ColorPairs => Some(Value::ColorPairsAmong(filter)),
@@ -210,6 +211,7 @@ pub fn parse_prior_effect_action(words: &[&str]) -> Option<(PriorEffectAction, u
         (&["connived"], PriorEffectAction::Connived),
         (&["countered"], PriorEffectAction::Countered),
         (&["destroyed"], PriorEffectAction::Destroyed),
+        (&["died"], PriorEffectAction::Destroyed),
         (&["discarded"], PriorEffectAction::Discarded),
         (&["drawn"], PriorEffectAction::Drawn),
         (&["exiled"], PriorEffectAction::Exiled),
@@ -258,71 +260,13 @@ pub fn parse_number_of_prefix(words: &[&str]) -> Option<NumberOfPrefix> {
     )
 }
 
-pub fn parse_aggregate_prefix(words: &[&str]) -> Option<AggregatePrefix> {
-    let mut index = usize::from(permission_shapes::prefix_words(words, &["the"]));
-    let aggregate = match words.get(index).copied()? {
-        "total" => AggregateKind::Total,
-        "greatest" => AggregateKind::Greatest,
-        _ => return None,
-    };
-    index += 1;
-    let value_kind = if permission_shapes::starts_at_words(words, index, &["mana", "value"]) {
-        index += 2;
-        AggregateValueKind::ManaValue
-    } else {
-        let kind = match words.get(index).copied()? {
-            "power" => AggregateValueKind::Power,
-            "toughness" => AggregateValueKind::Toughness,
-            _ => return None,
-        };
-        index += 1;
-        kind
-    };
-    if words
-        .get(index)
-        .is_none_or(|word| !matches!(*word, "of" | "among"))
-    {
-        return None;
-    }
-    Some(AggregatePrefix {
-        aggregate,
-        value_kind,
-        consumed: index + 1,
-    })
-}
-
-pub fn starts_equal_to_opponents_you_have(words: &[&str]) -> bool {
-    permission_shapes::prefix_words(
-        words,
-        &[
-            "equal",
-            "to",
-            "the",
-            "number",
-            "of",
-            "opponents",
-            "you",
-            "have",
-        ],
-    ) || permission_shapes::prefix_words(
-        words,
-        &["equal", "to", "number", "of", "opponents", "you", "have"],
-    )
-}
-
-pub fn starts_or_power_toughness(words: &[&str]) -> bool {
-    permission_shapes::prefix_words(words, &["or", "power"])
-        || permission_shapes::prefix_words(words, &["or", "toughness"])
-}
-
-fn has_word(words: &[&str], expected: &str) -> bool {
-    permission_shapes::find_words(words, &[expected]).is_some()
-}
-
-fn has_any(words: &[&str], expected: &[&str]) -> bool {
-    expected.iter().any(|word| has_word(words, word))
-}
-
 #[cfg(test)]
 #[path = "value_helper_shapes/tests.rs"]
 mod tests;
+
+#[path = "value_helper_shapes/core_programs.rs"]
+mod core_programs;
+use core_programs::{has_any, has_word};
+pub use core_programs::{
+    parse_aggregate_prefix, starts_equal_to_opponents_you_have, starts_or_power_toughness,
+};

@@ -307,11 +307,7 @@ fn marker_keyword_set_contains(set: &[&str], keyword: &str) -> bool {
 
 pub fn target_ast_to_object_filter(target: TargetAst) -> Option<ObjectFilter> {
     match target {
-        TargetAst::Source(span) => Some(
-            source_reference_surface_for_span(span)
-                .map(ObjectFilter::source_with_surface)
-                .unwrap_or_else(ObjectFilter::source),
-        ),
+        TargetAst::Source(_) => Some(ObjectFilter::source()),
         TargetAst::Object(filter, _, _) => Some(filter),
         TargetAst::Spell(_) => Some(ObjectFilter::spell()),
         TargetAst::Tagged(tag, _) => Some(ObjectFilter::tagged(tag)),
@@ -399,7 +395,10 @@ fn strip_leading_keyword_cost_separator(tokens: &[OwnedLexToken]) -> &[OwnedLexT
     &tokens[start..]
 }
 
-fn echo_text(total_cost: &TotalCost, cost_tokens: &[OwnedLexToken]) -> String {
+fn echo_text(
+    total_cost: &ironsmith_core::TotalCost<crate::model::CompilerCost>,
+    cost_tokens: &[OwnedLexToken],
+) -> String {
     if let Some(cost) = total_cost.mana_cost()
         && !total_cost.has_non_mana_costs()
     {
@@ -425,7 +424,7 @@ fn echo_text(total_cost: &TotalCost, cost_tokens: &[OwnedLexToken]) -> String {
 
 fn parse_payment_clause_as_effects(
     tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<Effect>>, CardTextError> {
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let trimmed = trim_edge_punctuation(&trim_commas(tokens));
     if trimmed.is_empty() {
         return Ok(None);
@@ -444,47 +443,28 @@ fn parse_payment_clause_as_effects(
                 words(&trimmed[or_idx + 1..]).join(" ")
             ))
         })?;
-        return Ok(Some(vec![Effect::unless_action(
-            left,
-            right,
-            PlayerFilter::You,
-        )]));
-    }
-
-    if let Ok(total_cost) = parse_activation_cost(&trimmed) {
-        let effects = crate::costs::total_cost_to_payment_effects(&total_cost);
-        if !effects.is_empty() {
-            return Ok(Some(effects));
-        }
+        return Ok(Some(vec![EffectAst::UnlessAction {
+            effects: left,
+            alternative: right,
+            player: PlayerAst::You,
+        }]));
     }
 
     let ast = match parse_effect_sentences_lexed(&trimmed) {
         Ok(ast) => ast,
         Err(_) => return Ok(None),
     };
-    let mut ctx = crate::model::facts::EffectLoweringContext::new();
-    let (effects, choices) = match crate::compile_support::compile_effects(&ast, &mut ctx) {
-        Ok(compiled) => compiled,
-        Err(_) => return Ok(None),
-    };
-    if choices.is_empty() && !effects.is_empty() {
-        Ok(Some(effects))
-    } else {
-        Ok(None)
-    }
+    Ok((!ast.is_empty()).then_some(ast))
 }
 
 pub fn find_payment_alternative_or(tokens: &[OwnedLexToken]) -> Option<usize> {
     parse_payment_alternative_split_tokens(tokens).map(|split| split.delimiter)
 }
 
-pub fn parse_single_graveyard_bottom_library_payment(
+pub fn parse_single_graveyard_bottom_library_compiler_payment(
     tokens: &[OwnedLexToken],
-) -> Result<Option<TotalCost>, CardTextError> {
-    let Some(payment) = parse_single_graveyard_bottom_payment_tokens(tokens) else {
-        return Ok(None);
-    };
-
+) -> Option<ironsmith_core::TotalCost<crate::model::CompilerCost>> {
+    let payment = parse_single_graveyard_bottom_payment_tokens(tokens)?;
     let filter = match payment.scope {
         KeywordGraveyardBottomPaymentScope::SingleOwner => ObjectFilter::default()
             .in_zone(Zone::Graveyard)
@@ -493,18 +473,17 @@ pub fn parse_single_graveyard_bottom_library_payment(
             .in_zone(Zone::Graveyard)
             .owned_by(PlayerFilter::You),
     };
-    crate::costs::payment_effects_to_total_cost(vec![Effect::move_to_zone(
-        ChooseSpec::Object(filter).with_count(ChoiceCount::exactly(payment.count as usize)),
-        Zone::Library,
-        false,
-    )])
-    .map(Some)
-    .map_err(CardTextError::ParseError)
+    Some(ironsmith_core::TotalCost::from_costs(vec![
+        crate::model::CompilerCost::MoveChosenToLibraryBottom {
+            count: payment.count,
+            filter,
+        },
+    ]))
 }
 
 pub fn parse_payment_clause_as_total_cost(
     tokens: &[OwnedLexToken],
-) -> Result<Option<TotalCost>, CardTextError> {
+) -> Result<Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>, CardTextError> {
     let trimmed = trim_edge_punctuation(&trim_commas(tokens));
     if trimmed.is_empty() {
         return Ok(None);
@@ -524,14 +503,14 @@ pub fn parse_payment_clause_as_total_cost(
                     words(&trimmed[or_idx + 1..]).join(" ")
                 ))
             })?;
-        return Ok(Some(TotalCost::one_of(vec![left, right])));
+        return Ok(Some(ironsmith_core::TotalCost::one_of(vec![left, right])));
     }
 
     if let Some(dynamic_cost) = parse_dynamic_payment_clause_as_total_cost(&trimmed)? {
         return Ok(Some(dynamic_cost));
     }
 
-    if let Some(effect_cost) = parse_single_graveyard_bottom_library_payment(&trimmed)? {
+    if let Some(effect_cost) = parse_single_graveyard_bottom_library_compiler_payment(&trimmed) {
         return Ok(Some(effect_cost));
     }
 
@@ -544,19 +523,38 @@ pub fn parse_payment_clause_as_total_cost(
     let Some(effects) = parse_payment_clause_as_effects(&trimmed)? else {
         return Ok(None);
     };
-    crate::costs::payment_effects_to_total_cost(effects)
-        .map(Some)
-        .map_err(CardTextError::ParseError)
+    Ok(Some(ironsmith_core::TotalCost::from_costs(
+        effects
+            .into_iter()
+            .map(|effect| crate::model::CompilerCost::ValidatedEffect(Box::new(effect)))
+            .collect(),
+    )))
 }
 
 fn parse_dynamic_payment_clause_as_total_cost(
     tokens: &[OwnedLexToken],
-) -> Result<Option<TotalCost>, CardTextError> {
+) -> Result<Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>, CardTextError> {
     let lead = parse_keyword_payment_lead_tokens(tokens);
     let tokens = &tokens[lead.payload_first..];
     let tokens = trim_edge_punctuation(&trim_commas(tokens));
     if tokens.is_empty() {
         return Ok(None);
+    }
+    let payment_words = crate::lexer::parser_token_word_refs(&tokens);
+    if crate::word_primitives::parse_choice_sequence_complete(
+        &payment_words,
+        &[&["discard"], &["x"], &["card", "cards"]],
+    ) {
+        return Ok(Some(ironsmith_core::TotalCost::from_cost(
+            crate::model::CompilerCost::ValidatedEffect(Box::new(EffectAst::subject_verb_discard(
+                PlayerAst::You,
+                Value::X,
+                false,
+                false,
+                None,
+                None,
+            ))),
+        )));
     }
     let Some(shape) = parse_keyword_dynamic_payment_tokens(&tokens) else {
         return Ok(None);
@@ -576,9 +574,11 @@ fn parse_dynamic_payment_clause_as_total_cost(
                     words(&tokens).join(" ")
                 )));
             }
-            Ok(Some(TotalCost::from_cost(crate::costs::Cost::energy(
-                value,
-            ))))
+            Ok(Some(ironsmith_core::TotalCost::from_cost(
+                crate::model::CompilerCost::ValidatedEffect(Box::new(
+                    EffectAst::subject_verb_pay_energy(PlayerAst::You, value),
+                )),
+            )))
         }
         KeywordDynamicPaymentShape::ManaAmountEqual => {
             let Some(value) = parse_equal_to_aggregate_filter_value(&tokens)
@@ -586,8 +586,8 @@ fn parse_dynamic_payment_clause_as_total_cost(
             else {
                 return Ok(None);
             };
-            Ok(Some(TotalCost::from_cost(
-                crate::costs::Cost::dynamic_mana(ironsmith_core::DynamicManaCost::new(
+            Ok(Some(ironsmith_core::TotalCost::from_cost(
+                crate::model::CompilerCost::DynamicMana(ironsmith_core::DynamicManaCost::new(
                     ManaCost::new(),
                     None,
                     Some(value),
@@ -613,9 +613,9 @@ fn parse_dynamic_payment_clause_as_total_cost(
                 if let Some((amount, used)) = parse_value(life_tokens)
                     && used == life_tokens.len()
                 {
-                    return Ok(Some(TotalCost::from_costs(vec![
-                        crate::costs::Cost::mana(mana_cost),
-                        crate::costs::Cost::life(amount),
+                    return Ok(Some(ironsmith_core::TotalCost::from_costs(vec![
+                        crate::model::CompilerCost::Mana(mana_cost),
+                        crate::model::CompilerCost::Life(amount),
                     ])));
                 }
                 return Ok(None);
@@ -640,7 +640,7 @@ fn parse_dynamic_payment_clause_as_total_cost(
                                 ObjectFilter::default()
                                     .in_zone(Zone::Graveyard)
                                     .match_tagged(
-                                        TagKey::from("triggering"),
+                                        crate::tag::CompilerReferenceTag::Triggering.key(),
                                         crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
                                     ),
                             )
@@ -665,8 +665,8 @@ fn parse_dynamic_payment_clause_as_total_cost(
                 KeywordDynamicManaTail::Life { .. } => unreachable!("handled above"),
             }
 
-            Ok(Some(TotalCost::from_cost(
-                crate::costs::Cost::dynamic_mana(ironsmith_core::DynamicManaCost::new(
+            Ok(Some(ironsmith_core::TotalCost::from_cost(
+                crate::model::CompilerCost::DynamicMana(ironsmith_core::DynamicManaCost::new(
                     mana_cost,
                     x_value,
                     additional_generic,
@@ -985,9 +985,8 @@ fn exact_ability_phrase_action(kind: ExactAbilityPhrase) -> KeywordAction {
 }
 
 fn parse_exact_ability_phrase(words: &[&str]) -> Option<KeywordAction> {
-    EXACT_ABILITY_PHRASES
-        .iter()
-        .find_map(|(phrase, kind)| (*phrase == words).then(|| exact_ability_phrase_action(*kind)))
+    crate::word_primitives::matching_value(words, EXACT_ABILITY_PHRASES)
+        .map(exact_ability_phrase_action)
 }
 
 pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
@@ -996,14 +995,18 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
     // by more than one creature").
     {
         let words = crate::lexer::token_word_refs(tokens);
-        let tail = match words.as_slice() {
-            ["cant", "be", "blocked", "by", "more", "than", tail @ ..] => Some(tail),
-            ["can", "t", "be", "blocked", "by", "more", "than", tail @ ..] => Some(tail),
-            _ => None,
-        };
-        if let Some([count_word, noun]) = tail
-            && matches!(*noun, "creature" | "creatures")
-            && let Some(count) = match *count_word {
+        let tail = crate::word_primitives::strip_any_prefix(
+            &words,
+            &[
+                &["cant", "be", "blocked", "by", "more", "than"],
+                &["can", "t", "be", "blocked", "by", "more", "than"],
+            ],
+        )
+        .map(|(_, tail)| tail);
+        if let Some(tail) = tail
+            && tail.len() == 2
+            && crate::word_primitives::at_is_any(tail, 1, &["creature", "creatures"])
+            && let Some(count) = match tail.first().copied()? {
                 "one" | "1" => Some(1u32),
                 "two" | "2" => Some(2),
                 "three" | "3" => Some(3),
@@ -1035,11 +1038,11 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
             strip_leading_keyword_cost_separator(&trim_commas(&tokens[cost.clone()])).to_vec();
         let text = cumulative_upkeep_text(&cost_tokens);
 
-        match parse_payment_clause_as_total_cost(&cost_tokens) {
-            Ok(Some(total_cost)) => {
+        match parse_compiler_activation_cost(&cost_tokens) {
+            Ok(total_cost) => {
                 return Some(KeywordAction::CumulativeUpkeep { total_cost, text });
             }
-            Ok(None) | Err(_) => {
+            Err(_) => {
                 return None;
             }
         }
@@ -1249,7 +1252,11 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
         phrase_tokens,
         "eternalize",
         KeywordCostFallback::MarkerOrText,
-        |cost| KeywordAction::Eternalize(crate::cost::TotalCost::mana(cost)),
+        |cost| {
+            KeywordAction::Eternalize(
+                ironsmith_core::TotalCost::<crate::model::CompilerCost>::mana(cost),
+            )
+        },
     ) {
         return Some(action);
     }
@@ -1673,10 +1680,13 @@ mod tests {
         let KeywordAction::CumulativeUpkeep { total_cost, .. } = action else {
             panic!("expected cumulative upkeep action, got {action:?}");
         };
-        let payment = crate::costs::total_cost_to_payment_effects(&total_cost);
-        let debug = format!("{payment:?}");
-        assert!(debug.contains("MoveToZoneEffect"), "{debug}");
-        assert!(debug.contains("single_graveyard: true"), "{debug}");
+        assert!(matches!(
+            total_cost.costs(),
+            [crate::model::CompilerCost::MoveChosenToLibraryBottom {
+                count: 2,
+                filter,
+            }] if filter.zone == Some(Zone::Graveyard) && filter.single_graveyard
+        ));
 
         let actions = crate::clause_support::parse_ability_line_lexed(&tokens)
             .expect("cumulative upkeep line should parse through ability-line facade");
@@ -1693,19 +1703,12 @@ mod tests {
         ))
         .unwrap()
         .expect("owned graveyard payment should parse");
-        let payment = crate::costs::total_cost_to_payment_effects(&total_cost);
-        let [effect] = payment.as_slice() else {
-            panic!("expected one payment effect, got {payment:#?}");
+        let [crate::model::CompilerCost::MoveChosenToLibraryBottom { count, filter }] =
+            total_cost.costs()
+        else {
+            panic!("expected one typed graveyard move cost, got {total_cost:#?}");
         };
-        let moved = effect
-            .downcast_ref::<crate::effects::MoveToZoneEffect>()
-            .expect("payment should move the selected cards");
-        assert_eq!(moved.zone, Zone::Library);
-        assert!(!moved.to_top);
-        assert_eq!(moved.target.count(), ChoiceCount::exactly(3));
-        let ChooseSpec::Object(filter) = moved.target.base() else {
-            panic!("expected an object choice, got {moved:#?}");
-        };
+        assert_eq!(*count, 3);
         assert_eq!(filter.zone, Some(Zone::Graveyard));
         assert_eq!(filter.owner, Some(PlayerFilter::You));
         assert!(!filter.single_graveyard);
@@ -1719,8 +1722,8 @@ mod tests {
         assert!(matches!(
             total_cost.costs(),
             [
-                crate::costs::Cost::Mana(_),
-                crate::costs::Cost::Life(Value::Fixed(3))
+                crate::model::CompilerCost::Mana(_),
+                crate::model::CompilerCost::Life(Value::Fixed(3))
             ]
         ));
 

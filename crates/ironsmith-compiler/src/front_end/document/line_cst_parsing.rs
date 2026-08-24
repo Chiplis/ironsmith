@@ -69,9 +69,7 @@ fn moved_or_cast_origin_trigger_split_index(
 pub(super) fn parse_triggered_line_cst(
     line: &PreprocessedLine,
 ) -> Result<TriggeredLineCst, CardTextError> {
-    crate::stack::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
-        parse_triggered_line_cst_inner(line)
-    })
+    parse_triggered_line_cst_inner(line)
 }
 
 fn parse_triggered_line_cst_inner(
@@ -250,9 +248,10 @@ fn parse_triggered_line_cst_inner(
     // pass can recognize the complete authored shape.
     if let Some(effect_start) =
         clause_support::parse_combined_x_cost_trigger_tokens(tokens_without_cap)
-        && let Some(comma_index) = tokens_without_cap
-            .iter()
-            .position(|token| token.kind == TokenKind::Comma)
+        && let Some(comma_index) =
+            crate::slice_primitives::select_position(tokens_without_cap, |token| {
+                token.kind == TokenKind::Comma
+            })
         && let Some(trigger_tokens) = tokens_without_cap.get(1..comma_index)
         && let Some(effect_tokens) = tokens_without_cap.get(effect_start..)
         && let Some(candidate) =
@@ -690,12 +689,8 @@ pub(super) fn parse_level_item_cst(
         match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
             Ok(cost_cst) => {
                 let compiler_cost = crate::cst_lowering::recognize_activation_cost_cst(&cost_cst)?;
-                let cost = crate::lowering::cost_materialization::materialize_compiler_total_cost(
-                    &compiler_cost,
-                )?;
                 let parsed = super::super::semantic_line_parsing::parse_activated_line(
                     line.info.clone(),
-                    cost,
                     compiler_cost,
                     normalized_cost_tokens,
                     effect_parse_tokens,

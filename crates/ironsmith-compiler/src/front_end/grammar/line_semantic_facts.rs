@@ -20,34 +20,28 @@ fn parse_as_enters_effect_program_facts(
     {
         return None;
     }
-    let comma_idx = tokens
-        .iter()
-        .enumerate()
-        .skip(2)
-        .find_map(|(idx, token)| token.is_comma().then_some(idx))?;
+    let comma_idx =
+        crate::slice_primitives::select_position(&tokens[2..], |token| token.is_comma())? + 2;
     if comma_idx + 1 >= tokens.len() {
         return None;
     }
-    let (subject_end_idx, also_turns_face_up, turns_face_up_only) = if let Some(enters_idx) = tokens
-        [..comma_idx]
-        .iter()
-        .position(|token| token.is_word("enters"))
-    {
-        let also_turns_face_up = tokens[enters_idx + 1..comma_idx]
-            .iter()
-            .filter(|token| token.kind == super::super::lexer::TokenKind::Word)
-            .map(|token| token.parser_text.as_str())
-            .eq(["or", "is", "turned", "face", "up"]);
+    let (subject_end_idx, also_turns_face_up, turns_face_up_only) = if let Some(enters_idx) =
+        crate::slice_primitives::select_position(&tokens[..comma_idx], |token| {
+            token.is_word("enters")
+        }) {
+        let also_turns_face_up = crate::word_primitives::parse_sequence_complete(
+            &super::super::lexer::token_word_refs(&tokens[enters_idx + 1..comma_idx]),
+            &["or", "is", "turned", "face", "up"],
+        );
         (enters_idx, also_turns_face_up, false)
     } else {
-        let is_idx = tokens[..comma_idx]
-            .iter()
-            .position(|token| token.is_word("is"))?;
-        let is_turned_face_up = tokens[is_idx..comma_idx]
-            .iter()
-            .filter(|token| token.kind == super::super::lexer::TokenKind::Word)
-            .map(|token| token.parser_text.as_str())
-            .eq(["is", "turned", "face", "up"]);
+        let is_idx = crate::slice_primitives::select_position(&tokens[..comma_idx], |token| {
+            token.is_word("is")
+        })?;
+        let is_turned_face_up = crate::word_primitives::parse_sequence_complete(
+            &super::super::lexer::token_word_refs(&tokens[is_idx..comma_idx]),
+            &["is", "turned", "face", "up"],
+        );
         if !is_turned_face_up {
             return None;
         }
@@ -56,9 +50,11 @@ fn parse_as_enters_effect_program_facts(
     if subject_end_idx <= 1 {
         return None;
     }
-    let uses_enters_with_counter_surface = tokens[comma_idx + 1..]
-        .windows(2)
-        .any(|pair| pair[0].is_word("enters") && pair[1].is_word("with"));
+    let uses_enters_with_counter_surface =
+        primitives::find_prefix(&tokens[comma_idx + 1..], || {
+            primitives::phrase(&["enters", "with"])
+        })
+        .is_some();
     Some(AsEntersEffectProgramFacts {
         subject: super::super::lexer::render_token_slice(&tokens[1..subject_end_idx]),
         also_turns_face_up,
@@ -68,6 +64,7 @@ fn parse_as_enters_effect_program_facts(
 }
 
 fn parse_as_transforms_effect_program_facts(
+    context: Option<crate::parse_context::ParseContextView<'_>>,
     tokens: &[OwnedLexToken],
 ) -> Option<AsTransformsEffectProgramFacts> {
     let tokens = document_shapes::parse_statement_label_strip_tokens(tokens).body_tokens;
@@ -76,9 +73,8 @@ fn parse_as_transforms_effect_program_facts(
     {
         return None;
     }
-    let transforms_idx = tokens
-        .iter()
-        .position(|token| token.is_word("transforms"))?;
+    let transforms_idx =
+        crate::slice_primitives::select_position(tokens, |token| token.is_word("transforms"))?;
     if transforms_idx <= 1
         || !tokens
             .get(transforms_idx + 1)
@@ -86,20 +82,21 @@ fn parse_as_transforms_effect_program_facts(
     {
         return None;
     }
-    let comma_idx = tokens
-        .iter()
-        .enumerate()
-        .skip(transforms_idx + 2)
-        .find_map(|(idx, token)| token.is_comma().then_some(idx))?;
+    let comma_idx =
+        crate::slice_primitives::select_position(&tokens[transforms_idx + 2..], |token| {
+            token.is_comma()
+        })? + transforms_idx
+            + 2;
     if transforms_idx + 2 >= comma_idx || comma_idx + 1 >= tokens.len() {
         return None;
     }
     let parsed_destination =
         super::super::lexer::render_token_slice(&tokens[transforms_idx + 2..comma_idx]);
-    let destination = crate::util::current_source_reference_name()
+    let destination = context
+        .map(|context| context.source().card_name.as_str())
         .and_then(|source_name| {
             if source_name.eq_ignore_ascii_case(&parsed_destination) {
-                return Some(source_name);
+                return Some(source_name.to_string());
             }
             let short_name = source_name.split(',').next()?.trim();
             short_name
@@ -121,7 +118,20 @@ fn parse_trailing_instead_if_predicate(
     structure::parse_trailing_instead_if_predicate_lexed(&tokens[instead_idx..])
 }
 
-fn parse_statement_semantic_facts(tokens: &[OwnedLexToken]) -> StatementLineSemanticFacts {
+fn has_repeatable_instant_timing_payment_until_end_of_turn(tokens: &[OwnedLexToken]) -> bool {
+    let words = super::super::lexer::parser_token_word_refs(tokens);
+    crate::word_primitives::sequence_occurs(&words, &["until", "end", "of", "turn"])
+        && crate::word_primitives::sequence_occurs(&words, &["that", "permanent", "or", "player"])
+        && crate::word_primitives::sequence_occurs(
+            &words,
+            &["any", "time", "you", "could", "cast", "an", "instant", "if"],
+        )
+}
+
+fn parse_statement_semantic_facts(
+    context: Option<crate::parse_context::ParseContextView<'_>>,
+    tokens: &[OwnedLexToken],
+) -> StatementLineSemanticFacts {
     let instead = effects::parse_instead_followup_shape_tokens(tokens);
     let leading_condition_intro =
         leaf::parse_leaf_condition_intro_prefix_tokens(tokens).map(|prefix| match prefix.intro {
@@ -144,28 +154,43 @@ fn parse_statement_semantic_facts(tokens: &[OwnedLexToken]) -> StatementLineSema
         trailing_instead_if_predicate: parse_trailing_instead_if_predicate(tokens),
         replacement_surfaces,
         as_enters_effect_program: parse_as_enters_effect_program_facts(tokens),
-        as_transforms_effect_program: parse_as_transforms_effect_program_facts(tokens),
+        as_transforms_effect_program: parse_as_transforms_effect_program_facts(context, tokens),
         presentation_label: None,
         creature_type_choice_buff: lowering_surfaces::parse_creature_type_choice_buff_tokens(
             tokens,
         )
         .is_some(),
         leading_condition_intro,
+        repeatable_instant_timing_payment_until_end_of_turn:
+            has_repeatable_instant_timing_payment_until_end_of_turn(tokens),
     }
 }
 
 fn has_leading_unless_resolution_surface(tokens: &[OwnedLexToken]) -> bool {
-    let Some(unless_idx) = tokens
-        .windows(2)
-        .position(|pair| pair[0].is_comma() && pair[1].is_word("unless"))
-        .map(|comma_idx| comma_idx + 1)
+    let Some((comma_idx, _, _)) =
+        primitives::find_prefix(tokens, || (primitives::comma(), primitives::kw("unless")))
     else {
         return false;
     };
-    tokens[unless_idx + 1..].iter().any(OwnedLexToken::is_comma)
+    crate::slice_primitives::select_position(&tokens[comma_idx + 2..], OwnedLexToken::is_comma)
+        .is_some()
 }
 
 pub fn parse_line_semantic_facts_tokens(tokens: &[OwnedLexToken]) -> LineSemanticFacts {
+    parse_line_semantic_facts_tokens_with_optional_context(None, tokens)
+}
+
+pub fn parse_line_semantic_facts_tokens_with_context(
+    context: crate::parse_context::ParseContextView<'_>,
+    tokens: &[OwnedLexToken],
+) -> LineSemanticFacts {
+    parse_line_semantic_facts_tokens_with_optional_context(Some(context), tokens)
+}
+
+fn parse_line_semantic_facts_tokens_with_optional_context(
+    context: Option<crate::parse_context::ParseContextView<'_>>,
+    tokens: &[OwnedLexToken],
+) -> LineSemanticFacts {
     let static_cost = lowering_surfaces::parse_this_spell_cost_surface_tokens(tokens);
     let trigger_zones = functional_zones::parse_trigger_functional_zone_facts_tokens(tokens);
     let trigger_frequency = trigger_surface::parse_trigger_frequency_tokens(tokens);
@@ -182,7 +207,7 @@ pub fn parse_line_semantic_facts_tokens(tokens: &[OwnedLexToken]) -> LineSemanti
             }),
             presentation_label: None,
         },
-        statement: parse_statement_semantic_facts(tokens),
+        statement: parse_statement_semantic_facts(context, tokens),
         triggered_ability: TriggeredLineSemanticFacts {
             compiler_ability: None,
             intro_surface: trigger_surface::parse_trigger_intro_surface_tokens(tokens),
@@ -237,6 +262,31 @@ mod tests {
                 .map(|cost| cost.reduction_cap),
             Some(Some(3))
         );
+    }
+
+    #[test]
+    fn classifies_repeatable_instant_timing_payment_without_lowering_source_text() {
+        let exact = facts(
+            "Prevent the next X damage that would be dealt to any target this turn. Until end of turn, you may pay {1} any time you could cast an instant. If you do, prevent the next 1 damage that would be dealt to that permanent or player this turn.",
+        );
+        assert!(
+            exact
+                .statement
+                .repeatable_instant_timing_payment_until_end_of_turn
+        );
+
+        for near_miss in [
+            "Until end of turn, you may pay {1}. If you do, prevent the next 1 damage that would be dealt to that permanent or player this turn.",
+            "You may pay {1} any time you could cast an instant. If you do, prevent the next 1 damage that would be dealt to that permanent or player this turn.",
+            "Until end of turn, you may pay {1} any time you could cast an instant. If you do, draw a card.",
+        ] {
+            assert!(
+                !facts(near_miss)
+                    .statement
+                    .repeatable_instant_timing_payment_until_end_of_turn,
+                "near miss must remain an ordinary resolution: {near_miss}"
+            );
+        }
     }
 
     #[test]
@@ -326,10 +376,15 @@ mod tests {
         assert_eq!(as_transforms.destination, "Shinryu");
         assert!(parsed.statement.as_enters_effect_program.is_none());
 
-        let normalized =
-            crate::util::with_source_reference_context("Shinryu, Transcendent Rival", || {
-                facts("As this creature transforms into shinryu, choose an opponent.")
-            });
+        let text = "As this creature transforms into shinryu, choose an opponent.";
+        let tokens = lex_line(text, 0).expect("normalized transform fixture should lex");
+        let context = crate::parse_context::ParseContext::for_fragment(
+            "Shinryu, Transcendent Rival",
+            Vec::new(),
+            Vec::new(),
+            text,
+        );
+        let normalized = parse_line_semantic_facts_tokens_with_context(context.view(), &tokens);
         assert_eq!(
             normalized
                 .statement

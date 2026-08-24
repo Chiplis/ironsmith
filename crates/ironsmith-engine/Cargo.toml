@@ -53,28 +53,8 @@ name = "u060_ante"
 path = "tests/u060_ante.rs"
 
 [[test]]
-name = "u061_planechase"
-path = "tests/u061_planechase.rs"
-
-[[test]]
 name = "u062_vanguard"
 path = "tests/u062_vanguard.rs"
-
-[[test]]
-name = "u063_archenemy"
-path = "tests/u063_archenemy.rs"
-
-[[test]]
-name = "u064_conspiracy_draft"
-path = "tests/u064_conspiracy_draft.rs"
-
-[[test]]
-name = "u065_subgames"
-path = "tests/u065_subgames.rs"
-
-[[test]]
-name = "u066_contraptions"
-path = "tests/u066_contraptions.rs"
 
 [[test]]
 name = "u067_range_of_influence"

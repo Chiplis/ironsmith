@@ -2524,7 +2524,7 @@ impl WasmGame {
                 ColorSet::COLORLESS,
             )
         } else {
-            self.registry.ensure_cards_loaded([object.name.as_str()]);
+            self.ensure_card_definitions_loaded([object.name.as_str()]);
             let definition = self.load_compilable_card_definition(&object.name)?;
             self.game
                 .register_linked_face_family_from_catalog(&definition, &self.registry);
@@ -3384,7 +3384,7 @@ mod sync_checkpoint_tests {
             0
         );
 
-        game.registry.ensure_cards_loaded(["Lightning Bolt"]);
+        game.ensure_card_definitions_loaded(["Lightning Bolt"]);
         let definition = game
             .find_card_definition("Lightning Bolt")
             .expect("fixture card should load")
@@ -3519,7 +3519,7 @@ mod sync_checkpoint_tests {
         let initial_hand = game.game.draw_cards(bob, 2);
         assert_eq!(initial_hand.len(), 2);
 
-        game.registry.ensure_cards_loaded(["Swamp"]);
+        game.ensure_card_definitions_loaded(["Swamp"]);
         let definition = game
             .find_card_definition("Swamp")
             .expect("fixture card should load")
@@ -3706,7 +3706,7 @@ mod sync_checkpoint_tests {
                 format!("alice-slot-{slot}"),
             );
         }
-        game.registry.ensure_cards_loaded(["Swamp"]);
+        game.ensure_card_definitions_loaded(["Swamp"]);
         let definition = game
             .find_card_definition("Swamp")
             .expect("fixture card should load")
@@ -3777,7 +3777,7 @@ mod sync_checkpoint_tests {
             );
         }
         assert_eq!(game.game.draw_cards(alice, 7).len(), 7);
-        game.registry.ensure_cards_loaded(["Mountain"]);
+        game.ensure_card_definitions_loaded(["Mountain"]);
         let mountain = game
             .find_card_definition("Mountain")
             .expect("fixture card should load")
@@ -4720,7 +4720,7 @@ mod sync_checkpoint_tests {
         let _id_counter_guard = crate::test_id_counter_guard();
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
-        let definition = ironsmith::cards::builders::CardDefinitionBuilder::new(
+        let definition = ironsmith_registry_test::cards::builders::CardDefinitionBuilder::new(
             CardId::new(),
             "Checkpoint Secret",
         )
@@ -5022,7 +5022,7 @@ mod sync_checkpoint_tests {
         .expect("host should populate committed decks");
         let drawn = host.game.draw_cards(PlayerId::from_index(1), 1);
         let hand_id = drawn[0];
-        host.registry.ensure_cards_loaded(["Lightning Bolt"]);
+        host.ensure_card_definitions_loaded(["Lightning Bolt"]);
         let definition = host
             .find_card_definition("Lightning Bolt")
             .expect("fixture card should load")

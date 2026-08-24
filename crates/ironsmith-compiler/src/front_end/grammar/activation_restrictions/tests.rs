@@ -118,7 +118,7 @@ fn global_and_player_restriction_surfaces_return_typed_facts() {
     assert_eq!(
         parse_player_restriction_subject_words(&["players", "dealt", "damage", "this", "way"]),
         Some(crate::target::PlayerFilter::TaggedPlayer(
-            crate::cards::builders::TagKey::from("damaged_0"),
+            crate::tag::CompilerReferenceTag::Damaged0.key(),
         ))
     );
     assert_eq!(

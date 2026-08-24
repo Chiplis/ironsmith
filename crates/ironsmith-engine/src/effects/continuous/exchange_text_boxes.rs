@@ -102,14 +102,20 @@ impl EffectExecutor for ExchangeTextBoxesEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::ability::AbilityKind;
     use crate::card::PowerToughness;
     use crate::cards::CardDefinitionBuilder;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::effect::ChoiceCount;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::effects::ResolvedTarget;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::events::combat::CreatureAttackedEvent;
     use crate::ids::{CardId, ObjectId, PlayerId};
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::provenance::ProvNodeId;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::triggers::{AttackEventTarget, TriggerEvent, check_triggers};
     use crate::types::CardType;
     use crate::zone::Zone;

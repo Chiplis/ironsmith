@@ -3,9 +3,12 @@
 use super::CardDefinitionBuilder;
 use crate::card::LinkedFaceLayout;
 use crate::cards::CardDefinition;
+use crate::effect::Effect;
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::CardType;
+use crate::zone::Zone;
 
 const BREAKING_ID: u32 = 0x4252_4541;
 const ENTERING_ID: u32 = 0x454E_5445;
@@ -21,8 +24,9 @@ pub fn breaking() -> CardDefinition {
         .other_face_name("Entering")
         .linked_face_layout(LinkedFaceLayout::Split)
         .has_fuse()
-        .parse_text("Target player mills eight cards.")
-        .expect("Breaking text should be supported")
+        .oracle_text("Target player mills eight cards.")
+        .with_spell_effect(vec![Effect::mill_player(8, PlayerFilter::Any)])
+        .build()
 }
 
 pub fn entering() -> CardDefinition {
@@ -36,8 +40,15 @@ pub fn entering() -> CardDefinition {
         .other_face(CardId::from_raw(BREAKING_ID))
         .other_face_name("Breaking")
         .linked_face_layout(LinkedFaceLayout::Split)
-        .parse_text(
+        .oracle_text(
             "Put target creature card from a graveyard onto the battlefield under your control.",
         )
-        .expect("Entering text should be supported")
+        .with_spell_effect(vec![Effect::put_onto_battlefield(
+            ChooseSpec::Target(Box::new(ChooseSpec::Object(
+                ObjectFilter::creature().in_zone(Zone::Graveyard),
+            ))),
+            false,
+            PlayerFilter::You,
+        )])
+        .build()
 }

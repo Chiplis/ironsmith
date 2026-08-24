@@ -1,6 +1,6 @@
 use crate::ConditionExpr;
 use crate::color::ColorSet;
-use crate::cost::{OptionalCostRef, TotalCost};
+use crate::cost::OptionalCostRef;
 use crate::effect::{ChoiceAggregateMetric, ChoiceCount, EffectId, Until, Value};
 use crate::filter::Comparison;
 use crate::mana::{ManaCost, ManaSymbol};
@@ -10,7 +10,6 @@ use crate::model::control_flow::CompilerControlFlowAst;
 use crate::model::coordination::CoordinationAst;
 use crate::model::resource_choice_clauses::{CompilerIterationAst, CompilerVoteAst};
 use crate::object::{AuraAttachmentFilter, CounterType};
-use crate::static_abilities::StaticAbility;
 use crate::tag::TagKey;
 use crate::target::{ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter, SourceReferenceSurface};
 use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
@@ -45,7 +44,7 @@ pub use nodes::*;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum StaticAbilityAst {
-    Static(StaticAbility),
+    Static(crate::model::CompilerStaticAbilityCore),
     KeywordAction(KeywordAction),
     PregameRevealFromOpeningHand {
         trigger: TriggerSpec,
@@ -135,8 +134,8 @@ pub enum StaticAbilityAst {
     },
 }
 
-impl From<StaticAbility> for StaticAbilityAst {
-    fn from(ability: StaticAbility) -> Self {
+impl From<crate::model::CompilerStaticAbilityCore> for StaticAbilityAst {
+    fn from(ability: crate::model::CompilerStaticAbilityCore) -> Self {
         Self::Static(ability)
     }
 }

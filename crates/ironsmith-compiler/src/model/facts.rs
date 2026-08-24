@@ -49,6 +49,7 @@ pub struct StatementLineSemanticFacts {
     pub presentation_label: Option<crate::ability::PresentationLabel>,
     pub creature_type_choice_buff: bool,
     pub leading_condition_intro: Option<StatementConditionIntro>,
+    pub repeatable_instant_timing_payment_until_end_of_turn: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -202,6 +203,12 @@ pub struct CompileContext {
     pub next_tag_id: u32,
 }
 
+impl Default for CompileContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CompileContext {
     pub fn new() -> Self {
         Self::from_id_gen(IdGenContext::default())
@@ -251,6 +258,12 @@ pub struct EffectLoweringContext {
     ids: CompileContext,
     frame: LoweringFrame,
     reserved_object_result_tag: Option<String>,
+}
+
+impl Default for EffectLoweringContext {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Deref for EffectLoweringContext {

@@ -321,6 +321,19 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Typed replacement payload retained by both hand-authored runtime
+    /// abilities and compiler-model interpreters.
+    fn exile_would_die_instead_spec(
+        &self,
+    ) -> Option<(
+        &crate::target::ObjectFilter,
+        Option<ironsmith_core::DamagedBySource>,
+        &[(crate::object::CounterType, u32)],
+        &[crate::effect::Effect],
+    )> {
+        None
+    }
+
     /// Whether compiled Oracle text should use the card's authored name as
     /// this ability's subject instead of the generic "this permanent" form.
     fn prefers_card_name_subject(&self) -> bool {
@@ -1527,6 +1540,17 @@ impl StaticAbility {
 
     pub fn compiled_model(&self) -> Option<&CompiledStaticAbility> {
         self.0.compiled_model()
+    }
+
+    pub fn exile_would_die_instead_spec(
+        &self,
+    ) -> Option<(
+        &crate::target::ObjectFilter,
+        Option<ironsmith_core::DamagedBySource>,
+        &[(crate::object::CounterType, u32)],
+        &[crate::effect::Effect],
+    )> {
+        self.0.exile_would_die_instead_spec()
     }
 
     pub fn prefers_card_name_subject(&self) -> bool {

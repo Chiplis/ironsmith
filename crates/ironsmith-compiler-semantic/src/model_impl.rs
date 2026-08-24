@@ -102,6 +102,10 @@ pub use symbols::{
 
 pub use activated_abilities::CompilerActivatedAbilityAst;
 pub use clauses::{ClauseActorAst, ClauseVerbAst};
+pub use compiler_semantic::{
+    CompilerAbilityCore, CompilerAbilityKindCore, CompilerActivatedAbilityCore,
+    CompilerManaUsageRestriction, CompilerTriggeredAbilityCore,
+};
 pub use control_flow::*;
 pub use coordination::*;
 pub use legality::*;

@@ -262,145 +262,19 @@ fn parse_each_player_counter_follow_up_lexed<'a>(
     })
 }
 
-fn parse_general_put_counter_prevention_lexed<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<PutCounterPreventionSpec<'a>> {
-    let (((), source_tokens), display_prefix_tokens) = (
-        semantic_phrase(&["if", "damage", "would", "be", "dealt", "to"]),
-        repeat_till::<_, _, (), _, _, _, _>(
-            1..,
-            any.void(),
-            peek(alt((
-                semantic_kw("while"),
-                semantic_kw("prevent"),
-                semantic_kw("put"),
-            ))),
-        )
-        .map(|((), _)| ())
-        .take(),
-    )
-        .with_taken()
-        .parse_next(input)?;
-    validate_source_reference(trim_lexed_commas(source_tokens))?;
-    let condition_tokens = if peek(semantic_kw("while")).parse_next(input).is_ok() {
-        semantic_kw("while").parse_next(input)?;
-        let condition_tokens = repeat_till::<_, _, (), _, _, _, _>(
-            1..,
-            any.void(),
-            peek(alt((semantic_kw("prevent"), semantic_kw("put")))),
-        )
-        .map(|((), _)| ())
-        .take()
-        .parse_next(input)?;
-        Some(trim_lexed_commas(condition_tokens))
-    } else {
-        None
-    };
-    let (_, effect_tokens) = alt((
-        (
-            semantic_phrase(&[
-                "prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counters",
-                "on",
-            ]),
-            parse_counter_destination,
-        )
-            .void(),
-        (
-            semantic_phrase(&["put", "that", "many", "+1/+1", "counters", "on"]),
-            parse_counter_destination,
-            semantic_kw("instead"),
-        )
-            .void(),
-    ))
-    .with_taken()
-    .parse_next(input)?;
-    semantic_finish(input)?;
-    Ok(PutCounterPreventionSpec::General {
-        condition_tokens,
-        display_prefix_tokens: trim_lexed_commas(display_prefix_tokens),
-        effect_tokens: trim_lexed_commas(effect_tokens),
-    })
-}
-
-fn parse_noncombat_put_counter_prevention_lexed<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<PutCounterPreventionSpec<'a>> {
-    semantic_phrase(&[
-        "if",
-        "noncombat",
-        "damage",
-        "would",
-        "be",
-        "dealt",
-        "to",
-        "this",
-        "creature",
-        "prevent",
-        "that",
-        "damage",
-        "put",
-        "a",
-        "+1/+1",
-        "counter",
-        "on",
-        "this",
-        "creature",
-        "for",
-        "each",
-        "1",
-        "damage",
-        "prevented",
-        "this",
-        "way",
-    ])
-    .parse_next(input)?;
-    semantic_finish(input)?;
-    Ok(PutCounterPreventionSpec::Noncombat)
-}
-
-fn parse_creature_combat_put_counter_prevention_lexed<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<PutCounterPreventionSpec<'a>> {
-    semantic_phrase(&[
-        "if", "a", "creature", "would", "deal", "combat", "damage", "to", "this", "creature",
-        "prevent", "that", "damage", "and", "put", "a", "+1/+1", "counter", "on", "this",
-        "creature",
-    ])
-    .parse_next(input)?;
-    semantic_finish(input)?;
-    Ok(PutCounterPreventionSpec::CreatureCombat)
-}
-
-fn parse_this_source<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    semantic_kw("this").parse_next(input)?;
-    opt(alt((semantic_kw("creature"), semantic_kw("permanent"))))
-        .void()
-        .parse_next(input)
-}
-
-fn parse_counter_destination<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    alt((
-        semantic_kw("it"),
-        semantic_kw("him"),
-        (semantic_kw("this"), semantic_kw("creature")).void(),
-    ))
-    .parse_next(input)
-}
-
-fn validate_source_reference(tokens: &[OwnedLexToken]) -> WResult<()> {
-    let words = parser_token_word_refs(tokens);
-    if leaf::parse_leaf_this_source_reference_words(&words).is_some()
-        || crate::util::source_reference_surface_for_words(&words).is_some()
-    {
-        Ok(())
-    } else {
-        Err(primitives::backtrack_err(
-            "damage-prevention subject",
-            "source reference",
-        ))
-    }
-}
-
 #[cfg(test)]
 #[path = "prevention/tests.rs"]
 mod tests;
+
+#[path = "prevention/reference_programs.rs"]
+mod reference_programs;
+use reference_programs::{parse_this_source, validate_source_reference};
+#[path = "prevention/counter_programs.rs"]
+mod counter_programs;
+use counter_programs::parse_counter_destination;
+#[path = "prevention/combat_programs.rs"]
+mod combat_programs;
+use combat_programs::{
+    parse_creature_combat_put_counter_prevention_lexed, parse_general_put_counter_prevention_lexed,
+    parse_noncombat_put_counter_prevention_lexed,
+};

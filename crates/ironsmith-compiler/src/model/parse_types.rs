@@ -127,6 +127,10 @@ pub enum ExchangeValueAst<
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "boxing the count-bearing target value would add indirection to a pervasive canonical AST API"
+)]
 pub enum TargetAst<
     PlayerFilter = crate::target::PlayerFilter,
     ObjectFilter = crate::target::ObjectFilter,
@@ -177,6 +181,10 @@ pub enum RedirectNextTimeDamageDestinationAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "this canonical AST wrapper intentionally embeds the complete target vocabulary"
+)]
 pub enum PreventNextTimeDamageTargetAst {
     AnyTarget,
     You,

@@ -87,7 +87,9 @@ pub fn parse_copy_clause_shape_tokens(tokens: &[OwnedLexToken]) -> Option<CopyCl
         let words = parser_token_word_refs(tokens);
         let token_end = words
             .get(index..)
-            .and_then(|_| crate::lexer::TokenWordView::new(tokens).token_boundary_for_word(index))
+            .and_then(|_| {
+                crate::lexer::TokenWordView::new(tokens).map_word_to_token_boundary(index)
+            })
             .unwrap_or(tokens.len());
         &tokens[..token_end]
     });
@@ -228,7 +230,7 @@ pub fn parse_copy_retarget_shape_tokens(tokens: &[OwnedLexToken]) -> Option<Copy
         // follow-up. Recover the same narrow shape from normalized words
         // without requiring the whole token slice to be one parser block.
         let words = parser_token_word_refs(tokens);
-        let choose = words.iter().position(|word| *word == "choose")?;
+        let choose = crate::word_primitives::select_word_position(&words, |word| word == "choose")?;
         if choose > 3
             || words[..choose]
                 .iter()
@@ -237,16 +239,16 @@ pub fn parse_copy_retarget_shape_tokens(tokens: &[OwnedLexToken]) -> Option<Copy
             return None;
         }
         let tail = words.get(choose + 1..)?;
-        let has_target = tail.contains(&"target");
-        let has_targets = tail.contains(&"targets");
+        let has_target = crate::word_primitives::contains_word(tail, "target");
+        let has_targets = crate::word_primitives::contains_word(tail, "targets");
         if !(has_target || has_targets)
             || !tail.iter().any(|word| matches!(*word, "copy" | "copies"))
         {
             return None;
         }
         Some(CopyRetargetShape {
-            may_choose: words[..choose].contains(&"may"),
-            has_new: tail.contains(&"new"),
+            may_choose: crate::word_primitives::contains_word(&words[..choose], "may"),
+            has_new: crate::word_primitives::contains_word(tail, "new"),
             single_target: has_target && !has_targets,
         })
     })

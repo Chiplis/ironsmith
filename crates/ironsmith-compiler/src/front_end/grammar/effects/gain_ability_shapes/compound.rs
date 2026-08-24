@@ -82,7 +82,7 @@ fn semantic_subject_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]>
     let Some(duration) = super::parse_leading_gain_duration_shape(&words) else {
         return Some(tokens);
     };
-    let semantic_start = word_view.token_boundary_for_word_or_end(duration.consumed_words)?;
+    let semantic_start = word_view.map_word_or_end_to_token_boundary(duration.consumed_words)?;
     nonempty_trimmed(tokens.get(semantic_start..)?)
 }
 
@@ -92,21 +92,29 @@ fn semantic_subject_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]>
 /// the leading draw belongs to the surrounding coordinated effect chain.
 fn independent_player_action_precedes_shared_subject(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens).to_word_refs();
-    let player_subject_words = match words.as_slice() {
-        ["you", ..] => 1,
-        [
-            "target" | "that" | "each" | "chosen" | "active" | "defending",
-            "player",
-            ..,
-        ]
-        | ["the", "player", ..]
-        | ["its" | "their", "controller" | "owner", ..] => 2,
-        _ => return false,
+    let player_subject_words = if crate::word_primitives::first_is(&words, "you") {
+        1
+    } else if crate::word_primitives::parse_choice_sequence_prefix(
+        &words,
+        &[
+            &["target", "that", "each", "chosen", "active", "defending"],
+            &["player"],
+        ],
+    ) || crate::word_primitives::parse_sequence_prefix(&words, &["the", "player"])
+        || crate::word_primitives::parse_choice_sequence_prefix(
+            &words,
+            &[&["its", "their"], &["controller", "owner"]],
+        )
+    {
+        2
+    } else {
+        return false;
     };
     let Some(verb) = super::super::chain_splitting::find_chain_verb_words(&words) else {
         return false;
     };
-    verb.word_index == player_subject_words && words[verb.word_index + 1..].contains(&"and")
+    verb.word_index == player_subject_words
+        && crate::word_primitives::contains_word(&words[verb.word_index + 1..], "and")
 }
 
 pub fn parse_gain_then_get_shape(tokens: &[OwnedLexToken]) -> Option<GainThenGetShape<'_>> {
@@ -124,108 +132,18 @@ pub fn parse_gain_then_get_shape(tokens: &[OwnedLexToken]) -> Option<GainThenGet
     })
 }
 
-pub fn parse_get_then_ability_shape(tokens: &[OwnedLexToken]) -> Option<GetThenAbilityShape<'_>> {
-    let tokens = trim_lexed_commas(tokens);
-    let (get_token, (), after_get) = primitives::find_prefix(tokens, || get_verb)?;
-    let raw_subject_tokens = tokens.get(..get_token)?;
-    if independent_player_action_precedes_shared_subject(raw_subject_tokens) {
-        return None;
-    }
-    let subject_tokens = semantic_subject_tokens(raw_subject_tokens)?;
-    let (separator_token, ability_verb, ability_tokens) =
-        primitives::find_prefix(after_get, || {
-            (primitives::kw("and"), shared_ability_verb).map(|(_, verb)| verb)
-        })?;
-    let pump_tokens = nonempty_trimmed(after_get.get(..separator_token)?)?;
-    let ability_tokens = nonempty_trimmed(ability_tokens)?;
-    Some(GetThenAbilityShape {
-        subject_tokens,
-        pump_tokens,
-        ability_tokens,
-        ability_verb,
-    })
-}
-
-pub fn parse_attached_and_related_get_ability_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<AttachedAndRelatedGetAbilityShape<'_>> {
-    let shape = parse_get_then_ability_shape(tokens)?;
-    if !matches!(
-        shape.ability_verb,
-        SharedAbilityVerb::Gain | SharedAbilityVerb::Has
-    ) {
-        return None;
-    }
-    let subject = primitives::parse_all(
-        shape.subject_tokens,
-        parse_attached_and_related_subject,
-        "attached object and related creatures subject",
-    )
-    .ok()?;
-    let (ability_tokens, ()) =
-        primitives::split_lexed_once_before_suffix(shape.ability_tokens, 1, || {
-            (
-                primitives::phrase(&["until", "end", "of", "turn"]),
-                primitives::sentence_end(),
-            )
-                .void()
-        })?;
-    let ability_tokens = nonempty_trimmed(ability_tokens)?;
-    Some(AttachedAndRelatedGetAbilityShape {
-        subject,
-        pump_tokens: shape.pump_tokens,
-        ability_tokens,
-        duration: Until::EndOfTurn,
-    })
-}
-
-pub fn parse_attached_and_related_get_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<AttachedAndRelatedGetShape<'_>> {
-    let tokens = trim_lexed_commas(tokens);
-    let (get_token, (), after_get) = primitives::find_prefix(tokens, || get_verb)?;
-    let subject_tokens = nonempty_trimmed(tokens.get(..get_token)?)?;
-    let subject = primitives::parse_all(
-        subject_tokens,
-        parse_attached_and_related_subject,
-        "attached object and related creatures subject",
-    )
-    .ok()?;
-    let (pump_tokens, ()) = primitives::split_lexed_once_before_suffix(after_get, 1, || {
-        (
-            primitives::phrase(&["until", "end", "of", "turn"]),
-            primitives::sentence_end(),
-        )
-            .void()
-    })?;
-    let pump_tokens = nonempty_trimmed(pump_tokens)?;
-    Some(AttachedAndRelatedGetShape {
-        subject,
-        pump_tokens,
-        duration: Until::EndOfTurn,
-    })
-}
-
-fn parse_attached_and_related_subject(
-    input: &mut LexStream<'_>,
-) -> WResult<AttachedReferenceSubject> {
-    let subject = alt((
-        primitives::phrase(&["enchanted", "creature"])
-            .value(AttachedReferenceSubject::EnchantedCreature),
-        primitives::phrase(&["equipped", "creature"])
-            .value(AttachedReferenceSubject::EquippedCreature),
-    ))
-    .parse_next(input)?;
-    primitives::kw("and").parse_next(input)?;
-    opt(alt((primitives::kw("each"), primitives::kw("all")))).parse_next(input)?;
-    primitives::phrase(&["other", "creatures"]).parse_next(input)?;
-    opt(primitives::kw("that")).parse_next(input)?;
-    alt((primitives::kw("share"), primitives::kw("shares"))).parse_next(input)?;
-    primitives::phrase(&["a", "creature", "type", "with", "it"]).parse_next(input)?;
-    eof.parse_next(input)?;
-    Ok(subject)
-}
-
 #[cfg(test)]
 #[path = "compound/tests.rs"]
 mod tests;
+
+#[path = "compound/reference_programs.rs"]
+mod reference_programs;
+use reference_programs::parse_attached_and_related_subject;
+#[path = "compound/object_action_programs.rs"]
+mod object_action_programs;
+pub use object_action_programs::{
+    parse_attached_and_related_get_ability_shape, parse_attached_and_related_get_shape,
+};
+#[path = "compound/ability_programs.rs"]
+mod ability_programs;
+pub use ability_programs::parse_get_then_ability_shape;

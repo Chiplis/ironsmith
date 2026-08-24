@@ -87,7 +87,10 @@ pub fn parse_granted_subject_facts(tokens: &[OwnedLexToken]) -> GrantedSubjectFa
         rejected_action: contains_parser(tokens, || parse_rejected_subject_action),
         has_may: contains_parser(tokens, || primitives::kw("may").void()),
         attached_subject: primitives::parse_prefix(tokens, parse_attached_subject_head).is_some(),
-        unbound_pronoun: matches!(words.as_slice(), ["it"] | ["they"] | ["them"]),
+        unbound_pronoun: crate::word_primitives::parse_any_sequence_complete(
+            &words,
+            &[&["it"], &["they"], &["them"]],
+        ),
     }
 }
 

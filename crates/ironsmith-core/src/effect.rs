@@ -579,6 +579,7 @@ pub enum DelayedTriggerSpec {
         player: PlayerFilter,
         filter: ObjectFilter,
     },
+    PlayerDrawsCard(PlayerFilter),
     AbilityActivated {
         activator: PlayerFilter,
         filter: ObjectFilter,

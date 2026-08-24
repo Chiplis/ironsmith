@@ -3,17 +3,18 @@ use super::*;
 fn ash_runner_create(
     presentation: ironsmith_core::TokenAbilityPresentation,
 ) -> crate::effects::CreateTokenEffect {
-    let token = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Ash Runner")
-        .token()
-        .card_types(vec![CardType::Creature])
-        .subtypes(vec![Subtype::Elemental])
-        .color_indicator(crate::color::ColorSet::RED)
-        .power_toughness(crate::card::PowerToughness::fixed(3, 1))
-        .with_abilities(vec![
-            Ability::static_ability(crate::static_abilities::StaticAbility::trample()),
-            Ability::static_ability(crate::static_abilities::StaticAbility::haste()),
-        ])
-        .build();
+    let token =
+        crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Ash Runner")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Elemental])
+            .color_indicator(crate::color::ColorSet::RED)
+            .power_toughness(crate::card::PowerToughness::fixed(3, 1))
+            .with_abilities(vec![
+                Ability::static_ability(crate::static_abilities::StaticAbility::trample()),
+                Ability::static_ability(crate::static_abilities::StaticAbility::haste()),
+            ])
+            .build();
     crate::effects::CreateTokenEffect::one(token)
         .with_ability_presentation(presentation)
         .sacrifice_at_next_end_step()

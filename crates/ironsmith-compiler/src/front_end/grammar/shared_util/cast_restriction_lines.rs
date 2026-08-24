@@ -1,7 +1,8 @@
 use crate::cards::builders::CardTextError;
 use crate::grammar::{conditions, permission_shapes};
 use crate::lexer::{OwnedLexToken, TokenWordView};
-use crate::static_abilities::{StaticAbility, ThisSpellCastRestrictionKind as Restriction};
+use crate::model::CompilerStaticAbilityCore as StaticAbility;
+use crate::static_abilities::ThisSpellCastRestrictionKind as Restriction;
 use crate::target::ObjectFilter;
 use crate::types::Subtype;
 use crate::zone::Zone;

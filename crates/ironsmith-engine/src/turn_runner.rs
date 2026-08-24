@@ -2500,6 +2500,7 @@ mod tests {
     use crate::ids::{CardId, PlayerId};
     use crate::object::Object;
     use crate::static_abilities::StaticAbility;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::tag::TagKey;
     use crate::triggers::TriggerQueue;
     use crate::types::CardType;

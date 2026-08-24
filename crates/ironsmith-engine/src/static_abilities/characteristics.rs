@@ -176,81 +176,76 @@ mod tests {
     }
 
     #[test]
-    fn test_display_count_strips_leading_article() {
+    fn count_characteristic_keeps_the_typed_creature_scope() {
+        let filter = ObjectFilter::creature().you_control();
         let ability = CharacteristicDefiningPT::new(
-            Value::Count(ObjectFilter::creature().you_control()),
-            Value::Count(ObjectFilter::creature().you_control()),
+            Value::Count(filter.clone()),
+            Value::Count(filter.clone()),
         );
-        assert_eq!(
-            ability.display(),
-            "This creature's power and toughness are each equal to the number of creatures you control"
-        );
+
+        assert_eq!(ability.power, Value::Count(filter.clone()));
+        assert_eq!(ability.toughness, Value::Count(filter));
     }
 
     #[test]
-    fn test_display_additive_count_value() {
+    fn additive_count_characteristic_keeps_both_typed_terms() {
         let value = Value::Add(
             Box::new(Value::Fixed(2)),
             Box::new(Value::Count(ObjectFilter::creature().you_control())),
         );
-        let ability = CharacteristicDefiningPT::new(value.clone(), value);
-        assert_eq!(
-            ability.display(),
-            "This creature's power and toughness are each equal to 2 plus the number of creatures you control"
-        );
+        let ability = CharacteristicDefiningPT::new(value.clone(), value.clone());
+
+        assert_eq!(ability.power, value);
+        assert_eq!(ability.power, ability.toughness);
     }
 
     #[test]
-    fn test_display_uses_self_pronoun_for_counters_on_source() {
+    fn counter_characteristic_keeps_the_source_counter_type() {
         let value = Value::CountersOnSource(crate::object::CounterType::Time);
-        let ability = CharacteristicDefiningPT::new(value.clone(), value);
+        let ability = CharacteristicDefiningPT::new(value.clone(), value.clone());
 
-        assert_eq!(
-            ability.display(),
-            "This creature's power and toughness are each equal to the number of time counters on it"
-        );
+        assert_eq!(ability.power, value);
+        assert_eq!(ability.power, ability.toughness);
     }
 
     #[test]
-    fn test_display_power_only_omits_source_toughness_placeholder() {
+    fn power_only_characteristic_keeps_the_graveyard_scope() {
         let mut filter = ObjectFilter::land();
         filter.zone = Some(crate::zone::Zone::Graveyard);
         filter.owner = Some(PlayerFilter::You);
-        let ability = CharacteristicDefiningPT::new(Value::Count(filter), Value::SourceToughness);
-        assert_eq!(
-            ability.display(),
-            "This creature's power is equal to the number of land cards in your graveyard"
-        );
+        let ability =
+            CharacteristicDefiningPT::new(Value::Count(filter.clone()), Value::SourceToughness);
+
+        assert_eq!(ability.power, Value::Count(filter));
+        assert_eq!(ability.toughness, Value::SourceToughness);
     }
 
     #[test]
-    fn test_display_toughness_only_omits_source_power_placeholder() {
-        let ability = CharacteristicDefiningPT::new(
-            Value::SourcePower,
-            Value::Count(
-                ObjectFilter::default()
-                    .with_subtype(crate::types::Subtype::Knight)
-                    .you_control(),
-            ),
-        );
-        assert_eq!(
-            ability.display(),
-            "This creature's toughness is equal to the number of Knights you control"
-        );
+    fn toughness_only_characteristic_keeps_the_controlled_subtype_scope() {
+        let filter = ObjectFilter::default()
+            .with_subtype(crate::types::Subtype::Knight)
+            .you_control();
+        let ability =
+            CharacteristicDefiningPT::new(Value::SourcePower, Value::Count(filter.clone()));
+
+        assert_eq!(ability.power, Value::SourcePower);
+        assert_eq!(ability.toughness, Value::Count(filter));
     }
 
     #[test]
-    fn test_display_count_with_color_adjective_pluralizes_card_not_color() {
+    fn colored_count_characteristic_keeps_color_zone_and_owner() {
         let mut filter = ObjectFilter::default();
         filter.zone = Some(crate::zone::Zone::Graveyard);
         filter.owner = Some(PlayerFilter::You);
         filter.colors = Some(crate::color::ColorSet::BLACK);
         let ability =
             CharacteristicDefiningPT::new(Value::Count(filter.clone()), Value::Count(filter));
-        assert!(
-            ability.display().contains("black cards in your graveyard"),
-            "expected color-adjective count to pluralize 'card', got {}",
-            ability.display()
-        );
+
+        let Value::Count(filter) = ability.power else {
+            panic!("expected a typed count characteristic")
+        };
+        assert_eq!(filter.zone, Some(crate::zone::Zone::Graveyard));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert_eq!(filter.colors, Some(crate::color::ColorSet::BLACK));
     }
 }

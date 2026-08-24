@@ -127,10 +127,11 @@ fn double_counter_source_surface(
 
 fn is_singular_typed_demonstrative(tokens: &[OwnedLexToken]) -> bool {
     let words = parser_token_word_refs(tokens);
-    matches!(
-        words.as_slice(),
-        ["that", head] if crate::util::is_demonstrative_object_head(head)
-    )
+    words.len() == 2
+        && crate::word_primitives::first_is(&words, "that")
+        && words
+            .get(1)
+            .is_some_and(|head| crate::util::is_demonstrative_object_head(head))
 }
 
 fn parse_double_counters_lexed<'a>(input: &mut LexStream<'a>) -> WResult<DoubleCountersShape<'a>> {

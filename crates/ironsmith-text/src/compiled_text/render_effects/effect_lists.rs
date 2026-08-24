@@ -188,17 +188,21 @@ fn describe_exile_all_from_same_target_players_hand_and_graveyard(
     {
         return describe_exile_all_from_same_target_players_hand_and_graveyard(&sequence.effects);
     }
-    let [target_effect, first_exile, second_exile] = effects else {
-        return None;
+    let (first_exile, second_exile) = match effects {
+        [target_effect, first_exile, second_exile] => {
+            let target = structural_unwrap_render_wrappers(target_effect)
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+            if target.chooser.is_some()
+                || target.explicit_declaration
+                || !matches!(target.target.base(), ChooseSpec::Player(PlayerFilter::Any))
+            {
+                return None;
+            }
+            (first_exile, second_exile)
+        }
+        [first_exile, second_exile] => (first_exile, second_exile),
+        _ => return None,
     };
-    let target = structural_unwrap_render_wrappers(target_effect)
-        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
-    if target.chooser.is_some()
-        || target.explicit_declaration
-        || !matches!(target.target.base(), ChooseSpec::Player(PlayerFilter::Any))
-    {
-        return None;
-    }
     let (first_zone, first_owner) = exile_all_target_player_zone_view(first_exile)?;
     let (second_zone, second_owner) = exile_all_target_player_zone_view(second_exile)?;
     if first_owner != second_owner
@@ -438,7 +442,7 @@ fn describe_target_mill_then_may_cast_from_exact_milled_set(effects: &[Effect]) 
         || choose.count_value.is_some()
         || choose.aggregate_constraint.is_some()
         || choose.chooser != PlayerFilter::You
-        || choose.zone != Some(Zone::Graveyard)
+        || choose.filter.zone.or(choose.zone) != Some(Zone::Graveyard)
         || !choose.additional_zones.is_empty()
         || choose.is_search
         || choose.reveal
@@ -1362,11 +1366,7 @@ fn describe_primary_then_opponent_chosen_same_action<E: std::borrow::Borrow<Effe
     let (chosen_effect, delegated_effect, consumed) = if let Some(sequence) =
         structural_unwrap_render_wrappers(second_effect)
             .downcast_ref::<crate::effects::SequenceEffect>()
-        && matches!(
-            sequence.surface,
-            ironsmith_core::SequenceSurface::Sequential
-                | ironsmith_core::SequenceSurface::Coordinated
-        )
+        && sequence.surface == ironsmith_core::SequenceSurface::Sequential
         && let [chosen, delegated] = sequence.effects.as_slice()
     {
         (chosen, delegated, 2)
@@ -1793,6 +1793,15 @@ mod opponent_choose_then_return_chosen_tests {
 /// independent sentences.
 pub(super) fn describe_may_compound_payment(may: &crate::effects::MayEffect) -> Option<String> {
     let decider = may.decider.clone().unwrap_or(PlayerFilter::You);
+
+    if let [effect] = may.effects.as_slice()
+        && let Some(sequence) = structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::SequenceEffect>()
+        && sequence.surface != ironsmith_core::SequenceSurface::Sequential
+        && may.decider.is_none()
+    {
+        return None;
+    }
 
     let members = if let [effect] = may.effects.as_slice()
         && let Some(sequence) = structural_unwrap_render_wrappers(effect)
@@ -7977,6 +7986,9 @@ pub(crate) fn describe_pre_clause_structural_effect_list(effects: &[Effect]) -> 
     if let Some(compact) = describe_graveyard_exile_copy_cast(effects) {
         return Some(compact);
     }
+    if let Some(compact) = describe_exiled_collection_program(effects) {
+        return Some(compact);
+    }
     if let Some(compact) = describe_exiled_collection_cast_choice(effects) {
         return Some(compact);
     }
@@ -10383,7 +10395,13 @@ fn describe_optional_looked_entry_with_counter_and_remainder(effects: &[Effect])
     if singular {
         return None;
     }
-    let selection = describe_looked_battlefield_selection(choose)?;
+    let mut selection = describe_looked_battlefield_selection(choose)?;
+    if !wrapped_in_may
+        && choose.count == ChoiceCount::up_to(1)
+        && let Some(rest) = selection.strip_prefix("up to one ")
+    {
+        selection = format!("a {rest}");
+    }
     let counter = describe_put_counter_phrase(counter_amount, counter_type);
     Some(format!(
         "Look at the top {count} {noun} of your library. You may put {selection} from among them onto the battlefield with {counter} on it. Put the rest on the bottom of your library in a random order"
@@ -10755,6 +10773,20 @@ pub(crate) fn describe_owner_subject_shuffle_with_shared_target(
 }
 
 pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let Some(compact) = describe_reveal_hand_choose_discard_then_random_effects(effects) {
+        return compact;
+    }
+    if let [target, first, second] = effects
+        && let Some(compact) = describe_shared_target_trample_mana_value_pump(target, first, second)
+    {
+        return compact;
+    }
+    if let [target, grant, pump] = effects
+        && let Some(compact) =
+            describe_shared_declared_target_grant_then_pt_pump(target, grant, pump)
+    {
+        return compact;
+    }
     if let Some(compact) = describe_tempting_offer_draw_and_token(effects) {
         return compact;
     }
@@ -10862,17 +10894,6 @@ pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     if let Some(compact) = describe_hybrid_named_vote_per_vote_sequence(effects) {
-        return compact;
-    }
-    if let [target, grant, pump] = effects
-        && let Some(compact) =
-            describe_shared_declared_target_grant_then_pt_pump(target, grant, pump)
-    {
-        return compact;
-    }
-    if let [target, first, second] = effects
-        && let Some(compact) = describe_shared_target_trample_mana_value_pump(target, first, second)
-    {
         return compact;
     }
     if let Some(compact) = describe_tempting_offer_copy_spell_bundle(effects) {
@@ -13666,6 +13687,29 @@ fn describe_hand_pipeline_then_leading_conditional(effects: &[Effect]) -> Option
 }
 
 pub(crate) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> {
+    if let [draw_effect, lose_effect] = effects
+        && let Some(draw) = structural_unwrap_render_wrappers(draw_effect)
+            .downcast_ref::<crate::effects::DrawCardsEffect>()
+        && let Some(lose) = structural_unwrap_render_wrappers(lose_effect)
+            .downcast_ref::<crate::effects::LoseLifeEffect>()
+        && let Some(compact) = describe_draw_then_lose_life(draw, lose)
+    {
+        return Some(
+            lowercase_first(&normalize_imperative_you_clause(&compact))
+                .replace(" and you lose ", " and lose "),
+        );
+    }
+    if let [target, first, second] = effects
+        && let Some(compact) = describe_shared_target_trample_mana_value_pump(target, first, second)
+    {
+        return Some(lowercase_first(&compact));
+    }
+    if let [target, grant, pump] = effects
+        && let Some(compact) =
+            describe_shared_declared_target_grant_then_pt_pump(target, grant, pump)
+    {
+        return Some(lowercase_first(&compact));
+    }
     if let Some(compact) = describe_put_counters_then_coordinated_keyword_grants(effects) {
         return Some(lowercase_first(&compact));
     }
@@ -13690,17 +13734,6 @@ pub(crate) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
         return Some(lowercase_first(&compact));
     }
     if let Some(compact) = describe_put_counters_then_conditional_animation(effects) {
-        return Some(lowercase_first(&compact));
-    }
-    if let [target, grant, pump] = effects
-        && let Some(compact) =
-            describe_shared_declared_target_grant_then_pt_pump(target, grant, pump)
-    {
-        return Some(lowercase_first(&compact));
-    }
-    if let [target, first, second] = effects
-        && let Some(compact) = describe_shared_target_trample_mana_value_pump(target, first, second)
-    {
         return Some(lowercase_first(&compact));
     }
     if let Some((prefix, consumed)) = describe_target_relative_combat_set_prefix(effects) {

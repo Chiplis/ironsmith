@@ -314,6 +314,24 @@ mod tests {
         game.create_object_from_card(&card, owner, Zone::Battlefield)
     }
 
+    fn rayami_definition(id: u32) -> crate::cards::CardDefinition {
+        crate::cards::CardDefinitionBuilder::new(
+            CardId::from_raw(id),
+            "Rayami, First of the Fallen",
+        )
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(5, 4))
+        .with_ability(Ability::static_ability(
+            StaticAbility::exile_would_die_instead_with_damage_source_counters_and_follow_up(
+                ObjectFilter::creature().nontoken(),
+                None,
+                vec![(CounterType::Blood, 1)],
+                Vec::new(),
+            ),
+        ))
+        .build()
+    }
+
     fn create_elephant_token() -> crate::cards::CardDefinition {
         crate::cards::CardDefinition::new(
             CardBuilder::new(CardId::new(), "Elephant")
@@ -403,16 +421,7 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
 
-        let rayami = crate::cards::CardDefinitionBuilder::new(
-            CardId::from_raw(50_210),
-            "Rayami, First of the Fallen",
-        )
-        .card_types(vec![CardType::Creature])
-        .power_toughness(PowerToughness::fixed(5, 4))
-        .parse_text(
-            "If a nontoken creature would die, exile that card with a blood counter on it instead.",
-        )
-        .expect("rayami replacement clause should parse");
+        let rayami = rayami_definition(50_210);
         let source = game.create_object_from_definition(&rayami, alice, Zone::Battlefield);
         let victim = create_creature(&mut game, bob, "Rayami Victim", 50_211);
         let victim_stable_id = game
@@ -448,16 +457,7 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
 
-        let rayami = crate::cards::CardDefinitionBuilder::new(
-            CardId::from_raw(50_220),
-            "Rayami, First of the Fallen",
-        )
-        .card_types(vec![CardType::Creature])
-        .power_toughness(PowerToughness::fixed(5, 4))
-        .parse_text(
-            "If a nontoken creature would die, exile that card with a blood counter on it instead.",
-        )
-        .expect("rayami replacement clause should parse");
+        let rayami = rayami_definition(50_220);
         let source = game.create_object_from_definition(&rayami, alice, Zone::Battlefield);
         let noncreature = CardBuilder::new(CardId::from_raw(50_221), "Rayami Noncreature")
             .card_types(vec![CardType::Artifact])

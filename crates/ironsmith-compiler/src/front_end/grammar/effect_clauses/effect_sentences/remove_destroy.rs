@@ -270,7 +270,17 @@ fn lower_destroy_all_shape(shape: shapes::DestroyAllShape<'_>) -> Result<EffectA
             exception_tokens,
         } => {
             let mut filter = parse_object_filter(filter_tokens, false)?;
-            let exception_filter = parse_object_filter(exception_tokens, false)?;
+            let exception_filter = match parse_object_filter(exception_tokens, false) {
+                Ok(filter) => filter,
+                Err(_) if crate::lexer::is_bare_card_name_phrase(exception_tokens) => {
+                    let mut filter = ObjectFilter::source();
+                    filter.source_surface = Some(crate::target::SourceReferenceSurface::FullName(
+                        crate::lexer::render_bare_card_name_surface(exception_tokens),
+                    ));
+                    filter
+                }
+                Err(error) => return Err(error),
+            };
             apply_except_filter_exclusions(&mut filter, &exception_filter);
             Ok(EffectAst::subject_verb_destroy_all(filter))
         }
@@ -302,7 +312,10 @@ fn lower_destroy_all_shape(shape: shapes::DestroyAllShape<'_>) -> Result<EffectA
 
 pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let original_clause = crate::lexer::token_word_refs(tokens).join(" ");
-    if crate::lexer::token_word_refs(tokens).as_slice() == ["both", "creatures"] {
+    if crate::word_primitives::parse_sequence_complete(
+        &crate::lexer::token_word_refs(tokens),
+        &["both", "creatures"],
+    ) {
         return Ok(EffectAst::Coordinated {
             effects: vec![
                 EffectAst::subject_verb_destroy(TargetAst::Source(None)),
@@ -370,7 +383,7 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
                     let value = Value::ToughnessOf(Box::new(
                         crate::reference_helpers::choose_spec_for_target(&target),
                     ));
-                    crate::cost::TotalCost::from_cost(crate::costs::Cost::life(value))
+                    ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::Life(value))
                 }
                 crate::grammar::effects::UnlessPaymentKind::Cost => {
                     crate::activation_and_restrictions::parse_payment_clause_as_total_cost(
@@ -552,16 +565,13 @@ mod tests {
             0,
         )
         .expect("destroy exception should lex");
-        let effect = parse_destroy(&tokens).expect("destroy exception should parse");
+        let effect = parse_destroy(&tokens[1..]).expect("destroy exception should parse");
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Destroy { target, .. },
+            action: SubjectVerbActionAst::DestroyAll { filter, .. },
             ..
         }) = effect
         else {
             panic!("expected typed destroy-all action: {effect:#?}");
-        };
-        let TargetAst::Object(filter, ..) = target else {
-            panic!("expected object filter: {target:#?}");
         };
         assert!(filter.other, "{filter:#?}");
         assert!(filter.nontoken, "{filter:#?}");
@@ -572,16 +582,13 @@ mod tests {
     fn destroy_all_single_exception_does_not_synthesize_the_other_exception() {
         fn parsed_filter(text: &str) -> ObjectFilter {
             let tokens = crate::lexer::lex_line(text, 0).expect("destroy exception should lex");
-            let effect = parse_destroy(&tokens).expect("destroy exception should parse");
+            let effect = parse_destroy(&tokens[1..]).expect("destroy exception should parse");
             let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Destroy { target, .. },
+                action: SubjectVerbActionAst::DestroyAll { filter, .. },
                 ..
             }) = effect
             else {
                 panic!("expected typed destroy-all action: {effect:#?}");
-            };
-            let TargetAst::Object(filter, ..) = target else {
-                panic!("expected object filter: {target:#?}");
             };
             filter
         }
@@ -606,7 +613,7 @@ mod tests {
         let tokens =
             crate::lexer::lex_line("Destroy all other creatures that share a color with it.", 0)
                 .expect("shared-color destroy clause should lex");
-        let effect = parse_destroy(&tokens).expect("shared-color destroy clause should parse");
+        let effect = parse_destroy(&tokens[1..]).expect("shared-color destroy clause should parse");
         let debug = format!("{effect:#?}");
 
         assert!(debug.contains("SharesColorWithTagged"), "{debug}");
@@ -640,20 +647,15 @@ mod tests {
 
     #[test]
     fn destroy_all_except_named_source_keeps_identity_exclusion_and_regeneration_rider() {
-        let effects = crate::util::with_card_source_reference_context(
-            "Mageta the Lion",
-            &[CardType::Creature],
-            &[Subtype::Human, Subtype::Spellshaper],
-            || {
-                let tokens = crate::lexer::lex_line(
-                    "Destroy all creatures except for Mageta. Those creatures can't be regenerated.",
-                    0,
-                )
-                .expect("Mageta destroy clause should lex");
-                parse_effect_sentences_lexed(&tokens)
-                    .expect("Mageta destroy and regeneration rider should parse together")
-            },
-        );
+        let effects = (|| {
+            let tokens = crate::lexer::lex_line(
+                "Destroy all creatures except for Mageta. Those creatures can't be regenerated.",
+                0,
+            )
+            .expect("Mageta destroy clause should lex");
+            parse_effect_sentences_lexed(&tokens)
+                .expect("Mageta destroy and regeneration rider should parse together")
+        })();
 
         let [EffectAst::SubjectVerb(subject_verb)] = effects.as_slice() else {
             panic!("expected one destroy-all effect, got {effects:#?}");

@@ -364,6 +364,17 @@ pub fn parse_subject_words(words: &[&str]) -> SubjectAst {
     {
         return SubjectAst::Player(PlayerAst::ItsController);
     }
+    // Named possessives are normalized into parser words such as
+    // `hold for ransoms controller`. In a clause subject, the terminal
+    // controller/owner relation is the semantic fact; the authored name is
+    // retained by the enclosing ability surface.
+    if slice.len() >= 2 && is_controller_or_owner(slice[slice.len() - 1]) {
+        return SubjectAst::Player(if slice.last() == Some(&"owner") {
+            PlayerAst::ItsOwner
+        } else {
+            PlayerAst::ItsController
+        });
+    }
     if prefix_one_of(slice, &[&["its", "owner"], &["their", "owner"]])
         || (permission_shapes::prefix_words(slice, &["this"])
             && permission_shapes::suffix_words(slice, &["owner"]))
@@ -564,333 +575,22 @@ pub fn parse_life_advantage_player(words: &[&str]) -> Option<PlayerFilter> {
     })
 }
 
-fn filter_keyword_constraint_for_words(words: &[&str]) -> Option<FilterKeywordConstraint> {
-    use FilterKeywordConstraint::{Marker, Static};
-    let static_id = if permission_shapes::exact_words(words, &["flying"]) {
-        Some(StaticAbilityId::Flying)
-    } else if permission_shapes::exact_words(words, &["menace"]) {
-        Some(StaticAbilityId::Menace)
-    } else if permission_shapes::exact_words(words, &["hexproof"]) {
-        Some(StaticAbilityId::Hexproof)
-    } else if permission_shapes::exact_words(words, &["haste"]) {
-        Some(StaticAbilityId::Haste)
-    } else if permission_shapes::exact_words(words, &["first", "strike"]) {
-        Some(StaticAbilityId::FirstStrike)
-    } else if permission_shapes::exact_words(words, &["double", "strike"]) {
-        Some(StaticAbilityId::DoubleStrike)
-    } else if permission_shapes::exact_words(words, &["deathtouch"]) {
-        Some(StaticAbilityId::Deathtouch)
-    } else if permission_shapes::exact_words(words, &["lifelink"]) {
-        Some(StaticAbilityId::Lifelink)
-    } else if permission_shapes::exact_words(words, &["vigilance"]) {
-        Some(StaticAbilityId::Vigilance)
-    } else if permission_shapes::exact_words(words, &["trample"]) {
-        Some(StaticAbilityId::Trample)
-    } else if permission_shapes::exact_words(words, &["reach"]) {
-        Some(StaticAbilityId::Reach)
-    } else if permission_shapes::exact_words(words, &["defender"]) {
-        Some(StaticAbilityId::Defender)
-    } else if permission_shapes::exact_words(words, &["flash"]) {
-        Some(StaticAbilityId::Flash)
-    } else if permission_shapes::exact_words(words, &["phasing"]) {
-        Some(StaticAbilityId::Phasing)
-    } else if permission_shapes::exact_words(words, &["indestructible"]) {
-        Some(StaticAbilityId::Indestructible)
-    } else if permission_shapes::exact_words(words, &["shroud"]) {
-        Some(StaticAbilityId::Shroud)
-    } else if permission_shapes::exact_words(words, &["wither"]) {
-        Some(StaticAbilityId::Wither)
-    } else if permission_shapes::exact_words(words, &["infect"]) {
-        Some(StaticAbilityId::Infect)
-    } else if permission_shapes::exact_words(words, &["fear"]) {
-        Some(StaticAbilityId::Fear)
-    } else if permission_shapes::exact_words(words, &["intimidate"]) {
-        Some(StaticAbilityId::Intimidate)
-    } else if permission_shapes::exact_words(words, &["shadow"]) {
-        Some(StaticAbilityId::Shadow)
-    } else if permission_shapes::exact_words(words, &["horsemanship"]) {
-        Some(StaticAbilityId::Horsemanship)
-    } else if permission_shapes::exact_words(words, &["flanking"]) {
-        Some(StaticAbilityId::Flanking)
-    } else if permission_shapes::exact_words(words, &["skulk"]) {
-        Some(StaticAbilityId::Skulk)
-    } else if permission_shapes::exact_words(words, &["protection"])
-        || permission_shapes::exact_words(words, &["protection", "from", "any", "color"])
-    {
-        Some(StaticAbilityId::Protection)
-    } else if permission_shapes::exact_words(words, &["changeling"]) {
-        Some(StaticAbilityId::Changeling)
-    } else if permission_shapes::exact_words(words, &["cascade"]) {
-        Some(StaticAbilityId::Cascade)
-    } else if permission_shapes::exact_words(words, &["convoke"]) {
-        Some(StaticAbilityId::Convoke)
-    } else if exact_one_of(
-        words,
-        &[
-            &["landwalk"],
-            &["nonbasic", "landwalk"],
-            &["artifact", "landwalk"],
-        ],
-    ) {
-        Some(StaticAbilityId::Landwalk)
-    } else {
-        None
-    };
-    if let Some(id) = static_id {
-        return Some(Static(id));
-    }
-    if permission_shapes::exact_words(words, &["decayed"]) {
-        Some(Marker("decayed"))
-    } else if permission_shapes::exact_words(words, &["fading"]) {
-        Some(Marker("fading"))
-    } else if permission_shapes::exact_words(words, &["unearth"]) {
-        Some(Marker("unearth"))
-    } else if permission_shapes::exact_words(words, &["freerunning"]) {
-        Some(Marker("freerunning"))
-    } else if permission_shapes::exact_words(words, &["level", "up"]) {
-        Some(Marker("level up"))
-    } else if permission_shapes::exact_words(words, &["disturb"]) {
-        Some(Marker("disturb"))
-    } else if permission_shapes::exact_words(words, &["mutate"]) {
-        // Costed keyword markers retain their full printed surface (for
-        // example, `Mutate {4}{B}`), while ObjectFilter marker matching is
-        // deliberately word-aware.  Keep the semantic marker cost-agnostic.
-        Some(Marker("mutate"))
-    } else if permission_shapes::exact_words(words, &["toxic"]) {
-        Some(Marker("toxic"))
-    } else if permission_shapes::exact_words(words, &["doctor's", "companion"])
-        || permission_shapes::exact_words(words, &["doctors", "companion"])
-    {
-        Some(Marker("doctor's companion"))
-    } else if permission_shapes::exact_words(words, &["islandwalk"]) {
-        Some(Marker("islandwalk"))
-    } else if permission_shapes::exact_words(words, &["swampwalk"]) {
-        Some(Marker("swampwalk"))
-    } else if permission_shapes::exact_words(words, &["mountainwalk"]) {
-        Some(Marker("mountainwalk"))
-    } else if permission_shapes::exact_words(words, &["forestwalk"]) {
-        Some(Marker("forestwalk"))
-    } else if permission_shapes::exact_words(words, &["plainswalk"]) {
-        Some(Marker("plainswalk"))
-    } else {
-        None
-    }
-}
-
-fn player_base(words: &[&str]) -> Option<(PlayerFilter, usize)> {
-    if prefix_one_of(words, &[&["opponent"], &["opponents"]]) {
-        Some((PlayerFilter::Opponent, 1))
-    } else if prefix_one_of(words, &[&["player"], &["players"]]) {
-        Some((PlayerFilter::Any, 1))
-    } else {
-        None
-    }
-}
-
-fn is_that_player_or_object_controller(words: &[&str]) -> bool {
-    words.len() >= 6
-        && permission_shapes::prefix_words(words, &["that", "player", "or", "that"])
-        && is_controlled_object_plural(words[4])
-        && permission_shapes::exact_words(&words[5..6], &["controller"])
-}
-
-fn is_controlled_object_plural(word: &str) -> bool {
-    starts_with_one_of_words(
-        &[word],
-        0,
-        &[
-            "artifacts",
-            "creatures",
-            "enchantments",
-            "lands",
-            "permanents",
-            "planeswalkers",
-            "sources",
-            "spells",
-            "tokens",
-        ],
-    )
-}
-
-fn is_controller_or_owner(word: &str) -> bool {
-    starts_with_one_of_words(&[word], 0, &["controller", "owner"])
-}
-
-fn word_has_char_suffix(word: &str, suffix: &[char]) -> bool {
-    let mut chars = word.chars().rev();
-    suffix
-        .iter()
-        .rev()
-        .all(|expected| chars.next().is_some_and(|ch| ch == *expected))
-}
-
-fn find_one_of(words: &[&str], alternatives: &[&[&str]]) -> bool {
-    alternatives
-        .iter()
-        .any(|expected| permission_shapes::find_words(words, expected).is_some())
-}
-
-fn has_one_of_words(words: &[&str], alternatives: &[&str]) -> bool {
-    alternatives
-        .iter()
-        .any(|word| permission_shapes::find_words(words, &[*word]).is_some())
-}
-
-fn first_word_offset(words: &[&str], alternatives: &[&str]) -> Option<usize> {
-    alternatives
-        .iter()
-        .filter_map(|word| permission_shapes::find_words(words, &[*word]))
-        .min()
-}
-
-fn prefix_one_of(words: &[&str], alternatives: &[&[&str]]) -> bool {
-    alternatives
-        .iter()
-        .any(|expected| permission_shapes::prefix_words(words, expected))
-}
-
-fn prefix_at_one_of(words: &[&str], offset: usize, alternatives: &[&[&str]]) -> bool {
-    alternatives
-        .iter()
-        .any(|expected| permission_shapes::starts_at_words(words, offset, expected))
-}
-
-fn suffix_one_of(words: &[&str], alternatives: &[&[&str]]) -> bool {
-    alternatives
-        .iter()
-        .any(|expected| permission_shapes::suffix_words(words, expected))
-}
-
-fn exact_one_of(words: &[&str], alternatives: &[&[&str]]) -> bool {
-    alternatives
-        .iter()
-        .any(|expected| permission_shapes::exact_words(words, expected))
-}
-
-fn starts_with_one_of_words(words: &[&str], offset: usize, alternatives: &[&str]) -> bool {
-    alternatives
-        .iter()
-        .any(|word| permission_shapes::starts_at_words(words, offset, &[*word]))
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
+#[path = "reference_shapes_inline_tests.rs"]
+mod tests;
 
-    #[test]
-    fn parses_subject_and_reference_surfaces() {
-        assert_eq!(
-            parse_subject_words(&["the", "active", "player"]),
-            SubjectAst::Player(PlayerAst::Active)
-        );
-        assert_eq!(
-            parse_subject_words(&["the", "player", "with", "the", "most", "life"]),
-            SubjectAst::Player(PlayerAst::MostLifeTied)
-        );
-        assert_eq!(
-            parse_subject_words(&["enchanted", "opponent", "creates"]),
-            SubjectAst::Player(PlayerAst::Enchanted)
-        );
-        assert_eq!(
-            parse_subject_words(&[
-                "that",
-                "player",
-                "or",
-                "that",
-                "planeswalkers",
-                "controller",
-                "discards",
-                "two",
-                "cards",
-            ]),
-            SubjectAst::Player(PlayerAst::ThatPlayerOrTargetController)
-        );
-        assert_eq!(
-            parse_subject_words(&["that", "source's", "controller", "gains", "control",]),
-            SubjectAst::TriggeringSourceController
-        );
-        assert_eq!(
-            parse_subject_words(&[
-                "that",
-                "spell",
-                "or",
-                "ability's",
-                "controller",
-                "sacrifices",
-                "a",
-                "land",
-            ]),
-            SubjectAst::TriggeringSourceController
-        );
-        let lexed = crate::lexer::lex_line("that spell or ability's controller", 0)
-            .expect("triggering spell-or-ability controller subject should lex");
-        let lexed_words = crate::lexer::token_word_refs(&lexed);
-        assert_eq!(
-            parse_subject_tokens(&lexed),
-            SubjectAst::TriggeringSourceController,
-            "lexed words: {lexed_words:?}"
-        );
-        assert!(contains_source_from_your_hand(&[
-            "discard", "this", "card", "from", "your", "hand"
-        ]));
-        assert!(is_source_from_exile(&["this", "creature", "from", "exile"]));
-    }
-
-    #[test]
-    fn parses_filter_keyword_and_player_advantage_surfaces() {
-        assert_eq!(
-            parse_filter_keyword_constraint_words(&["basic", "landcycling"]),
-            Some((FilterKeywordConstraint::Marker("cycling"), 2))
-        );
-        assert_eq!(
-            parse_filter_keyword_constraint_words(&["cascade"]),
-            Some((FilterKeywordConstraint::Static(StaticAbilityId::Cascade), 1))
-        );
-        assert_eq!(
-            parse_filter_keyword_constraint_words(&["toxic"]),
-            Some((FilterKeywordConstraint::Marker("toxic"), 1))
-        );
-        assert_eq!(
-            parse_filter_keyword_constraint_words(&["fading"]),
-            Some((FilterKeywordConstraint::Marker("fading"), 1))
-        );
-        assert_eq!(
-            parse_filter_keyword_constraint_words(&["unearth"]),
-            Some((FilterKeywordConstraint::Marker("unearth"), 1))
-        );
-        assert_eq!(
-            parse_filter_keyword_constraint_words(&["freerunning"]),
-            Some((FilterKeywordConstraint::Marker("freerunning"), 1))
-        );
-        assert_eq!(
-            parse_filter_keyword_constraint_words(&["doctor's", "companion"]),
-            Some((FilterKeywordConstraint::Marker("doctor's companion"), 2))
-        );
-        let (constraints, connective, consumed) = parse_filter_keyword_constraint_list_words(&[
-            "first",
-            "strike",
-            "double",
-            "strike",
-            "vigilance",
-            "and",
-            "or",
-            "haste",
-        ])
-        .expect("split and/or should remain a keyword-list connective");
-        assert_eq!(constraints.len(), 4);
-        assert_eq!(connective, FilterKeywordListConnective::AndOr);
-        assert_eq!(consumed, 8);
-        assert_eq!(
-            parse_life_advantage_player(&["opponent", "who", "has", "more", "life", "than", "you"]),
-            Some(PlayerFilter::HasMoreLifeThanYou {
-                base: Box::new(PlayerFilter::Opponent),
-            })
-        );
-        assert_eq!(
-            parse_life_advantage_player(&[
-                "player", "with", "most", "life", "or", "tied", "for", "most", "life",
-            ]),
-            Some(PlayerFilter::MostLifeTied)
-        );
-    }
-}
+#[path = "reference_shapes/core_programs.rs"]
+mod core_programs;
+use core_programs::{
+    exact_one_of, find_one_of, first_word_offset, has_one_of_words, prefix_at_one_of,
+    prefix_one_of, starts_with_one_of_words, suffix_one_of, word_has_char_suffix,
+};
+#[path = "reference_shapes/object_action_programs.rs"]
+mod object_action_programs;
+use object_action_programs::is_controller_or_owner;
+#[path = "reference_shapes/reference_programs.rs"]
+mod reference_programs;
+use reference_programs::{
+    filter_keyword_constraint_for_words, is_controlled_object_plural,
+    is_that_player_or_object_controller, player_base,
+};

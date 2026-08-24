@@ -133,14 +133,19 @@ fn parse_source_and_chosen_exile(
         return Ok(None);
     }
     let body = &tokens[1..];
-    let Some(and_idx) = body.iter().position(|token| token.is_word("and")) else {
+    let Some(and_idx) =
+        crate::slice_primitives::select_position(body, |token| token.is_word("and"))
+    else {
         return Ok(None);
     };
     let source_tokens = &body[..and_idx];
     let source_words = primitives::TokenWordView::new(source_tokens).word_refs();
-    let Some(source_surface) = crate::util::this_source_surface_for_words(&source_words) else {
+    if crate::util::this_source_surface_for_words(&source_words).is_none() {
         return Ok(None);
-    };
+    }
+    let source_surface = crate::target::SourceReferenceSurface::ThisPermanentType(
+        render_token_slice(source_tokens).trim().to_string(),
+    );
     let chosen_tokens = &body[and_idx + 1..];
     let Some(choice) = parse_activation_choice_prefix_tokens(chosen_tokens) else {
         return Ok(None);
@@ -433,105 +438,5 @@ fn parse_exile_hand_card_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ExileHa
 }
 
 #[cfg(test)]
-mod tests {
-    use super::super::super::super::lexer::lex_line;
-    use super::*;
-
-    #[test]
-    fn exile_segments_preserve_zone_top_and_named_shapes() {
-        let top = lex_line("exile the top three cards of your library", 0).unwrap();
-        assert_eq!(
-            parse_exile_segment_tokens(&top, |_| false).unwrap(),
-            ActivationCostSegmentCst::ExileTopLibrary { count: 3 }
-        );
-        let hand = lex_line("exile a red card from your hand", 0).unwrap();
-        assert_eq!(
-            parse_exile_segment_tokens(&hand, |_| false).unwrap(),
-            ActivationCostSegmentCst::ExileFromHand {
-                count: 1,
-                color_filter: Some(ColorSet::RED),
-            }
-        );
-        let named = lex_line(
-            "exile this card and artifacts you control named foo and bar",
-            0,
-        )
-        .unwrap();
-        assert_eq!(
-            parse_exile_segment_tokens(&named, |_| false).unwrap(),
-            ActivationCostSegmentCst::ExileSelfAndNamedArtifacts {
-                names: vec!["foo".to_string(), "bar".to_string()],
-            }
-        );
-
-        let top_creature = lex_line("exile the top creature card of your graveyard", 0).unwrap();
-        assert!(matches!(
-            parse_exile_segment_tokens(&top_creature, |_| false).unwrap(),
-            ActivationCostSegmentCst::ExileChosen {
-                choice_count,
-                filter,
-                top_only: true,
-                turn_face_up: false,
-            } if choice_count == crate::effect::ChoiceCount::exactly(1)
-                && filter.zone == Some(Zone::Graveyard)
-                && filter.card_types == [crate::types::CardType::Creature]
-        ));
-
-        let face_up = lex_line("exile a face-down permanent you control face up", 0).unwrap();
-        assert!(matches!(
-            parse_exile_segment_tokens(&face_up, |_| false).unwrap(),
-            ActivationCostSegmentCst::ExileChosen {
-                choice_count,
-                filter,
-                top_only: false,
-                turn_face_up: true,
-            } if choice_count == crate::effect::ChoiceCount::exactly(1)
-                && filter.face_down == Some(true)
-                && filter.controller == Some(PlayerFilter::You)
-        ));
-
-        let compound = lex_line(
-            "exile this Vehicle and four other artifact creatures and/or Vehicles you control",
-            0,
-        )
-        .unwrap();
-        assert!(matches!(
-            parse_exile_segment_tokens(&compound, |_| false).unwrap(),
-            ActivationCostSegmentCst::ExileSourceAndChosen {
-                source_filter,
-                choice_count,
-                filter,
-            } if source_filter.source
-                && matches!(
-                    source_filter.source_surface,
-                    Some(crate::target::SourceReferenceSurface::ThisPermanentType(ref text))
-                        if text == "this Vehicle"
-                )
-                && choice_count == crate::effect::ChoiceCount::exactly(4)
-                && filter.other
-                && filter.controller == Some(PlayerFilter::You)
-                && filter.card_types.contains(&crate::types::CardType::Artifact)
-                && filter.card_types.contains(&crate::types::CardType::Creature)
-                && filter.subtypes.contains(&crate::types::Subtype::Vehicle)
-        ));
-
-        let ordinary_face_up = lex_line("exile a face-up permanent you control", 0).unwrap();
-        assert!(matches!(
-            parse_exile_segment_tokens(&ordinary_face_up, |_| false).unwrap(),
-            ActivationCostSegmentCst::ExileChosen {
-                filter,
-                turn_face_up: false,
-                ..
-            } if filter.face_down == Some(false)
-        ));
-
-        let ordinary = lex_line("exile a creature card from your graveyard", 0).unwrap();
-        assert!(matches!(
-            parse_exile_segment_tokens(&ordinary, |_| false).unwrap(),
-            ActivationCostSegmentCst::ExileChosen {
-                top_only: false,
-                ..
-            }
-        ));
-    }
-}
+#[path = "exile_segments_inline_tests.rs"]
+mod tests;

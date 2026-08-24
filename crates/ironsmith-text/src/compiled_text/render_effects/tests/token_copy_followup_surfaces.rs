@@ -54,13 +54,14 @@ fn created_goblins_with_temporary_haste(
     count: i32,
     reference_surface: Option<&str>,
 ) -> Vec<Effect> {
-    let token = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Goblin")
-        .token()
-        .card_types(vec![CardType::Creature])
-        .subtypes(vec![Subtype::Goblin])
-        .color_indicator(crate::color::ColorSet::RED)
-        .power_toughness(crate::card::PowerToughness::fixed(1, 1))
-        .build();
+    let token =
+        crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Goblin")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Goblin])
+            .color_indicator(crate::color::ColorSet::RED)
+            .power_toughness(crate::card::PowerToughness::fixed(1, 1))
+            .build();
     let created = TagKey::from("created_0");
     let create =
         Effect::new(crate::effects::CreateTokenEffect::you(token, count)).tag(created.clone());

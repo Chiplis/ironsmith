@@ -395,8 +395,14 @@ fn test_compute_legal_actions_surfaces_activated_ability_before_mana_payment() {
 
     let sink = CardDefinitionBuilder::new(CardId::from_raw(700_950), "Mana Sink Probe")
         .card_types(vec![CardType::Artifact])
-        .parse_text("{B}{B}: Draw a card.")
-        .expect("activated ability text should parse");
+        .with_ability(Ability::activated(
+            crate::cost::TotalCost::mana(ManaCost::from_symbols(vec![
+                ManaSymbol::Black,
+                ManaSymbol::Black,
+            ])),
+            vec![Effect::draw(1)],
+        ))
+        .build();
     let sink_id = game.create_object_from_definition(&sink, alice, Zone::Battlefield);
 
     let activations_for_sink = |game: &GameState| {
@@ -419,8 +425,11 @@ fn test_compute_legal_actions_surfaces_activated_ability_before_mana_payment() {
 
     let swamp = CardDefinitionBuilder::new(CardId::from_raw(700_951), "Swamp")
         .card_types(vec![CardType::Land])
-        .parse_text("{T}: Add {B}.")
-        .expect("swamp mana text should parse");
+        .with_ability(Ability::mana(
+            crate::cost::TotalCost::free(),
+            vec![ManaSymbol::Black],
+        ))
+        .build();
     game.create_object_from_definition(&swamp, alice, Zone::Battlefield);
     game.create_object_from_definition(&swamp, alice, Zone::Battlefield);
 
@@ -443,8 +452,14 @@ fn test_compute_legal_actions_counts_floating_mana_for_activated_ability() {
 
     let sink = CardDefinitionBuilder::new(CardId::from_raw(700_952), "Mana Sink Probe")
         .card_types(vec![CardType::Artifact])
-        .parse_text("{B}{B}: Draw a card.")
-        .expect("activated ability text should parse");
+        .with_ability(Ability::activated(
+            crate::cost::TotalCost::mana(ManaCost::from_symbols(vec![
+                ManaSymbol::Black,
+                ManaSymbol::Black,
+            ])),
+            vec![Effect::draw(1)],
+        ))
+        .build();
     let sink_id = game.create_object_from_definition(&sink, alice, Zone::Battlefield);
 
     game.player_mut(alice)
@@ -1525,8 +1540,14 @@ fn prototype_cost_reduction_filters_see_prototyped_color() {
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
         .card_types(vec![CardType::Artifact, CardType::Creature])
         .power_toughness(PowerToughness::fixed(6, 4))
-        .parse_text("Prototype {2}{R} — 3/2\nHaste")
-        .expect("prototype probe should parse");
+        .alternative_cast(
+            crate::alternative_cast::AlternativeCastingMethod::prototype(
+                prototype_cost.clone(),
+                PowerToughness::fixed(3, 2),
+            ),
+        )
+        .haste()
+        .build();
     let spell_id = game.create_object_from_definition(&prototype_def, alice, Zone::Hand);
     let spell = game.object(spell_id).expect("prototype spell exists");
     assert_eq!(

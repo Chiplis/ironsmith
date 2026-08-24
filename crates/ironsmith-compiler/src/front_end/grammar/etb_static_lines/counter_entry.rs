@@ -279,6 +279,26 @@ pub fn parse_enters_with_added_abilities_tail_tokens(
         "enters-with-added-abilities-tail",
     )
     .ok()
+    .or_else(|| {
+        // The enclosing ETB-counter capture owns terminal punctuation and
+        // may hand this leaf parser a quote-open fragment without the closing
+        // quote. The opening quote plus exact typed ability body is still a
+        // complete proof; do not demote it to a numeric counter tail.
+        let (_, tail) = primitives::parse_prefix(
+            tokens,
+            (
+                opt(primitives::kw("and")),
+                primitives::kw("with"),
+                primitives::quote(),
+            )
+                .void(),
+        )?;
+        (!tail
+            .iter()
+            .any(|token| token.kind == crate::lexer::TokenKind::Quote)
+            && parse_can_attack_as_though_no_defender_tokens(tail))
+        .then_some(EntersWithAddedAbilitiesTail::CanAttackAsThoughNoDefender)
+    })
 }
 
 pub fn parse_enters_with_counter_known_for_each_tail_tokens(

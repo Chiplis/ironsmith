@@ -449,10 +449,10 @@ fn with_coordinated_continuous_duration(effect: &Effect, duration: &Until) -> Op
 /// only when every earlier arm is the same target and has no duration of its
 /// own.
 pub(super) fn preserve_shared_trailing_coordinated_duration(effects: &mut [Effect]) {
-    let trailing_start = effects
-        .iter()
-        .rposition(|effect| coordinated_continuous_effect(effect).is_none())
-        .map_or(0, |index| index + 1);
+    let trailing_start = crate::slice_primitives::select_last_position(effects, |effect| {
+        coordinated_continuous_effect(effect).is_none()
+    })
+    .map_or(0, |index| index + 1);
     let effects = &mut effects[trailing_start..];
     if effects.len() < 2 {
         return;
@@ -824,12 +824,7 @@ pub fn compile_effect(
     effect: &EffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
-    // `compile_subject_verb_effect` has a large debug-build frame because it lowers the
-    // complete typed action enum. Keep the recursive lowering guard consistent with the
-    // other typed effect entry points; a 2 MiB alternate stack is smaller than that frame.
-    crate::stack::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
-        compile_effect_inner(effect, ctx)
-    })
+    compile_effect_inner(effect, ctx)
 }
 
 fn compile_effect_inner(
@@ -895,6 +890,23 @@ fn compile_effect_inner(
         let flattened = coordination.effects().cloned().collect::<Vec<_>>();
         let (mut effects, choices) = compile_effects(&flattened, ctx)?;
         preserve_nested_result_value_links(&mut effects);
+        let comma_then_boundaries = coordination
+            .boundaries
+            .iter()
+            .filter(|boundary| {
+                boundary.operator == crate::model::CoordinationOperatorAst::CommaThen
+            })
+            .count();
+        if comma_then_boundaries > 0 {
+            let sequence = if comma_then_boundaries == coordination.boundaries.len()
+                && comma_then_boundaries > 1
+            {
+                crate::effects::SequenceEffect::repeated_comma_then(effects)
+            } else {
+                crate::effects::SequenceEffect::comma_then(effects)
+            };
+            return Ok((vec![Effect::new(sequence)], choices));
+        }
         if coordination.kind == crate::model::CoordinationKindAst::Sequence {
             return Ok((effects, choices));
         }
@@ -1027,6 +1039,12 @@ fn compile_effect_inner(
     if let EffectAst::IfEffectDidNotHappen { effect, otherwise } = effect {
         let id = ctx.next_effect_id();
         let (mut lowered, mut choices) = compile_effect(effect, ctx)?;
+        let observed_unique_clash =
+            control_flow_handlers::try_assign_effect_result_id_for_unique_producer(
+                &mut lowered,
+                crate::model::visit::TerminalResultProducer::Clash,
+                id,
+            );
         let inner = lowered.pop().ok_or_else(|| {
             CardTextError::ParseError(
                 "if-effect-did-not-happen requires a single nested effect".to_string(),
@@ -1037,7 +1055,11 @@ fn compile_effect_inner(
                 "if-effect-did-not-happen nested effect must lower to a single effect".to_string(),
             ));
         }
-        let wrapped = Effect::with_id(id.0, inner);
+        let wrapped = if observed_unique_clash {
+            inner
+        } else {
+            Effect::with_id(id.0, inner)
+        };
         ctx.last_effect_id = Some(id);
         let (otherwise_effects, otherwise_choices) = compile_effects(otherwise, ctx)?;
         for choice in otherwise_choices {
@@ -1074,6 +1096,13 @@ fn compile_effect_inner(
         return Ok((vec![wrapped, conditional], choices));
     }
     if let EffectAst::TagAffected { effect, tag } = effect {
+        let wraps_plural_exile_collection = matches!(
+            effect.as_ref(),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ExileAll { .. },
+                ..
+            })
+        );
         // This wrapper is itself the authoritative outcome tag. Letting the
         // nested action auto-tag its object result first creates two nested
         // tags, and the outer group tag can then overwrite the explicit
@@ -1120,6 +1149,14 @@ fn compile_effect_inner(
             ));
         }
         ctx.last_object_tag = Some(tag.as_str().to_string());
+        if wraps_plural_exile_collection && is_sentence_helper_exiled_collection_tag(tag.as_str()) {
+            // The explicit outcome wrapper suppresses the nested ExileAll
+            // action's automatic tag. Preserve the collection facts that the
+            // automatic path would have recorded so a following plural cast
+            // permission remains plural as well.
+            ctx.last_exiled_collection_tag = Some(tag.as_str().to_string());
+            ctx.last_exiled_collection_is_plural = true;
+        }
         lowered.push(inner.tag_all(tag.clone()));
         return Ok((lowered, choices));
     }
@@ -1135,11 +1172,17 @@ fn compile_effect_inner(
             compiled_effects.append(&mut child_effects);
             choices.append(&mut child_choices);
         }
+        let restrictions = restrictions
+            .iter()
+            .cloned()
+            .map(|restriction| {
+                restriction.try_map_effects(&mut |effect| {
+                    crate::lowering_support::lower_compiler_child_effect(effect)
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         return Ok((
-            vec![Effect::mana_restricted(
-                compiled_effects,
-                restrictions.clone(),
-            )],
+            vec![Effect::mana_restricted(compiled_effects, restrictions)],
             choices,
         ));
     }
@@ -1348,15 +1391,32 @@ fn compile_compiler_control_flow(
                 .unwrap_or_default();
             let legacy = match &condition.predicate {
                 ControlPredicateAst::State(predicate) => {
-                    let predicate = if condition.negated_surface {
-                        PredicateAst::Not(Box::new(predicate.clone()))
+                    if alternative.is_empty()
+                        && condition.position
+                            == crate::model::control_flow::ConditionPositionAst::Postcondition
+                    {
+                        if condition.negated_surface {
+                            EffectAst::TrailingUnless {
+                                predicate: predicate.clone(),
+                                effects: consequence,
+                            }
+                        } else {
+                            EffectAst::TrailingIf {
+                                predicate: predicate.clone(),
+                                effects: consequence,
+                            }
+                        }
                     } else {
-                        predicate.clone()
-                    };
-                    EffectAst::Conditional {
-                        predicate,
-                        if_true: consequence,
-                        if_false: alternative,
+                        let predicate = if condition.negated_surface {
+                            PredicateAst::Not(Box::new(predicate.clone()))
+                        } else {
+                            predicate.clone()
+                        };
+                        EffectAst::Conditional {
+                            predicate,
+                            if_true: consequence,
+                            if_false: alternative,
+                        }
                     }
                 }
                 ControlPredicateAst::Result(predicate) if *reflexive => EffectAst::WhenResult {
@@ -1407,6 +1467,16 @@ fn compile_compiler_control_flow(
             let mut effects = program_effects(*program)?.to_vec();
             if apply_duration_scope(&mut effects, duration) == 0 {
                 return compile_effects(&effects, ctx);
+            }
+            if let [existing @ EffectAst::Coordinated { .. }] = effects.as_mut_slice() {
+                let EffectAst::Coordinated {
+                    leading_duration, ..
+                } = existing
+                else {
+                    unreachable!("matched coordinated duration body")
+                };
+                *leading_duration = true;
+                return compile_effect(existing, ctx);
             }
             compile_effect(
                 &EffectAst::Coordinated {

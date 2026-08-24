@@ -876,7 +876,7 @@ pub fn parse_sentence_return_half_the_creatures_they_control_to_their_owners_han
         Box::new(Value::Count(filter.clone())),
         Box::new(Value::Fixed(1)),
     )));
-    let chosen_tag = TagKey::from("chosen");
+    let chosen_tag = crate::tag::CompilerReferenceTag::Chosen.key();
     Ok(Some(vec![
         EffectAst::ChooseObjects {
             filter,
@@ -1256,7 +1256,14 @@ mod tests {
         let full_parse = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
             .expect("the full dispatcher should retain the delayed condition");
         let full_debug = format!("{full_parse:#?}");
-        assert!(full_debug.contains("TrailingIf"), "{full_debug}");
+        // The public route canonicalizes the authored trailing condition into
+        // a postcondition control-flow node while retaining the delayed
+        // action in its success branch.
+        assert!(full_debug.contains("Postcondition"), "{full_debug}");
+        assert!(
+            full_debug.contains("DelayedUntilNextEndStep"),
+            "{full_debug}"
+        );
         assert!(full_debug.contains("mana_value"), "{full_debug}");
     }
 }

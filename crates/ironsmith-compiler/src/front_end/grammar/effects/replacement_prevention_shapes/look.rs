@@ -94,19 +94,32 @@ fn exile_one_followup(tokens: &[OwnedLexToken]) -> Option<bool> {
         tokens,
         primitives::any_phrase(&[
             &["exile", "one", "of", "them"],
-            &["exile", "one", "of", "those"],
             &["exile", "one", "of", "those", "cards"],
+            &["exile", "one", "of", "those"],
             &["exile", "it"],
             &["exile", "that", "card"],
         ]),
     )?;
     let rest = trim_lexed_commas(rest);
-    if rest.is_empty() {
+    if primitives::parse_all(
+        rest,
+        primitives::sentence_end().value(false),
+        "look/exile follow-up end",
+    )
+    .is_ok()
+    {
         return Some(false);
     }
-    primitives::strip_lexed_suffix_phrase(rest, &["face", "down"])
-        .is_some_and(|remaining| trim_lexed_commas(remaining).is_empty())
-        .then_some(true)
+    primitives::parse_all(
+        rest,
+        (
+            primitives::phrase(&["face", "down"]),
+            primitives::sentence_end(),
+        )
+            .value(true),
+        "look/exile face-down follow-up",
+    )
+    .ok()
 }
 
 pub fn parse_look_top_exile_one_shape(tokens: &[OwnedLexToken]) -> Option<LookTopExileOneShape> {
@@ -144,31 +157,5 @@ pub fn parse_look_top_exile_one_shape(tokens: &[OwnedLexToken]) -> Option<LookTo
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::lexer::lex_line;
-
-    #[test]
-    fn parses_hand_targets_and_name_followup() {
-        let tokens = lex_line("Look at an opponent's hand, then choose any card name.", 0).unwrap();
-        assert_eq!(
-            parse_look_hand_shape(&tokens),
-            Some(LookHandShape {
-                player: LookHandPlayerShape::Opponent,
-                choose_card_name: true,
-            })
-        );
-    }
-
-    #[test]
-    fn parses_look_top_exile_one_shape() {
-        let tokens = lex_line(
-            "Look at the top three cards of your library, then exile one of those cards.",
-            0,
-        )
-        .unwrap();
-        let shape = parse_look_top_exile_one_shape(&tokens).unwrap();
-        assert_eq!(shape.count, 3);
-        assert_eq!(shape.player, PlayerAst::You);
-    }
-}
+#[path = "look_inline_tests.rs"]
+mod tests;

@@ -92,14 +92,8 @@ fn phrase_occurs(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> b
 }
 
 fn word_phrase_occurs(tokens: &[OwnedLexToken], phrase: &[&str]) -> bool {
-    if phrase.is_empty() {
-        return true;
-    }
-    let words = tokens
-        .iter()
-        .filter_map(|token| token.as_word().map(|_| token.parser_text()))
-        .collect::<Vec<_>>();
-    words.windows(phrase.len()).any(|window| window == phrase)
+    let words = crate::lexer::token_word_refs(tokens);
+    crate::word_primitives::sequence_or_empty_occurs(&words, phrase)
 }
 
 fn predicate_candidate_contains_search_action(tokens: &[OwnedLexToken]) -> bool {
@@ -107,15 +101,15 @@ fn predicate_candidate_contains_search_action(tokens: &[OwnedLexToken]) -> bool 
 }
 
 fn predicate_candidate_contains_damage_action(tokens: &[OwnedLexToken]) -> bool {
-    let Some(deal_idx) = tokens
-        .iter()
-        .position(|token| structure_token_is_any(token, &["deal", "deals"]))
-    else {
+    let Some(deal_idx) = crate::slice_primitives::select_position(tokens, |token| {
+        structure_token_is_any(token, &["deal", "deals"])
+    }) else {
         return false;
     };
-    tokens[deal_idx + 1..]
-        .iter()
-        .any(|token| structure_token_is(token, "damage"))
+    crate::slice_primitives::select_position(&tokens[deal_idx + 1..], |token| {
+        structure_token_is(token, "damage")
+    })
+    .is_some()
 }
 
 fn one_of_phrases_occurs(
@@ -1078,16 +1072,7 @@ fn compact_ascii_numeric_range(token: &OwnedLexToken) -> Option<(i32, i32)> {
     if token.kind != TokenKind::Word {
         return None;
     }
-    let (min, max) = token.parser_text().split_once('-')?;
-    if min.is_empty()
-        || max.is_empty()
-        || !min.bytes().all(|byte| byte.is_ascii_digit())
-        || !max.bytes().all(|byte| byte.is_ascii_digit())
-    {
-        return None;
-    }
-    let min = min.parse::<i32>().ok()?;
-    let max = max.parse::<i32>().ok()?;
+    let (min, max) = crate::word_primitives::parse_ascii_numeric_range(token.parser_text())?;
     (min <= max).then_some((min, max))
 }
 
@@ -1220,6 +1205,34 @@ pub fn split_if_clause_lexed(
         })
         .collect::<Vec<_>>();
     if comma_indices.is_empty() {
+        // With no authored comma, a broad object predicate can also accept a
+        // suffix of the consequence (for example, the final `this creature`
+        // in a counter-removal action). Prefer the grammar-proven ability-
+        // resolution ordinal boundary before the reverse fallback searches
+        // for the longest merely parseable predicate.
+        for split_idx in 2..tokens.len() {
+            let predicate_tokens = &tokens[1..split_idx];
+            let Ok(predicate) = parse_predicate_with_grammar_entrypoint_lexed(predicate_tokens)
+            else {
+                continue;
+            };
+            if !matches!(
+                predicate,
+                PredicateAst::ThisAbilityResolvedThisTurnExactly(_)
+            ) {
+                continue;
+            }
+            let effect_tokens = trim_lexed_commas(&tokens[split_idx..]);
+            if let Ok(effects) =
+                parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+                && !effects.is_empty()
+            {
+                return Ok(IfClauseSplitSpec {
+                    predicate: IfClausePredicateSpec::Conditional(predicate),
+                    effects,
+                });
+            }
+        }
         for split_idx in (2..tokens.len()).rev() {
             if split_leaves_player_may_search_subject(tokens, split_idx) {
                 continue;
@@ -1495,8 +1508,8 @@ pub fn parse_conditional_predicate_tail_lexed(
     // explicit is especially important when the left predicate refers to the
     // chosen target ("it's a creature") and the right predicate refers to
     // how the spell was cast.
-    if let Some(or_idx) = (0..trimmed.len().saturating_sub(1)).find(|idx| {
-        structure_token_is(&trimmed[*idx], "or") && structure_token_is(&trimmed[*idx + 1], "if")
+    if let Some(or_idx) = crate::slice_primitives::find_window_by(trimmed, 2, |pair| {
+        structure_token_is(&pair[0], "or") && structure_token_is(&pair[1], "if")
     }) {
         let left_tokens = trim_lexed_commas(&trimmed[..or_idx]);
         let right_tokens = trim_lexed_commas(&trimmed[or_idx + 2..]);
@@ -1548,397 +1561,28 @@ pub fn parse_conditional_predicate_tail_lexed(
     Some(ConditionalPredicateTailSpec::Plain(predicate))
 }
 
-fn split_trailing_predicate_clause_lexed<'a>(
-    tokens: &'a [OwnedLexToken],
-    keyword: &'static str,
-) -> Option<TrailingIfClauseSpec<'a>> {
-    let split_idx = rfind_unquoted_dynamic_word(tokens, keyword)?;
-    if split_idx == 0 || split_idx + 1 >= tokens.len() {
-        return None;
-    }
-
-    let predicate_tokens = trim_lexed_commas(&tokens[split_idx + 1..]);
-    if predicate_tokens.is_empty() {
-        return None;
-    }
-    let predicate = parse_predicate_with_grammar_entrypoint_lexed(predicate_tokens).ok()?;
-
-    let leading_tokens = trim_lexed_commas(&tokens[..split_idx]);
-    if leading_tokens.is_empty() {
-        return None;
-    }
-
-    Some(TrailingIfClauseSpec {
-        leading_tokens,
-        predicate,
-    })
-}
-
-fn rfind_unquoted_dynamic_word(tokens: &[OwnedLexToken], word: &'static str) -> Option<usize> {
-    let mut inside_quotes = false;
-    let mut result = None;
-
-    for (idx, token) in tokens.iter().enumerate() {
-        if is_sentence_quote(token) {
-            inside_quotes = !inside_quotes;
-            continue;
-        }
-        if !inside_quotes && token_matches_dynamic_word(token, word) {
-            result = Some(idx);
-        }
-    }
-
-    result
-}
-
-pub fn parse_who_player_predicate_lexed(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    let trimmed = trim_lexed_commas(tokens);
-    if !trimmed
-        .first()
-        .is_some_and(|token| structure_token_is(token, "who"))
-    {
-        return None;
-    }
-
-    let predicate_tail = trim_lexed_commas(&trimmed[1..]);
-    if predicate_tail.is_empty() {
-        return None;
-    }
-
-    let mut predicate_tokens = Vec::with_capacity(predicate_tail.len() + 2);
-    predicate_tokens.push(OwnedLexToken::word(
-        "that".to_string(),
-        TextSpan::synthetic(),
-    ));
-    predicate_tokens.push(OwnedLexToken::word(
-        "player".to_string(),
-        TextSpan::synthetic(),
-    ));
-    predicate_tokens.extend(predicate_tail.iter().cloned());
-
-    parse_predicate_with_grammar_entrypoint_lexed(&predicate_tokens).ok()
-}
-
-pub fn parse_trailing_instead_if_predicate_lexed(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    let trimmed = trim_lexed_commas(tokens);
-    if !trimmed
-        .first()
-        .is_some_and(|token| structure_token_is(token, "instead"))
-        || !trimmed
-            .get(1)
-            .is_some_and(|token| structure_token_is(token, "if"))
-    {
-        return None;
-    }
-
-    let predicate_tokens = trim_lexed_commas(&trimmed[2..]);
-    if predicate_tokens.is_empty() {
-        return None;
-    }
-
-    parse_predicate_with_grammar_entrypoint_lexed(predicate_tokens).ok()
-}
-
-pub fn split_triggered_conditional_clause_lexed<'a>(
-    tokens: &'a [OwnedLexToken],
-    start_idx: usize,
-) -> Option<TriggeredConditionalClauseSpec<'a>> {
-    let (leading_tokens, after_first_comma) = primitives::split_lexed_once_on_comma(tokens)?;
-    if leading_tokens.len() <= start_idx {
-        return None;
-    }
-
-    let trigger_tokens = &leading_tokens[start_idx..];
-    let after_first_comma = trim_lexed_commas(after_first_comma);
-
-    let (_, after_if) = primitives::parse_prefix(after_first_comma, primitives::kw("if"))?;
-
-    let mut comma_indices = Vec::new();
-    let mut inside_quotes = false;
-    for (comma_idx, token) in after_if.iter().enumerate() {
-        if is_sentence_quote(token) {
-            inside_quotes = !inside_quotes;
-            continue;
-        }
-        if inside_quotes || !token.is_comma() {
-            continue;
-        }
-        comma_indices.push(comma_idx);
-    }
-
-    // An ordinal triggering-spell condition may itself be a comma-separated
-    // union ("the first instant spell, the first sorcery spell, or ...").
-    // Its grammar consumes the complete `cast this turn` suffix, so it gives
-    // us an exact predicate/effect boundary before the permissive general
-    // predicate splitter examines an individually valid first member.
-    for &comma_idx in comma_indices.iter().rev() {
-        let predicate_tokens = trim_lexed_commas(&after_if[..comma_idx]);
-        let effects_tokens = trim_lexed_commas(&after_if[comma_idx + 1..]);
-        if predicate_tokens.is_empty() || effects_tokens.is_empty() {
-            continue;
-        }
-        if let Some(predicate) =
-            super::filters::parse_triggering_spell_ordinal_predicate(predicate_tokens)
-        {
-            return Some(TriggeredConditionalClauseSpec {
-                trigger_tokens,
-                predicate,
-                effects_tokens,
-            });
-        }
-    }
-
-    // The first comma after `if` is normally the predicate/effect boundary;
-    // later commas belong to the coordinated effect body.  Prefer that
-    // boundary so an effect such as `copy ..., you may ..., and ...` cannot be
-    // absorbed into the predicate merely because its final tail happens to
-    // look like a valid split.
-    for &comma_idx in &comma_indices {
-        let predicate_tokens = trim_lexed_commas(&after_if[..comma_idx]);
-        let effects_tokens = trim_lexed_commas(&after_if[comma_idx + 1..]);
-        if predicate_tokens.is_empty() || effects_tokens.is_empty() {
-            continue;
-        }
-        if contains_token_kind(predicate_tokens, TokenKind::Period) {
-            continue;
-        }
-        if effects_tokens
-            .first()
-            .is_some_and(|token| structure_token_is_any(token, &["and", "then"]))
-        {
-            continue;
-        }
-        // Search effects commonly contain follow-up commas. When candidates are
-        // examined from right to left, a later comma can otherwise absorb the
-        // search action into a permissively modeled predicate and leave only a
-        // put/reveal/shuffle follow-up as the effect.
-        if predicate_candidate_contains_search_action(predicate_tokens) {
-            continue;
-        }
-        if predicate_candidate_contains_damage_action(predicate_tokens) {
-            continue;
-        }
-        // A moved-or-cast origin clause ("it entered from your graveyard or
-        // you cast it from your graveyard") scopes the trigger event itself;
-        // leave it for the trigger parser instead of modeling it as an
-        // intervening-if predicate.
-        if crate::activation_and_restrictions::trigger_clause_core::clause_words_are_moved_or_cast_origin_condition(
-            &crate::lexer::token_word_refs(predicate_tokens),
-        ) {
-            continue;
-        }
-        // A duration following a comma belongs to the effect clause. Reject
-        // this later split candidate so the preceding comma can preserve the
-        // duration at the head of `effects_tokens`. A predicate that itself
-        // ends in "this turn" has no separating comma and remains valid.
-        if leaf::parse_leaf_restriction_duration_suffix_tokens(predicate_tokens).is_some_and(
-            |shape| {
-                shape
-                    .rest
-                    .last()
-                    .is_some_and(|token| token.kind == TokenKind::Comma)
-            },
-        ) {
-            continue;
-        }
-        if let Some(predicate) = parse_modeled_predicate(predicate_tokens) {
-            if let Some(next_comma_idx) = comma_indices
-                .iter()
-                .copied()
-                .find(|next_idx| *next_idx > comma_idx)
-            {
-                let mut next_fragment = trim_lexed_commas(&after_if[comma_idx + 1..next_comma_idx]);
-                if next_fragment
-                    .first()
-                    .is_some_and(|token| structure_token_is_any(token, &["and", "or"]))
-                {
-                    next_fragment = trim_lexed_commas(&next_fragment[1..]);
-                }
-                if !next_fragment.is_empty()
-                    && !contains_token_kind(next_fragment, TokenKind::Period)
-                    && !predicate_candidate_contains_damage_action(next_fragment)
-                    && parse_modeled_predicate(next_fragment).is_some()
-                {
-                    continue;
-                }
-            }
-            return Some(TriggeredConditionalClauseSpec {
-                trigger_tokens,
-                predicate,
-                effects_tokens,
-            });
-        }
-    }
-
-    None
-}
-
-pub fn split_state_triggered_clause_lexed<'a>(
-    tokens: &'a [OwnedLexToken],
-    start_idx: usize,
-    split_idx: usize,
-) -> Option<StateTriggeredClauseSpec<'a>> {
-    if split_idx <= start_idx || split_idx >= tokens.len() {
-        return None;
-    }
-    if !tokens
-        .first()
-        .is_some_and(|token| structure_token_is_any(token, &["when", "whenever"]))
-    {
-        return None;
-    }
-
-    let trigger_tokens = &tokens[start_idx..split_idx];
-    let effects_tokens = trim_lexed_commas(&tokens[split_idx + 1..]);
-    if effects_tokens.is_empty() {
-        return None;
-    }
-
-    let predicate = if let Some(comma_idx) =
-        structure_token_kind_index(trigger_tokens, TokenKind::Comma)
-        && trigger_tokens
-            .get(comma_idx + 1)
-            .is_some_and(|token| structure_token_is(token, "if"))
-    {
-        let state_predicate =
-            parse_modeled_predicate(trim_lexed_commas(&trigger_tokens[..comma_idx]))?;
-        let gate_predicate =
-            parse_modeled_predicate(trim_lexed_commas(&trigger_tokens[comma_idx + 2..]))?;
-        PredicateAst::And(Box::new(state_predicate), Box::new(gate_predicate))
-    } else {
-        parse_modeled_predicate(trigger_tokens)?
-    };
-
-    Some(StateTriggeredClauseSpec {
-        trigger_tokens,
-        display_tokens: &tokens[..split_idx],
-        predicate,
-        effects_tokens,
-    })
-}
-
-pub fn split_trailing_modal_gate_clause<'a>(
-    tokens: &'a [OwnedLexToken],
-) -> Option<TrailingModalGateSpec<'a>> {
-    let sentence_start = structure_token_kind_rindex(tokens, TokenKind::Period)
-        .map(|idx| idx + 1)
-        .unwrap_or(0);
-    let sentence_tokens = trim_lexed_commas(&tokens[sentence_start..]);
-    if sentence_tokens.is_empty() {
-        return None;
-    }
-    let reflexive = sentence_tokens
-        .first()
-        .is_some_and(|token| token.is_word("when"));
-    let (_, predicate_tail) = primitives::parse_prefix(
-        sentence_tokens,
-        alt((primitives::kw("if"), primitives::kw("when"))),
-    )?;
-    let (predicate_tokens, trailing_tokens) = if let Some((predicate_tokens, trailing_tokens)) =
-        primitives::split_lexed_once_on_comma(predicate_tail)
-    {
-        (
-            trim_lexed_commas(predicate_tokens),
-            trim_lexed_commas(trailing_tokens),
-        )
-    } else {
-        (trim_lexed_commas(predicate_tail), &[][..])
-    };
-    if predicate_tokens.is_empty() || !trailing_tokens.is_empty() {
-        return None;
-    }
-
-    let mut prefix_end = sentence_start;
-    while prefix_end > 0 && tokens[prefix_end - 1].kind == TokenKind::Comma {
-        prefix_end -= 1;
-    }
-
-    let predicate = parse_if_result_predicate(predicate_tokens)?;
-
-    Some(TrailingModalGateSpec {
-        prefix_tokens: &tokens[..prefix_end],
-        predicate,
-        remove_mode_only: primitives::parse_prefix(predicate_tokens, parse_remove_mode_only_prefix)
-            .is_some(),
-        reflexive,
-    })
-}
-
-fn parse_modal_header_choose_spec_inner<'a>(
-    input: &mut LexStream<'a>,
-) -> Result<Option<ModalHeaderChooseSpec>, ErrMode<ContextError>> {
-    let tokens = input.peek_finish();
-    let choose_indices = tokens
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, token)| structure_token_is(token, "choose").then_some(idx))
-        .collect::<Vec<_>>();
-    if choose_indices.is_empty() {
-        input.finish();
-        return Ok(None);
-    }
-
-    for choose_idx in choose_indices.iter().copied() {
-        let choose_tail = &tokens[choose_idx + 1..];
-        let Some((Some(min), max)) = values::parse_modal_choose_range(choose_tail).ok().flatten()
-        else {
-            continue;
-        };
-        let x_clause_start = primitives::find_phrase_start(choose_tail, &["x", "is"])
-            .map(|idx| choose_idx + 1 + idx);
-        let random = primitives::find_phrase_start(choose_tail, &["at", "random"]).is_some();
-
-        input.finish();
-        return Ok(Some(ModalHeaderChooseSpec {
-            choose_idx,
-            min,
-            max,
-            random,
-            x_clause_start,
-        }));
-    }
-
-    let choose_idx = *choose_indices.last().expect("checked non-empty");
-    input.next_slice(choose_idx + 1);
-    Err(primitives::cut_err_ctx(
-        "modal header choose clause",
-        "modal choice range",
-    ))
-}
-
-pub fn parse_modal_header_choose_spec<'a>(
-    input: &mut LexStream<'a>,
-) -> Result<Option<ModalHeaderChooseSpec>, ErrMode<ContextError>> {
-    parse_modal_header_choose_spec_inner
-        .context(StrContext::Label("modal header"))
-        .context(StrContext::Expected(StrContextValue::Description(
-            "modal header line",
-        )))
-        .parse_next(input)
-}
-
 #[cfg(test)]
-mod leading_result_prefix_regressions {
-    use super::*;
+#[path = "structure_inline_leading_result_prefix_regressions.rs"]
+mod leading_result_prefix_regressions;
 
-    #[test]
-    fn ordinary_control_condition_is_not_a_prior_result_prefix() {
-        let ordinary = crate::lexer::lex_line(
-            "If you don't control a Human, you lose life equal to that creature's toughness.",
-            0,
-        )
-        .expect("lex ordinary state condition");
-        assert!(split_leading_result_prefix_lexed(&ordinary).is_none());
-
-        let prior_result = crate::lexer::lex_line("If you don't, you lose 3 life.", 0)
-            .expect("lex prior-result condition");
-        assert!(matches!(
-            split_leading_result_prefix_lexed(&prior_result),
-            Some(LeadingResultPrefixSpec {
-                kind: LeadingResultPrefixKind::If,
-                predicate: IfResultPredicate::DidNot,
-                ..
-            })
-        ));
-    }
-}
+#[path = "structure/structure_choice_programs.rs"]
+mod structure_choice_programs;
+use structure_choice_programs::parse_modal_header_choose_spec_inner;
+pub use structure_choice_programs::{
+    parse_modal_header_choose_spec, split_trailing_modal_gate_clause,
+};
+#[path = "structure/structure_trigger_programs.rs"]
+mod structure_trigger_programs;
+pub use structure_trigger_programs::{
+    split_state_triggered_clause_lexed, split_triggered_conditional_clause_lexed,
+};
+#[path = "structure/structure_condition_programs.rs"]
+mod structure_condition_programs;
+pub use structure_condition_programs::parse_trailing_instead_if_predicate_lexed;
+use structure_condition_programs::split_trailing_predicate_clause_lexed;
+#[path = "structure/structure_reference_programs.rs"]
+mod structure_reference_programs;
+pub use structure_reference_programs::parse_who_player_predicate_lexed;
+#[path = "structure/structure_core_programs.rs"]
+mod structure_core_programs;
+use structure_core_programs::rfind_unquoted_dynamic_word;

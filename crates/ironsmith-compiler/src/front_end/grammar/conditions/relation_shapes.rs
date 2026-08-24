@@ -87,6 +87,20 @@ pub(super) fn parse_prepositional_copula<'a, 'p>(
     preposition_words: &'p [&'p str],
 ) -> Option<PrepositionalCopulaShape<'a>> {
     let tokens = trim_clause(tokens);
+    if tokens.first().is_some_and(|token| token.is_word("it's"))
+        && tokens.get(1).is_some_and(|token| {
+            token
+                .as_word()
+                .is_some_and(|word| crate::slice_primitives::contains(preposition_words, &word))
+        })
+        && tokens.len() > 2
+    {
+        return Some(PrepositionalCopulaShape {
+            subject_tokens: &tokens[..1],
+            preposition_tokens: &tokens[1..2],
+            tail_tokens: &tokens[2..],
+        });
+    }
     let mut input = LexStream::new(tokens);
     let subject_tokens = take_until_action(&mut input, PossessionAction::Copula).ok()?;
     parse_action(&mut input, PossessionAction::Copula).ok()?;

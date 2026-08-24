@@ -9,6 +9,10 @@ use crate::triggers::Trigger;
 
 use super::LoweredEffects;
 
+fn after_exact_prefix<'a>(value: &'a str, prefix: &str) -> Option<&'a str> {
+    value.starts_with(prefix).then(|| &value[prefix.len()..])
+}
+
 fn one_or_more_subject_description(filter: &crate::target::ObjectFilter) -> String {
     fn has_subtype_named(filter: &crate::target::ObjectFilter, word: &str) -> bool {
         filter
@@ -90,13 +94,11 @@ fn one_or_more_subject_description(filter: &crate::target::ObjectFilter) -> Stri
         })
         .collect::<Vec<_>>()
         .join(" ");
-    let description = description
-        .strip_prefix("a ")
-        .or_else(|| description.strip_prefix("an "))
+    let description = after_exact_prefix(&description, "a ")
+        .or_else(|| after_exact_prefix(&description, "an "))
         .unwrap_or(&description);
     let description = if filter.other {
-        description
-            .strip_prefix("another ")
+        after_exact_prefix(description, "another ")
             .map(|rest| format!("other {rest}"))
             .unwrap_or_else(|| description.to_string())
     } else {
@@ -119,6 +121,71 @@ fn damage_source_description(
     } else {
         description
     }
+}
+
+fn indefinite_subject_description(description: String) -> String {
+    let lower = description.to_ascii_lowercase();
+    if [
+        "a ",
+        "an ",
+        "another ",
+        "any ",
+        "each ",
+        "every ",
+        "all ",
+        "one or more ",
+        "this ",
+        "that ",
+        "the ",
+    ]
+    .iter()
+    .any(|prefix| lower.starts_with(prefix))
+    {
+        return description;
+    }
+    let article = if lower
+        .chars()
+        .next()
+        .is_some_and(|ch| matches!(ch, 'a' | 'e' | 'i' | 'o' | 'u'))
+    {
+        "an"
+    } else {
+        "a"
+    };
+    format!("{article} {description}")
+}
+
+fn strip_indefinite_article(description: &str) -> &str {
+    after_exact_prefix(description, "a ")
+        .or_else(|| after_exact_prefix(description, "an "))
+        .unwrap_or(description)
+}
+
+fn repeated_intro_branch_description(trigger: &TriggerSpec) -> Option<String> {
+    let TriggerSpec::WithIntro { intro, trigger } = trigger else {
+        return None;
+    };
+    let intro = match intro {
+        TriggerIntroSurfaceAst::When => "When",
+        TriggerIntroSurfaceAst::Whenever => "Whenever",
+        TriggerIntroSurfaceAst::At => "At",
+    };
+    let body = match trigger.as_ref() {
+        TriggerSpec::AttacksOneOrMore(filter) if filter.controller == Some(PlayerFilter::You) => {
+            let mut described_filter = filter.clone();
+            described_filter.controller = None;
+            format!(
+                "you attack with {}",
+                one_or_more_subject_description(&described_filter)
+            )
+        }
+        TriggerSpec::Dies(filter) => format!(
+            "{} dies",
+            indefinite_subject_description(filter.description())
+        ),
+        _ => return None,
+    };
+    Some(format!("{intro} {body}"))
 }
 
 fn describe_damage_to_object_and_player_union(
@@ -177,9 +244,8 @@ fn describe_damage_to_object_and_player_union(
         return None;
     }
     let target_description = one_or_more_subject_description(target);
-    let target_description = target_description
-        .strip_prefix("one or more ")
-        .unwrap_or(&target_description);
+    let target_description =
+        after_exact_prefix(&target_description, "one or more ").unwrap_or(&target_description);
     Some(format!(
         "Whenever {} deals damage to one or more {target_description} and/or players",
         damage_source_description(source, source_surface),
@@ -377,27 +443,66 @@ pub fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             player_first,
             amount,
             source_surface,
-        } => Trigger::deals_exact_damage_to_object_or_player_with_source_surface(
-            source,
-            object,
-            player,
-            player_first,
-            amount,
-            source_surface,
-        ),
+        } => {
+            let source_description = damage_source_description(&source, &source_surface);
+            let object_description = indefinite_subject_description(object.description());
+            let player_description = player.description();
+            let recipients = if player_first {
+                format!(
+                    "{player_description} or {}",
+                    strip_indefinite_article(&object_description)
+                )
+            } else {
+                format!(
+                    "{object_description} or {}",
+                    strip_indefinite_article(&player_description)
+                )
+            };
+            let display = format!(
+                "Whenever {source_description} deals exactly {amount} damage to {recipients}"
+            );
+            Trigger::deals_exact_damage_to_object_or_player_with_source_surface(
+                source,
+                object,
+                player,
+                player_first,
+                amount,
+                source_surface,
+            )
+            .with_display_label(display)
+        }
         TriggerSpec::DealsNoncombatDamageToPlayer {
             source,
             player,
             source_surface,
             damaged_player_one_or_more,
             during_turn,
-        } => Trigger::deals_noncombat_damage_to_player_qualified(
-            source,
-            player,
-            source_surface,
-            damaged_player_one_or_more,
-            during_turn,
-        ),
+        } => {
+            let source_description =
+                indefinite_subject_description(damage_source_description(&source, &source_surface));
+            let player_description =
+                if damaged_player_one_or_more && player == PlayerFilter::Opponent {
+                    "one or more of your opponents".to_string()
+                } else {
+                    player.description()
+                };
+            let turn_description = match during_turn.as_ref() {
+                Some(PlayerFilter::You) => " during your turn",
+                Some(PlayerFilter::Opponent) => " during an opponent's turn",
+                _ => "",
+            };
+            let display = format!(
+                "Whenever {source_description} deals noncombat damage to {player_description}{turn_description}"
+            );
+            Trigger::deals_noncombat_damage_to_player_qualified(
+                source,
+                player,
+                source_surface,
+                damaged_player_one_or_more,
+                during_turn,
+            )
+            .with_display_label(display)
+        }
         TriggerSpec::DealsCombatDamage(filter) => Trigger::deals_combat_damage(filter),
         TriggerSpec::DealsCombatDamageTo { source, target } => {
             Trigger::deals_combat_damage_to(source, target)
@@ -806,7 +911,7 @@ pub fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             } else if let Some(origin_condition) = origin_condition {
                 let display = format!(
                     "Whenever {} enters the battlefield{}{}",
-                    filter.description(),
+                    indefinite_subject_description(filter.description()),
                     origin_condition.display_suffix(false),
                     during_turn_surface.unwrap_or_default(),
                 );
@@ -822,7 +927,7 @@ pub fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             } else {
                 let display = format!(
                     "Whenever {} enters the battlefield{}",
-                    filter.description(),
+                    indefinite_subject_description(filter.description()),
                     during_turn_surface.unwrap_or_default(),
                 );
                 let mut trigger = crate::triggers::zone_changes::ZoneChangeTrigger::new()
@@ -1034,9 +1139,23 @@ pub fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         ),
         TriggerSpec::Either(left, right) => {
             let display = describe_damage_to_object_and_player_union(&left, &right);
+            let repeated_intro_display = repeated_intro_branch_description(&left)
+                .zip(repeated_intro_branch_description(&right))
+                .map(|(left, right)| {
+                    let right = after_exact_prefix(&right, "Whenever ")
+                        .map(|tail| format!("whenever {tail}"))
+                        .or_else(|| {
+                            after_exact_prefix(&right, "When ").map(|tail| format!("when {tail}"))
+                        })
+                        .or_else(|| {
+                            after_exact_prefix(&right, "At ").map(|tail| format!("at {tail}"))
+                        })
+                        .unwrap_or(right);
+                    format!("{left} and {right}")
+                });
             let trigger =
                 Trigger::either(compile_trigger_spec(*left), compile_trigger_spec(*right));
-            if let Some(display) = display {
+            if let Some(display) = display.or(repeated_intro_display) {
                 trigger.with_display_label(display)
             } else {
                 trigger
@@ -1138,7 +1257,7 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         | TriggerSpec::EntersBattlefieldFromZone { .. }
         | TriggerSpec::EntersBattlefieldTapped { .. }
         | TriggerSpec::EntersBattlefieldUntapped { .. } => Some(PlayerFilter::AliasedControllerOf(
-            ObjectRef::tagged(TagKey::from("triggering")),
+            ObjectRef::tagged(crate::tag::CompilerReferenceTag::Triggering.key()),
         )),
         TriggerSpec::SpellCast { caster, .. } => {
             if *caster == PlayerFilter::Any {
@@ -1147,7 +1266,7 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
                 Some(PlayerFilter::You)
             } else {
                 Some(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
-                    TagKey::from("triggering"),
+                    crate::tag::CompilerReferenceTag::Triggering.key(),
                 )))
             }
         }
@@ -1400,6 +1519,10 @@ fn spell_cast_filter_binds_target_count(filter: &crate::target::ObjectFilter) ->
         || filter.targets_only_player.is_some()
         || filter.targets_only_object.is_some()
         || filter.target_count.is_some()
+        || filter
+            .any_of
+            .iter()
+            .any(spell_cast_filter_binds_target_count)
 }
 
 pub fn compile_trigger_effects(

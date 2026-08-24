@@ -38,9 +38,10 @@ fn bind_owner_subject_same_sentence_tail(
 ) {
     super::chain_carry::bind_implicit_player_context(effect, owner);
 
-    let refers_to_their_library = token_word_refs(trailing_tokens)
-        .windows(2)
-        .any(|window| window == ["their", "library"]);
+    let refers_to_their_library = crate::word_primitives::sequence_occurs(
+        &token_word_refs(trailing_tokens),
+        &["their", "library"],
+    );
     if owner == PlayerAst::ItsOwner
         && refers_to_their_library
         && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -244,9 +245,8 @@ pub fn parse_shuffle_graveyard_into_library_sentence(
     let target_tokens = shape.target_tokens;
     let has_target_selector = shape.has_target_selector;
     let target_words = crate::lexer::token_word_refs(target_tokens);
-    let explicit_all_cards_from = target_words
-        .get(..3)
-        .is_some_and(|prefix| prefix == ["all", "cards", "from"]);
+    let explicit_all_cards_from =
+        crate::word_primitives::parse_sequence_prefix(&target_words, &["all", "cards", "from"]);
     // "Shuffle all creature cards of that type from your graveyard ..." moves
     // a filtered subset, not the whole graveyard; only a bare possessive
     // graveyard phrase (optionally "all cards from ...") is the whole-zone
@@ -299,9 +299,13 @@ pub fn parse_shuffle_graveyard_into_library_sentence(
             ));
         } else if has_hand_clause {
             let words = crate::lexer::token_word_refs(tokens);
-            let includes_owned_permanents = words
-                .windows(4)
-                .any(|window| matches!(window, ["all", "permanents", "you" | "they", "own"]));
+            let includes_owned_permanents = crate::word_primitives::any_sequence_occurs(
+                &words,
+                &[
+                    &["all", "permanents", "you", "own"],
+                    &["all", "permanents", "they", "own"],
+                ],
+            );
             effects.push(if includes_owned_permanents {
                 EffectAst::subject_verb_shuffle_hand_graveyard_and_owned_permanents_into_library(
                     player,
@@ -448,15 +452,14 @@ pub fn parse_shuffle_object_into_library_sentence(
 
 fn shuffle_target_moves_all(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::lexer::token_word_refs(tokens);
-    matches!(words.as_slice(), ["all" | "each", ..])
-        || matches!(
-            words.as_slice(),
-            [
-                "the",
-                "cards" | "creatures" | "permanents" | "tokens" | "objects",
-                ..
-            ]
-        )
+    crate::word_primitives::first_is_any(&words, &["all", "each"])
+        || (crate::word_primitives::first_is(&words, "the")
+            && words.get(1).is_some_and(|word| {
+                crate::slice_primitives::contains(
+                    &["cards", "creatures", "permanents", "tokens", "objects"],
+                    word,
+                )
+            }))
 }
 
 pub fn parse_exile_hand_and_graveyard_bundle_sentence(
@@ -674,48 +677,8 @@ pub fn parse_for_each_exiled_this_way_sentence(
 }
 
 #[cfg(test)]
-mod typed_exiled_result_iterator_tests {
-    use super::*;
-    use crate::model::ast::SubjectVerbEffectAst;
-
-    #[test]
-    fn creature_card_exiled_this_way_keeps_a_typed_lki_gate() {
-        let tokens =
-            crate::lexer::lex_line("For each creature card exiled this way, you gain 1 life", 0)
-                .expect("typed exiled-result iterator should lex");
-        let effects = parse_for_each_exiled_this_way_sentence(&tokens)
-            .expect("typed iterator should parse")
-            .expect("typed iterator should be recognized");
-        let [
-            EffectAst::ForEachTagged {
-                effects: iterated, ..
-            },
-        ] = effects.as_slice()
-        else {
-            panic!("expected one tagged-result loop: {effects:#?}");
-        };
-        let [
-            EffectAst::Conditional {
-                predicate: PredicateAst::ItMatchedLastKnown(filter),
-                if_true,
-                if_false,
-            },
-        ] = iterated.as_slice()
-        else {
-            panic!("expected a typed LKI condition inside the loop: {iterated:#?}");
-        };
-        assert_eq!(filter.card_types, [CardType::Creature]);
-        assert!(filter.union_surface.explicit_card_noun());
-        assert!(if_false.is_empty());
-        assert!(matches!(
-            if_true.as_slice(),
-            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::GainLife { .. },
-                ..
-            })]
-        ));
-    }
-}
+#[path = "search_library_inline_typed_exiled_result_iterator_tests.rs"]
+mod typed_exiled_result_iterator_tests;
 
 pub fn parse_each_player_put_permanent_cards_exiled_with_source_sentence(
     tokens: &[OwnedLexToken],
@@ -807,250 +770,20 @@ pub fn parse_for_each_destroyed_this_way_sentence(
     }]))
 }
 
-fn bind_sacrificed_snapshot_controller(effect: &mut EffectAst) {
-    match effect {
-        EffectAst::MayByPlayer { player, .. } if *player == PlayerAst::ItsController => {
-            *player = PlayerAst::That;
-        }
-        EffectAst::SubjectVerb(subject_verb) => {
-            if subject_verb.subject.player == PlayerAst::ItsController {
-                subject_verb.subject.player = PlayerAst::That;
-            }
-            if let SubjectVerbActionAst::SearchLibrary { player, .. } = &mut subject_verb.action
-                && *player == PlayerAst::ItsController
-            {
-                *player = PlayerAst::That;
-            }
-        }
-        _ => {}
-    }
-
-    crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
-        for nested_effect in nested {
-            bind_sacrificed_snapshot_controller(nested_effect);
-        }
-    });
-}
-
-/// Parse a typed iterator over the actual objects sacrificed by the preceding
-/// instruction.  The last-known predicate deliberately stays inside the
-/// object loop: it preserves both the exact sacrificed subset and the
-/// controller each object had before leaving the battlefield.
-pub fn parse_for_each_sacrificed_this_way_sentence(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(shape) = search_grammar::parse_search_for_each_way_shape_lexed(tokens) else {
-        return Ok(None);
-    };
-    if shape.kind != search_grammar::SearchForEachWayKind::Sacrificed {
-        return Ok(None);
-    }
-    let filter_tokens = shape.iterated_filter_tokens.ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "missing object type in sacrificed-this-way iterator (clause: '{}')",
-            token_word_refs(tokens).join(" ")
-        ))
-    })?;
-    if filter_tokens.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "empty object type in sacrificed-this-way iterator (clause: '{}')",
-            token_word_refs(tokens).join(" ")
-        )));
-    }
-    let mut filter = parse_object_filter_lexed(filter_tokens, false)?;
-    // Sacrifice result predicates use the permanent's battlefield snapshot,
-    // not its current graveyard object.
-    filter.zone = None;
-
-    let effect_tokens = shape.effect_tokens.ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "missing comma after 'for each ... sacrificed this way' clause (clause: '{}')",
-            token_word_refs(tokens).join(" ")
-        ))
-    })?;
-    if effect_tokens.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "missing effect after sacrificed-this-way iterator (clause: '{}')",
-            token_word_refs(tokens).join(" ")
-        )));
-    }
-    let mut effects = parse_effect_chain(effect_tokens)?;
-    if effects.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "empty effect after sacrificed-this-way iterator (clause: '{}')",
-            token_word_refs(tokens).join(" ")
-        )));
-    }
-    for effect in &mut effects {
-        bind_sacrificed_snapshot_controller(effect);
-    }
-
-    Ok(Some(vec![EffectAst::ForEachTagged {
-        tag: IT_TAG.into(),
-        effects: vec![EffectAst::Conditional {
-            predicate: PredicateAst::ItMatchedLastKnown(filter),
-            if_true: effects,
-            if_false: Vec::new(),
-        }],
-    }]))
-}
-
-pub fn parse_for_each_put_into_graveyard_this_way_sentence(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(shape) = search_grammar::parse_search_for_each_way_shape_lexed(tokens) else {
-        return Ok(None);
-    };
-    if shape.kind != search_grammar::SearchForEachWayKind::PutIntoGraveyard {
-        return Ok(None);
-    }
-    let effect_tokens = shape.effect_tokens.ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "missing comma after 'for each ... this way' clause (clause: '{}')",
-            token_word_refs(tokens).join(" ")
-        ))
-    })?;
-    if effect_tokens.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "missing effect after 'for each ... this way' clause (clause: '{}')",
-            token_word_refs(tokens).join(" ")
-        )));
-    }
-    let effects = parse_effect_chain(effect_tokens)?;
-    if effects.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "empty effect after 'for each ... this way' clause (clause: '{}')",
-            token_word_refs(tokens).join(" ")
-        )));
-    }
-
-    let effects = if let Some(filter_tokens) = shape.iterated_filter_tokens {
-        let mut filter = parse_object_filter_lexed(filter_tokens, false)?;
-        filter.zone = None;
-        filter.set_put_into_graveyard_this_way_surface(true);
-        vec![EffectAst::Conditional {
-            predicate: PredicateAst::ItMatchedLastKnown(filter),
-            if_true: effects,
-            if_false: Vec::new(),
-        }]
-    } else {
-        effects
-    };
-
-    Ok(Some(vec![EffectAst::ForEachTagged {
-        tag: IT_TAG.into(),
-        effects,
-    }]))
-}
-
 #[cfg(test)]
-mod typed_put_into_graveyard_result_iterator_tests {
-    use super::*;
+#[path = "search_library_inline_typed_put_into_graveyard_result_iterator_tests_2.rs"]
+mod typed_put_into_graveyard_result_iterator_tests;
 
-    #[test]
-    fn creature_card_put_into_graveyard_this_way_keeps_a_typed_lki_gate() {
-        let tokens = crate::lexer::lex_line(
-            "For each creature card put into a graveyard this way, you create a tapped 2/2 black Zombie creature token",
-            0,
-        )
-        .expect("typed graveyard-result iterator should lex");
-        let effects = parse_for_each_put_into_graveyard_this_way_sentence(&tokens)
-            .expect("typed iterator should parse")
-            .expect("typed iterator should claim the sentence");
-        let [EffectAst::ForEachTagged { effects, .. }] = effects.as_slice() else {
-            panic!("expected a tagged result iterator: {effects:#?}");
-        };
-        let [
-            EffectAst::Conditional {
-                predicate: PredicateAst::ItMatchedLastKnown(filter),
-                if_true,
-                if_false,
-            },
-        ] = effects.as_slice()
-        else {
-            panic!("expected a typed last-known-information gate: {effects:#?}");
-        };
-        assert_eq!(filter.card_types, vec![crate::types::CardType::Creature]);
-        assert!(filter.has_explicit_card_noun());
-        assert!(filter.has_put_into_graveyard_this_way_surface());
-        assert!(!if_true.is_empty());
-        assert!(if_false.is_empty());
-    }
-
-    #[test]
-    fn unqualified_card_iterator_keeps_only_an_equality_transparent_surface_gate() {
-        let tokens = crate::lexer::lex_line(
-            "For each card put into a graveyard this way, you gain 1 life",
-            0,
-        )
-        .expect("ordinary result iterator should lex");
-        let effects = parse_for_each_put_into_graveyard_this_way_sentence(&tokens)
-            .expect("ordinary iterator should parse")
-            .expect("ordinary iterator should claim the sentence");
-        let [EffectAst::ForEachTagged { effects, .. }] = effects.as_slice() else {
-            panic!("expected a tagged result iterator: {effects:#?}");
-        };
-        let [
-            EffectAst::Conditional {
-                predicate: PredicateAst::ItMatchedLastKnown(filter),
-                ..
-            },
-        ] = effects.as_slice()
-        else {
-            panic!("expected the authored action surface on a typed LKI gate: {effects:#?}");
-        };
-        assert_eq!(filter, &ObjectFilter::default());
-        assert!(filter.has_explicit_card_noun());
-        assert!(filter.has_put_into_graveyard_this_way_surface());
-    }
-}
-
-pub fn parse_earthbend_sentence(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
-    let words = token_word_refs(tokens);
-    if words
-        .first()
-        .is_none_or(|word| *word != SEARCH_EARTHBEND_WORD)
-    {
-        return Ok(None);
-    }
-
-    let count = parse_number(tokens.get(1..).unwrap_or_default())
-        .map(|(value, _)| value)
-        .or_else(|| words.get(1).and_then(|word| parse_number_word_u32(word)))
-        .ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing earthbend count (clause: '{}')",
-                words.join(" ")
-            ))
-        })?;
-
-    Ok(Some(EffectAst::subject_verb_earthbend(count)))
-}
-
-pub fn parse_enchant_sentence(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
-    let words = token_word_refs(tokens);
-    if words.is_empty() || words[0] != SEARCH_ENCHANT_WORD {
-        return Ok(None);
-    }
-
-    let remaining = if tokens.len() > 1 { &tokens[1..] } else { &[] };
-    let filter = match words.get(1..) {
-        Some(["player"]) => crate::object::AuraAttachmentFilter::Player(PlayerFilter::Any),
-        Some(["opponent"]) | Some(["an", "opponent"]) => {
-            crate::object::AuraAttachmentFilter::Player(PlayerFilter::Opponent)
-        }
-        Some(["you"]) => crate::object::AuraAttachmentFilter::Player(PlayerFilter::You),
-        _ => crate::object::AuraAttachmentFilter::Object(parse_object_filter(remaining, false)?),
-    };
-    Ok(Some(EffectAst::subject_verb_enchant(filter)))
-}
-
-pub fn parse_restriction_duration(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<(crate::effect::Until, Vec<OwnedLexToken>)>, CardTextError> {
-    parse_restriction_duration_lexed(tokens)
-}
+#[path = "search_library/condition_programs.rs"]
+mod condition_programs;
+pub use condition_programs::parse_restriction_duration;
+#[path = "search_library/core_programs.rs"]
+mod core_programs;
+pub use core_programs::{parse_earthbend_sentence, parse_enchant_sentence};
+#[path = "search_library/zone_programs.rs"]
+mod zone_programs;
+pub use zone_programs::parse_for_each_put_into_graveyard_this_way_sentence;
+#[path = "search_library/resource_programs.rs"]
+mod resource_programs;
+use resource_programs::bind_sacrificed_snapshot_controller;
+pub use resource_programs::parse_for_each_sacrificed_this_way_sentence;

@@ -1,0 +1,106 @@
+use super::*;
+
+pub(super) fn is_may_put_selected_onto_battlefield_on_your_turn(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::lexer::token_word_refs(tokens);
+    crate::word_primitives::parse_any_sequence_complete(
+        &words,
+        &[
+            &[
+                "you",
+                "may",
+                "put",
+                "it",
+                "onto",
+                "the",
+                "battlefield",
+                "if",
+                "it's",
+                "your",
+                "turn",
+            ],
+            &[
+                "you",
+                "may",
+                "put",
+                "it",
+                "onto",
+                "battlefield",
+                "if",
+                "it's",
+                "your",
+                "turn",
+            ],
+            &[
+                "you",
+                "may",
+                "put",
+                "it",
+                "onto",
+                "the",
+                "battlefield",
+                "if",
+                "it",
+                "is",
+                "your",
+                "turn",
+            ],
+        ],
+    )
+}
+
+pub(super) fn is_if_selected_not_put_onto_battlefield_put_into_hand(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    let words = crate::lexer::token_word_refs(tokens);
+    crate::word_primitives::parse_any_sequence_complete(
+        &words,
+        &[
+            &[
+                "if",
+                "you",
+                "don't",
+                "put",
+                "it",
+                "onto",
+                "the",
+                "battlefield",
+                "put",
+                "it",
+                "into",
+                "your",
+                "hand",
+            ],
+            &[
+                "if",
+                "you",
+                "dont",
+                "put",
+                "it",
+                "onto",
+                "the",
+                "battlefield",
+                "put",
+                "it",
+                "into",
+                "your",
+                "hand",
+            ],
+            &[
+                "if",
+                "you",
+                "do",
+                "not",
+                "put",
+                "it",
+                "onto",
+                "the",
+                "battlefield",
+                "put",
+                "it",
+                "into",
+                "your",
+                "hand",
+            ],
+        ],
+    )
+}

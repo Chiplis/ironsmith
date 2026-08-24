@@ -177,6 +177,7 @@ pub fn generate_replacement_effects_from_abilities(game: &GameState) -> Vec<Repl
 mod tests {
     use super::generate_replacement_effects_from_abilities;
     use crate::cards::CardDefinitionBuilder;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::cards::basic_island;
     use crate::continuous::Modification;
     use crate::effect::{Until, Value};
@@ -369,7 +370,7 @@ mod tests {
             .card_types(vec![CardType::Enchantment])
             .build();
         let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
-        let ingredient = CounterType::Named("ingredient");
+        let ingredient = CounterType::Named("ingredient".into());
 
         for (additional_source_counters, expected_counters) in [(2_u32, 2_u32), (3_u32, 5_u32)] {
             game.add_counters(source_id, ingredient, additional_source_counters);

@@ -301,6 +301,9 @@ pub(super) fn typed_counter_where_x_carries_into_payment_and_result_followup() {
                     if is_source_plus_one_counter_count(amount)
             ),
             EffectAst::Coordinated { effects, .. } => contains_typed_x_damage(effects),
+            EffectAst::Coordination(coordination) => coordination
+                .effects()
+                .any(|effect| contains_typed_x_damage(std::slice::from_ref(effect))),
             _ => false,
         })
     }
@@ -365,7 +368,10 @@ pub(super) fn arcee_acrobatic_coupe_binds_that_many_to_qualifying_spell_targets(
         debug.contains("Creature") && debug.contains("Vehicle"),
         "{debug}"
     );
-    assert!(debug.contains("type_or_subtype_union: true"), "{debug}");
+    assert!(
+        debug.contains("any_of: [\n"),
+        "the canonical spell filter should preserve the creature-or-Vehicle target union: {debug}"
+    );
     assert!(
         debug.contains("EventValue") && debug.contains("Amount"),
         "{debug}"
@@ -406,7 +412,7 @@ pub(super) fn dragonspark_reactor_reuses_first_damage_amount_for_second_target()
     );
     assert_eq!(
         compact
-            .matches("ExecuteWithSourceEffect{source:SurfaceHinted{spec:Source")
+            .matches("ExecuteWithSourceEffect{source:Source")
             .count(),
         2,
         "both conjoined damage effects must use the sacrificed artifact as their source: {debug}"

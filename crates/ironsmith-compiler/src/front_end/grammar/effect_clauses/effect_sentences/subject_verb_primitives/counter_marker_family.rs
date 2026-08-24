@@ -501,33 +501,43 @@ pub fn parse_return_with_counters_on_it_sentence(
 pub fn parse_return_with_dynamic_entry_counters_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::lexer::token_word_refs(clause.tokens());
-    let Some(destination) = words
-        .windows(6)
-        .position(|window| window == ["to", "the", "battlefield", "with", "x", "additional"])
-    else {
+    let view = crate::lexer::TokenWordView::new(clause.tokens());
+    let words = view.word_refs();
+    let Some(destination) = crate::word_primitives::parse_sequence_start(
+        &words,
+        &["to", "the", "battlefield", "with", "x", "additional"],
+    ) else {
         return Ok(None);
     };
-    if words.first() != Some(&"return")
+    if !crate::word_primitives::first_is(&words, "return")
         || destination <= 1
-        || !words.ends_with(&["counters", "on", "it"])
+        || !crate::word_primitives::parse_sequence_suffix(&words, &["counters", "on", "it"])
     {
         return Ok(None);
     }
     let target_words = &words[1..destination];
-    if !target_words.ends_with(&["from", "your", "graveyard"]) {
+    if !crate::word_primitives::parse_sequence_suffix(target_words, &["from", "your", "graveyard"])
+    {
         return Ok(None);
     }
-    let counter_words = &words[destination + 6..words.len() - 3];
-    if counter_words.is_empty() {
-        return Ok(None);
-    }
-    let counter_tokens = crate::lexer::synthetic_word_tokens(counter_words);
-    let Some(counter_type) = parse_counter_type_from_tokens(&counter_tokens) else {
+    let Some(counter_start) = view.token_index_after_words(destination + 6) else {
         return Ok(None);
     };
-    let target_tokens = crate::lexer::synthetic_word_tokens(target_words);
-    let mut target = parse_target_phrase(&target_tokens)?;
+    let Some(counter_end) = view.map_word_to_token_start(words.len() - 3) else {
+        return Ok(None);
+    };
+    if counter_start >= counter_end {
+        return Ok(None);
+    }
+    let Some(counter_type) =
+        parse_counter_type_from_tokens(&clause.tokens()[counter_start..counter_end])
+    else {
+        return Ok(None);
+    };
+    let Some(target_range) = view.token_span_for_words(1, destination) else {
+        return Ok(None);
+    };
+    let mut target = parse_target_phrase(&clause.tokens()[target_range])?;
 
     fn bind_owned_graveyard(target: &mut TargetAst) -> bool {
         match target {
@@ -646,19 +656,19 @@ fn parse_optional_put_from_owned_hand_or_graveyard_with_counters(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words = crate::lexer::token_word_refs(clause.tokens());
-    let put_index = if words.starts_with(&["you", "may", "put"]) {
+    let put_index = if crate::word_primitives::parse_sequence_prefix(&words, &["you", "may", "put"])
+    {
         2
-    } else if words.starts_with(&["may", "put"]) {
+    } else if crate::word_primitives::parse_sequence_prefix(&words, &["may", "put"]) {
         1
-    } else if words.starts_with(&["put"]) {
+    } else if crate::word_primitives::parse_sequence_prefix(&words, &["put"]) {
         0
     } else {
         return Ok(None);
     };
-    let Some(onto_index) = words[put_index + 1..]
-        .iter()
-        .position(|word| *word == "onto")
-        .map(|offset| put_index + 1 + offset)
+    let Some(onto_index) =
+        crate::slice_primitives::select_position(&words[put_index + 1..], |word| *word == "onto")
+            .map(|offset| put_index + 1 + offset)
     else {
         return Ok(None);
     };
@@ -673,7 +683,10 @@ fn parse_optional_put_from_owned_hand_or_graveyard_with_counters(
         "graveyard",
         "with",
     ];
-    if words.get(onto_index..onto_index + origin.len()) != Some(origin.as_slice()) {
+    if !words
+        .get(onto_index..)
+        .is_some_and(|tail| crate::word_primitives::parse_sequence_prefix(tail, &origin))
+    {
         return Ok(None);
     }
     let target_words = &words[put_index + 1..onto_index];
@@ -681,7 +694,9 @@ fn parse_optional_put_from_owned_hand_or_graveyard_with_counters(
         return Ok(None);
     }
     let counter_words = &words[onto_index + origin.len()..];
-    if counter_words.len() < 3 || !counter_words.ends_with(&["on", "it"]) {
+    if counter_words.len() < 3
+        || !crate::word_primitives::parse_sequence_suffix(counter_words, &["on", "it"])
+    {
         return Ok(None);
     }
 
@@ -767,403 +782,26 @@ pub fn replace_target_subtype(target: &mut TargetAst, subtype: Subtype) -> bool 
     }
 }
 
-pub fn clone_return_effect_with_subtype(base: &EffectAst, subtype: Subtype) -> Option<EffectAst> {
-    match base {
-        EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            SubjectVerbActionAst::ReturnToHand {
-                target,
-                random,
-                destination_player_surface,
-                exiled_with_source_surface,
-                set_quantifier_surface,
-                set_reference_surface,
-            } => {
-                let mut cloned_target = target.clone();
-                replace_target_subtype(&mut cloned_target, subtype).then_some(
-                    EffectAst::subject_verb_return_to_hand(cloned_target, *random)
-                        .with_return_destination_player_surface(*destination_player_surface)
-                        .with_exiled_with_source_surface(exiled_with_source_surface.clone())
-                        .with_return_set_quantifier_surface(*set_quantifier_surface)
-                        .with_return_set_reference_surface(set_reference_surface.clone()),
-                )
-            }
-            SubjectVerbActionAst::ReturnAllToHand {
-                filter,
-                destination_player_surface,
-                exiled_with_source_surface,
-            } => {
-                let mut cloned_filter = filter.clone();
-                cloned_filter.subtypes = vec![subtype];
-                Some(
-                    EffectAst::subject_verb_return_all_to_hand(cloned_filter)
-                        .with_return_destination_player_surface(*destination_player_surface)
-                        .with_exiled_with_source_surface(exiled_with_source_surface.clone()),
-                )
-            }
-            SubjectVerbActionAst::ReturnToBattlefield {
-                target,
-                tapped,
-                transformed,
-                converted,
-                controller,
-                count_value,
-                as_aura,
-                top_only,
-                ..
-            } => {
-                let mut cloned_target = target.clone();
-                replace_target_subtype(&mut cloned_target, subtype).then(|| {
-                    let mut effect = EffectAst::subject_verb_return_to_battlefield(
-                        cloned_target,
-                        *tapped,
-                        *transformed,
-                        *converted,
-                        *controller,
-                        count_value.clone(),
-                    )
-                    .with_top_only_return_choice(*top_only);
-                    if let EffectAst::SubjectVerb(subject_verb) = &mut effect
-                        && let SubjectVerbActionAst::ReturnToBattlefield { as_aura: dst, .. } =
-                            &mut subject_verb.action
-                    {
-                        *dst = as_aura.clone();
-                    }
-                    effect
-                })
-            }
-            SubjectVerbActionAst::ReturnAllToBattlefield {
-                filter,
-                tapped,
-                face_down,
-                controller,
-                verb_surface,
-            } => {
-                let mut cloned_filter = filter.clone();
-                cloned_filter.subtypes = vec![subtype];
-                Some(
-                    EffectAst::subject_verb_return_all_to_battlefield(
-                        cloned_filter,
-                        *tapped,
-                        *face_down,
-                        *controller,
-                    )
-                    .with_move_to_zone_verb_surface(*verb_surface),
-                )
-            }
-            _ => None,
-        },
-        _ => None,
-    }
-}
-pub fn parse_draw_then_connive_sentence(
-    clause: SubjectVerbPrimitiveClause<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(shape) = counter_shapes::parse_draw_then_connive_tokens(clause.tokens()) else {
-        return Ok(None);
-    };
-    let mut head_effects = parse_effect_chain(shape.draw_tokens)?;
-    if head_effects.is_empty() {
-        return Ok(None);
-    }
-
-    let Some(connive_effect) = parse_connive_clause(shape.connive_tokens)? else {
-        return Ok(None);
-    };
-    head_effects.push(connive_effect);
-    Ok(Some(head_effects))
-}
-
-pub fn parse_sentence_draw_then_connive(
-    clause: SubjectVerbPrimitiveClause<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_draw_then_connive_sentence(clause)
-}
-
-pub fn parse_if_enters_with_additional_counter_sentence(
-    clause: SubjectVerbPrimitiveClause<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(shape) = counter_shapes::parse_if_enters_additional_tokens(clause.tokens()) else {
-        return Ok(None);
-    };
-    let put_counter = EffectAst::subject_verb_put_counters(
-        shape.descriptor.counter_type,
-        Value::Fixed(shape.descriptor.count as i32)
-            .with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
-            .with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter),
-        TargetAst::Tagged(TagKey::from(IT_TAG), clause.span()),
-        None,
-        false,
-    );
-    let apply_only_if_creature = EffectAst::Conditional {
-        predicate: PredicateAst::ItMatches(ObjectFilter::creature()),
-        if_true: vec![put_counter],
-        if_false: Vec::new(),
-    };
-
-    Ok(Some(vec![EffectAst::IfResult {
-        predicate: IfResultPredicate::Did,
-        effects: vec![apply_only_if_creature],
-    }]))
-}
-
-pub fn parse_tagged_enters_with_additional_counter_sentence(
-    clause: SubjectVerbPrimitiveClause<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(shape) = counter_shapes::parse_tagged_enters_additional_tokens(clause.tokens()) else {
-        return Ok(None);
-    };
-
-    Ok(Some(vec![EffectAst::subject_verb_put_counters(
-        shape.descriptor.counter_type,
-        Value::Fixed(shape.descriptor.count as i32)
-            .with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
-            .with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
-            .with_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence),
-        TargetAst::Tagged(TagKey::from(IT_TAG), clause.span()),
-        None,
-        false,
-    )]))
-}
-
-pub fn parse_tagged_conditional_entry_counters_sentence(
-    clause: SubjectVerbPrimitiveClause<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(shape) =
-        counter_shapes::parse_tagged_conditional_entry_counters_tokens(clause.tokens())
-    else {
-        return Ok(None);
-    };
-
-    let effects = shape
-        .arms
-        .into_iter()
-        .map(|arm| {
-            let put_counter = EffectAst::subject_verb_put_counters(
-                arm.descriptor.counter_type,
-                Value::Fixed(arm.descriptor.count as i32)
-                    .with_surface_hint(
-                        ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter,
-                    )
-                    .with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
-                    .with_surface_hint(
-                        ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence,
-                    ),
-                TargetAst::Tagged(TagKey::from(IT_TAG), clause.span()),
-                None,
-                false,
-            );
-            EffectAst::Conditional {
-                predicate: PredicateAst::ItMatches(
-                    ObjectFilter::default().with_type(arm.object_type),
-                ),
-                if_true: vec![put_counter],
-                if_false: Vec::new(),
-            }
-        })
-        .collect();
-
-    Ok(Some(effects))
-}
-
-pub fn parse_put_onto_battlefield_with_additional_counters_sentence(
-    clause: SubjectVerbPrimitiveClause<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(shape) = counter_shapes::parse_put_with_additional_tokens(clause.tokens()) else {
-        return Ok(None);
-    };
-    lower_put_with_additional_counter(shape, clause.span()).map(Some)
-}
-
-fn lower_put_with_additional_counter(
-    shape: counter_shapes::PutWithAdditionalCounterShape<'_>,
-    span: Option<TextSpan>,
-) -> Result<Vec<EffectAst>, CardTextError> {
-    let mut effects = parse_effect_chain_inner(shape.move_tokens)?;
-    if effects.is_empty()
-        || !effects.iter().any(|effect| {
-            matches!(
-                effect,
-                EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::MoveToZone {
-                        zone: Zone::Battlefield,
-                        ..
-                    } | SubjectVerbActionAst::ReturnToBattlefield { .. }
-                        | SubjectVerbActionAst::ReturnAllToBattlefield { .. },
-                    ..
-                })
-            )
-        })
-    {
-        return Ok(Vec::new());
-    }
-
-    effects.push(EffectAst::subject_verb_put_counters(
-        shape.descriptor.counter_type,
-        Value::Fixed(shape.descriptor.count as i32)
-            .with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter),
-        TargetAst::Tagged(TagKey::from(IT_TAG), span),
-        None,
-        false,
-    ));
-
-    Ok(effects)
-}
-
-pub fn parse_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence(
-    clause: SubjectVerbPrimitiveClause<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(shape) = counter_shapes::parse_sacrifice_then_put_additional_tokens(clause.tokens())
-    else {
-        return Ok(None);
-    };
-    lower_sacrifice_then_put_additional(shape, clause.span()).map(Some)
-}
-
-fn lower_sacrifice_then_put_additional(
-    shape: counter_shapes::SacrificeThenPutAdditionalShape<'_>,
-    span: Option<TextSpan>,
-) -> Result<Vec<EffectAst>, CardTextError> {
-    let mut put_effects = lower_put_with_additional_counter(shape.put, span)?;
-    if put_effects.is_empty() {
-        return Ok(Vec::new());
-    }
-    let mut effects = if shape.plain_word_sacrifice {
-        vec![EffectAst::subject_verb_sacrifice(
-            PlayerAst::Implicit,
-            ObjectFilter {
-                source: true,
-                ..Default::default()
-            },
-            1,
-            None,
-        )]
-    } else {
-        parse_effect_chain_inner(shape.sacrifice_tokens)?
-    };
-    if effects.is_empty() {
-        return Ok(Vec::new());
-    }
-    effects.append(&mut put_effects);
-    Ok(effects)
-}
-
-pub fn parse_if_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence(
-    clause: SubjectVerbPrimitiveClause<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(shape) =
-        counter_shapes::parse_if_sacrifice_then_put_additional_tokens(clause.tokens())
-    else {
-        return Ok(None);
-    };
-    let effects = lower_sacrifice_then_put_additional(shape.effect, clause.span())?;
-    if effects.is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(vec![EffectAst::Conditional {
-        predicate: parse_predicate_lexed(shape.predicate_tokens)?,
-        if_true: effects,
-        if_false: Vec::new(),
-    }]))
-}
-
-pub fn parse_each_player_return_with_additional_counter_sentence(
-    clause: SubjectVerbPrimitiveClause<'_>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(shape) = counter_shapes::parse_each_player_return_additional_tokens(clause.tokens())
-    else {
-        return Ok(None);
-    };
-    let mut per_player_effects = parse_effect_chain_inner(shape.return_tokens)?;
-    if per_player_effects.is_empty() {
-        return Ok(None);
-    }
-    if !per_player_effects.iter().any(|effect| {
-        matches!(
-            effect,
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ReturnToBattlefield { .. }
-                    | SubjectVerbActionAst::ReturnAllToBattlefield { .. },
-                ..
-            })
-        )
-    }) {
-        return Ok(None);
-    }
-
-    per_player_effects.push(EffectAst::subject_verb_put_counters(
-        shape.descriptor.counter_type,
-        Value::Fixed(shape.descriptor.count as i32),
-        TargetAst::Tagged(TagKey::from(IT_TAG), clause.span()),
-        None,
-        false,
-    ));
-
-    Ok(Some(vec![EffectAst::ForEachPlayer {
-        effects: per_player_effects,
-    }]))
-}
-
 #[cfg(test)]
-mod dynamic_entry_counter_tests {
-    use super::*;
-    use crate::CounterType;
+#[path = "counter_marker_family_inline_dynamic_entry_counter_tests.rs"]
+mod dynamic_entry_counter_tests;
 
-    #[test]
-    fn owned_graveyard_return_keeps_x_as_an_inline_entry_counter() {
-        let tokens = crate::lexer::lex_line(
-            "Return target artifact or non-Aura enchantment card from your graveyard to the battlefield with X additional +1/+1 counters on it.",
-            0,
-        )
-        .expect("dynamic return should lex");
-        let effects = parse_return_with_dynamic_entry_counters_sentence(
-            SubjectVerbPrimitiveClause::new(&tokens),
-        )
-        .expect("dynamic return should parse")
-        .expect("dynamic return shape");
-        let [returned, counter] = effects.as_slice() else {
-            panic!("expected return and entry-counter effects: {effects:#?}");
-        };
-        assert!(matches!(
-            returned,
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ReturnToBattlefield {
-                    target: TargetAst::Object(filter, ..),
-                    ..
-                },
-                ..
-            }) if filter.zone == Some(Zone::Graveyard)
-                && filter.owner == Some(PlayerFilter::You)
-        ));
-        assert!(matches!(
-            counter,
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::PutCounters {
-                    counter_type: CounterType::PlusOnePlusOne,
-                    count,
-                    target: TargetAst::Tagged(tag, _),
-                    ..
-                },
-                ..
-            }) if matches!(count.unhinted(), Value::X)
-                && count.has_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
-                && count.has_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
-                && tag.as_str() == IT_TAG
-        ));
-    }
-
-    #[test]
-    fn a_return_from_an_opponents_graveyard_is_not_rebound_to_you() {
-        let tokens = crate::lexer::lex_line(
-            "Return target artifact card from an opponent's graveyard to the battlefield with X additional +1/+1 counters on it.",
-            0,
-        )
-        .expect("near miss should lex");
-        assert!(
-            parse_return_with_dynamic_entry_counters_sentence(SubjectVerbPrimitiveClause::new(
-                &tokens
-            ))
-            .expect("near miss should not error")
-            .is_none()
-        );
-    }
-}
+#[path = "counter_marker_family/counter_programs.rs"]
+mod counter_programs;
+use counter_programs::lower_put_with_additional_counter;
+pub use counter_programs::{
+    parse_each_player_return_with_additional_counter_sentence,
+    parse_if_enters_with_additional_counter_sentence,
+    parse_if_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence,
+    parse_put_onto_battlefield_with_additional_counters_sentence,
+    parse_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence,
+    parse_tagged_conditional_entry_counters_sentence,
+    parse_tagged_enters_with_additional_counter_sentence,
+};
+#[path = "counter_marker_family/resource_programs.rs"]
+mod resource_programs;
+use resource_programs::lower_sacrifice_then_put_additional;
+pub use resource_programs::{parse_draw_then_connive_sentence, parse_sentence_draw_then_connive};
+#[path = "counter_marker_family/zone_programs.rs"]
+mod zone_programs;
+pub use zone_programs::clone_return_effect_with_subtype;

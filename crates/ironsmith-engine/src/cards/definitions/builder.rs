@@ -6,12 +6,13 @@ use crate::cards::{
 use crate::ids::CardId;
 use crate::mana::ManaCost;
 use crate::types::{CardType, Subtype, Supertype};
+use crate::{ability::Ability, effect::Effect};
 
-/// Restricted builder surface for hand-written card definitions.
+/// Restricted builder surface for hand-written runtime card definitions.
 ///
-/// This wrapper intentionally exposes card metadata and parser entrypoints only.
-/// Rules text and abilities in `cards::definitions` should come from `parse_text`
-/// and related compilation methods, not from directly constructing effects.
+/// New definitions use explicit typed runtime abilities and effects. The parser
+/// entrypoint remains only for legacy definitions pending migration to registry
+/// compilation; runtime fixtures must not depend on it.
 #[derive(Debug, Clone)]
 pub(crate) struct CardDefinitionBuilder(RawCardDefinitionBuilder);
 
@@ -54,6 +55,26 @@ impl CardDefinitionBuilder {
 
     pub(crate) fn power_toughness(self, pt: PowerToughness) -> Self {
         Self(self.0.power_toughness(pt))
+    }
+
+    pub(crate) fn oracle_text(self, text: impl Into<String>) -> Self {
+        Self(self.0.oracle_text(text))
+    }
+
+    pub(crate) fn with_ability(self, ability: Ability) -> Self {
+        Self(self.0.with_ability(ability))
+    }
+
+    pub(crate) fn with_abilities(self, abilities: Vec<Ability>) -> Self {
+        Self(self.0.with_abilities(abilities))
+    }
+
+    pub(crate) fn with_spell_effect(self, effects: Vec<Effect>) -> Self {
+        Self(self.0.with_spell_effect(effects))
+    }
+
+    pub(crate) fn build(self) -> CardDefinition {
+        self.0.build()
     }
 
     #[cfg(test)]

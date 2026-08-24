@@ -60,12 +60,12 @@ pub fn coordinated_target_action_kind(
         .iter()
         .filter_map(OwnedLexToken::as_word)
         .collect::<Vec<_>>();
-    let prefix_end = words
-        .iter()
-        .position(|word| *word == "then")
-        .unwrap_or(words.len());
+    let prefix_end =
+        crate::word_primitives::parse_sequence_start(&words, &["then"]).unwrap_or(words.len());
     let prefix = &words[..prefix_end];
-    if prefix.iter().filter(|word| **word == "target").count() < 2 || !prefix.contains(&"and") {
+    if prefix.iter().filter(|word| **word == "target").count() < 2
+        || !crate::word_primitives::sequence_occurs(prefix, &["and"])
+    {
         return None;
     }
     match words.first().copied() {
@@ -80,7 +80,7 @@ pub fn coordinated_target_action_kind(
 /// This is kept as a token slice so the ordinary discard parser remains the
 /// sole authority for counts, filters, randomness, and player binding.
 pub fn trailing_then_discard_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    let then_idx = tokens.iter().position(|token| token.is_word("then"))?;
+    let then_idx = crate::slice_primitives::select_position(tokens, |token| token.is_word("then"))?;
     let trailing = trim_lexed_commas(tokens.get(then_idx + 1..)?);
     trailing
         .first()
@@ -116,7 +116,11 @@ pub fn coordinated_target_stat_modifier_leading_duration(tokens: &[OwnedLexToken
         .iter()
         .filter(|word| matches!(**word, "get" | "gets"))
         .count();
-    if target_count < 2 || gets_count < 2 || !words.contains(&"and") || words.contains(&"then") {
+    if target_count < 2
+        || gets_count < 2
+        || !crate::word_primitives::sequence_occurs(&words, &["and"])
+        || crate::word_primitives::sequence_occurs(&words, &["then"])
+    {
         return None;
     }
     Some(matches!(words.first(), Some(&"until")))
@@ -130,10 +134,10 @@ pub fn coordinated_source_damage_then_gain(tokens: &[OwnedLexToken]) -> bool {
         .iter()
         .filter_map(OwnedLexToken::as_word)
         .collect::<Vec<_>>();
-    if words.contains(&"then") {
+    if crate::word_primitives::sequence_occurs(&words, &["then"]) {
         return false;
     }
-    let Some(damage_idx) = words.iter().position(|word| *word == "damage") else {
+    let Some(damage_idx) = crate::word_primitives::parse_sequence_start(&words, &["damage"]) else {
         return false;
     };
     let Some(gain_idx) = words
@@ -144,7 +148,7 @@ pub fn coordinated_source_damage_then_gain(tokens: &[OwnedLexToken]) -> bool {
     else {
         return false;
     };
-    words[damage_idx + 1..gain_idx].contains(&"and")
+    crate::word_primitives::sequence_occurs(&words[damage_idx + 1..gain_idx], &["and"])
 }
 
 /// Records the printed coordination in the common freeze clause
@@ -160,10 +164,10 @@ pub fn coordinated_tap_then_next_untap(tokens: &[OwnedLexToken]) -> bool {
         .iter()
         .filter_map(OwnedLexToken::as_word)
         .collect::<Vec<_>>();
-    if words.contains(&"then") {
+    if crate::word_primitives::sequence_occurs(&words, &["then"]) {
         return false;
     }
-    let Some(tap_idx) = words.iter().position(|word| *word == "tap") else {
+    let Some(tap_idx) = crate::word_primitives::parse_sequence_start(&words, &["tap"]) else {
         return false;
     };
     let Some(untap_idx) = words
@@ -178,13 +182,13 @@ pub fn coordinated_tap_then_next_untap(tokens: &[OwnedLexToken]) -> bool {
         .iter()
         .any(|word| matches!(*word, "doesnt" | "doesn't"));
     has_negative_untap
-        && words[tap_idx + 1..untap_idx].contains(&"and")
-        && words[untap_idx + 1..].contains(&"its")
+        && crate::word_primitives::sequence_occurs(&words[tap_idx + 1..untap_idx], &["and"])
+        && crate::word_primitives::sequence_occurs(&words[untap_idx + 1..], &["its"])
         && words[untap_idx + 1..]
             .iter()
             .any(|word| matches!(*word, "controller" | "controller's" | "controllers"))
-        && words[untap_idx + 1..].contains(&"next")
-        && words[untap_idx + 1..].contains(&"step")
+        && crate::word_primitives::sequence_occurs(&words[untap_idx + 1..], &["next"])
+        && crate::word_primitives::sequence_occurs(&words[untap_idx + 1..], &["step"])
 }
 
 /// Records that the clause contains a real top-level effect conjunction.
@@ -440,8 +444,8 @@ pub fn parse_or_action_splits_tokens(tokens: &[OwnedLexToken]) -> Vec<OrActionSp
         {
             continue;
         }
-        let separator = token.kind == TokenKind::Comma
-            || (token.is_word("or") && !comparison_or_delimiter(tokens, idx));
+        let comparison_or = token.is_word("or") && comparison_or_delimiter(tokens, idx);
+        let separator = token.kind == TokenKind::Comma || (token.is_word("or") && !comparison_or);
         if !separator {
             continue;
         }
@@ -716,247 +720,18 @@ fn comparison_or_delimiter(tokens: &[OwnedLexToken], idx: usize) -> bool {
         && primitives::parse_prefix(after, semantic_kw("equal")).is_some()
 }
 
-fn last_semantic_word(tokens: &[OwnedLexToken]) -> Option<&str> {
-    let mut input = LexStream::new(tokens);
-    let mut last = None;
-    loop {
-        let token: WResult<&OwnedLexToken> = any.parse_next(&mut input);
-        let Ok(token) = token else {
-            break;
-        };
-        if let Some(piece) = token.parser_word_pieces().last() {
-            last = Some(piece.text.as_str());
-        }
-    }
-    last
-}
-
-fn normalize_action_option(mut tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    loop {
-        let Some(((), rest)) =
-            primitives::parse_prefix(tokens, alt((semantic_kw("and"), semantic_kw("or"))).void())
-        else {
-            break;
-        };
-        tokens = rest;
-    }
-    trim_lexed_commas(tokens)
-}
-
-fn contains_beginning_end_step_tokens(tokens: &[OwnedLexToken]) -> bool {
-    find_semantic_phrase(tokens, &["beginning", "of", "your", "next", "end", "step"])
-        .or_else(|| find_semantic_phrase(tokens, &["beginning", "of", "the", "end", "step"]))
-        .or_else(|| find_semantic_phrase(tokens, &["beginning", "of", "next", "end", "step"]))
-        .or_else(|| {
-            find_semantic_phrase(tokens, &["beginning", "of", "the", "next", "end", "step"])
-        })
-        .is_some()
-}
-
-fn contains_beginning_upkeep_tokens(tokens: &[OwnedLexToken]) -> bool {
-    find_semantic_phrase(tokens, &["beginning", "of", "your", "next", "upkeep"])
-        .or_else(|| find_semantic_phrase(tokens, &["beginning", "of", "next", "upkeep"]))
-        .or_else(|| find_semantic_phrase(tokens, &["beginning", "of", "the", "next", "upkeep"]))
-        .is_some()
-}
-
-fn contains_semantic_word(
-    tokens: &[OwnedLexToken],
-    singular: &'static str,
-    plural: &'static str,
-) -> bool {
-    primitives::find_prefix(tokens, || alt((semantic_kw(singular), semantic_kw(plural)))).is_some()
-}
-
-fn find_semantic_phrase(
-    tokens: &[OwnedLexToken],
-    phrase: &'static [&'static str],
-) -> Option<usize> {
-    primitives::find_prefix(tokens, || semantic_phrase(phrase)).map(|(idx, (), _)| idx)
-}
-
-fn semantic_kw<'a>(
-    expected: &'static str,
-) -> impl Parser<LexStream<'a>, (), ErrMode<ContextError>> {
-    (
-        repeat::<_, _, (), _, _>(
-            0..,
-            any.verify(move |token: &&OwnedLexToken| {
-                token.parser_word_pieces().is_empty()
-                    || ((token.is_word("a") || token.is_word("an") || token.is_word("the"))
-                        && !token.is_word(expected))
-            })
-            .void(),
-        ),
-        any.verify(move |token: &&OwnedLexToken| {
-            token.is_word(expected)
-                || matches!(token.parser_word_pieces(), [piece] if piece.text == expected)
-        }),
-    )
-        .void()
-}
-
-fn semantic_phrase<'a>(
-    expected: &'static [&'static str],
-) -> impl Parser<LexStream<'a>, (), ErrMode<ContextError>> {
-    move |input: &mut LexStream<'a>| {
-        for word in expected {
-            semantic_kw(word).parse_next(input)?;
-        }
-        Ok(())
-    }
-}
-
-fn semantic_noise<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    any.verify(|token: &&OwnedLexToken| {
-        token.parser_word_pieces().is_empty()
-            || token.is_word("a")
-            || token.is_word("an")
-            || token.is_word("the")
-    })
-    .void()
-    .parse_next(input)
-}
-
-fn semantic_finish<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    repeat::<_, _, (), _, _>(0.., semantic_noise).parse_next(input)?;
-    eof.void().parse_next(input)
-}
-
 #[cfg(test)]
-mod tests {
-    use super::super::super::super::lexer::lex_line;
-    use super::*;
+#[path = "chain_carry_inline_tests.rs"]
+mod tests;
 
-    #[test]
-    fn parses_chain_carry_leaf_shapes() {
-        let tokens = lex_line("Choose a land of each basic land type.", 0).unwrap();
-        assert!(parse_choose_each_basic_land_type_tokens(&tokens));
-        let tokens = lex_line("Two 1/1 white Soldier creature tokens", 0).unwrap();
-        assert!(parse_create_fragment_tokens(&tokens));
-        let tokens = lex_line("Tap those, then unattach all Equipment from them.", 0).unwrap();
-        assert!(parse_tap_then_unattach_tokens(&tokens));
-
-        let tokens = lex_line("Then sacrifice the rest.", 0).unwrap();
-        assert_eq!(
-            parse_rest_action_tokens(&tokens),
-            Some(RestActionShape::Sacrifice)
-        );
-
-        let tokens = lex_line("Until your next untap step, it gains flying.", 0).unwrap();
-        let duration = parse_carry_duration_prefix_tokens(&tokens).unwrap();
-        assert_eq!(duration.duration, Until::ControllersNextUntapStep);
-        assert!(
-            duration
-                .rest
-                .first()
-                .is_some_and(|token| token.is_word("it"))
-        );
-
-        let tokens = lex_line(
-            "Until your next turn, whenever either of those creatures deals combat damage, you draw a card.",
-            0,
-        )
-        .unwrap();
-        assert!(
-            parse_carry_duration_prefix_tokens(&tokens).is_none(),
-            "a delayed-trigger lifetime must remain attached to its trigger clause"
-        );
-
-        let tokens = lex_line("And draw a card.", 0).unwrap();
-        assert_eq!(
-            parse_carry_clause_head_tokens(&tokens),
-            CarryClauseHead::Draw
-        );
-    }
-
-    #[test]
-    fn leading_duration_scaled_stat_and_pronoun_grant_is_a_coordinated_chain() {
-        let tokens = lex_line(
-            "Until end of turn, double target creature's power and it gains first strike.",
-            0,
-        )
-        .unwrap();
-
-        assert_eq!(
-            coordinated_effect_chain_leading_duration(&tokens),
-            Some(true)
-        );
-    }
-
-    #[test]
-    fn leading_duration_gain_then_get_is_one_shared_subject_clause() {
-        let tokens = lex_line(
-            "Until end of turn, creatures you control gain trample and get +1/+1 for each basic land type among lands you control.",
-            0,
-        )
-        .unwrap();
-
-        assert_eq!(coordinated_effect_chain_leading_duration(&tokens), None);
-    }
-
-    #[test]
-    fn parses_owner_and_delay_facts() {
-        let tokens = lex_line(
-            "Exile all cards from your library face down, then shuffle all cards from your graveyard into your library.",
-            0,
-        )
-        .unwrap();
-        assert_eq!(
-            parse_exile_library_shuffle_tokens(&tokens).map(|spec| spec.owner),
-            Some(ChainOwner::You)
-        );
-        let tokens = lex_line(
-            "At the beginning of your next end step, exile the token.",
-            0,
-        )
-        .unwrap();
-        let facts = parse_delayed_copy_facts_tokens(&tokens);
-        assert!(facts.has_exile && facts.has_token);
-        assert_eq!(
-            facts.timing,
-            Some(DelayedCopyTiming::EndStep {
-                player_is_you: true
-            })
-        );
-
-        let tokens = lex_line(
-            "At the beginning of your next upkeep, sacrifice the token.",
-            0,
-        )
-        .unwrap();
-        assert_eq!(
-            parse_delayed_copy_facts_tokens(&tokens).timing,
-            Some(DelayedCopyTiming::Upkeep {
-                player_is_you: true
-            })
-        );
-    }
-
-    #[test]
-    fn action_splits_preserve_card_type_lists() {
-        let tokens = lex_line(
-            "Discard two cards or sacrifice a creature or planeswalker of your choice.",
-            0,
-        )
-        .unwrap();
-        let splits = parse_or_action_splits_tokens(&tokens);
-        assert_eq!(splits.len(), 1);
-
-        let tokens = lex_line("Destroy target artifact, creature, or enchantment.", 0).unwrap();
-        assert!(parse_or_action_splits_tokens(&tokens).is_empty());
-    }
-
-    #[test]
-    fn destroy_split_requires_a_temporary_restriction_tail() {
-        let tokens = lex_line(
-            "Destroy target creature, and that creature can't attack or block this turn.",
-            0,
-        )
-        .unwrap();
-        assert_eq!(parse_destroy_restriction_splits_tokens(&tokens).len(), 1);
-
-        let tokens = lex_line("Destroy target creature and draw a card.", 0).unwrap();
-        assert!(parse_destroy_restriction_splits_tokens(&tokens).is_empty());
-    }
-}
+#[path = "chain_carry/core_programs.rs"]
+mod core_programs;
+use core_programs::{
+    contains_semantic_word, find_semantic_phrase, last_semantic_word, normalize_action_option,
+    semantic_finish, semantic_kw, semantic_noise, semantic_phrase,
+};
+#[path = "chain_carry/object_action_programs.rs"]
+mod object_action_programs;
+use object_action_programs::{
+    contains_beginning_end_step_tokens, contains_beginning_upkeep_tokens,
+};

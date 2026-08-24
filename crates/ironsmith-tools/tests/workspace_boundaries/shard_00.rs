@@ -8,7 +8,7 @@ pub(super) fn debug_safe_is_mechanical_only() {
     let root = workspace_root();
     let content = read_repo_file(
         &root,
-        "crates/ironsmith-runtime/src/compiled_text/debug_safe.rs",
+        "crates/ironsmith-text/src/compiled_text/debug_safe.rs",
     );
 
     for forbidden in [
@@ -61,7 +61,7 @@ pub(super) fn aggregate_compiled_card_models_are_core_owned() {
     let root = workspace_root();
     let checks = [
         (
-            "crates/ironsmith-runtime/src/ability.rs",
+            "crates/ironsmith-engine/src/ability.rs",
             [
                 "pub struct Ability {",
                 "pub enum AbilityKind {",
@@ -72,7 +72,7 @@ pub(super) fn aggregate_compiled_card_models_are_core_owned() {
             .as_slice(),
         ),
         (
-            "crates/ironsmith-runtime/src/resolution.rs",
+            "crates/ironsmith-engine/src/resolution.rs",
             [
                 "pub struct ResolutionProgram {",
                 "pub struct ResolutionSegment {",
@@ -81,7 +81,7 @@ pub(super) fn aggregate_compiled_card_models_are_core_owned() {
             .as_slice(),
         ),
         (
-            "crates/ironsmith-runtime/src/cost.rs",
+            "crates/ironsmith-engine/src/cost.rs",
             [
                 "pub struct TotalCost {",
                 "pub struct OptionalCost {",
@@ -90,15 +90,15 @@ pub(super) fn aggregate_compiled_card_models_are_core_owned() {
             .as_slice(),
         ),
         (
-            "crates/ironsmith-runtime/src/alternative_cast.rs",
+            "crates/ironsmith-engine/src/alternative_cast.rs",
             ["pub enum AlternativeCastingMethod {"].as_slice(),
         ),
         (
-            "crates/ironsmith-runtime/src/cards/mod.rs",
+            "crates/ironsmith-engine/src/cards/mod.rs",
             ["pub struct CardDefinition {"].as_slice(),
         ),
         (
-            "crates/ironsmith-runtime/src/object.rs",
+            "crates/ironsmith-engine/src/object.rs",
             ["pub enum AuraAttachmentFilter {"].as_slice(),
         ),
     ];
@@ -120,11 +120,11 @@ pub(super) fn aggregate_compiled_card_models_are_core_owned() {
 pub(super) fn compiled_text_renderer_does_not_read_source_only_fields() {
     let root = workspace_root();
     let renderer_files = [
-        "crates/ironsmith-runtime/src/compiled_text/mod.rs",
-        "crates/ironsmith-runtime/src/compiled_text/ast_render.rs",
-        "crates/ironsmith-runtime/src/compiled_text/render_effects.rs",
-        "crates/ironsmith-runtime/src/compiled_text/normalize_common.rs",
-        "crates/ironsmith-runtime/src/compiled_text/oracle_style.rs",
+        "crates/ironsmith-text/src/compiled_text/mod.rs",
+        "crates/ironsmith-text/src/compiled_text/ast_render.rs",
+        "crates/ironsmith-text/src/compiled_text/render_effects.rs",
+        "crates/ironsmith-text/src/compiled_text/normalize_common.rs",
+        "crates/ironsmith-text/src/compiled_text/oracle_style.rs",
     ];
     let forbidden = [
         ".source_text",
@@ -151,7 +151,7 @@ pub(super) fn compiled_text_renderer_does_not_read_source_only_fields() {
 
     let repeat_prompt = read_repo_file(
         &root,
-        "crates/ironsmith-runtime/src/effects/composition/repeat_process_prompt.rs",
+        "crates/ironsmith-engine/src/effects/composition/repeat_process_prompt.rs",
     );
     assert!(
         !repeat_prompt.contains("pub description"),
@@ -242,7 +242,7 @@ pub(super) fn migrated_effect_payloads_are_core_owned() {
         );
     }
 
-    let integration = read_repo_file(&root, "crates/ironsmith-registry/src/compiler_runtime.rs");
+    let integration = read_repo_file(&root, "crates/ironsmith-compiler-runtime/src/lib.rs");
     assert!(
         !integration.contains(
             "ironsmith::effects::GainLifeEffect::new(payload.amount.clone(), payload.player.clone())",
@@ -303,9 +303,9 @@ pub(super) fn compiler_boundary_adapter_has_no_semantic_conversion_tables() {
     let compiler_costs = read_repo_file(&root, "crates/ironsmith-compiler/src/costs/mod.rs");
     let runtime_effect_interpreter = read_repo_file(
         &root,
-        "crates/ironsmith-runtime/src/effect_model_interpreter.rs",
+        "crates/ironsmith-engine/src/effect_model_interpreter.rs",
     );
-    let integration = read_repo_file(&root, "crates/ironsmith-registry/src/compiler_runtime.rs");
+    let integration = read_repo_file(&root, "crates/ironsmith-compiler-runtime/src/lib.rs");
 
     assert!(
         core_cost.contains("pub enum Cost<E>"),
@@ -359,8 +359,8 @@ pub(super) fn compiler_boundary_adapter_has_no_semantic_conversion_tables() {
 #[test]
 pub(super) fn runtime_public_surface_does_not_export_legacy_executor_or_game_event_modules() {
     let root = workspace_root();
-    let lib_rs = read_repo_file(&root, "crates/ironsmith-runtime/src/lib.rs");
-    let effects_mod = read_repo_file(&root, "crates/ironsmith-runtime/src/effects/mod.rs");
+    let lib_rs = read_repo_file(&root, "crates/ironsmith-engine/src/lib.rs");
+    let effects_mod = read_repo_file(&root, "crates/ironsmith-engine/src/effects/mod.rs");
 
     for forbidden in ["pub mod executor;", "pub mod game_event;"] {
         assert!(
@@ -371,7 +371,7 @@ pub(super) fn runtime_public_surface_does_not_export_legacy_executor_or_game_eve
 
     assert!(
         !root
-            .join("crates/ironsmith-runtime/src/executor.rs")
+            .join("crates/ironsmith-engine/src/executor.rs")
             .exists(),
         "legacy executor.rs should not exist once effect execution is effects-owned"
     );
@@ -398,16 +398,16 @@ pub(super) fn runtime_public_surface_does_not_export_legacy_executor_or_game_eve
             && !lib_rs.contains("\npub use cards::CardDefinitionBuilder;"),
         "runtime lib.rs should not publicly export CardDefinitionBuilder in normal builds"
     );
-    let cards_mod = read_repo_file(&root, "crates/ironsmith-runtime/src/cards/mod.rs");
+    let cards_mod = read_repo_file(&root, "crates/ironsmith-engine/src/cards/mod.rs");
     assert!(
         !cards_mod.contains("\npub use builders::{ParseAnnotations, TextSpan};"),
         "runtime cards module should not export parser annotation/span helper types in normal builds"
     );
-    let runtime_builders = read_repo_file(&root, "crates/ironsmith-runtime/src/cards/builders.rs");
+    let runtime_builders = read_repo_file(&root, "crates/ironsmith-engine/src/cards/builders.rs");
     for forbidden in [
         "#[path = \"../../../ironsmith-compiler/",
         "include_str!(\n                \"../../../ironsmith-compiler/",
-        "../../../ironsmith-compiler/src/runtime_backend",
+        "../../../ironsmith-compiler/src/front_end",
     ] {
         assert!(
             !runtime_builders.contains(forbidden),
@@ -427,14 +427,15 @@ pub(super) fn runtime_public_surface_does_not_export_legacy_executor_or_game_eve
 #[test]
 pub(super) fn runtime_gameplay_code_does_not_call_global_registry_singletons_directly() {
     let root = workspace_root();
-    let runtime_src = root.join("crates/ironsmith-runtime/src");
+    let runtime_src = root.join("crates/ironsmith-engine/src");
     let mut files = Vec::new();
     collect_rust_files(&runtime_src, &mut files);
 
-    let allowlisted_runtime_registry_owner = root.join("crates/ironsmith-runtime/src/cards/mod.rs");
+    let allowlisted_runtime_registry_owner =
+        root.join("crates/ironsmith-engine/src/cards/registry_impl.rs");
     let allowlisted_test_helpers = [
-        root.join("crates/ironsmith-runtime/src/cards/definitions/hanweir_battlements.rs"),
-        root.join("crates/ironsmith-runtime/src/game_loop/tests.rs"),
+        root.join("crates/ironsmith-engine/src/cards/definitions/hanweir_battlements.rs"),
+        root.join("crates/ironsmith-engine/src/game_loop/tests.rs"),
     ];
 
     let offenders: Vec<String> = files
@@ -452,6 +453,7 @@ pub(super) fn runtime_gameplay_code_does_not_call_global_registry_singletons_dir
         .filter_map(|path| {
             let content = fs::read_to_string(&path)
                 .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
+            let content = production_source(&content);
             (content.contains("builtin_registry(") || content.contains("runtime_custom_registry("))
                 .then(|| {
                     path.strip_prefix(&root)
@@ -469,9 +471,9 @@ pub(super) fn runtime_gameplay_code_does_not_call_global_registry_singletons_dir
 }
 
 #[test]
-pub(super) fn compiler_runtime_backend_does_not_import_ironsmith_runtime_directly() {
+pub(super) fn compiler_source_does_not_import_ironsmith_runtime_directly() {
     let root = workspace_root();
-    let backend_root = root.join("crates/ironsmith-compiler/src/runtime_backend");
+    let backend_root = root.join("crates/ironsmith-compiler/src");
     let mut files = Vec::new();
     collect_rust_files(&backend_root, &mut files);
 
@@ -497,7 +499,7 @@ pub(super) fn compiler_runtime_backend_does_not_import_ironsmith_runtime_directl
 
     assert!(
         offenders.is_empty(),
-        "compiler runtime_backend should not import ironsmith-runtime directly: {offenders:?}"
+        "compiler source should not import ironsmith-runtime directly: {offenders:?}"
     );
 }
 
@@ -555,7 +557,7 @@ pub(super) fn winnow_leaf_parser_patterns_are_kept_in_repo() {
     let patterns = read_repo_file(&root, "architecture/winnow-leaf-parser-patterns.md");
 
     for required in [
-        "Recognition lives in `crates/ironsmith-compiler/src/runtime_backend/front_end/grammar`.",
+        "Recognition lives in `crates/ironsmith-compiler/src/front_end/grammar`.",
         "New parser code uses `winnow`. Do not add `nom`.",
         "fn parse_count(input: &mut &str) -> WResult<u32>",
         "Raw `.split_once`, `.find`, and token-window searches",
@@ -585,11 +587,10 @@ pub(super) fn compiler_parser_does_not_depend_on_nom() {
 #[test]
 pub(super) fn cardinal_recognition_has_one_leaf_grammar_owner() {
     let root = workspace_root();
-    let runtime_backend = root.join("crates/ironsmith-compiler/src/runtime_backend");
-    let expected_owner =
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/leaf/numbers.rs";
+    let compiler_source = root.join("crates/ironsmith-compiler/src");
+    let expected_owner = "crates/ironsmith-compiler/src/front_end/grammar/leaf/numbers.rs";
     let mut files = Vec::new();
-    collect_rust_files(&runtime_backend, &mut files);
+    collect_rust_files(&compiler_source, &mut files);
 
     let mut owners = files
         .into_iter()
@@ -613,10 +614,10 @@ pub(super) fn cardinal_recognition_has_one_leaf_grammar_owner() {
 #[test]
 pub(super) fn migrated_leaf_namespaces_are_typed_winnow_grammar() {
     let root = workspace_root();
-    let leaf_root = "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/leaf";
+    let leaf_root = "crates/ironsmith-compiler/src/front_end/grammar/leaf";
     let leaf_facade = read_repo_file(
         &root,
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/leaf.rs",
+        "crates/ironsmith-compiler/src/front_end/grammar/leaf.rs",
     );
 
     for module in [
@@ -636,7 +637,7 @@ pub(super) fn migrated_leaf_namespaces_are_typed_winnow_grammar() {
         let relative = format!("{leaf_root}/{module}");
         let content = read_repo_file(&root, &relative);
         assert!(
-            content.contains("winnow::") && content.contains("pub(crate) fn parse_"),
+            content.contains("winnow::") && content.contains("pub fn parse_"),
             "{relative} must own typed winnow parser entry points"
         );
 
@@ -648,16 +649,13 @@ pub(super) fn migrated_leaf_namespaces_are_typed_winnow_grammar() {
     }
 
     for (module, typed_result) in [
-        ("articles.rs", "pub(crate) enum LeafArticle"),
-        ("counts.rs", "pub(crate) struct LeafCountRange"),
-        ("durations.rs", "pub(crate) enum LeafDurationPhrase"),
-        ("mana.rs", "pub(crate) struct LeafManaCostPrefix"),
-        ("numbers.rs", "pub(crate) enum LeafNumber"),
-        (
-            "player_subjects.rs",
-            "pub(crate) enum LeafPlayerReferenceMode",
-        ),
-        ("targets.rs", "pub(crate) struct LeafTargetHead"),
+        ("articles.rs", "pub enum LeafArticle"),
+        ("counts.rs", "pub struct LeafCountRange"),
+        ("durations.rs", "pub enum LeafDurationPhrase"),
+        ("mana.rs", "pub struct LeafManaCostPrefix"),
+        ("numbers.rs", "pub enum LeafNumber"),
+        ("player_subjects.rs", "pub enum LeafPlayerReferenceMode"),
+        ("targets.rs", "pub struct LeafTargetHead"),
     ] {
         let relative = format!("{leaf_root}/{module}");
         let content = read_repo_file(&root, &relative);
@@ -673,7 +671,7 @@ pub(super) fn migrated_line_families_consume_typed_grammar_results() {
     let root = workspace_root();
     let cases: &[(&str, &[&str])] = &[
         (
-            "crates/ironsmith-compiler/src/runtime_backend/families/activation_and_restrictions/activation_costs.rs",
+            "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/activation_and_restrictions/activation_costs.rs",
             &[
                 "grammar::activation_costs::cant_shapes::{",
                 "cant_shapes::parse_direct_cant_fact_tokens(tokens)",
@@ -681,7 +679,7 @@ pub(super) fn migrated_line_families_consume_typed_grammar_results() {
             ],
         ),
         (
-            "crates/ironsmith-compiler/src/runtime_backend/families/activation_and_restrictions/activation_restriction_clauses.rs",
+            "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/activation_and_restrictions/activation_restriction_clauses.rs",
             &[
                 "grammar::activation_restrictions::{",
                 "parse_static_restriction_condition_shape_tokens(tokens)",
@@ -689,7 +687,7 @@ pub(super) fn migrated_line_families_consume_typed_grammar_results() {
             ],
         ),
         (
-            "crates/ironsmith-compiler/src/runtime_backend/families/activation_and_restrictions/keyword_activated_lines.rs",
+            "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/activation_and_restrictions/keyword_activated_lines.rs",
             &[
                 "grammar::keyword_activated_lines::{",
                 "keyword_activated_grammar::parse_cycling_keyword_cost_groups_tokens(tokens)",
@@ -698,7 +696,7 @@ pub(super) fn migrated_line_families_consume_typed_grammar_results() {
             ],
         ),
         (
-            "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/anthem_grant_lines.rs",
+            "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/anthem_grant_lines.rs",
             &[
                 "anthem_grant_grammar::parse_first_spell_each_turn_clause(tokens)",
                 "anthem_grant_grammar::parse_granted_keyword_verb_facts(tokens)",
@@ -706,10 +704,10 @@ pub(super) fn migrated_line_families_consume_typed_grammar_results() {
             ],
         ),
         (
-            "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs",
+            "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/mod.rs",
             &[
                 "use super::grammar::static_keyword_shapes;",
-                "static_keyword_shapes::parse_rule_id_head(rule_id)",
+                "static_keyword_shapes::parse_rule_id_head(rule_id.as_str())",
                 "use super::grammar::anthem_grants as anthem_grant_grammar;",
             ],
         ),
@@ -731,7 +729,7 @@ pub(super) fn migrated_effect_families_consume_typed_grammar_results() {
     let root = workspace_root();
     let cases: &[(&str, &[&str])] = &[
         (
-            "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/verb_handlers/resource_verbs.rs",
+            "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/verb_handlers/resource_verbs.rs",
             &[
                 "resource_grammar::parse_resource_look_shape(tokens, subject_player)",
                 "resource_grammar::parse_resource_shuffle_shape(tokens, player)",
@@ -739,7 +737,7 @@ pub(super) fn migrated_effect_families_consume_typed_grammar_results() {
             ],
         ),
         (
-            "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/subject_verb_primitives/registry.rs",
+            "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/subject_verb_primitives/registry.rs",
             &[
                 "grammar::effects::subject_verb_registry_shapes as registry_shapes",
                 "registry_shapes::parse_joint_draw_shape(clause.tokens())",
@@ -747,7 +745,7 @@ pub(super) fn migrated_effect_families_consume_typed_grammar_results() {
             ],
         ),
         (
-            "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/subject_verb_primitives/combat_and_damage_family.rs",
+            "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/subject_verb_primitives/combat_and_damage_family.rs",
             &[
                 "grammar::effects::combat_damage_family_shapes as combat_shapes",
                 "combat_shapes::parse_put_sticker_shape(clause.tokens())",
@@ -755,7 +753,7 @@ pub(super) fn migrated_effect_families_consume_typed_grammar_results() {
             ],
         ),
         (
-            "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/subject_verb_primitives/delayed_step_family.rs",
+            "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/subject_verb_primitives/delayed_step_family.rs",
             &[
                 "grammar::effects::delayed_step_shapes as delayed_grammar",
                 "delayed_grammar::parse_delayed_creature_types_shape(",
@@ -763,7 +761,7 @@ pub(super) fn migrated_effect_families_consume_typed_grammar_results() {
             ],
         ),
         (
-            "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/for_each_helpers.rs",
+            "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/for_each_helpers.rs",
             &[
                 "grammar::effects::for_each_shapes::{",
                 "for_each_shapes::parse_for_each_object_subject_shape(subject_tokens)",
@@ -783,20 +781,20 @@ pub(super) fn migrated_effect_families_consume_typed_grammar_results() {
     }
 
     for relative in [
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/effects/resource_shapes.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/effects/subject_verb_registry_shapes/joint.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/effects/clause_dispatch_shapes/core.rs",
+        "crates/ironsmith-compiler/src/front_end/grammar/effects/resource_shapes.rs",
+        "crates/ironsmith-compiler/src/front_end/grammar/effects/subject_verb_registry_shapes/joint.rs",
+        "crates/ironsmith-compiler/src/front_end/grammar/effects/clause_dispatch_shapes/core.rs",
     ] {
         let content = read_repo_file(&root, relative);
         assert!(
-            content.contains("winnow::") && content.contains("pub(crate) fn parse_"),
+            content.contains("winnow::") && content.contains("pub fn parse_"),
             "{relative} must expose typed winnow grammar entry points"
         );
     }
 }
 
 #[test]
-pub(super) fn parser_audits_point_at_runtime_backend() {
+pub(super) fn parser_audits_point_at_canonical_compiler_source() {
     let root = workspace_root();
     let manual_audit = read_repo_file(
         &root,
@@ -806,17 +804,37 @@ pub(super) fn parser_audits_point_at_runtime_backend() {
         &root,
         "crates/ironsmith-tools/src/bin/audit_parser_module_sizes.rs",
     );
+    let architecture_audit = read_repo_file(
+        &root,
+        "crates/ironsmith-tools/src/bin/audit_parser_architecture.rs",
+    );
+    let architecture_manifest =
+        read_repo_file(&root, "architecture/parser-ownership-manifest.json");
 
     for audit in [&manual_audit, &size_audit] {
         assert!(
-            audit.contains("crates/ironsmith-compiler/src/runtime_backend"),
-            "parser audits must scan the runtime_backend compiler tree"
+            audit.contains("crates/ironsmith-compiler/src"),
+            "parser audits must scan the canonical compiler source tree"
         );
         assert!(
             !audit.contains("src/cards/builders/compiler"),
             "parser audits must not scan the stale compiler tree"
         );
     }
+
+    assert!(
+        architecture_audit.contains("architecture/parser-ownership-manifest.json")
+            && architecture_audit.contains("--completed-pr")
+            && architecture_audit.contains("--fail-on-findings"),
+        "the manifest-backed architecture audit must remain wired for final enforcement"
+    );
+    assert!(
+        architecture_manifest.contains("crates/ironsmith-compiler/src")
+            && architecture_manifest.contains("\"bridges\": []")
+            && architecture_manifest.contains("\"exceptions\": []")
+            && architecture_manifest.contains("expired-legacy-registries"),
+        "the final ownership manifest must have no migration allowlist and must reject legacy registries"
+    );
 
     assert!(
         manual_audit.contains("--enforce-prefix") && manual_audit.contains("--fail-on-findings"),
@@ -845,7 +863,7 @@ pub(super) fn parser_audits_point_at_runtime_backend() {
     );
     assert!(
         !root
-            .join("crates/ironsmith-compiler/src/runtime_backend/migration_audit_allowlist")
+            .join("crates/ironsmith-compiler/src/migration_audit_allowlist")
             .exists(),
         "the temporary parser migration allowlist must be deleted"
     );
@@ -854,7 +872,7 @@ pub(super) fn parser_audits_point_at_runtime_backend() {
 #[test]
 pub(super) fn parse_annotations_stay_diagnostic_only() {
     let root = workspace_root();
-    let diagnostics = read_repo_file(&root, "crates/ironsmith-compiler/src/diagnostics.rs");
+    let diagnostics = read_repo_file(&root, "crates/ironsmith-compiler-api/src/lib.rs");
     let struct_start = diagnostics
         .find("pub struct ParseAnnotations {")
         .expect("ParseAnnotations struct");
@@ -905,7 +923,7 @@ pub(super) fn parse_annotations_stay_diagnostic_only() {
 #[test]
 pub(super) fn condition_antecedent_binding_has_single_lowering_owner() {
     let root = workspace_root();
-    let lowering_root = root.join("crates/ironsmith-compiler/src/runtime_backend/lowering");
+    let lowering_root = root.join("crates/ironsmith-compiler/src/lowering");
     let owner = lowering_root.join("condition_antecedent.rs");
     let mut files = Vec::new();
     collect_rust_files(&lowering_root, &mut files);
@@ -986,11 +1004,22 @@ pub(super) fn function_source<'a>(
     start_marker: &str,
     end_marker: &str,
 ) -> &'a str {
-    let start = content
-        .find(start_marker)
-        .unwrap_or_else(|| panic!("missing function start marker: {start_marker}"));
+    let find_function_marker = |marker: &str| {
+        content.find(marker).or_else(|| {
+            marker
+                .split_once("fn ")
+                .and_then(|(_, signature)| content.find(&format!("fn {signature}")))
+        })
+    };
+    let start = find_function_marker(start_marker);
+    let start = start.unwrap_or_else(|| panic!("missing function start marker: {start_marker}"));
     let tail = &content[start..];
-    let end = tail.find(end_marker).unwrap_or_else(|| {
+    let end = tail.find(end_marker).or_else(|| {
+        end_marker
+            .split_once("fn ")
+            .and_then(|(_, signature)| tail.find(&format!("fn {signature}")))
+    });
+    let end = end.unwrap_or_else(|| {
         panic!("missing function end marker after {start_marker}: {end_marker}")
     });
     &tail[..end]
@@ -999,7 +1028,7 @@ pub(super) fn function_source<'a>(
 #[test]
 pub(super) fn lowering_lower_has_no_raw_text_checks_or_migration_allowlist() {
     let root = workspace_root();
-    let lower_root = root.join("crates/ironsmith-compiler/src/runtime_backend/lowering/lower");
+    let lower_root = root.join("crates/ironsmith-compiler/src/lowering/lower");
     let mut files = Vec::new();
     collect_rust_files(&lower_root, &mut files);
 
@@ -1023,8 +1052,8 @@ pub(super) fn lowering_lower_has_no_raw_text_checks_or_migration_allowlist() {
     );
 
     for relative in [
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/activated_lowering.rs",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/parser_semantic_lowering.rs",
+        "crates/ironsmith-compiler/src/lowering/lower/activated_lowering.rs",
+        "crates/ironsmith-compiler/src/lowering/lower/parser_semantic_lowering.rs",
     ] {
         assert!(
             !root.join(relative).exists(),
@@ -1034,21 +1063,18 @@ pub(super) fn lowering_lower_has_no_raw_text_checks_or_migration_allowlist() {
 
     assert!(
         !root
-            .join("crates/ironsmith-compiler/src/runtime_backend/migration_audit_allowlist")
+            .join("crates/ironsmith-compiler/src/migration_audit_allowlist")
             .exists(),
         "the parser migration must not regain a temporary allowlist"
     );
 }
 
 #[test]
-pub(super) fn runtime_backend_matches_words_is_clause_shape_primitive_only() {
+pub(super) fn compiler_source_matches_words_is_clause_shape_primitive_only() {
     let root = workspace_root();
-    let allowed = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/clause_pattern_helpers.rs";
+    let allowed = "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/clause_pattern_helpers.rs";
     let mut files = Vec::new();
-    collect_rust_files(
-        &root.join("crates/ironsmith-compiler/src/runtime_backend"),
-        &mut files,
-    );
+    collect_rust_files(&root.join("crates/ironsmith-compiler/src"), &mut files);
 
     let mut offenders = BTreeSet::new();
     for path in files {
@@ -1065,15 +1091,14 @@ pub(super) fn runtime_backend_matches_words_is_clause_shape_primitive_only() {
 
     assert!(
         offenders.is_empty(),
-        "runtime_backend shape gates should use token-backed helpers; raw matches_words callers outside the ClauseShape primitive: {offenders:#?}"
+        "compiler source shape gates should use token-backed helpers; raw matches_words callers outside the ClauseShape primitive: {offenders:#?}"
     );
 }
 
 #[test]
 pub(super) fn document_line_family_handlers_have_no_raw_text_checks() {
     let root = workspace_root();
-    let relative =
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/document/line_family_handlers.rs";
+    let relative = "crates/ironsmith-compiler/src/front_end/document/line_family_handlers.rs";
     let content = read_repo_file(&root, relative);
     let actual = non_test_raw_text_check_literals(&content)
         .into_iter()
@@ -1104,7 +1129,7 @@ pub(super) fn document_line_family_handlers_have_no_raw_text_checks() {
 pub(super) fn document_partner_parenthetical_trims_use_token_kinds() {
     let root = workspace_root();
     let caller_relative =
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/document/line_family_handlers.rs";
+        "crates/ironsmith-compiler/src/front_end/document/line_family_handlers.rs";
     let caller = read_repo_file(&root, caller_relative);
     let adapter = function_source(
         &caller,
@@ -1138,7 +1163,7 @@ pub(super) fn document_partner_parenthetical_trims_use_token_kinds() {
 #[test]
 pub(super) fn document_prefix_punctuation_checks_use_char_helpers() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/document/mod.rs";
+    let relative = "crates/ironsmith-compiler/src/front_end/document/mod.rs";
     let content = read_repo_file(&root, relative);
     let activation_prefix = function_source(
         &content,
@@ -1246,7 +1271,7 @@ pub(super) fn document_prefix_punctuation_checks_use_char_helpers() {
 #[test]
 pub(super) fn document_ability_word_label_detection_uses_label_tokens() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/document/mod.rs";
+    let relative = "crates/ironsmith-compiler/src/front_end/document/mod.rs";
     let content = read_repo_file(&root, relative);
     let splitter = function_source(
         &content,
@@ -1283,7 +1308,7 @@ pub(super) fn document_ability_word_label_detection_uses_label_tokens() {
 #[test]
 pub(super) fn grammar_effect_labeled_prefix_classifiers_use_parser_token_words() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/effects.rs";
+    let relative = "crates/ironsmith-compiler/src/front_end/grammar/effects.rs";
     let content = read_repo_file(&root, relative);
     let labeled_prefix_support = function_source(
         &content,
@@ -1321,7 +1346,7 @@ pub(super) fn grammar_effect_labeled_prefix_classifiers_use_parser_token_words()
 #[test]
 pub(super) fn strict_unsupported_preflight_uses_tokens_not_raw_text() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/document/mod.rs";
+    let relative = "crates/ironsmith-compiler/src/front_end/document/mod.rs";
     let content = read_repo_file(&root, relative);
     let preflight = function_source(
         &content,
@@ -1344,8 +1369,7 @@ pub(super) fn strict_unsupported_preflight_uses_tokens_not_raw_text() {
 #[test]
 pub(super) fn instead_followup_classifier_uses_tokens_not_raw_oracle_text() {
     let root = workspace_root();
-    let relative =
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/effects/instead.rs";
+    let relative = "crates/ironsmith-compiler/src/front_end/grammar/effects/instead.rs";
     let content = read_repo_file(&root, relative);
     let classifier = function_source(
         &content,
@@ -1365,17 +1389,17 @@ pub(super) fn instead_followup_classifier_uses_tokens_not_raw_oracle_text() {
     );
     assert!(
         classifier.contains("WResult<InsteadSemantics>")
-            && classifier.contains("pub(crate) fn parse_instead_followup_shape_tokens")
+            && classifier.contains("pub fn parse_instead_followup_shape_tokens")
             && classifier.contains("InsteadFollowupShape"),
         "{relative} should return typed instead-followup semantics and shape facts from winnow grammar"
     );
 
-    let adapter_relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/shared/util.rs";
+    let adapter_relative = "crates/ironsmith-compiler/src/front_end/shared/util.rs";
     let adapter = read_repo_file(&root, adapter_relative);
     let adapter = function_source(
         &adapter,
         "pub(crate) fn classify_instead_followup_tokens",
-        "pub(crate) fn activation_cost_reference_imports",
+        "pub fn compiler_activation_cost_reference_imports",
     );
     assert!(
         adapter.contains("grammar::effects::classify_instead_followup_semantics_tokens(tokens)"),
@@ -1386,7 +1410,7 @@ pub(super) fn instead_followup_classifier_uses_tokens_not_raw_oracle_text() {
 #[test]
 pub(super) fn shared_util_level_header_parser_uses_tokens_not_raw_prefixes() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/shared/util.rs";
+    let relative = "crates/ironsmith-compiler/src/front_end/shared/util.rs";
     let content = read_repo_file(&root, relative);
     let parser = function_source(
         &content,
@@ -1409,7 +1433,7 @@ pub(super) fn shared_util_level_header_parser_uses_tokens_not_raw_prefixes() {
 #[test]
 pub(super) fn shared_util_power_toughness_parser_uses_char_helpers() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/shared/util.rs";
+    let relative = "crates/ironsmith-compiler/src/front_end/shared/util.rs";
     let content = read_repo_file(&root, relative);
     let parser = function_source(
         &content,
@@ -1432,7 +1456,7 @@ pub(super) fn shared_util_power_toughness_parser_uses_char_helpers() {
 #[test]
 pub(super) fn labeled_keyword_prefix_preservation_is_front_end_grammar_owned() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/effects.rs";
+    let relative = "crates/ironsmith-compiler/src/front_end/grammar/effects.rs";
     let content = read_repo_file(&root, relative);
     let parser = function_source(
         &content,
@@ -1468,7 +1492,7 @@ pub(super) fn labeled_keyword_prefix_preservation_is_front_end_grammar_owned() {
 #[test]
 pub(super) fn token_pt_parsing_is_front_end_leaf_grammar_owned() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/token_definitions/surface.rs";
+    let relative = "crates/ironsmith-compiler/src/front_end/grammar/token_definitions/surface.rs";
     let content = read_repo_file(&root, relative);
     let helper = function_source(
         &content,
@@ -1492,8 +1516,7 @@ pub(super) fn token_pt_parsing_is_front_end_leaf_grammar_owned() {
         "{relative} should route token P/T recognition through the typed leaf parser"
     );
 
-    let lowering_relative =
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/compile_support.rs";
+    let lowering_relative = "crates/ironsmith-compiler/src/lowering/compile_support.rs";
     let lowering = read_repo_file(&root, lowering_relative);
     assert!(
         !lowering.contains("fn parse_token_pt"),
@@ -1504,8 +1527,7 @@ pub(super) fn token_pt_parsing_is_front_end_leaf_grammar_owned() {
 #[test]
 pub(super) fn activated_sentence_classification_is_front_end_grammar_owned() {
     let root = workspace_root();
-    let grammar_relative =
-        "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/activated_lowering.rs";
+    let grammar_relative = "crates/ironsmith-compiler/src/front_end/grammar/activated_lowering.rs";
     let grammar = read_repo_file(&root, grammar_relative);
     let classifier = function_source(
         &grammar,
@@ -1524,7 +1546,8 @@ pub(super) fn activated_sentence_classification_is_front_end_grammar_owned() {
         "activated sentence classification should use token grammar, not rendered raw text probes"
     );
 
-    let semantic_relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/semantic_line_parsing/activated.rs";
+    let semantic_relative =
+        "crates/ironsmith-compiler/src/front_end/semantic_line_parsing/activated.rs";
     let semantic = read_repo_file(&root, semantic_relative);
     let dispatcher = function_source(
         &semantic,
@@ -1546,7 +1569,7 @@ pub(super) fn activated_sentence_classification_is_front_end_grammar_owned() {
 #[test]
 pub(super) fn activated_display_text_uses_typed_presentation_kind_not_raw_scan() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/semantic_line_parsing/activated.rs";
+    let relative = "crates/ironsmith-compiler/src/front_end/semantic_line_parsing/activated.rs";
     let content = read_repo_file(&root, relative);
     let helper = function_source(
         &content,
@@ -1585,7 +1608,7 @@ pub(super) fn activated_display_text_uses_typed_presentation_kind_not_raw_scan()
 #[test]
 pub(super) fn filter_player_relation_core_shapes_use_typed_winnow_grammar() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/filters/player_relations.rs";
+    let relative = "crates/ironsmith-compiler/src/front_end/grammar/filters/player_relations.rs";
     let content = read_repo_file(&root, relative);
 
     for required in [
@@ -1630,7 +1653,7 @@ pub(super) fn filter_player_relation_core_shapes_use_typed_winnow_grammar() {
 #[test]
 pub(super) fn predicate_own_control_and_conjoined_shapes_use_predicate_tokens() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/filters/predicate_phrases.rs";
+    let relative = "crates/ironsmith-compiler/src/front_end/grammar/filters/predicate_phrases.rs";
     let content = read_repo_file(&root, relative);
     let parser = function_source(
         &content,
@@ -1670,7 +1693,7 @@ pub(super) fn predicate_own_control_and_conjoined_shapes_use_predicate_tokens() 
         );
     }
     for forbidden in [
-        "let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered)",
+        "let tokens = crate::lexer::synthetic_word_tokens(filtered)",
         "filtered.join(\" \")",
         "left_clause.word_refs().is_empty() || right_clause.word_refs().is_empty()",
         "let right_words = right_clause.word_refs()",
@@ -1688,7 +1711,7 @@ pub(super) fn predicate_own_control_and_conjoined_shapes_use_predicate_tokens() 
 #[test]
 pub(super) fn predicate_final_filtered_adapters_use_predicate_tokens() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/filters/predicate_phrases.rs";
+    let relative = "crates/ironsmith-compiler/src/front_end/grammar/filters/predicate_phrases.rs";
     let content = read_repo_file(&root, relative);
     let repeated_parser = function_source(
         &content,
@@ -1712,7 +1735,7 @@ pub(super) fn predicate_final_filtered_adapters_use_predicate_tokens() {
     for forbidden in [
         "parse_stack_object_targets_only_source_predicate(&filtered)",
         "parse_repeated_if_or_predicate(&filtered)",
-        "let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered)",
+        "let tokens = crate::lexer::synthetic_word_tokens(filtered)",
     ] {
         assert!(
             !content.contains(forbidden),
@@ -1730,7 +1753,7 @@ pub(super) fn predicate_final_filtered_adapters_use_predicate_tokens() {
 #[test]
 pub(super) fn reference_tag_stage_uses_parser_token_words_for_legacy_word_core() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/filters/reference_tag_stage.rs";
+    let relative = "crates/ironsmith-compiler/src/front_end/grammar/filters/reference_tag_stage.rs";
     let content = read_repo_file(&root, relative);
     let parser = function_source(
         &content,
@@ -1751,7 +1774,7 @@ pub(super) fn reference_tag_stage_uses_parser_token_words_for_legacy_word_core()
 #[test]
 pub(super) fn object_filter_tap_activated_ability_qualifier_uses_token_mirror() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/filters/reference_tag_stage.rs";
+    let relative = "crates/ironsmith-compiler/src/front_end/grammar/filters/reference_tag_stage.rs";
     let content = read_repo_file(&root, relative);
     let qualifier = function_source(
         &content,
@@ -1777,7 +1800,7 @@ pub(super) fn object_filter_tap_activated_ability_qualifier_uses_token_mirror() 
 #[test]
 pub(super) fn keyword_static_source_is_chosen_color_uses_token_word_view() {
     let root = workspace_root();
-    let grammar_relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/keyword_static_lines/color_choice_shapes.rs";
+    let grammar_relative = "crates/ironsmith-compiler/src/front_end/grammar/keyword_static_lines/color_choice_shapes.rs";
     let grammar = read_repo_file(&root, grammar_relative);
     let entry = function_source(
         &grammar,
@@ -1813,7 +1836,7 @@ pub(super) fn keyword_static_source_is_chosen_color_uses_token_word_view() {
     }
 
     let family_relative =
-        "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs";
+        "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/mod.rs";
     let family = read_repo_file(&root, family_relative);
     let consumer = function_source(
         &family,
@@ -1842,7 +1865,8 @@ pub(super) fn keyword_static_source_is_chosen_color_uses_token_word_view() {
 #[test]
 pub(super) fn keyword_static_source_damage_prevention_uses_token_slices() {
     let root = workspace_root();
-    let grammar_relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/keyword_static_lines/damage_combat.rs";
+    let grammar_relative =
+        "crates/ironsmith-compiler/src/front_end/grammar/keyword_static_lines/damage_combat.rs";
     let grammar = read_repo_file(&root, grammar_relative);
     let recognizer = function_source(
         &grammar,
@@ -1865,7 +1889,7 @@ pub(super) fn keyword_static_source_damage_prevention_uses_token_slices() {
     }
 
     let family_relative =
-        "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs";
+        "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/mod.rs";
     let family = read_repo_file(&root, family_relative);
     let consumer = function_source(
         &family,
@@ -1901,7 +1925,8 @@ pub(super) fn keyword_static_source_damage_prevention_uses_token_slices() {
 #[test]
 pub(super) fn keyword_static_minimum_damage_replacement_prefixes_use_clause_shapes() {
     let root = workspace_root();
-    let grammar_relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/keyword_static_lines/damage_combat.rs";
+    let grammar_relative =
+        "crates/ironsmith-compiler/src/front_end/grammar/keyword_static_lines/damage_combat.rs";
     let grammar = read_repo_file(&root, grammar_relative);
     let entry = function_source(
         &grammar,
@@ -1934,7 +1959,7 @@ pub(super) fn keyword_static_minimum_damage_replacement_prefixes_use_clause_shap
     }
 
     let family_relative =
-        "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs";
+        "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/mod.rs";
     let family = read_repo_file(&root, family_relative);
     let consumer = function_source(
         &family,
@@ -1965,7 +1990,7 @@ pub(super) fn keyword_static_minimum_damage_replacement_prefixes_use_clause_shap
 #[test]
 pub(super) fn keyword_static_draw_replacement_shape_gates_use_clause_shapes() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs";
+    let relative = "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/costs_replacements_and_permissions.rs";
     let content = read_repo_file(&root, relative);
     let parser = function_source(
         &content,
@@ -1997,13 +2022,13 @@ pub(super) fn keyword_static_draw_replacement_shape_gates_use_clause_shapes() {
 #[test]
 pub(super) fn keyword_static_exile_replacement_shape_gates_use_clause_shapes() {
     let root = workspace_root();
-    let grammar_relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/keyword_static_lines/exile_replacement_shapes.rs";
+    let grammar_relative = "crates/ironsmith-compiler/src/front_end/grammar/keyword_static_lines/exile_replacement_shapes.rs";
     let grammar = read_repo_file(&root, grammar_relative);
     for required in [
-        "pub(crate) struct ExileToGraveyardReplacementSpec<'a>",
-        "pub(crate) enum ExileWouldDieSpec",
-        "pub(crate) fn parse_exile_to_graveyard_replacement_tokens",
-        "pub(crate) fn parse_exile_would_die_tokens",
+        "pub struct ExileToGraveyardReplacementSpec<'a>",
+        "pub enum ExileWouldDieSpec",
+        "pub fn parse_exile_to_graveyard_replacement_tokens",
+        "pub fn parse_exile_would_die_tokens",
         "primitives::parse_all(",
         "parse_exile_to_graveyard_replacement_lexed",
         "parse_nontoken_exile_would_die_lexed",
@@ -2034,7 +2059,7 @@ pub(super) fn keyword_static_exile_replacement_shape_gates_use_clause_shapes() {
     }
 
     let family_relative =
-        "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs";
+        "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/mod.rs";
     let family = read_repo_file(&root, family_relative);
     let graveyard_consumer = function_source(
         &family,
@@ -2083,7 +2108,8 @@ pub(super) fn keyword_static_exile_replacement_shape_gates_use_clause_shapes() {
 #[test]
 pub(super) fn keyword_static_cost_target_specs_use_clause_shapes() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs";
+    let relative =
+        "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/mod.rs";
     let content = read_repo_file(&root, relative);
     let parser = function_source(
         &content,
@@ -2105,8 +2131,8 @@ pub(super) fn keyword_static_cost_target_specs_use_clause_shapes() {
         );
     }
     for forbidden in [
-        "let target_words = crate::runtime_backend::token_word_refs(&target_tokens)",
-        "let target_words = crate::runtime_backend::token_word_refs(target_tokens)",
+        "let target_words = crate::token_word_refs(&target_tokens)",
+        "let target_words = crate::token_word_refs(target_tokens)",
         "YOU_TARGET_PREFIX_PATTERN.matches_words(&target_words)",
         "OPPONENT_TARGET_PREFIX_PATTERN.matches_words(&target_words)",
         "PLAYER_TARGET_PREFIX_PATTERN.matches_words(&target_words)",
@@ -2123,7 +2149,8 @@ pub(super) fn keyword_static_cost_target_specs_use_clause_shapes() {
 #[test]
 pub(super) fn keyword_static_this_spell_cost_condition_quantity_tails_use_clause_shapes() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs";
+    let relative =
+        "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/mod.rs";
     let content = read_repo_file(&root, relative);
     let parser = function_source(
         &content,
@@ -2167,7 +2194,8 @@ pub(super) fn keyword_static_this_spell_cost_condition_quantity_tails_use_clause
 #[test]
 pub(super) fn keyword_static_all_creatures_are_color_uses_token_word_ranges() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs";
+    let relative =
+        "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/mod.rs";
     let content = read_repo_file(&root, relative);
     let parser = function_source(
         &content,
@@ -2207,7 +2235,8 @@ pub(super) fn keyword_static_all_creatures_are_color_uses_token_word_ranges() {
 #[test]
 pub(super) fn keyword_static_subjects_are_basic_uses_token_word_ranges() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs";
+    let relative =
+        "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/mod.rs";
     let content = read_repo_file(&root, relative);
     let parser = function_source(
         &content,
@@ -2247,7 +2276,8 @@ pub(super) fn keyword_static_subjects_are_basic_uses_token_word_ranges() {
 #[test]
 pub(super) fn keyword_static_land_type_parsers_use_token_word_ranges() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs";
+    let relative =
+        "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/mod.rs";
     let content = read_repo_file(&root, relative);
     let parser = function_source(
         &content,
@@ -2293,7 +2323,8 @@ pub(super) fn keyword_static_land_type_parsers_use_token_word_ranges() {
 #[test]
 pub(super) fn keyword_static_land_animation_uses_token_word_ranges() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs";
+    let relative =
+        "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/mod.rs";
     let content = read_repo_file(&root, relative);
     let parser = function_source(
         &content,
@@ -2333,14 +2364,15 @@ pub(super) fn keyword_static_land_animation_uses_token_word_ranges() {
 #[test]
 pub(super) fn keyword_static_heterogeneous_animation_attached_probe_uses_token_word_view() {
     let root = workspace_root();
-    let grammar_relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/static_keyword_line_shapes.rs";
+    let grammar_relative =
+        "crates/ironsmith-compiler/src/front_end/grammar/static_keyword_line_shapes.rs";
     let grammar = read_repo_file(&root, grammar_relative);
     for required in [
-        "pub(crate) struct AnimationVerbShape",
-        "pub(crate) fn parse_animation_verbs",
+        "pub struct AnimationVerbShape",
+        "pub fn parse_animation_verbs",
         "first_token_word(tokens, &[\"is\", \"are\"])",
         "first_token_word(tail, &[\"have\", \"has\"])",
-        "pub(crate) fn parse_animation_creature_word",
+        "pub fn parse_animation_creature_word",
         "first_word(words, &[\"creature\", \"creatures\"])",
         "let mut input = LexStream::new(tokens)",
         "let parsed: WResult<&OwnedLexToken> = any.parse_next(&mut input)",
@@ -2352,7 +2384,7 @@ pub(super) fn keyword_static_heterogeneous_animation_attached_probe_uses_token_w
     }
 
     let family_relative =
-        "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs";
+        "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/mod.rs";
     let family = read_repo_file(&root, family_relative);
     let consumer = function_source(
         &family,
@@ -2364,7 +2396,7 @@ pub(super) fn keyword_static_heterogeneous_animation_attached_probe_uses_token_w
         "static_keyword_line_shapes::parse_animation_verbs(tokens)",
         "let be_idx = animation_verbs.be.token",
         "let has_idx = animation_verbs.has.token",
-        "static_keyword_line_shapes::parse_animation_creature_word(&before_has_words)",
+        "static_keyword_line_shapes::parse_animation_creature_word(before_has_words)",
         "let clause_words = LexedClause::new(tokens).word_refs()",
         "let attached_subject = LexedClause::new(&subject_tokens)",
         "let before_has_clause = LexedClause::new(&before_has)",
@@ -2398,7 +2430,8 @@ pub(super) fn keyword_static_heterogeneous_animation_attached_probe_uses_token_w
 #[test]
 pub(super) fn keyword_static_pay_life_etb_gates_use_clause_shapes() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs";
+    let relative =
+        "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/mod.rs";
     let content = read_repo_file(&root, relative);
     let parser = function_source(
         &content,
@@ -2434,7 +2467,8 @@ pub(super) fn keyword_static_pay_life_etb_gates_use_clause_shapes() {
 #[test]
 pub(super) fn keyword_static_copy_activated_abilities_gates_use_clause_shapes() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs";
+    let relative =
+        "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/mod.rs";
     let content = read_repo_file(&root, relative);
     let parser = function_source(
         &content,
@@ -2469,7 +2503,8 @@ pub(super) fn keyword_static_copy_activated_abilities_gates_use_clause_shapes() 
 #[test]
 pub(super) fn keyword_static_choose_not_untap_uses_token_word_ranges() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs";
+    let relative =
+        "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/mod.rs";
     let content = read_repo_file(&root, relative);
     let parser = function_source(
         &content,
@@ -2489,7 +2524,7 @@ pub(super) fn keyword_static_choose_not_untap_uses_token_word_ranges() {
         );
     }
     for forbidden in [
-        "let words = crate::runtime_backend::token_word_refs(tokens)",
+        "let words = crate::token_word_refs(tokens)",
         "YOU_MAY_CHOOSE_NOT_TO_UNTAP_PREFIX_PATTERN.matches_words(&words)",
         "DURING_YOUR_UNTAP_STEP_TAIL_PATTERN.matches_words(&words)",
         "let subject_words = &words[6..words.len() - 4]",
@@ -2506,7 +2541,8 @@ pub(super) fn keyword_static_choose_not_untap_uses_token_word_ranges() {
 #[test]
 pub(super) fn keyword_static_search_attack_land_and_retrace_gates_use_clause_shapes() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs";
+    let relative =
+        "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/mod.rs";
     let content = read_repo_file(&root, relative);
     let search = function_source(
         &content,
@@ -2565,7 +2601,8 @@ pub(super) fn keyword_static_search_attack_land_and_retrace_gates_use_clause_sha
 #[test]
 pub(super) fn keyword_static_activation_restriction_wrapper_uses_lexed_spec() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs";
+    let relative =
+        "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/mod.rs";
     let content = read_repo_file(&root, relative);
     let parser = function_source(
         &content,
@@ -2585,7 +2622,7 @@ pub(super) fn keyword_static_activation_restriction_wrapper_uses_lexed_spec() {
         );
     }
     for forbidden in [
-        "let normalized = crate::runtime_backend::token_word_refs(tokens)",
+        "let normalized = crate::token_word_refs(tokens)",
         "ACTIVATED_ABILITIES_OF_PREFIX_PATTERN.matches_words(&normalized)",
         "find_index(&normalized, |word| CANT_WORD_PATTERN.matches_word(word))",
         "CANT_BE_ACTIVATED_TAIL_PATTERN.matches_words(tail)",
@@ -2603,14 +2640,14 @@ pub(super) fn keyword_static_activation_restriction_wrapper_uses_lexed_spec() {
 #[test]
 pub(super) fn keyword_static_exile_counter_permission_grant_uses_lexed_ranges() {
     let root = workspace_root();
-    let grammar_relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/keyword_static_lines/permission_counter_shapes.rs";
+    let grammar_relative = "crates/ironsmith-compiler/src/front_end/grammar/keyword_static_lines/permission_counter_shapes.rs";
     let grammar = read_repo_file(&root, grammar_relative);
     for required in [
-        "pub(crate) enum ExileCounterPermissionFamily",
-        "pub(crate) enum ExileCounterPermissionOwner",
-        "pub(crate) enum ExileCounterManaPermission",
-        "pub(crate) struct ExileCounterPermissionSpec",
-        "pub(crate) fn parse_exile_counter_permission_tokens",
+        "pub enum ExileCounterPermissionFamily",
+        "pub enum ExileCounterPermissionOwner",
+        "pub enum ExileCounterManaPermission",
+        "pub struct ExileCounterPermissionSpec",
+        "pub fn parse_exile_counter_permission_tokens",
         "primitives::parse_all(",
         "parse_cast_countered_exile_cards_lexed",
         "parse_play_source_exiled_countered_cards_lexed",
@@ -2624,7 +2661,7 @@ pub(super) fn keyword_static_exile_counter_permission_grant_uses_lexed_ranges() 
     }
 
     let family_relative =
-        "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs";
+        "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/mod.rs";
     let family = read_repo_file(&root, family_relative);
     let consumer = function_source(
         &family,
@@ -2666,7 +2703,8 @@ pub(super) fn keyword_static_exile_counter_permission_grant_uses_lexed_ranges() 
 #[test]
 pub(super) fn keyword_static_surveilled_graveyard_permission_uses_clause_shape() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs";
+    let relative =
+        "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/mod.rs";
     let content = read_repo_file(&root, relative);
     let parser = function_source(
         &content,
@@ -2694,19 +2732,20 @@ pub(super) fn keyword_static_surveilled_graveyard_permission_uses_clause_shape()
 #[test]
 pub(super) fn keyword_static_you_may_static_grant_uses_clause_shapes() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs";
+    let relative =
+        "crates/ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/mod.rs";
     let content = read_repo_file(&root, relative);
     let parser = function_source(
         &content,
-        "pub(crate) fn parse_you_may_static_grant_line",
-        "pub(crate) fn parse_as_you_cascade_land_drop_line",
+        "pub fn parse_you_may_static_grant_line",
+        "pub fn parse_as_you_cascade_land_drop_line",
     );
 
     for required in [
         "late_static_facts::is_source_linked_exile_cast_with_any_mana(tokens)",
         "parse_permission_clause_spec(tokens)?",
         "late_static_facts::contains_singular_cast_spell(tokens)",
-        "crate::grant::Grantable::AlternativeCast(method)",
+        "crate::model::CompilerGrantableCore::AlternativeCast(method)",
     ] {
         assert!(
             parser.contains(required),
@@ -2718,7 +2757,7 @@ pub(super) fn keyword_static_you_may_static_grant_uses_clause_shapes() {
         "SOURCE_LINKED_EXILE_CAST_PREFIX_PATTERN.matches_words(&words)",
         "ANY_MANA_CAST_SUFFIX_PATTERN.matches_words(&words)",
         "words.len() > 19 + 11",
-        "let clause_words = crate::runtime_backend::token_word_refs(tokens)",
+        "let clause_words = crate::token_word_refs(tokens)",
         "CAST_SINGLE_SPELL_PATTERN.matches_words(&clause_words)",
     ] {
         assert!(

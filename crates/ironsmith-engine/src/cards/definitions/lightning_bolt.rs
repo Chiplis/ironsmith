@@ -2,19 +2,22 @@
 
 use super::CardDefinitionBuilder;
 use crate::cards::CardDefinition;
+use crate::effect::Effect;
 use crate::ids::CardId;
+use crate::mana::{ManaCost, ManaSymbol};
+use crate::target::ChooseSpec;
+use crate::types::CardType;
 
 /// Lightning Bolt - {R}
 /// Instant
 /// Lightning Bolt deals 3 damage to any target.
 pub fn lightning_bolt() -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Lightning Bolt")
-        .parse_text(
-            "Mana cost: {R}\n\
-             Type: Instant\n\
-             Lightning Bolt deals 3 damage to any target.",
-        )
-        .expect("Lightning Bolt text should be supported")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Instant])
+        .oracle_text("Lightning Bolt deals 3 damage to any target.")
+        .with_spell_effect(vec![Effect::deal_damage(3, ChooseSpec::AnyTarget)])
+        .build()
 }
 
 #[cfg(all(test, ironsmith_runtime_parser_tests))]

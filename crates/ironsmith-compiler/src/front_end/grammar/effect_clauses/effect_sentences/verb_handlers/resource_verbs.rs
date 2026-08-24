@@ -251,7 +251,10 @@ fn parse_unlock_room_door(
     } else {
         words.as_slice()
     };
-    if words != ["a", "locked", "door", "of", "a", "room", "you", "control"] {
+    if !crate::word_primitives::parse_sequence_complete(
+        words,
+        &["a", "locked", "door", "of", "a", "room", "you", "control"],
+    ) {
         return Err(CardTextError::ParseError(format!(
             "unsupported unlock clause (clause: '{}')",
             words.join(" ")
@@ -480,7 +483,7 @@ pub fn parse_reorder(
     }
     let rest_token_idx = LexedClause::new(tokens)
         .words()
-        .token_boundary_for_word_or_end(owner.consumed_words)
+        .map_word_or_end_to_token_boundary(owner.consumed_words)
         .unwrap_or(tokens.len());
     let rest = trim_commas(&tokens[rest_token_idx..]);
 
@@ -603,7 +606,7 @@ fn add_chosen_name_constraint_to_target(
     match target {
         TargetAst::Object(filter, _, _) => {
             filter.tagged_constraints.push(TaggedObjectConstraint {
-                tag: TagKey::from("__chosen_name__"),
+                tag: crate::tag::CompilerReferenceTag::ChosenName.key(),
                 relation: TaggedOpbjectRelation::SameNameAsTagged,
             });
             filter.set_chosen_name_source_surface(Some(chosen_name_source));

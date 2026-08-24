@@ -106,7 +106,10 @@ pub fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
         let target = parse_target_phrase(target_tokens)?;
         return Ok(EffectAst::subject_verb_tap_or_untap(target.clone()));
     }
-    let target = if crate::lexer::parser_token_word_refs(tokens).as_slice() == ["it"] {
+    let target = if crate::word_primitives::parse_sequence_complete(
+        &crate::lexer::parser_token_word_refs(tokens),
+        &["it"],
+    ) {
         TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens))
     } else {
         parse_target_phrase(tokens)?

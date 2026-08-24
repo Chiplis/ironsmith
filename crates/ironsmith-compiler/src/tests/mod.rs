@@ -21,7 +21,7 @@ use crate::activation_and_restrictions::{
     parse_mana_usage_restriction_sentence_lexed, parse_triggered_times_each_turn_lexed,
 };
 use crate::compiler_pipeline::parse_text_with_annotations_lowered;
-use crate::cst_lowering::lower_activation_cost_cst;
+use crate::cst_lowering::recognize_activation_cost_cst as lower_activation_cost_cst;
 use crate::effect_sentences::{
     parse_cant_effect_sentence_lexed, parse_effect_sentence_lexed, parse_restriction_duration_lexed,
 };
@@ -96,7 +96,8 @@ fn rewrite_direct_triggered_chunk(
                 max_triggers_per_turn,
             } => Some((trigger, effects.as_slice(), *max_triggers_per_turn)),
             LineAst::Ability(parsed) => {
-                let AbilityKind::Triggered(triggered) = parsed.kind() else {
+                let crate::model::CompilerAbilityKindCore::Triggered(triggered) = parsed.kind()
+                else {
                     return None;
                 };
                 Some((

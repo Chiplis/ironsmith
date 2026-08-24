@@ -3137,6 +3137,19 @@ fn definition_from_payload(
     Ok(definition)
 }
 
+/// Strictly compile one canonical catalog payload into its runtime definition.
+///
+/// This is the compiler-owning boundary used by integration products that need
+/// on-demand test fixtures without embedding parser behavior in the engine.
+pub fn compile_runtime_definition_from_payload(
+    payload: &CardPayload,
+) -> Result<CardDefinition, String> {
+    panic::catch_unwind(AssertUnwindSafe(|| {
+        definition_from_payload(payload, CardId::new())
+    }))
+    .map_err(|payload| format!("panic: {}", panic_payload_to_string(payload)))?
+}
+
 fn parse_card_payload(payload: &CardPayload, allow_unsupported: bool) -> ParseAttempt {
     with_allow_unsupported(allow_unsupported, || {
         let (result, parse_loss) = parse_loss::capture(|| {

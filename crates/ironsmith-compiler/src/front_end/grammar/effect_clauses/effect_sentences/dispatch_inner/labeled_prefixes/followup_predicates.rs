@@ -4,9 +4,7 @@ pub fn is_negated_untap_clause(words: &[&str]) -> bool {
     effect_grammar::is_negated_untap_clause_words(words)
 }
 
-pub fn parse_token_copy_modifier_sentence(
-    tokens: &[OwnedLexToken],
-) -> Option<TokenCopyFollowup> {
+pub fn parse_token_copy_modifier_sentence(tokens: &[OwnedLexToken]) -> Option<TokenCopyFollowup> {
     parse_token_copy_modifier_sentence_lexed(tokens)
 }
 
@@ -45,26 +43,45 @@ fn token_copy_reference_surface_at(
     use crate::effect::TokenCopyReferenceSurface as Surface;
 
     let words = words.get(start..)?;
-    if words.starts_with(&["the", "token", "created", "this", "way"])
-        || words.starts_with(&["token", "created", "this", "way"])
+    if crate::word_primitives::parse_any_sequence_prefix(
+        words,
+        &[
+            &["the", "token", "created", "this", "way"],
+            &["token", "created", "this", "way"],
+        ],
+    )
     {
         return Some(Surface::TokenCreatedThisWay);
     }
-    if words.starts_with(&["the", "tokens", "created", "this", "way"])
-        || words.starts_with(&["tokens", "created", "this", "way"])
+    if crate::word_primitives::parse_any_sequence_prefix(
+        words,
+        &[
+            &["the", "tokens", "created", "this", "way"],
+            &["tokens", "created", "this", "way"],
+        ],
+    )
     {
         return Some(Surface::TokensCreatedThisWay);
     }
-    if words.starts_with(&["that", "token"]) {
+    if crate::word_primitives::parse_sequence_prefix(words, &["that", "token"]) {
         return Some(Surface::ThatToken);
     }
-    if words.starts_with(&["those", "tokens"]) || words.starts_with(&["those", "token"]) {
+    if crate::word_primitives::parse_any_sequence_prefix(
+        words,
+        &[&["those", "tokens"], &["those", "token"]],
+    ) {
         return Some(Surface::ThoseTokens);
     }
-    if words.starts_with(&["the", "token"]) || words.starts_with(&["token"]) {
+    if crate::word_primitives::parse_any_sequence_prefix(
+        words,
+        &[&["the", "token"], &["token"]],
+    ) {
         return Some(Surface::TheToken);
     }
-    if words.starts_with(&["the", "tokens"]) || words.starts_with(&["tokens"]) {
+    if crate::word_primitives::parse_any_sequence_prefix(
+        words,
+        &[&["the", "tokens"], &["tokens"]],
+    ) {
         return Some(Surface::TheTokens);
     }
     match words.first().copied()? {
@@ -86,6 +103,6 @@ pub fn token_copy_action_reference_surface(
     action: &str,
 ) -> Option<crate::effect::TokenCopyReferenceSurface> {
     let words = crate::lexer::parser_token_word_refs(tokens);
-    let action_idx = words.iter().rposition(|word| *word == action)?;
+    let action_idx = crate::slice_primitives::select_last_position(&words, |word| *word == action)?;
     token_copy_reference_surface_at(&words, action_idx + 1)
 }

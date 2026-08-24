@@ -27,7 +27,21 @@ fn exact_face_up_graveyard_move_to_exile(
 }
 
 fn describe_graveyard_exile(inner: &Effect) -> String {
-    let text = describe_effect(inner);
+    let filter = if let Some(exile) = inner.downcast_ref::<crate::effects::ExileEffect>() {
+        match exile.spec.base() {
+            ChooseSpec::Object(filter) => Some(filter),
+            _ => None,
+        }
+    } else if let Some(moved) = inner.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+        match moved.target.base() {
+            ChooseSpec::Object(filter) => Some(filter),
+            _ => None,
+        }
+    } else {
+        None
+    };
+
+    let mut text = describe_effect(inner);
     if text.contains("put there from") {
         return text
             .replace(
@@ -39,8 +53,51 @@ fn describe_graveyard_exile(inner: &Effect) -> String {
                 " in a graveyard that was put there",
             );
     }
-    text.replace(" in your graveyard", " from your graveyard")
-        .replace(" in a graveyard", " from a graveyard")
+    text = text
+        .replace(" in your graveyard", " from your graveyard")
+        .replace(" in a graveyard", " from a graveyard");
+
+    // A union whose every arm is scoped to the same graveyard domain owns a
+    // single trailing zone phrase in Oracle text. The ordinary object-filter
+    // renderer keeps each arm independently self-contained, so factor only
+    // after the executable filter proves that shared domain.
+    if filter.is_some_and(|filter| {
+        filter.any_of.len() >= 2
+            && filter
+                .any_of
+                .iter()
+                .all(|branch| branch.zone == Some(Zone::Graveyard))
+    }) {
+        while text.matches(" from a graveyard").count() > 1 {
+            text = text.replacen(" from a graveyard or ", " or ", 1);
+        }
+        while text.matches(" from your graveyard").count() > 1 {
+            text = text.replacen(" from your graveyard or ", " or ", 1);
+        }
+    }
+
+    // The compiler's explicit named-category union uses one supertype and
+    // one subtype on the same card-noun filter. Preserve that authored `or`
+    // only for the otherwise-unqualified exact shape.
+    if let Some(filter) = filter
+        && filter.any_of.is_empty()
+        && filter.has_explicit_card_noun()
+        && let ([supertype], [subtype]) = (filter.supertypes.as_slice(), filter.subtypes.as_slice())
+    {
+        let mut unqualified = filter.clone();
+        unqualified.zone = None;
+        unqualified.supertypes.clear();
+        unqualified.subtypes.clear();
+        unqualified.set_explicit_card_noun(false);
+        if unqualified == ObjectFilter::default() {
+            text = text.replace(
+                &format!("{supertype} {subtype} card"),
+                &format!("{supertype} or {subtype} card"),
+            );
+        }
+    }
+
+    text
 }
 
 fn tagged_effect_view(effect: &Effect) -> Option<(&crate::tag::TagKey, &Effect)> {
@@ -252,11 +309,33 @@ pub(super) fn describe_graveyard_exile_copy_cast(effects: &[Effect]) -> Option<S
         .iter()
         .skip_while(|effect| is_implicit_trigger_provenance(effect))
         .collect::<Vec<_>>();
-    let [exile_effect, may_effect] = effects.as_slice() else {
-        return None;
-    };
-    render_graveyard_exile_copy_cast_pair(exile_effect, may_effect)
-        .or_else(|| render_conditional_graveyard_exile_copy_cast_pair(exile_effect, may_effect))
+    match effects.as_slice() {
+        [exile_effect, may_effect] => {
+            render_graveyard_exile_copy_cast_pair(exile_effect, may_effect).or_else(|| {
+                render_conditional_graveyard_exile_copy_cast_pair(exile_effect, may_effect)
+            })
+        }
+        [exile_effect, with_id_effect, result_effect] => {
+            let with_id = with_id_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+            let result = structural_unwrap_render_wrappers(result_effect)
+                .downcast_ref::<crate::effects::IfEffect>()?;
+            if result.condition != with_id.id
+                || result.predicate != crate::effect::EffectPredicate::Happened
+                || !result.else_.is_empty()
+                || result.per_player_result
+                || result.prior_result_replacement_surface
+            {
+                return None;
+            }
+            let copy_cast = render_graveyard_exile_copy_cast_pair(exile_effect, &with_id.effect)?;
+            let result_text = describe_effect_list(&result.then);
+            if result_text.is_empty() || result_text.contains(". ") {
+                return None;
+            }
+            Some(format!("{copy_cast}. If you do, {result_text}"))
+        }
+        _ => None,
+    }
 }
 
 #[cfg(test)]

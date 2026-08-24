@@ -136,7 +136,7 @@ pub fn parse_if_any_tagged_cards_share_card_type_with_triggering_spell(
 
     let mut filter = ObjectFilter::default();
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: TagKey::from("triggering"),
+        tag: crate::tag::CompilerReferenceTag::Triggering.key(),
         relation: TaggedOpbjectRelation::SharesCardType,
     });
     let if_true = parse_effect_chain_inner(shape.effect_tokens)?;

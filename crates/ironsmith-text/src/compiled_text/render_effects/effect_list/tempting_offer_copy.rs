@@ -256,7 +256,7 @@ mod tests {
 
     #[test]
     fn parsed_bundle_round_trips_the_exact_oracle_surface() {
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Tempting Copy Probe",
         )
@@ -310,7 +310,7 @@ mod tests {
         let effects = copy_shape();
         let source = game.new_object_id();
         let mut decisions = OnlyBobAccepts(bob);
-        let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        let mut ctx = crate::effects::EffectContext::new_default(source, alice)
             .with_decision_maker(&mut decisions);
         ctx.tag_object(
             "chosen_spell",

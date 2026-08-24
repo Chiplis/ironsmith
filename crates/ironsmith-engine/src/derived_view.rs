@@ -1795,10 +1795,13 @@ mod tests {
     use super::*;
     use crate::card::CardBuilder;
     use crate::continuous::{ContinuousEffect, Modification, TextBoxOverlay};
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::effect::Effect;
     use crate::effect::Until;
     use crate::ids::{CardId, ObjectId, PlayerId};
-    use crate::target::{ChooseSpec, ObjectFilter};
+    #[cfg(ironsmith_runtime_parser_tests)]
+    use crate::target::ChooseSpec;
+    use crate::target::ObjectFilter;
     use crate::types::{CardType, Subtype};
     use crate::zone::Zone;
 

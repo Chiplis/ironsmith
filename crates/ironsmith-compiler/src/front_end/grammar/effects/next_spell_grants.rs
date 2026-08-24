@@ -342,16 +342,13 @@ fn spell_filter(
     // zone from the parsed subject; the runtime's temporary-spell matcher
     // compares such filters against the authoritative cast-origin snapshot.
     // Subjects with no origin clause still match the spell on the stack.
-    if subject_words
-        .windows(3)
-        .any(|window| window == ["from", "your", "hand"])
-    {
+    if crate::word_primitives::sequence_occurs(&subject_words, &["from", "your", "hand"]) {
         filter.zone = Some(Zone::Hand);
         filter.owner = Some(PlayerFilter::You);
-    } else if subject_words
-        .windows(3)
-        .any(|window| window == ["from", "your", "graveyard"])
-    {
+    } else if crate::word_primitives::sequence_occurs(
+        &subject_words,
+        &["from", "your", "graveyard"],
+    ) {
         filter.zone = Some(Zone::Graveyard);
         filter.owner = Some(PlayerFilter::You);
     } else if filter.zone.is_none() {

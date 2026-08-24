@@ -34,77 +34,15 @@ fn parses_resource_look_shapes() {
     assert!(matches!(count.unhinted(), Value::PowerOf(_)));
 }
 
-#[test]
-fn parses_hyphenated_face_down_look_shapes() {
-    assert!(matches!(
-        parse_resource_look_shape(&lex("at target face-down creature."), None),
-        Some(ResourceLookShape::Object {
-            kind: ResourceLookObjectKind::FaceDownCreature,
-            ..
-        })
-    ));
-    assert!(matches!(
-        parse_resource_look_shape(&lex("at target face down permanent."), None),
-        Some(ResourceLookShape::Object {
-            kind: ResourceLookObjectKind::FaceDownPermanent,
-            ..
-        })
-    ));
-}
-
-#[test]
-fn parses_spy_network_compound_look_shape() {
-    let tokens = lex(
-        "at target player's hand, the top card of that player's library, and any face-down creatures they control.",
-    );
-    assert!(matches!(
-        parse_resource_look_shape(&tokens, None),
-        Some(ResourceLookShape::Hand {
-            player: PlayerAst::Target,
-            followup: ResourceLookHandFollowup::TopCardAndFaceDownCreatures,
-            ..
-        })
-    ));
-}
-
-#[test]
-fn parses_resource_shuffle_shapes() {
-    assert_eq!(
-        parse_resource_shuffle_shape(
-            &lex("them into their library from their graveyard"),
-            PlayerAst::That
-        ),
-        Some(ResourceShuffleShape::TaggedIntoLibrary {
-            player: PlayerAst::That,
-            to_bottom: false,
-        })
-    );
-    assert_eq!(
-        parse_resource_shuffle_shape(&lex("your library"), PlayerAst::Implicit),
-        Some(ResourceShuffleShape::SimpleLibrary)
-    );
-}
-
-#[test]
-fn parses_resource_chosen_name_target_shape() {
-    let tokens = lex("target creature with a name chosen for this source this way");
-    let shape = parse_resource_chosen_name_target_shape(&tokens).unwrap();
-    assert_eq!(
-        TokenWordView::new(shape.base_tokens).word_refs(),
-        vec!["target", "creature"]
-    );
-    assert_eq!(
-        shape.chosen_name_source,
-        ironsmith_core::ChosenNameSourceSurface::Source
-    );
-}
-
-#[test]
-fn parses_all_unspent_mana_resource_shape() {
-    assert!(parse_resource_all_unspent_mana_shape(&lex(
-        "all unspent mana"
-    )));
-    assert!(!parse_resource_all_unspent_mana_shape(&lex(
-        "all unspent energy"
-    )));
-}
+#[path = "tests/reference_programs.rs"]
+mod reference_programs;
+use reference_programs::parses_all_unspent_mana_resource_shape;
+#[path = "tests/choice_programs.rs"]
+mod choice_programs;
+use choice_programs::parses_resource_chosen_name_target_shape;
+#[path = "tests/library_programs.rs"]
+mod library_programs;
+use library_programs::{
+    parses_hyphenated_face_down_look_shapes, parses_resource_shuffle_shapes,
+    parses_spy_network_compound_look_shape,
+};

@@ -7,7 +7,6 @@ use super::super::lexer::{
     LexStream, OwnedLexToken, TokenKind, TokenWordView, split_lexed_sentences,
 };
 use super::primitives;
-use super::shared_util::reference_shapes;
 use crate::ir::ActivatedPresentationKind;
 use crate::zone::Zone;
 
@@ -82,15 +81,6 @@ pub fn any_player_may_activate_on_stack(tokens: &[OwnedLexToken]) -> bool {
     ) && surface_has_sequence(tokens, &["on", "the", "stack"])
 }
 
-fn has_source_command_zone_origin(tokens: &[OwnedLexToken]) -> bool {
-    let words = TokenWordView::new(tokens)
-        .word_refs()
-        .into_iter()
-        .filter(|word| super::leaf::parse_leaf_article_complete(word).is_err())
-        .collect::<Vec<_>>();
-    reference_shapes::contains_source_from_command_zone(&words)
-}
-
 pub fn parse_activated_presentation_kind_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivatedPresentationKind> {
@@ -132,38 +122,7 @@ pub fn parse_activated_functional_zones_tokens(
     effect_tokens: &[OwnedLexToken],
 ) -> Vec<Zone> {
     let effect_sentences = split_lexed_sentences(effect_tokens);
-    if effect_sentences
-        .iter()
-        .any(|sentence| any_player_may_activate_on_stack(sentence))
-    {
-        return vec![Zone::Stack];
-    }
-
-    let cost_words = TokenWordView::new(cost_tokens).word_refs();
-    let effect_has = |predicate: fn(&[&str]) -> bool| {
-        effect_sentences.iter().any(|sentence| {
-            let words = TokenWordView::new(sentence).word_refs();
-            predicate(&words)
-        })
-    };
-    if reference_shapes::contains_source_from_your_graveyard(&cost_words)
-        || effect_has(reference_shapes::contains_source_from_your_graveyard)
-    {
-        vec![Zone::Graveyard]
-    } else if has_source_command_zone_origin(cost_tokens)
-        || effect_sentences
-            .iter()
-            .any(|sentence| has_source_command_zone_origin(sentence))
-    {
-        vec![Zone::Command]
-    } else if reference_shapes::contains_source_from_your_hand(&cost_words)
-        || reference_shapes::contains_discard_source(&cost_words)
-        || effect_has(reference_shapes::contains_source_from_your_hand)
-    {
-        vec![Zone::Hand]
-    } else {
-        vec![Zone::Battlefield]
-    }
+    super::functional_zones::parse_activated_functional_zones_tokens(cost_tokens, &effect_sentences)
 }
 
 fn parse_mana_source_restriction_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {

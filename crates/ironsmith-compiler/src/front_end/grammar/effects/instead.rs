@@ -40,10 +40,11 @@ pub fn classify_instead_followup_semantics_tokens(tokens: &[OwnedLexToken]) -> I
 }
 
 pub fn parse_instead_followup_shape_tokens(tokens: &[OwnedLexToken]) -> InsteadFollowupShape {
-    let leading_instead_surface = tokens.windows(2).any(|pair| {
+    let leading_instead_surface = crate::slice_primitives::find_window_by(tokens, 2, |pair| {
         (pair[0].is_comma() && pair[1].is_word("instead"))
             || (pair[0].is_word("may") && pair[1].is_word("instead"))
-    });
+    })
+    .is_some();
     InsteadFollowupShape {
         semantics: classify_instead_followup_semantics_tokens(tokens),
         conditional_intro: primitives::parse_prefix(tokens, primitives::kw("if")).is_some(),

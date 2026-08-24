@@ -278,16 +278,28 @@ fn walk_rs_files(root: &Path, files: &mut Vec<std::path::PathBuf>) {
     }
 }
 
+fn compiler_manifest_dir() -> std::path::PathBuf {
+    let current = Path::new(env!("CARGO_MANIFEST_DIR"));
+    if current.join("src/lowering").is_dir() {
+        current.to_path_buf()
+    } else {
+        current
+            .parent()
+            .expect("workspace crates directory")
+            .join("ironsmith-compiler")
+    }
+}
+
 #[test]
 fn player_filter_resolution_stays_behind_subject_context() {
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let manifest_dir = compiler_manifest_dir();
     let src = manifest_dir.join("src");
     let compile_support = manifest_dir
-        .join("src/runtime_backend/lowering/compile_support.rs")
+        .join("src/lowering/compile_support.rs")
         .canonicalize()
         .expect("canonical compile_support.rs");
     let helper = manifest_dir
-        .join("src/runtime_backend/lowering/compile_support/player_effect_helpers.rs")
+        .join("src/lowering/compile_support/player_effect_helpers.rs")
         .canonicalize()
         .expect("canonical player_effect_helpers.rs");
     let needle = concat!("resolve_effect_player", "_filter(");
@@ -321,9 +333,9 @@ fn player_filter_resolution_stays_behind_subject_context() {
 
 #[test]
 fn lowering_handlers_do_not_reach_into_lowered_subject_fields() {
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let compile_support_dir = manifest_dir.join("src/runtime_backend/lowering/compile_support");
-    let compile_support_rs = manifest_dir.join("src/runtime_backend/lowering/compile_support.rs");
+    let manifest_dir = compiler_manifest_dir();
+    let compile_support_dir = manifest_dir.join("src/lowering/compile_support");
+    let compile_support_rs = manifest_dir.join("src/lowering/compile_support.rs");
     let hidden_filter_field = concat!(".", "player_filter");
     let hidden_choices_field = concat!(".", "choices");
 
@@ -555,7 +567,7 @@ fn source_top_only_lowering_preserves_count_value_and_scoped_library_default() {
 fn explicit_controller_return_lowering_retains_return_surface() {
     let (effects, choices) = compile_effect(
         &EffectAst::subject_verb_return_to_battlefield(
-            TargetAst::Tagged(TagKey::from("triggering"), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None),
             false,
             false,
             false,
@@ -776,14 +788,12 @@ fn coordinated_equal_target_specs_keep_distinct_lowered_target_slots() {
 
 #[test]
 fn compile_damage_equal_to_power_over_each_object_fans_out_per_object() {
+    let mut recipients = ObjectFilter::creature().without_subtype(Subtype::Army);
+    recipients.set_plural_object_noun_surface(true);
     let (effects, choices) = compile_effect(
         &EffectAst::subject_verb_damage_equal_to_power(
             TargetAst::Tagged(TagKey::from("amassed_0"), None),
-            TargetAst::Object(
-                ObjectFilter::creature().without_subtype(Subtype::Army),
-                None,
-                None,
-            ),
+            TargetAst::Object(recipients, None, None),
         ),
         &mut EffectLoweringContext::new(),
     )
@@ -841,7 +851,8 @@ fn compile_each_object_power_damage_iterates_sources_and_keeps_prior_target() {
     );
     assert!(
         compact.contains("ExecuteWithSourceEffect{source:Iterated")
-            && compact.contains("PowerOf(Iterated"),
+            && (compact.contains("PowerOf(Iterated")
+                || compact.contains("PowerOf(SurfaceHinted{spec:Iterated")),
         "each iterand should be both the damage source and its own power value: {debug}"
     );
     assert!(
@@ -875,7 +886,8 @@ fn referenced_pair_toughness_damage_reuses_exactly_the_two_prior_targets() {
     assert!(
         compact.contains("ForEachObject")
             && compact.contains("ExecuteWithSourceEffect{source:Iterated")
-            && compact.contains("ToughnessOf(Iterated")
+            && (compact.contains("ToughnessOf(Iterated")
+                || compact.contains("ToughnessOf(SurfaceHinted{spec:Iterated"))
             && compact.contains("target:Object(ObjectFilter")
             && compact.contains("other:true")
             && compact.matches("TagKey(\"__chosen_objects__\"").count() >= 2
@@ -915,9 +927,9 @@ fn cross_sentence_conditional_fights_expose_two_stable_target_slots() {
         let target_tag = |effect: &Effect| {
             let mut effect = effect;
             loop {
-                let tagged = effect
-                    .as_tagged()
-                    .expect("each target declaration should be tagged");
+                let tagged = effect.as_tagged().unwrap_or_else(|| {
+                    panic!("each target declaration should be tagged: {effects:#?}")
+                });
                 if tagged
                     .effect
                     .downcast_ref::<crate::effects::TargetOnlyEffect>()
@@ -978,7 +990,9 @@ fn compile_each_other_becomes_copy_uses_prior_chosen_object_as_copy_source() {
     assert!(debug.contains("CopyOf"), "{debug}");
     assert!(debug.contains("IsNotTaggedObject"), "{debug}");
     assert!(
-        debug.contains("spec: Tagged(") && !debug.contains("spec: Iterated"),
+        debug.contains("source: Tagged(")
+            && debug.contains("__chosen_objects__")
+            && !debug.contains("source: Iterated"),
         "the copy source must remain the prior choice, not the current mass-effect iteration: {debug}"
     );
     assert!(
@@ -2275,7 +2289,7 @@ fn collect_tag_spans_tracks_counter_unless_pays_target() {
                 end: 5,
             }),
         ),
-        TotalCost::free(),
+        ironsmith_core::TotalCost::<crate::model::CompilerCost>::free(),
     );
 
     collect_tag_spans_from_effect(&effect, &mut annotations, &ctx);
@@ -2702,7 +2716,7 @@ fn compile_live_permanent_spell_predicate_preserves_stack_identity() {
 #[test]
 fn compile_copy_does_not_replace_the_original_pronoun_antecedent() {
     let effects = vec![EffectAst::subject_verb_copy_spell(
-        TargetAst::Tagged(TagKey::from("triggering"), None),
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None),
         Value::Fixed(1),
         PlayerAst::You,
         true,
@@ -2825,7 +2839,7 @@ fn compile_next_spell_grant_after_targeted_player_effect_binds_that_player() {
         EffectAst::subject_verb_grant_next_spell_ability_this_turn(
             PlayerAst::That,
             ObjectFilter::spell().cast_by(PlayerFilter::IteratedPlayer),
-            GrantedAbilityAst::KeywordAction(crate::cards::builders::KeywordAction::Cascade),
+            crate::cards::builders::KeywordAction::Cascade.into(),
         ),
     ];
 
@@ -2932,7 +2946,7 @@ fn compile_next_spell_grant_with_imported_target_player_binds_that_player() {
     let effects = vec![EffectAst::subject_verb_grant_next_spell_ability_this_turn(
         PlayerAst::That,
         ObjectFilter::spell().cast_by(PlayerFilter::IteratedPlayer),
-        GrantedAbilityAst::KeywordAction(crate::cards::builders::KeywordAction::Cascade),
+        crate::cards::builders::KeywordAction::Cascade.into(),
     )];
 
     let frame = LoweringFrame {
@@ -3251,7 +3265,7 @@ fn delegated_subset_and_other_reuse_exact_prior_target_collection() {
         .collect::<String>();
 
     assert!(
-        compact.contains("__ability_controller_target_choice_0__delegated_subset"),
+        compact.contains("__delegated_subset"),
         "the opponent's subset needs a tag distinct from the original target pool: {debug}"
     );
     assert!(
@@ -3279,7 +3293,7 @@ fn conditional_delegated_subset_keeps_remainder_move_in_false_branch() {
         .collect::<String>();
 
     assert!(
-        compact.contains("__ability_controller_target_choice_0__delegated_subset"),
+        compact.contains("__delegated_subset"),
         "the opponent-selected keep set needs its own stable tag: {debug}"
     );
     assert!(

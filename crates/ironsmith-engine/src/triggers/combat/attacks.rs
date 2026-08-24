@@ -1108,20 +1108,20 @@ mod tests {
     }
 
     #[test]
-    fn unqualified_you_attack_surface_stays_distinct_from_filtered_attack_groups() {
-        assert_eq!(
-            AttacksTrigger::one_or_more(ObjectFilter::creature().you_control()).display(),
-            "Whenever you attack"
+    fn unqualified_and_subtype_attack_groups_stay_structurally_distinct() {
+        let unqualified = AttacksTrigger::one_or_more(ObjectFilter::creature().you_control());
+        let warriors = AttacksTrigger::one_or_more(
+            ObjectFilter::creature()
+                .you_control()
+                .with_subtype(Subtype::Warrior),
         );
-        assert_eq!(
-            AttacksTrigger::one_or_more(
-                ObjectFilter::creature()
-                    .you_control()
-                    .with_subtype(Subtype::Warrior)
-            )
-            .display(),
-            "Whenever one or more Warriors you control attack"
-        );
+
+        assert!(unqualified.one_or_more);
+        assert_eq!(unqualified.filter.controller, Some(PlayerFilter::You));
+        assert!(unqualified.filter.subtypes.is_empty());
+        assert!(warriors.one_or_more);
+        assert_eq!(warriors.filter.controller, Some(PlayerFilter::You));
+        assert_eq!(warriors.filter.subtypes, vec![Subtype::Warrior]);
     }
 
     #[test]

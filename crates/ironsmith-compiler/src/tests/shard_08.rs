@@ -303,7 +303,6 @@ pub(super) fn chandras_fury_full_card_keeps_player_or_planeswalker_controller_fa
             .map_or(effects, |sequence| sequence.effects.as_slice()),
         _ => effects,
     };
-
     let target_damage = effects
         .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::DealDamageEffect>())

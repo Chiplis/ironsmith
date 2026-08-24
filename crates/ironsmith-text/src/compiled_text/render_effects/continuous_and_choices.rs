@@ -2594,8 +2594,9 @@ pub(crate) fn describe_draw_then_lose_life(
             describe_card_count(&draw.count)
         ));
     }
-    let where_x =
-        describe_where_x_basis(&draw.count)?.replace("that player controls", "they control");
+    let where_x = describe_where_x_basis(&draw.count)?
+        .replace("that player controls", "they control")
+        .replace("target player controls", "they control");
     Some(format!(
         "You draw X cards and you lose X life, where X is {where_x}"
     ))
@@ -2649,8 +2650,9 @@ pub(super) fn describe_target_player_draw_then_lose_life(
             describe_card_count(&draw.count)
         ));
     }
-    let where_x =
-        describe_where_x_basis(&draw.count)?.replace("that player controls", "they control");
+    let where_x = describe_where_x_basis(&draw.count)?
+        .replace("that player controls", "they control")
+        .replace("target player controls", "they control");
     Some(format!(
         "Target player draws X cards and loses X life, where X is {where_x}"
     ))
@@ -4152,7 +4154,10 @@ pub(super) fn describe_condition_for_searched_card(
             stripped.as_str(),
             "artifact" | "battle" | "enchantment" | "instant" | "planeswalker" | "sorcery"
         ) {
-            return format!("it's a {stripped} card");
+            return format!(
+                "it's {}",
+                with_indefinite_article(&format!("{stripped} card"))
+            );
         }
     }
     describe_condition(condition)

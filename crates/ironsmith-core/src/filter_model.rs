@@ -4524,6 +4524,16 @@ impl ObjectFilter {
         {
             phrase.push_str(" spell");
         }
+        if self.has_plural_object_noun_surface()
+            && matches!(
+                self.attacking_player_or_planeswalker_controlled_by,
+                Some(PlayerFilter::Opponent)
+            )
+            && !self.attacking_player_only
+            && let Some((_, phrase)) = type_phrase.as_mut()
+        {
+            *phrase = pluralize_count_terminal_word(phrase);
+        }
 
         let creature_only = self.all_card_types.is_empty()
             && self.card_types.len() == 1
@@ -5708,11 +5718,12 @@ pub fn describe_branch_scoped_card_type_union(filter: &ObjectFilter) -> Option<S
     // Let the general union renderer materialize the common scope on each arm
     // so the authored branch-local determiner remains explicit.
     let first_other = filter.any_of.first()?.other;
-    if filter
-        .any_of
-        .iter()
-        .skip(1)
-        .any(|branch| branch.other != first_other)
+    if !filter.has_conjunctive_set_surface()
+        && filter
+            .any_of
+            .iter()
+            .skip(1)
+            .any(|branch| branch.other != first_other)
     {
         return None;
     }

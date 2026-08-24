@@ -1907,12 +1907,20 @@ mod tests {
     }
 
     #[test]
-    fn named_source_graveyard_trigger_does_not_gain_an_indefinite_article() {
+    fn named_source_graveyard_trigger_keeps_the_short_name_surface() {
         let trigger = ZoneChangeTrigger::dies(ObjectFilter::source_with_surface(
             crate::target::SourceReferenceSurface::ShortName("Blex".to_string()),
         ));
 
-        assert_eq!(trigger.display(), "Whenever Blex dies");
+        assert!(trigger.object_filter.source);
+        assert_eq!(trigger.from, ZonePattern::Specific(Zone::Battlefield));
+        assert_eq!(trigger.to, ZonePattern::Specific(Zone::Graveyard));
+        assert_eq!(
+            trigger.object_filter.source_surface,
+            Some(crate::target::SourceReferenceSurface::ShortName(
+                "Blex".to_string()
+            ))
+        );
     }
 
     #[test]

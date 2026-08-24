@@ -1,11 +1,11 @@
 use crate::cards::builders::{
     CardTextError, ChooseOneModeAst, EffectAst, GrantedAbilityAst, IT_TAG, KeywordAction,
-    ObjectRefAst, OwnedLexToken, PlayerAst, PredicateAst, SubjectAst, SubjectVerbActionAst,
-    SubjectVerbRoleAst, TagKey, TargetAst,
+    ObjectRefAst, OwnedLexToken, PlayerAst, PredicateAst, StaticAbilityAst, SubjectAst,
+    SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::color::ColorSet;
 use crate::effect::Value;
-use crate::static_abilities::StaticAbility;
+use crate::model::CompilerStaticAbilityCore as StaticAbility;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, Supertype};
 use ironsmith_core::ValueSurfaceHint;
@@ -301,7 +301,11 @@ fn append_inline_token_embedded_rule(
     ) else {
         return false;
     };
-    if rules.embedded_rules.contains(&rule) {
+    if rules
+        .embedded_rules
+        .iter()
+        .any(|existing| existing == &rule)
+    {
         false
     } else {
         rules.embedded_rules.push(rule);
@@ -311,14 +315,11 @@ fn append_inline_token_embedded_rule(
 
 fn quoted_rule_creates_a_nested_token(tokens: &[OwnedLexToken]) -> bool {
     let words = token_word_refs(tokens);
-    words
-        .iter()
-        .position(|word| *word == "create")
-        .is_some_and(|create| {
-            words[create + 1..]
-                .iter()
-                .any(|word| matches!(*word, "token" | "tokens"))
-        })
+    crate::word_primitives::parse_sequence_start(&words, &["create"]).is_some_and(|create| {
+        words[create + 1..]
+            .iter()
+            .any(|word| matches!(*word, "token" | "tokens"))
+    })
 }
 
 /// Return the complete rules list from an authored token pronoun clause when
@@ -327,14 +328,20 @@ fn quoted_rule_creates_a_nested_token(tokens: &[OwnedLexToken]) -> bool {
 /// parsing the complete list lets the ordinary grant grammar preserve all
 /// three typed abilities and their source order.
 pub fn mixed_pronoun_token_rule_list(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    let start = tokens.windows(2).position(|pair| {
-        (pair[0].is_word("it") && pair[1].is_word("has"))
-            || (pair[0].is_word("they") && pair[1].is_word("have"))
+    let start = tokens.iter().enumerate().find_map(|(index, token)| {
+        ((token.is_word("it")
+            && tokens
+                .get(index + 1)
+                .is_some_and(|next| next.is_word("has")))
+            || (token.is_word("they")
+                && tokens
+                    .get(index + 1)
+                    .is_some_and(|next| next.is_word("have"))))
+        .then_some(index)
     })?;
     let rules = tokens.get(start + 2..)?;
-    let open = rules
-        .iter()
-        .position(|token| token.kind == TokenKind::Quote)?;
+    let open =
+        crate::slice_primitives::select_position(rules, |token| token.kind == TokenKind::Quote)?;
     let close = rules
         .iter()
         .enumerate()
@@ -356,48 +363,34 @@ fn parse_inline_token_granted_abilities(
         let GrantedAbilityAst::ParsedObjectAbility { ability, .. } = ability else {
             return;
         };
-        let Some((runtime_intro, ast_intro)) =
-            rule_tokens
-                .first()
-                .and_then(|token| match token.parser_text() {
-                    "when" => Some((
-                        crate::triggers::TriggerIntroSurface::When,
-                        crate::model::ast::TriggerIntroSurfaceAst::When,
-                    )),
-                    "whenever" => Some((
-                        crate::triggers::TriggerIntroSurface::Whenever,
-                        crate::model::ast::TriggerIntroSurfaceAst::Whenever,
-                    )),
-                    "at" => Some((
-                        crate::triggers::TriggerIntroSurface::At,
-                        crate::model::ast::TriggerIntroSurfaceAst::At,
-                    )),
-                    _ => None,
-                })
+        let Some(ast_intro) = rule_tokens
+            .first()
+            .and_then(|token| match token.parser_text() {
+                "when" => Some(crate::model::ast::TriggerIntroSurfaceAst::When),
+                "whenever" => Some(crate::model::ast::TriggerIntroSurfaceAst::Whenever),
+                "at" => Some(crate::model::ast::TriggerIntroSurfaceAst::At),
+                _ => None,
+            })
         else {
             return;
         };
 
-        let crate::ability::AbilityKind::Triggered(triggered) = ability.kind_mut() else {
+        let crate::model::CompilerAbilityKindCore::Triggered(triggered) = ability.kind_mut() else {
             return;
         };
-        if triggered.trigger.intro_surface.is_none() {
-            triggered.trigger.intro_surface = Some(runtime_intro);
+        if !matches!(
+            triggered.trigger,
+            crate::model::ast::TriggerSpec::WithIntro { .. }
+        ) {
+            triggered.trigger = crate::model::ast::TriggerSpec::WithIntro {
+                intro: ast_intro,
+                trigger: Box::new(triggered.trigger.clone()),
+            };
         }
 
-        // Parsed object abilities are prepared again during lowering. That
-        // pass recompiles `trigger_spec` and replaces the provisional runtime
-        // matcher, so presentation carried only on the latter is lost. Keep
-        // the authored intro on both typed representations.
-        if let Some(trigger_spec) = ability.trigger_spec.take() {
-            ability.trigger_spec = Some(match trigger_spec {
-                crate::model::ast::TriggerSpec::WithIntro { .. } => trigger_spec,
-                trigger => crate::model::ast::TriggerSpec::WithIntro {
-                    intro: ast_intro,
-                    trigger: Box::new(trigger),
-                },
-            });
-        }
+        // Keep the authored intro on both compiler views used by reference
+        // preparation and final lowering.
+        ability.trigger_spec = Some(Box::new(triggered.trigger.clone()));
     }
 
     let mut abilities = Vec::new();
@@ -407,7 +400,7 @@ fn parse_inline_token_granted_abilities(
     {
         for mut ability in parsed {
             preserve_authored_trigger_intro(&mut ability, rule_tokens);
-            if !abilities.contains(&ability) {
+            if !abilities.iter().any(|existing| existing == &ability) {
                 abilities.push(ability);
             }
         }
@@ -429,7 +422,12 @@ fn parse_inline_token_granted_abilities(
             Some(&creature.name),
         );
         for presentation in presentations {
-            if !creature.rules.authored_inline_rules.contains(&presentation) {
+            if !creature
+                .rules
+                .authored_inline_rules
+                .iter()
+                .any(|existing| existing == &presentation)
+            {
                 creature.rules.authored_inline_rules.push(presentation);
             }
         }
@@ -508,26 +506,34 @@ fn parse_inline_token_granted_abilities(
         if let Ok(parsed) =
             super::parse_granted_abilities_for_token_definition(&filtered_probe, rule_tokens)
         {
-            let filtered_grants = parsed.into_iter().filter(|ability| {
-                let static_ability = match ability {
-                    GrantedAbilityAst::StaticAbility(ability) => ability,
-                    GrantedAbilityAst::ParsedObjectAbility { ability, .. } => {
-                        let crate::ability::AbilityKind::Static(ability) = ability.kind() else {
-                            return false;
-                        };
-                        ability
-                    }
-                    _ => return false,
-                };
-                matches!(
-                    &static_ability.payload,
-                    crate::static_abilities::StaticAbilityPayload::GrantAbility(_)
-                        | crate::static_abilities::StaticAbilityPayload::GrantObjectAbilityForFilter(_)
-                )
+            let filtered_grants = parsed.into_iter().filter(|ability| match ability {
+                GrantedAbilityAst::StaticAbility(ability) => match ability.as_ref() {
+                    StaticAbilityAst::GrantStaticAbility { .. }
+                    | StaticAbilityAst::GrantKeywordAction { .. }
+                    | StaticAbilityAst::GrantObjectAbility { .. } => true,
+                    StaticAbilityAst::Static(static_ability) => matches!(
+                        &static_ability.payload,
+                        ironsmith_core::StaticAbilityPayload::GrantAbility(_)
+                            | ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(_)
+                    ),
+                    _ => false,
+                },
+                GrantedAbilityAst::ParsedObjectAbility { ability, .. } => {
+                    let crate::model::CompilerAbilityKindCore::Static(ability) = ability.kind()
+                    else {
+                        return false;
+                    };
+                    matches!(
+                        &ability.payload,
+                        ironsmith_core::StaticAbilityPayload::GrantAbility(_)
+                            | ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(_)
+                    )
+                }
+                _ => false,
             });
             let mut attached_filtered_grant = false;
             for ability in filtered_grants {
-                if !abilities.contains(&ability) {
+                if !abilities.iter().any(|existing| existing == &ability) {
                     abilities.push(ability);
                 }
                 attached_filtered_grant = true;
@@ -573,7 +579,7 @@ fn parse_inline_token_granted_abilities(
         };
         for mut ability in parsed {
             preserve_authored_trigger_intro(&mut ability, rule_tokens);
-            if !abilities.contains(&ability) {
+            if !abilities.iter().any(|existing| existing == &ability) {
                 abilities.push(ability);
             }
         }
@@ -590,20 +596,24 @@ fn intrinsic_token_ability_represents_dynamic_power_toughness(
         power.unhinted() == dynamic.0.unhinted() && toughness.unhinted() == dynamic.1.unhinted()
     };
     if granted_abilities.iter().any(|ability| {
-        let static_ability = match ability {
-            GrantedAbilityAst::StaticAbility(static_ability) => static_ability,
-            GrantedAbilityAst::ParsedObjectAbility { ability, .. } => {
-                let crate::ability::AbilityKind::Static(static_ability) = ability.kind() else {
+        let payload = match ability {
+            GrantedAbilityAst::StaticAbility(static_ability) => {
+                let StaticAbilityAst::Static(static_ability) = static_ability.as_ref() else {
                     return false;
                 };
-                static_ability
+                &static_ability.payload
+            }
+            GrantedAbilityAst::ParsedObjectAbility { ability, .. } => {
+                let crate::model::CompilerAbilityKindCore::Static(static_ability) = ability.kind()
+                else {
+                    return false;
+                };
+                &static_ability.payload
             }
             _ => return false,
         };
-        let crate::static_abilities::StaticAbilityPayload::CharacteristicDefiningPt {
-            power,
-            toughness,
-        } = &static_ability.payload
+        let ironsmith_core::StaticAbilityPayload::CharacteristicDefiningPt { power, toughness } =
+            payload
         else {
             return false;
         };
@@ -617,10 +627,15 @@ fn intrinsic_token_ability_represents_dynamic_power_toughness(
     };
     let creature_count = Value::Count(ObjectFilter::creature().you_control());
     same_values(&creature_count, &creature_count)
-        && creature.rules.token_rules.embedded_rules.contains(
-            &crate::model::token_definition::TokenEmbeddedRuleShape::
-                PowerToughnessEqualCreaturesYouControl,
-        )
+        && creature
+            .rules
+            .token_rules
+            .embedded_rules
+            .iter()
+            .any(|rule| {
+                rule == &crate::model::token_definition::TokenEmbeddedRuleShape::
+                PowerToughnessEqualCreaturesYouControl
+            })
 }
 
 fn reconcile_quoted_dynamic_power_toughness(
@@ -643,17 +658,19 @@ fn reconcile_quoted_dynamic_power_toughness(
     // creating player's state. Treating it as a one-time post-creation base
     // P/T assignment loses both its runtime behavior and its token-blueprint
     // surface.
-    let ability = GrantedAbilityAst::StaticAbility(StaticAbility::characteristic_defining_pt(
-        quoted_dynamic.0,
-        quoted_dynamic.1,
-    ));
-    if !granted_abilities.contains(&ability) {
+    let ability = GrantedAbilityAst::StaticAbility(Box::new(StaticAbilityAst::Static(
+        StaticAbility::characteristic_defining_pt(quoted_dynamic.0, quoted_dynamic.1),
+    )));
+    if !granted_abilities
+        .iter()
+        .any(|existing| existing == &ability)
+    {
         granted_abilities.push(ability);
     }
     *dynamic_power_toughness = None;
 }
 
-fn parse_inline_copy_granted_abilities(tokens: &[OwnedLexToken]) -> Vec<StaticAbility> {
+fn parse_inline_copy_granted_abilities(tokens: &[OwnedLexToken]) -> Vec<GrantedAbilityAst> {
     let mut abilities = Vec::new();
     for rule_tokens in double_quoted_rule_bodies(tokens) {
         if token_definition_grammar::parse_token_reminder_facts_tokens(rule_tokens)
@@ -664,40 +681,22 @@ fn parse_inline_copy_granted_abilities(tokens: &[OwnedLexToken]) -> Vec<StaticAb
             continue;
         }
         let clause_words = token_word_refs(rule_tokens);
-        let parsed = crate::util::with_token_source_reference_context(
-            "Token",
-            &[CardType::Artifact],
-            &[Subtype::Equipment],
-            || {
-                if let Some(ability) =
-                    super::gain_ability::parse_granted_activated_or_triggered_ability_for_gain(
-                        rule_tokens,
-                        &clause_words,
-                    )?
-                {
-                    return Ok((vec![ability], false));
-                }
-                super::parse_granted_abilities_for_gain_clause(rule_tokens, &clause_words, false)
-            },
-        );
+        let parsed = (|| -> Result<_, CardTextError> {
+            if let Some(ability) =
+                super::gain_ability::parse_granted_activated_or_triggered_ability_for_gain(
+                    rule_tokens,
+                    &clause_words,
+                )?
+            {
+                return Ok((vec![ability], false));
+            }
+            super::parse_granted_abilities_for_gain_clause(rule_tokens, &clause_words, false)
+        })();
         let Ok((granted, false)) = parsed else {
             continue;
         };
-        let Ok(lowered) =
-            super::super::static_ability_helpers::lower_granted_abilities_ast_to_object_abilities(
-                &granted,
-            )
-            .and_then(|abilities| {
-                super::super::static_ability_helpers::object_abilities_to_static_carriers(
-                    abilities,
-                    crate::lexer::render_token_slice(rule_tokens),
-                )
-            })
-        else {
-            continue;
-        };
-        for ability in lowered {
-            if !abilities.contains(&ability) {
+        for ability in granted {
+            if !abilities.iter().any(|existing| existing == &ability) {
                 abilities.push(ability);
             }
         }
@@ -706,34 +705,13 @@ fn parse_inline_copy_granted_abilities(tokens: &[OwnedLexToken]) -> Vec<StaticAb
 }
 
 fn merge_inline_copy_granted_ability(
-    granted_abilities: &mut Vec<StaticAbility>,
-    candidate: StaticAbility,
+    granted_abilities: &mut Vec<GrantedAbilityAst>,
+    candidate: GrantedAbilityAst,
 ) -> bool {
-    let executable_shape = |ability: &StaticAbility| {
-        let mut ability = ability.clone();
-        ability.label.clear();
-        if let crate::static_abilities::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) =
-            &mut ability.payload
-        {
-            grant.display.clear();
-        }
-        ability
-    };
-    if let Some(existing) = granted_abilities.iter_mut().find(|existing| {
-        (!existing.label.trim().is_empty()
-            && existing
-                .label
-                .trim()
-                .eq_ignore_ascii_case(candidate.label.trim()))
-            || executable_shape(existing) == executable_shape(&candidate)
-    }) {
-        if existing != &candidate {
-            *existing = candidate;
-            return true;
-        }
-        return false;
-    }
-    if granted_abilities.contains(&candidate) {
+    if granted_abilities
+        .iter()
+        .any(|existing| existing == &candidate)
+    {
         return false;
     }
     granted_abilities.push(candidate);
@@ -786,7 +764,10 @@ fn attach_inline_token_granted_abilities_to_effect(
         } = &mut subject_verb.action
     {
         for ability in parse_inline_token_granted_abilities(definition, tokens) {
-            if !granted_abilities.contains(&ability) {
+            if !granted_abilities
+                .iter()
+                .any(|existing| existing == &ability)
+            {
                 granted_abilities.push(ability);
             }
         }
@@ -1181,6 +1162,12 @@ pub fn parse_create(
                 granted_abilities,
                 loses_soulbond,
             ) = parse_copy_modifiers_from_tail(&tail_words)?;
+            let granted_abilities = granted_abilities
+                .into_iter()
+                .map(|ability| {
+                    GrantedAbilityAst::StaticAbility(Box::new(StaticAbilityAst::Static(ability)))
+                })
+                .collect();
             let half_pt = tail_surface.has(CreateWord::Half)
                 && tail_surface.has(CreateWord::Power)
                 && tail_surface.has(CreateWord::Toughness);
@@ -1395,8 +1382,10 @@ pub fn parse_create(
         parse_unquoted_token_dynamic_power_toughness(&definition_tokens)
             .or_else(|| parse_unquoted_token_dynamic_power_toughness(tokens))
             .or_else(|| parse_quoted_token_dynamic_power_toughness(tokens));
-    let primary_definition_is_construct =
-        name_words[..name_words_primary_len].contains(&"construct");
+    let primary_definition_is_construct = crate::word_primitives::sequence_occurs(
+        &name_words[..name_words_primary_len],
+        &["construct"],
+    );
     if let Some((pt_idx, pt)) = creation_grammar::first_pt_word(&name_words)
         && pt_idx < name_words_primary_len
     {
@@ -1549,13 +1538,13 @@ pub fn parse_create(
         parse_next_end_step_token_delay_flags(&modifier_tail_words);
     let mut granted_abilities = inline_granted_abilities;
     if modifier_surface.has(CreateWord::Decayed) {
-        granted_abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Decayed));
+        granted_abilities.push(KeywordAction::Decayed.into());
     }
     if modifier_surface.has_phrase(CreatePhrase::HasteGrant) {
-        granted_abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Haste));
+        granted_abilities.push(KeywordAction::Haste.into());
     }
     if grants_unblockable {
-        granted_abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Unblockable));
+        granted_abilities.push(KeywordAction::Unblockable.into());
     }
     let references_iterated_object = attached_to_target
         .as_ref()
@@ -2029,7 +2018,7 @@ mod tests {
             matches!(
                 granted_abilities.as_slice(),
                 [
-                    GrantedAbilityAst::ParsedObjectAbility { .. },
+                    GrantedAbilityAst::StaticAbility(_),
                     GrantedAbilityAst::ParsedObjectAbility { .. },
                 ]
             ),
@@ -2231,7 +2220,7 @@ mod tests {
     #[test]
     fn unquoted_dynamic_base_pt_keeps_the_one_or_more_zone_change_group() {
         let tokens = lex_line(
-            "Create a green Fungus Dinosaur creature token with base power and toughness each equal to the total power of those creatures.",
+            "create a green Fungus Dinosaur creature token with base power and toughness each equal to the total power of those creatures.",
             0,
         )
         .expect("unquoted dynamic token creation should lex");
@@ -2379,10 +2368,11 @@ mod tests {
             0,
         )
         .expect("quoted external dynamic token creation should lex");
-        let effect = crate::util::with_source_reference_context("Gutter Grime", || {
-            parse_create(&tokens, None)
-        })
-        .expect("quoted external dynamic token creation should parse");
+        let quoted_dynamic = parse_quoted_token_dynamic_power_toughness(&tokens)
+            .expect("quoted external dynamic P/T rule should parse");
+        assert_eq!(quoted_dynamic.0, quoted_dynamic.1);
+        let effect = parse_create(&tokens, None)
+            .expect("quoted external dynamic token creation should parse");
         let lowered_ast = effect.clone();
         let EffectAst::SubjectVerb(effect) = effect else {
             panic!("expected a subject-verb token creation");
@@ -2400,10 +2390,13 @@ mod tests {
         else {
             panic!("expected one intrinsic token CDA: {granted_abilities:#?}");
         };
-        let crate::static_abilities::StaticAbilityPayload::CharacteristicDefiningPt {
-            power,
-            toughness,
-        } = &static_ability.payload
+        let crate::cards::builders::StaticAbilityAst::Static(static_ability) =
+            static_ability.as_ref()
+        else {
+            panic!("expected a compiler static ability: {static_ability:#?}");
+        };
+        let ironsmith_core::StaticAbilityPayload::CharacteristicDefiningPt { power, toughness } =
+            &static_ability.payload
         else {
             panic!("expected a characteristic-defining P/T ability: {static_ability:#?}");
         };
@@ -2451,10 +2444,8 @@ mod tests {
             create.token.abilities
         );
 
-        let sentence_effects = crate::util::with_source_reference_context("Gutter Grime", || {
-            super::super::parse_effect_sentences_lexed(&tokens)
-        })
-        .expect("creator-bound token sentence should parse through production dispatch");
+        let sentence_effects = super::super::parse_effect_sentences_lexed(&tokens)
+            .expect("creator-bound token sentence should parse through production dispatch");
         let (effects, _) = crate::compile_support::compile_effects(
             &sentence_effects,
             &mut crate::model::facts::EffectLoweringContext::new(),
@@ -2659,13 +2650,57 @@ mod tests {
         let abilities = parse_inline_copy_granted_abilities(&tokens);
         assert!(
             abilities.iter().any(|ability| {
-                ability.id() == StaticAbilityId::ActivatedAbilityCostReduction
-                    && format!("{ability:?}")
-                        .to_ascii_lowercase()
-                        .contains("equip abilities cost")
+                matches!(
+                    ability,
+                    GrantedAbilityAst::StaticAbility(ability)
+                        if matches!(
+                            ability.as_ref(),
+                            crate::cards::builders::StaticAbilityAst::Static(ability)
+                                if ability.id()
+                                    == StaticAbilityId::ActivatedAbilityCostReduction
+                        )
+                ) && format!("{ability:?}")
+                    .to_ascii_lowercase()
+                    .contains("equip abilities cost")
             }),
             "expected typed equip cost reduction, got {abilities:#?}"
         );
+    }
+
+    #[test]
+    fn saw_in_half_copy_exception_survives_public_sentence_routing() {
+        for qualifier in ["power", "base power"] {
+            let text = format!(
+                "Destroy target creature. If that creature dies this way, its controller creates two tokens that are copies of that creature, except their {qualifier} is half that creature's power and their {qualifier_toughness} is half that creature's toughness. Round up each time.",
+                qualifier_toughness = if qualifier == "power" {
+                    "toughness"
+                } else {
+                    "base toughness"
+                }
+            );
+            let tokens = lex_line(&text, 0).expect("Saw in Half text should lex");
+            let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
+                .expect("Saw in Half text should parse through the public route");
+            let [
+                _,
+                EffectAst::IfResult {
+                    effects: result, ..
+                },
+            ] = effects.as_slice()
+            else {
+                panic!("expected destroy followed by result-gated copy: {effects:#?}");
+            };
+            let [EffectAst::SubjectVerb(copy)] = result.as_slice() else {
+                panic!("expected one typed copy action: {result:#?}");
+            };
+            assert!(matches!(
+                &copy.action,
+                SubjectVerbActionAst::CreateTokenCopyFromSource {
+                    half_power_toughness_round_up: true,
+                    ..
+                }
+            ));
+        }
     }
 
     #[test]
@@ -2723,20 +2758,19 @@ mod tests {
         );
         let debug = format!("{granted_abilities:#?}");
         assert!(debug.contains("Indestructible"), "{debug}");
-        assert!(
-            debug
-                .to_ascii_lowercase()
-                .contains("equipped creature gets +5/+5 and has double strike"),
-            "{debug}"
-        );
+        assert!(debug.contains("Anthem"), "{debug}");
+        assert!(debug.contains("DoubleStrike"), "{debug}");
         assert!(debug.contains("Equip {0}"), "{debug}");
     }
 
     #[test]
     fn named_inline_token_death_trigger_keeps_authored_intro_frequency() {
         for (intro, expected) in [
-            ("When", crate::triggers::TriggerIntroSurface::When),
-            ("Whenever", crate::triggers::TriggerIntroSurface::Whenever),
+            ("When", crate::model::ast::TriggerIntroSurfaceAst::When),
+            (
+                "Whenever",
+                crate::model::ast::TriggerIntroSurfaceAst::Whenever,
+            ),
         ] {
             let tokens = lex_line(
                 &format!(
@@ -2755,43 +2789,18 @@ mod tests {
             else {
                 panic!("expected token creation modifiers: {subject_verb:#?}");
             };
-            let triggered = granted_abilities.iter().find_map(|ability| {
-                let GrantedAbilityAst::ParsedObjectAbility { ability, .. } = ability else {
-                    return None;
-                };
-                let crate::ability::AbilityKind::Triggered(triggered) = ability.kind() else {
-                    return None;
-                };
-                Some(triggered)
-            });
-            assert_eq!(
-                triggered.and_then(|triggered| triggered.trigger.intro_surface),
-                Some(expected),
-                "{granted_abilities:#?}"
-            );
             let typed_intro = granted_abilities.iter().find_map(|ability| {
                 let GrantedAbilityAst::ParsedObjectAbility { ability, .. } = ability else {
                     return None;
                 };
                 let crate::model::ast::TriggerSpec::WithIntro { intro, .. } =
-                    ability.trigger_spec.as_ref()?
+                    ability.trigger_spec.as_deref()?
                 else {
                     return None;
                 };
                 Some(*intro)
             });
-            let expected_typed = match expected {
-                crate::triggers::TriggerIntroSurface::When => {
-                    crate::model::ast::TriggerIntroSurfaceAst::When
-                }
-                crate::triggers::TriggerIntroSurface::Whenever => {
-                    crate::model::ast::TriggerIntroSurfaceAst::Whenever
-                }
-                crate::triggers::TriggerIntroSurface::At => {
-                    crate::model::ast::TriggerIntroSurfaceAst::At
-                }
-            };
-            assert_eq!(typed_intro, Some(expected_typed), "{granted_abilities:#?}");
+            assert_eq!(typed_intro, Some(expected), "{granted_abilities:#?}");
         }
     }
 }

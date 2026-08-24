@@ -81,6 +81,19 @@ pub enum SubjectVerbActionAst {
         action: crate::events::KeywordActionKind,
         amount: u32,
     },
+    ReorderTopPlanarDeck {
+        count: u32,
+    },
+    ReturnSourceTransformedFromExile,
+    Reconfigure {
+        target: TargetAst,
+    },
+    CumulativeUpkeep {
+        cost: ironsmith_core::TotalCost<crate::model::CompilerCost>,
+    },
+    Casualty {
+        power: u32,
+    },
     Amass {
         subtype: Option<Subtype>,
         amount: Value,
@@ -699,7 +712,7 @@ pub enum SubjectVerbActionAst {
         subtypes: Vec<Subtype>,
         subtype_families: Vec<SubtypeFamily>,
         colors: Option<ColorSet>,
-        abilities: Vec<StaticAbility>,
+        abilities: Vec<crate::model::CompilerStaticAbilityCore>,
         granted_abilities: Vec<GrantedAbilityAst>,
         preserve_other_types: bool,
         type_retention_surface: Option<ironsmith_core::TypeRetentionSurface>,
@@ -867,11 +880,11 @@ pub enum SubjectVerbActionAst {
     },
     GrantToTarget {
         target: TargetAst,
-        grantable: Box<crate::grant::Grantable>,
+        grantable: Box<crate::model::CompilerGrantableCore>,
         duration: crate::grant::GrantDuration,
     },
     GrantBySpec {
-        spec: Box<crate::grant::GrantSpec>,
+        spec: Box<crate::model::CompilerGrantSpecCore>,
         player: PlayerAst,
         duration: crate::grant::GrantDuration,
     },
@@ -959,7 +972,7 @@ pub enum SubjectVerbActionAst {
         set_base_power_toughness: Option<(i32, i32)>,
         set_base_power_toughness_to_source_totals: bool,
         starting_loyalty: Option<u32>,
-        granted_abilities: Vec<StaticAbility>,
+        granted_abilities: Vec<GrantedAbilityAst>,
     },
     CreateTokenCopyFromSource {
         source: TargetAst,
@@ -991,7 +1004,7 @@ pub enum SubjectVerbActionAst {
         set_base_power_toughness: Option<(i32, i32)>,
         set_base_power_toughness_to_source_totals: bool,
         starting_loyalty: Option<u32>,
-        granted_abilities: Vec<StaticAbility>,
+        granted_abilities: Vec<GrantedAbilityAst>,
     },
     CreateTokenWithMods {
         name: String,
@@ -1176,7 +1189,7 @@ pub enum SubjectVerbActionAst {
     },
     CounterUnlessPays {
         target: TargetAst,
-        cost: TotalCost,
+        cost: ironsmith_core::TotalCost<crate::model::CompilerCost>,
     },
     PutCounters {
         counter_type: CounterType,
@@ -1466,6 +1479,17 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("action", action)
                 .field("amount", amount)
                 .finish(),
+            Self::ReorderTopPlanarDeck { count } => {
+                f.debug_tuple("ReorderTopPlanarDeck").field(count).finish()
+            }
+            Self::ReturnSourceTransformedFromExile => {
+                f.write_str("ReturnSourceTransformedFromExile")
+            }
+            Self::Reconfigure { target } => f.debug_tuple("Reconfigure").field(target).finish(),
+            Self::CumulativeUpkeep { cost } => {
+                f.debug_tuple("CumulativeUpkeep").field(cost).finish()
+            }
+            Self::Casualty { power } => f.debug_tuple("Casualty").field(power).finish(),
             Self::Amass { subtype, amount } => f
                 .debug_struct("Amass")
                 .field("subtype", subtype)

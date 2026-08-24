@@ -405,7 +405,14 @@ pub fn parse_spell_filter_envelope(tokens: &[OwnedLexToken]) -> SpellFilterEnvel
             continue;
         };
         saw_spell_noun |= matches!(word, "spell" | "spells");
-        if matches!(word, "during" | "other") {
+        if word == "during"
+            || (word == "other"
+                && !input
+                    .as_ref()
+                    .first()
+                    .and_then(OwnedLexToken::as_word)
+                    .is_some_and(|next| next == "than"))
+        {
             return SpellFilterEnvelope { end };
         }
         if word == "from" && !checked_from {
@@ -624,137 +631,15 @@ fn normalized_phrase_occurs(words: &[&str], expected: &[&str]) -> bool {
     }
 }
 
-fn exact_phrase_occurs(words: &[&str], expected: &[&str]) -> bool {
-    let mut input: primitives::WordSliceInput<'_> = words;
-    loop {
-        let mut candidate = input;
-        if parse_exact_phrase(&mut candidate, expected).is_ok() {
-            return true;
-        }
-        if take_word_slice_any(&mut input).is_err() {
-            return false;
-        }
-    }
-}
-
-fn exact_word_occurs(words: &[&str], expected: &[&str]) -> bool {
-    let mut input: primitives::WordSliceInput<'_> = words;
-    while let Ok(word) = take_word_slice_any(&mut input) {
-        if expected.contains(&word) {
-            return true;
-        }
-    }
-    false
-}
-
-fn attached_controller_occurs(words: &[&str], subject: &str) -> bool {
-    const OBJECTS: &[&str] = &[
-        "creature",
-        "creatures",
-        "permanent",
-        "permanents",
-        "artifact",
-        "artifacts",
-        "enchantment",
-        "enchantments",
-        "land",
-        "lands",
-    ];
-
-    let mut input: primitives::WordSliceInput<'_> = words;
-    loop {
-        let mut candidate = input;
-        if parse_normalized_word(&mut candidate, subject).is_ok()
-            && parse_normalized_word_choice(&mut candidate, OBJECTS).is_ok()
-            && parse_normalized_word(&mut candidate, "controller").is_ok()
-        {
-            return true;
-        }
-        if take_word_slice_any(&mut input).is_err() {
-            return false;
-        }
-    }
-}
-
-fn parse_normalized_phrase<'a>(
-    input: &mut primitives::WordSliceInput<'a>,
-    expected: &[&str],
-) -> WResult<()> {
-    for word in expected {
-        parse_normalized_word(input, word)?;
-    }
-    Ok(())
-}
-
-fn parse_exact_phrase<'a>(
-    input: &mut primitives::WordSliceInput<'a>,
-    expected: &[&str],
-) -> WResult<()> {
-    for expected_word in expected {
-        let word = take_word_slice_any(input)?;
-        if word != *expected_word {
-            return Err(winnow::error::ErrMode::Backtrack(
-                winnow::error::ContextError::new(),
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn parse_normalized_word_choice<'a>(
-    input: &mut primitives::WordSliceInput<'a>,
-    expected: &[&str],
-) -> WResult<()> {
-    let word = take_word_slice_any(input)?;
-    if expected
-        .iter()
-        .any(|candidate| normalized_word_matches(word, candidate))
-    {
-        Ok(())
-    } else {
-        Err(winnow::error::ErrMode::Backtrack(
-            winnow::error::ContextError::new(),
-        ))
-    }
-}
-
-fn parse_normalized_word<'a>(
-    input: &mut primitives::WordSliceInput<'a>,
-    expected: &str,
-) -> WResult<()> {
-    let word = take_word_slice_any(input)?;
-    if normalized_word_matches(word, expected) {
-        Ok(())
-    } else {
-        Err(winnow::error::ErrMode::Backtrack(
-            winnow::error::ContextError::new(),
-        ))
-    }
-}
-
-fn normalized_word_matches(word: &str, expected: &str) -> bool {
-    let mut input = word;
-    let parsed: WResult<()> = (
-        literal(expected),
-        alt((
-            eof.value(()),
-            (literal("'s"), eof).void(),
-            (literal("’s"), eof).void(),
-            (literal("s'"), eof).void(),
-            (literal("s’"), eof).void(),
-        )),
-    )
-        .void()
-        .parse_next(&mut input);
-    parsed.is_ok()
-}
-
-fn trim_commas_ref(mut tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    while tokens.first().is_some_and(OwnedLexToken::is_comma) {
-        tokens = &tokens[1..];
-    }
-    while tokens.last().is_some_and(OwnedLexToken::is_comma) {
-        tokens = &tokens[..tokens.len() - 1];
-    }
-    tokens
-}
+#[path = "trigger_subjects/core_programs.rs"]
+mod core_programs;
+use core_programs::{
+    exact_phrase_occurs, exact_word_occurs, normalized_word_matches, parse_exact_phrase,
+    parse_normalized_phrase, parse_normalized_word, trim_commas_ref,
+};
+#[path = "trigger_subjects/choice_programs.rs"]
+mod choice_programs;
+use choice_programs::parse_normalized_word_choice;
+#[path = "trigger_subjects/object_action_programs.rs"]
+mod object_action_programs;
+use object_action_programs::attached_controller_occurs;

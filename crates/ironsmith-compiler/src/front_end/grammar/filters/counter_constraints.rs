@@ -208,8 +208,12 @@ fn parse_filter_counter_constraint_word_slice(
             parse_counter_type_words_spec_word_slice(&mut descriptor_input)?.counter_type,
         )
     };
-    let minimum = descriptor.windows(3).find_map(|words| {
-        (words[1..] == ["or", "more"])
+    let minimum = crate::slice_primitives::find_window_by(descriptor, 3, |words| {
+        crate::word_primitives::parse_sequence_complete(&words[1..], &["or", "more"])
+    })
+    .and_then(|start| descriptor.get(start..start + 3))
+    .and_then(|words| {
+        crate::word_primitives::parse_sequence_complete(&words[1..], &["or", "more"])
             .then(|| leaf::parse_number_complete(words[0]).ok())
             .flatten()
     });
@@ -230,9 +234,7 @@ fn parse_filter_counter_constraint_word_slice(
     Ok(FilterCounterConstraintSpec {
         constraint,
         consumed: initial_len.saturating_sub(input.len()),
-        one_or_more: descriptor
-            .windows(3)
-            .any(|words| words == ["one", "or", "more"]),
+        one_or_more: crate::word_primitives::sequence_occurs(descriptor, &["one", "or", "more"]),
         plural_counter_noun: counter_noun == "counters",
         plural_subject: subject == "them",
     })

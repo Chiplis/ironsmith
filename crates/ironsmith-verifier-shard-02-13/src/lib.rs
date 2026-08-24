@@ -6,7 +6,7 @@ pub fn execute(
     input: &[u8],
 ) -> Result<Vec<u8>, VerifierError> {
     match deck_count {
-        ..=07 => ironsmith_verifier_shard_02_07::execute(operation, deck_count, input),
+        ..=7 => ironsmith_verifier_shard_02_07::execute(operation, deck_count, input),
         _ => ironsmith_verifier_shard_08_13::execute(operation, deck_count, input),
     }
 }

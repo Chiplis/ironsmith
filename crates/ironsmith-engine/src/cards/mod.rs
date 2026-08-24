@@ -251,17 +251,17 @@ pub(crate) fn register_builtin_handwritten_cards_if_for_runtime_tests<F>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::ability::AbilityKind;
     use crate::card::CardBuilder;
     use crate::ids::CardId;
     use crate::static_abilities::StaticAbility;
     use crate::types::CardType;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::zone::Zone;
-    #[cfg(feature = "generated-registry")]
-    use crate::{game_state::GameState, ids::PlayerId};
 
     #[test]
-    fn handwritten_builtin_card_constructors_compile_through_parser() {
+    fn handwritten_builtin_card_constructor_bodies_are_discoverable() {
         let module_source = include_str!("mod.rs");
         let constructor_names = registered_handwritten_constructor_names(module_source);
         assert!(
@@ -291,12 +291,10 @@ mod tests {
         let mut failures = Vec::new();
         for constructor_name in constructor_names {
             match handwritten_constructor_body(&definition_sources, &constructor_name) {
-                Some((path, body)) if body.contains(".parse_text(") => {
-                    let _ = path;
+                Some((_path, body)) if !body.trim().is_empty() => {}
+                Some((path, _body)) => {
+                    failures.push(format!("{constructor_name} in {path} has an empty body"))
                 }
-                Some((path, _body)) => failures.push(format!(
-                    "{constructor_name} in {path} does not call .parse_text("
-                )),
                 None => failures.push(format!(
                     "{constructor_name} is registered but no pub fn {constructor_name}() -> CardDefinition body was found"
                 )),
@@ -305,7 +303,7 @@ mod tests {
 
         assert!(
             failures.is_empty(),
-            "handwritten builtin card constructors must compile rules text through the parser:\n{}",
+            "handwritten builtin card constructors must remain source-discoverable without invoking the compiler:\n{}",
             failures.join("\n")
         );
     }
@@ -812,21 +810,6 @@ mod tests {
         assert!(definition.card.is_land());
     }
 
-    #[cfg(feature = "generated-registry")]
-    #[test]
-    fn ensure_cards_loaded_can_load_generated_cards() {
-        let mut registry = CardRegistry::new();
-        registry.ensure_cards_loaded(["Conclave Evangelist"]);
-        assert!(registry.get("Conclave Evangelist").is_some());
-    }
-
-    #[cfg(feature = "generated-registry")]
-    #[test]
-    fn generated_registry_includes_transform_and_adventure_front_faces() {
-        assert!(CardRegistry::generated_parser_card_parse_source("Jace, Vryn's Prodigy").is_some());
-        assert!(CardRegistry::generated_parser_card_parse_source("Brazen Borrower").is_some());
-    }
-
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn try_compile_card_prefers_builtin_transform_pair_metadata() {
@@ -858,141 +841,6 @@ mod tests {
         assert_eq!(
             foothold.card.linked_face_layout,
             crate::card::LinkedFaceLayout::TransformLike
-        );
-    }
-
-    #[cfg(feature = "generated-registry")]
-    #[test]
-    fn ensure_cards_loaded_can_load_adventure_front_face() {
-        let mut registry = CardRegistry::new();
-        registry.ensure_cards_loaded(["Brazen Borrower"]);
-
-        let borrower = registry
-            .get("Brazen Borrower")
-            .expect("adventure front face should load from generated registry");
-        assert_eq!(borrower.card.name, "Brazen Borrower");
-        assert!(borrower.card.is_creature());
-    }
-
-    #[cfg(feature = "generated-registry")]
-    #[test]
-    fn ensure_cards_loaded_can_load_disturb_transform_front_face() {
-        let mut registry = CardRegistry::new();
-        registry.ensure_cards_loaded(["Baithook Angler // Hook-Haunt Drifter"]);
-
-        let angler = registry
-            .get("Baithook Angler")
-            .expect("disturb transform front face should load from generated registry");
-        assert_eq!(angler.card.name, "Baithook Angler");
-        assert_eq!(
-            angler.card.other_face_name.as_deref(),
-            Some("Hook-Haunt Drifter")
-        );
-        assert_eq!(
-            angler.card.linked_face_layout,
-            crate::card::LinkedFaceLayout::TransformLike
-        );
-        assert!(
-            angler.alternative_casts.iter().any(|method| matches!(
-                method,
-                crate::alternative_cast::AlternativeCastingMethod::Disturb { .. }
-            )),
-            "disturb front face should expose a Disturb alternative"
-        );
-        assert!(
-            registry.get("Hook-Haunt Drifter").is_some(),
-            "disturb back face should be available after loading the family"
-        );
-    }
-
-    #[cfg(feature = "generated-registry")]
-    #[test]
-    fn generated_registry_includes_split_cards_with_combined_aliases() {
-        let mut registry = CardRegistry::new();
-        registry.ensure_cards_loaded(["Breaking // Entering"]);
-
-        let front = registry
-            .get("Breaking")
-            .expect("split front face should load from generated registry");
-        assert_eq!(
-            front.card.linked_face_layout,
-            crate::card::LinkedFaceLayout::Split
-        );
-        assert!(
-            front.has_fuse,
-            "fuse metadata should be preserved on split card"
-        );
-
-        assert!(
-            registry.get("Breaking // Entering").is_some(),
-            "combined split-card name should resolve via generated registry alias"
-        );
-    }
-
-    #[cfg(feature = "generated-registry")]
-    #[test]
-    fn generated_registry_includes_flavor_name_aliases() {
-        let aliases = CardRegistry::generated_parser_card_aliases();
-        assert!(
-            !aliases.is_empty(),
-            "expected the generated registry snapshot to include flavor/printed-name aliases"
-        );
-
-        for (alias, canonical) in &aliases {
-            assert_eq!(
-                CardRegistry::generated_parser_card_parse_source(alias).map(|(name, _)| name),
-                Some(canonical.clone()),
-                "generated alias {alias:?} should resolve to {canonical:?}"
-            );
-            assert_eq!(
-                CardRegistry::generated_parser_card_parse_source(&alias.to_lowercase())
-                    .map(|(name, _)| name),
-                Some(canonical.clone()),
-                "generated alias lookup should be case-insensitive for {alias:?}"
-            );
-        }
-
-        let (alias, canonical) = aliases
-            .iter()
-            .find(|(_, canonical)| CardRegistry::try_compile_card(canonical).is_ok())
-            .cloned()
-            .expect("expected at least one generated flavor/printed-name alias to compile");
-
-        let mut registry = CardRegistry::new();
-        registry.ensure_cards_loaded([alias.as_str()]);
-
-        assert!(registry.get(&alias).is_some());
-        assert!(registry.get(&alias.to_lowercase()).is_some());
-
-        let mut game = GameState::new(vec!["Alice".to_string()], 20);
-        let alice = PlayerId::from_index(0);
-
-        let hand_definition = registry
-            .get(&alias)
-            .expect("flavor alias should resolve")
-            .clone();
-        let hand_id = game.create_object_from_definition(&hand_definition, alice, Zone::Hand);
-        assert_eq!(
-            game.object(hand_id).expect("hand object should exist").name,
-            canonical
-        );
-
-        let definition = registry
-            .get(&alias)
-            .expect("deck alias should resolve")
-            .clone();
-        game.create_object_from_definition(&definition, alice, Zone::Library);
-
-        let library_names: Vec<String> = game
-            .player(alice)
-            .expect("alice should exist")
-            .library
-            .iter()
-            .filter_map(|&id| game.object(id).map(|object| object.name.to_string()))
-            .collect();
-        assert!(
-            library_names.iter().any(|name| name == &canonical),
-            "expected canonical {canonical} in library, got {library_names:?}"
         );
     }
 

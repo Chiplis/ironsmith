@@ -1,21 +1,26 @@
 //! Ornithopter card definition.
 
 use super::CardDefinitionBuilder;
+use crate::ability::Ability;
+use crate::card::PowerToughness;
 use crate::cards::CardDefinition;
 use crate::ids::CardId;
+use crate::mana::ManaCost;
+use crate::static_abilities::StaticAbility;
+use crate::types::{CardType, Subtype};
 
 /// Ornithopter - {0}
 /// Artifact Creature — Thopter (0/2)
 /// Flying
 pub fn ornithopter() -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Ornithopter")
-        .parse_text(
-            "Mana cost: {0}\n\
-             Type: Artifact Creature — Thopter\n\
-             Power/Toughness: 0/2\n\
-             Flying",
-        )
-        .expect("Ornithopter text should be supported")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Thopter])
+        .power_toughness(PowerToughness::fixed(0, 2))
+        .oracle_text("Flying")
+        .with_ability(Ability::static_ability(StaticAbility::flying()))
+        .build()
 }
 
 #[cfg(all(test, ironsmith_runtime_parser_tests))]

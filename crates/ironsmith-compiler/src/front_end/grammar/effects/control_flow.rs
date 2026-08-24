@@ -142,6 +142,24 @@ pub fn recognize_control_flow(tokens: &[OwnedLexToken]) -> ParseOutcome<ControlF
     ParseOutcome::NoMatch
 }
 
+/// Wrap a grammar-proven leading duration around an already parsed body.
+///
+/// A few specialist effect families parse their coordinated body before the
+/// general control-flow entrypoint runs. They still must emit the same
+/// canonical duration node as ordinary dispatch rather than distributing the
+/// scope only through leaf presentation fields.
+pub fn wrap_leading_duration_program(
+    tokens: &[OwnedLexToken],
+    effects: Vec<crate::cards::builders::EffectAst>,
+) -> Option<crate::cards::builders::EffectAst> {
+    let plan = recognize_delayed_or_duration(trim_lexed_commas(tokens))?;
+    if !matches!(plan.structure, RecognizedControlFlowAst::Duration(_)) {
+        return None;
+    }
+    plan.into_ast(effects)
+        .map(|control| crate::cards::builders::EffectAst::ControlFlow(Box::new(control)))
+}
+
 fn recognize_leading_replacement(tokens: &[OwnedLexToken]) -> Option<ControlFlowPlan<'_>> {
     if tokens.first().is_some_and(|token| token.is_word("instead")) {
         let body_tokens = trim_lexed_commas(&tokens[1..]);
@@ -353,7 +371,26 @@ fn recognize_leading_condition(
 fn recognize_trailing_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<ParseOutcome<ControlFlowPlan<'_>>> {
+    // Some prevention clauses use a trailing `if` to qualify the explicitly
+    // targeted damage source while comparing it with a prior choice. Their
+    // dedicated parser retains that distinction as `TargetMatches`; generic
+    // state-condition recognition would instead reinterpret the earlier
+    // choice as a broad `PlayerControls` predicate.
+    if super::parse_prevent_damage_sentence_lexed(tokens)
+        .ok()
+        .flatten()
+        .is_some()
+    {
+        return None;
+    }
     if let Some(split) = split_trailing_if_clause_lexed(tokens) {
+        // In `A, then B if C`, the postcondition belongs to B rather than to
+        // the complete ordered procedure. Leave the intact clause to the
+        // coordination grammar so it can split the authored boundary first;
+        // the second member will then acquire this control-flow node.
+        if super::chain_splitting::has_authored_comma_then_surface_tokens(split.leading_tokens) {
+            return None;
+        }
         return Some(ParseOutcome::matched(
             ControlFlowPlan {
                 structure: RecognizedControlFlowAst::Condition {

@@ -402,27 +402,28 @@ mod tests {
     }
 
     #[test]
-    fn public_optional_source_exchange_keeps_joint_negative_target_filter() {
-        let oracle = "At the beginning of your upkeep, you may exchange control of this enchantment and target permanent you neither own nor control.";
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
-            CardId::new(),
-            "Joint Negative Exchange Probe",
-        )
-        .card_types(vec![CardType::Enchantment])
-        .parse_text(oracle)
-        .expect("optional heterogeneous exchange should parse");
+    fn source_exchange_keeps_joint_negative_target_filter() {
+        let target_filter = crate::target::ObjectFilter::permanent()
+            .owned_by(crate::target::PlayerFilter::NotYou)
+            .controlled_by(crate::target::PlayerFilter::NotYou);
+        let exchange = ExchangeControlEffect::new(
+            ChooseSpec::Source,
+            ChooseSpec::target(ChooseSpec::Object(target_filter.clone())),
+        );
 
+        assert_eq!(exchange.permanent1, ChooseSpec::Source);
         assert_eq!(
-            crate::runtime_display::compiled_text_lines(&definition),
-            [oracle]
+            exchange.permanent2,
+            ChooseSpec::target(ChooseSpec::Object(target_filter.clone()))
         );
-        let debug = format!("{:#?}", definition.abilities);
-        assert!(debug.contains("ExchangeControlEffect"), "{debug}");
-        assert!(
-            debug.contains("owner: Some(\n") && debug.contains("NotYou"),
-            "{debug}"
+        assert_eq!(
+            target_filter.owner,
+            Some(crate::target::PlayerFilter::NotYou)
         );
-        assert!(debug.contains("controller: Some(\n"), "{debug}");
+        assert_eq!(
+            target_filter.controller,
+            Some(crate::target::PlayerFilter::NotYou)
+        );
     }
 
     #[test]

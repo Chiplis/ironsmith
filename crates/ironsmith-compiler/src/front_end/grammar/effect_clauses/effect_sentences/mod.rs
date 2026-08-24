@@ -107,13 +107,13 @@ pub use gain_ability::*;
 pub use search_library::parse_search_library_sentence;
 pub use search_library::parse_search_library_sentence as parse_search_library_sentence_lexed;
 pub use search_library::*;
+pub use sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_look_at_top_optional_battlefield_then_conditional_remainder;
 pub use sequence_rules::generic_subject_verb_sequences::exile_permission_followups::parse_dynamic_exile_top_then_play_for_as_long_as_exiled;
-pub use sequence_rules::generic_subject_verb_sequences::pairs::parse_look_at_players_hand_then_may_cast_from_those_cards;
-pub use sequence_rules::generic_subject_verb_sequences::pairs::parse_tempting_offer_copy_spell_sequence;
+pub use sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_look_at_top_partition_face_down_then_filtered_permission;
 pub use sequence_rules::generic_subject_verb_sequences::parse_destroy_then_no_regeneration_sequence;
-pub use sequence_rules::generic_subject_verb_sequences::quads::parse_look_at_top_optional_battlefield_then_conditional_remainder;
-pub use sequence_rules::generic_subject_verb_sequences::triples::parse_look_at_top_partition_face_down_then_filtered_permission;
-pub use sequence_rules::try_parse_subject_verb_sequence_rule;
+pub use sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_look_at_players_hand_then_may_cast_from_those_cards;
+pub use sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_tempting_offer_copy_spell_sequence;
+pub use sequence_rules::try_parse_document_program;
 pub use subject_verb_primitives::*;
 pub use verb_handlers::parse_exiled_with_source_move_surface;
 pub use verb_handlers::{

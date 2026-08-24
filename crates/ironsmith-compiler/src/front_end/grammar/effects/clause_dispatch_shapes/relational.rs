@@ -131,7 +131,11 @@ pub fn parse_copular_animation_shape(
         become_shapes::parse_become_simple_descriptor_words(&descriptor_words),
         become_shapes::BecomeSimpleDescriptorShape::None
     );
-    if !fixed_pt_animation && !simple_descriptor {
+    let (subtype_descriptor, subtype_preserves_other_types) =
+        become_shapes::strip_become_addition_tail_words(&descriptor_words);
+    let subtype_addition = subtype_preserves_other_types
+        && become_shapes::parse_become_creature_descriptor_words(subtype_descriptor).is_some();
+    if !fixed_pt_animation && !simple_descriptor && !subtype_addition {
         return None;
     }
     let subject_tokens = trim_lexed_commas(subject_tokens);
@@ -182,70 +186,9 @@ pub struct PassiveGoadShape<'a> {
     pub for_rest_of_game: bool,
 }
 
-pub fn parse_passive_goad_shape(tokens: &[OwnedLexToken]) -> Option<PassiveGoadShape<'_>> {
-    let (subject_tokens, tail_tokens) =
-        primitives::split_lexed_once_on_separator(tokens, || primitives::kw("is").void())?;
-    let for_rest_of_game = primitives::parse_all(
-        trim_lexed_commas(tail_tokens),
-        (
-            alt((primitives::kw("goaded"), primitives::kw("goad"))),
-            opt(primitives::any_phrase(&[
-                &["for", "the", "rest", "of", "the", "game"],
-                &["for", "the", "rest", "of", "this", "game"],
-            ]))
-            .map(|duration| duration.is_some()),
-            primitives::sentence_end(),
-        )
-            .map(|(_, for_rest_of_game, _)| for_rest_of_game),
-        "passive goad shape",
-    )
-    .ok()?;
-    let subject_tokens = trim_lexed_commas(subject_tokens);
-    if subject_tokens.is_empty() {
-        return None;
-    }
-    let tagged = primitives::parse_all(
-        subject_tokens,
-        (
-            primitives::any_phrase(&[&["the", "token"], &["the", "tokens"]]),
-            primitives::sentence_end(),
-        )
-            .void(),
-        "goad token reference",
-    )
-    .is_ok();
-    Some(PassiveGoadShape {
-        target: if tagged {
-            GoadTargetShape::TaggedToken
-        } else {
-            GoadTargetShape::Target(subject_tokens)
-        },
-        for_rest_of_game,
-    })
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HexproofTargetingOverrideShape<'a> {
     pub filter_tokens: &'a [OwnedLexToken],
-}
-
-pub fn parse_hexproof_targeting_override_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<HexproofTargetingOverrideShape<'_>> {
-    primitives::find_prefix(tokens, || {
-        primitives::any_phrase(&[
-            &["as", "though", "they", "didnt", "have", "hexproof"],
-            &["as", "though", "they", "didn't", "have", "hexproof"],
-        ])
-    })?;
-    let (creatures, _, after_creatures) =
-        primitives::find_prefix(tokens, || primitives::kw("creatures"))?;
-    let (can_relative, _, _) = primitives::find_prefix(after_creatures, || {
-        primitives::phrase(&["can", "be", "the", "targets"])
-    })?;
-    let can = creatures + 1 + can_relative;
-    let filter_tokens = trim_lexed_commas(tokens.get(creatures..can)?);
-    (!filter_tokens.is_empty()).then_some(HexproofTargetingOverrideShape { filter_tokens })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -255,95 +198,27 @@ pub struct ControlPlayerShape<'a> {
     pub duration_tokens: &'a [OwnedLexToken],
 }
 
-pub fn parse_control_player_shape(tokens: &[OwnedLexToken]) -> Option<ControlPlayerShape<'_>> {
-    let (control, _, after_control) = primitives::find_prefix(tokens, || {
-        alt((primitives::kw("control"), primitives::kw("controls")))
-    })?;
-    if control == 0 {
-        return None;
-    }
-    let subject_tokens = tokens.get(..control)?;
-    let (_, player, _) = primitives::find_prefix(subject_tokens, || {
-        alt((
-            primitives::kw("you").value(PlayerAst::You),
-            primitives::phrase(&["that", "player"]).value(PlayerAst::That),
-            primitives::phrase(&["target", "player"]).value(PlayerAst::Target),
-            primitives::phrase(&["each", "opponent"]).value(PlayerAst::Opponent),
-        ))
-    })?;
-    let (during, _, _) = primitives::find_prefix(after_control, || primitives::kw("during"))?;
-    if during == 0 {
-        return None;
-    }
-    let target_tokens = trim_lexed_commas(after_control.get(..during)?);
-    let duration_start = control + 1 + during;
-    Some(ControlPlayerShape {
-        player,
-        target_tokens,
-        duration_tokens: tokens.get(duration_start..)?,
-    })
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DiscardedThisWayModifierShape {
     pub power: i32,
     pub toughness: i32,
 }
 
-pub fn parse_discarded_this_way_modifier_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<DiscardedThisWayModifierShape> {
-    let first = tokens.first()?.parser_text();
-    let (power, toughness) = leaf::parse_leaf_pt_modifier_values_complete(first).ok()?;
-    let (Value::Fixed(power), Value::Fixed(toughness)) = (power, toughness) else {
-        return None;
-    };
-    primitives::parse_all(
-        tokens.get(1..)?,
-        (
-            primitives::phrase(&[
-                "until",
-                "end",
-                "of",
-                "turn",
-                "for",
-                "each",
-                "card",
-                "discarded",
-                "this",
-                "way",
-            ]),
-            primitives::sentence_end(),
-        )
-            .void(),
-        "discarded this way modifier",
-    )
-    .ok()?;
-    Some(DiscardedThisWayModifierShape { power, toughness })
-}
-
-pub fn parse_modifier_duration_for_each_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<&[OwnedLexToken]> {
-    let after_modifier = tokens.get(1..)?;
-    let (_, rest) = primitives::parse_prefix(
-        after_modifier,
-        primitives::phrase(&["until", "end", "of", "turn"]),
-    )?;
-    primitives::parse_prefix(rest, primitives::phrase(&["for", "each"]))?;
-    Some(rest)
-}
-
-pub fn is_pronoun_library_choice_put_shape(tokens: &[OwnedLexToken]) -> bool {
-    let pronoun =
-        primitives::parse_prefix(tokens, alt((primitives::kw("it"), primitives::kw("them"))))
-            .is_some();
-    pronoun
-        && ["on", "choice", "top", "bottom", "library"]
-            .into_iter()
-            .all(|word| primitives::find_prefix(tokens, || primitives::kw(word)).is_some())
-}
-
 #[cfg(test)]
 #[path = "relational/tests.rs"]
 mod tests;
+
+#[path = "relational/library_programs.rs"]
+mod library_programs;
+pub use library_programs::{
+    is_pronoun_library_choice_put_shape, parse_discarded_this_way_modifier_shape,
+};
+#[path = "relational/object_action_programs.rs"]
+mod object_action_programs;
+pub use object_action_programs::parse_modifier_duration_for_each_tokens;
+#[path = "relational/reference_programs.rs"]
+mod reference_programs;
+pub use reference_programs::{parse_control_player_shape, parse_hexproof_targeting_override_shape};
+#[path = "relational/core_programs.rs"]
+mod core_programs;
+pub use core_programs::parse_passive_goad_shape;

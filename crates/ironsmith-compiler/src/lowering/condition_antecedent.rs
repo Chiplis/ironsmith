@@ -1155,9 +1155,7 @@ mod tests {
             create,
             effect(SubjectVerbActionAst::GrantAbilitiesToTarget {
                 target: it_target(),
-                abilities: vec![GrantedAbilityAst::KeywordAction(
-                    crate::cards::builders::KeywordAction::Haste,
-                )],
+                abilities: vec![crate::cards::builders::KeywordAction::Haste.into()],
                 duration: Until::EndOfTurn,
                 condition: None,
                 set_quantifier_surface: None,
@@ -1313,7 +1311,7 @@ mod tests {
 
         bind_trigger_antecedent_after_top_library_observation(
             &mut effects,
-            &crate::tag::TagKey::from("triggering"),
+            &crate::tag::CompilerReferenceTag::Triggering.key(),
         );
 
         let EffectAst::Conditional {
@@ -1396,7 +1394,7 @@ mod tests {
 
         bind_trigger_antecedent_after_top_library_observation(
             &mut effects,
-            &crate::tag::TagKey::from("triggering"),
+            &crate::tag::CompilerReferenceTag::Triggering.key(),
         );
 
         let EffectAst::Conditional { if_true, .. } = &effects[1] else {

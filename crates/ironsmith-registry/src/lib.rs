@@ -52,9 +52,12 @@ impl RegistryCatalog {
     }
 
     pub fn with_builtin_cards() -> Self {
-        Self {
-            registry: CardRegistry::with_builtin_cards(),
-        }
+        let registry = CardRegistry::with_builtin_cards();
+        #[cfg(all(feature = "handwritten-parse-support", not(test)))]
+        let mut registry = registry;
+        #[cfg(all(feature = "handwritten-parse-support", not(test)))]
+        cards::register_builtin_handwritten_cards_if(&mut registry, |_| true);
+        Self { registry }
     }
 
     pub fn into_inner(self) -> CardRegistry {
@@ -78,13 +81,4 @@ impl RegistryLoader {
     pub fn load_builtin(&self) -> RegistryCatalog {
         RegistryCatalog::with_builtin_cards()
     }
-}
-
-#[cfg(test)]
-pub(crate) fn register_builtin_handwritten_cards_if_for_runtime_tests<F>(
-    _registry: &mut CardRegistry,
-    _include_constructor_key: F,
-) where
-    F: FnMut(&str) -> bool,
-{
 }

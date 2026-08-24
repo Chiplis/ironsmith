@@ -10,43 +10,42 @@ pub fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextE
     if trimmed.is_empty() {
         return Ok(None);
     }
-
-    let Some((label, value)) = trimmed.split_once(':') else {
+    let Some((label, value)) = crate::string_primitives::split_once(trimmed, ":") else {
         return Ok(None);
     };
-
     let label_tokens = match lex_line(format!("{}:", label.trim()).as_str(), 0) {
         Ok(tokens) => tokens,
         Err(_) => return Ok(None),
     };
-
-    let label_words = label_tokens
+    let normalized_labels = label_tokens
         .iter()
         .filter_map(|token| token.as_word())
-        .map(|word| word.to_ascii_lowercase())
+        .map(str::to_ascii_lowercase)
         .collect::<Vec<_>>();
-
-    let kind = match label_words.as_slice() {
-        [mana, cost] if mana == "mana" && cost == "cost" => Some(MetadataKind::ManaCost),
-        [kind] if kind == "type" => Some(MetadataKind::TypeLine),
-        [type_word, line_word] if type_word == "type" && line_word == "line" => {
-            Some(MetadataKind::TypeLine)
-        }
-        [first, printed, set] if first == "first" && printed == "printed" && set == "set" => {
-            Some(MetadataKind::FirstPrintedSet)
-        }
-        [attraction, lights] if attraction == "attraction" && lights == "lights" => {
-            Some(MetadataKind::AttractionLights)
-        }
-        [pt] if pt == "power/toughness" => Some(MetadataKind::PowerToughness),
-        [power, toughness] if power == "power" && toughness == "toughness" => {
-            Some(MetadataKind::PowerToughness)
-        }
-        [loyalty] if loyalty == "loyalty" => Some(MetadataKind::Loyalty),
-        [defense] if defense == "defense" => Some(MetadataKind::Defense),
-        _ => None,
-    };
-
+    let label_words = normalized_labels
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    let kind = crate::slice_primitives::matching_value(
+        &label_words,
+        &[
+            (&["mana", "cost"][..], MetadataKind::ManaCost),
+            (&["type"][..], MetadataKind::TypeLine),
+            (&["type", "line"][..], MetadataKind::TypeLine),
+            (
+                &["first", "printed", "set"][..],
+                MetadataKind::FirstPrintedSet,
+            ),
+            (
+                &["attraction", "lights"][..],
+                MetadataKind::AttractionLights,
+            ),
+            (&["power/toughness"][..], MetadataKind::PowerToughness),
+            (&["power", "toughness"][..], MetadataKind::PowerToughness),
+            (&["loyalty"][..], MetadataKind::Loyalty),
+            (&["defense"][..], MetadataKind::Defense),
+        ],
+    );
     let value = value.trim().to_string();
     let metadata = match kind {
         Some(MetadataKind::ManaCost) => MetadataLine::ManaCost(value),

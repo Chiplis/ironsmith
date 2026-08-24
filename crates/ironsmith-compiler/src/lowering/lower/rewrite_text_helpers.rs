@@ -70,7 +70,7 @@ pub fn rewrite_lower_level_ability_ast(
                         let object_abilities =
                             rewrite_lower_keyword_action_to_object_abilities(action)?;
                         lowered.abilities.extend(
-                            crate::static_ability_helpers::object_abilities_to_static_carriers(
+                            crate::runtime_static_ability_helpers::object_abilities_to_static_carriers(
                                 object_abilities,
                                 display,
                             )?,
@@ -114,7 +114,7 @@ fn apply_level_range_activation_condition(
     let LineAst::Ability(parsed) = chunk else {
         return;
     };
-    let AbilityKind::Activated(activated) = parsed.kind_mut() else {
+    let crate::model::CompilerAbilityKindCore::Activated(activated) = parsed.kind_mut() else {
         return;
     };
 
@@ -262,14 +262,7 @@ pub fn extract_previous_replacement_target(effect: &crate::effect::Effect) -> Op
         return Some(return_to_battlefield.target.clone());
     }
     if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyNoRegenerationEffect>() {
-        #[cfg(not(feature = "serialization"))]
-        {
-            return destroy.target.clone();
-        }
-        #[cfg(feature = "serialization")]
-        {
-            return Some(destroy.spec.clone());
-        }
+        return destroy.target.clone();
     }
     if let Some(modify) = effect.downcast_ref::<crate::effects::ModifyPowerToughnessEffect>() {
         return Some(modify.target.clone());
@@ -319,19 +312,10 @@ pub fn rewrite_replacement_effect_target(
         ));
     }
     if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyNoRegenerationEffect>()
-        && {
-            #[cfg(not(feature = "serialization"))]
-            {
-                destroy
-                    .target
-                    .as_ref()
-                    .is_some_and(effect_target_uses_it_reference)
-            }
-            #[cfg(feature = "serialization")]
-            {
-                effect_target_uses_it_reference(&destroy.spec)
-            }
-        }
+        && destroy
+            .target
+            .as_ref()
+            .is_some_and(effect_target_uses_it_reference)
     {
         return Some(crate::effect::Effect::new(
             crate::effects::DestroyNoRegenerationEffect::with_spec(previous_target.clone()),
@@ -370,15 +354,15 @@ pub fn rewrite_replacement_effect_target(
 
 pub fn push_unsupported_marker(
     builder: CardDefinitionBuilder,
-    raw_line: &str,
+    source_display: &str,
     reason: String,
 ) -> CardDefinitionBuilder {
     crate::parse_loss::record(
         "allow_unsupported_line",
-        format!("{} ({reason})", raw_line.trim()),
+        format!("{} ({reason})", source_display.trim()),
     );
     builder.with_ability(Ability::static_ability(
-        StaticAbility::unsupported_parser_line(raw_line.trim(), reason),
+        StaticAbility::unsupported_parser_line(source_display.trim(), reason),
     ))
 }
 
@@ -458,7 +442,7 @@ pub fn rewrite_lower_line_ast(
                 apply_pending_restrictions_to_ability(
                     &mut builder.abilities[ability_idx],
                     &mut restrictions,
-                );
+                )?;
                 handled_restrictions_for_new_ability = true;
             }
         }
@@ -474,7 +458,7 @@ pub fn rewrite_lower_line_ast(
         && let Some(index) = *last_restrictable_ability
         && index < builder.abilities.len()
     {
-        apply_pending_restrictions_to_ability(&mut builder.abilities[index], &mut restrictions);
+        apply_pending_restrictions_to_ability(&mut builder.abilities[index], &mut restrictions)?;
     }
 
     Ok(())

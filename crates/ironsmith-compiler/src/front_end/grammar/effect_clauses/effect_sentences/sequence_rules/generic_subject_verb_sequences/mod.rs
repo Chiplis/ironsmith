@@ -1,14 +1,11 @@
 use super::SentenceInput;
 
-#[path = "quads.rs"]
 pub mod branching_selection_programs;
 pub mod exile_permission_followups;
 pub mod exiled_collections;
 pub mod graveyard_copy_cast;
 pub mod optional_sacrifice_discard;
-#[path = "triples.rs"]
 pub mod ordered_control_flow_programs;
-#[path = "pairs.rs"]
 pub mod reference_linked_programs;
 
 use crate::cards::builders::{
@@ -25,13 +22,6 @@ use crate::object_filters::parse_object_filter_lexed;
 use crate::target::PlayerFilter;
 use crate::util::helper_tag_for_tokens;
 use crate::zone::Zone;
-// The PR-29 recipe-table migration still names these implementations at many
-// call sites. Keep source-compatible aliases without retaining arity as the
-// module's semantic identity; PR-29 removes the aliases with the table.
-pub use branching_selection_programs as quads;
-pub use ordered_control_flow_programs as triples;
-pub use reference_linked_programs as pairs;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum GenericSequenceVerb {
     GainParameterizedAbility,
@@ -165,7 +155,7 @@ pub fn parse_parameterized_flashback_grant_sequence(
 
     Ok(Some(vec![EffectAst::subject_verb_grant_to_target(
         target,
-        crate::grant::Grantable::flashback_from_cards_mana_cost(),
+        crate::model::CompilerGrantableCore::flashback_from_cards_mana_cost(),
         crate::grant::GrantDuration::UntilEndOfTurn,
     )]))
 }
@@ -184,8 +174,10 @@ pub fn parse_prefixed_library_consult_hand_exile_sequence(
     if prefix_effects.is_empty() {
         return Ok(None);
     }
-    let Some(mut combined) =
-        pairs::parse_consult_match_into_hand_exile_others(sentences, sentence_idx + 1)?
+    let Some(mut combined) = reference_linked_programs::parse_consult_match_into_hand_exile_others(
+        sentences,
+        sentence_idx + 1,
+    )?
     else {
         return Ok(None);
     };
@@ -207,8 +199,8 @@ pub fn parse_iterative_library_procedure_sequence(
         return Ok(None);
     }
 
-    let current_tag = TagKey::from("iterative_library_current");
-    let exiled_tag = TagKey::from("iterative_library_exiled");
+    let current_tag = crate::tag::CompilerReferenceTag::IterativeLibraryCurrent.key();
+    let exiled_tag = crate::tag::CompilerReferenceTag::IterativeLibraryExiled.key();
     let all_exiled_filter = ObjectFilter::tagged(exiled_tag.clone()).in_zone(Zone::Exile);
     Ok(Some(vec![EffectAst::RepeatProcess {
         effects: vec![
@@ -371,7 +363,7 @@ pub fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(
         return Ok(None);
     }
 
-    let revealed_tag = TagKey::from("__each_player_revealed_this_way");
+    let revealed_tag = crate::tag::CompilerReferenceTag::EachPlayerRevealedThisWay.key();
     let mut shuffled_filter = ObjectFilter::permanent_card();
     shuffled_filter.zone = Some(Zone::Battlefield);
     shuffled_filter.owner = Some(PlayerFilter::IteratedPlayer);
@@ -520,16 +512,23 @@ pub fn parse_damage_prevention_delayed_counter_sequence(
         "end",
         "step",
     ];
-    let prefix_len = if words.starts_with(&["if", "its", "a", "creature"])
-        || words.starts_with(&["if", "it's", "a", "creature"])
-    {
+    let prefix_len = if crate::word_primitives::parse_any_sequence_prefix(
+        &words,
+        &[
+            &["if", "its", "a", "creature"],
+            &["if", "it's", "a", "creature"],
+        ],
+    ) {
         4
-    } else if words.starts_with(&["if", "it", "is", "a", "creature"]) {
+    } else if crate::word_primitives::parse_sequence_prefix(
+        &words,
+        &["if", "it", "is", "a", "creature"],
+    ) {
         5
     } else {
         return Ok(None);
     };
-    if words[prefix_len..] != expected_suffix {
+    if !crate::word_primitives::parse_sequence_complete(&words[prefix_len..], &expected_suffix) {
         return Ok(None);
     }
 
@@ -542,7 +541,7 @@ pub fn parse_damage_prevention_delayed_counter_sequence(
             )
             .with_action(ironsmith_core::PriorEffectAction::Prevented),
         ),
-        TargetAst::Tagged(TagKey::from("targeted_0"), None),
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::Targeted0.key(), None),
         None,
         false,
     );
@@ -565,9 +564,9 @@ pub fn parse_destroy_then_no_regeneration_sequence(
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words = crate::lexer::token_word_refs(sentences[sentence_idx + 1].lowered());
-    if words.last().is_none_or(|word| *word != "regenerated")
-        || !matches!(words.first().copied(), Some("it" | "they" | "those"))
-        || !words.iter().any(|word| matches!(*word, "cant" | "can't"))
+    if !crate::word_primitives::last_is(&words, "regenerated")
+        || !crate::word_primitives::first_is_any(&words, &["it", "they", "those"])
+        || !crate::slice_primitives::contains_any(&words, &["cant", "can't"])
     {
         return Ok(None);
     }
@@ -598,17 +597,16 @@ pub fn parse_destroy_then_no_regeneration_sequence(
             first_tail
         };
         let words = crate::lexer::token_word_refs(authored_tail);
-        words
-            .windows(3)
-            .any(|window| window == ["that", "aren't", "enchanted"])
-            || words
-                .windows(3)
-                .any(|window| window == ["that", "arent", "enchanted"])
-            || words
-                .windows(4)
-                .any(|window| window == ["that", "are", "not", "enchanted"])
+        crate::word_primitives::any_sequence_occurs(
+            &words,
+            &[
+                &["that", "aren't", "enchanted"],
+                &["that", "arent", "enchanted"],
+                &["that", "are", "not", "enchanted"],
+            ],
+        )
     };
-    let singular_followup = words.first() == Some(&"it");
+    let singular_followup = crate::word_primitives::first_is(&words, "it");
     match action {
         SubjectVerbActionAst::Destroy {
             no_regeneration, ..
@@ -652,13 +650,11 @@ pub fn parse_reveal_then_exile_noncreature_nonland_hand_graveyard_sequence(
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let second_words = crate::lexer::token_word_refs(sentences[sentence_idx + 1].lowered());
-    if !second_words.starts_with(&["exile", "all", "noncreature", "nonland", "cards", "from"])
-        || !second_words.contains(&"that")
-        || !second_words.contains(&"hand")
-        || !second_words.contains(&"graveyard")
-        || !second_words
-            .iter()
-            .any(|word| matches!(*word, "player" | "players" | "player's"))
+    if !crate::word_primitives::parse_sequence_prefix(
+        &second_words,
+        &["exile", "all", "noncreature", "nonland", "cards", "from"],
+    ) || !crate::slice_primitives::contains_all(&second_words, &["that", "hand", "graveyard"])
+        || !crate::slice_primitives::contains_any(&second_words, &["player", "players", "player's"])
     {
         return Ok(None);
     }
@@ -682,246 +678,21 @@ pub fn parse_reveal_then_exile_noncreature_nonland_hand_graveyard_sequence(
     Ok(Some(effects))
 }
 
-pub fn parse_damage_prevention_reflect_to_any_target_sequence(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Ok(first_effects) =
-        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
-    else {
-        return Ok(None);
-    };
-    let Some(first_effect) = first_effects.first() else {
-        return Ok(None);
-    };
-    if first_effects.len() != 1 {
-        return Ok(None);
-    }
-
-    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action:
-            SubjectVerbActionAst::PreventDamage {
-                amount,
-                target,
-                duration,
-                source_of_your_choice,
-                protect_you_and_permanents_you_control,
-                ..
-            },
-        ..
-    }) = first_effect
-    else {
-        return Ok(None);
-    };
-
-    if !sequence_grammar::parse_prevention_reflect_followup_shape(
-        sentences[sentence_idx + 1].lowered(),
-    ) {
-        return Ok(None);
-    }
-
-    let follow_up = EffectAst::subject_verb_damage(
-        Value::EventValue(EventValueSpec::Amount),
-        TargetAst::AnyTarget(None),
-    );
-    Ok(Some(vec![
-        EffectAst::subject_verb_prevent_damage_with_options(
-            amount.clone(),
-            target.clone(),
-            duration.clone(),
-            *source_of_your_choice,
-            *protect_you_and_permanents_you_control,
-            vec![follow_up],
-        ),
-    ]))
-}
-
-pub fn parse_next_damage_prevention_gain_life_sequence(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Ok(mut first_effects) =
-        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
-    else {
-        return Ok(None);
-    };
-    let [first_effect] = first_effects.as_mut_slice() else {
-        return Ok(None);
-    };
-
-    let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = first_effect else {
-        return Ok(None);
-    };
-    let follow_up_effects = match action {
-        SubjectVerbActionAst::PreventNextTimeDamage {
-            follow_up_effects, ..
-        }
-        | SubjectVerbActionAst::PreventDamage {
-            follow_up_effects, ..
-        } => follow_up_effects,
-        _ => return Ok(None),
-    };
-    if !follow_up_effects.is_empty() {
-        return Ok(None);
-    }
-
-    if !sequence_grammar::parse_prevention_gain_life_followup_shape(
-        sentences[sentence_idx + 1].lowered(),
-    ) {
-        return Ok(None);
-    }
-
-    // The exact sequence shape above establishes both the affected player and
-    // the event-relative amount.  Construct that typed follow-up directly:
-    // parsing the sentence in isolation loses the prevention-event context.
-    follow_up_effects.push(EffectAst::subject_verb(
-        SubjectVerbRoleAst::AffectedPlayer,
-        PlayerAst::You,
-        SubjectVerbActionAst::GainLife {
-            amount: Value::EventValue(EventValueSpec::Amount),
-        },
-    ));
-    Ok(Some(first_effects))
-}
-
-pub fn parse_next_damage_prevention_exile_top_sequence(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Ok(mut first_effects) =
-        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
-    else {
-        return Ok(None);
-    };
-    let [first_effect] = first_effects.as_mut_slice() else {
-        return Ok(None);
-    };
-
-    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action:
-            SubjectVerbActionAst::PreventNextTimeDamage {
-                follow_up_effects, ..
-            },
-        ..
-    }) = first_effect
-    else {
-        return Ok(None);
-    };
-    if !follow_up_effects.is_empty() {
-        return Ok(None);
-    }
-
-    if !sequence_grammar::parse_prevention_exile_top_followup_shape(
-        sentences[sentence_idx + 1].lowered(),
-    ) {
-        return Ok(None);
-    }
-
-    follow_up_effects.push(EffectAst::subject_verb_exile_top_of_library(
-        PlayerAst::You,
-        Value::EventValue(EventValueSpec::Amount),
-        Vec::new(),
-        Vec::new(),
-    ));
-    Ok(Some(first_effects))
-}
-
-pub fn parse_tap_lock_sequence(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Ok(first_effects) =
-        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
-    else {
-        return Ok(None);
-    };
-    let [
-        EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-            action: crate::cards::builders::SubjectVerbActionAst::TapAll { filter },
-            ..
-        }),
-    ] = first_effects.as_slice()
-    else {
-        return Ok(None);
-    };
-
-    let second_tokens = sentences[sentence_idx + 1].lowered();
-    if !sequence_grammar::parse_source_tapped_lock_shape(second_tokens) {
-        return Ok(None);
-    }
-
-    let Some((duration, clause_tokens)) =
-        effect_sentences::parse_restriction_duration(second_tokens)?
-    else {
-        return Ok(None);
-    };
-    if !sequence_grammar::parse_untap_clause_prefix_shape(&clause_tokens) {
-        return Ok(None);
-    }
-
-    Ok(Some(vec![
-        EffectAst::subject_verb_tap_all(filter.clone()),
-        EffectAst::subject_verb_cant(
-            crate::effect::Restriction::untap(filter.clone()),
-            duration,
-            Some(crate::ConditionExpr::SourceIsTapped),
-        ),
-    ]))
-}
-
-pub fn parse_search_delayed_upkeep_unless_pays_sequence(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Ok(first_effects) = effect_sentences::parse_effect_chain(sentences[sentence_idx].lowered())
-    else {
-        return Ok(None);
-    };
-    if first_effects.is_empty() {
-        return Ok(None);
-    }
-
-    let Some(shape) = sequence_grammar::parse_delayed_upkeep_payment_shape(
-        sentences[sentence_idx + 1].lowered(),
-        sentences[sentence_idx + 2].lowered(),
-    ) else {
-        return Ok(None);
-    };
-
-    let mut effects = first_effects;
-    effects.push(EffectAst::DelayedUntilNextUpkeep {
-        player: PlayerAst::You,
-        effects: vec![EffectAst::UnlessPays {
-            effects: vec![EffectAst::subject_verb_lose_game(PlayerAst::You)],
-            player: PlayerAst::You,
-            cost: crate::cost::TotalCost::mana(shape.mana),
-            before_delayed_step: false,
-        }],
-    });
-    Ok(Some(effects))
-}
-
-/// Preserve a standalone two-sentence Pact-style delayed payment after an
-/// earlier sequence rule has already consumed the instruction that precedes
-/// it (for example, a prevention effect and its life-gain follow-up).
-pub fn parse_delayed_upkeep_unless_pays_sequence(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(shape) = sequence_grammar::parse_delayed_upkeep_payment_shape(
-        sentences[sentence_idx].lowered(),
-        sentences[sentence_idx + 1].lowered(),
-    ) else {
-        return Ok(None);
-    };
-
-    Ok(Some(vec![EffectAst::DelayedUntilNextUpkeep {
-        player: PlayerAst::You,
-        effects: vec![EffectAst::UnlessPays {
-            effects: vec![EffectAst::subject_verb_lose_game(PlayerAst::You)],
-            player: PlayerAst::You,
-            cost: crate::cost::TotalCost::mana(shape.mana),
-            before_delayed_step: false,
-        }],
-    }]))
-}
+#[path = "trigger_programs.rs"]
+mod trigger_programs;
+pub use trigger_programs::parse_delayed_upkeep_unless_pays_sequence;
+#[path = "library_programs.rs"]
+mod library_programs;
+pub use library_programs::{
+    parse_next_damage_prevention_exile_top_sequence,
+    parse_search_delayed_upkeep_unless_pays_sequence,
+};
+#[path = "core_programs.rs"]
+mod core_programs;
+pub use core_programs::parse_tap_lock_sequence;
+#[path = "combat_programs.rs"]
+mod combat_programs;
+pub use combat_programs::{
+    parse_damage_prevention_reflect_to_any_target_sequence,
+    parse_next_damage_prevention_gain_life_sequence,
+};

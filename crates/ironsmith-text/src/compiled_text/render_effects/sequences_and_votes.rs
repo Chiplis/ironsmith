@@ -2377,9 +2377,7 @@ pub(super) fn describe_destroy_then_search_target_opponent_to_graveyard_then_shu
         return None;
     }
 
-    let destroy_text = describe_effect(destroy_effect)
-        .trim_end_matches('.')
-        .to_string();
+    let destroy_text = capitalize_first(describe_effect(destroy_effect).trim_end_matches('.'));
     if destroy_text.is_empty() {
         return None;
     }

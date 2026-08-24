@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::{Path, PathBuf};
 
 mod tooling_paths;
 
@@ -8,12 +9,23 @@ struct Budget {
     max_lines: usize,
 }
 
-const RUNTIME_BACKEND: &str = "crates/ironsmith-compiler/src/runtime_backend";
+const COMPILER_SOURCE: &str = "crates/ironsmith-compiler/src";
+
+fn canonical_budget_path(parser_root: &Path, legacy_path: &str) -> PathBuf {
+    let canonical = if let Some(tail) = legacy_path.strip_prefix("families/") {
+        format!("front_end/grammar/ability_rules/{tail}")
+    } else if let Some(tail) = legacy_path.strip_prefix("sentences/") {
+        format!("front_end/grammar/effect_clauses/{tail}")
+    } else {
+        legacy_path.to_string()
+    };
+    parser_root.join(canonical)
+}
 
 fn main() {
     let repo_root = tooling_paths::repo_root()
         .unwrap_or_else(|err| panic!("failed to locate repo root: {err}"));
-    let parser_root = repo_root.join(RUNTIME_BACKEND);
+    let parser_root = repo_root.join(COMPILER_SOURCE);
     let budgets = [
         Budget {
             path: "families/activation_and_restrictions/mod.rs",
@@ -136,7 +148,7 @@ fn main() {
             max_lines: 500,
         },
         Budget {
-            path: "sentences/effect_sentences/sequence_rules/generic_subject_verb_sequences/triples.rs",
+            path: "sentences/effect_sentences/sequence_rules/generic_subject_verb_sequences/ordered_control_flow_programs.rs",
             max_lines: 3700,
         },
         Budget {
@@ -1611,11 +1623,11 @@ fn main() {
             max_lines: 1600,
         },
         Budget {
-            path: "sentences/effect_sentences/sequence_rules/generic_subject_verb_sequences/pairs.rs",
+            path: "sentences/effect_sentences/sequence_rules/generic_subject_verb_sequences/reference_linked_programs.rs",
             max_lines: 2800,
         },
         Budget {
-            path: "sentences/effect_sentences/sequence_rules/generic_subject_verb_sequences/quads.rs",
+            path: "sentences/effect_sentences/sequence_rules/generic_subject_verb_sequences/branching_selection_programs.rs",
             max_lines: 950,
         },
         Budget {
@@ -1734,11 +1746,15 @@ fn main() {
 
     let mut failures = Vec::new();
     for budget in budgets {
-        let path = parser_root.join(budget.path);
+        let path = canonical_budget_path(&parser_root, budget.path);
         let source = fs::read_to_string(&path)
             .unwrap_or_else(|err| panic!("failed reading {}: {err}", path.display()));
         let line_count = source.lines().count();
-        let display_path = format!("{RUNTIME_BACKEND}/{}", budget.path);
+        let display_path = path
+            .strip_prefix(&repo_root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
         println!(
             "{}: {} lines (budget {})",
             display_path, line_count, budget.max_lines

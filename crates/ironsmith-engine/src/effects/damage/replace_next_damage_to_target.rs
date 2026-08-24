@@ -175,7 +175,7 @@ mod tests {
             Some(Zone::Battlefield)
         );
 
-        let (protected_damage, protected_prevented) = process_damage_with_event(
+        let (protected_damage, protected_replaced_or_prevented) = process_damage_with_event(
             &mut game,
             source,
             DamageTarget::Object(protected),
@@ -184,10 +184,19 @@ mod tests {
             EventCause::from_effect(source, alice),
         );
         assert_eq!(protected_damage, 0);
-        assert!(!protected_prevented, "replacement is not prevention");
-        assert_eq!(
-            game.object(protected).map(|object| object.zone),
-            Some(Zone::Graveyard)
+        assert!(
+            protected_replaced_or_prevented,
+            "the compatibility result flag records both replacement and prevention"
+        );
+        assert!(
+            game.player(bob)
+                .expect("Bob should exist")
+                .graveyard
+                .iter()
+                .any(|&id| {
+                    game.object(id)
+                        .is_some_and(|object| object.name == "Protected Creature")
+                })
         );
     }
 

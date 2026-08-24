@@ -239,6 +239,7 @@ fn bind_typed_where_x_references(effects: &mut [EffectAst], inherited: Option<Va
 fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     for effect in effects.iter_mut() {
         normalize_nested_effects(effect);
+        collapse_single_nested_coordination(effect);
         normalize_singular_source_exiled_move(effect);
     }
     // A full-card parse can normalize a named source reference only after the
@@ -256,6 +257,7 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     bind_quantified_choice_collections_to_destroy_followups(effects);
     bind_counted_set_followups(effects);
     bind_until_next_turn_permissions_to_prior_exiled_collection(effects);
+    bind_consult_remainder_to_revealed_collection(effects);
     if let Some(rewritten) = rewrite_repeat_process(effects) {
         *effects = rewritten;
     }
@@ -269,6 +271,106 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
         *effects = rewritten;
     }
     effects.retain(|effect| !is_noop_effect(effect));
+}
+
+/// Resolve “the rest of the revealed cards” against the two collections
+/// exported by the nearest typed library consult. The generic move grammar
+/// deliberately leaves `rest` unresolved; this canonical AST pass owns the
+/// cross-sentence set difference and never consults source text.
+fn bind_consult_remainder_to_revealed_collection(effects: &mut [EffectAst]) {
+    let mut latest_consult = None;
+    for effect in effects {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ConsultTopOfLibrary {
+                    all_tag,
+                    match_tag,
+                    player,
+                    ..
+                },
+            ..
+        }) = effect
+        {
+            latest_consult = Some((all_tag.clone(), match_tag.clone(), *player));
+            continue;
+        }
+
+        let Some((all_tag, match_tag, player)) = latest_consult.clone() else {
+            continue;
+        };
+        let EffectAst::SubjectVerb(subject_verb) = effect else {
+            continue;
+        };
+        let SubjectVerbActionAst::MoveToZone {
+            target: TargetAst::Tagged(tag, _),
+            zone,
+            library_order,
+            library_order_chooser,
+            ..
+        } = &subject_verb.action
+        else {
+            continue;
+        };
+        if tag.as_str() != crate::tag::CompilerReferenceTag::Rest.as_str() {
+            continue;
+        }
+        subject_verb.action = if *zone == crate::zone::Zone::Library {
+            let Some(order) = *library_order else {
+                continue;
+            };
+            SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                tag: all_tag,
+                keep_tagged: Some(match_tag),
+                order,
+                player: if matches!(
+                    library_order_chooser,
+                    crate::cards::builders::PlayerAst::Implicit
+                ) {
+                    player
+                } else {
+                    *library_order_chooser
+                },
+                surface: ironsmith_core::LibraryRemainderSurface::Rest,
+            }
+        } else {
+            SubjectVerbActionAst::PutTaggedRemainderInZone {
+                tag: all_tag,
+                keep_tagged: match_tag,
+                zone: *zone,
+                surface: ironsmith_core::LibraryRemainderSurface::Rest,
+            }
+        };
+    }
+}
+
+/// A document-level clause can preserve coordination around a sentence that
+/// was already recognized as one coordinated typed effect. The outer
+/// one-member wrapper carries no additional operator or scope; retaining it
+/// produces a nested runtime sequence and hides the actual executable
+/// members from consumers. Canonicalize that redundant wrapper before
+/// reference annotation and lowering.
+fn collapse_single_nested_coordination(effect: &mut EffectAst) {
+    loop {
+        let EffectAst::Coordinated { effects, .. } = effect else {
+            return;
+        };
+        let replacement = match effects.as_slice() {
+            [nested @ EffectAst::Coordinated { .. }] => Some(nested.clone()),
+            [
+                sentence @ EffectAst::SourceSentence {
+                    effects: sentence_effects,
+                    ..
+                },
+            ] if matches!(sentence_effects.as_slice(), [EffectAst::Coordinated { .. }]) => {
+                Some(sentence.clone())
+            }
+            _ => None,
+        };
+        let Some(replacement) = replacement else {
+            return;
+        };
+        *effect = replacement;
+    }
 }
 
 /// Bind a later temporary play permission to the exact collection produced by
@@ -341,6 +443,24 @@ fn bind_until_next_turn_permissions_to_prior_exiled_collection(effects: &mut [Ef
 }
 
 fn target_only_collection_tag_mut(effect: &mut EffectAst) -> Option<&mut crate::tag::TagKey> {
+    if matches!(
+        effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::TargetOnly { .. },
+            ..
+        })
+    ) {
+        let target_only = std::mem::replace(
+            effect,
+            EffectAst::Sequence {
+                effects: Vec::new(),
+            },
+        );
+        *effect = EffectAst::TagAffected {
+            effect: Box::new(target_only),
+            tag: crate::tag::TagKey::from(IT_TAG),
+        };
+    }
     match effect {
         EffectAst::ChooseObjects { tag, .. }
         | EffectAst::ChooseObjectsWithAggregateConstraint { tag, .. }
@@ -388,6 +508,7 @@ fn is_delegated_subset_chooser(player: crate::cards::builders::PlayerAst) -> boo
     matches!(
         player,
         crate::cards::builders::PlayerAst::Opponent
+            | crate::cards::builders::PlayerAst::TargetOpponent
             | crate::cards::builders::PlayerAst::Chosen
             | crate::cards::builders::PlayerAst::That
     )
@@ -412,14 +533,15 @@ fn delegated_subset_choice_mut(
             };
             delegated_subset_choice_mut(effect)
         }
-        EffectAst::Coordination(coordination) => {
-            let mut effects = coordination.effects_mut();
-            let effect = effects.next()?;
-            if effects.next().is_some() {
-                return None;
-            }
-            delegated_subset_choice_mut(effect)
-        }
+        EffectAst::Coordination(coordination) => coordination
+            .effects_mut()
+            .find_map(delegated_subset_choice_mut),
+        EffectAst::ControlFlow(control) => control.programs.iter_mut().rev().find_map(|program| {
+            program
+                .effects
+                .iter_mut()
+                .find_map(delegated_subset_choice_mut)
+        }),
         EffectAst::Conditional { if_false, .. } => {
             if_false.iter_mut().find_map(delegated_subset_choice_mut)
         }
@@ -442,6 +564,21 @@ fn effect_has_conditional_delegated_subset(effect: &EffectAst) -> bool {
         EffectAst::Coordination(coordination) => coordination
             .effects()
             .any(effect_has_conditional_delegated_subset),
+        EffectAst::ControlFlow(control) => {
+            let crate::model::control_flow::ControlFlowNodeAst::Condition {
+                alternative_program: Some(alternative),
+                ..
+            } = &control.node
+            else {
+                return false;
+            };
+            control.program(*alternative).is_some_and(|program| {
+                program
+                    .effects
+                    .iter()
+                    .any(effect_has_delegated_subset_choice)
+            })
+        }
         _ => false,
     }
 }
@@ -458,6 +595,12 @@ fn effect_has_delegated_subset_choice(effect: &EffectAst) -> bool {
         EffectAst::Coordination(coordination) => coordination
             .effects()
             .any(effect_has_delegated_subset_choice),
+        EffectAst::ControlFlow(control) => control.programs.iter().any(|program| {
+            program
+                .effects
+                .iter()
+                .any(effect_has_delegated_subset_choice)
+        }),
         EffectAst::Conditional {
             if_true, if_false, ..
         } => {
@@ -525,6 +668,12 @@ fn delegated_subset_collection_tag(effect: &EffectAst) -> Option<crate::tag::Tag
         EffectAst::Coordination(coordination) => coordination
             .effects()
             .find_map(delegated_subset_collection_tag),
+        EffectAst::ControlFlow(control) => control.programs.iter().find_map(|program| {
+            program
+                .effects
+                .iter()
+                .find_map(delegated_subset_collection_tag)
+        }),
         _ => None,
     }
 }
@@ -554,6 +703,12 @@ fn effect_targets_delegated_subset(effect: &EffectAst, subset_tag: &crate::tag::
         EffectAst::Coordination(coordination) => coordination
             .effects()
             .any(|effect| effect_targets_delegated_subset(effect, subset_tag)),
+        EffectAst::ControlFlow(control) => control.programs.iter().any(|program| {
+            program
+                .effects
+                .iter()
+                .any(|effect| effect_targets_delegated_subset(effect, subset_tag))
+        }),
         _ => false,
     }
 }
@@ -589,6 +744,11 @@ fn bind_source_exile_to_collection_difference(
         EffectAst::Coordination(coordination) => coordination.effects_mut().any(|effect| {
             bind_source_exile_to_collection_difference(effect, collection_tag, subset_tag)
         }),
+        EffectAst::ControlFlow(control) => control.programs.iter_mut().any(|program| {
+            program.effects.iter_mut().any(|effect| {
+                bind_source_exile_to_collection_difference(effect, collection_tag, subset_tag)
+            })
+        }),
         _ => false,
     }
 }
@@ -618,6 +778,12 @@ fn bind_source_counter_to_latest_exiled_object(effect: &mut EffectAst) -> bool {
         EffectAst::Coordination(coordination) => coordination
             .effects_mut()
             .any(bind_source_counter_to_latest_exiled_object),
+        EffectAst::ControlFlow(control) => control.programs.iter_mut().any(|program| {
+            program
+                .effects
+                .iter_mut()
+                .any(bind_source_counter_to_latest_exiled_object)
+        }),
         _ => false,
     }
 }
@@ -642,6 +808,13 @@ fn bind_other_target_to_collection_difference(
         }
         return coordination.effects_mut().any(|effect| {
             bind_other_target_to_collection_difference(effect, collection_tag, subset_tag)
+        });
+    }
+    if let EffectAst::ControlFlow(control) = effect {
+        return control.programs.iter_mut().any(|program| {
+            program.effects.iter_mut().any(|effect| {
+                bind_other_target_to_collection_difference(effect, collection_tag, subset_tag)
+            })
         });
     }
     if let EffectAst::Sequence { effects }
@@ -707,13 +880,12 @@ fn literal_rest_move_zone(effect: &EffectAst) -> Option<crate::zone::Zone> {
             literal_rest_move_zone(effect)
         }
         EffectAst::Coordination(coordination) => {
-            let mut effects = coordination.effects();
-            let effect = effects.next()?;
-            if effects.next().is_some() {
-                return None;
-            }
-            literal_rest_move_zone(effect)
+            coordination.effects().find_map(literal_rest_move_zone)
         }
+        EffectAst::ControlFlow(control) => control
+            .programs
+            .iter()
+            .find_map(|program| program.effects.iter().find_map(literal_rest_move_zone)),
         _ => None,
     }
 }
@@ -734,14 +906,28 @@ fn append_to_conditional_false_branch(effect: &mut EffectAst, remainder: EffectA
             append_to_conditional_false_branch(effect, remainder)
         }
         EffectAst::Coordination(coordination) => {
-            let mut effects = coordination.effects_mut();
-            let Some(effect) = effects.next() else {
+            let Some(effect) = coordination
+                .effects_mut()
+                .find(|effect| effect_has_conditional_delegated_subset(effect))
+            else {
                 return false;
             };
-            if effects.next().is_some() {
-                return false;
-            }
             append_to_conditional_false_branch(effect, remainder)
+        }
+        EffectAst::ControlFlow(control) => {
+            let crate::model::control_flow::ControlFlowNodeAst::Condition {
+                alternative_program: Some(alternative),
+                ..
+            } = &control.node
+            else {
+                return false;
+            };
+            let alternative = *alternative;
+            let Some(program) = control.program_mut(alternative) else {
+                return false;
+            };
+            program.effects.push(remainder);
+            true
         }
         _ => false,
     }
@@ -756,7 +942,12 @@ fn correlate_delegated_subsets_with_prior_target_collections(effects: &mut Vec<E
     let mut pool_index = None;
     for index in 0..effects.len() {
         if !effect_has_delegated_subset_choice(&effects[index]) {
-            if target_only_collection_tag_mut(&mut effects[index]).is_some() {
+            let delegated_subset_follows = effects[index + 1..]
+                .iter()
+                .any(effect_has_delegated_subset_choice);
+            if delegated_subset_follows
+                && target_only_collection_tag_mut(&mut effects[index]).is_some()
+            {
                 pool_index = Some(index);
             }
             continue;
@@ -905,7 +1096,10 @@ fn filter_is_misbound_chosen_subtype_result(
     family: crate::types::SubtypeFamily,
 ) -> bool {
     if family != crate::types::SubtypeFamily::Creature
-        || filter.card_types.as_slice() != [crate::types::CardType::Creature]
+        || !matches!(
+            filter.card_types.as_slice(),
+            [crate::types::CardType::Creature]
+        )
         || filter.tagged_constraints.len() != 1
     {
         return false;
@@ -991,7 +1185,10 @@ fn bind_all_players_subtype_choices_to_return_inclusion(effects: &mut [EffectAst
         };
         if filter.zone != Some(crate::zone::Zone::Graveyard)
             || filter.owner != Some(crate::target::PlayerFilter::IteratedPlayer)
-            || filter.card_types.as_slice() != [crate::types::CardType::Creature]
+            || !matches!(
+                filter.card_types.as_slice(),
+                [crate::types::CardType::Creature]
+            )
             || filter.prior_effect_action_surface()
                 != Some(ironsmith_core::PriorEffectAction::Chosen)
         {
@@ -1073,6 +1270,15 @@ fn choice_collection_producer_is_quantified(effect: &EffectAst) -> Option<bool> 
         | EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. } => sequence_kind(effects),
         EffectAst::TagAffected { effect, .. } => choice_collection_producer_is_quantified(effect),
+        EffectAst::Coordination(coordination) => {
+            let mut quantified = false;
+            let mut any = false;
+            for effect in coordination.effects() {
+                any = true;
+                quantified |= choice_collection_producer_is_quantified(effect)?;
+            }
+            any.then_some(quantified)
+        }
         _ => None,
     }
 }
@@ -1112,6 +1318,13 @@ fn choice_collection_producer_has_accumulating_tags(effect: &EffectAst) -> bool 
         EffectAst::TagAffected { effect, .. } => {
             choice_collection_producer_has_accumulating_tags(effect)
         }
+        EffectAst::Coordination(coordination) => {
+            let mut effects = coordination.effects();
+            effects
+                .next()
+                .is_some_and(choice_collection_producer_has_accumulating_tags)
+                && effects.all(choice_collection_producer_has_accumulating_tags)
+        }
         _ => false,
     }
 }
@@ -1147,6 +1360,11 @@ fn retag_choice_collection_producer(effect: &mut EffectAst, durable_tag: &crate:
         EffectAst::TagAffected { effect, .. } => {
             retag_choice_collection_producer(effect, durable_tag)
         }
+        EffectAst::Coordination(coordination) => {
+            for effect in coordination.effects_mut() {
+                retag_choice_collection_producer(effect, durable_tag);
+            }
+        }
         _ => unreachable!("choice producer shape changed between inspection and retagging"),
     }
 }
@@ -1161,7 +1379,8 @@ fn bind_explicit_chosen_object_followups(effects: &mut [EffectAst]) {
         if !super::compile_support::effect_references_tag(
             &effects[consumer_index],
             CHOSEN_OBJECTS_TAG,
-        ) {
+        ) && !iterated_object_effect_uses_prior_choice(&effects[consumer_index])
+        {
             continue;
         }
         if choice_collection_producer_has_accumulating_tags(&effects[consumer_index - 1]) {
@@ -1184,6 +1403,46 @@ fn bind_explicit_chosen_object_followups(effects: &mut [EffectAst]) {
             *tag = crate::tag::TagKey::from(CHOSEN_OBJECTS_TAG);
         }
     }
+}
+
+fn iterated_object_effect_uses_prior_choice(effect: &EffectAst) -> bool {
+    match effect {
+        EffectAst::ForEachObject { effects, .. } => effects.iter().any(|effect| match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::BecomeCopy { source, .. },
+                ..
+            }) => target_has_demonstrative_it_reference(source),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::DealDamage { target, .. },
+                ..
+            }) => target_has_demonstrative_it_reference(target),
+            _ => false,
+        }),
+        EffectAst::Sequence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::Coordinated { effects, .. }
+        | EffectAst::SourceSentence { effects, .. } => {
+            effects.iter().any(iterated_object_effect_uses_prior_choice)
+        }
+        EffectAst::Coordination(coordination) => coordination
+            .effects()
+            .any(iterated_object_effect_uses_prior_choice),
+        _ => false,
+    }
+}
+
+fn target_has_demonstrative_it_reference(target: &TargetAst) -> bool {
+    let TargetAst::Object(filter, _, _) = target else {
+        return false;
+    };
+    filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == IT_TAG
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+    }) && matches!(
+        filter.source_surface.as_ref(),
+        Some(crate::target::SourceReferenceSurface::ThisPermanentType(surface))
+            if surface.starts_with("that ")
+    )
 }
 
 fn normalized_choice_collection_object_kind(
@@ -1230,6 +1489,13 @@ fn choice_collection_producer_matches_object_kind(
         }
         EffectAst::TagAffected { effect, .. } => {
             choice_collection_producer_matches_object_kind(effect, expected)
+        }
+        EffectAst::Coordination(coordination) => {
+            let mut effects = coordination.effects();
+            effects.next().is_some_and(|effect| {
+                choice_collection_producer_matches_object_kind(effect, expected)
+            }) && effects
+                .all(|effect| choice_collection_producer_matches_object_kind(effect, expected))
         }
         _ => false,
     }
@@ -1555,7 +1821,7 @@ fn correlate_split_for_each_player_choice_complements(effects: &mut [EffectAst])
         }
 
         let durable_tag = if original_tag.as_str() == IT_TAG {
-            crate::tag::TagKey::from("chosen_for_each_player")
+            crate::tag::CompilerReferenceTag::ChosenForEachPlayer.key()
         } else {
             original_tag.clone()
         };
@@ -1732,6 +1998,16 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         EffectAst::TagAffected { effect, .. } => {
             normalize_nested_effects(effect);
             normalize_singular_source_exiled_move(effect);
+        }
+        EffectAst::Coordination(coordination) => {
+            for member in &mut coordination.members {
+                normalize_effects_vec(&mut member.effects);
+            }
+        }
+        EffectAst::ControlFlow(control) => {
+            for program in &mut control.programs {
+                normalize_effects_vec(&mut program.effects);
+            }
         }
         _ => {}
     }
@@ -2390,10 +2666,12 @@ mod tests {
                                 },
                             )],
                             player: PlayerAst::You,
-                            cost: crate::cost::TotalCost::mana(
-                                crate::mana::ManaCost::from_symbols(vec![
-                                    crate::mana::ManaSymbol::Generic(3),
-                                ]),
+                            cost: ironsmith_core::TotalCost::from_cost(
+                                crate::model::CompilerCost::Mana(
+                                    crate::mana::ManaCost::from_symbols(vec![
+                                        crate::mana::ManaSymbol::Generic(3),
+                                    ]),
+                                ),
                             ),
                             before_delayed_step: false,
                         },
@@ -2610,7 +2888,7 @@ mod tests {
             crate::cards::builders::SubjectVerbRoleAst::Actor,
             PlayerAst::You,
             SubjectVerbActionAst::MoveToZone {
-                target: TargetAst::Tagged(TagKey::from("rest"), None),
+                target: TargetAst::Tagged(crate::tag::CompilerReferenceTag::Rest.key(), None),
                 source_top_only: false,
                 zone: Zone::Hand,
                 to_top: false,

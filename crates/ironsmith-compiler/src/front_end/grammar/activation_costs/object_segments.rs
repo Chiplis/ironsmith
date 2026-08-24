@@ -299,7 +299,7 @@ fn strip_not_declared_as_attacking_or_blocking_suffix(
 
     for start in 0..tokens.len() {
         let suffix_words = primitives::TokenWordView::new(&tokens[start..]).word_refs();
-        if SUFFIXES.contains(&suffix_words.as_slice()) {
+        if crate::word_primitives::parse_any_sequence_complete(&suffix_words, SUFFIXES) {
             let filter_tokens = &tokens[..start];
             if !filter_tokens.is_empty() {
                 return (filter_tokens, true);
@@ -569,87 +569,16 @@ fn parse_sacrifice_count<'a>(input: &mut LexStream<'a>) -> WResult<ChoiceCount> 
     Ok(ChoiceCount::exactly(1))
 }
 
-fn parse_unattach_cost_shape_lexed<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<UnattachCostShape<'a>> {
-    primitives::kw("unattach").parse_next(input)?;
-
-    let mut chosen_input = input.clone();
-    if let Ok(chosen) = parse_unattach_chosen_tail_lexed(&mut chosen_input) {
-        *input = chosen_input;
-        return Ok(UnattachCostShape::Chosen(chosen));
-    }
-
-    let reference_tokens = rest.parse_next(input)?;
-    if reference_tokens.is_empty() {
-        return Err(primitives::backtrack_err(
-            "unattach cost",
-            "source reference or object filter",
-        ));
-    }
-    Ok(UnattachCostShape::Source { reference_tokens })
-}
-
-fn parse_unattach_chosen_tail_lexed<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<UnattachChosenShape<'a>> {
-    let count = parse_optional_object_count(input);
-    let filter_tokens = repeat_till(1.., any.void(), peek(primitives::kw("from").void()))
-        .map(|((), ())| ())
-        .take()
-        .parse_next(input)?;
-    primitives::kw("from").parse_next(input)?;
-    let source_tokens = rest.parse_next(input)?;
-    if filter_tokens.is_empty() || source_tokens.is_empty() {
-        return Err(primitives::backtrack_err(
-            "unattach cost",
-            "object filter and source reference",
-        ));
-    }
-    Ok(UnattachChosenShape {
-        count,
-        filter_tokens,
-        source_tokens,
-    })
-}
-
-fn parse_tap_chosen_shape_lexed<'a>(input: &mut LexStream<'a>) -> WResult<TapChosenShape<'a>> {
-    primitives::kw("tap").parse_next(input)?;
-    let count = parse_optional_object_count(input);
-    let other = alt((primitives::kw("other"), primitives::kw("another")))
-        .parse_next(input)
-        .is_ok();
-    primitives::kw("untapped").parse_next(input)?;
-    let filter_tokens = rest.parse_next(input)?;
-    if filter_tokens.is_empty() {
-        return Err(primitives::backtrack_err(
-            "tap chosen cost",
-            "object filter after untapped",
-        ));
-    }
-    Ok(TapChosenShape {
-        count,
-        other,
-        filter_tokens,
-    })
-}
-
-fn parse_optional_object_count(input: &mut LexStream<'_>) -> u32 {
-    let mut number = input.clone();
-    if let Ok(count) = leaf::parse_leaf_number_prefix_lexed.parse_next(&mut number) {
-        *input = number;
-        return count;
-    }
-    let mut article = input.clone();
-    if alt((primitives::kw("a"), primitives::kw("an")))
-        .parse_next(&mut article)
-        .is_ok()
-    {
-        *input = article;
-    }
-    1
-}
-
 #[cfg(test)]
 #[path = "object_segments/tests.rs"]
 mod tests;
+
+#[path = "object_segments/reference_programs.rs"]
+mod reference_programs;
+use reference_programs::parse_optional_object_count;
+#[path = "object_segments/choice_programs.rs"]
+mod choice_programs;
+use choice_programs::{parse_tap_chosen_shape_lexed, parse_unattach_chosen_tail_lexed};
+#[path = "object_segments/resource_programs.rs"]
+mod resource_programs;
+use resource_programs::parse_unattach_cost_shape_lexed;

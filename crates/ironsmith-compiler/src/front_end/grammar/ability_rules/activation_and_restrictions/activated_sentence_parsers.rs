@@ -17,7 +17,7 @@ struct ActivateOnlySentenceDetails {
 enum ActivatedSentenceModifier {
     ActivateOnly(ActivateOnlySentenceDetails),
     ManaUsageRestriction {
-        parsed: Option<crate::ability::ManaUsageRestriction>,
+        parsed: Option<crate::model::CompilerManaUsageRestriction>,
         fallback_text: String,
     },
     AdditionalRestriction(String),
@@ -31,7 +31,7 @@ pub(super) struct ActivatedSentenceScan<'a> {
     pub(super) mana_activation_condition: Option<crate::ConditionExpr>,
     pub(super) additional_activation_restrictions: Vec<String>,
     pub(super) has_exhaust_once_restriction: bool,
-    pub(super) mana_usage_restrictions: Vec<crate::ability::ManaUsageRestriction>,
+    pub(super) mana_usage_restrictions: Vec<crate::model::CompilerManaUsageRestriction>,
     pub(super) inline_effects_ast: Vec<EffectAst>,
 }
 
@@ -48,9 +48,10 @@ fn parse_activate_only_sentence_details_lexed(
         .and_then(|condition| strip_once_per_turn_condition_redundancy(condition, &timing));
     let normalized_restriction = normalize_activate_only_restriction(tokens, &timing);
     let once_per_turn_after_other_restrictions = timing == ActivationTiming::OncePerTurn
-        && tokens.windows(3).any(|window| {
+        && crate::slice_primitives::find_window_by(tokens, 3, |window| {
             window[0].is_word("and") && window[1].is_word("only") && window[2].is_word("once")
-        });
+        })
+        .is_some();
     Some(ActivateOnlySentenceDetails {
         timing,
         condition,
@@ -242,13 +243,13 @@ pub fn is_spend_mana_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> boo
 
 pub fn parse_mana_usage_restriction_sentence_lexed(
     tokens: &[OwnedLexToken],
-) -> Option<crate::ability::ManaUsageRestriction> {
+) -> Option<crate::model::CompilerManaUsageRestriction> {
     ability_grammar::parse_mana_usage_restriction_sentence_lexed(tokens)
 }
 
 pub fn parse_mana_spend_bonus_sentence_lexed(
     tokens: &[OwnedLexToken],
-) -> Option<crate::ability::ManaUsageRestriction> {
+) -> Option<crate::model::CompilerManaUsageRestriction> {
     ability_grammar::parse_mana_spend_bonus_sentence_lexed(tokens)
 }
 

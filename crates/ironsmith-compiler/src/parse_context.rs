@@ -146,6 +146,37 @@ impl ParseContext {
         }
     }
 
+    pub fn for_fragment(
+        card_name: impl Into<String>,
+        card_types: Vec<CardType>,
+        subtypes: Vec<Subtype>,
+        source_text: &str,
+    ) -> Self {
+        let card_name = card_name.into();
+        let source_line_count = source_text.lines().count().max(1);
+        let mut context = Self::new(
+            SourceIdentity {
+                unit: SourceUnitId(0),
+                card_name: card_name.clone(),
+                face_index: 0,
+                source_len: source_text.len(),
+                source_line_count,
+            },
+            CardFaceMetadata {
+                card_types,
+                subtypes,
+                ..Default::default()
+            },
+            ParseFeatures::default(),
+        );
+        context.replace_provenance(ProvenanceStore::capture(
+            SourceUnitId(0),
+            source_text,
+            &card_name,
+        ));
+        context
+    }
+
     pub fn source(&self) -> &SourceIdentity {
         &self.source
     }

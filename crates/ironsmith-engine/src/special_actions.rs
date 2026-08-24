@@ -4174,6 +4174,7 @@ mod tests {
     use super::*;
     use crate::ability::Ability;
     use crate::card::{CardBuilder, PowerToughness};
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::cards::definitions::blood_celebrant;
     use crate::decision::SelectFirstDecisionMaker;
     use crate::game_state::Phase;

@@ -311,15 +311,14 @@ fn ziffle_to_hex<T: CanonicalSerialize>(value: &T) -> Result<String, VerifierErr
     let mut bytes = Vec::new();
     value
         .serialize_compressed(&mut bytes)
-        .map_err(|e| VerifierError::new(&format!("failed to serialize ziffle artifact: {e}")))?;
+        .map_err(|e| VerifierError::new(format!("failed to serialize ziffle artifact: {e}")))?;
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 fn ziffle_from_hex<T: CanonicalDeserialize>(hex: &str, label: &str) -> Result<T, VerifierError> {
-    let bytes =
-        hex_to_vec(hex).map_err(|e| VerifierError::new(&format!("invalid {label}: {e}")))?;
+    let bytes = hex_to_vec(hex).map_err(|e| VerifierError::new(format!("invalid {label}: {e}")))?;
     T::deserialize_with_mode(bytes.as_slice(), Compress::Yes, Validate::Yes)
-        .map_err(|e| VerifierError::new(&format!("failed to decode {label}: {e}")))
+        .map_err(|e| VerifierError::new(format!("failed to decode {label}: {e}")))
 }
 
 fn hex_to_vec(hex: &str) -> Result<Vec<u8>, String> {
@@ -340,8 +339,7 @@ fn hex_to_vec(hex: &str) -> Result<Vec<u8>, String> {
 }
 
 fn rng_from_entropy_hex(hex: &str) -> Result<ArkStdRng, VerifierError> {
-    let bytes =
-        hex_to_vec(hex).map_err(|e| VerifierError::new(&format!("invalid entropy: {e}")))?;
+    let bytes = hex_to_vec(hex).map_err(|e| VerifierError::new(format!("invalid entropy: {e}")))?;
     if bytes.is_empty() {
         return Err(VerifierError::new("ziffle entropy cannot be empty"));
     }
@@ -360,7 +358,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 
 fn ziffle_deck_hash(deck_hex: &str) -> Result<String, VerifierError> {
     let bytes = hex_to_vec(deck_hex)
-        .map_err(|e| VerifierError::new(&format!("invalid ziffle deck hex: {e}")))?;
+        .map_err(|e| VerifierError::new(format!("invalid ziffle deck hex: {e}")))?;
     Ok(sha256_hex(&bytes))
 }
 
@@ -374,7 +372,7 @@ fn verified_public_keys(
         let proof: OwnershipProof =
             ziffle_from_hex(&key.ownership_proof_hex, "ziffle ownership proof")?;
         let verified = proof.verify(public_key, context).ok_or_else(|| {
-            VerifierError::new(&format!(
+            VerifierError::new(format!(
                 "ziffle ownership proof failed for player {}",
                 key.player
             ))
@@ -385,16 +383,12 @@ fn verified_public_keys(
     Ok(out)
 }
 
+type VerifiedPublicKeys = Vec<(u8, PublicKey, Verified<PublicKey>)>;
+
 fn aggregate_public_key(
     keys: &[ZifflePublicKeyInput],
     context: &[u8],
-) -> Result<
-    (
-        Vec<(u8, PublicKey, Verified<PublicKey>)>,
-        AggregatePublicKey,
-    ),
-    VerifierError,
-> {
+) -> Result<(VerifiedPublicKeys, AggregatePublicKey), VerifierError> {
     let verified = verified_public_keys(keys, context)?;
     if verified.is_empty() {
         return Err(VerifierError::new(
@@ -432,7 +426,7 @@ fn verify_ziffle_steps<const N: usize>(
             .map(|(player, _, _)| *player)
             .ok_or_else(|| VerifierError::new("ziffle shuffle has more steps than player keys"))?;
         if step.shuffler != expected_shuffler {
-            return Err(VerifierError::new(&format!(
+            return Err(VerifierError::new(format!(
                 "ziffle shuffle step {index} was attributed to player {}, expected player {expected_shuffler}",
                 step.shuffler
             )));
@@ -449,9 +443,7 @@ fn verify_ziffle_steps<const N: usize>(
                 .ok_or_else(|| VerifierError::new("ziffle previous deck is missing"))?;
             shuffle
                 .verify_shuffle(aggregate, previous, deck, proof, context)
-                .ok_or_else(|| {
-                    VerifierError::new(&format!("ziffle shuffle proof {index} failed"))
-                })?
+                .ok_or_else(|| VerifierError::new(format!("ziffle shuffle proof {index} failed")))?
         });
     }
     Ok(verified_deck)
@@ -471,7 +463,7 @@ fn build_ziffle_shuffle_step<const N: usize>(
             VerifierError::new("ziffle shuffle already has one step for every player")
         })?;
     if input.shuffler != expected_shuffler {
-        return Err(VerifierError::new(&format!(
+        return Err(VerifierError::new(format!(
             "ziffle shuffle step must be built by player {expected_shuffler}"
         )));
     }
@@ -593,7 +585,7 @@ fn reveal_ziffle_card<const N: usize>(
             .iter()
             .find(|token| token.player == player)
             .ok_or_else(|| {
-                VerifierError::new(&format!("missing ziffle reveal token for player {player}"))
+                VerifierError::new(format!("missing ziffle reveal token for player {player}"))
             })?;
         let token: RevealToken = ziffle_from_hex(&token_input.token_hex, "ziffle reveal token")?;
         let proof: RevealTokenProof =
@@ -602,7 +594,7 @@ fn reveal_ziffle_card<const N: usize>(
             proof
                 .verify(verified_public_key, token, card, context)
                 .ok_or_else(|| {
-                    VerifierError::new(&format!(
+                    VerifierError::new(format!(
                         "ziffle reveal-token proof failed for player {player}"
                     ))
                 })?,
@@ -640,7 +632,7 @@ fn reveal_ziffle_cards<const N: usize>(
                 .iter()
                 .find(|token| token.player == *player && token.card_position == card_position)
                 .ok_or_else(|| {
-                    VerifierError::new(&format!(
+                    VerifierError::new(format!(
                         "missing ziffle reveal token for player {player} at position {card_position}"
                     ))
                 })?;
@@ -652,7 +644,7 @@ fn reveal_ziffle_cards<const N: usize>(
                 proof
                     .verify(*verified_public_key, token, card, context)
                     .ok_or_else(|| {
-                        VerifierError::new(&format!(
+                        VerifierError::new(format!(
                             "ziffle reveal-token proof failed for player {player}"
                         ))
                     })?,

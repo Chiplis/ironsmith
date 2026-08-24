@@ -6,7 +6,7 @@ fn creature_token(
     subtype: Subtype,
     color: crate::color::ColorSet,
 ) -> crate::cards::CardDefinition {
-    crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), name)
+    crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), name)
         .token()
         .card_types(vec![CardType::Creature])
         .subtypes(vec![subtype])
@@ -136,13 +136,14 @@ fn chroma_aggregate_values_keep_plural_cost_scopes() {
         spec: Box::new(ChooseSpec::All(ObjectFilter::permanent().you_control())),
         color: crate::color::Color::White,
     };
-    let goat = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Goat")
-        .token()
-        .card_types(vec![CardType::Creature])
-        .subtypes(vec![Subtype::Goat])
-        .color_indicator(crate::color::ColorSet::WHITE)
-        .power_toughness(crate::card::PowerToughness::fixed(0, 1))
-        .build();
+    let goat =
+        crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Goat")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Goat])
+            .color_indicator(crate::color::ColorSet::WHITE)
+            .power_toughness(crate::card::PowerToughness::fixed(0, 1))
+            .build();
     assert_eq!(
         render_create(goat, white_symbols),
         "Create a 0/1 white Goat creature token for each white mana symbol in the mana costs of permanents you control"

@@ -116,6 +116,7 @@ pub enum WhereXValueShape {
     TwoPlusSacrificedManaValue,
     SourceExiledManaValue,
     PriorEffectMetric(PriorEffectMetricQuery),
+    DiedThisWayMetric(PriorEffectMetricQuery),
     RemovedCountersThisWay,
     CountersOn {
         reference: WhereXReferenceShape,
@@ -140,6 +141,10 @@ pub struct WhereXLayout<'a> {
 }
 
 impl<'a> WhereXSentenceShape<'a> {
+    pub fn has_trailing_segment(&self) -> bool {
+        self.where_segments.len() > 1
+    }
+
     pub fn layout(&self, full_where_is_count_value: bool) -> WhereXLayout<'a> {
         if full_where_is_count_value {
             return WhereXLayout {
@@ -528,13 +533,13 @@ pub fn parse_tagged_exact_type_with_quoted_ability_tokens(
     for token in descriptor {
         let word = token.as_word()?;
         if let Ok(card_type) = leaf::parse_leaf_card_type_complete(word) {
-            if !card_types.contains(&card_type) {
+            if !crate::slice_primitives::contains(&card_types, &card_type) {
                 card_types.push(card_type);
             }
             continue;
         }
         let subtype = leaf::parse_leaf_subtype_flexible_complete(word).ok()?;
-        if !subtypes.contains(&subtype) {
+        if !crate::slice_primitives::contains(&subtypes, &subtype) {
             subtypes.push(subtype);
         }
     }
@@ -1128,235 +1133,16 @@ fn removed_counters_this_way(tokens: &[OwnedLexToken]) -> bool {
         && marker_anywhere(tokens, primitives::phrase(&["this", "way"]))
 }
 
-fn parse_prior_effect_where_lexed<'a>(input: &mut LexStream<'a>) -> WResult<WhereXValueShape> {
-    where_x_prefix.parse_next(input)?;
-    opt(primitives::kw("the")).parse_next(input)?;
-    let parsed_metric = alt((
-        primitives::kw("power").value(Some(EffectMetric::FirstPower)),
-        primitives::kw("toughness").value(Some(EffectMetric::FirstToughness)),
-        primitives::phrase(&["mana", "value"]).value(Some(EffectMetric::FirstManaValue)),
-        primitives::phrase(&["number", "of"]).value(None),
-    ))
-    .parse_next(input)?;
-    if parsed_metric.is_some() {
-        primitives::kw("of").parse_next(input)?;
-    }
-    let reference_tokens =
-        repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::sentence_end()))
-            .map(|((), _)| ())
-            .take()
-            .parse_next(input)?;
-    primitives::sentence_end().parse_next(input)?;
-
-    if parsed_metric == Some(EffectMetric::FirstManaValue)
-        && exact_exiled_card_reference(reference_tokens)
-    {
-        return Ok(WhereXValueShape::SourceExiledManaValue);
-    }
-    let source = prior_effect_source(reference_tokens)
-        .ok_or_else(|| primitives::backtrack_err("prior effect reference", "remembered objects"))?;
-    let metric = parsed_metric.unwrap_or(EffectMetric::Count);
-    // Counter removal can be an activation cost rather than a preceding effect.
-    // In that established shape, X is supplied by the cost payment itself; do
-    // not turn it into a pending prior-effect query that has no producer to
-    // bind to during reference resolution.
-    if parsed_metric.is_none() && removed_counters_this_way(reference_tokens) {
-        return Ok(WhereXValueShape::RemovedCountersThisWay);
-    }
-    let reference_words = parser_token_word_refs(reference_tokens);
-    if let Some(this_way_start) = reference_words
-        .windows(2)
-        .position(|window| window == ["this", "way"])
-    {
-        let subject = &reference_words[..this_way_start];
-        if let Some((action, action_start)) =
-            crate::grammar::shared_util::value_helper_shapes::parse_prior_effect_action(subject)
-        {
-            let filter_words = &subject[..action_start];
-            let query_source = if matches!(action, ironsmith_core::PriorEffectAction::Chosen) {
-                EffectMetricSource::ChosenObjects
-            } else if filter_words
-                .iter()
-                .any(|word| matches!(*word, "counter" | "counters" | "damage"))
-            {
-                EffectMetricSource::Outcome
-            } else {
-                source
-            };
-            let mut query = PriorEffectMetricQuery::new(query_source, metric).with_action(action);
-            if !filter_words.is_empty()
-                && !filter_words
-                    .iter()
-                    .any(|word| matches!(*word, "counter" | "counters" | "damage"))
-            {
-                let mut filter =
-                    crate::object_filters::parse_object_filter_words(filter_words, false).map_err(
-                        |_| {
-                            primitives::backtrack_err(
-                                "prior effect filter",
-                                "object filter over remembered objects",
-                            )
-                        },
-                    )?;
-                if filter_words
-                    .iter()
-                    .any(|word| matches!(*word, "card" | "cards"))
-                {
-                    filter.set_explicit_card_noun(true);
-                }
-                query = query.with_filter(filter);
-            }
-            return Ok(WhereXValueShape::PriorEffectMetric(query));
-        }
-    }
-    Ok(WhereXValueShape::PriorEffectMetric(
-        PriorEffectMetricQuery::new(source, metric),
-    ))
-}
-
-fn parse_counter_reference_where_lexed<'a>(input: &mut LexStream<'a>) -> WResult<WhereXValueShape> {
-    where_x_prefix.parse_next(input)?;
-    opt(primitives::kw("the")).parse_next(input)?;
-    primitives::phrase(&["number", "of"]).parse_next(input)?;
-    opt(alt((
-        primitives::kw("a"),
-        primitives::kw("an"),
-        primitives::kw("the"),
-        primitives::kw("one"),
-    )))
-    .parse_next(input)?;
-    let descriptor = repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), peek(counter_noun))
-        .map(|((), _)| ())
-        .take()
-        .parse_next(input)?;
-    counter_noun.parse_next(input)?;
-    primitives::kw("on").parse_next(input)?;
-    let reference_tokens =
-        repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::sentence_end()))
-            .map(|((), _)| ())
-            .take()
-            .parse_next(input)?;
-    primitives::sentence_end().parse_next(input)?;
-
-    let counter_type = if descriptor.is_empty() {
-        None
-    } else {
-        filters::parse_counter_type_from_tokens(descriptor)
-    };
-    if !descriptor.is_empty() && counter_type.is_none() {
-        return Err(primitives::backtrack_err(
-            "counter type",
-            "known single-word counter type",
-        ));
-    }
-
-    let reference_words = parser_token_word_refs(reference_tokens);
-    let reference = if leaf::parse_leaf_source_anaphor_words(&reference_words).is_some() {
-        WhereXReferenceShape::Source
-    } else {
-        primitives::parse_all(
-            reference_tokens,
-            (
-                alt((primitives::kw("that"), primitives::kw("those"))),
-                opt(alt((
-                    primitives::kw("card"),
-                    primitives::kw("cards"),
-                    primitives::kw("creature"),
-                    primitives::kw("creatures"),
-                    primitives::kw("object"),
-                    primitives::kw("objects"),
-                    primitives::kw("permanent"),
-                    primitives::kw("permanents"),
-                ))),
-                eof,
-            )
-                .void(),
-            "tagged counter reference",
-        )
-        .map_err(|_| {
-            primitives::backtrack_err("counter reference", "source or tagged object reference")
-        })?;
-        WhereXReferenceShape::TaggedIt
-    };
-    Ok(WhereXValueShape::CountersOn {
-        reference,
-        counter_type,
-    })
-}
-
-pub fn parse_where_x_value_shape_tokens(
-    where_tokens: &[OwnedLexToken],
-    stripped_references_target: bool,
-) -> Option<WhereXValueShape> {
-    if let Ok(shape) = primitives::parse_all(
-        where_tokens,
-        parse_commander_choice_where_lexed,
-        "where X commander mana value choice",
-    ) {
-        return Some(shape);
-    }
-    if let Ok(shape) = primitives::parse_all(
-        where_tokens,
-        parse_tap_cost_power_where_lexed,
-        "where X tap cost power",
-    ) {
-        return Some(shape);
-    }
-    if let Ok(shape) = primitives::parse_all(
-        where_tokens,
-        parse_chosen_objects_power_difference_where_lexed,
-        "where X chosen-object power difference",
-    ) {
-        return Some(shape);
-    }
-    if let Ok(shape) = primitives::parse_all(
-        where_tokens,
-        parse_prior_effect_where_lexed,
-        "where X prior effect metric",
-    ) {
-        return Some(shape);
-    }
-    if let Ok((metric, surface)) = primitives::parse_all(
-        where_tokens,
-        parse_reference_metric_where_lexed,
-        "where X reference metric",
-    ) {
-        let reference = match surface {
-            ReferenceSurface::Its => {
-                if stripped_references_target {
-                    WhereXReferenceShape::Target
-                } else {
-                    WhereXReferenceShape::Source
-                }
-            }
-            ReferenceSurface::ThisCreature => WhereXReferenceShape::Source,
-            ReferenceSurface::ThatSpell => WhereXReferenceShape::TaggedIt,
-            ReferenceSurface::ThatCreature => {
-                if stripped_references_target {
-                    WhereXReferenceShape::Target
-                } else {
-                    WhereXReferenceShape::TaggedIt
-                }
-            }
-        };
-        return Some(WhereXValueShape::ReferenceMetric { reference, metric });
-    }
-    for parser in [
-        parse_commander_cast_count_where_lexed
-            as for<'a> fn(&mut LexStream<'a>) -> WResult<WhereXValueShape>,
-        parse_card_types_in_your_graveyard_where_lexed,
-        parse_sacrifice_cost_where_lexed,
-        parse_colors_among_where_lexed,
-        parse_two_plus_sacrificed_where_lexed,
-        parse_counter_reference_where_lexed,
-    ] {
-        if let Ok(shape) = primitives::parse_all(where_tokens, parser, "typed where X value") {
-            return Some(shape);
-        }
-    }
-    None
-}
-
 #[cfg(test)]
 #[path = "sentence_predicate_shapes/tests.rs"]
 mod tests;
+
+#[path = "sentence_predicate_shapes/object_action_programs.rs"]
+mod object_action_programs;
+pub use object_action_programs::parse_where_x_value_shape_tokens;
+#[path = "sentence_predicate_shapes/counter_programs.rs"]
+mod counter_programs;
+use counter_programs::parse_counter_reference_where_lexed;
+#[path = "sentence_predicate_shapes/core_programs.rs"]
+mod core_programs;
+use core_programs::parse_prior_effect_where_lexed;

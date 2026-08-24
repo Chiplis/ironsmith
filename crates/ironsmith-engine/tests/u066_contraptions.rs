@@ -1,4 +1,3 @@
-use ironsmith::cards::builders::CardDefinitionBuilder;
 use ironsmith::decision::DecisionMaker;
 use ironsmith::events::EventContext;
 use ironsmith::events::{KeywordActionEvent, KeywordActionKind};
@@ -10,6 +9,7 @@ use ironsmith::{
     ExecutionError, GameState, PlayerFilter, PlayerId, Subtype, TriggerEvent, Zone, check_triggers,
     execute_effect,
 };
+use ironsmith_registry::cards::builders::CardDefinitionBuilder;
 
 struct TestDecisionMaker;
 impl DecisionMaker for TestDecisionMaker {}
@@ -40,7 +40,7 @@ fn u066_assemble_is_a_typed_action_that_renders_without_claiming_external_rules(
     assert_eq!(emit.action, KeywordActionKind::AssembleContraption);
     assert_eq!(emit.amount, 1);
     assert_eq!(
-        ironsmith::compiled_text::compiled_text_lines(&definition).join("\n"),
+        ironsmith_text::compiled_text_lines(&definition).join("\n"),
         "Assemble a Contraption."
     );
 

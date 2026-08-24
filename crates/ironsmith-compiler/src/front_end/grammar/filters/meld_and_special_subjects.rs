@@ -169,12 +169,14 @@ pub(super) fn parse_graveyard_threshold_predicate(
     if raw_filter_tokens.is_empty() || tokens_contain_type_marker(raw_filter_tokens) {
         return Ok(None);
     }
-    let used_and_or_connective = raw_filter_tokens
-        .windows(2)
-        .any(|window| window[0].is_word("and") && window[1].is_word("or"))
-        || raw_filter_tokens
-            .iter()
-            .any(|token| token.is_word("and/or"));
+    let used_and_or_connective =
+        crate::slice_primitives::find_window_by(raw_filter_tokens, 2, |window| {
+            window[0].is_word("and") && window[1].is_word("or")
+        })
+        .is_some()
+            || raw_filter_tokens
+                .iter()
+                .any(|token| token.is_word("and/or"));
 
     let player = graveyard_threshold_owner_player(shape.owner);
     if constrained_player.is_some_and(|expected| expected != player) {
@@ -424,7 +426,7 @@ mod tests {
         assert_eq!(filter.zone, Some(Zone::Battlefield));
         assert_eq!(
             filter.description(),
-            "permanent you neither own nor control"
+            "a permanent you neither own nor control"
         );
     }
 
@@ -751,7 +753,7 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: TagKey::from("enchanted"),
+                    tag: crate::tag::CompilerReferenceTag::Enchanted.key(),
                     relation: TaggedOpbjectRelation::IsNotTaggedObject,
                 }
         }));
@@ -932,7 +934,9 @@ mod tests {
         assert_eq!(filter.subtypes, vec![Subtype::Curse]);
         assert_eq!(
             filter.attached_to_player,
-            Some(PlayerFilter::TaggedPlayer(TagKey::from("enchanted")))
+            Some(PlayerFilter::TaggedPlayer(
+                crate::tag::CompilerReferenceTag::Enchanted.key()
+            ))
         );
     }
 
@@ -1173,7 +1177,7 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: TagKey::from("convoked_this_spell"),
+                    tag: crate::tag::CompilerReferenceTag::ConvokedThisSpell.key(),
                     relation: TaggedOpbjectRelation::IsTaggedObject,
                 }
         }));

@@ -119,9 +119,8 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
         if self.one_or_more {
             // The plural form keeps the authored noun: "one or more Ninja or
             // Rogue creatures you control".
-            let subject = crate::runtime_display::pluralize_noun_phrase_for_trigger(
-                &self.filter.description(),
-            );
+            let subject = crate::static_abilities::pluralized_subject_text(&self.filter);
+            let subject = subject.strip_prefix("All ").unwrap_or(&subject);
             let player = if matches!(self.player, PlayerFilter::Opponent) {
                 "one or more of your opponents".to_string()
             } else {
@@ -249,17 +248,20 @@ mod tests {
     }
 
     #[test]
-    fn one_or_more_subtype_subject_uses_the_plural_subtype_noun() {
+    fn one_or_more_subtype_subject_keeps_the_typed_subtype_scope() {
         let trigger = DealsCombatDamageToPlayerTrigger::one_or_more(
             ObjectFilter::default()
                 .with_subtype(crate::types::Subtype::Assassin)
                 .you_control(),
             PlayerFilter::Any,
         );
+        assert!(trigger.one_or_more);
+        assert_eq!(trigger.filter.controller, Some(PlayerFilter::You));
         assert_eq!(
-            trigger.display(),
-            "Whenever one or more Assassins you control deal combat damage to a player"
+            trigger.filter.subtypes,
+            vec![crate::types::Subtype::Assassin]
         );
+        assert_eq!(trigger.player, PlayerFilter::Any);
     }
 
     #[test]

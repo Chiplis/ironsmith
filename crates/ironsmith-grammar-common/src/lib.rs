@@ -1,4 +1,4 @@
-#![expect(clippy::type_complexity)]
+#![allow(clippy::type_complexity)]
 #![allow(dead_code, unused_imports)]
 
 //! Shared lexical grammar primitives and typed leaf recognizers.
@@ -6,6 +6,9 @@
 pub use ironsmith_compiler_semantic::model;
 pub use ironsmith_compiler_semantic::*;
 pub use ironsmith_compiler_syntax::lexer;
+
+#[path = "../../ironsmith-compiler/src/slice_primitives.rs"]
+pub mod slice_primitives;
 
 pub mod util {
     use std::cell::Cell;

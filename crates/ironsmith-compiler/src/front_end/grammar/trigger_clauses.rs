@@ -624,9 +624,9 @@ pub fn parse_named_ability_tail(tokens: &[OwnedLexToken]) -> Option<NamedAbility
     let marker_start = usize::from(matches!(words.first().copied(), Some("a" | "an")));
     let marker_words = words.get(marker_start..ability)?;
     if marker_words.is_empty()
-        || matches!(
+        || crate::word_primitives::parse_any_sequence_complete(
             marker_words,
-            ["activated"] | ["loyalty"] | ["mana"] | ["triggered"]
+            &[&["activated"], &["loyalty"], &["mana"], &["triggered"]],
         )
     {
         return None;

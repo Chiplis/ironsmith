@@ -80,49 +80,7 @@ use crate::zone::Zone;
 
 fn has_any_number_of_times_suffix(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(trim_lexed_commas(tokens)).word_refs();
-    words.ends_with(&["any", "number", "of", "times"])
-}
-
-fn parse_player_chooses_source_excluded_permanent_then_exiles(
-    tokens: &[OwnedLexToken],
-) -> Option<Vec<EffectAst>> {
-    let words = TokenWordView::new(trim_lexed_commas(tokens)).word_refs();
-    if words.as_slice()
-        != [
-            "an",
-            "opponent",
-            "chooses",
-            "a",
-            "permanent",
-            "you",
-            "control",
-            "other",
-            "than",
-            "this",
-            "creature",
-            "and",
-            "exiles",
-            "it",
-        ]
-    {
-        return None;
-    }
-    let tag = crate::util::helper_tag_for_tokens(tokens, "chosen");
-    let mut filter = ObjectFilter::permanent().you_control();
-    filter.other = true;
-    filter.source_surface = Some(SourceReferenceSurface::ThisPermanentType(
-        "this creature".to_string(),
-    ));
-    Some(vec![
-        EffectAst::ChooseObjects {
-            filter,
-            count: ChoiceCount::exactly(1),
-            count_value: None,
-            player: PlayerAst::Opponent,
-            tag: tag.clone(),
-        },
-        EffectAst::subject_verb_exile(TargetAst::Tagged(tag, None), false),
-    ])
+    crate::word_primitives::parse_sequence_suffix(&words, &["any", "number", "of", "times"])
 }
 
 fn is_repeatable_optional_payment(effects: &[EffectAst]) -> bool {
@@ -400,12 +358,7 @@ pub fn parse_reveal_source_exiled_permanents_sentence_lexed(
 pub fn parse_effect_chain_lexed(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError> {
     // Chain parsing recursively re-enters the sentence dispatcher for
     // nested clauses and quoted/conditional payloads.  The public chain
-    // entrypoint is also used directly by compiler tests and lower-level
-    // callers, so it needs the same stack growth protection as the sentence
-    // entrypoint.
-    crate::stack::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
-        parse_effect_chain_lexed_inner(tokens)
-    })
+    parse_effect_chain_lexed_inner(tokens)
 }
 
 fn parse_independent_explicit_may_coordination(
@@ -442,29 +395,55 @@ fn parse_independent_explicit_may_coordination(
 fn parse_effect_chain_lexed_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    if let Some(venture_start) = tokens.windows(5).position(|window| {
-        window[0].is_word("and")
-            && window[1].is_word("venture")
-            && window[2].is_word("into")
-            && window[3].is_word("the")
-            && window[4].is_word("dungeon")
-    }) && tokens[venture_start + 5..]
-        .iter()
-        .all(|token| token.as_word().is_none())
+    let venture_view = TokenWordView::new(tokens);
+    if let Some(venture_word) =
+        venture_view.parse_phrase_start(&["and", "venture", "into", "the", "dungeon"])
+        && let Some(venture_start) = venture_view.map_word_to_token_start(venture_word)
+        && let Some(venture_end) = venture_view.token_index_after_words(venture_word + 5)
+        && tokens[venture_end..]
+            .iter()
+            .all(|token| token.as_word().is_none())
     {
         let mut effects = parse_effect_chain_lexed(&tokens[..venture_start])?;
         effects.push(EffectAst::subject_verb_venture_into_dungeon(
             PlayerAst::You,
             false,
         ));
-        return Ok(vec![EffectAst::Coordinated {
+        let coordination = crate::grammar::effects::coordination::coordination_from_effects(
+            crate::model::CoordinationKindAst::Conjunction,
+            crate::model::CoordinationOperatorAst::And,
+            crate::model::EffectOrderingAst::Unordered,
             effects,
-            leading_duration: false,
-            result_conjunction: false,
-        }]);
+        )
+        .expect("venture conjunction contains at least two effects");
+        return Ok(vec![EffectAst::Coordination(coordination)]);
     }
-    if let Some(effect) = parse_each_prior_affected_object_controller_mana_value_life(tokens) {
+    if let Some(effect) = parse_each_prior_affected_object_controller_mana_value_life(tokens)? {
         return Ok(vec![effect]);
+    }
+    if let Some((leading_tokens, where_value)) = parse_terminal_where_x_binding(tokens) {
+        let mut effects = parse_effect_chain_lexed(leading_tokens)?;
+        replace_unbound_x_in_effects_anywhere(
+            &mut effects,
+            &where_value,
+            &token_word_refs(tokens).join(" "),
+        )?;
+        ensure_explicit_target_player_subject_declarations(&mut effects, leading_tokens);
+        dedupe_shared_target_player_draw_lose_x(&mut effects, tokens);
+        return Ok(effects);
+    }
+    if let Some(effect) = super::clause_primitives::parse_until_duration_triggered_clause(tokens)? {
+        // `Until ..., whenever ...` is one delayed-trigger clause. Keep that
+        // typed outer scope intact before general conjunction/duration chain
+        // recognition can expose words in the trigger event as direct effect
+        // heads (for example, `deals combat damage` or `becomes tapped`).
+        return Ok(vec![effect]);
+    }
+    if super::verb_handlers::damage_clause_has_terminal_unpreventable_rider(tokens) {
+        // The final prevention rider belongs to the damage action. Preserve
+        // object-or-player recipient unions before generic coordination can
+        // split their `or` arm into a standalone restriction clause.
+        return Ok(vec![parse_effect_clause_lexed(tokens)?]);
     }
     // A paid-label condition owns the complete consequence, including every
     // authored conjunction inside it.  This must run before the ordinary
@@ -509,6 +488,13 @@ fn parse_effect_chain_lexed_inner(
     if let Some(effects) = parse_independent_explicit_may_coordination(tokens)? {
         return Ok(effects);
     }
+    if let Some(effects) = super::fanout_family::parse_compound_damage_fanout_sentence(tokens)? {
+        // Conditional consequence parsing enters through the chain boundary.
+        // Preserve a repeated damage head as one typed fanout before the
+        // generic conjunction splitter leaves the second amount without its
+        // shared source/verb.
+        return Ok(effects);
+    }
     if let Some(effects) =
         super::fanout_family::parse_remove_counters_then_shared_damage_fanout(tokens)?
     {
@@ -518,11 +504,143 @@ fn parse_effect_chain_lexed_inner(
             result_conjunction: false,
         }]);
     }
+    if let Some(effect) = parse_leading_action_then_shared_damage_fanout(tokens)? {
+        return Ok(vec![effect]);
+    }
     let effects = parse_effect_chain_uncoordinated_lexed(tokens)?;
     if effects.len() > 1 && has_authored_comma_then_surface_lexed(tokens) {
         return Ok(vec![EffectAst::CommaThen { effects }]);
     }
     Ok(preserve_coordinated_effect_chain_surface(tokens, effects))
+}
+
+fn ensure_explicit_target_player_subject_declarations(
+    effects: &mut Vec<EffectAst>,
+    tokens: &[OwnedLexToken],
+) {
+    let words = token_word_refs(tokens);
+    let authored_targets = words
+        .iter()
+        .zip(words.iter().skip(1))
+        .filter(|(left, right)| **left == "target" && **right == "player")
+        .count();
+    if authored_targets == 0 {
+        return;
+    }
+
+    let mut target_subjects = 0usize;
+    let mut declarations = 0usize;
+    let mut inspect = |nested: &[EffectAst]| {
+        for effect in nested {
+            let EffectAst::SubjectVerb(subject_verb) = effect else {
+                continue;
+            };
+            if subject_verb.subject.player == PlayerAst::Target {
+                target_subjects += 1;
+            }
+            if matches!(subject_verb.action, SubjectVerbActionAst::TargetOnly { .. }) {
+                declarations += 1;
+            }
+        }
+    };
+    inspect(effects);
+    for effect in effects.iter() {
+        for_each_nested_effects(effect, true, &mut inspect);
+    }
+    drop(inspect);
+    if target_subjects < authored_targets || declarations >= authored_targets {
+        return;
+    }
+
+    for _ in declarations..authored_targets {
+        effects.insert(
+            0,
+            EffectAst::subject_verb_explicit_target_only(TargetAst::Player(
+                PlayerFilter::Any,
+                span_from_tokens(tokens),
+            )),
+        );
+    }
+}
+
+fn parse_leading_action_then_shared_damage_fanout(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    if tokens
+        .first()
+        .is_some_and(|token| token.is_word("if") || token.is_word("unless"))
+    {
+        return Ok(None);
+    }
+    for (and_index, token) in tokens.iter().enumerate() {
+        if !token.is_word("and") {
+            continue;
+        }
+        let leading = trim_lexed_commas(&tokens[..and_index]);
+        let trailing = trim_lexed_commas(&tokens[and_index + 1..]);
+        if leading.is_empty() || !trailing.first().is_some_and(|token| token.is_word("it")) {
+            continue;
+        }
+        let Some(mut damage) =
+            super::fanout_family::parse_compound_damage_fanout_sentence(trailing)?
+        else {
+            continue;
+        };
+        let mut effects = parse_effect_chain_lexed(leading)?;
+        let [
+            EffectAst::Coordinated {
+                effects: damage_effects,
+                ..
+            },
+        ] = damage.as_mut_slice()
+        else {
+            continue;
+        };
+        effects.append(damage_effects);
+        return Ok(Some(EffectAst::Coordinated {
+            effects,
+            leading_duration: false,
+            result_conjunction: false,
+        }));
+    }
+    Ok(None)
+}
+
+fn parse_terminal_where_x_binding(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], Value)> {
+    let shape =
+        super::super::grammar::effects::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(
+            tokens,
+        )?;
+    let view = TokenWordView::new(tokens);
+    let where_word = view.parse_phrase_start(&["where", "x", "is"])?;
+    let where_index = view.map_word_to_token_start(where_word)?;
+    if has_explicit_comma_then_boundary_lexed(&tokens[where_index..]) {
+        return None;
+    }
+    let leading_tokens = trim_lexed_commas(&tokens[..where_index]);
+    if leading_tokens.is_empty() {
+        return None;
+    }
+    let binding_tokens = crate::util::trim_edge_punctuation_tokens(shape.binding_tokens);
+    let value = crate::keyword_static::parse_where_x_is_aggregate_filter_value(binding_tokens)
+        .or_else(|| {
+            crate::grammar::shared_util::value_semantics::parse_turn_history_value_binding(
+                binding_tokens,
+            )
+        })
+        .or_else(|| crate::keyword_static::parse_where_x_is_number_of_filter_value(binding_tokens))
+        .or_else(|| super::dispatch_entry::parse_exact_where_x_value_expression(binding_tokens))
+        .or_else(|| {
+            super::super::grammar::effects::sentence_predicate_shapes::
+                parse_where_x_value_shape_tokens(binding_tokens, false)
+                .and_then(super::dispatch_inner::lower_where_x_shape)
+                .map(|(_, value)| value)
+        })
+        .or_else(|| crate::keyword_static::parse_value_binding_clause(binding_tokens))?;
+    Some((
+        leading_tokens,
+        super::dispatch_entry::with_where_x_surface_hints(value, tokens),
+    ))
 }
 
 /// Parse the demonstrative per-object reward
@@ -533,28 +651,28 @@ fn parse_effect_chain_lexed_inner(
 /// controller and mana value independently.
 pub fn parse_each_prior_affected_object_controller_mana_value_life(
     tokens: &[OwnedLexToken],
-) -> Option<EffectAst> {
+) -> Result<Option<EffectAst>, CardTextError> {
     let words = token_word_refs(tokens);
     const PREFIX: &[&str] = &["the", "controller", "of", "each", "of", "those"];
     const SUFFIX: &[&str] = &["gains", "life", "equal", "to", "its", "mana", "value"];
-    if !words.starts_with(PREFIX)
-        || !words.ends_with(SUFFIX)
+    if !crate::word_primitives::parse_sequence_prefix(&words, PREFIX)
+        || !crate::word_primitives::parse_sequence_suffix(&words, SUFFIX)
         || words.len() <= PREFIX.len() + SUFFIX.len()
     {
-        return None;
+        return Ok(None);
     }
     let noun_words = &words[PREFIX.len()..words.len() - SUFFIX.len()];
     let noun_tokens = crate::lexer::synthetic_word_tokens(noun_words);
-    let noun_filter = parse_object_filter(&noun_tokens, false).ok()?;
+    let noun_filter = parse_object_filter(&noun_tokens, false)?;
     if noun_filter.card_types.is_empty()
         && noun_filter.subtypes.is_empty()
         && noun_filter.any_of.is_empty()
     {
-        return None;
+        return Ok(None);
     }
 
     let it = TagKey::from(IT_TAG);
-    Some(EffectAst::ForEachTagged {
+    Ok(Some(EffectAst::ForEachTagged {
         tag: it.clone(),
         effects: vec![EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
@@ -564,7 +682,7 @@ pub fn parse_each_prior_affected_object_controller_mana_value_life(
                     .with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo),
             },
         )],
-    })
+    }))
 }
 
 fn nested_comma_then_candidate_count(effect: &EffectAst) -> usize {
@@ -623,7 +741,14 @@ pub fn preserve_coordinated_effect_chain_surface(
     // comma-then boundary here as well so every parser entrypoint produces
     // the same typed sequence.
     if effects.len() > 1 && has_authored_comma_then_surface_lexed(tokens) {
-        return vec![EffectAst::CommaThen { effects }];
+        let coordination = crate::grammar::effects::coordination::coordination_from_effects(
+            crate::model::CoordinationKindAst::Carry,
+            crate::model::CoordinationOperatorAst::CommaThen,
+            crate::model::EffectOrderingAst::Ordered,
+            effects,
+        )
+        .expect("comma-then surface contains at least two effects");
+        return vec![EffectAst::Coordination(coordination)];
     }
     if has_authored_comma_then_surface_lexed(tokens) {
         preserve_unique_nested_comma_then_surface(&mut effects);
@@ -692,11 +817,22 @@ pub fn preserve_coordinated_effect_chain_surface(
         apply_carried_effect_duration(&mut effects[0], &duration);
     }
 
-    vec![EffectAst::Coordinated {
+    let coordination = crate::grammar::effects::coordination::coordination_from_effects(
+        crate::model::CoordinationKindAst::Carry,
+        crate::model::CoordinationOperatorAst::And,
+        crate::model::EffectOrderingAst::Unordered,
         effects,
-        leading_duration,
-        result_conjunction: false,
-    }]
+    )
+    .expect("coordinated effect-chain surface contains at least two effects");
+    let coordinated = EffectAst::Coordination(coordination);
+    if leading_duration {
+        return crate::grammar::effects::control_flow::wrap_leading_duration_program(
+            tokens,
+            vec![coordinated.clone()],
+        )
+        .map_or_else(|| vec![coordinated], |wrapped| vec![wrapped]);
+    }
+    vec![coordinated]
 }
 
 enum ContinuousEffectScope<'a> {
@@ -889,9 +1025,8 @@ fn parse_for_each_object_effect_chain_shape(
     let mut count_words = vec!["for", "each"];
     count_words.extend(crate::lexer::token_word_refs(shape.filter_tokens));
     let effect_words = crate::lexer::token_word_refs(shape.effect_tokens);
-    let has_that_player_payload = effect_words
-        .windows(2)
-        .any(|window| window == ["that", "player"]);
+    let has_that_player_payload =
+        crate::word_primitives::sequence_occurs(&effect_words, &["that", "player"]);
     if let Some((count, used)) = crate::util::parse_for_each_count_value_words(&count_words)
         && used == count_words.len()
         && !matches!(count.unhinted(), Value::Count(_))
@@ -966,10 +1101,41 @@ fn parse_effect_chain_uncoordinated_lexed(
         return Ok(effects);
     }
 
+    let named_token_appositive = tokens.first().is_some_and(|token| token.is_word("create"))
+        && crate::slice_primitives::select_position(tokens, OwnedLexToken::is_comma).is_some_and(
+            |comma| {
+                !tokens[..comma].iter().any(|token| token.is_word("token"))
+                    && tokens[comma + 1..]
+                        .iter()
+                        .any(|token| token.is_word("token"))
+            },
+        );
+    if named_token_appositive {
+        return Ok(vec![super::creation_handlers::parse_create(tokens, None)?]);
+    }
+
+    if clause_may_contain_cast_or_play_permission_lexed(tokens)
+        && let Some(effect) = parse_cast_or_play_tagged_clause(tokens)?
+    {
+        // A complete tagged permission may include its own coordinated
+        // any-color mana rider. Preserve that atomic grammar before the
+        // generic leading-`may` path removes the first modal subject and
+        // leaves the rider as a verb-less `spend mana ...` clause.
+        if immediate_tagged_permission_spec(tokens)?
+            && let Some(player) = parse_leading_player_may_lexed(tokens)
+        {
+            return Ok(vec![EffectAst::MayByPlayer {
+                player,
+                effects: vec![effect],
+            }]);
+        }
+        return Ok(vec![effect]);
+    }
+
     let comma_then_segments = split_segments_on_comma_then_lexed(vec![tokens]);
     if let [look_tokens, partition_tokens] = comma_then_segments.as_slice()
         && let Some(effects) =
-            super::sequence_rules::generic_subject_verb_sequences::pairs::parse_inline_look_at_top_then_singleton_hand_partition(
+            super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_inline_look_at_top_then_singleton_hand_partition(
                 look_tokens,
                 partition_tokens,
             )
@@ -982,7 +1148,7 @@ fn parse_effect_chain_uncoordinated_lexed(
             SentenceInput::from_lexed(followup_tokens),
         ];
         if let Some(effects) =
-            super::sequence_rules::generic_subject_verb_sequences::pairs::parse_mill_then_may_put_from_among_into_hand(
+            super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_mill_then_may_put_from_among_into_hand(
                 &inline_sentences,
                 0,
             )?
@@ -999,7 +1165,7 @@ fn parse_effect_chain_uncoordinated_lexed(
                 SentenceInput::from_lexed(shuffle_tokens),
             ];
             if let Some(effects) =
-                super::sequence_rules::generic_subject_verb_sequences::triples::parse_look_at_top_put_matching_onto_battlefield_then_shuffle(
+                super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_look_at_top_put_matching_onto_battlefield_then_shuffle(
                     &inline_sentences,
                     0,
                 )?
@@ -1042,8 +1208,8 @@ fn parse_effect_chain_uncoordinated_lexed(
         return Ok(vec![
             EffectAst::subject_verb_grant_abilities_all_dynamically_with_condition(
                 filter,
-                vec![crate::cards::builders::GrantedAbilityAst::StaticAbility(
-                    crate::static_abilities::StaticAbility::vigilance(),
+                vec![crate::cards::builders::GrantedAbilityAst::KeywordAction(
+                    Box::new(crate::payload::KeywordAction::Vigilance),
                 )],
                 Until::EndOfCombat,
                 crate::ConditionExpr::SourceIsUntapped,
@@ -1202,6 +1368,10 @@ fn parse_effect_chain_uncoordinated_lexed(
         if let Some(rest) = chain_grammar::strip_leading_have_tokens(&stripped) {
             stripped = rest.to_vec();
         }
+        if let Some(mut permission) = parse_additional_land_plays_clause_lexed(&stripped)? {
+            bind_implicit_player_context(&mut permission, player);
+            return Ok(vec![permission]);
+        }
         let mut effects = parse_effect_chain_lexed(&stripped)?;
         for effect in &mut effects {
             bind_implicit_player_context(effect, player);
@@ -1227,6 +1397,9 @@ fn parse_effect_chain_uncoordinated_lexed(
         && !starts_with_each_player
     {
         let stripped = remove_first_word(tokens);
+        if let Some(permission) = parse_additional_land_plays_clause_lexed(&stripped)? {
+            return Ok(vec![permission]);
+        }
         let effects = parse_effect_chain_lexed(&stripped)?;
         if leading_may_is_permission_clause_lexed(&stripped)? {
             if immediate_tagged_permission_spec(&stripped)? {
@@ -1275,7 +1448,8 @@ fn parse_effect_chain_uncoordinated_lexed(
     }
 
     if chain_grammar::parse_tap_or_untap_all_choice_tokens(tokens) {
-        return parse_effect_chain_with_subject_verb_primitives_lexed(tokens);
+        let action_tokens = remove_first_word(tokens);
+        return Ok(vec![super::zone_handlers::parse_tap(&action_tokens)?]);
     }
 
     if let Some(unless_action) = parse_or_action_clause_lexed(tokens)? {
@@ -1285,6 +1459,14 @@ fn parse_effect_chain_uncoordinated_lexed(
     if clause_may_contain_cast_or_play_permission_lexed(tokens)
         && let Some(effect) = parse_cast_or_play_tagged_clause(tokens)?
     {
+        if immediate_tagged_permission_spec(tokens)?
+            && let Some(player) = parse_leading_player_may_lexed(tokens)
+        {
+            return Ok(vec![EffectAst::MayByPlayer {
+                player,
+                effects: vec![effect],
+            }]);
+        }
         return Ok(vec![effect]);
     }
 
@@ -1302,8 +1484,9 @@ fn parse_effect_chain_uncoordinated_lexed(
         .filter(|segment| super::lex_chain_helpers::segment_has_effect_head_lexed(segment))
         .count();
     let has_expandable_shared_verb_operand = split_segments
-        .windows(2)
-        .any(|pair| expand_missing_verb_segment_lexed(pair[0], pair[1]).is_some());
+        .iter()
+        .zip(split_segments.iter().skip(1))
+        .any(|(left, right)| expand_missing_verb_segment_lexed(left, right).is_some());
     if split_leading_result_prefix_lexed(tokens).is_none()
         && split_segments.len() > 1
         && (executable_heads > 1 || has_expandable_shared_verb_operand)
@@ -1510,9 +1693,7 @@ mod tests;
 pub fn parse_effect_chain_with_subject_verb_primitives_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    crate::stack::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
-        parse_effect_chain_with_subject_verb_primitives_lexed_unstacked(tokens)
-    })
+    parse_effect_chain_with_subject_verb_primitives_lexed_unstacked(tokens)
 }
 
 fn parse_effect_chain_with_subject_verb_primitives_lexed_unstacked(
@@ -1526,6 +1707,13 @@ fn parse_effect_chain_with_subject_verb_primitives_lexed_unstacked(
         super::player_subject_sequences::parse_each_player_exile_sacrifice_return_exiled(tokens)?
     {
         return Ok(effects);
+    }
+    // A complete win-game clause has a player subject, but `you` is not a
+    // generic controller action head. Claim the typed terminal action before
+    // the subject/verb registry so it can also serve as the consequence of a
+    // value-comparison conditional.
+    if let Some(effect) = super::clause_pattern_helpers::parse_win_the_game_clause(tokens)? {
+        return Ok(vec![effect]);
     }
 
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -1646,7 +1834,9 @@ fn parse_effect_chain_with_subject_verb_primitives_lexed_unstacked(
 }
 
 pub fn leading_condition_is_paid_label(tokens: &[OwnedLexToken]) -> bool {
-    let Some(if_idx) = tokens.iter().position(|token| token.is_word("if")) else {
+    let Some(if_idx) =
+        crate::slice_primitives::select_position(tokens, |token| token.is_word("if"))
+    else {
         return false;
     };
     if crate::lexer::token_word_refs(&tokens[..if_idx])
@@ -1655,9 +1845,10 @@ pub fn leading_condition_is_paid_label(tokens: &[OwnedLexToken]) -> bool {
     {
         return false;
     }
-    let Some(comma_idx) = tokens[if_idx + 1..]
-        .iter()
-        .position(|token| token.kind == TokenKind::Comma)
+    let Some(comma_idx) =
+        crate::slice_primitives::select_position(&tokens[if_idx + 1..], |token| {
+            token.kind == TokenKind::Comma
+        })
         .map(|offset| if_idx + 1 + offset)
     else {
         return false;
@@ -1709,24 +1900,42 @@ pub fn append_missing_coordinated_return_discard_tail(
 pub fn parse_effect_chain_inner_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    crate::stack::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
-        parse_effect_chain_inner_lexed_unstacked(tokens, true)
-    })
+    parse_effect_chain_inner_lexed_unstacked(tokens, true)
 }
 
 fn parse_effect_chain_inner_lexed_unstacked(
     tokens: &[OwnedLexToken],
     recognize_control_flow: bool,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // A gain/get compound carries one shared target and can also carry a
+    // leading duration. Its typed parser must see the intact sentence before
+    // generic duration/control-flow wrapping splits the coordinated actions;
+    // otherwise a per-card modifier is reduced to a generic dynamic pump.
+    if recognize_control_flow
+        && super::super::grammar::effects::gain_ability_shapes::parse_gain_then_get_shape(tokens)
+            .is_some()
+        && let Some(effects) = super::gain_ability::parse_gain_ability_sentence(tokens)?
+    {
+        return Ok(effects);
+    }
     if recognize_control_flow {
         match super::super::grammar::effects::control_flow::recognize_control_flow(tokens) {
             crate::recognition::ParseOutcome::Match(matched) => {
                 let plan = matched.value;
-                let effects = if plan.parse_original_with_legacy {
+                let mut effects = if plan.parse_original_with_legacy {
                     parse_effect_chain_inner_lexed_unstacked(tokens, false)?
                 } else {
                     parse_effect_chain_inner_lexed(plan.body_tokens)?
                 };
+                let body_words = crate::lexer::token_word_refs(plan.body_tokens);
+                if crate::word_primitives::parse_any_sequence_prefix(
+                    &body_words,
+                    &[&["discard"], &["then", "discard"]],
+                ) {
+                    for effect in &mut effects {
+                        bind_implicit_player_context(effect, PlayerAst::You);
+                    }
+                }
                 if let Some(control) = plan.into_ast(effects.clone()) {
                     return Ok(vec![EffectAst::ControlFlow(Box::new(control))]);
                 }
@@ -1755,11 +1964,14 @@ fn parse_effect_chain_inner_lexed_unstacked(
             false,
         )];
         effects.extend(parse_effect_chain_inner_lexed(&tokens[5..])?);
-        return Ok(vec![EffectAst::Coordinated {
+        let coordination = crate::grammar::effects::coordination::coordination_from_effects(
+            crate::model::CoordinationKindAst::Conjunction,
+            crate::model::CoordinationOperatorAst::And,
+            crate::model::EffectOrderingAst::Unordered,
             effects,
-            leading_duration: false,
-            result_conjunction: false,
-        }]);
+        )
+        .expect("leading venture conjunction contains at least two effects");
+        return Ok(vec![EffectAst::Coordination(coordination)]);
     }
     // A keyword mechanic at the end of a coordinated chain must not consume
     // the earlier action as part of its target phrase (for example, "you
@@ -1839,15 +2051,9 @@ fn parse_effect_chain_inner_lexed_unstacked(
     }
     let source_exiled_bottom_random = {
         let words = TokenWordView::new(trim_lexed_commas(tokens)).word_refs();
-        words
-            .windows(3)
-            .any(|window| window == ["exiled", "with", "this"])
-            && words
-                .windows(3)
-                .any(|window| window == ["on", "the", "bottom"])
-            && words
-                .windows(3)
-                .any(|window| window == ["in", "a", "random"])
+        crate::word_primitives::sequence_occurs(&words, &["exiled", "with", "this"])
+            && crate::word_primitives::sequence_occurs(&words, &["on", "the", "bottom"])
+            && crate::word_primitives::sequence_occurs(&words, &["in", "a", "random"])
     };
     if source_exiled_bottom_random {
         let action_tokens = if tokens.first().is_some_and(|token| token.is_word("then")) {
@@ -1855,11 +2061,17 @@ fn parse_effect_chain_inner_lexed_unstacked(
         } else {
             tokens
         };
-        if super::verb_handlers::parse_exiled_with_source_move_surface(action_tokens).is_some() {
-            return Ok(vec![super::verb_handlers::parse_put_into_hand(
-                action_tokens,
-                None,
-            )?]);
+        if let Some(surface) =
+            super::verb_handlers::parse_exiled_with_source_move_surface(action_tokens)
+        {
+            let verb_index = crate::slice_primitives::select_position(action_tokens, |token| {
+                token.is_word("put") || token.is_word("puts")
+            })
+            .unwrap_or(0);
+            let effect =
+                super::verb_handlers::parse_put_into_hand(&action_tokens[verb_index..], None)?
+                    .with_exiled_with_source_surface(Some(surface));
+            return Ok(vec![effect]);
         }
     }
     if let Some(effects) = parse_player_chooses_source_excluded_permanent_then_exiles(tokens) {
@@ -1990,6 +2202,18 @@ fn parse_effect_chain_inner_lexed_unstacked(
             );
         let bind_source_exiled =
             choose_then_exile_reference && parse_exile_reference_action_shape(&segment).is_some();
+        // A trailing where-X clause binds values in the enclosing sentence;
+        // it is not another executable member of the coordination.  The
+        // sentence dispatcher applies the typed value after this chain has
+        // been lowered, so keep the action list free of a synthetic
+        // subject/verb parse for the binding text itself.
+        if is_standalone_where_x_binding_segment(&segment) {
+            continue;
+        }
+        if append_shared_damage_player_operand(&mut effects, &segment) {
+            previous_segment = Some(segment);
+            continue;
+        }
         if is_orphan_rounded_up_where_x_tail(&segment, previous_segment.as_deref(), effects.last())
         {
             continue;
@@ -2008,9 +2232,44 @@ fn parse_effect_chain_inner_lexed_unstacked(
         // "[action], and until your next turn, [restriction] and [grant]."
         // Once that exact prefix appears, it scopes the remaining arms of
         // this same conjunction just as a whole-chain leading duration does.
-        if let Some(shape) = chain_grammar::parse_carry_duration_prefix_tokens(&segment) {
-            carried_duration = Some(shape.duration.clone());
+        if let Some((duration, scoped_clause)) =
+            chain_grammar::parse_carry_duration_prefix_tokens(&segment)
+                .map(|shape| (shape.duration.clone(), shape.rest.to_vec()))
+        {
+            carried_duration = Some(duration.clone());
             carried_leading_duration = true;
+            // The prefix is grammar for the remaining coordination members,
+            // not part of this member's restriction subject. Dispatch the
+            // complete scoped clause recursively before a broad restriction
+            // leaf can consume only its first action and discard a following
+            // grant. The typed duration then applies to every returned arm.
+            let scoped_clause = trim_lexed_commas(&scoped_clause);
+            if !scoped_clause.is_empty() {
+                // Retain the duration prefix while asking the complete
+                // sentence dispatcher to lower this member.  Removing the
+                // prefix and re-entering the chain fallback makes a lone
+                // `life total can't change` arm look like an ability grant;
+                // the sentence grammar uses the temporal prefix to select
+                // the typed global restriction before that fallback.
+                let mut scoped_effects = super::parse_effect_sentence_lexed(&segment)?;
+                for effect in &mut scoped_effects {
+                    if let Some(context) = carried_context {
+                        maybe_apply_carried_player_with_clause_facts(
+                            effect,
+                            context,
+                            segment_carry_facts,
+                        );
+                    }
+                    apply_carried_effect_duration(effect, &duration);
+                }
+                effects.extend(
+                    scoped_effects
+                        .into_iter()
+                        .map(|effect| bind_source_exiled_effect(effect, bind_source_exiled)),
+                );
+                previous_segment = Some(segment);
+                continue;
+            }
         }
 
         // A comma/"then" chain is split into individual executable arms
@@ -2407,6 +2666,16 @@ fn parse_effect_chain_inner_lexed_unstacked(
             result_conjunction: false,
         }]);
     }
+    // The typed coordination path bypasses the legacy surface wrapper below,
+    // so carry an exact trailing duration across the first arm before the
+    // flat effects are moved into `CoordinationAst`. The shared-target check
+    // prevents a duration authored for the second action from leaking onto an
+    // independent object or player.
+    if coordination_plan.is_some()
+        && let Some(duration) = shared_trailing_continuous_effect_duration(&effects)
+    {
+        apply_carried_effect_duration(&mut effects[0], &duration);
+    }
     if let Some(plan) = coordination_plan
         && let Some(coordination) = plan.into_ast(effects.clone())
     {
@@ -2446,7 +2715,7 @@ fn bind_each_prior_affected_object_controller_life_gain(
     else {
         return;
     };
-    if filter.card_types != [crate::CardType::Artifact] {
+    if !matches!(filter.card_types.as_slice(), [crate::CardType::Artifact]) {
         return;
     }
 
@@ -2558,2485 +2827,12 @@ fn wrap_leading_coordinated_target_actions(
     effects.extend(remainder);
 }
 
-fn target_ast_is_source(target: &TargetAst) -> bool {
-    match target {
-        TargetAst::Source(_) => true,
-        TargetAst::Object(filter, _, _) => filter.source,
-        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
-            target_ast_is_source(inner)
-        }
-        _ => false,
-    }
-}
-
-fn source_damage_then_gain_ability_actions(effects: &[EffectAst]) -> bool {
-    let [
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::DealDamageEqualToPower { source, .. },
-            ..
-        }),
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::GrantAbilitiesToTarget { target, .. },
-            ..
-        }),
-    ] = effects
-    else {
-        return false;
-    };
-    target_ast_is_source(source) && target_ast_is_source(target)
-}
-
-fn bind_adjacent_discard_count_draws(effects: &mut [EffectAst]) {
-    fn is_discard(effect: &EffectAst) -> bool {
-        matches!(
-            effect,
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Discard { .. },
-                ..
-            })
-        )
-    }
-
-    fn bind_draw(effect: &mut EffectAst) {
-        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Draw { count },
-            ..
-        }) = effect
-        else {
-            return;
-        };
-        let hints = count.surface_hints().to_vec();
-        let bound = match count.unhinted() {
-            Value::EventValue(crate::effect::EventValueSpec::Amount) => {
-                Value::PendingEffectMetric {
-                    source: ironsmith_core::EffectMetricSource::Outcome,
-                    metric: ironsmith_core::EffectMetric::Count,
-                }
-            }
-            Value::EventValueOffset(crate::effect::EventValueSpec::Amount, offset) => {
-                Value::PendingEffectMetricOffset {
-                    source: ironsmith_core::EffectMetricSource::Outcome,
-                    metric: ironsmith_core::EffectMetric::Count,
-                    offset: *offset,
-                }
-            }
-            _ => return,
-        };
-        *count = bound.with_surface_hints(hints);
-    }
-
-    for index in 0..effects.len().saturating_sub(1) {
-        if is_discard(&effects[index]) {
-            bind_draw(&mut effects[index + 1]);
-        }
-    }
-}
-
-fn bind_adjacent_implicit_draw_discard_subjects(
-    effects: &mut [EffectAst],
-    recognized_shared_actor: bool,
-) {
-    if !recognized_shared_actor {
-        return;
-    }
-    for index in 0..effects.len().saturating_sub(1) {
-        let draw_is_implicit = matches!(
-            &effects[index],
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                subject,
-                action: SubjectVerbActionAst::Draw { .. },
-            }) if subject.player == PlayerAst::Implicit
-        );
-        if !draw_is_implicit {
-            continue;
-        }
-        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            subject,
-            action: SubjectVerbActionAst::Discard { .. },
-        }) = &mut effects[index + 1]
-            && subject.player == PlayerAst::Implicit
-        {
-            subject.player = PlayerAst::You;
-        }
-    }
-}
-
-fn bind_adjacent_life_stat_pronouns(effects: &mut [EffectAst], recognized_reference: bool) {
-    if !recognized_reference {
-        return;
-    }
-
-    fn tagged_stat_reference(value: &Value) -> Option<crate::target::ChooseSpec> {
-        let spec = match value.unhinted() {
-            Value::PowerOf(spec) | Value::ToughnessOf(spec) => spec.as_ref(),
-            _ => return None,
-        };
-        matches!(spec.unhinted(), crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG)
-            .then(|| spec.clone())
-    }
-
-    fn life_amount(effect: &EffectAst) -> Option<&Value> {
-        let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {
-            return None;
-        };
-        match action {
-            SubjectVerbActionAst::GainLife { amount }
-            | SubjectVerbActionAst::LoseLife { amount }
-            | SubjectVerbActionAst::PayLife { amount } => Some(amount),
-            _ => None,
-        }
-    }
-
-    fn retarget_source_stat(value: &mut Value, antecedent: &crate::target::ChooseSpec) {
-        match value {
-            Value::SurfaceHinted { value, .. } => retarget_source_stat(value, antecedent),
-            Value::SourcePower => {
-                *value = Value::PowerOf(Box::new(antecedent.clone()));
-            }
-            Value::SourceToughness => {
-                *value = Value::ToughnessOf(Box::new(antecedent.clone()));
-            }
-            Value::PowerOf(spec)
-                if matches!(spec.unhinted(), crate::target::ChooseSpec::Source) =>
-            {
-                *spec = Box::new(antecedent.clone());
-            }
-            Value::ToughnessOf(spec)
-                if matches!(spec.unhinted(), crate::target::ChooseSpec::Source) =>
-            {
-                *spec = Box::new(antecedent.clone());
-            }
-            _ => {}
-        }
-    }
-
-    for index in 0..effects.len().saturating_sub(1) {
-        let Some(antecedent) = life_amount(&effects[index]).and_then(tagged_stat_reference) else {
-            continue;
-        };
-        let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = &mut effects[index + 1]
-        else {
-            continue;
-        };
-        let amount = match action {
-            SubjectVerbActionAst::GainLife { amount }
-            | SubjectVerbActionAst::LoseLife { amount }
-            | SubjectVerbActionAst::PayLife { amount } => amount,
-            _ => continue,
-        };
-        retarget_source_stat(amount, &antecedent);
-    }
-}
-
-/// Repair an X-valued life follow-up that the isolated clause parser lowered
-/// to its historical source-stat fallback before the sentence-wide where-X
-/// binder ran. The authored X uses and typed tagged stat value together prove
-/// that both adjacent life actions share one value; copying the complete value
-/// preserves the same LKI object identity and presentation hints.
-pub fn bind_adjacent_shared_x_life_stat_values(
-    effects: &mut [EffectAst],
-    tokens: &[OwnedLexToken],
-) {
-    let words = token_word_refs(tokens);
-    let Some(where_x_index) = words
-        .windows(3)
-        .position(|window| window == ["where", "x", "is"])
-    else {
-        return;
-    };
-    if words[..where_x_index]
-        .iter()
-        .filter(|word| **word == "x")
-        .count()
-        < 2
-        || !matches!(
-            words.get(where_x_index + 3..where_x_index + 5),
-            Some(["its", "power"] | ["its", "toughness"])
-        )
-    {
-        return;
-    }
-
-    fn life_amount(effect: &EffectAst) -> Option<&Value> {
-        let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {
-            return None;
-        };
-        match action {
-            SubjectVerbActionAst::GainLife { amount }
-            | SubjectVerbActionAst::LoseLife { amount }
-            | SubjectVerbActionAst::PayLife { amount } => Some(amount),
-            _ => None,
-        }
-    }
-
-    fn life_amount_mut(effect: &mut EffectAst) -> Option<&mut Value> {
-        let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {
-            return None;
-        };
-        match action {
-            SubjectVerbActionAst::GainLife { amount }
-            | SubjectVerbActionAst::LoseLife { amount }
-            | SubjectVerbActionAst::PayLife { amount } => Some(amount),
-            _ => None,
-        }
-    }
-
-    fn tagged_where_x_stat(value: &Value) -> bool {
-        if !value.has_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs) {
-            return false;
-        }
-        let spec = match value.unhinted() {
-            Value::PowerOf(spec) | Value::ToughnessOf(spec) => spec,
-            _ => return false,
-        };
-        matches!(spec.unhinted(), ChooseSpec::Tagged(_))
-    }
-
-    fn bind_in_list(effects: &mut [EffectAst]) {
-        for index in 0..effects.len().saturating_sub(1) {
-            let (leading, trailing) = effects.split_at_mut(index + 1);
-            let Some(shared_value) = life_amount(&leading[index])
-                .filter(|value| tagged_where_x_stat(value))
-                .cloned()
-            else {
-                continue;
-            };
-            let Some(follow_up) = life_amount_mut(&mut trailing[0]) else {
-                continue;
-            };
-            if !follow_up.has_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs)
-                && matches!(
-                    follow_up.unhinted(),
-                    Value::SourcePower | Value::SourceToughness
-                )
-            {
-                *follow_up = shared_value;
-            }
-        }
-    }
-
-    bind_in_list(effects);
-    for effect in effects {
-        for_each_nested_effects_mut(effect, true, bind_in_list);
-    }
-}
-
-/// Keep one authored target declaration for a coordinated draw/life-loss X
-/// clause whose shared basis names a single target player's zone. Isolated
-/// value parsing can synthesize the same TargetOnly prelude once per X use;
-/// the lexical one-target proof distinguishes that from two independently
-/// authored target slots.
-pub fn dedupe_shared_target_player_draw_lose_x(
-    effects: &mut Vec<EffectAst>,
-    tokens: &[OwnedLexToken],
-) {
-    let words = token_word_refs(tokens);
-    if words.iter().filter(|word| **word == "target").count() != 1
-        || words.iter().filter(|word| **word == "x").count() < 3
-        || !words
-            .windows(3)
-            .any(|window| window == ["where", "x", "is"])
-    {
-        return;
-    }
-
-    let mut target: Option<&TargetAst> = None;
-    let mut target_indices = Vec::new();
-    let mut draw_value: Option<&Value> = None;
-    let mut lose_value: Option<&Value> = None;
-    for (index, effect) in effects.iter().enumerate() {
-        let EffectAst::SubjectVerb(subject_verb) = effect else {
-            return;
-        };
-        match &subject_verb.action {
-            SubjectVerbActionAst::TargetOnly {
-                target: candidate,
-                explicit_declaration: false,
-            } => {
-                if let Some(existing) = target {
-                    if existing != candidate {
-                        return;
-                    }
-                } else {
-                    target = Some(candidate);
-                }
-                target_indices.push(index);
-            }
-            SubjectVerbActionAst::Draw { count }
-                if matches!(
-                    subject_verb.subject.player,
-                    crate::cards::builders::PlayerAst::You
-                        | crate::cards::builders::PlayerAst::Implicit
-                ) =>
-            {
-                if draw_value.replace(count).is_some() {
-                    return;
-                }
-            }
-            SubjectVerbActionAst::LoseLife { amount }
-                if matches!(
-                    subject_verb.subject.player,
-                    crate::cards::builders::PlayerAst::You
-                        | crate::cards::builders::PlayerAst::Implicit
-                ) =>
-            {
-                if lose_value.replace(amount).is_some() {
-                    return;
-                }
-            }
-            _ => return,
-        }
-    }
-    if target_indices.len() < 2
-        || draw_value.is_none()
-        || draw_value.map(Value::unhinted) != lose_value.map(Value::unhinted)
-    {
-        return;
-    }
-    for index in target_indices.into_iter().skip(1).rev() {
-        effects.remove(index);
-    }
-}
-
-fn bind_source_exiled_effect(effect: EffectAst, bind: bool) -> EffectAst {
-    if bind {
-        EffectAst::TagAffected {
-            effect: Box::new(effect),
-            tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
-        }
-    } else {
-        effect
-    }
-}
-
-fn parse_tap_those_then_unattach_equipment_lexed(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if !chain_grammar::parse_tap_then_unattach_tokens(tokens) {
-        return Ok(None);
-    }
-
-    let mut tapped_filter = ObjectFilter::creature();
-    tapped_filter.zone = Some(Zone::Battlefield);
-    tapped_filter
-        .tagged_constraints
-        .push(crate::filter::TaggedObjectConstraint {
-            tag: TagKey::from(IT_TAG),
-            relation: TaggedOpbjectRelation::IsTaggedObject,
-        });
-
-    let mut equipment_filter = ObjectFilter::permanent();
-    equipment_filter.card_types.push(CardType::Artifact);
-    equipment_filter.subtypes.push(Subtype::Equipment);
-    equipment_filter.zone = Some(Zone::Battlefield);
-    equipment_filter
-        .tagged_constraints
-        .push(crate::filter::TaggedObjectConstraint {
-            tag: TagKey::from(IT_TAG),
-            relation: TaggedOpbjectRelation::AttachedToTaggedObject,
-        });
-
-    Ok(Some(vec![
-        EffectAst::subject_verb_tap(TargetAst::Object(tapped_filter, None, None)),
-        EffectAst::subject_verb_unattach(TargetAst::WithCount(
-            Box::new(TargetAst::Object(equipment_filter, None, None)),
-            ChoiceCount::any_number(),
-        )),
-    ]))
-}
-
-pub fn parse_may_have_any_number_tagged_phase_out_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<EffectAst> {
-    if token_word_refs(tokens).as_slice()
-        != [
-            "you", "may", "have", "any", "number", "of", "them", "phase", "out",
-        ]
-    {
-        return None;
-    }
-
-    let chosen_tag = TagKey::from("phase_out_selection");
-    let mut available = ObjectFilter::default().in_zone(Zone::Battlefield);
-    available
-        .tagged_constraints
-        .push(crate::filter::TaggedObjectConstraint {
-            tag: TagKey::from(IT_TAG),
-            relation: TaggedOpbjectRelation::IsTaggedObject,
-        });
-    let mut phase_out_filter = ObjectFilter::default().in_zone(Zone::Battlefield);
-    phase_out_filter
-        .tagged_constraints
-        .push(crate::filter::TaggedObjectConstraint {
-            tag: chosen_tag.clone(),
-            relation: TaggedOpbjectRelation::IsTaggedObject,
-        });
-
-    Some(EffectAst::MayByPlayer {
-        player: PlayerAst::You,
-        effects: vec![
-            EffectAst::ChooseObjects {
-                filter: available,
-                count: ChoiceCount::any_number(),
-                count_value: None,
-                player: PlayerAst::You,
-                tag: chosen_tag,
-            },
-            EffectAst::subject_verb_phase_out_all(phase_out_filter),
-        ],
-    })
-}
-
-pub fn parse_return_it_then_loses_all_abilities_lexed(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(return_tokens) = chain_grammar::split_return_then_loses_tokens(tokens) else {
-        return Ok(None);
-    };
-    let mut effects = parse_effect_chain_inner_lexed(return_tokens)?;
-    effects.push(EffectAst::subject_verb_remove_abilities_from_target(
-        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
-        Vec::new(),
-        Until::Forever,
-    ));
-    Ok(Some(effects))
-}
-
-fn is_orphan_rounded_up_where_x_tail(
-    segment: &[OwnedLexToken],
-    previous: Option<&[OwnedLexToken]>,
-    previous_effect: Option<&EffectAst>,
-) -> bool {
-    if !chain_grammar::is_rounded_up_segment_tokens(segment) {
-        return false;
-    }
-    if previous.is_none() && previous_effect.is_none() {
-        return true;
-    }
-    previous.is_some_and(chain_grammar::has_where_x_is_half_tokens)
-        || previous_effect.is_some_and(effect_uses_half_life_total_value)
-}
-
-fn effect_uses_half_life_total_value(effect: &EffectAst) -> bool {
-    match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::CreateTokenWithMods {
-                    dynamic_power_toughness,
-                    ..
-                },
-            ..
-        }) => dynamic_power_toughness
-            .as_ref()
-            .is_some_and(|(power, toughness)| {
-                value_is_half_life_total(power) || value_is_half_life_total(toughness)
-            }),
-        EffectAst::ForEachObject { effects, .. }
-        | EffectAst::ForEachOpponent { effects }
-        | EffectAst::ForEachPlayer { effects }
-        | EffectAst::ForEachTagged { effects, .. }
-        | EffectAst::ForEachTaggedWithControllerAtLastBlockedBy { effects, .. }
-        | EffectAst::ForEachPlayersFiltered { effects, .. }
-        | EffectAst::May { effects }
-        | EffectAst::MayByPlayer { effects, .. }
-        | EffectAst::AnyPlayerMay { effects, .. }
-        | EffectAst::IfResult { effects, .. }
-        | EffectAst::WhenResult { effects, .. }
-        | EffectAst::ManaRestricted { effects, .. } => {
-            effects.iter().any(effect_uses_half_life_total_value)
-        }
-        _ => false,
-    }
-}
-
-fn value_is_half_life_total(value: &Value) -> bool {
-    matches!(value.unhinted(), Value::HalfLifeTotalRoundedUp(_))
-}
-
-fn effect_duration_for_gain_followup_carry(effect: &EffectAst) -> Option<Until> {
-    let duration = match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::GainControl { duration, .. }
-                | SubjectVerbActionAst::Pump { duration, .. }
-                | SubjectVerbActionAst::PumpForEach { duration, .. }
-                | SubjectVerbActionAst::PumpAll { duration, .. }
-                | SubjectVerbActionAst::PumpByLastEffect { duration, .. }
-                | SubjectVerbActionAst::SetBasePowerToughness { duration, .. }
-                | SubjectVerbActionAst::SetBasePower { duration, .. }
-                | SubjectVerbActionAst::BecomeBasePtCreature { duration, .. }
-                | SubjectVerbActionAst::AddCardTypes { duration, .. }
-                | SubjectVerbActionAst::SetCardTypes { duration, .. }
-                | SubjectVerbActionAst::RemoveCardTypes { duration, .. }
-                | SubjectVerbActionAst::AddSubtypes { duration, .. }
-                | SubjectVerbActionAst::RemoveSubtypes { duration, .. }
-                | SubjectVerbActionAst::SetCreatureSubtypes { duration, .. }
-                | SubjectVerbActionAst::AddColors { duration, .. }
-                | SubjectVerbActionAst::AddAllSubtypesOfFamily { duration, .. }
-                | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { duration, .. }
-                | SubjectVerbActionAst::BecomeAuraEnchantment { duration, .. }
-                | SubjectVerbActionAst::SetColors { duration, .. }
-                | SubjectVerbActionAst::MakeColorless { duration, .. }
-                | SubjectVerbActionAst::BecomeBasicLandType { duration, .. }
-                | SubjectVerbActionAst::BecomeBasicLandTypeChoice { duration, .. }
-                | SubjectVerbActionAst::BecomeColorChoice { duration, .. }
-                | SubjectVerbActionAst::BecomeCreatureTypeChoice { duration, .. }
-                | SubjectVerbActionAst::BecomeCopy { duration, .. }
-                | SubjectVerbActionAst::GrantAbilitiesToTarget { duration, .. }
-                | SubjectVerbActionAst::GrantAbilitiesAll { duration, .. }
-                | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { duration, .. }
-                | SubjectVerbActionAst::RemoveAbilitiesFromTarget { duration, .. }
-                | SubjectVerbActionAst::RemoveAbilitiesAll { duration, .. }
-                | SubjectVerbActionAst::Cant { duration, .. },
-            ..
-        }) => duration,
-        _ => return None,
-    };
-
-    if matches!(duration, Until::Forever) {
-        None
-    } else {
-        Some(duration.clone())
-    }
-}
-
-fn apply_carried_effect_duration(effect: &mut EffectAst, duration: &Until) {
-    match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::GainControl {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::Pump {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::PumpForEach {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::PumpAll {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::PumpByLastEffect {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::SetBasePowerToughness {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::SetBasePower {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::BecomeBasePtCreature {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::AddCardTypes {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::SetCardTypes {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::RemoveCardTypes {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::AddSubtypes {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::RemoveSubtypes {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::SetCreatureSubtypes {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::AddColors {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::AddAllSubtypesOfFamily {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::RemoveAllSubtypesOfFamily {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::BecomeAuraEnchantment {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::SetColors {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::MakeColorless {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::BecomeBasicLandType {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::BecomeBasicLandTypeChoice {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::BecomeColorChoice {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::BecomeCreatureTypeChoice {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::BecomeCopy {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::GrantAbilitiesToTarget {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::GrantAbilitiesAll {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::RemoveAbilitiesFromTarget {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::RemoveAbilitiesAll {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::PreventAllDamageToTarget {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::PreventAllDamageToTargetFromSourceFilter {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::PreventAllDamageFromSourceFilter {
-                    duration: effect_duration,
-                    ..
-                }
-                | SubjectVerbActionAst::Cant {
-                    duration: effect_duration,
-                    ..
-                },
-            ..
-        }) if matches!(effect_duration, Until::Forever) => {
-            *effect_duration = duration.clone();
-        }
-        EffectAst::Conditional {
-            if_true, if_false, ..
-        } => {
-            for nested in if_true.iter_mut().chain(if_false.iter_mut()) {
-                apply_carried_effect_duration(nested, duration);
-            }
-        }
-        // A compound continuous clause ("has base power and toughness 4/4
-        // and gains flying") parses into a coordinated wrapper; the carried
-        // duration scopes every member. The Forever guard above keeps
-        // authored member durations intact.
-        EffectAst::Sequence { effects } | EffectAst::Coordinated { effects, .. } => {
-            for nested in effects.iter_mut() {
-                apply_carried_effect_duration(nested, duration);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn parse_carried_cant_effects(
-    tokens: &[OwnedLexToken],
-    duration: &Until,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(restrictions) =
-        super::super::activation_and_restrictions::parse_cant_restrictions(tokens)?
-    else {
-        return Ok(None);
-    };
-
-    let mut target = None;
-    let mut effects = Vec::with_capacity(restrictions.len() + 1);
-    for parsed in restrictions {
-        if let Some(parsed_target) = parsed.target {
-            if let Some(existing) = &target
-                && existing != &parsed_target
-            {
-                return Err(CardTextError::ParseError(format!(
-                    "unsupported mixed carried restriction targets (clause: '{}')",
-                    token_word_refs(tokens).join(" ")
-                )));
-            }
-            target = Some(parsed_target);
-        }
-        effects.push(EffectAst::subject_verb_cant(
-            parsed.restriction,
-            duration.clone(),
-            None,
-        ));
-    }
-    if let Some(target) = target {
-        effects.insert(0, EffectAst::subject_verb_target_only(target));
-    }
-    Ok(Some(effects))
-}
-
-pub fn collapse_for_each_player_it_tag_followups(effects: &mut Vec<EffectAst>) {
-    let mut idx = 0usize;
-    while idx + 1 < effects.len() {
-        let should_merge = match (&effects[idx], &effects[idx + 1]) {
-            (
-                EffectAst::ForEachPlayer { .. },
-                EffectAst::ForEachPlayer {
-                    effects: followup_effects,
-                },
-            ) => effects_reference_it_tag(followup_effects),
-            _ => false,
-        };
-
-        if !should_merge {
-            idx += 1;
-            continue;
-        }
-
-        let followup = effects.remove(idx + 1);
-        match (&mut effects[idx], followup) {
-            (
-                EffectAst::ForEachPlayer {
-                    effects: first_effects,
-                },
-                EffectAst::ForEachPlayer {
-                    effects: mut followup_effects,
-                },
-            ) => {
-                first_effects.append(&mut followup_effects);
-            }
-            _ => {
-                // Defensive: should be unreachable given should_merge checks.
-            }
-        }
-        // Re-check this index in case we have a longer chain of followups.
-    }
-}
-
-pub fn collapse_for_each_object_it_tag_followups(effects: &mut Vec<EffectAst>) {
-    let mut idx = 0usize;
-    while idx + 1 < effects.len() {
-        let should_merge = match (&effects[idx], &effects[idx + 1]) {
-            (EffectAst::ForEachObject { filter, .. }, followup) => {
-                effects_reference_it_tag(std::slice::from_ref(followup))
-                    || (for_each_revealed_this_way_filter(filter)
-                        && is_revealed_this_way_scalar_reward(followup))
-            }
-            _ => false,
-        };
-
-        if !should_merge {
-            idx += 1;
-            continue;
-        }
-
-        let followup = effects.remove(idx + 1);
-        match (&mut effects[idx], followup) {
-            (EffectAst::ForEachObject { effects: inner, .. }, followup) => {
-                inner.push(followup);
-            }
-            _ => {
-                // Defensive: should be unreachable given should_merge checks.
-            }
-        }
-        // Re-check this index in case we have a longer chain of followups.
-    }
-}
-
-fn for_each_revealed_this_way_filter(filter: &ObjectFilter) -> bool {
-    filter.tagged_constraints.iter().any(|constraint| {
-        constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-            && (constraint.tag.as_str() == IT_TAG
-                || sentence_helper_revealed_tag(constraint.tag.as_str()))
-    })
-}
-
-fn sentence_helper_revealed_tag(tag: &str) -> bool {
-    tag.starts_with(SENTENCE_HELPER_REVEALED_TAG_PREFIX)
-}
-
-fn is_revealed_this_way_scalar_reward(effect: &EffectAst) -> bool {
-    matches!(
-        effect,
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::GainLife { .. }
-                | SubjectVerbActionAst::AddMana { .. }
-                | SubjectVerbActionAst::AddManaScaled { .. }
-                | SubjectVerbActionAst::AddManaAnyColor { .. }
-                | SubjectVerbActionAst::AddManaAnyOneColor { .. }
-                | SubjectVerbActionAst::AddManaChosenColor { .. }
-                | SubjectVerbActionAst::AddManaCommanderIdentity { .. },
-            ..
-        })
-    )
-}
-
-pub fn parse_effect_clause_with_trailing_if_lexed(
-    tokens: &[OwnedLexToken],
-) -> Result<EffectAst, CardTextError> {
-    // Some clauses contain an authored trailing condition inside a larger
-    // typed procedure, such as a face-down return followed by turning the
-    // returned permanent face up. Let the clause parser preserve that
-    // multi-effect structure before this generic splitter treats everything
-    // after the first `if` as predicate text.
-    let may_have_embedded_followup = tokens.iter().any(|token| token.is_word("if"))
-        && tokens
-            .windows(2)
-            .any(|pair| pair[0].is_comma() && pair[1].is_word("then"))
-        && tokens.iter().any(|token| token.is_word("turn"))
-        && tokens
-            .windows(2)
-            .any(|pair| pair[0].is_word("face") && pair[1].is_word("up"));
-    if may_have_embedded_followup
-        && let Ok(effect) = parse_effect_clause_lexed(tokens)
-        && matches!(
-            &effect,
-            EffectAst::TrailingIf { effects, .. } if effects.len() > 1
-        )
-    {
-        return Ok(effect);
-    }
-
-    let Some(trailing_if) = split_trailing_if_clause_lexed(tokens) else {
-        return parse_effect_clause_lexed(tokens);
-    };
-    let mut predicate = trailing_if.predicate;
-    if !trailing_if_predicate_supported(&predicate) {
-        return parse_effect_clause_lexed(tokens);
-    }
-
-    // Equality is executable independently of its authored wording. Retain
-    // the exact-comparison surface on the numeric operand only when the
-    // predicate itself (after the trailing `if`) contains `exactly`; a count
-    // in the leading effect must not leak into the condition's presentation.
-    let exact_predicate_surface = tokens
-        .iter()
-        .rposition(|token| token.is_word("if"))
-        .is_some_and(|if_index| {
-            tokens[if_index + 1..]
-                .iter()
-                .any(|token| token.is_word("exactly"))
-        });
-    if exact_predicate_surface
-        && let PredicateAst::ValueComparison {
-            operator: ironsmith_core::ValueComparisonOperator::Equal,
-            right,
-            ..
-        } = &mut predicate
-    {
-        *right = right
-            .clone()
-            .with_surface_hint(ironsmith_core::ValueSurfaceHint::ExactComparison);
-    }
-
-    let base_effect = if let Ok(effect) = parse_effect_clause_lexed(trailing_if.leading_tokens) {
-        effect
-    } else if let Some(effect) = parse_simple_lose_ability_clause_lexed(trailing_if.leading_tokens)?
-    {
-        effect
-    } else if let Some(effect) = parse_simple_gain_ability_clause_lexed(trailing_if.leading_tokens)?
-    {
-        effect
-    } else {
-        return parse_effect_clause_lexed(tokens);
-    };
-
-    let predicate = bind_trailing_it_predicate_to_explicit_effect_target(predicate, &base_effect);
-    Ok(EffectAst::TrailingIf {
-        predicate,
-        effects: vec![base_effect],
-    })
-}
-
-fn explicit_tagged_target(target: &TargetAst) -> Option<TagKey> {
-    match target {
-        TargetAst::Tagged(tag, _) if tag.as_str() != IT_TAG => Some(tag.clone()),
-        TargetAst::Object(filter, _, _) => filter
-            .tagged_constraints
-            .iter()
-            .find(|constraint| {
-                constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-                    && constraint.tag.as_str() != IT_TAG
-            })
-            .map(|constraint| constraint.tag.clone()),
-        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
-            explicit_tagged_target(inner)
-        }
-        _ => None,
-    }
-}
-
-fn explicit_effect_object_tag(effect: &EffectAst) -> Option<TagKey> {
-    match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::MoveToZone { target, .. }
-                | SubjectVerbActionAst::MayMoveToZone { target, .. }
-                | SubjectVerbActionAst::ReturnToBattlefield { target, .. }
-                | SubjectVerbActionAst::PutOntoBattlefield { target, .. }
-                | SubjectVerbActionAst::TurnFaceUp { target }
-                | SubjectVerbActionAst::ReturnToHand { target, .. },
-            ..
-        }) => explicit_tagged_target(target),
-        EffectAst::May { effects } | EffectAst::MayByPlayer { effects, .. }
-            if effects.len() == 1 =>
-        {
-            explicit_effect_object_tag(&effects[0])
-        }
-        EffectAst::TagAffected { tag, .. } if tag.as_str() != IT_TAG => Some(tag.clone()),
-        _ => None,
-    }
-}
-
-fn explicit_target_choose_spec(target: &TargetAst) -> Option<ChooseSpec> {
-    match target {
-        TargetAst::Object(filter, Some(_), _) => Some(ChooseSpec::Target(Box::new(
-            ChooseSpec::Object(filter.clone()),
-        ))),
-        TargetAst::WithCount(inner, count) if count.is_single() => {
-            explicit_target_choose_spec(inner)
-        }
-        TargetAst::WithCountValue(inner, count, _) if count.is_single() => {
-            explicit_target_choose_spec(inner)
-        }
-        _ => None,
-    }
-}
-
-fn explicit_effect_object_target(effect: &EffectAst) -> Option<ChooseSpec> {
-    match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::MoveToZone { target, .. }
-                | SubjectVerbActionAst::MayMoveToZone { target, .. }
-                | SubjectVerbActionAst::ReturnToBattlefield { target, .. }
-                | SubjectVerbActionAst::PutOntoBattlefield { target, .. }
-                | SubjectVerbActionAst::TurnFaceUp { target }
-                | SubjectVerbActionAst::ReturnToHand { target, .. },
-            ..
-        }) => explicit_target_choose_spec(target),
-        EffectAst::May { effects } | EffectAst::MayByPlayer { effects, .. }
-            if effects.len() == 1 =>
-        {
-            explicit_effect_object_target(&effects[0])
-        }
-        _ => None,
-    }
-}
-
-fn bind_it_metric_to_explicit_target(value: Value, target: &ChooseSpec) -> Value {
-    match value {
-        Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
-            value: Box::new(bind_it_metric_to_explicit_target(*value, target)),
-            hints,
-        },
-        Value::PowerOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG) => {
-            Value::PowerOf(Box::new(
-                target
-                    .clone()
-                    .with_surface_hints(spec.surface_hints().iter().cloned()),
-            ))
-        }
-        Value::ToughnessOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG) => {
-            Value::ToughnessOf(Box::new(
-                target
-                    .clone()
-                    .with_surface_hints(spec.surface_hints().iter().cloned()),
-            ))
-        }
-        Value::ManaValueOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG) => {
-            Value::ManaValueOf(Box::new(
-                target
-                    .clone()
-                    .with_surface_hints(spec.surface_hints().iter().cloned()),
-            ))
-        }
-        other => other,
-    }
-}
-
-fn bind_trailing_it_predicate_to_explicit_effect_target(
-    predicate: PredicateAst,
-    effect: &EffectAst,
-) -> PredicateAst {
-    match predicate {
-        PredicateAst::ItMatches(filter) => {
-            let explicit_target = explicit_effect_object_target(effect);
-            let demonstrative_land = filter.demonstrative_antecedent_surface()
-                == Some(ironsmith_core::DemonstrativeAntecedentSurface::Land);
-            let explicit_target_is_land = explicit_target.as_ref().is_some_and(|target| {
-                matches!(
-                    target.base(),
-                    ChooseSpec::Object(target_filter)
-                        if target_filter.card_types.contains(&crate::CardType::Land)
-                            || target_filter
-                                .subtypes
-                                .iter()
-                                .any(crate::Subtype::is_basic_land_type)
-                )
-            });
-            // A typed demonstrative can deliberately skip over the target in
-            // this replacement clause. In Emeria Shepherd, “that land” still
-            // means the landfall event object, not the nonland graveyard card
-            // the optional return action targets.
-            if demonstrative_land && !explicit_target_is_land {
-                return PredicateAst::ItMatches(filter);
-            }
-            if let Some(tag) = explicit_effect_object_tag(effect) {
-                PredicateAst::TaggedMatches(tag, filter)
-            } else if explicit_target.is_some() {
-                PredicateAst::TargetMatches(filter)
-            } else {
-                PredicateAst::ItMatches(filter)
-            }
-        }
-        PredicateAst::ValueComparison {
-            left,
-            operator,
-            right,
-        } if explicit_effect_object_target(effect).is_some() => {
-            let target = explicit_effect_object_target(effect)
-                .expect("guarded explicit effect target should remain available");
-            PredicateAst::ValueComparison {
-                left: bind_it_metric_to_explicit_target(left, &target),
-                operator,
-                right: bind_it_metric_to_explicit_target(right, &target),
-            }
-        }
-        other => other,
-    }
-}
-
-fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {
-    matches!(
-        predicate,
-        PredicateAst::ManaSpentToCastThisSpellAtLeast { .. }
-            | PredicateAst::ColoredManaSpentToCastThisSpellAtLeast(_)
-            | PredicateAst::SameColorManaSpentToCastThisSpellAtLeast(_)
-            | PredicateAst::ItMatches(_)
-            | PredicateAst::ItMatchedLastKnown(_)
-            | PredicateAst::TargetMatches(_)
-            | PredicateAst::PlayerControlsMoreThanYou { .. }
-            | PredicateAst::PlayerControls { .. }
-            | PredicateAst::PlayerHasAtLeast { .. }
-            | PredicateAst::PlayerControlsExactly { .. }
-            | PredicateAst::PlayerHasAtLeastWithDifferentPowers { .. }
-            | PredicateAst::PlayerLifeAtMostHalfStartingLifeTotal { .. }
-            | PredicateAst::PlayerLifeLessThanHalfStartingLifeTotal { .. }
-            | PredicateAst::PlayerHasMoreLifeThanYou { .. }
-            | PredicateAst::PlayerHasNoOpponentWithMoreLifeThan { .. }
-            | PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { .. }
-            | PredicateAst::PlayerIsMonarch { .. }
-            | PredicateAst::PlayerHasInitiative { .. }
-            | PredicateAst::PlayerHasCitysBlessing { .. }
-            | PredicateAst::PlayerHasMoreCardsInHandThanYou { .. }
-            | PredicateAst::PlayerHasCardTypesInGraveyardOrMore { .. }
-            | PredicateAst::YouControlMoreCreaturesThanTargetSpellController
-            | PredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_)
-            | PredicateAst::ValueComparison { .. }
-    ) || matches!(predicate, PredicateAst::TaggedMatches(tag, _) if tag.as_str() == ENCHANTED_TAG_NAME)
-}
-
-pub fn target_is_generic_token_filter(target: &TargetAst) -> bool {
-    let TargetAst::Object(filter, _, _) = target else {
-        return false;
-    };
-    filter.token
-        && filter.zone.is_none()
-        && filter.card_types.is_empty()
-        && filter.subtypes.is_empty()
-        && filter.tagged_constraints.is_empty()
-        && filter.controller.is_none()
-        && filter.owner.is_none()
-}
-
-pub fn collapse_token_copy_next_end_step_exile_followup_lexed(
-    effects: &mut Vec<EffectAst>,
-    tokens: &[OwnedLexToken],
-) {
-    let facts = chain_grammar::parse_delayed_copy_facts_tokens(tokens);
-    let Some(chain_grammar::DelayedCopyTiming::EndStep { player_is_you }) = facts.timing else {
-        return;
-    };
-    if !facts.has_exile || !facts.has_token {
-        return;
-    }
-    let next_end_step_player = if player_is_you {
-        PlayerFilter::You
-    } else {
-        PlayerFilter::Any
-    };
-
-    let mut idx = 0usize;
-    while idx + 1 < effects.len() {
-        let mark_next_end_step_exile = match (&effects[idx], &effects[idx + 1]) {
-            (
-                EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action:
-                        SubjectVerbActionAst::CreateTokenCopy { .. }
-                        | SubjectVerbActionAst::CreateTokenCopyFromSource { .. },
-                    ..
-                }),
-                EffectAst::SubjectVerb(subject_verb),
-            ) => match &subject_verb.action {
-                SubjectVerbActionAst::MoveToZone {
-                    target,
-                    zone: Zone::Exile,
-                    ..
-                }
-                | SubjectVerbActionAst::Exile { target, .. } => {
-                    target_is_generic_token_filter(target)
-                }
-                _ => false,
-            },
-            _ => false,
-        };
-
-        if !mark_next_end_step_exile {
-            idx += 1;
-            continue;
-        }
-
-        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::CreateTokenCopy {
-                    exile_at_next_end_step,
-                    exile_at_next_end_step_reference_surface,
-                    next_end_step_player: effect_next_end_step_player,
-                    ..
-                }
-                | SubjectVerbActionAst::CreateTokenCopyFromSource {
-                    exile_at_next_end_step,
-                    exile_at_next_end_step_reference_surface,
-                    next_end_step_player: effect_next_end_step_player,
-                    ..
-                },
-            ..
-        }) = &mut effects[idx]
-        {
-            *exile_at_next_end_step = true;
-            *exile_at_next_end_step_reference_surface =
-                token_copy_action_reference_surface(tokens, "exile");
-            *effect_next_end_step_player = next_end_step_player.clone();
-        }
-        effects.remove(idx + 1);
-    }
-}
-
-pub fn collapse_token_copy_next_end_step_sacrifice_followup_lexed(
-    effects: &mut Vec<EffectAst>,
-    tokens: &[OwnedLexToken],
-) {
-    let facts = chain_grammar::parse_delayed_copy_facts_tokens(tokens);
-    if !facts.has_sacrifice || !facts.has_token {
-        return;
-    }
-    let (is_next_upkeep, upkeep_player_is_you, next_end_step_player) = match facts.timing {
-        Some(chain_grammar::DelayedCopyTiming::EndStep { player_is_you }) => (
-            false,
-            false,
-            if player_is_you {
-                PlayerFilter::You
-            } else {
-                PlayerFilter::Any
-            },
-        ),
-        Some(chain_grammar::DelayedCopyTiming::Upkeep { player_is_you }) => {
-            (true, player_is_you, PlayerFilter::Any)
-        }
-        _ => return,
-    };
-
-    let mut idx = 0usize;
-    while idx + 1 < effects.len() {
-        let mark_next_end_step_sacrifice = match (&effects[idx], &effects[idx + 1]) {
-            (
-                EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action:
-                        SubjectVerbActionAst::CreateTokenCopy { .. }
-                        | SubjectVerbActionAst::CreateTokenCopyFromSource { .. },
-                    ..
-                }),
-                EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::Sacrifice { filter, count, .. },
-                    ..
-                }),
-            ) => *count == 1 && filter.token,
-            _ => false,
-        };
-
-        if !mark_next_end_step_sacrifice {
-            idx += 1;
-            continue;
-        }
-
-        if is_next_upkeep {
-            let sacrifice = effects.remove(idx + 1);
-            effects.insert(
-                idx + 1,
-                EffectAst::DelayedUntilNextUpkeep {
-                    player: if upkeep_player_is_you {
-                        PlayerAst::You
-                    } else {
-                        PlayerAst::Any
-                    },
-                    effects: vec![sacrifice],
-                },
-            );
-            idx += 2;
-            continue;
-        }
-
-        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::CreateTokenCopy {
-                    sacrifice_at_next_end_step,
-                    sacrifice_at_next_end_step_reference_surface,
-                    next_end_step_player: effect_next_end_step_player,
-                    ..
-                }
-                | SubjectVerbActionAst::CreateTokenCopyFromSource {
-                    sacrifice_at_next_end_step,
-                    sacrifice_at_next_end_step_reference_surface,
-                    next_end_step_player: effect_next_end_step_player,
-                    ..
-                },
-            ..
-        }) = &mut effects[idx]
-        {
-            *sacrifice_at_next_end_step = true;
-            *sacrifice_at_next_end_step_reference_surface =
-                token_copy_action_reference_surface(tokens, "sacrifice");
-            *effect_next_end_step_player = next_end_step_player.clone();
-        }
-        effects.remove(idx + 1);
-    }
-}
-
-pub fn collapse_token_copy_end_of_combat_exile_followup_lexed(
-    effects: &mut Vec<EffectAst>,
-    tokens: &[OwnedLexToken],
-) {
-    let facts = chain_grammar::parse_delayed_copy_facts_tokens(tokens);
-    if !facts.has_exile
-        || !facts.has_token
-        || facts.timing != Some(chain_grammar::DelayedCopyTiming::EndOfCombat)
-    {
-        return;
-    }
-
-    let mut idx = 0usize;
-    while idx + 1 < effects.len() {
-        let mark_end_of_combat_exile = match (&effects[idx], &effects[idx + 1]) {
-            (
-                EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action:
-                        SubjectVerbActionAst::CreateTokenCopy { .. }
-                        | SubjectVerbActionAst::CreateTokenCopyFromSource { .. }
-                        | SubjectVerbActionAst::CreateTokenWithMods { .. },
-                    ..
-                }),
-                EffectAst::SubjectVerb(subject_verb),
-            ) => match &subject_verb.action {
-                SubjectVerbActionAst::MoveToZone {
-                    target,
-                    zone: Zone::Exile,
-                    ..
-                }
-                | SubjectVerbActionAst::Exile { target, .. } => {
-                    target_is_generic_token_filter(target)
-                }
-                _ => false,
-            },
-            _ => false,
-        };
-
-        if !mark_end_of_combat_exile {
-            idx += 1;
-            continue;
-        }
-
-        match &mut effects[idx] {
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action:
-                    SubjectVerbActionAst::CreateTokenCopy {
-                        exile_at_end_of_combat,
-                        exile_at_end_of_combat_reference_surface,
-                        ..
-                    }
-                    | SubjectVerbActionAst::CreateTokenCopyFromSource {
-                        exile_at_end_of_combat,
-                        exile_at_end_of_combat_reference_surface,
-                        ..
-                    },
-                ..
-            }) => {
-                *exile_at_end_of_combat = true;
-                *exile_at_end_of_combat_reference_surface =
-                    token_copy_action_reference_surface(tokens, "exile");
-            }
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action:
-                    SubjectVerbActionAst::CreateTokenWithMods {
-                        exile_at_end_of_combat,
-                        ..
-                    },
-                ..
-            }) => {
-                *exile_at_end_of_combat = true;
-            }
-            _ => {}
-        }
-        effects.remove(idx + 1);
-    }
-}
-
-fn split_on_comma_or_semicolon_lexed(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {
-    let mut segments = Vec::new();
-    let mut start = 0usize;
-    let mut inside_quotes = false;
-    for (idx, token) in tokens.iter().enumerate() {
-        if token.kind == TokenKind::Quote {
-            inside_quotes = !inside_quotes;
-            continue;
-        }
-        if inside_quotes || !matches!(token.kind, TokenKind::Comma | TokenKind::Semicolon) {
-            continue;
-        }
-        let current = trim_lexed_commas(&tokens[start..idx]);
-        if !current.is_empty() {
-            segments.push(current.to_vec());
-        }
-        start = idx + 1;
-    }
-    let tail = trim_lexed_commas(&tokens[start..]);
-    if !tail.is_empty() {
-        segments.push(tail.to_vec());
-    }
-    segments
-}
-
-pub fn expand_segments_with_comma_action_clauses_lexed(
-    segments: Vec<Vec<OwnedLexToken>>,
-) -> Vec<Vec<OwnedLexToken>> {
-    let mut expanded = Vec::new();
-
-    for segment in segments {
-        let looks_like_sac_discard_chain = (grammar::contains_word(&segment, "sacrifice")
-            || grammar::contains_word(&segment, "sacrifices"))
-            && (grammar::contains_word(&segment, "discard")
-                || grammar::contains_word(&segment, "discards"));
-        if !looks_like_sac_discard_chain {
-            expanded.push(segment);
-            continue;
-        }
-
-        let comma_parts = split_on_comma_or_semicolon_lexed(&segment);
-        if comma_parts.len() < 2 {
-            expanded.push(segment);
-            continue;
-        }
-
-        let mut local_parts: Vec<Vec<OwnedLexToken>> = Vec::new();
-        let mut valid_split = true;
-
-        for raw_part in comma_parts {
-            let mut part = trim_lexed_commas(&raw_part).to_vec();
-            while let Some(rest) = chain_grammar::strip_leading_and_tokens(&part) {
-                part = rest.to_vec();
-            }
-            if part.is_empty() {
-                continue;
-            }
-
-            if segment_has_effect_head_lexed(&part) {
-                local_parts.push(part);
-                continue;
-            }
-            if let Some(previous) = local_parts.last()
-                && let Some(expanded_part) = expand_missing_verb_segment_lexed(previous, &part)
-            {
-                local_parts.push(expanded_part);
-                continue;
-            }
-
-            valid_split = false;
-            break;
-        }
-
-        if valid_split && local_parts.len() > 1 {
-            expanded.extend(local_parts);
-        } else {
-            expanded.push(segment);
-        }
-    }
-
-    expanded
-}
-
-pub fn expand_segments_with_multi_create_clauses_lexed(
-    segments: Vec<Vec<OwnedLexToken>>,
-) -> Vec<Vec<OwnedLexToken>> {
-    let mut expanded = Vec::new();
-
-    for segment in segments {
-        let Some((Verb::Create, _)) = find_verb_lexed(&segment) else {
-            expanded.push(segment);
-            continue;
-        };
-        let has_token_rules_tail = chain_grammar::has_token_rules_tail_tokens(&segment);
-        if has_token_rules_tail {
-            expanded.push(segment);
-            continue;
-        }
-        let token_mentions = chain_grammar::count_token_mentions(&segment);
-        if token_mentions < 2 {
-            expanded.push(segment);
-            continue;
-        }
-
-        let comma_parts = split_on_comma_or_semicolon_lexed(&segment);
-        if comma_parts.len() < 2 {
-            expanded.push(segment);
-            continue;
-        }
-
-        let mut local_parts: Vec<Vec<OwnedLexToken>> = Vec::new();
-        for raw_part in comma_parts {
-            let mut part = trim_lexed_commas(&raw_part).to_vec();
-            while let Some(rest) = chain_grammar::strip_leading_and_tokens(&part) {
-                part = rest.to_vec();
-            }
-            if part.is_empty() {
-                continue;
-            }
-            if let Some(previous) = local_parts.last()
-                && is_token_creation_context(previous)
-                && starts_with_inline_token_rules_tail(&part)
-            {
-                if let Some(last) = local_parts.last_mut() {
-                    last.push(OwnedLexToken::comma(TextSpan::synthetic()));
-                    last.extend(part);
-                }
-                continue;
-            }
-            if segment_has_effect_head_lexed(&part) {
-                local_parts.push(part);
-                continue;
-            }
-            if let Some(previous) = local_parts.last()
-                && let Some(expanded_part) = expand_missing_verb_segment_lexed(previous, &part)
-            {
-                local_parts.push(expanded_part);
-                continue;
-            }
-            if let Some(last) = local_parts.last_mut() {
-                last.push(OwnedLexToken::comma(TextSpan::synthetic()));
-                last.extend(part);
-            } else {
-                local_parts.push(part);
-            }
-        }
-
-        if local_parts.len() > 1 {
-            expanded.extend(local_parts);
-        } else {
-            expanded.push(segment);
-        }
-    }
-
-    expanded
-}
-
-pub fn expand_missing_verb_segment_lexed(
-    previous: &[OwnedLexToken],
-    segment: &[OwnedLexToken],
-) -> Option<Vec<OwnedLexToken>> {
-    let (verb, verb_idx) = find_verb_lexed(previous)?;
-    match verb {
-        Verb::Deal => {
-            if parse_value_prefix_lexed(segment).is_none()
-                || !grammar::contains_word(segment, "damage")
-            {
-                return None;
-            }
-            let mut expanded = Vec::new();
-            expanded.extend(previous.iter().take(verb_idx + 1).cloned());
-            expanded.extend(segment.iter().cloned());
-            Some(expanded)
-        }
-        Verb::Sacrifice => {
-            let segment_words = token_word_refs(segment);
-            let starts_like_object_phrase = matches!(
-                segment_words.first().copied(),
-                Some("a" | "an" | "another" | "target")
-            ) || parse_number_prefix_lexed(segment).is_some();
-            if !starts_like_object_phrase {
-                return None;
-            }
-            let mut expanded = Vec::new();
-            expanded.extend(previous.iter().take(verb_idx + 1).cloned());
-            expanded.extend(segment.iter().cloned());
-            Some(expanded)
-        }
-        Verb::Exile => {
-            let segment_words = token_word_refs(segment);
-            let starts_like_object_reference = matches!(
-                segment_words.first().copied(),
-                Some(
-                    "a" | "an"
-                        | "another"
-                        | "target"
-                        | "it"
-                        | "them"
-                        | "this"
-                        | "that"
-                        | "these"
-                        | "those"
-                )
-            ) || parse_number_prefix_lexed(segment).is_some();
-            if !starts_like_object_reference {
-                return None;
-            }
-            let mut expanded = Vec::new();
-            expanded.extend(previous.iter().take(verb_idx + 1).cloned());
-            expanded.extend(segment.iter().cloned());
-            Some(expanded)
-        }
-        Verb::Create => {
-            if !starts_like_create_fragment_lexed(segment) {
-                return None;
-            }
-            let mut expanded = Vec::new();
-            expanded.extend(previous.iter().take(verb_idx + 1).cloned());
-            expanded.extend(segment.iter().cloned());
-            Some(expanded)
-        }
-        _ => None,
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CarryContext {
     Player(PlayerAst),
     ForEachPlayer,
     ForEachTargetPlayers(ChoiceCount),
     ForEachOpponent,
-}
-
-pub fn player_ast_from_filter_for_carry(filter: &PlayerFilter) -> Option<PlayerAst> {
-    match filter {
-        PlayerFilter::You => Some(PlayerAst::You),
-        PlayerFilter::Opponent => Some(PlayerAst::Opponent),
-        PlayerFilter::Any => Some(PlayerAst::Any),
-        PlayerFilter::IteratedPlayer => Some(PlayerAst::That),
-        PlayerFilter::Target(inner) => {
-            if matches!(inner.as_ref(), PlayerFilter::Opponent) {
-                Some(PlayerAst::TargetOpponent)
-            } else {
-                Some(PlayerAst::Target)
-            }
-        }
-        PlayerFilter::AliasedTarget(_) => Some(PlayerAst::That),
-        _ => None,
-    }
-}
-
-pub fn player_owner_filter_from_target_for_carry(target: &TargetAst) -> Option<PlayerAst> {
-    match target {
-        TargetAst::Player(filter, _) => player_ast_from_filter_for_carry(filter),
-        TargetAst::Object(filter, _, _) => {
-            if !matches!(
-                filter.zone,
-                Some(Zone::Hand) | Some(Zone::Graveyard) | Some(Zone::Library) | Some(Zone::Exile)
-            ) {
-                return None;
-            }
-            filter
-                .owner
-                .as_ref()
-                .and_then(player_ast_from_filter_for_carry)
-        }
-        TargetAst::WithCount(inner, _) => player_owner_filter_from_target_for_carry(inner),
-        _ => None,
-    }
-}
-
-fn player_target_carry_context(target: &TargetAst) -> Option<CarryContext> {
-    match target {
-        TargetAst::Player(filter, _) => {
-            player_ast_from_filter_for_carry(filter).map(CarryContext::Player)
-        }
-        TargetAst::WithCount(inner, count) => {
-            let inner_context = player_target_carry_context(inner.as_ref())?;
-            if count.min > 1 && count.max == Some(count.min) {
-                Some(CarryContext::ForEachTargetPlayers(*count))
-            } else {
-                Some(inner_context)
-            }
-        }
-        _ => None,
-    }
-}
-
-pub fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryContext> {
-    if matches!(effect, EffectAst::ForEachPlayer { .. }) {
-        return Some(CarryContext::ForEachPlayer);
-    }
-    if let EffectAst::ForEachTargetPlayers { count, .. } = effect {
-        return Some(CarryContext::ForEachTargetPlayers(*count));
-    }
-    if matches!(effect, EffectAst::ForEachOpponent { .. }) {
-        return Some(CarryContext::ForEachOpponent);
-    }
-    if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::TargetOnly { target, .. } = &subject_verb.action
-        && let Some(context) = player_target_carry_context(target)
-    {
-        return Some(context);
-    }
-    if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::Exile { target, .. } = &subject_verb.action
-        && let Some(player) = player_owner_filter_from_target_for_carry(target)
-    {
-        return Some(CarryContext::Player(player));
-    }
-    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::ExileUntilSourceLeaves { target, .. },
-        ..
-    }) = effect
-        && let Some(player) = player_owner_filter_from_target_for_carry(target)
-    {
-        return Some(CarryContext::Player(player));
-    }
-    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::ExileAll { filter, .. },
-        ..
-    }) = effect
-        && let Some(owner) = filter.owner.as_ref()
-        && let Some(player) = player_ast_from_filter_for_carry(owner)
-    {
-        return Some(CarryContext::Player(player));
-    }
-    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::TapAll { filter },
-        ..
-    }) = effect
-        && let Some(controller) = filter.controller.as_ref()
-        && let Some(player) = player_ast_from_filter_for_carry(controller)
-    {
-        // In a clause such as "they tap all lands they control and lose all
-        // unspent mana", the explicit player is represented by the tapped
-        // objects' controller rather than the SubjectVerb subject.  Retain it
-        // for the coordinated implicit player action that follows.
-        return Some(CarryContext::Player(player));
-    }
-    if matches!(
-        effect,
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ChoosePlayer { .. },
-            ..
-        })
-    ) {
-        return Some(CarryContext::Player(PlayerAst::That));
-    }
-
-    let player = match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::SearchLibrary {
-                    chooser, player, ..
-                },
-            ..
-        }) => {
-            if !matches!(player, PlayerAst::Implicit) {
-                *player
-            } else if !matches!(chooser, PlayerAst::Implicit) {
-                *chooser
-            } else {
-                return None;
-            }
-        }
-        EffectAst::SubjectVerb(_) => subject_verb_player_action_player(effect)?,
-        EffectAst::ChooseObjects { player, .. }
-        | EffectAst::ChooseObjectsWithAggregateConstraint { player, .. } => *player,
-        _ => return None,
-    };
-
-    if matches!(player, PlayerAst::Implicit) {
-        None
-    } else {
-        Some(CarryContext::Player(player))
-    }
-}
-
-pub fn effect_uses_implicit_player(effect: &EffectAst) -> bool {
-    match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::SearchLibrary {
-                    chooser, player, ..
-                },
-            ..
-        }) => matches!(*chooser, PlayerAst::Implicit) || matches!(*player, PlayerAst::Implicit),
-        EffectAst::SubjectVerb(_) => {
-            matches!(
-                subject_verb_player_action_player(effect),
-                Some(PlayerAst::Implicit)
-            )
-        }
-        EffectAst::ChooseObjects { player, .. }
-        | EffectAst::ChooseObjectsWithAggregateConstraint { player, .. } => {
-            matches!(*player, PlayerAst::Implicit)
-        }
-        _ => false,
-    }
-}
-
-fn effect_uses_that_player(effect: &EffectAst) -> bool {
-    match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::SearchLibrary {
-                    chooser, player, ..
-                },
-            ..
-        }) => matches!(*chooser, PlayerAst::That) || matches!(*player, PlayerAst::That),
-        EffectAst::SubjectVerb(_) => {
-            matches!(
-                subject_verb_player_action_player(effect),
-                Some(PlayerAst::That)
-            )
-        }
-        EffectAst::ChooseObjects { player, .. }
-        | EffectAst::ChooseObjectsWithAggregateConstraint { player, .. } => {
-            matches!(*player, PlayerAst::That)
-        }
-        _ => false,
-    }
-}
-
-fn subject_verb_player_action_player_mut(effect: &mut EffectAst) -> Option<&mut PlayerAst> {
-    match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::CreateTokenCopy { player, .. }
-                | SubjectVerbActionAst::CreateTokenCopyFromSource { player, .. }
-                | SubjectVerbActionAst::CreateTokenWithMods { player, .. },
-            ..
-        }) => Some(player),
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            subject: SubjectVerbSubjectAst { player, .. },
-            action:
-                SubjectVerbActionAst::Draw { .. }
-                | SubjectVerbActionAst::LoseLife { .. }
-                | SubjectVerbActionAst::PayLife { .. }
-                | SubjectVerbActionAst::GainLife { .. }
-                | SubjectVerbActionAst::RevealHand
-                | SubjectVerbActionAst::RevealTop
-                | SubjectVerbActionAst::RevealCardsFromHand { .. }
-                | SubjectVerbActionAst::Mill { .. }
-                | SubjectVerbActionAst::Scry { .. }
-                | SubjectVerbActionAst::Surveil { .. }
-                | SubjectVerbActionAst::Discard { .. }
-                | SubjectVerbActionAst::DiscardHand
-                | SubjectVerbActionAst::PoisonCounters { .. }
-                | SubjectVerbActionAst::EnergyCounters { .. }
-                | SubjectVerbActionAst::ExperienceCounters { .. }
-                | SubjectVerbActionAst::TicketCounters { .. }
-                | SubjectVerbActionAst::PayEnergy { .. }
-                | SubjectVerbActionAst::PayAnyEnergy { .. }
-                | SubjectVerbActionAst::PayAnyLife { .. }
-                | SubjectVerbActionAst::PayMana { .. }
-                | SubjectVerbActionAst::DoubleManaPool
-                | SubjectVerbActionAst::EmptyManaPool
-                | SubjectVerbActionAst::SetLifeTotal { .. }
-                | SubjectVerbActionAst::SkipTurn
-                | SubjectVerbActionAst::EndTurn
-                | SubjectVerbActionAst::SkipCombatPhases
-                | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
-                | SubjectVerbActionAst::SkipMainPhasesThisTurn
-                | SubjectVerbActionAst::SkipCombatPhasesThisTurn
-                | SubjectVerbActionAst::SkipDrawStep
-                | SubjectVerbActionAst::RingTemptsYou
-                | SubjectVerbActionAst::VentureIntoDungeon { .. }
-                | SubjectVerbActionAst::BecomeMonarch
-                | SubjectVerbActionAst::TakeInitiative
-                | SubjectVerbActionAst::CreateEmblem { .. }
-                | SubjectVerbActionAst::LoseGame
-                | SubjectVerbActionAst::WinGame
-                | SubjectVerbActionAst::FlipCoin
-                | SubjectVerbActionAst::FlipCoinFaceOnly
-                | SubjectVerbActionAst::RollDie { .. }
-                | SubjectVerbActionAst::RollDiceChooseResult { .. }
-                | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
-                | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary { .. }
-                | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { .. }
-                | SubjectVerbActionAst::ExileTopOfLibrary { .. }
-                | SubjectVerbActionAst::ReorderGraveyard
-                | SubjectVerbActionAst::ChooseColor
-                | SubjectVerbActionAst::ChooseCardType { .. }
-                | SubjectVerbActionAst::ChooseNamedOption { .. }
-                | SubjectVerbActionAst::ChooseCreatureType { .. }
-                | SubjectVerbActionAst::ChooseLandType { .. }
-                | SubjectVerbActionAst::ChooseCardName { .. }
-                | SubjectVerbActionAst::ChoosePlayer { .. }
-                | SubjectVerbActionAst::NoteLifeTotal
-                | SubjectVerbActionAst::AddMana { .. }
-                | SubjectVerbActionAst::AddManaScaled { .. }
-                | SubjectVerbActionAst::AddManaAnyColor { .. }
-                | SubjectVerbActionAst::AddManaAnyOneColor { .. }
-                | SubjectVerbActionAst::AddManaChosenColor { .. }
-                | SubjectVerbActionAst::AddManaFromLandCouldProduce { .. }
-                | SubjectVerbActionAst::AddManaCommanderIdentity { .. }
-                | SubjectVerbActionAst::ReturnToBattlefield { .. }
-                | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
-                | SubjectVerbActionAst::ReturnToHand { .. }
-                | SubjectVerbActionAst::ReturnAllToHand { .. }
-                | SubjectVerbActionAst::MoveToZone { .. }
-                | SubjectVerbActionAst::AdditionalLandPlays { .. }
-                | SubjectVerbActionAst::ExtraTurnAfterTurn { .. }
-                | SubjectVerbActionAst::Sacrifice { .. }
-                | SubjectVerbActionAst::Attach { .. }
-                | SubjectVerbActionAst::ShuffleLibrary,
-        }) => Some(player),
-        _ => None,
-    }
-}
-
-fn subject_verb_player_action_player(effect: &EffectAst) -> Option<PlayerAst> {
-    match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::CreateTokenCopy { player, .. }
-                | SubjectVerbActionAst::CreateTokenCopyFromSource { player, .. }
-                | SubjectVerbActionAst::CreateTokenWithMods { player, .. },
-            ..
-        }) => Some(*player),
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            subject: SubjectVerbSubjectAst { player, .. },
-            action:
-                SubjectVerbActionAst::Draw { .. }
-                | SubjectVerbActionAst::LoseLife { .. }
-                | SubjectVerbActionAst::PayLife { .. }
-                | SubjectVerbActionAst::GainLife { .. }
-                | SubjectVerbActionAst::RevealHand
-                | SubjectVerbActionAst::RevealTop
-                | SubjectVerbActionAst::RevealCardsFromHand { .. }
-                | SubjectVerbActionAst::Mill { .. }
-                | SubjectVerbActionAst::Scry { .. }
-                | SubjectVerbActionAst::Surveil { .. }
-                | SubjectVerbActionAst::Discard { .. }
-                | SubjectVerbActionAst::DiscardHand
-                | SubjectVerbActionAst::PoisonCounters { .. }
-                | SubjectVerbActionAst::EnergyCounters { .. }
-                | SubjectVerbActionAst::ExperienceCounters { .. }
-                | SubjectVerbActionAst::TicketCounters { .. }
-                | SubjectVerbActionAst::PayEnergy { .. }
-                | SubjectVerbActionAst::PayAnyEnergy { .. }
-                | SubjectVerbActionAst::PayAnyLife { .. }
-                | SubjectVerbActionAst::PayMana { .. }
-                | SubjectVerbActionAst::DoubleManaPool
-                | SubjectVerbActionAst::EmptyManaPool
-                | SubjectVerbActionAst::SetLifeTotal { .. }
-                | SubjectVerbActionAst::SkipTurn
-                | SubjectVerbActionAst::EndTurn
-                | SubjectVerbActionAst::SkipCombatPhases
-                | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
-                | SubjectVerbActionAst::SkipMainPhasesThisTurn
-                | SubjectVerbActionAst::SkipCombatPhasesThisTurn
-                | SubjectVerbActionAst::SkipDrawStep
-                | SubjectVerbActionAst::RingTemptsYou
-                | SubjectVerbActionAst::VentureIntoDungeon { .. }
-                | SubjectVerbActionAst::BecomeMonarch
-                | SubjectVerbActionAst::TakeInitiative
-                | SubjectVerbActionAst::CreateEmblem { .. }
-                | SubjectVerbActionAst::LoseGame
-                | SubjectVerbActionAst::WinGame
-                | SubjectVerbActionAst::FlipCoin
-                | SubjectVerbActionAst::FlipCoinFaceOnly
-                | SubjectVerbActionAst::RollDie { .. }
-                | SubjectVerbActionAst::RollDiceChooseResult { .. }
-                | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
-                | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary { .. }
-                | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { .. }
-                | SubjectVerbActionAst::ExileTopOfLibrary { .. }
-                | SubjectVerbActionAst::ReorderGraveyard
-                | SubjectVerbActionAst::ChooseColor
-                | SubjectVerbActionAst::ChooseCardType { .. }
-                | SubjectVerbActionAst::ChooseNamedOption { .. }
-                | SubjectVerbActionAst::ChooseCreatureType { .. }
-                | SubjectVerbActionAst::ChooseLandType { .. }
-                | SubjectVerbActionAst::ChooseCardName { .. }
-                | SubjectVerbActionAst::ChoosePlayer { .. }
-                | SubjectVerbActionAst::NoteLifeTotal
-                | SubjectVerbActionAst::AddMana { .. }
-                | SubjectVerbActionAst::AddManaScaled { .. }
-                | SubjectVerbActionAst::AddManaAnyColor { .. }
-                | SubjectVerbActionAst::AddManaAnyOneColor { .. }
-                | SubjectVerbActionAst::AddManaChosenColor { .. }
-                | SubjectVerbActionAst::AddManaFromLandCouldProduce { .. }
-                | SubjectVerbActionAst::AddManaCommanderIdentity { .. }
-                | SubjectVerbActionAst::ReturnToBattlefield { .. }
-                | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
-                | SubjectVerbActionAst::ReturnToHand { .. }
-                | SubjectVerbActionAst::ReturnAllToHand { .. }
-                | SubjectVerbActionAst::MoveToZone { .. }
-                | SubjectVerbActionAst::AdditionalLandPlays { .. }
-                | SubjectVerbActionAst::ExtraTurnAfterTurn { .. }
-                | SubjectVerbActionAst::Sacrifice { .. }
-                | SubjectVerbActionAst::Attach { .. }
-                | SubjectVerbActionAst::ShuffleLibrary,
-        }) => Some(*player),
-        _ => None,
-    }
-}
-
-pub fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context: CarryContext) {
-    match carried_context {
-        CarryContext::Player(carried_player) => {
-            // When carrying an explicit target player/opponent into an implicit clause,
-            // bind to the previously selected target ("that player") instead of creating
-            // a fresh explicit target. This preserves shared-target semantics for chains
-            // like "Target player mills..., draws..., and loses...".
-            let carried_player = match carried_player {
-                PlayerAst::Target | PlayerAst::TargetOpponent => PlayerAst::That,
-                other => other,
-            };
-            match effect {
-                EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::SearchLibrary { player, .. },
-                    ..
-                }) => {
-                    // A bare `search` is imperative: its omitted actor is the
-                    // spell or ability's controller. A target introduced by
-                    // "target player's library" is the library owner, not a
-                    // grammatical subject to carry into the chooser slot.
-                    if matches!(*player, PlayerAst::Implicit) {
-                        *player = carried_player;
-                    }
-                }
-                EffectAst::SubjectVerb(_) => {
-                    if let Some(player) = subject_verb_player_action_player_mut(effect)
-                        && *player == PlayerAst::Implicit
-                    {
-                        *player = carried_player;
-                    }
-                }
-                EffectAst::ChooseObjects { player, .. }
-                | EffectAst::ChooseObjectsWithAggregateConstraint { player, .. } => {
-                    if matches!(*player, PlayerAst::Implicit) {
-                        *player = carried_player;
-                    }
-                }
-                _ => {}
-            }
-        }
-        CarryContext::ForEachPlayer => {
-            if effect_uses_implicit_player(effect) || effect_uses_that_player(effect) {
-                let wrapped = effect.clone();
-                *effect = EffectAst::ForEachPlayer {
-                    effects: vec![wrapped],
-                };
-            }
-        }
-        CarryContext::ForEachTargetPlayers(count) => {
-            if effect_uses_implicit_player(effect) || effect_uses_that_player(effect) {
-                let wrapped = effect.clone();
-                *effect = EffectAst::ForEachTargetPlayers {
-                    count,
-                    filter: PlayerFilter::Any,
-                    effects: vec![wrapped],
-                };
-            }
-        }
-        CarryContext::ForEachOpponent => {
-            if effect_uses_implicit_player(effect) || effect_uses_that_player(effect) {
-                let wrapped = effect.clone();
-                *effect = EffectAst::ForEachOpponent {
-                    effects: vec![wrapped],
-                };
-            }
-        }
-    }
-}
-
-pub fn maybe_apply_carried_player_with_clause_lexed(
-    effect: &mut EffectAst,
-    carried_context: CarryContext,
-    clause_tokens: &[OwnedLexToken],
-) {
-    let facts = super::super::grammar::effects::coordination::recognize_coordination_clause_facts(
-        clause_tokens,
-    );
-    maybe_apply_carried_player_with_clause_facts(effect, carried_context, facts);
-}
-
-fn maybe_apply_carried_player_with_clause_facts(
-    effect: &mut EffectAst,
-    carried_context: CarryContext,
-    facts: super::super::grammar::effects::coordination::CoordinationClauseFacts,
-) {
-    // The library-owner grammar deliberately represents a bare `their
-    // library` as `ItsController` until an outer clause supplies the
-    // antecedent. In a shared-subject chain that antecedent is the carried
-    // player itself (`The owner of target ... shuffles it, then exiles the
-    // top card of their library`). Rebind only that grammar-proven anaphoric
-    // surface; an explicit `its controller's library` does not set this fact
-    // and remains controller-relative.
-    if facts.anaphoric_library_owner
-        && let CarryContext::Player(carried_player) = carried_context
-        && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            subject,
-            action: SubjectVerbActionAst::ExileTopOfLibrary { .. } | SubjectVerbActionAst::RevealTop,
-        }) = effect
-        && subject.player == PlayerAst::ItsController
-    {
-        subject.player = match carried_player {
-            PlayerAst::Target | PlayerAst::TargetOpponent => PlayerAst::That,
-            player => player,
-        };
-    }
-
-    let imperative_collection_move = facts.imperative_collection_move
-        && matches!(
-            effect,
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::MoveToZone { .. },
-                ..
-            })
-        );
-    let imperative_return = facts.imperative_return
-        && matches!(
-            effect,
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                subject: SubjectVerbSubjectAst {
-                    player: PlayerAst::Implicit,
-                    ..
-                },
-                action: SubjectVerbActionAst::ReturnToBattlefield { .. }
-                    | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
-                    | SubjectVerbActionAst::ReturnToHand { .. }
-                    | SubjectVerbActionAst::ReturnAllToHand { .. },
-            })
-        );
-    if facts.head == chain_grammar::CarryClauseHead::Choose
-        && normalize_imperative_choose_player(effect)
-    {
-        return;
-    }
-    if facts.head == chain_grammar::CarryClauseHead::Create
-        && normalize_imperative_create_player(effect)
-    {
-        return;
-    }
-    let should_skip = match carried_context {
-        CarryContext::Player(_) => {
-            imperative_return
-                || (matches!(
-                    effect,
-                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                        subject: SubjectVerbSubjectAst {
-                            player: PlayerAst::Implicit,
-                            ..
-                        },
-                        action: SubjectVerbActionAst::Draw { .. },
-                    })
-                ) && facts.head == chain_grammar::CarryClauseHead::Draw)
-                    && !facts.explicitly_conjugated_player_action
-                || (matches!(
-                    effect,
-                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                        subject: SubjectVerbSubjectAst {
-                            player: PlayerAst::Implicit,
-                            ..
-                        },
-                        action: SubjectVerbActionAst::Scry { .. }
-                            | SubjectVerbActionAst::Surveil { .. },
-                    })
-                ) && matches!(
-                    facts.head,
-                    chain_grammar::CarryClauseHead::Scry | chain_grammar::CarryClauseHead::Surveil
-                ) && !facts.explicitly_conjugated_player_action)
-        }
-        CarryContext::ForEachPlayer
-        | CarryContext::ForEachTargetPlayers(_)
-        | CarryContext::ForEachOpponent => {
-            let is_implicit_vision_effect = matches!(
-                effect,
-                EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    subject: SubjectVerbSubjectAst {
-                        player: PlayerAst::Implicit,
-                        ..
-                    },
-                    action: SubjectVerbActionAst::Draw { .. }
-                        | SubjectVerbActionAst::Scry { .. }
-                        | SubjectVerbActionAst::Surveil { .. },
-                })
-            );
-            imperative_collection_move
-                || (is_implicit_vision_effect
-                    && matches!(
-                        facts.head,
-                        chain_grammar::CarryClauseHead::Draw
-                            | chain_grammar::CarryClauseHead::Scry
-                            | chain_grammar::CarryClauseHead::Surveil
-                    )
-                    && !facts.explicitly_conjugated_player_action)
-        }
-    };
-    if should_skip {
-        return;
-    }
-    maybe_apply_carried_player(effect, carried_context);
-}
-
-fn normalize_imperative_choose_player(effect: &mut EffectAst) -> bool {
-    let player = match effect {
-        EffectAst::ChooseObjects { player, .. }
-        | EffectAst::ChooseObjectsWithAggregateConstraint { player, .. }
-        | EffectAst::ChooseObjectsAcrossZones { player, .. } => player,
-        _ => return false,
-    };
-
-    if matches!(
-        player,
-        PlayerAst::Implicit | PlayerAst::Target | PlayerAst::TargetOpponent | PlayerAst::That
-    ) {
-        *player = PlayerAst::You;
-        return true;
-    }
-    false
-}
-
-fn normalize_imperative_create_player(effect: &mut EffectAst) -> bool {
-    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::CreateTokenWithMods { player, .. },
-        ..
-    }) = effect
-    else {
-        return false;
-    };
-
-    if matches!(
-        player,
-        PlayerAst::Implicit | PlayerAst::Target | PlayerAst::TargetOpponent | PlayerAst::That
-    ) {
-        *player = PlayerAst::You;
-        return true;
-    }
-    false
-}
-
-pub fn bind_implicit_player_context(effect: &mut EffectAst, player: PlayerAst) {
-    match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            subject,
-            action: SubjectVerbActionAst::RetargetStackObject { .. },
-        }) => {
-            if matches!(subject.player, PlayerAst::Implicit) {
-                subject.player = player;
-            }
-        }
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::CopySpell {
-                    player: effect_player,
-                    ..
-                }
-                | SubjectVerbActionAst::CopySpellForEachTarget {
-                    player: effect_player,
-                    ..
-                }
-                | SubjectVerbActionAst::CastTagged {
-                    player: effect_player,
-                    ..
-                }
-                | SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
-                    player: effect_player,
-                    ..
-                }
-                | SubjectVerbActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
-                    player: effect_player,
-                    ..
-                }
-                | SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn {
-                    player: effect_player,
-                    ..
-                }
-                | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
-                    player: effect_player,
-                    ..
-                },
-            ..
-        }) => {
-            if matches!(*effect_player, PlayerAst::Implicit) {
-                *effect_player = player;
-            }
-        }
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::SearchLibrary {
-                    player: effect_player,
-                    chooser,
-                    ..
-                },
-            ..
-        }) => {
-            if matches!(*effect_player, PlayerAst::Implicit) {
-                *effect_player = player;
-            }
-            if matches!(*chooser, PlayerAst::Implicit) {
-                *chooser = player;
-            }
-        }
-        EffectAst::SubjectVerb(_) => {
-            if let Some(effect_player) = subject_verb_player_action_player_mut(effect)
-                && matches!(*effect_player, PlayerAst::Implicit)
-            {
-                *effect_player = player;
-            }
-        }
-        EffectAst::ChooseObjects {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::ChooseObjectsWithAggregateConstraint {
-            player: effect_player,
-            ..
-        }
-        | EffectAst::ChooseObjectsAcrossZones {
-            player: effect_player,
-            ..
-        } => {
-            if matches!(*effect_player, PlayerAst::Implicit) {
-                *effect_player = player;
-            }
-        }
-        _ => for_each_nested_effects_mut(effect, true, |nested| {
-            for nested_effect in nested {
-                bind_implicit_player_context(nested_effect, player);
-            }
-        }),
-    }
-}
-
-fn parse_leading_player_may_words(words: &[&str]) -> Option<PlayerAst> {
-    type WordInput<'a> = grammar::WordSliceInput<'a>;
-    use grammar::word_slice_exact as word_eq;
-
-    fn player_word<'a>() -> impl Parser<WordInput<'a>, (), ErrMode<ContextError>> {
-        alt((word_eq("player"), word_eq("players"))).void()
-    }
-
-    fn opponent_word<'a>() -> impl Parser<WordInput<'a>, (), ErrMode<ContextError>> {
-        alt((word_eq("opponent"), word_eq("opponents"))).void()
-    }
-
-    fn controller_subject_word<'a>() -> impl Parser<WordInput<'a>, (), ErrMode<ContextError>> {
-        alt((
-            word_eq("creatures"),
-            word_eq("lands"),
-            word_eq("permanents"),
-            word_eq("planeswalkers"),
-            word_eq("sources"),
-            word_eq("spells"),
-        ))
-        .void()
-    }
-
-    fn controller_or_owner_subject_word<'a>()
-    -> impl Parser<WordInput<'a>, (), ErrMode<ContextError>> {
-        alt((
-            word_eq("creatures"),
-            word_eq("lands"),
-            word_eq("permanents"),
-            word_eq("sources"),
-            word_eq("spells"),
-        ))
-        .void()
-    }
-
-    fn leading_conjunctions<'a>(input: &mut WordInput<'a>) -> Result<(), ErrMode<ContextError>> {
-        repeat::<_, _, (), _, _>(0.., alt((word_eq("then"), word_eq("and")))).parse_next(input)
-    }
-
-    fn parse_player_may_prefix<'a>(
-        input: &mut WordInput<'a>,
-    ) -> Result<PlayerAst, ErrMode<ContextError>> {
-        (
-            leading_conjunctions,
-            alt((
-                alt((
-                    (word_eq("you"), word_eq("may")).value(PlayerAst::You),
-                    (word_eq("any"), player_word(), word_eq("may")).value(PlayerAst::Any),
-                    (word_eq("any"), opponent_word(), word_eq("may")).value(PlayerAst::Opponent),
-                )),
-                alt((
-                    (word_eq("target"), opponent_word(), word_eq("may"))
-                        .value(PlayerAst::TargetOpponent),
-                    (word_eq("target"), player_word(), word_eq("may")).value(PlayerAst::Target),
-                    (word_eq("that"), player_word(), word_eq("may")).value(PlayerAst::That),
-                    (word_eq("that"), opponent_word(), word_eq("may")).value(PlayerAst::That),
-                    (word_eq("they"), word_eq("may")).value(PlayerAst::That),
-                    (
-                        word_eq("that"),
-                        word_eq("player"),
-                        word_eq("or"),
-                        word_eq("that"),
-                        controller_subject_word(),
-                        word_eq("controller"),
-                        word_eq("may"),
-                    )
-                        .value(PlayerAst::ThatPlayerOrTargetController),
-                    (
-                        word_eq("that"),
-                        controller_or_owner_subject_word(),
-                        word_eq("controller"),
-                        word_eq("may"),
-                    )
-                        .value(PlayerAst::ItsController),
-                    (
-                        word_eq("that"),
-                        controller_or_owner_subject_word(),
-                        word_eq("owner"),
-                        word_eq("may"),
-                    )
-                        .value(PlayerAst::ItsOwner),
-                )),
-                alt((
-                    (word_eq("the"), player_word(), word_eq("may")).value(PlayerAst::That),
-                    (word_eq("defending"), word_eq("player"), word_eq("may"))
-                        .value(PlayerAst::Defending),
-                    alt((
-                        (word_eq("attacking"), word_eq("player"), word_eq("may"))
-                            .value(PlayerAst::Attacking),
-                        (
-                            word_eq("that"),
-                            word_eq("attacking"),
-                            word_eq("player"),
-                            word_eq("may"),
-                        )
-                            .value(PlayerAst::Attacking),
-                        (
-                            word_eq("the"),
-                            word_eq("attacking"),
-                            word_eq("player"),
-                            word_eq("may"),
-                        )
-                            .value(PlayerAst::Attacking),
-                    )),
-                    (
-                        alt((word_eq("its"), word_eq("their"))),
-                        word_eq("controller"),
-                        word_eq("may"),
-                    )
-                        .value(PlayerAst::ItsController),
-                    (
-                        alt((word_eq("its"), word_eq("their"))),
-                        word_eq("owner"),
-                        word_eq("may"),
-                    )
-                        .value(PlayerAst::ItsOwner),
-                    alt((
-                        (opponent_word(), word_eq("may")).value(PlayerAst::Opponent),
-                        (word_eq("an"), word_eq("opponent"), word_eq("may"))
-                            .value(PlayerAst::Opponent),
-                    )),
-                )),
-            )),
-        )
-            .map(|(_, player)| player)
-            .parse_next(input)
-    }
-
-    let mut input = words;
-    parse_player_may_prefix(&mut input).ok()
-}
-
-pub fn parse_leading_player_may_lexed(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {
-    let word_view = TokenWordView::new(tokens);
-    let words = word_view.word_refs();
-    parse_leading_player_may_words(&words)
-}
-
-pub fn find_verb(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)> {
-    find_verb_lexed(tokens)
-}
-
-pub fn parse_effect_chain(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError> {
-    parse_effect_chain_lexed(tokens)
-}
-
-pub fn parse_effect_chain_with_subject_verb_primitives(
-    tokens: &[OwnedLexToken],
-) -> Result<Vec<EffectAst>, CardTextError> {
-    parse_effect_chain_with_subject_verb_primitives_lexed(tokens)
-}
-
-pub fn parse_effect_chain_inner(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError> {
-    parse_effect_chain_inner_lexed(tokens)
-}
-
-pub fn parse_effect_clause_with_trailing_if(
-    tokens: &[OwnedLexToken],
-) -> Result<EffectAst, CardTextError> {
-    parse_effect_clause_with_trailing_if_lexed(tokens)
-}
-
-pub fn collapse_token_copy_next_end_step_exile_followup(
-    effects: &mut Vec<EffectAst>,
-    tokens: &[OwnedLexToken],
-) {
-    collapse_token_copy_next_end_step_exile_followup_lexed(effects, tokens);
-}
-
-pub fn collapse_token_copy_end_of_combat_exile_followup(
-    effects: &mut Vec<EffectAst>,
-    tokens: &[OwnedLexToken],
-) {
-    collapse_token_copy_end_of_combat_exile_followup_lexed(effects, tokens);
-}
-
-pub fn maybe_apply_carried_player_with_clause(
-    effect: &mut EffectAst,
-    carried_context: CarryContext,
-    clause_tokens: &[OwnedLexToken],
-) {
-    maybe_apply_carried_player_with_clause_lexed(effect, carried_context, clause_tokens);
-}
-
-pub fn remove_first_word(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    remove_first_may_word_tokens(tokens)
-}
-
-pub fn remove_through_first_word(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    remove_through_first_may_word_tokens(tokens)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -5092,3 +2888,87 @@ pub enum Verb {
     Note,
     End,
 }
+
+#[path = "chain_carry/chain_carry_zone_programs.rs"]
+mod chain_carry_zone_programs;
+pub use chain_carry_zone_programs::{
+    parse_return_it_then_loses_all_abilities_lexed, remove_first_word, remove_through_first_word,
+};
+#[path = "chain_carry/chain_carry_reference_programs.rs"]
+mod chain_carry_reference_programs;
+pub use chain_carry_reference_programs::{
+    bind_implicit_player_context, collapse_for_each_object_it_tag_followups,
+    collapse_for_each_player_it_tag_followups, dedupe_shared_target_player_draw_lose_x,
+    effect_uses_implicit_player, explicit_player_for_carry, maybe_apply_carried_player,
+    maybe_apply_carried_player_with_clause, maybe_apply_carried_player_with_clause_lexed,
+    normalize_source_references_with_context, parse_effect_chain_with_subject_verb_primitives,
+    parse_leading_player_may_lexed, parse_may_have_any_number_tagged_phase_out_lexed,
+    player_ast_from_filter_for_carry, player_owner_filter_from_target_for_carry,
+    target_is_generic_token_filter,
+};
+use chain_carry_reference_programs::{
+    bind_it_metric_to_explicit_target, bind_source_exiled_effect,
+    bind_trailing_it_predicate_to_explicit_effect_target, effect_uses_that_player,
+    explicit_effect_object_tag, explicit_effect_object_target, explicit_tagged_target,
+    maybe_apply_carried_player_with_clause_facts, normalize_imperative_create_player,
+    parse_leading_player_may_words, player_target_carry_context, subject_verb_player_action_player,
+    subject_verb_player_action_player_mut, target_ast_is_source,
+};
+#[path = "chain_carry/chain_carry_combat_programs.rs"]
+mod chain_carry_combat_programs;
+use chain_carry_combat_programs::{
+    append_shared_damage_player_operand, source_damage_then_gain_ability_actions,
+};
+pub use chain_carry_combat_programs::{
+    collapse_token_copy_end_of_combat_exile_followup,
+    collapse_token_copy_end_of_combat_exile_followup_lexed,
+};
+#[path = "chain_carry/chain_carry_object_action_programs.rs"]
+mod chain_carry_object_action_programs;
+use chain_carry_object_action_programs::parse_tap_those_then_unattach_equipment_lexed;
+pub use chain_carry_object_action_programs::{
+    collapse_token_copy_next_end_step_exile_followup,
+    collapse_token_copy_next_end_step_exile_followup_lexed,
+    expand_segments_with_multi_create_clauses_lexed,
+};
+#[path = "chain_carry/chain_carry_condition_programs.rs"]
+mod chain_carry_condition_programs;
+use chain_carry_condition_programs::{parse_carried_cant_effects, trailing_if_predicate_supported};
+pub use chain_carry_condition_programs::{
+    parse_effect_clause_with_trailing_if, parse_effect_clause_with_trailing_if_lexed,
+};
+#[path = "chain_carry/chain_carry_core_programs.rs"]
+mod chain_carry_core_programs;
+use chain_carry_core_programs::{
+    apply_carried_effect_duration, is_orphan_rounded_up_where_x_tail,
+    is_standalone_where_x_binding_segment, split_on_comma_or_semicolon_lexed,
+};
+pub use chain_carry_core_programs::{
+    expand_missing_verb_segment_lexed, expand_segments_with_comma_action_clauses_lexed, find_verb,
+    parse_effect_chain, parse_effect_chain_inner, parse_effect_chain_lexed_with_context,
+};
+#[path = "chain_carry/chain_carry_choice_programs.rs"]
+mod chain_carry_choice_programs;
+use chain_carry_choice_programs::{
+    explicit_target_choose_spec, normalize_imperative_choose_player,
+    parse_player_chooses_source_excluded_permanent_then_exiles,
+};
+#[path = "chain_carry/chain_carry_resource_programs.rs"]
+mod chain_carry_resource_programs;
+use chain_carry_resource_programs::{
+    bind_adjacent_life_stat_pronouns, effect_uses_half_life_total_value, value_is_half_life_total,
+};
+pub use chain_carry_resource_programs::{
+    bind_adjacent_shared_x_life_stat_values,
+    collapse_token_copy_next_end_step_sacrifice_followup_lexed,
+};
+#[path = "chain_carry/chain_carry_library_programs.rs"]
+mod chain_carry_library_programs;
+use chain_carry_library_programs::{
+    bind_adjacent_discard_count_draws, bind_adjacent_implicit_draw_discard_subjects,
+    for_each_revealed_this_way_filter, is_revealed_this_way_scalar_reward,
+    sentence_helper_revealed_tag,
+};
+#[path = "chain_carry/chain_carry_ability_programs.rs"]
+mod chain_carry_ability_programs;
+use chain_carry_ability_programs::effect_duration_for_gain_followup_carry;

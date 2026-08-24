@@ -35,11 +35,15 @@ impl TriggerMatcher for ThisAttacksAndIsntBlockedTrigger {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::ability::AbilityKind;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::events::combat::AttackEventTarget;
     use crate::game_state::GameState;
-    use crate::ids::{CardId, ObjectId, PlayerId};
+    #[cfg(ironsmith_runtime_parser_tests)]
+    use crate::ids::CardId;
+    use crate::ids::{ObjectId, PlayerId};
 
     #[test]
     fn matches_own_unblocked_attack() {

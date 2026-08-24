@@ -365,7 +365,7 @@ fn declared_target_mana_value_condition_uses_its_pronoun() {
 fn existential_countered_land_condition_keeps_plural_collection_surface() {
     let mut filter = ObjectFilter::land()
         .controlled_by(PlayerFilter::DamagedPlayer)
-        .with_counter_type(crate::object::CounterType::Named("contested"));
+        .with_counter_type(crate::object::CounterType::Named("contested".into()));
     filter.union_surface = filter
         .union_surface
         .with_counter_requirement_surface(false, true, true);
@@ -1136,7 +1136,7 @@ fn inline_lowering_only_target_choice_is_removed_when_action_names_target() {
     );
     assert_eq!(
         normalize_common_semantic_phrasing("Choose target player, target player gains 7 life."),
-        "Choose target player, target player gains 7 life."
+        "Target player gains 7 life."
     );
 }
 
@@ -1424,7 +1424,7 @@ fn describe_count_condition_with_counter_uses_have_counter_clause() {
     let mut filter = ObjectFilter::permanent().controlled_by(PlayerFilter::NotYou);
     filter.zone = Some(Zone::Battlefield);
     filter.with_counter = Some(crate::filter::CounterConstraint::Typed(
-        crate::object::CounterType::Named("aim"),
+        crate::object::CounterType::Named("aim".into()),
     ));
 
     assert_eq!(
@@ -1941,7 +1941,7 @@ fn normalize_token_death_quote_uses_it_for_token_damage() {
         normalize_common_semantic_phrasing(
             "Create three 1/1 red Devil creature tokens with \"When this token dies, this token deals 1 damage to any target\""
         ),
-        "Create three 1/1 red Devil creature tokens with \"When this token dies, it deals 1 damage to any target\""
+        "Create three 1/1 red Devil creature tokens with \"When this token dies, it deals 1 damage to any target.\""
     );
 }
 
@@ -3270,7 +3270,7 @@ fn equipment_token_compactor_requires_pump_clause() {
         }),
         functional_zones: vec![Zone::Battlefield],
     };
-    let token = crate::cards::CardDefinitionBuilder::new(
+    let token = crate::cards::builders::CardDefinitionBuilder::new(
         crate::ids::CardId::from_raw(1),
         "Stoneforged Blade",
     )
@@ -4109,7 +4109,7 @@ fn quoted_token_abilities_use_token_self_reference_for_activation_costs() {
         quote_token_granted_ability_text(
             "When this token dies, create a 2/2 red Dragon creature token with flying and \"{R}: This token gets +1/+0 until end of turn.\""
         ),
-        "\"When this token dies, create a 2/2 red Dragon creature token with flying and '{R}: This token gets +1/+0 until end of turn.'\""
+        "\"When this token dies, create a 2/2 red Dragon creature token with flying and '{R}: This token gets +1/+0 until end of turn.'.\""
     );
     assert_eq!(
         quote_token_granted_ability_text(
@@ -4400,7 +4400,7 @@ fn token_with_non_toxic_poison_trigger_does_not_promote_toxic_surface() {
 
     assert_eq!(
         describe_token_blueprint(&token),
-        "1/1 colorless Snake artifact creature token. It has \"Whenever this token deals combat damage to a player, that player gets a poison counter\" and \"Whenever this token deals damage to a player, you get a poison counter\""
+        "1/1 colorless Snake artifact creature token. It has \"Whenever this token deals combat damage to a player, that player gets a poison counter\" and \"Whenever this token deals damage to a player, you get a poison counter.\""
     );
 }
 

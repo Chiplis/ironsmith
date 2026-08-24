@@ -86,12 +86,8 @@ pub(super) fn try_parse_modal_bullet_block(
         return Ok(None);
     }
 
-    let spree_header = line
-        .info
-        .raw_line
-        .trim_start()
-        .to_ascii_lowercase()
-        .starts_with("spree");
+    let normalized_header = line.info.raw_line.trim_start().to_ascii_lowercase();
+    let spree_header = crate::string_primitives::starts_with(&normalized_header, "spree");
     let mut bullet_modes = Vec::new();
     let mut probe_idx = idx + 1;
     while let Some(PreprocessedItem::Line(next_line)) = preprocessed.items.get(probe_idx) {

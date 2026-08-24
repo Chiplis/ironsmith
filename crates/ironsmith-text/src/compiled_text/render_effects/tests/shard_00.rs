@@ -108,13 +108,14 @@ pub(super) fn each_player_optional_reveal_drives_their_own_token_count() {
             ))],
         )),
     );
-    let bear = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Bear")
-        .token()
-        .color_indicator(crate::color::ColorSet::GREEN)
-        .card_types(vec![CardType::Creature])
-        .subtypes(vec![Subtype::Bear])
-        .power_toughness(crate::card::PowerToughness::fixed(2, 2))
-        .build();
+    let bear =
+        crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Bear")
+            .token()
+            .color_indicator(crate::color::ColorSet::GREEN)
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Bear])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .build();
     let count = Value::PriorEffectMetric {
         effect_id: producer_id,
         query: crate::effect::PriorEffectMetricQuery::new(
@@ -1189,13 +1190,14 @@ pub(super) fn describe_effect_list_compacts_exile_all_creatures_each_player_frac
 {
     let exiled = TagKey::from("__sentence_helper_exiled_l0_s0_e0");
     let created = TagKey::from("created_1");
-    let fractal = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Fractal")
-        .token()
-        .card_types(vec![CardType::Creature])
-        .subtypes(vec![Subtype::Fractal])
-        .color_indicator(crate::color::ColorSet::GREEN.union(crate::color::ColorSet::BLUE))
-        .power_toughness(crate::card::PowerToughness::fixed(0, 0))
-        .build();
+    let fractal =
+        crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Fractal")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Fractal])
+            .color_indicator(crate::color::ColorSet::GREEN.union(crate::color::ColorSet::BLUE))
+            .power_toughness(crate::card::PowerToughness::fixed(0, 0))
+            .build();
 
     let effects = vec![
         Effect::with_id(
@@ -1544,9 +1546,10 @@ pub(super) fn describe_effect_list_compacts_destroy_search_graveyard_shuffle_seq
     let expected = "Destroy all creatures, then search target opponent's library for up to three creature cards and put them into their graveyard. Then that player shuffles";
 
     assert_eq!(describe_effect_list(&effects), expected);
+    let expected_clause = lowercase_first(expected);
     assert_eq!(
         describe_effect_clause_list(&effects).as_deref(),
-        Some(expected)
+        Some(expected_clause.as_str())
     );
 }
 

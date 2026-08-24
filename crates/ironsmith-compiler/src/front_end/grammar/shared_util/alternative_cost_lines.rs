@@ -1,10 +1,10 @@
 use crate::activation_and_restrictions::parse_payment_clause_as_total_cost;
-use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cards::builders::CardTextError;
 use crate::grammar::{leaf, permission_shapes};
 use crate::keyword_static::parse_this_spell_cost_condition;
 use crate::lexer::{OwnedLexToken, TokenWordView, lex_line, render_token_slice};
 use crate::mana::ManaCost;
+use crate::model::CompilerAlternativeCastingMethod as AlternativeCastingMethod;
 use crate::static_abilities::ThisSpellCostCondition;
 
 pub fn parse_self_free_cast(tokens: &[OwnedLexToken]) -> Option<AlternativeCastingMethod> {
@@ -51,7 +51,7 @@ pub fn parse_flash_with_additional_cost(
     }
     Some(AlternativeCastingMethod::flash_with_additional_cost(
         parsed.cost,
-        crate::cost::TotalCost::free(),
+        ironsmith_core::TotalCost::<crate::model::CompilerCost>::free(),
     ))
 }
 

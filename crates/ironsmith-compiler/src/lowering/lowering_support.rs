@@ -1,8 +1,8 @@
-use crate::ability::{Ability, AbilityKind, TriggeredAbility};
+use crate::ability::{Ability, AbilityKind};
 use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, EffectAst, IT_TAG, KeywordAction, ParsedAbility,
     PredicateAst, StaticAbilityAst, SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst,
-    TriggerSpec,
+    TriggerSpec, ZoneReplacementDurationAst,
 };
 use crate::effect::{Condition, Effect, EffectMode, EventValueSpec, Value};
 use crate::filter::{ObjectFilter, ObjectRef};
@@ -16,9 +16,9 @@ use super::compile_support::{
     choose_spec_mentions_iterated_player, compile_delayed_trigger_spec, compile_trigger_effects,
     compile_trigger_spec, condition_mentions_iterated_player, effect_mentions_iterated_player,
     effect_references_it_tag, effect_references_its_controller, effect_references_tag,
-    effects_contain_pending_effect_metric, effects_reference_it_tag,
-    effects_reference_its_controller, effects_reference_tag, ensure_concrete_trigger_spec,
-    filter_references_tag, inferred_trigger_player_filter,
+    effects_contain_pending_effect_metric, effects_have_cross_arm_tag_dependency,
+    effects_reference_it_tag, effects_reference_its_controller, effects_reference_tag,
+    ensure_concrete_trigger_spec, filter_references_tag, inferred_trigger_player_filter,
     is_sentence_helper_exiled_collection_tag, materialize_prepared_effects_with_trigger_context,
     materialize_prepared_statement_effects, materialize_prepared_triggered_effects,
     object_filter_mentions_iterated_player, trigger_binds_player_reference_context,
@@ -42,7 +42,7 @@ use super::effect_pipeline::{
     PreparedTriggeredEffectsForLowering, SourceSentenceSegment,
 };
 use super::reference_resolution::{EffectReferenceResolutionConfig, annotate_effect_sequence};
-use super::static_ability_helpers::executable_object_abilities_for_keyword_action;
+use super::runtime_static_ability_helpers::executable_object_abilities_for_keyword_action;
 use crate::model::reference_state::{
     LoweredEffects, ReferenceEnv, ReferenceExports, ReferenceImports,
 };
@@ -410,7 +410,10 @@ fn rewrite_delayed_return_control_loss_sacrifice_followup(lowered: &mut LoweredE
         || choose.chooser != PlayerFilter::You
         || !choose.count.is_single()
         || choose.filter.controller != Some(PlayerFilter::You)
-        || choose.filter.card_types.as_slice() != [crate::types::CardType::Creature]
+        || !matches!(
+            choose.filter.card_types.as_slice(),
+            [crate::types::CardType::Creature]
+        )
         || plain_creature != ObjectFilter::default()
     {
         return false;
@@ -430,7 +433,7 @@ fn rewrite_delayed_return_control_loss_sacrifice_followup(lowered: &mut LoweredE
         return false;
     }
 
-    let returned_tag = crate::tag::TagKey::from("returned_control_loss");
+    let returned_tag = crate::tag::CompilerReferenceTag::ReturnedControlLoss.key();
     let tagged_return = Effect::new(crate::effects::TaggedEffect::new(
         returned_tag.clone(),
         Effect::new(returned),
@@ -954,6 +957,45 @@ fn bind_source_and_trigger_object_destroy_pair(effects: &mut [EffectAst], trigge
     }
 }
 
+/// A singular blocker reference followed by “It can't be regenerated” is a
+/// second typed restriction on the event participant, not a reason to erase
+/// the ordinary destroy action. Keeping the two authored statements
+/// composable also lets the trigger prelude bind both references to the same
+/// blocker snapshot.
+fn preserve_blocker_regeneration_followup_as_restriction(
+    effects: &mut Vec<EffectAst>,
+    trigger: &TriggerSpec,
+) {
+    fn is_blocked_by_object(trigger: &TriggerSpec) -> bool {
+        match trigger {
+            TriggerSpec::WithIntro { trigger, .. } => is_blocked_by_object(trigger),
+            TriggerSpec::ThisBecomesBlockedByObject(_) => true,
+            _ => false,
+        }
+    }
+
+    if !is_blocked_by_object(trigger) {
+        return;
+    }
+    let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::Destroy {
+                target,
+                no_regeneration,
+                ..
+            },
+        ..
+    })) = effects.last_mut()
+    else {
+        return;
+    };
+    if !*no_regeneration || typed_demonstrative_noun(target) != Some("creature") {
+        return;
+    }
+    *no_regeneration = false;
+    let _ = crate::effect_sentences::apply_cant_be_regenerated_to_last_target_effect(effects);
+}
+
 fn trigger_is_attacks_and_isnt_blocked(trigger: &TriggerSpec) -> bool {
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => trigger_is_attacks_and_isnt_blocked(trigger),
@@ -988,7 +1030,7 @@ fn bind_unblocked_trigger_attacker_combat_assignment(
                     && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
             })
         {
-            *source = TargetAst::Tagged(TagKey::from("triggering"), *span);
+            *source = TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), *span);
             return;
         }
         for_each_nested_effects_mut(effect, true, |nested| {
@@ -1155,6 +1197,17 @@ fn retarget_spell_cast_mana_spent_predicates_in_effects(
             | EffectAst::SelfReplacement { predicate, .. } => {
                 *predicate = retarget_spell_cast_mana_spent_predicate(trigger, predicate.clone());
             }
+            EffectAst::ControlFlow(control) => {
+                if let crate::model::control_flow::ControlFlowNodeAst::Condition {
+                    condition, ..
+                } = &mut control.node
+                    && let crate::model::control_flow::ControlPredicateAst::State(predicate) =
+                        &mut condition.predicate
+                {
+                    *predicate =
+                        retarget_spell_cast_mana_spent_predicate(trigger, predicate.clone());
+                }
+            }
             _ => {}
         }
         for_each_nested_effects_mut(effect, true, |nested| {
@@ -1252,8 +1305,8 @@ fn terminal_discard_filter(effect: &EffectAst) -> Option<Option<ObjectFilter>> {
 }
 
 fn typed_demonstrative_noun(target: &TargetAst) -> Option<&'static str> {
-    let (span, surfaced_filter_noun) = match target {
-        TargetAst::Tagged(tag, span) if tag.as_str() == IT_TAG => (*span, None),
+    let surface = match target {
+        TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG => None,
         TargetAst::Object(filter, _, span)
             if filter.tagged_constraints.iter().any(|constraint| {
                 constraint.tag.as_str() == IT_TAG
@@ -1267,17 +1320,19 @@ fn typed_demonstrative_noun(target: &TargetAst) -> Option<&'static str> {
                 Some(crate::types::CardType::Land) => Some("land"),
                 _ => None,
             };
-            (*span, noun)
+            if filter.source_surface.is_none() {
+                return noun;
+            }
+            let _ = span;
+            filter.source_surface.as_ref()
         }
         TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
             return typed_demonstrative_noun(inner);
         }
         _ => return None,
     };
-    let recorded_surface = crate::util::source_reference_surface_for_span(span);
-    let Some(crate::target::SourceReferenceSurface::ThisPermanentType(surface)) = recorded_surface
-    else {
-        return surfaced_filter_noun;
+    let Some(crate::target::SourceReferenceSurface::ThisPermanentType(surface)) = surface else {
+        return None;
     };
     match surface.split_whitespace().last()? {
         "artifact" => Some("artifact"),
@@ -1436,7 +1491,7 @@ fn bind_stack_retargets_to_triggering_object(effects: &mut [EffectAst]) {
                     if tag.as_str() == crate::cards::builders::IT_TAG
             )
         {
-            *target = TargetAst::Tagged(crate::tag::TagKey::from("triggering"), None);
+            *target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None);
         }
         crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
             for nested_effect in nested {
@@ -1507,6 +1562,64 @@ fn tagged_target_key(target: &TargetAst) -> Option<&crate::cards::builders::TagK
 /// replaces that environment entry with the placeholder.  Preparing the
 /// typed chain here also lets the return remain explicitly plural.
 fn rebind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
+    fn direct_exile(effect: &EffectAst) -> bool {
+        matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Exile { .. },
+                ..
+            })
+        )
+    }
+
+    fn tag_repeated_exile_members(effects: &mut [EffectAst], next_aggregate: &mut usize) {
+        fn tag_group(effects: &mut [&mut EffectAst], next_aggregate: &mut usize) {
+            if effects.iter().filter(|effect| direct_exile(effect)).count() < 2 {
+                return;
+            }
+            let tag = crate::cards::builders::TagKey::from(format!(
+                "__sentence_helper_exiled_aggregate_{}",
+                *next_aggregate
+            ));
+            *next_aggregate += 1;
+            for effect in effects.iter_mut().filter(|effect| direct_exile(effect)) {
+                let inner = std::mem::replace(
+                    *effect,
+                    EffectAst::Sequence {
+                        effects: Vec::new(),
+                    },
+                );
+                **effect = EffectAst::TagAffected {
+                    effect: Box::new(inner),
+                    tag: tag.clone(),
+                };
+            }
+        }
+
+        for effect in effects {
+            match effect {
+                EffectAst::Coordinated {
+                    effects: coordinated,
+                    ..
+                } => {
+                    let mut members = coordinated.iter_mut().collect::<Vec<_>>();
+                    tag_group(&mut members, next_aggregate);
+                }
+                EffectAst::Coordination(coordination) => {
+                    let mut members = coordination.effects_mut().collect::<Vec<_>>();
+                    tag_group(&mut members, next_aggregate);
+                }
+                _ => {}
+            }
+            for_each_nested_effects_mut(effect, true, |nested| {
+                tag_repeated_exile_members(nested, next_aggregate);
+            });
+        }
+    }
+
+    let mut next_aggregate = 0;
+    tag_repeated_exile_members(effects, &mut next_aggregate);
+
     let mut helper_choices = std::collections::HashMap::<String, (usize, bool)>::new();
     let mut last_aggregate_exile = None;
 
@@ -1529,6 +1642,12 @@ fn rebind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
             && let Some(tag) = tagged_target_key(target)
             && let Some((choice_count, explicitly_plural)) = helper_choices.get(tag.as_str())
             && (*choice_count > 1 || *explicitly_plural)
+        {
+            *last_aggregate_exile = Some(tag.clone());
+        }
+        if let EffectAst::TagAffected { effect, tag } = effect
+            && is_sentence_helper_exiled_collection_tag(tag.as_str())
+            && direct_exile(effect)
         {
             *last_aggregate_exile = Some(tag.clone());
         }
@@ -1668,7 +1787,7 @@ fn rewrite_prepare_effects_from_normalized(
                 .as_ref()
                 .filter(|tag| tag.as_str() == IT_TAG)
                 .cloned()
-                .unwrap_or_else(|| crate::cards::builders::TagKey::from("triggering"));
+                .unwrap_or_else(|| crate::tag::CompilerReferenceTag::Triggering.key());
             prelude.insert(0, EffectPreludeTag::TriggeringObject(tag));
         }
         if let Some(default_prelude) = default_last_object_prelude {
@@ -1818,6 +1937,96 @@ fn source_sentence_boundary_splits_hand_pipeline(effects: &[EffectAst], boundary
     })
 }
 
+/// A result-gated hand reveal/choice can be followed by a new source sentence
+/// that consumes the chosen card. The consumer is executable only when the
+/// gated producer ran, so keep the complete typed hand pipeline in that
+/// branch. Once the cross-sentence dependency is proven, the branch's
+/// top-level coordination wrapper is redundant and would otherwise hide the
+/// individual reveal, choice, and consumer effects behind a runtime sequence.
+fn correlate_result_gated_hand_pipeline_followups(effects: &mut Vec<EffectAst>) -> bool {
+    fn flatten_single_coordination(branch: &mut Vec<EffectAst>) {
+        let replacement = match branch.as_slice() {
+            [EffectAst::Coordination(coordination)] => {
+                Some(coordination.effects().cloned().collect::<Vec<_>>())
+            }
+            [EffectAst::Coordinated { effects, .. }] => Some(effects.clone()),
+            _ => None,
+        };
+        if let Some(replacement) = replacement {
+            *branch = replacement;
+        }
+    }
+
+    let mut changed = false;
+    let mut index = 0usize;
+    while index + 1 < effects.len() {
+        let follows_gated_hand_pipeline = match &effects[index] {
+            EffectAst::IfResult {
+                predicate: crate::cards::builders::IfResultPredicate::Did,
+                effects: branch,
+            } => {
+                let mut hand_tags = Vec::new();
+                collect_source_sentence_hand_pipeline_tags(branch, &mut hand_tags);
+                hand_tags.iter().any(|tag| {
+                    source_sentence_effect_consumes_hand_pipeline_tag(&effects[index + 1], tag)
+                })
+            }
+            _ => false,
+        };
+        if !follows_gated_hand_pipeline {
+            index += 1;
+            continue;
+        }
+
+        let followup = effects.remove(index + 1);
+        let EffectAst::IfResult {
+            effects: branch, ..
+        } = &mut effects[index]
+        else {
+            unreachable!("the result-gated branch was checked above")
+        };
+        flatten_single_coordination(branch);
+        branch.push(followup);
+        changed = true;
+        index += 1;
+    }
+    changed
+}
+
+fn source_sentence_boundary_splits_implicit_object_pipeline(
+    effects: &[EffectAst],
+    boundary: usize,
+) -> bool {
+    fn contains_local_rewrite_dependency(effect: &EffectAst) -> bool {
+        if matches!(
+            effect,
+            EffectAst::SelfReplacement { .. }
+                | EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::RegisterZoneReplacement {
+                        duration: ZoneReplacementDurationAst::OneShot,
+                        ..
+                    },
+                    ..
+                })
+        ) {
+            return true;
+        }
+        let mut found = false;
+        for_each_nested_effects(effect, true, |nested| {
+            found |= nested.iter().any(contains_local_rewrite_dependency);
+        });
+        found
+    }
+
+    effects[..boundary]
+        .iter()
+        .rev()
+        .any(|effect| crate::effect_sentences::primary_target_from_effect(effect).is_some())
+        && effects[boundary..].iter().any(|effect| {
+            effect_references_it_tag(effect) && contains_local_rewrite_dependency(effect)
+        })
+}
+
 fn flatten_top_level_source_sentences(
     effects: Vec<EffectAst>,
 ) -> (Vec<EffectAst>, Vec<SourceSentenceSegment>) {
@@ -1902,10 +2111,56 @@ fn flatten_top_level_source_sentences(
         }
     }
 
-    if correlate_conditional_quantified_choice_followups(&mut flattened) {
+    if correlate_result_gated_hand_pipeline_followups(&mut flattened)
+        || correlate_conditional_quantified_choice_followups(&mut flattened)
+    {
         // The consumer is authored in the next sentence but is semantically
         // branch-local because it uses a collection produced only by that
         // conditional choice. Lower the correlated branch as one unit.
+        preserve_discarded_leading_then_on_distributive_filters(&mut flattened, &source_segments);
+        return (flattened, Vec::new());
+    }
+
+    if all_source_sentences
+        && effects_have_cross_arm_tag_dependency(&flattened)
+        && flattened.iter().any(|effect| {
+            if matches!(
+                effect,
+                EffectAst::SelfReplacement { .. }
+                    | EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::RegisterZoneReplacement {
+                            duration: ZoneReplacementDurationAst::OneShot,
+                            ..
+                        },
+                        ..
+                    })
+            ) {
+                return true;
+            }
+            let mut found = false;
+            for_each_nested_effects(effect, true, |nested| {
+                found |= nested.iter().any(|nested| {
+                    matches!(
+                        nested,
+                        EffectAst::SelfReplacement { .. }
+                            | EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                                action: SubjectVerbActionAst::RegisterZoneReplacement {
+                                    duration: ZoneReplacementDurationAst::OneShot,
+                                    ..
+                                },
+                                ..
+                            })
+                    )
+                });
+            });
+            found
+        })
+    {
+        // A produced tag consumed by a later sentence is one executable
+        // replacement pipeline. Keep it in a shared lowering slice so the
+        // local rewrite can attach before the producer resolves. Ordinary
+        // producer/consumer tags remain globally annotated while retaining
+        // their independently executable source segments.
         preserve_discarded_leading_then_on_distributive_filters(&mut flattened, &source_segments);
         return (flattened, Vec::new());
     }
@@ -1919,6 +2174,7 @@ fn flatten_top_level_source_sentences(
         let mut boundary = 0usize;
         let mut splits_shared_lowering_followup = false;
         let mut splits_hand_pipeline = false;
+        let mut splits_implicit_object_pipeline = false;
         let mut continues_repeat_process = false;
         for segment in &source_segments[..source_segments.len() - 1] {
             boundary += segment.effect_count;
@@ -1929,6 +2185,8 @@ fn flatten_top_level_source_sentences(
                 source_sentence_boundary_continues_repeat_process(&flattened, boundary);
             splits_hand_pipeline |=
                 source_sentence_boundary_splits_hand_pipeline(&flattened, boundary);
+            splits_implicit_object_pipeline |=
+                source_sentence_boundary_splits_implicit_object_pipeline(&flattened, boundary);
         }
         if continues_repeat_process {
             // Repeat-process normalization needs the preceding process body
@@ -1944,6 +2202,18 @@ fn flatten_top_level_source_sentences(
             // Hand producers, choices, and dependent moves form a typed tag
             // pipeline. Keep that pipeline in one lowering slice so its
             // specialist can see the complete operation.
+            preserve_discarded_leading_then_on_distributive_filters(
+                &mut flattened,
+                &source_segments,
+            );
+            return (flattened, Vec::new());
+        }
+        if splits_implicit_object_pipeline {
+            // The later sentence's unresolved demonstrative is proven to
+            // consume an object target established before this boundary.
+            // Reference resolution will assign the durable tag, but the
+            // producer and consumer must remain in one lowering slice so
+            // local replacements can be installed before the producer runs.
             preserve_discarded_leading_then_on_distributive_filters(
                 &mut flattened,
                 &source_segments,
@@ -2325,13 +2595,17 @@ pub fn rewrite_prepare_triggered_effects_for_lowering(
     // steal the pronoun during condition lowering.
     fn bind_stack_trigger_intervening_object(predicate: PredicateAst) -> PredicateAst {
         match predicate {
-            PredicateAst::ItMatches(filter) => {
-                PredicateAst::TaggedMatches(TagKey::from("triggering"), filter)
-            }
+            PredicateAst::ItMatches(filter) => PredicateAst::TaggedMatches(
+                crate::tag::CompilerReferenceTag::Triggering.key(),
+                filter,
+            ),
             PredicateAst::SourceMatches(filter)
                 if filter.has_trailing_candidate_ability_condition_surface() =>
             {
-                PredicateAst::TaggedMatches(TagKey::from("triggering"), filter)
+                PredicateAst::TaggedMatches(
+                    crate::tag::CompilerReferenceTag::Triggering.key(),
+                    filter,
+                )
             }
             PredicateAst::Not(inner) => {
                 PredicateAst::Not(Box::new(bind_stack_trigger_intervening_object(*inner)))
@@ -2396,7 +2670,7 @@ pub fn rewrite_prepare_triggered_effects_for_lowering(
             if &object_domain != trigger_object || &*player != trigger_player {
                 continue;
             }
-            object.tagged_constraints[0].tag = TagKey::from("damaged");
+            object.tagged_constraints[0].tag = crate::tag::CompilerReferenceTag::Damaged.key();
             *player = PlayerFilter::DamagedPlayer;
         }
     }
@@ -2417,6 +2691,7 @@ pub fn rewrite_prepare_triggered_effects_for_lowering(
     }
     preserve_copy_reference_kind_from_trigger(&mut normalized, &trigger);
     bind_source_and_trigger_object_destroy_pair(&mut normalized, &trigger);
+    preserve_blocker_regeneration_followup_as_restriction(&mut normalized, &trigger);
     bind_unblocked_trigger_attacker_combat_assignment(&mut normalized, &trigger);
     bind_phase_step_trigger_untap_after_incompatible_discard(&mut normalized, &trigger);
     // "You may choose new targets for that spell" after a body sentence about
@@ -2616,7 +2891,6 @@ pub fn rewrite_prepare_triggered_effects_for_lowering(
         default_last_object_prelude,
         true,
     )?;
-
     if intervening_if
         .as_ref()
         .is_some_and(predicate_references_triggering_tag)
@@ -2629,7 +2903,7 @@ pub fn rewrite_prepare_triggered_effects_for_lowering(
     {
         prepared.prelude.insert(
             0,
-            EffectPreludeTag::TriggeringObject(TagKey::from("triggering")),
+            EffectPreludeTag::TriggeringObject(crate::tag::CompilerReferenceTag::Triggering.key()),
         );
     }
 
@@ -2685,33 +2959,35 @@ fn rewrite_prepare_parsed_ability_payload(
         return Ok(None);
     };
 
-    if let AbilityKind::Activated(activated) = parsed.kind()
+    if let crate::model::CompilerAbilityKindCore::Activated(activated) = parsed.kind()
         && (!activated.effects.is_empty() || !activated.choices.is_empty())
     {
         return Ok(None);
     }
-    if let AbilityKind::Triggered(triggered) = parsed.kind()
+    if let crate::model::CompilerAbilityKindCore::Triggered(triggered) = parsed.kind()
         && (!triggered.effects.is_empty() || !triggered.choices.is_empty())
     {
         return Ok(None);
     }
 
     Ok(match (parsed.kind(), parsed.trigger_spec.as_ref()) {
-        (AbilityKind::Triggered(_), Some(trigger)) => {
+        (crate::model::CompilerAbilityKindCore::Triggered(_), Some(trigger)) => {
             let (trigger, prepared) = rewrite_prepare_triggered_effects_for_lowering(
-                trigger.clone(),
+                (**trigger).clone(),
                 effects_ast,
                 parsed.reference_imports.clone(),
             )?;
             Some(NormalizedPreparedAbility::Triggered { trigger, prepared })
         }
-        (AbilityKind::Activated(_), _) => Some(NormalizedPreparedAbility::Activated(
-            rewrite_prepare_effects_with_trigger_context_for_lowering(
-                None,
-                effects_ast,
-                parsed.reference_imports.clone(),
-            )?,
-        )),
+        (crate::model::CompilerAbilityKindCore::Activated(_), _) => {
+            Some(NormalizedPreparedAbility::Activated(
+                rewrite_prepare_effects_with_trigger_context_for_lowering(
+                    None,
+                    effects_ast,
+                    parsed.reference_imports.clone(),
+                )?,
+            ))
+        }
         _ => None,
     })
 }
@@ -2731,25 +3007,28 @@ fn rewrite_merge_intervening_conditions(
 }
 
 fn rewrite_lower_parsed_ability_internal(
-    mut parsed: ParsedAbility,
+    parsed: ParsedAbility,
     prepared: Option<NormalizedPreparedAbility>,
-) -> Result<ParsedAbility, CardTextError> {
-    let Some(_) = parsed.effects_ast.as_ref() else {
-        return Ok(parsed);
-    };
+) -> Result<Ability, CardTextError> {
+    let has_effect_sidecar = parsed.effects_ast.is_some();
 
     let prepared = match prepared {
         Some(prepared) => Some(prepared),
         None => rewrite_prepare_parsed_ability_payload(&parsed)?,
     };
 
-    let AbilityKind::Activated(activated) = parsed.kind_mut() else {
-        if let AbilityKind::Triggered(triggered) = parsed.kind_mut() {
+    let mut ability = lower_compiler_ability_core(*parsed.ability)?;
+    if !has_effect_sidecar {
+        return Ok(ability);
+    }
+
+    let AbilityKind::Activated(activated) = &mut ability.kind else {
+        if let AbilityKind::Triggered(triggered) = &mut ability.kind {
             if !triggered.effects.is_empty() || !triggered.choices.is_empty() {
-                return Ok(parsed);
+                return Ok(ability);
             }
             let Some(NormalizedPreparedAbility::Triggered { trigger, prepared }) = prepared else {
-                return Ok(parsed);
+                return Ok(ability);
             };
             let (mut lowered, parsed_intervening_if) =
                 materialize_prepared_triggered_effects(&prepared)?;
@@ -2772,18 +3051,18 @@ fn rewrite_lower_parsed_ability_internal(
             triggered.effects = lowered.effects;
             triggered.choices = lowered.choices;
             triggered.intervening_if = intervening_if;
-            return Ok(parsed);
+            return Ok(ability);
         }
-        return Ok(parsed);
+        return Ok(ability);
     };
 
     if !activated.effects.is_empty() || !activated.choices.is_empty() {
         mark_activated_mana_output_if_needed(activated);
-        return Ok(parsed);
+        return Ok(ability);
     }
 
     let Some(NormalizedPreparedAbility::Activated(prepared)) = prepared else {
-        return Ok(parsed);
+        return Ok(ability);
     };
     let lowered = materialize_prepared_effects_with_trigger_context(&prepared)?;
     rewrite_validate_iterated_player_bindings_in_lowered_effects(
@@ -2794,7 +3073,7 @@ fn rewrite_lower_parsed_ability_internal(
     activated.effects = lowered.effects;
     activated.choices = lowered.choices;
     mark_activated_mana_output_if_needed(activated);
-    Ok(parsed)
+    Ok(ability)
 }
 
 fn mark_activated_mana_output_if_needed(activated: &mut crate::ability::ActivatedAbility) {
@@ -2814,18 +3093,14 @@ fn effect_produces_mana(effect: &crate::effect::Effect) -> bool {
     effect.contains_mana_production()
 }
 
-pub fn rewrite_lower_parsed_ability(parsed: ParsedAbility) -> Result<ParsedAbility, CardTextError> {
-    crate::stack::maybe_grow(1024 * 1024, 2 * 1024 * 1024, || {
-        rewrite_lower_parsed_ability_internal(parsed, None)
-    })
+pub fn rewrite_lower_parsed_ability(parsed: ParsedAbility) -> Result<Ability, CardTextError> {
+    rewrite_lower_parsed_ability_internal(parsed, None)
 }
 
 pub fn rewrite_lower_prepared_ability(
     normalized: NormalizedParsedAbility,
-) -> Result<ParsedAbility, CardTextError> {
-    crate::stack::maybe_grow(1024 * 1024, 2 * 1024 * 1024, || {
-        rewrite_lower_parsed_ability_internal(normalized.parsed, normalized.prepared)
-    })
+) -> Result<Ability, CardTextError> {
+    rewrite_lower_parsed_ability_internal(normalized.parsed, normalized.prepared)
 }
 
 pub fn rewrite_apply_instead_followup_statement_to_last_ability(
@@ -2965,20 +3240,22 @@ pub fn rewrite_parsed_triggered_ability(
 ) -> ParsedAbility {
     let reference_imports = reference_imports.into();
     ParsedAbility {
-        ability: Ability {
-            kind: AbilityKind::Triggered(TriggeredAbility {
-                trigger: compile_trigger_spec(trigger.clone()),
-                effects: crate::resolution::ResolutionProgram::default(),
-                choices: Vec::new(),
-                intervening_if,
-                presentation_label: presentation_label.cloned(),
-            }),
+        ability: crate::model::CompilerAbilityCore {
+            kind: crate::model::CompilerAbilityKindCore::Triggered(
+                crate::model::CompilerTriggeredAbilityCore {
+                    trigger: trigger.clone(),
+                    effects: ironsmith_core::ResolutionProgram::default(),
+                    choices: Vec::new(),
+                    intervening_if,
+                    presentation_label: presentation_label.cloned(),
+                },
+            ),
             functional_zones,
         }
         .into(),
         text,
         effects_ast: Some(effects_ast),
-        trigger_spec: Some(trigger),
+        trigger_spec: Some(Box::new(trigger)),
         reference_imports,
     }
 }
@@ -2996,6 +3273,7 @@ pub fn rewrite_static_ability_for_keyword_action(action: KeywordAction) -> Optio
         KeywordAction::Improvise => Some(StaticAbility::improvise()),
         KeywordAction::Convoke => Some(StaticAbility::convoke()),
         KeywordAction::AffinityForArtifacts => Some(StaticAbility::affinity_for_artifacts()),
+        KeywordAction::CantBeCountered => Some(StaticAbility::cant_be_countered_ability()),
         KeywordAction::Delve => Some(StaticAbility::delve()),
         KeywordAction::FirstStrike => Some(StaticAbility::first_strike()),
         KeywordAction::DoubleStrike => Some(StaticAbility::double_strike()),
@@ -3427,7 +3705,7 @@ pub fn rewrite_lower_static_ability_ast(
     ability: StaticAbilityAst,
 ) -> Result<StaticAbility, CardTextError> {
     match ability {
-        StaticAbilityAst::Static(ability) => Ok(ability),
+        StaticAbilityAst::Static(ability) => lower_compiler_static_ability_core(ability),
         StaticAbilityAst::KeywordAction(action) => {
             if executable_object_abilities_for_keyword_action(&action).is_some()
                 || matches!(
@@ -3593,7 +3871,7 @@ pub fn rewrite_lower_static_ability_ast(
             display,
             condition,
         } => {
-            let lowered = rewrite_lower_parsed_ability(ability)?.into_runtime();
+            let lowered = rewrite_lower_parsed_ability(ability)?;
             let mut grant =
                 crate::static_abilities::GrantObjectAbilityForFilter::new(filter, lowered, display);
             if let Some(condition) = condition {
@@ -3606,17 +3884,104 @@ pub fn rewrite_lower_static_ability_ast(
             display,
             condition,
         } => {
-            let lowered = rewrite_lower_parsed_ability(ability)?.into_runtime();
+            let lowered = rewrite_lower_parsed_ability(ability)?;
             rewrite_attached_object_abilities_grant(vec![lowered], display, condition, false)
         }
         StaticAbilityAst::SoulbondSharedObjectAbility { ability } => {
-            let lowered = rewrite_lower_parsed_ability(ability)?.into_runtime();
+            let lowered = rewrite_lower_parsed_ability(ability)?;
             Ok(StaticAbility::soulbond_shared_object_ability(lowered))
         }
         StaticAbilityAst::AttachmentRestriction { .. } => Err(CardTextError::InvariantViolation(
             "attachment restrictions must be lowered through card definition state".to_string(),
         )),
     }
+}
+
+pub(crate) fn lower_compiler_static_ability_core(
+    ability: crate::model::CompilerStaticAbilityCore,
+) -> Result<StaticAbility, CardTextError> {
+    ability.try_map(
+        |trigger| Ok(compile_trigger_spec(trigger)),
+        lower_compiler_child_effect,
+        lower_compiler_cost_component,
+    )
+}
+
+pub(crate) fn lower_compiler_child_effect(effect: EffectAst) -> Result<Effect, CardTextError> {
+    let (mut effects, choices) = crate::compile_support::compile_effect(
+        &effect,
+        &mut crate::model::facts::EffectLoweringContext::new(),
+    )?;
+    if !choices.is_empty() || effects.is_empty() {
+        return Err(CardTextError::InvariantViolation(
+            "compiler ability child must lower to one choice-free runtime effect".to_string(),
+        ));
+    }
+    if effects.len() == 1 {
+        Ok(effects.remove(0))
+    } else {
+        Ok(Effect::new(crate::effects::SequenceEffect::new(effects)))
+    }
+}
+
+pub(crate) fn lower_compiler_cost_component(
+    cost: crate::model::CompilerCost,
+) -> Result<crate::costs::Cost, CardTextError> {
+    let total = ironsmith_core::TotalCost::from_costs(vec![cost]);
+    let lowered =
+        crate::lowering::cost_materialization::materialize_compiler_core_total_cost(&total)?;
+    let mut costs = lowered.costs().to_vec();
+    if costs.is_empty() {
+        return Err(CardTextError::InvariantViolation(
+            "compiler ability child cost must lower to one runtime component".to_string(),
+        ));
+    }
+    if costs.len() == 1 {
+        return Ok(costs.remove(0));
+    }
+    let effects = costs
+        .into_iter()
+        .map(|cost| match cost {
+            crate::costs::Cost::Effect(effect) => Ok(effect),
+            _ => Err(CardTextError::InvariantViolation(
+                "one compiler cost expanded into mixed runtime cost components".to_string(),
+            )),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(crate::costs::Cost::validated_effect(Effect::new(
+        crate::effects::SequenceEffect::new(effects),
+    )))
+}
+
+pub(crate) fn lower_compiler_ability_core(
+    ability: crate::model::CompilerAbilityCore,
+) -> Result<Ability, CardTextError> {
+    ability.try_map(
+        lower_compiler_static_ability_core,
+        |trigger| Ok(compile_trigger_spec(trigger)),
+        lower_compiler_child_effect,
+        lower_compiler_cost_component,
+    )
+}
+
+pub(crate) fn lower_compiler_grantable(
+    grantable: crate::model::CompilerGrantableCore,
+) -> Result<crate::grant::Grantable, CardTextError> {
+    grantable.try_map(
+        lower_compiler_static_ability_core,
+        lower_compiler_child_effect,
+        lower_compiler_cost_component,
+    )
+}
+
+pub(crate) fn lower_compiler_grant_spec(
+    spec: crate::model::CompilerGrantSpecCore,
+) -> Result<crate::grant::GrantSpec, CardTextError> {
+    spec.try_map(
+        lower_compiler_static_ability_core,
+        lower_compiler_child_effect,
+        lower_compiler_cost_component,
+    )
 }
 
 pub fn rewrite_lower_static_abilities_ast(
@@ -4387,7 +4752,7 @@ mod tests {
         blocker.blocking = true;
         let prelude = default_trigger_last_object_prelude(
             &TriggerSpec::ThisBecomesBlockedByObject(blocker),
-            &TagKey::from("blocking"),
+            &crate::tag::CompilerReferenceTag::Blocking.key(),
         )
         .expect("becomes-blocked trigger should capture its blocker");
 
@@ -4421,20 +4786,14 @@ mod tests {
             .expect("unblocked-attacker body should lower");
         assert!(intervening_if.is_none());
 
-        let [offer_segment, result_segment] = lowered.effects.segments.as_slice() else {
-            panic!(
-                "expected linked offer/result segments: {:#?}",
-                lowered.effects
-            );
-        };
-        let [tag_effect, offer_effect] = offer_segment.default_effects.as_slice() else {
-            panic!("expected trigger tag and optional offer: {offer_segment:#?}");
-        };
-        let triggering = tag_effect
-            .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+        let flattened = lowered.effects.flattened_default_effects();
+        let triggering = flattened
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<crate::effects::TagTriggeringObjectEffect>())
             .expect("unblocked attacker should receive an event identity tag");
-        let offer = offer_effect
-            .downcast_ref::<crate::effects::WithIdEffect>()
+        let offer = flattened
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<crate::effects::WithIdEffect>())
             .expect("optional offer should export its result");
         let may = offer
             .effect
@@ -4445,11 +4804,10 @@ mod tests {
             Some(PlayerFilter::ControllerOf(ObjectRef::Tagged(tag)))
                 if tag.as_str() == triggering.tag.as_str()
         ));
-        let [damage_effect] = may.effects.as_slice() else {
-            panic!("expected one optional damage instruction: {may:#?}");
-        };
-        let with_source = damage_effect
-            .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+        let with_source = may
+            .effects
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>())
             .expect("the triggering attacker should be the damage source");
         assert!(matches!(
             with_source.source.unhinted(),
@@ -4487,11 +4845,9 @@ mod tests {
             "the damage source must be excluded during target legality: {filter:#?}"
         );
 
-        let [result_effect] = result_segment.default_effects.as_slice() else {
-            panic!("expected one prior-result branch: {result_segment:#?}");
-        };
-        let result = result_effect
-            .downcast_ref::<crate::effects::IfEffect>()
+        let result = flattened
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<crate::effects::IfEffect>())
             .expect("followup should test the optional offer result");
         assert_eq!(result.condition, offer.id);
         assert_eq!(result.predicate, crate::effect::EffectPredicate::Happened);
@@ -4658,8 +5014,21 @@ mod tests {
             let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
                 .expect("parse trailing-unless sentence");
             assert!(
-                matches!(effects.as_slice(), [EffectAst::TrailingUnless { .. }]),
-                "expected explicit trailing-unless AST for {text}: {effects:#?}"
+                matches!(effects.as_slice(), [EffectAst::TrailingUnless { .. }])
+                    || matches!(
+                        effects.as_slice(),
+                        [EffectAst::ControlFlow(control)]
+                            if matches!(
+                                &control.node,
+                                crate::model::control_flow::ControlFlowNodeAst::Condition {
+                                    condition,
+                                    ..
+                                } if condition.position
+                                    == crate::model::control_flow::ConditionPositionAst::Postcondition
+                                    && condition.negated_surface
+                            )
+                    ),
+                "expected canonical trailing-unless control flow for {text}: {effects:#?}"
             );
 
             let (_, prepared) = rewrite_prepare_triggered_effects_for_lowering(

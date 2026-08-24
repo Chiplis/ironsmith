@@ -3,8 +3,10 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::{literal, rest, take_till};
 
-use super::super::{effects, permission_shapes, primitives, structure::MetadataLineKind};
-use crate::lexer::{OwnedLexToken, TokenKind, TokenWordView, lex_line};
+use super::super::{
+    abilities, effects, permission_shapes, primitives, structure::MetadataLineKind,
+};
+use crate::lexer::{OwnedLexToken, TokenKind, TokenWordView, lex_line, split_lexed_sentences};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParentheticalLineSurface {
@@ -122,6 +124,32 @@ pub fn parse_line_variant_split(line: &str) -> Option<LineVariantSplitSurface> {
         period,
         LineVariantSplitKind::CostAdjustmentFollowup,
     )
+}
+
+pub fn is_flashback_scoped_cost_adjustment(first: &str, second: &str) -> bool {
+    let Ok(first_tokens) = lex_line(first, 0) else {
+        return false;
+    };
+    let Some(first_sentence) = split_lexed_sentences(&first_tokens).into_iter().next() else {
+        return false;
+    };
+    if abilities::parse_flashback_keyword_line_spec_lexed(first_sentence).is_none() {
+        return false;
+    }
+
+    let Ok(second_tokens) = lex_line(second, 0) else {
+        return false;
+    };
+    let words = TokenWordView::new(&second_tokens).word_refs();
+    primitives::parse_word_sequence_prefix(&words, &["this", "spell", "costs"]).is_some()
+        && primitives::parse_word_sequence_span(&words, &["to", "cast", "this", "way"]).is_some()
+}
+
+pub fn is_mana_spend_bonus_followup(second: &str) -> bool {
+    let Ok(tokens) = lex_line(second, 0) else {
+        return false;
+    };
+    abilities::parse_mana_spend_bonus_sentence_lexed(&tokens).is_some()
 }
 
 pub fn parse_metadata_surface(line: &str) -> Option<MetadataSurface> {

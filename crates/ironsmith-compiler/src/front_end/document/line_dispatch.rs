@@ -283,28 +283,115 @@ pub(super) fn attach_compiler_trigger_facts(
             continue;
         };
 
-        let direct = if triggered.trigger_parse_tokens.is_empty()
+        let nested_combat_cost = (|| -> Result<
+            Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>,
+            CardTextError,
+        > {
+            let Some((_, after_intro)) = crate::grammar::primitives::parse_prefix(
+                &triggered.full_parse_tokens,
+                crate::grammar::primitives::phrase(&[
+                    "at",
+                    "the",
+                    "beginning",
+                    "of",
+                    "each",
+                    "combat",
+                ]),
+            ) else {
+                return Ok(None);
+            };
+            let after_intro = crate::lexer::trim_lexed_commas(after_intro);
+            let Some((_, after_pay)) = crate::grammar::primitives::parse_prefix(
+                after_intro,
+                crate::grammar::primitives::phrase(&["unless", "you", "pay"]),
+            ) else {
+                return Ok(None);
+            };
+            let Some((cost_tokens, nested_trigger_tokens)) =
+                crate::grammar::primitives::split_lexed_once_on_comma(after_pay)
+            else {
+                return Ok(None);
+            };
+            if !nested_trigger_tokens
+                .first()
+                .is_some_and(|token| token.is_word("whenever"))
+            {
+                return Ok(None);
+            }
+            let cost = crate::grammar::leaf::parse_leaf_mana_cost_tokens(
+                crate::lexer::trim_lexed_commas(cost_tokens),
+            )?;
+            Ok(Some(ironsmith_core::TotalCost::<crate::model::CompilerCost>::mana(
+                cost,
+            )))
+        })()?;
+        let direct = if let Some(cost) = nested_combat_cost {
+            super::super::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
+                context,
+                &triggered.trigger_parse_tokens,
+            )
+            .and_then(|nested_trigger| {
+                crate::semantic_line_parsing::parse_effect_sentences_preserving_source_boundaries(
+                    &triggered.effect_parse_tokens,
+                )
+                .map(|nested_effects| {
+                    (
+                        crate::model::ast::TriggerSpec::BeginningOfCombat(
+                            crate::target::PlayerFilter::Any,
+                        ),
+                        vec![crate::model::ast::EffectAst::UnlessPays {
+                            effects: vec![
+                                crate::model::ast::EffectAst::DelayedTriggerForDuration {
+                                    trigger: nested_trigger,
+                                    effects: nested_effects,
+                                    one_shot: false,
+                                    duration: crate::effect::Until::EndOfCombat,
+                                    either_of_watched_objects: false,
+                                    while_any_tagged_object_in_zone: None,
+                                },
+                            ],
+                            player: crate::PlayerAst::You,
+                            cost,
+                            before_delayed_step: false,
+                        }],
+                    )
+                })
+            })
+            .map(Some)
+        } else if triggered.trigger_parse_tokens.is_empty()
             || triggered.effect_parse_tokens.is_empty()
         {
-            None
+            Ok(None)
         } else {
-            parse_trigger_clause_lexed(&triggered.trigger_parse_tokens)
-                .and_then(|trigger| {
-                    parse_effect_sentences_lexed(&triggered.effect_parse_tokens)
-                        .map(|effects| (trigger, effects))
-                })
-                .ok()
+            super::super::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
+                context,
+                &triggered.trigger_parse_tokens,
+            )
+            .and_then(|trigger| {
+                crate::semantic_line_parsing::parse_effect_sentences_preserving_source_boundaries(
+                    &triggered.effect_parse_tokens,
+                )
+                .map(|effects| (trigger, effects))
+            })
+            .map(Some)
         };
-        let (trigger, effects) = match direct {
-            Some(program) => program,
-            None => triggered_program_from_line_ast(parse_triggered_line_lexed(
+        let fallback = || {
+            triggered_program_from_line_ast(parse_triggered_line_lexed(
                 &triggered.full_parse_tokens,
             )?)
             .ok_or_else(|| {
                 CardTextError::InvariantViolation(
                     "trigger line produced no compiler trigger program".to_string(),
                 )
-            })?,
+            })
+        };
+        let (trigger, effects) = match direct {
+            Ok(Some(program)) => program,
+            Ok(None) => fallback()?,
+            Err(direct_error) => match fallback() {
+                Ok(program) => program,
+                Err(_) => return Err(direct_error),
+            },
         };
         let functional_zones =
             super::super::semantic_line_parsing::infer_triggered_ability_functional_zones_from_facts(

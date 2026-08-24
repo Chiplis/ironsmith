@@ -110,10 +110,10 @@ pub fn parse_counter_reference_value_shape(words: &[&str]) -> Option<CounterRefe
         index += 1;
     }
 
-    let counter_offset = words
-        .get(index..)?
-        .iter()
-        .position(|word| matches!(*word, "counter" | "counters"))?;
+    let counter_offset =
+        crate::word_primitives::select_word_position(words.get(index..)?, |word| {
+            matches!(word, "counter" | "counters")
+        })?;
     if counter_offset > 2 {
         return None;
     }

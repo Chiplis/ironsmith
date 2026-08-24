@@ -95,7 +95,7 @@ pub(super) fn compile_subject_verb_late(
                 vec![Effect::new(
                     crate::effects::ApplyContinuousEffect::with_spec(
                         crate::target::ChooseSpec::Source,
-                        crate::continuous::Modification::AddAbilityGeneric(lowered.into_runtime()),
+                        crate::continuous::Modification::AddAbilityGeneric(lowered),
                         duration.clone(),
                     ),
                 )],
@@ -887,7 +887,9 @@ pub(super) fn compile_subject_verb_late(
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::CounterUnlessPays { target, cost } => {
-            let cost = resolve_total_cost_it_tags(cost, &current_reference_env(ctx))?;
+            let cost =
+                crate::lowering::cost_materialization::materialize_compiler_core_total_cost(cost)?;
+            let cost = resolve_total_cost_it_tags(&cost, &current_reference_env(ctx))?;
             let compiled = compile_tagged_effect_for_target(target, ctx, "countered", |spec| {
                 Effect::counter_unless_pays_total_cost(spec, cost.clone())
             })?;

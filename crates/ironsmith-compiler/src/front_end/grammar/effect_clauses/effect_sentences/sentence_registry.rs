@@ -78,12 +78,27 @@ pub(super) fn run_sentence_parse_rules_lexed(
         return Err(diag);
     }
 
+    // Post-diagnostic primitives are the last typed grammar phase. The
+    // generic chain parser is a fallback phase, not an independent semantic
+    // competitor for a clause already claimed by a primitive. Running both
+    // in one candidate set manufactured ambiguities between the same action
+    // represented directly and through a one-member chain.
     match run_sentence_rule_family(
-        crate::recognition::RuleId::new("effect-sentence-post-diagnostic-registry"),
-        &[
-            &SUBJECT_VERB_PRIMITIVE_POST_DIAGNOSTIC_INDEX_LEXED,
-            &FALLBACK_POST_DIAGNOSTIC_INDEX_LEXED,
-        ],
+        crate::recognition::RuleId::new("effect-sentence-post-diagnostic-primitive-registry"),
+        &[&SUBJECT_VERB_PRIMITIVE_POST_DIAGNOSTIC_INDEX_LEXED],
+        &view,
+    ) {
+        ParseOutcome::Match(matched) => {
+            let matched = matched.value;
+            return Ok((matched.rule.as_str(), matched.value));
+        }
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_legacy_error()),
+    }
+
+    match run_sentence_rule_family(
+        crate::recognition::RuleId::new("effect-sentence-post-diagnostic-fallback-registry"),
+        &[&FALLBACK_POST_DIAGNOSTIC_INDEX_LEXED],
         &view,
     ) {
         ParseOutcome::Match(matched) => {

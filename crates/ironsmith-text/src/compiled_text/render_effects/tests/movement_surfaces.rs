@@ -324,7 +324,7 @@ fn triggering_return_then_counter_uses_exact_returned_object_link() {
     .with_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Return)
     .under_you_control();
     let counter = Effect::put_counters(
-        crate::object::CounterType::Named("death"),
+        crate::object::CounterType::Named("death".into()),
         Value::Fixed(1),
         ChooseSpec::Tagged(returned.clone()),
     );
@@ -345,7 +345,7 @@ fn triggering_return_then_counter_uses_exact_returned_object_link() {
     let put_surface_text = describe_effect_list(&[
         Effect::new(put_surface).tag(TagKey::from("put_result")),
         Effect::put_counters(
-            crate::object::CounterType::Named("death"),
+            crate::object::CounterType::Named("death".into()),
             Value::Fixed(1),
             ChooseSpec::Tagged(TagKey::from("put_result")),
         ),
@@ -358,7 +358,7 @@ fn triggering_return_then_counter_uses_exact_returned_object_link() {
     let nonmatching = describe_effect_list(&[
         Effect::new(move_back).tag(TagKey::from("other_return")),
         Effect::put_counters(
-            crate::object::CounterType::Named("death"),
+            crate::object::CounterType::Named("death".into()),
             Value::Fixed(1),
             ChooseSpec::Tagged(TagKey::from("different_return")),
         ),
@@ -383,7 +383,7 @@ fn chosen_exile_then_counter_accepts_only_exact_single_source_exiled_result() {
     .in_zones(vec![Zone::Hand, Zone::Graveyard]);
     let exile = Effect::exile(ChooseSpec::Tagged(chosen));
     let counter = Effect::put_counters(
-        crate::object::CounterType::Named("cage"),
+        crate::object::CounterType::Named("cage".into()),
         Value::Fixed(1),
         ChooseSpec::Tagged(TagKey::from(crate::tag::SOURCE_EXILED_TAG)),
     );
@@ -407,7 +407,7 @@ fn chosen_exile_then_counter_accepts_only_exact_single_source_exiled_result() {
         Effect::new(many),
         Effect::exile(ChooseSpec::Tagged(TagKey::from("many_exiled"))),
         Effect::put_counters(
-            crate::object::CounterType::Named("cage"),
+            crate::object::CounterType::Named("cage".into()),
             Value::Fixed(1),
             ChooseSpec::Tagged(TagKey::from(crate::tag::SOURCE_EXILED_TAG)),
         ),
@@ -421,7 +421,7 @@ fn chosen_exile_then_counter_accepts_only_exact_single_source_exiled_result() {
         Effect::new(choose),
         exile,
         Effect::put_counters(
-            crate::object::CounterType::Named("cage"),
+            crate::object::CounterType::Named("cage".into()),
             Value::Fixed(1),
             ChooseSpec::Tagged(TagKey::from("unrelated_exile")),
         ),
@@ -477,13 +477,14 @@ fn chosen_graveyard_return_then_counter_compacts_only_the_return_result() {
 #[test]
 fn counter_then_source_attachment_joins_only_on_the_same_object() {
     let created = TagKey::from("created");
-    let token = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Fractal")
-        .token()
-        .card_types(vec![CardType::Creature])
-        .subtypes(vec![Subtype::Fractal])
-        .color_indicator(crate::color::ColorSet::GREEN.union(crate::color::ColorSet::BLUE))
-        .power_toughness(crate::card::PowerToughness::fixed(0, 0))
-        .build();
+    let token =
+        crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Fractal")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Fractal])
+            .color_indicator(crate::color::ColorSet::GREEN.union(crate::color::ColorSet::BLUE))
+            .power_toughness(crate::card::PowerToughness::fixed(0, 0))
+            .build();
     let create = Effect::new(crate::effects::CreateTokenEffect::new(
         token,
         Value::Fixed(1),

@@ -349,7 +349,9 @@ fn supported_static_loses_abilities_becomes_sentence(tokens: &[OwnedLexToken]) -
         return false;
     }
     let words = TokenWordView::new(tokens).word_refs();
-    let Some(becomes_word) = words.iter().position(|word| *word == "becomes") else {
+    let Some(becomes_word) =
+        crate::word_primitives::select_word_position(&words, |word| word == "becomes")
+    else {
         return false;
     };
     let Some(power_toughness) = become_shapes::parse_become_base_pt_words(

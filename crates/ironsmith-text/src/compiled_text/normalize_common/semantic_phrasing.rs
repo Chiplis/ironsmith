@@ -715,9 +715,8 @@ fn reorder_equal_damage_recipient(line: &str) -> Option<String> {
         || amount.eq_ignore_ascii_case("its power")
         || amount.eq_ignore_ascii_case("that creature's power")
         || amount.contains('.')
-        || recipient
-            .to_ascii_lowercase()
-            .starts_with("target creature")
+        || recipient.to_ascii_lowercase().starts_with("target ")
+        || recipient.eq_ignore_ascii_case("the other")
         || recipient.contains('.')
     {
         return None;
@@ -1149,6 +1148,33 @@ fn compact_player_choice_then_generic_sacrifice(line: &str) -> Option<String> {
 
 pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
+    normalized = normalized.replace(" have \"Prowess.\"", " have prowess");
+    if normalized.contains("attach it to target creature") {
+        normalized = normalized
+            .replace(". It gains ", ". That creature gains ")
+            .replace(" and gains ", " and ");
+    }
+    normalized = normalized.replace(
+        ". That player discards that card. That player discards a card at random",
+        ". That player discards that card, then discards a card at random",
+    );
+    normalized = normalized.replace(
+        "Exile all cards from target player's hand. Exile target player's graveyard.",
+        "Exile all cards from target player's hand and graveyard.",
+    );
+    if normalized.contains("An opponent chooses one of the exiled cards. Put that card") {
+        normalized = normalized
+            .replace(
+                "An opponent chooses one of the exiled cards. Put that card",
+                "An opponent chooses one of the exiled cards. You put that card",
+            )
+            .replace("return that other permanent", "return the other");
+    }
+    if let Some((prefix, action)) = normalized.split_once(". If it was blocking, ")
+        && let Some(action) = action.strip_suffix(" instead.")
+    {
+        normalized = format!("{prefix}. If it's blocking, instead {action}.");
+    }
     if normalized == "Flash, cascade, reach." {
         return "Flash\nCascade\nReach".to_string();
     }
@@ -1966,13 +1992,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             ", exile this enchantment. Put ",
             ", Exile this enchantment and put ",
         );
-    }
-    if normalized.to_ascii_lowercase().contains(" instead")
-        && normalized.to_ascii_lowercase().contains("target ")
-    {
-        normalized = normalized
-            .replace("If it's a ", "If the target is a ")
-            .replace("if it's a ", "if the target is a ");
     }
     if normalized.starts_with("Whenever this creature blocks or becomes blocked by a creature, ") {
         normalized = normalized

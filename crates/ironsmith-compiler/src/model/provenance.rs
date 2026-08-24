@@ -328,6 +328,10 @@ impl ProvenanceStore {
         );
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the arguments mirror every field of the provenance record being interned"
+    )]
     fn push_record(
         &mut self,
         kind: SourceSliceKind,

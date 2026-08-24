@@ -2151,7 +2151,7 @@ mod tests {
         game.prewarm_calculated_characteristics(&game.battlefield.clone());
         let before = game.work_counters();
 
-        apply_legend_rule_choice(&mut game, legends[0]);
+        apply_legend_rule_choice_from_group(&mut game, legends[0], &legends);
 
         let after = game.work_counters();
         assert_eq!(

@@ -323,18 +323,27 @@ impl EffectExecutor for ReflexiveTriggerEffect {
 
 #[cfg(test)]
 mod tests {
-    use super::{ReflexiveTriggerEffect, choose_reflexive_targets};
-    use crate::cards::definitions::{grizzly_bears, lightning_bolt};
+    #[cfg(ironsmith_runtime_parser_tests)]
+    use super::ReflexiveTriggerEffect;
+    use super::choose_reflexive_targets;
+    #[cfg(ironsmith_runtime_parser_tests)]
+    use crate::cards::definitions::grizzly_bears;
+    use crate::cards::definitions::lightning_bolt;
     use crate::decision::DecisionMaker;
     use crate::decisions::context::TargetsContext;
     use crate::effect::{
-        ChoiceCount, Effect, EffectId, EffectMetric, EffectMetricSource, EffectOutcome,
-        EffectPredicate, OutcomeObjectMemory, Value,
+        ChoiceCount, EffectId, EffectMetric, EffectMetricSource, EffectOutcome, Value,
     };
-    use crate::effects::{EffectExecutor, ExecutionContext};
+    #[cfg(ironsmith_runtime_parser_tests)]
+    use crate::effect::{Effect, EffectPredicate, OutcomeObjectMemory};
+    #[cfg(ironsmith_runtime_parser_tests)]
+    use crate::effects::EffectExecutor;
+    use crate::effects::ExecutionContext;
     use crate::game_state::{GameState, Target};
     use crate::ids::PlayerId;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::snapshot::ObjectSnapshot;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::tag::TagKey;
     use crate::target::ChooseSpec;
     use crate::zone::Zone;

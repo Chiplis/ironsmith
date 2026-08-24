@@ -64,27 +64,34 @@ fn parse_historical_target_return_statement(
     let choose_words = crate::lexer::parser_token_word_refs(choose);
     let return_words = crate::lexer::parser_token_word_refs(return_them);
     let draw_words = crate::lexer::parser_token_word_refs(draw);
-    if !choose_words.starts_with(&[
-        "choose",
-        "up",
-        "to",
-        "three",
-        "target",
-        "permanent",
-        "cards",
-        "in",
-        "graveyards",
-        "that",
-        "were",
-        "put",
-        "there",
-        "from",
-        "the",
-        "battlefield",
-        "this",
-        "turn",
-    ]) || !return_words.starts_with(&["return", "them", "to", "the", "battlefield"])
-        || !draw_words.starts_with(&[
+    if !crate::word_primitives::parse_sequence_prefix(
+        &choose_words,
+        &[
+            "choose",
+            "up",
+            "to",
+            "three",
+            "target",
+            "permanent",
+            "cards",
+            "in",
+            "graveyards",
+            "that",
+            "were",
+            "put",
+            "there",
+            "from",
+            "the",
+            "battlefield",
+            "this",
+            "turn",
+        ],
+    ) || !crate::word_primitives::parse_sequence_prefix(
+        &return_words,
+        &["return", "them", "to", "the", "battlefield"],
+    ) || !crate::word_primitives::parse_sequence_prefix(
+        &draw_words,
+        &[
             "you",
             "draw",
             "a",
@@ -100,8 +107,8 @@ fn parse_historical_target_return_statement(
             "of",
             "those",
             "permanents",
-        ])
-    {
+        ],
+    ) {
         return Ok(None);
     }
 
@@ -143,8 +150,24 @@ pub(super) fn parse_statement_line_cst(
     // back to the controller; probing either sentence as a standalone line
     // loses that participant scope before semantic lowering can bind it.
     let authored_words = crate::lexer::parser_token_word_refs(&line.info.source_tokens);
-    if authored_words.as_slice()
-        == [
+    if crate::grammar::semantic_lowering::parse_villainous_choice_statement_tokens(
+        &line.info.source_tokens,
+    )
+    .is_some()
+    {
+        // The declaration and its per-target choice are one typed statement.
+        // Generic CST probes can otherwise enter the final copy mode at
+        // `copy of it` and attempt to parse that suffix as a fresh target.
+        return Ok(Some(StatementLineCst {
+            info: line.info.clone(),
+            text: line.info.raw_line.clone(),
+            parse_tokens: line.info.source_tokens.clone(),
+            parse_groups: vec![line.info.source_tokens.clone()],
+        }));
+    }
+    if crate::word_primitives::parse_sequence_complete(
+        &authored_words,
+        &[
             "each",
             "opponent",
             "sacrifices",
@@ -176,8 +199,8 @@ pub(super) fn parse_statement_line_cst(
             "draw",
             "a",
             "card",
-        ]
-    {
+        ],
+    ) {
         return Ok(Some(StatementLineCst {
             info: line.info.clone(),
             text: normalized.to_string(),
@@ -197,15 +220,13 @@ pub(super) fn parse_statement_line_cst(
     // broad creature. The fanout parser proves the complete two-damage shape;
     // ordinary statements continue through the normal CST probes below.
     let authored_compound_damage_tokens = {
-        let raw_verb = line
-            .info
-            .source_tokens
-            .iter()
-            .position(|token| token.is_any_word(&["deal", "deals"]));
-        let normalized_verb = line
-            .tokens
-            .iter()
-            .position(|token| token.is_any_word(&["deal", "deals"]));
+        let raw_verb =
+            crate::slice_primitives::select_position(&line.info.source_tokens, |token| {
+                token.is_any_word(&["deal", "deals"])
+            });
+        let normalized_verb = crate::slice_primitives::select_position(&line.tokens, |token| {
+            token.is_any_word(&["deal", "deals"])
+        });
         match (raw_verb, normalized_verb) {
             (Some(raw_verb), Some(normalized_verb)) => {
                 let mut hybrid = line.tokens[..=normalized_verb].to_vec();
@@ -250,9 +271,16 @@ pub(super) fn parse_statement_line_cst(
         }));
     }
     let line_family = structure::classify_statement_line_family_lexed(&line.tokens);
-    let static_probe = probe_static_ability_ast_line_lexed(&line.tokens)
-        .ok()
-        .flatten();
+    // This is only a family probe. A static parser may commit to a prefix and
+    // reject the remaining effect text (for example, a temporary "can't
+    // block ... and becomes ..." chain). Preserve that diagnostic for the
+    // eventual static route, but do not let it preempt a complete typed
+    // statement parser below.
+    #[allow(clippy::manual_unwrap_or_default)]
+    let static_probe = match probe_static_ability_ast_line_lexed(&line.tokens) {
+        Ok(parsed) => parsed,
+        Err(_) => None,
+    };
     let typed_effect_prefix_before_static =
         has_effect_prefix_before_trailing_static_sentence(&line.tokens);
     let typed_create_statement = line
@@ -269,6 +297,9 @@ pub(super) fn parse_statement_line_cst(
             &line.tokens,
         )
         .is_some();
+    let typed_temporary_additional_land_play =
+        crate::permission_helpers::parse_additional_land_plays_clause_lexed(&line.tokens)?
+            .is_some();
     if typed_counter_linked_land_subtype {
         // This follow-up is intentionally close to a static sentence, but it
         // is an effect-backed continuation of the preceding tagged land.
@@ -302,6 +333,7 @@ pub(super) fn parse_statement_line_cst(
         || typed_energy_payment_threshold
         || typed_counter_linked_land_subtype
         || typed_persistent_player_rule
+        || typed_temporary_additional_land_play
         || typed_effect_prefix_before_static
         || matches!(
             line_family,
@@ -552,15 +584,17 @@ fn looks_like_statement_line_tokens_inner(tokens: &[OwnedLexToken]) -> bool {
     // effect sentence. Prefer its complete typed static parse, while leaving
     // targeted or explicitly temporary prohibitions on the effect path.
     let words = crate::lexer::token_word_refs(tokens);
-    let is_phase_in_prohibition = words.windows(3).any(|window| {
-        matches!(window[0], "can't" | "cant" | "cannot")
-            && window[1] == "phase"
-            && window[2] == "in"
-    }) || words
-        .windows(4)
-        .any(|window| window == ["can", "not", "phase", "in"]);
-    let is_timeless_phase_in_prohibition =
-        is_phase_in_prohibition && !words.windows(2).any(|window| window == ["this", "turn"]);
+    let is_phase_in_prohibition = crate::word_primitives::any_sequence_occurs(
+        &words,
+        &[
+            &["can't", "phase", "in"],
+            &["cant", "phase", "in"],
+            &["cannot", "phase", "in"],
+            &["can", "not", "phase", "in"],
+        ],
+    );
+    let is_timeless_phase_in_prohibition = is_phase_in_prohibition
+        && !crate::word_primitives::sequence_occurs(&words, &["this", "turn"]);
     if is_timeless_phase_in_prohibition
         && structure::classify_static_line_family_lexed(tokens).is_some()
         && matches!(probe_static_ability_ast_line_lexed(tokens), Ok(Some(_)))
@@ -622,18 +656,18 @@ fn normalize_statement_parse_sentences_lexed(tokens: &[OwnedLexToken]) -> Vec<Ve
     if let Some(first) = sentences.first_mut()
         && first.first().is_some_and(|token| token.is_word("as"))
         && first.get(1).is_some_and(|token| token.is_word("this"))
-        && let Some(timing_idx) = first
-            .iter()
-            .position(|token| token.is_word("enters") || token.is_word("transforms"))
+        && let Some(timing_idx) = crate::slice_primitives::select_position(first, |token| {
+            token.is_word("enters") || token.is_word("transforms")
+        })
         && (first[timing_idx].is_word("enters")
             || first
                 .get(timing_idx + 1)
                 .is_some_and(|token| token.is_word("into")))
-        && let Some(comma_idx) = first
-            .iter()
-            .enumerate()
-            .skip(timing_idx + 1)
-            .find_map(|(idx, token)| token.is_comma().then_some(idx))
+        && let Some(comma_idx) =
+            crate::slice_primitives::select_position(&first[timing_idx + 1..], |token| {
+                token.is_comma()
+            })
+            .map(|idx| idx + timing_idx + 1)
         && comma_idx + 1 < first.len()
     {
         first.drain(..=comma_idx);
@@ -744,6 +778,16 @@ fn normalize_statement_parse_groups_from_sentences_lexed(
 pub(super) fn normalize_statement_parse_groups_lexed(
     tokens: &[OwnedLexToken],
 ) -> Vec<Vec<OwnedLexToken>> {
+    // A leading delayed schedule is one semantic resolving instruction.  Its
+    // timing header must remain attached to the action so line lowering can
+    // turn it into a typed one-shot schedule rather than an immediate effect.
+    if super::super::grammar::effects::delayed_sentence_shapes::parse_delayed_schedule_sentence_shape(
+        tokens,
+    )
+    .is_some()
+    {
+        return vec![tokens.to_vec()];
+    }
     // A collection-scoped delayed return is one typed two-sentence program.
     // Splitting before the bundle parser sees it strands the duration header
     // (`For as long as ... remain exiled`) as a verb-less statement and loses

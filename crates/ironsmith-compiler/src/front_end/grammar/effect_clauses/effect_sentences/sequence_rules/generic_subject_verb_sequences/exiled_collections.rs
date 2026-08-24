@@ -91,14 +91,18 @@ fn leading_actor_player(actor: LeadingMayActor) -> PlayerAst {
 
 fn contains_word_phrase(tokens: &[OwnedLexToken], phrase: &[&str]) -> bool {
     let words = parser_token_word_refs(tokens);
-    words.windows(phrase.len()).any(|window| window == phrase)
+    crate::word_primitives::sequence_occurs(&words, phrase)
 }
 
 fn has_owner_hands_destination(tokens: &[OwnedLexToken]) -> bool {
     let words = parser_token_word_refs(tokens);
-    words.windows(3).any(|window| {
-        window[0] == "their" && matches!(window[1], "owners" | "owners'") && window[2] == "hands"
-    })
+    crate::word_primitives::any_sequence_occurs(
+        &words,
+        &[
+            &["their", "owners", "hands"],
+            &["their", "owners'", "hands"],
+        ],
+    )
 }
 
 /// Preserves the collection provenance in a four-step sequence of the form
@@ -126,7 +130,7 @@ pub fn parse_exile_each_player_put_return_exiled_then_exile_source(
     }
 
     let fourth_words = parser_token_word_refs(fourth_tokens);
-    if !fourth_words.starts_with(&["exile", "this"]) {
+    if !crate::word_primitives::parse_sequence_prefix(&fourth_words, &["exile", "this"]) {
         return Ok(None);
     }
 
@@ -204,7 +208,9 @@ pub fn parse_exile_top_then_put_from_among_tokens(
         attacking,
         _attack_target_player,
         all_matching,
-    )) = super::triples::parse_counted_from_looked_cards_action(action.tail_tokens)
+    )) = super::ordered_control_flow_programs::parse_counted_from_looked_cards_action(
+        action.tail_tokens,
+    )
     else {
         return Ok(None);
     };
@@ -560,9 +566,9 @@ mod tests {
             .collect()
     }
 
-    fn registry_match(text: &str) -> super::super::super::SequenceRuleMatch {
+    fn registry_match(text: &str) -> super::super::super::DocumentProgramMatch {
         let sentences = sentence_inputs(text);
-        super::super::super::try_parse_subject_verb_sequence_rule(&sentences, 0)
+        super::super::super::try_parse_document_program(&sentences, 0)
             .expect("collection-cast registry lookup should not error")
             .expect("collection-cast registry should match")
     }

@@ -42,15 +42,59 @@ pub fn scope_types_away_from_requantified_bare_card_domains(
     tokens: &[OwnedLexToken],
     mut filter: ObjectFilter,
 ) -> ObjectFilter {
+    if filter.has_conjunctive_set_surface() && filter.card_types.is_empty() {
+        let mut collapsed: Vec<ObjectFilter> = Vec::new();
+        for branch in std::mem::take(&mut filter.any_of) {
+            let mut plain_zone = branch.clone();
+            let card_types = std::mem::take(&mut plain_zone.card_types);
+            let mergeable = !card_types.is_empty() && plain_zone.zone.is_some() && {
+                let zone = plain_zone.zone;
+                plain_zone.zone = None;
+                let plain = plain_zone == ObjectFilter::default();
+                plain_zone.zone = zone;
+                plain
+            };
+            if mergeable
+                && let Some(existing_idx) =
+                    crate::slice_primitives::select_position(&collapsed, |existing| {
+                        existing.zone == branch.zone && {
+                            let mut plain = (*existing).clone();
+                            plain.zone = None;
+                            plain.card_types.clear();
+                            plain == ObjectFilter::default()
+                        }
+                    })
+            {
+                let existing = &mut collapsed[existing_idx];
+                for card_type in card_types {
+                    if !crate::slice_primitives::contains(&existing.card_types, &card_type) {
+                        existing.card_types.push(card_type);
+                    }
+                }
+            } else {
+                collapsed.push(branch);
+            }
+        }
+        filter.any_of = collapsed;
+    }
     let words = crate::lexer::token_word_refs(tokens);
     let mut bare_zones = Vec::new();
-    for window in words.windows(5) {
-        if window[..4] == ["all", "cards", "from", "all"]
-            && let Some(zone) = crate::util::parse_zone_word(window[4])
-            && !bare_zones.contains(&zone)
+    let mut search_start = 0usize;
+    while let Some(relative_start) =
+        crate::slice_primitives::find_window_by(&words[search_start..], 5, |window| {
+            crate::word_primitives::parse_sequence_complete(
+                &window[..4],
+                &["all", "cards", "from", "all"],
+            )
+        })
+    {
+        let window = &words[search_start + relative_start..search_start + relative_start + 5];
+        if let Some(zone) = crate::util::parse_zone_word(window[4])
+            && !crate::slice_primitives::contains(&bare_zones, &zone)
         {
             bare_zones.push(zone);
         }
+        search_start += relative_start + 1;
     }
     if bare_zones.is_empty()
         || filter.card_types.is_empty()
@@ -79,8 +123,8 @@ pub fn scope_types_away_from_requantified_bare_card_domains(
         if bare_branch != ObjectFilter::default() {
             return original;
         }
-        if bare_zones.contains(&zone) {
-            if !seen_bare_zones.contains(&zone) {
+        if crate::slice_primitives::contains(&bare_zones, &zone) {
+            if !crate::slice_primitives::contains(&seen_bare_zones, &zone) {
                 seen_bare_zones.push(zone);
             }
         } else {
@@ -91,7 +135,7 @@ pub fn scope_types_away_from_requantified_bare_card_domains(
     if !scoped_selector
         || bare_zones
             .iter()
-            .any(|zone| !seen_bare_zones.contains(zone))
+            .any(|zone| !crate::slice_primitives::contains(&seen_bare_zones, zone))
     {
         return original;
     }
@@ -184,6 +228,29 @@ fn strip_source_top_only_prefix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], 
     .unwrap_or((tokens, false))
 }
 
+fn expand_hand_or_graveyard_target(mut target: TargetAst, tokens: &[OwnedLexToken]) -> TargetAst {
+    if !cca_shapes::contains_graveyard_and_hand(tokens) {
+        return target;
+    }
+
+    fn apply(target: &mut TargetAst) {
+        match target {
+            TargetAst::Object(filter, ..) | TargetAst::ObjectOrPlayer(filter, ..) => {
+                filter.zone = None;
+                filter.any_of = [Zone::Hand, Zone::Graveyard]
+                    .into_iter()
+                    .map(|zone| ObjectFilter::default().in_zone(zone))
+                    .collect();
+            }
+            TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) => apply(inner),
+            _ => {}
+        }
+    }
+
+    apply(&mut target);
+    target
+}
+
 /// Parse an authored pair such as "a Human you control and an artifact you
 /// control" as two independent selections. Repeated indefinite articles are
 /// the semantic boundary: without them, `and` can still be joining
@@ -256,7 +323,8 @@ pub fn parse_exile(
 ) -> Result<EffectAst, CardTextError> {
     if let Some((target_tokens, leave_watcher_tokens)) = split_until_target_leaves_tail(tokens) {
         let (target_tokens, face_down) = split_exile_face_down_suffix(target_tokens);
-        let mut target = parse_target_phrase(target_tokens)?;
+        let mut target =
+            expand_hand_or_graveyard_target(parse_target_phrase(target_tokens)?, target_tokens);
         apply_exile_subject_hand_owner_context(&mut target, subject);
         let leave_watcher = parse_target_phrase(leave_watcher_tokens)?;
         return Ok(EffectAst::subject_verb_exile_until_target_leaves(
@@ -268,7 +336,8 @@ pub fn parse_exile(
 
     if let Some(target_tokens) = split_until_opponent_becomes_monarch_tail(tokens) {
         let (target_tokens, face_down) = split_exile_face_down_suffix(target_tokens);
-        let mut target = parse_target_phrase(target_tokens)?;
+        let mut target =
+            expand_hand_or_graveyard_target(parse_target_phrase(target_tokens)?, target_tokens);
         apply_exile_subject_hand_owner_context(&mut target, subject);
         return Ok(with_exile_actor(
             EffectAst::subject_verb_exile_until_opponent_becomes_monarch(target, face_down),
@@ -492,7 +561,8 @@ pub fn parse_exile(
             "top-of-zone exile-until-source-leaves is not supported".to_string(),
         ));
     }
-    let mut target = parse_target_phrase(target_tokens)?;
+    let mut target =
+        expand_hand_or_graveyard_target(parse_target_phrase(target_tokens)?, target_tokens);
     apply_exile_subject_hand_owner_context(&mut target, subject);
     let plural_surface = cca_shapes::is_plural_tagged_object_reference(target_tokens);
     Ok(with_exile_actor(
@@ -726,8 +796,8 @@ fn parse_battlefield_graveyard_exile_all_pair(
 
     let is_creature_planeswalker_limit = |filter: &ObjectFilter| {
         filter.card_types.len() == 2
-            && filter.card_types.contains(&CardType::Creature)
-            && filter.card_types.contains(&CardType::Planeswalker)
+            && crate::slice_primitives::contains(&filter.card_types, &CardType::Creature)
+            && crate::slice_primitives::contains(&filter.card_types, &CardType::Planeswalker)
             && filter.mana_value.is_some()
     };
     if !filters.iter().all(is_creature_planeswalker_limit)

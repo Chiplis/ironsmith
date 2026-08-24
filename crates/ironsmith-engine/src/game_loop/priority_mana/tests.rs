@@ -425,12 +425,39 @@ fn opponent_owned_exile_cost_candidates_exclude_the_activating_players_cards() {
 }
 
 fn arena_style_land_definition() -> crate::cards::CardDefinition {
+    let ability = Ability {
+        kind: AbilityKind::Activated(ActivatedAbility {
+            mana_cost: TotalCost::from_costs(vec![
+                crate::costs::Cost::mana(ManaCost::from_symbols(vec![ManaSymbol::Red])),
+                crate::costs::Cost::tap(),
+                crate::costs::Cost::effect(crate::effects::ExertCostEffect::new("Exert this land")),
+            ]),
+            effects: ResolutionProgram::default(),
+            choices: Vec::new(),
+            timing: crate::ability::ActivationTiming::AnyTime,
+            additional_restrictions: Vec::new(),
+            activation_restrictions: Vec::new(),
+            mana_output: Some(vec![ManaSymbol::Red, ManaSymbol::Red]),
+            activation_condition: None,
+            mana_usage_restrictions: vec![ManaUsageRestriction::CastSpellWithManaBonus {
+                filter: crate::target::ObjectFilter::creature(),
+                condition: crate::ability::ManaSpendBonusCondition::IfThatManaIsSpentOn,
+                grant_uncounterable: false,
+                enters_with_counters: Vec::new(),
+                granted_abilities: vec![(
+                    StaticAbilityId::Haste,
+                    crate::ability::ManaSpendAbilityGrantDuration::UntilEndOfTurn,
+                )],
+                granted_keywords: Vec::new(),
+            }],
+            is_loyalty_ability: false,
+        }),
+        functional_zones: vec![Zone::Battlefield],
+    };
     CardDefinitionBuilder::new(CardId::new(), "Arena Style Land")
-            .card_types(vec![CardType::Land])
-            .parse_text(
-                "{R}, {T}, Exert this land: Add {R}{R}. If that mana is spent on a creature spell, it gains haste until end of turn.",
-            )
-            .expect("Arena-style mana ability should parse")
+        .card_types(vec![CardType::Land])
+        .with_ability(ability)
+        .build()
 }
 
 fn restricted_mana_ability_index(game: &GameState, source: ObjectId) -> usize {
@@ -707,7 +734,7 @@ fn arena_style_exert_mana_grants_haste_through_cast_flow() {
     let mut trigger_queue = TriggerQueue::new();
     let mut state = PriorityLoopState::new(game.players_in_game());
     let mut decision_maker = SelectFirstDecisionMaker;
-    apply_priority_response_with_dm(
+    let progress = apply_priority_response_with_dm(
         &mut game,
         &mut trigger_queue,
         &mut state,
@@ -718,6 +745,23 @@ fn arena_style_exert_mana_grants_haste_through_cast_flow() {
         &mut decision_maker,
     )
     .expect("Arena-style mana ability should activate");
+    let crate::decisions::context::DecisionContext::ManaPayment(payment) = (match progress {
+        GameProgress::NeedsDecisionCtx(context) => context,
+        other => panic!("Arena-style mana ability should request payment, got {other:?}"),
+    }) else {
+        panic!("Arena-style mana ability should request an authoritative mana payment");
+    };
+    apply_mana_payment_plan_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &crate::mana_payment::ManaPaymentResponse::Confirm {
+            plan_id: payment.plan.id,
+            request_hash: payment.plan.request_hash,
+        },
+        &mut decision_maker,
+    )
+    .expect("Arena-style mana payment should commit");
 
     let restricted_red = game
         .player(alice)
@@ -740,7 +784,7 @@ fn arena_style_exert_mana_grants_haste_through_cast_flow() {
         .build();
     let creature_id = game.create_object_from_definition(&creature, alice, Zone::Hand);
 
-    apply_priority_response_with_dm(
+    let progress = apply_priority_response_with_dm(
         &mut game,
         &mut trigger_queue,
         &mut state,
@@ -752,6 +796,29 @@ fn arena_style_exert_mana_grants_haste_through_cast_flow() {
         &mut decision_maker,
     )
     .expect("creature spell should be cast with Arena mana");
+    let crate::decisions::context::DecisionContext::ManaPayment(payment) = (match progress {
+        GameProgress::NeedsDecisionCtx(context) => context,
+        other => panic!("creature spell should request payment, got {other:?}"),
+    }) else {
+        panic!("creature spell should request an authoritative mana payment");
+    };
+    assert_eq!(
+        game.object(payment.request.source)
+            .expect("creature spell proposal should exist")
+            .zone,
+        Zone::Stack
+    );
+    apply_mana_payment_plan_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &crate::mana_payment::ManaPaymentResponse::Confirm {
+            plan_id: payment.plan.id,
+            request_hash: payment.plan.request_hash,
+        },
+        &mut decision_maker,
+    )
+    .expect("creature spell mana payment should commit");
 
     let stack_creature_id = game
         .stack

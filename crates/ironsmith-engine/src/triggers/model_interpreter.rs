@@ -969,6 +969,9 @@ impl super::Trigger {
             ironsmith_core::DelayedTriggerSpec::PlayerPlaysLand { player, filter } => {
                 Self::player_plays_land(player, filter)
             }
+            ironsmith_core::DelayedTriggerSpec::PlayerDrawsCard(player) => {
+                Self::player_draws_card(player)
+            }
             ironsmith_core::DelayedTriggerSpec::AbilityActivated {
                 activator,
                 filter,

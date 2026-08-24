@@ -178,7 +178,7 @@ pub fn extract_parenthetical_sentences(line: &str) -> Vec<String> {
 
 pub fn is_at_trigger_intro_lexed(tokens: &[OwnedLexToken], idx: usize) -> bool {
     let words = TokenWordView::new(tokens.get(idx..).unwrap_or_default());
-    words.starts_with_any(&[
+    words.parses_any_prefix(&[
         &["at", "beginning"],
         &["at", "the", "beginning"],
         &["at", "end"],
@@ -201,12 +201,12 @@ pub fn looks_like_reflexive_followup_intro_lexed(tokens: &[OwnedLexToken]) -> bo
 
 fn looks_like_when_you_pay_this_cost_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens);
-    words.starts_with(&["when", "you", "pay", "this", "cost"])
+    words.parses_prefix(&["when", "you", "pay", "this", "cost"])
 }
 
 fn looks_like_delayed_next_turn_intro_lexed(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens);
-    words.starts_with_any(&[
+    words.parses_any_prefix(&[
         &["at", "beginning", "of", "next", "end", "step"],
         &["at", "the", "beginning", "of", "next", "end", "step"],
         &[
@@ -226,23 +226,23 @@ fn looks_like_delayed_next_turn_intro_lexed(tokens: &[OwnedLexToken]) -> bool {
 
 fn looks_like_when_one_or_more_this_way_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens);
-    words.starts_with_any(&[
+    words.parses_any_prefix(&[
         &["when", "one", "or", "more"],
         &["whenever", "one", "or", "more"],
-    ]) && words.has_phrase(&["this", "way"])
+    ]) && words.parses_phrase_anywhere(&["this", "way"])
 }
 
 fn looks_like_when_you_do_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens);
-    words.starts_with_any(&[&["when", "you", "do"], &["whenever", "you", "do"]])
+    words.parses_any_prefix(&[&["when", "you", "do"], &["whenever", "you", "do"]])
 }
 
 fn looks_like_if_no_one_does_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
-    TokenWordView::new(tokens).starts_with(&["if", "no", "one", "does"])
+    TokenWordView::new(tokens).parses_prefix(&["if", "no", "one", "does"])
 }
 
 fn looks_like_otherwise_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
-    TokenWordView::new(tokens).starts_with(&["otherwise"])
+    TokenWordView::new(tokens).parses_prefix(&["otherwise"])
 }
 
 #[cfg(test)]

@@ -382,8 +382,8 @@ impl<'a> LexedClause<'a> {
             .next()
     }
 
-    pub fn token_boundary_for_word(self, word_idx: usize) -> Option<usize> {
-        self.words().token_boundary_for_word(word_idx)
+    pub fn map_word_to_token_boundary(self, word_idx: usize) -> Option<usize> {
+        self.words().map_word_to_token_boundary(word_idx)
     }
 
     pub fn token_index_after_words(self, word_count: usize) -> Option<usize> {
@@ -391,12 +391,12 @@ impl<'a> LexedClause<'a> {
     }
 
     pub fn before_word(self, word_idx: usize) -> Option<Self> {
-        let token_idx = self.token_boundary_for_word(word_idx)?;
+        let token_idx = self.map_word_to_token_boundary(word_idx)?;
         Some(self.before(token_idx))
     }
 
     pub fn from_word(self, word_idx: usize) -> Option<Self> {
-        let token_idx = self.token_boundary_for_word(word_idx)?;
+        let token_idx = self.map_word_to_token_boundary(word_idx)?;
         Some(self.from(token_idx))
     }
 
@@ -416,8 +416,8 @@ impl<'a> LexedClause<'a> {
         Some(self.between(range.start, range.end))
     }
 
-    pub fn rfind_word(self, expected: &str) -> Option<usize> {
-        self.words().rfind_word(expected)
+    pub fn parse_last_word_position(self, expected: &str) -> Option<usize> {
+        self.words().parse_last_word_position(expected)
     }
 
     pub fn find_token_word(self, expected: &str) -> Option<usize> {

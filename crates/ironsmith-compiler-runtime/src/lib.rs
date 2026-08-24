@@ -632,11 +632,8 @@ pub fn compile_builder_to_runtime_definition(
     allow_unsupported: bool,
 ) -> Result<ironsmith::cards::CardDefinition, CompilerIntegrationError> {
     let text = text.into();
-    compiler::stack::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, move || {
-        let compiled =
-            compile_builder_to_runtime_compiled_card_text(builder, text, allow_unsupported)?;
-        Ok(compiled.definition)
-    })
+    let compiled = compile_builder_to_runtime_compiled_card_text(builder, text, allow_unsupported)?;
+    Ok(compiled.definition)
 }
 
 /// Compile source at the compiler/runtime boundary and emit a deterministic

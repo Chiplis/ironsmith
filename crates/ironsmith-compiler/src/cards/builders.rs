@@ -201,6 +201,9 @@ impl CardDefinitionBuilder {
     }
 
     pub fn enchants(mut self, filter: AuraAttachmentFilter) -> Self {
+        self.spell_effect = Some(ResolutionProgram::from_effects(vec![
+            crate::effect::Effect::attach_to(filter.target_spec()),
+        ]));
         self.aura_attach_filter = Some(filter);
         self
     }
@@ -247,7 +250,10 @@ impl CardDefinitionBuilder {
             KeywordAction::Scavenge(cost) => self.scavenge(cost),
             KeywordAction::Unearth(cost) => self.unearth(cost),
             KeywordAction::Embalm(cost) => self.embalm(cost),
-            KeywordAction::Eternalize(cost) => self.eternalize(cost),
+            KeywordAction::Eternalize(cost) => self.eternalize(
+                crate::lowering::cost_materialization::materialize_compiler_core_total_cost(&cost)
+                    .expect("compiler-owned eternalize cost must materialize"),
+            ),
             KeywordAction::Emerge(cost) => self.emerge(cost),
             KeywordAction::Vanishing(amount) => self.vanishing(amount),
             KeywordAction::Bloodthirst(amount) => self.bloodthirst(amount),
@@ -280,10 +286,18 @@ impl CardDefinitionBuilder {
             KeywordAction::Overload(cost) => self.overload(cost),
             KeywordAction::Cleave(cost) => self.cleave(cost),
             KeywordAction::Awaken { amount, cost } => self.awaken(amount, cost),
-            KeywordAction::Echo { total_cost, .. } => self.echo(total_cost),
-            KeywordAction::CumulativeUpkeep { total_cost, .. } => {
-                self.cumulative_upkeep(total_cost)
-            }
+            KeywordAction::Echo { total_cost, .. } => self.echo(
+                crate::lowering::cost_materialization::materialize_compiler_core_total_cost(
+                    &total_cost,
+                )
+                .expect("compiler-owned echo cost must materialize"),
+            ),
+            KeywordAction::CumulativeUpkeep { total_cost, .. } => self.cumulative_upkeep(
+                crate::lowering::cost_materialization::materialize_compiler_core_total_cost(
+                    &total_cost,
+                )
+                .expect("compiler-owned cumulative upkeep cost must materialize"),
+            ),
             KeywordAction::Casualty(amount) => self.casualty(amount),
             KeywordAction::VariableCasualtyPlaneswalkerCopy => {
                 self.variable_casualty_planeswalker_copy()
@@ -415,7 +429,7 @@ impl CardDefinitionBuilder {
             other if other.lowers_to_static_ability() => {
                 let text = other.display_text();
                 let static_ability =
-                    crate::static_ability_helpers::static_ability_for_keyword_action(other)
+                    crate::lowering_support::rewrite_static_ability_for_keyword_action(other)
                         .unwrap_or_else(|| {
                             crate::static_abilities::StaticAbility::keyword_marker(text.clone())
                         });
@@ -561,7 +575,7 @@ impl CardDefinitionBuilder {
         .with_ability(crate::ability::Ability::static_ability(
             crate::static_abilities::StaticAbility::cant_block(),
         ))
-        .with_ability(crate::static_ability_helpers::decayed_triggered_ability())
+        .with_ability(crate::runtime_static_ability_helpers::decayed_triggered_ability())
     }
 
     pub fn vigilance(self) -> Self {
@@ -796,7 +810,7 @@ impl CardDefinitionBuilder {
     }
 
     pub fn exalted(self) -> Self {
-        let attacker_tag = crate::tag::TagKey::from("exalted_attacker");
+        let attacker_tag = crate::tag::CompilerReferenceTag::ExaltedAttacker.key();
         self.with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::attacks_alone(
                 crate::target::ObjectFilter::creature().you_control(),
@@ -1669,7 +1683,7 @@ impl CardDefinitionBuilder {
     }
 
     pub fn demonstrate(self) -> Self {
-        let opponent_tag = crate::tag::TagKey::from("demonstrate_opponent");
+        let opponent_tag = crate::tag::CompilerReferenceTag::DemonstrateOpponent.key();
         let opponent = crate::target::PlayerFilter::TaggedPlayer(opponent_tag.clone());
         self.with_ability(
             crate::ability::Ability::triggered(
@@ -2004,7 +2018,7 @@ impl CardDefinitionBuilder {
     }
 
     pub fn for_mirrodin(self) -> Self {
-        let created_tag = crate::tag::TagKey::from("for_mirrodin_created");
+        let created_tag = crate::tag::CompilerReferenceTag::ForMirrodinCreated.key();
         self.with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_enters_battlefield(),
             vec![
@@ -2016,7 +2030,7 @@ impl CardDefinitionBuilder {
     }
 
     pub fn living_weapon(self) -> Self {
-        let created_tag = crate::tag::TagKey::from("living_weapon_created");
+        let created_tag = crate::tag::CompilerReferenceTag::LivingWeaponCreated.key();
         self.with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_enters_battlefield(),
             vec![
@@ -2140,7 +2154,7 @@ impl CardDefinitionBuilder {
                 .with_all_type(CardType::Artifact)
                 .with_all_type(CardType::Creature),
         ));
-        let trigger_tag = crate::tag::TagKey::from("modular_triggering_object");
+        let trigger_tag = crate::tag::CompilerReferenceTag::ModularTriggeringObject.key();
         let dead_source_filter = crate::target::ObjectFilter::default()
             .in_zone(crate::zone::Zone::Graveyard)
             .same_stable_id_as_tagged(trigger_tag.clone());
@@ -2180,7 +2194,7 @@ impl CardDefinitionBuilder {
                 .with_all_type(CardType::Artifact)
                 .with_all_type(CardType::Creature),
         ));
-        let trigger_tag = crate::tag::TagKey::from("modular_triggering_object");
+        let trigger_tag = crate::tag::CompilerReferenceTag::ModularTriggeringObject.key();
         let dead_source_filter = crate::target::ObjectFilter::default()
             .in_zone(crate::zone::Zone::Graveyard)
             .same_stable_id_as_tagged(trigger_tag.clone());
@@ -2215,7 +2229,7 @@ impl CardDefinitionBuilder {
     }
 
     pub fn graft(self, amount: u32) -> Self {
-        let entered_tag = crate::tag::TagKey::from("graft_entered_creature");
+        let entered_tag = crate::tag::CompilerReferenceTag::GraftEnteredCreature.key();
 
         self.with_ability(crate::ability::Ability::static_ability(
             crate::static_abilities::StaticAbility::enters_with_counters_value(

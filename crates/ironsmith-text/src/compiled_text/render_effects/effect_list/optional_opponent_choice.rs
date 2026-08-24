@@ -26,11 +26,10 @@ fn exact_optional_sacrifice_or_discard(
         .controlled_by(PlayerFilter::IteratedPlayer);
     match choice.modes[0].effects.as_slice() {
         [sacrifice_effect] => {
-            let sacrifice =
-                sacrifice_effect.downcast_ref::<crate::effects::zones::SacrificePlayerEffect>()?;
-            if sacrifice.player != PlayerFilter::IteratedPlayer
-                || sacrifice.count != Value::Fixed(1)
-                || sacrifice.filter != expected_filter
+            let sacrifice = sacrifice_view(sacrifice_effect)?;
+            if sacrifice.player != &PlayerFilter::IteratedPlayer
+                || sacrifice.count != &Value::Fixed(1)
+                || sacrifice.filter != &expected_filter
             {
                 return None;
             }
@@ -53,8 +52,7 @@ fn exact_optional_sacrifice_or_discard(
             {
                 return None;
             }
-            let sacrifice =
-                sacrifice_effect.downcast_ref::<crate::effects::zones::SacrificePlayerEffect>()?;
+            let sacrifice = sacrifice_view(sacrifice_effect)?;
             let mut selected_filter = ObjectFilter::default();
             selected_filter
                 .tagged_constraints
@@ -62,9 +60,9 @@ fn exact_optional_sacrifice_or_discard(
                     tag: choose.tag.clone(),
                     relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
                 });
-            if sacrifice.player != PlayerFilter::IteratedPlayer
-                || sacrifice.count != Value::Fixed(1)
-                || sacrifice.filter != selected_filter
+            if sacrifice.player != &PlayerFilter::IteratedPlayer
+                || sacrifice.count != &Value::Fixed(1)
+                || sacrifice.filter != &selected_filter
             {
                 return None;
             }

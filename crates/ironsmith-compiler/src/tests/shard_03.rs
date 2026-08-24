@@ -20,7 +20,7 @@ pub(super) fn rewrite_keyword_craft_line_uses_supported_activated_keyword_loweri
 
     assert!(
         debug.contains("Activated")
-            && debug.contains("EmitKeywordActionEffect")
+            && debug.contains("EmitKeywordAction")
             && debug.contains("Craft")
             && debug.contains("Craft with artifact {3}{W}{W}"),
         "{debug}"
@@ -39,7 +39,7 @@ pub(super) fn rewrite_keyword_craft_line_supports_creature_material_clause() {
 
     assert!(
         debug.contains("Activated")
-            && debug.contains("EmitKeywordActionEffect")
+            && debug.contains("EmitKeywordAction")
             && debug.contains("Craft")
             && debug.contains("Craft with creature {5}{G}{G}"),
         "{debug}"
@@ -122,7 +122,7 @@ pub(super) fn rewrite_as_enters_color_creature_pairs_keep_correlated_options() {
 
     assert!(matches!(
         ability.payload,
-        crate::static_abilities::StaticAbilityPayload::ChooseNamedOptionAsEnters {
+        crate::model::CompilerStaticAbilityPayloadCore::ChooseNamedOptionAsEnters {
             ref options,
             ..
         } if options
@@ -173,7 +173,7 @@ pub(super) fn rewrite_keyword_static_as_enters_revealed_hand_card_name_choice() 
                 && ability.display().contains("nonland card revealed this way")
                 && matches!(
                     &ability.payload,
-                    crate::static_abilities::StaticAbilityPayload::ChooseCardNameAsEnters {
+                    crate::model::CompilerStaticAbilityPayloadCore::ChooseCardNameAsEnters {
                         reveal_opponents_hands: true,
                         require_nonland_from_revealed_opponents: true,
                         ..
@@ -197,7 +197,7 @@ pub(super) fn rewrite_keyword_static_as_enters_reveal_from_hand_counted_cards() 
     assert_eq!(ability.id(), StaticAbilityId::RevealFromHandAsEnters);
     assert!(matches!(
         &ability.payload,
-        crate::static_abilities::StaticAbilityPayload::RevealFromHandAsEnters {
+        crate::model::CompilerStaticAbilityPayloadCore::RevealFromHandAsEnters {
             filter,
             count,
             optional: true,
@@ -237,7 +237,7 @@ pub(super) fn rewrite_keyword_static_pt_color_type_addition_bundle() {
     );
     assert!(matches!(
         &abilities[0].payload,
-        crate::static_abilities::StaticAbilityPayload::SetColors { colors, .. }
+        crate::model::CompilerStaticAbilityPayloadCore::SetColors { colors, .. }
             if *colors == ColorSet::GREEN
     ));
     let debug = format!("{abilities:#?}");
@@ -273,7 +273,7 @@ pub(super) fn rewrite_lose_all_transform_name_uses_parser_word_coordinates() {
 
         assert!(abilities.iter().any(|ability| matches!(
             &ability.payload,
-            crate::static_abilities::StaticAbilityPayload::SetName { name, .. }
+            crate::model::CompilerStaticAbilityPayloadCore::SetName { name, .. }
                 if name == expected_name
         )));
     }
@@ -309,9 +309,10 @@ pub(super) fn rewrite_compound_lose_all_base_pt_dispatch_keeps_both_modification
             panic!("expected static ability, got {ability:#?}");
         };
         let filter = match &ability.payload {
-            crate::static_abilities::StaticAbilityPayload::RemoveAllAbilities(filter)
-            | crate::static_abilities::StaticAbilityPayload::SetBasePowerToughness {
-                filter, ..
+            crate::model::CompilerStaticAbilityPayloadCore::RemoveAllAbilities(filter)
+            | crate::model::CompilerStaticAbilityPayloadCore::SetBasePowerToughness {
+                filter,
+                ..
             } => filter,
             payload => panic!("unexpected payload: {payload:#?}"),
         };
@@ -435,27 +436,25 @@ pub(super) fn rewrite_grammar_exile_to_countered_exile_splitter_accepts_instead_
 
 #[test]
 pub(super) fn parse_named_source_exile_instead_of_graveyard_from_anywhere() {
-    crate::util::with_source_reference_context("Hook-Haunt Drifter", || {
-        let tokens = lex_line(
-            "if hook-haunt drifter would be put into a graveyard from anywhere, exile it instead.",
-            0,
-        )
-        .expect("named source exile-replacement line should lex");
+    let tokens = lex_line(
+        "if hook-haunt drifter would be put into a graveyard from anywhere, exile it instead.",
+        0,
+    )
+    .expect("named source exile-replacement line should lex");
 
-        let parsed =
-            super::super::keyword_static::parse_exile_to_exile_instead_of_graveyard_line(&tokens)
-                .expect("named source exile-replacement line should parse");
-        let words = crate::lexer::token_word_refs(&tokens);
-        assert!(
-            matches!(
-                parsed,
-                Some(ref ability)
-                    if ability.id()
-                        == crate::static_abilities::StaticAbilityId::ExileToExileInsteadOfGraveyard
-            ),
-            "parsed={parsed:?} words={words:?}"
-        );
-    });
+    let parsed =
+        super::super::keyword_static::parse_exile_to_exile_instead_of_graveyard_line(&tokens)
+            .expect("named source exile-replacement line should parse");
+    let words = crate::lexer::token_word_refs(&tokens);
+    assert!(
+        matches!(
+            parsed,
+            Some(ref ability)
+                if ability.id()
+                    == crate::static_abilities::StaticAbilityId::ExileToExileInsteadOfGraveyard
+        ),
+        "parsed={parsed:?} words={words:?}"
+    );
 }
 
 #[test]
@@ -503,7 +502,7 @@ pub(super) fn parse_cycling_card_exile_instead_unless_cycled() {
         debug.contains("cycling") && debug.contains("exclude_cycled: true"),
         "debug={debug}"
     );
-    let crate::static_abilities::StaticAbilityPayload::ExileToExileInsteadOfGraveyard {
+    let crate::model::CompilerStaticAbilityPayloadCore::ExileToExileInsteadOfGraveyard {
         filter,
         ..
     } = &ability.payload
@@ -524,7 +523,7 @@ pub(super) fn graveyard_play_grants_render_filtered_spell_subjects() {
     let [cycling_ability] = cycling_abilities.as_slice() else {
         panic!("expected one cycling grant: {cycling_abilities:#?}");
     };
-    let crate::static_abilities::StaticAbilityPayload::Grants(cycling_grant) =
+    let crate::model::CompilerStaticAbilityPayloadCore::Grants(cycling_grant) =
         &cycling_ability.payload
     else {
         panic!("expected a typed cycling grant: {cycling_ability:#?}");
@@ -622,7 +621,7 @@ pub(super) fn rewrite_typed_replacement_predicate_regression_shapes_preserve_sem
     );
     let explore_debug = format!("{explore_ability:#?}");
     assert!(
-        explore_debug.matches("ExploreEffect").count() >= 2,
+        explore_debug.matches("action: Explore").count() >= 2,
         "double-explore replacement must retain both replacement actions: {explore_debug}"
     );
 
@@ -639,7 +638,7 @@ pub(super) fn rewrite_typed_replacement_predicate_regression_shapes_preserve_sem
         counter_ability.id(),
         StaticAbilityId::AddCountersPlacementReplacement
     );
-    let StaticAbilityPayload::AddCountersPlacementReplacement {
+    let crate::model::CompilerStaticAbilityPayloadCore::AddCountersPlacementReplacement {
         filter,
         player_filter,
         counter_type,
@@ -824,7 +823,7 @@ pub(super) fn characteristic_pt_count_binds_its_controller_graveyard_to_the_affe
     let ability = super::super::keyword_static::parse_characteristic_defining_pt_line(&tokens)
         .expect("controller-relative characteristic P/T should parse")
         .expect("controller-relative characteristic P/T should be typed");
-    let crate::static_abilities::StaticAbilityPayload::CharacteristicDefiningPt {
+    let crate::model::CompilerStaticAbilityPayloadCore::CharacteristicDefiningPt {
         power,
         toughness,
     } = &ability.payload
@@ -884,7 +883,7 @@ pub(super) fn rewrite_grammar_empty_library_draw_win_lowers_to_conditional_repla
         .expect("empty-library draw-win replacement should be recognized");
     assert_eq!(ability.id(), StaticAbilityId::ConditionalDrawReplacement);
 
-    let StaticAbilityPayload::ConditionalDrawReplacement {
+    let crate::model::CompilerStaticAbilityPayloadCore::ConditionalDrawReplacement {
         condition,
         replacement_effects,
         display,
@@ -902,12 +901,15 @@ pub(super) fn rewrite_grammar_empty_library_draw_win_lowers_to_conditional_repla
         }
     ));
     assert_eq!(replacement_effects.len(), 1);
-    assert!(
-        replacement_effects[0]
-            .downcast_ref::<crate::effects::WinTheGameEffect>()
-            .is_some(),
-        "replacement action should be a typed win effect"
-    );
+    assert!(matches!(
+        &replacement_effects[0],
+        crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::WinGame,
+                ..
+            }
+        )
+    ));
     assert_eq!(display, text);
 }
 
@@ -1146,15 +1148,15 @@ pub(super) fn rewrite_grammar_once_each_turn_enchantment_life_cost_grant_is_type
     let [crate::cards::builders::StaticAbilityAst::Static(ability)] = parsed.as_slice() else {
         panic!("expected one static life-cost grant, got {parsed:?}");
     };
-    let StaticAbilityPayload::Grants(spec) = &ability.payload else {
+    let crate::model::CompilerStaticAbilityPayloadCore::Grants(spec) = &ability.payload else {
         panic!("life-equal-mana-value ability should expose a grant spec: {ability:?}");
     };
     assert_eq!(spec.zone, Zone::Hand);
     assert_eq!(spec.filter.card_types, [CardType::Enchantment]);
     assert!(matches!(
         spec.grantable,
-        crate::grant::Grantable::DerivedAlternativeCast(
-            crate::grant::DerivedAlternativeCast::LifeEqualManaValueFromHand {
+        crate::model::CompilerGrantableCore::DerivedAlternativeCast(
+            ironsmith_core::DerivedAlternativeCast::LifeEqualManaValueFromHand {
                 usage_limit: Some(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns)
             }
         )
@@ -1175,7 +1177,8 @@ pub(super) fn rewrite_demon_sacrifice_cost_binds_mana_value_pump_to_cost_object(
         debug.contains("sacrifice_cost_0")
             && debug.contains("ManaValueOf")
             && debug.contains("WhereXIs")
-            && debug.contains("the sacrificed enchantment")
+            && debug.contains("SacrificedObject")
+            && debug.contains("Enchantment")
             && !debug.contains("the sacrificed enchantment'"),
         "sacrificed enchantment should remain the typed basis of the pump: {debug}"
     );
@@ -1451,7 +1454,7 @@ pub(super) fn rewrite_grammar_exact_static_line_probes_match_simple_keyword_stat
     type Probe = fn(&[crate::lexer::OwnedLexToken]) -> bool;
     type Parser = fn(
         &[crate::lexer::OwnedLexToken],
-    ) -> Result<Option<crate::static_abilities::StaticAbility>, CardTextError>;
+    ) -> Result<Option<crate::model::CompilerStaticAbilityCore>, CardTextError>;
 
     for (text, probe, parser, expected_id) in [
         (
@@ -1558,7 +1561,7 @@ pub(super) fn rewrite_grammar_prevention_static_line_probes_match_keyword_static
     type Probe = fn(&[crate::lexer::OwnedLexToken]) -> bool;
     type Parser = fn(
         &[crate::lexer::OwnedLexToken],
-    ) -> Result<Option<crate::static_abilities::StaticAbility>, CardTextError>;
+    ) -> Result<Option<crate::model::CompilerStaticAbilityCore>, CardTextError>;
 
     for (text, probe, parser, expected_id) in [
         (
@@ -1888,7 +1891,7 @@ pub(super) fn rewrite_grammar_exact_permission_static_line_probes_match_keyword_
     type Probe = fn(&[crate::lexer::OwnedLexToken]) -> bool;
     type Parser = fn(
         &[crate::lexer::OwnedLexToken],
-    ) -> Result<Option<crate::static_abilities::StaticAbility>, CardTextError>;
+    ) -> Result<Option<crate::model::CompilerStaticAbilityCore>, CardTextError>;
 
     for (text, probe, parser, expected_id) in [
         (
@@ -2114,7 +2117,7 @@ pub(super) fn rewrite_grammar_chosen_type_static_line_probes_match_keyword_stati
     type Probe = fn(&[crate::lexer::OwnedLexToken]) -> bool;
     type Parser = fn(
         &[crate::lexer::OwnedLexToken],
-    ) -> Result<Option<crate::static_abilities::StaticAbility>, CardTextError>;
+    ) -> Result<Option<crate::model::CompilerStaticAbilityCore>, CardTextError>;
 
     for (text, probe, parser, expected_id) in [
         (
@@ -2709,11 +2712,15 @@ pub(super) fn rewrite_lexed_trigger_clause_resolves_double_slash_source_name_etb
     let tokens = lex_line("When SP//dr enters", 0)
         .expect("rewrite lexer should classify double-slash source trigger");
 
-    let parsed = super::super::util::with_source_reference_context(
+    let context = crate::parse_context::ParseContext::for_fragment(
         "SP//dr, Piloted by Peni",
-        || {
-            super::super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(&tokens)
-        },
+        vec![CardType::Artifact, CardType::Creature],
+        vec![],
+        "When SP//dr enters",
+    );
+    let parsed = super::super::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
+        context.view(),
+        &tokens,
     );
 
     assert!(
@@ -2736,11 +2743,17 @@ pub(super) fn rewrite_lexed_triggered_line_resolves_double_slash_source_name_etb
     )
     .expect("rewrite lexer should classify double-slash source triggered line");
 
-    let parsed =
-        super::super::util::with_source_reference_context("SP//dr, Piloted by Peni", || {
-            super::super::clause_support::parse_triggered_line_lexed(&tokens)
-        })
-        .expect("SP//dr triggered line should parse");
+    let context = crate::parse_context::ParseContext::for_fragment(
+        "SP//dr, Piloted by Peni",
+        vec![CardType::Artifact, CardType::Creature],
+        vec![],
+        "When SP//dr enters, put a +1/+1 counter on target creature.",
+    );
+    let parsed = super::super::clause_support::parse_triggered_line_lexed_with_context(
+        context.view(),
+        &tokens,
+    )
+    .expect("SP//dr triggered line should parse");
     let debug = format!("{parsed:#?}");
 
     assert!(
@@ -2754,14 +2767,11 @@ pub(super) fn rewrite_document_lowering_resolves_double_slash_source_name_etb()
 -> Result<(), CardTextError> {
     let builder = CardDefinitionBuilder::new(CardId::new(), "SP//dr, Piloted by Peni")
         .card_types(vec![CardType::Artifact, CardType::Creature]);
-    let (definition, _) =
-        super::super::util::with_source_reference_context("SP//dr, Piloted by Peni", || {
-            parse_text_with_annotations_lowered(
-                builder,
-                "When SP//dr enters, put a +1/+1 counter on target creature.".to_string(),
-                false,
-            )
-        })?;
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "When SP//dr enters, put a +1/+1 counter on target creature.".to_string(),
+        false,
+    )?;
     let debug = format!("{definition:#?}");
 
     assert!(
@@ -2777,17 +2787,10 @@ pub(super) fn rewrite_exile_multi_target_preserves_short_source_surface()
     let builder = CardDefinitionBuilder::new(CardId::new(), "Mangara of Corondor")
         .supertypes(vec![Supertype::Legendary])
         .card_types(vec![CardType::Creature]);
-    let (definition, _) = super::super::util::with_card_source_reference_context(
-        "Mangara of Corondor",
-        &[CardType::Creature],
-        &[],
-        || {
-            parse_text_with_annotations_lowered(
-                builder,
-                "{T}: Exile Mangara and target permanent.".to_string(),
-                false,
-            )
-        },
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "{T}: Exile Mangara and target permanent.".to_string(),
+        false,
     )?;
     let debug = format!("{definition:?}");
 
@@ -3570,22 +3573,29 @@ pub(super) fn rewrite_lexed_trigger_clause_preserves_this_aura_leaves_surface() 
 
 #[test]
 pub(super) fn rewrite_lexed_trigger_clause_preserves_named_source_leaves_surface() {
-    crate::util::with_source_reference_context("Emrakul, the World Anew", || {
-        let tokens = lex_line("emrakul leaves the battlefield", 0)
-            .expect("rewrite lexer should classify named leaves-the-battlefield trigger");
+    let text = "emrakul leaves the battlefield";
+    let tokens = lex_line(text, 0)
+        .expect("rewrite lexer should classify named leaves-the-battlefield trigger");
+    let context = crate::parse_context::ParseContext::for_fragment(
+        "Emrakul, the World Anew",
+        vec![CardType::Creature],
+        vec![],
+        text,
+    );
 
-        let parsed = super::super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
-                &tokens,
-            )
-            .expect("named source leaves-the-battlefield trigger should parse");
-        let debug = format!("{parsed:?}");
+    let parsed =
+        super::super::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
+            context.view(),
+            &tokens,
+        )
+        .expect("named source leaves-the-battlefield trigger should parse");
+    let debug = format!("{parsed:?}");
 
-        assert!(
-            debug.contains("ThisLeavesBattlefieldWithSurface")
-                && debug.contains("ShortName(\"Emrakul\")"),
-            "expected named source leaves trigger to preserve surface, got {debug}"
-        );
-    });
+    assert!(
+        debug.contains("ThisLeavesBattlefieldWithSurface")
+            && debug.contains("ShortName(\"Emrakul\")"),
+        "expected named source leaves trigger to preserve surface, got {debug}"
+    );
 }
 
 #[test]
@@ -3606,39 +3616,40 @@ pub(super) fn rewrite_lexed_triggered_line_supports_leave_battlefield_sacrifice_
 
 #[test]
 pub(super) fn rewrite_lexed_triggered_line_preserves_named_source_leaves_surface() {
-    crate::util::with_source_reference_context("Emrakul, the World Anew", || {
-        let tokens = lex_line(
-            "When emrakul leaves the battlefield, sacrifice all creatures you control.",
-            0,
-        )
+    let text = "When emrakul leaves the battlefield, sacrifice all creatures you control.";
+    let tokens = lex_line(text, 0)
         .expect("rewrite lexer should classify named leave-battlefield sacrifice line");
+    let context = crate::parse_context::ParseContext::for_fragment(
+        "Emrakul, the World Anew",
+        vec![CardType::Creature],
+        vec![],
+        text,
+    );
 
-        let parsed = super::super::clause_support::parse_triggered_line_lexed(&tokens)
-            .expect("named source leaves trigger line should parse");
-        let debug = format!("{parsed:#?}");
+    let parsed = super::super::clause_support::parse_triggered_line_lexed_with_context(
+        context.view(),
+        &tokens,
+    )
+    .expect("named source leaves trigger line should parse");
+    let debug = format!("{parsed:#?}");
 
-        assert!(
-            debug.contains("ThisLeavesBattlefieldWithSurface")
-                && debug.contains("ShortName")
-                && debug.contains("\"Emrakul\""),
-            "expected named source leaves trigger line to preserve surface, got {debug}"
-        );
-    });
+    assert!(
+        debug.contains("ThisLeavesBattlefieldWithSurface")
+            && debug.contains("ShortName")
+            && debug.contains("\"Emrakul\""),
+        "expected named source leaves trigger line to preserve surface, got {debug}"
+    );
 }
 
 #[test]
 pub(super) fn compile_named_source_leaves_trigger_preserves_surface() {
-    let (semantic, _) =
-        crate::util::with_source_reference_context("Emrakul, the World Anew", || {
-            parse_text_to_semantic_document(
-                CardDefinitionBuilder::new(CardId::from_raw(1), "Emrakul, the World Anew")
-                    .card_types(vec![CardType::Creature]),
-                "When Emrakul leaves the battlefield, sacrifice all creatures you control."
-                    .to_string(),
-                false,
-            )
-        })
-        .expect("named source leaves trigger should parse semantically");
+    let (semantic, _) = parse_text_to_semantic_document(
+        CardDefinitionBuilder::new(CardId::from_raw(1), "Emrakul, the World Anew")
+            .card_types(vec![CardType::Creature]),
+        "When Emrakul leaves the battlefield, sacrifice all creatures you control.".to_string(),
+        false,
+    )
+    .expect("named source leaves trigger should parse semantically");
     let semantic_debug = format!("{semantic:#?}");
     assert!(
         semantic_debug.contains("ThisLeavesBattlefieldWithSurface")
@@ -3647,14 +3658,12 @@ pub(super) fn compile_named_source_leaves_trigger_preserves_surface() {
         "expected semantic document to carry the typed named-source trigger, got {semantic_debug}"
     );
 
-    let compiled = crate::util::with_source_reference_context("Emrakul, the World Anew", || {
-        super::super::compile_card_text(
-            CardDefinitionBuilder::new(CardId::from_raw(1), "Emrakul, the World Anew")
-                .card_types(vec![CardType::Creature]),
-            "When Emrakul leaves the battlefield, sacrifice all creatures you control.",
-            false,
-        )
-    })
+    let compiled = super::super::compile_card_text(
+        CardDefinitionBuilder::new(CardId::from_raw(1), "Emrakul, the World Anew")
+            .card_types(vec![CardType::Creature]),
+        "When Emrakul leaves the battlefield, sacrifice all creatures you control.",
+        false,
+    )
     .expect("named source leaves trigger should compile");
     let debug = format!("{:#?}", compiled.definition.abilities);
 

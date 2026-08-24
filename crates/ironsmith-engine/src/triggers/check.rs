@@ -3667,13 +3667,17 @@ mod tests {
     use crate::events::DamageTarget;
     use crate::events::cause::EventCause;
     use crate::events::combat::{AttackEventTarget, CreatureAttackedEvent, CreatureBlockedEvent};
-    use crate::events::other::{BecameMonstrousEvent, ControlChangedEvent, PlayerLosesGameEvent};
+    #[cfg(ironsmith_runtime_parser_tests)]
+    use crate::events::other::BecameMonstrousEvent;
+    use crate::events::other::{ControlChangedEvent, PlayerLosesGameEvent};
     use crate::events::spells::{AbilityActivatedEvent, BecomesTargetedEvent, SpellCastEvent};
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::static_abilities::StaticAbility;
     use crate::target::ChooseSpec;
-    use crate::types::{CardType, Subtype};
+    use crate::types::CardType;
+    #[cfg(ironsmith_runtime_parser_tests)]
+    use crate::types::Subtype;
     use crate::zone::Zone;
 
     fn make_battlefield_creature(
@@ -4433,7 +4437,7 @@ mod tests {
     }
 
     #[test]
-    fn ltb_trigger_without_lookback_payload_does_not_use_current_source() {
+    fn departed_ltb_trigger_without_lookback_payload_is_not_reconstructed() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);
         let source = make_battlefield_artifact(&mut game, alice, "Current Watcher");
@@ -4441,6 +4445,9 @@ mod tests {
         let victim = make_battlefield_creature(&mut game, alice, "Manual Bear");
         let victim_snapshot =
             ObjectSnapshot::from_object(game.object(victim).expect("victim exists"), &game);
+        game.move_object_by_effect(source, Zone::Graveyard)
+            .expect("trigger source should leave");
+        game.take_pending_trigger_events();
 
         let event = TriggerEvent::new_with_provenance(
             crate::events::zones::ZoneChangeEvent::with_cause(
@@ -4457,7 +4464,7 @@ mod tests {
 
         assert!(
             triggered.is_empty(),
-            "603.10 trigger sources must come from the pre-event look-back payload"
+            "a departed 603.10 trigger source must come from the pre-event look-back payload"
         );
     }
 

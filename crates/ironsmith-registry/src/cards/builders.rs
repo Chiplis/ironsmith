@@ -3,6 +3,7 @@ use ironsmith::card::{LinkedFaceLayout, PowerToughness};
 use ironsmith::cards::CardDefinition;
 use ironsmith::color::ColorSet;
 use ironsmith::cost::OptionalCost;
+use ironsmith::effect::Effect;
 use ironsmith::ids::CardId;
 use ironsmith::mana::ManaCost;
 use ironsmith::object::AuraAttachmentFilter;
@@ -129,6 +130,11 @@ impl CardDefinitionBuilder {
 
     pub fn with_ability(mut self, ability: Ability) -> Self {
         self.runtime = self.runtime.with_ability(ability);
+        self
+    }
+
+    pub fn with_spell_effect(mut self, effects: Vec<Effect>) -> Self {
+        self.runtime = self.runtime.with_spell_effect(effects);
         self
     }
 

@@ -221,10 +221,11 @@ pub(crate) fn cost_to_payment_effect(cost: &Cost) -> Option<crate::effect::Effec
             let filter = if card_types.is_empty() {
                 None
             } else {
-                let mut filter = crate::target::ObjectFilter::default();
-                filter.card_types = card_types.clone();
-                filter.zone = Some(crate::zone::Zone::Hand);
-                Some(filter)
+                Some(crate::target::ObjectFilter {
+                    card_types: card_types.clone(),
+                    zone: Some(crate::zone::Zone::Hand),
+                    ..Default::default()
+                })
             };
             Some(crate::effect::Effect::discard_player_filtered(
                 *count,

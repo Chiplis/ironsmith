@@ -599,7 +599,7 @@ pub(super) fn throw_from_the_saddle_keeps_common_damage_after_both_replacement_a
     );
     let default_debug = format!("{if_false:#?}");
     assert!(
-        default_debug.contains("ModifyPowerToughness"),
+        default_debug.contains("Pump") || default_debug.contains("ModifyPowerToughness"),
         "{default_debug}"
     );
     assert!(
@@ -1717,8 +1717,8 @@ pub(super) fn died_this_way_count_binds_to_the_destroy_effect() {
     let debug = format!("{:#?}", def.spell_effect);
     assert!(
         debug.contains("DestroyEffect")
-            && debug.contains("PriorEffectMetric")
-            && debug.contains("Destroyed")
+            && debug.contains("TaggedObjectConstraint")
+            && debug.contains("destroyed_0")
             && debug.contains("DiedThisWay"),
         "expected the died count to bind to the prior destroy result, got {debug}"
     );
@@ -1895,10 +1895,9 @@ pub(super) fn rewrite_sequence_registry_matches_revealed_land_nonland_split_bott
         "Reveal the top X cards of your library, where X is the number of lands sacrificed this way. Choose any number of artifact and/or land cards revealed this way. Put all nonland cards chosen this way onto the battlefield, then put all land cards chosen this way onto the battlefield tapped, then put the rest on the bottom of your library in a random order.",
     );
 
-    let matched =
-        super::super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
-            .expect("registry lookup should not error")
-            .expect("registry should match revealed land/nonland split bundle");
+    let matched = super::super::effect_sentences::try_parse_document_program(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match revealed land/nonland split bundle");
     let debug = format!("{:#?}", matched.effects);
 
     assert_eq!(
@@ -2823,10 +2822,13 @@ pub(super) fn split_search_spell_mastery_replaces_only_the_typed_search_limit() 
     assert_eq!(default_search.filter.supertypes, [Supertype::Basic]);
     assert_eq!(default_search.filter.zone, Some(crate::zone::Zone::Library));
     assert_eq!(default_search.filter.owner, Some(PlayerFilter::You));
-    assert_eq!(
-        &default.effects[1..],
-        &replacement.effects[1..],
-        "reveal and one-versus-rest disposition must be common to both search limits"
+    assert!(
+        default.effects.len() == replacement.effects.len()
+            && default.effects[1..]
+                .iter()
+                .zip(&replacement.effects[1..])
+                .all(|(default, replacement)| std::sync::Arc::ptr_eq(&default.0, &replacement.0)),
+        "reveal and one-versus-rest disposition must be the same cloned pipeline"
     );
     let remainder = default.effects[4]
         .downcast_ref::<crate::effects::ForEachTaggedEffect<crate::effect::Effect>>()
@@ -3848,7 +3850,7 @@ pub(super) fn rewrite_activation_line_collects_any_player_restriction_from_token
         .expect("activated line should produce an ability");
 
     match parsed.kind() {
-        crate::ability::AbilityKind::Activated(activated) => {
+        crate::model::CompilerAbilityKindCore::Activated(activated) => {
             let restrictions = activated
                 .additional_restrictions
                 .iter()
@@ -3878,7 +3880,7 @@ pub(super) fn rewrite_activation_line_types_any_player_before_end_step_window() 
         .expect("activated line should produce an ability");
 
     match parsed.kind() {
-        crate::ability::AbilityKind::Activated(activated) => {
+        crate::model::CompilerAbilityKindCore::Activated(activated) => {
             assert_eq!(
                 activated.timing,
                 crate::ability::ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep
@@ -3904,14 +3906,14 @@ pub(super) fn rewrite_activation_line_collects_sentence_modifiers_via_activated_
     let debug = format!("{parsed:#?}");
 
     match parsed.kind() {
-        crate::ability::AbilityKind::Activated(activated) => {
+        crate::model::CompilerAbilityKindCore::Activated(activated) => {
             assert_eq!(
                 activated.timing,
                 crate::ability::ActivationTiming::OncePerTurn
             );
             assert!(matches!(
                 activated.mana_usage_restrictions.as_slice(),
-                [crate::ability::ManaUsageRestriction::CastSpell {
+                [crate::model::CompilerManaUsageRestriction::CastSpell {
                     card_types,
                     subtype_requirement: Some(
                         crate::ability::ManaUsageSubtypeRequirement::ChosenTypeOfSource
@@ -3953,10 +3955,10 @@ pub(super) fn rewrite_activation_line_parses_biophagus_style_conditional_mana_bo
         .expect("Biophagus-style line should produce an ability");
 
     match parsed.kind() {
-        crate::ability::AbilityKind::Activated(activated) => {
+        crate::model::CompilerAbilityKindCore::Activated(activated) => {
             assert!(matches!(
                 activated.mana_usage_restrictions.as_slice(),
-                [crate::ability::ManaUsageRestriction::CastSpell {
+                [crate::model::CompilerManaUsageRestriction::CastSpell {
                     card_types,
                     subtype_requirement: None,
                     restrict_to_matching_spell: false,
@@ -3986,10 +3988,10 @@ pub(super) fn rewrite_activation_line_parses_spent_on_spell_static_ability_bonus
         .expect("Arena of Glory-style line should produce an ability");
 
     match parsed.kind() {
-        crate::ability::AbilityKind::Activated(activated) => {
+        crate::model::CompilerAbilityKindCore::Activated(activated) => {
             assert!(matches!(
                 activated.mana_usage_restrictions.as_slice(),
-                [crate::ability::ManaUsageRestriction::CastSpell {
+                [crate::model::CompilerManaUsageRestriction::CastSpell {
                     card_types,
                     subtype_requirement: None,
                     restrict_to_matching_spell: false,

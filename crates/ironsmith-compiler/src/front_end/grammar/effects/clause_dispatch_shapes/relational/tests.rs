@@ -29,6 +29,12 @@ fn parses_passive_and_copular_shapes() {
         ["an", "enchantment"]
     );
     assert!(parse_copular_animation_shape(&lex_line("Its an enchantment.", 0).unwrap()).is_some());
+    assert!(
+        parse_copular_animation_shape(
+            &lex_line("It's a Demon in addition to its other types.", 0).unwrap()
+        )
+        .is_some()
+    );
 }
 
 #[test]

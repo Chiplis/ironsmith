@@ -2221,7 +2221,6 @@ mod tests {
     use super::*;
     use ironsmith::alternative_cast::AlternativeCastingMethod;
     use ironsmith::card::{Card, CardBuilder, PowerToughness};
-    use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::cards::tokens::cursed_role_token_definition;
     use ironsmith::decisions::context::{DecisionContext, SelectObjectsContext, SelectableObject};
     use ironsmith::game_state::{GameState, PlayerControlDuration, PlayerControlStart};
@@ -2229,6 +2228,7 @@ mod tests {
     use ironsmith::mana::{ManaCost, ManaSymbol};
     use ironsmith::object::AttachmentTarget;
     use ironsmith::types::Subtype;
+    use ironsmith_registry_test::cards::builders::CardDefinitionBuilder;
 
     fn test_bears_card() -> Card {
         CardBuilder::new(CardId::from_raw(90_001), "Grizzly Bears")

@@ -239,7 +239,9 @@ fn parse_conjunctive_negated_card_filter(
         || tokens
             .iter()
             .any(|token| token.is_word("or") || token.is_word("and/or"))
-        || !modifiers.iter().all(|word| word.starts_with("non"))
+        || !modifiers
+            .iter()
+            .all(|word| crate::word_primitives::parse_word_prefix(word, "non"))
     {
         return None;
     }
@@ -397,153 +399,12 @@ fn parse_generic_disjunction_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFi
     Some(filter)
 }
 
-pub fn parse_looked_card_reveal_filter_shape(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
-    let (filter_tokens, same_name) = split_same_name_suffix(tokens);
-    let all_words = parser_token_word_refs(filter_tokens);
-    let words = non_article_word_refs(&all_words);
-
-    if CHOSEN_CARD_PHRASES
-        .iter()
-        .any(|expected| permission_shapes::exact_words(&words, expected))
-    {
-        return Some(apply_same_name(ObjectFilter::default(), true));
-    }
-    if words.len() == 1 && is_card_word(words[0]) {
-        return Some(apply_same_name(ObjectFilter::default(), same_name));
-    }
-    if words.len() == 4
-        && is_card_word(words[0])
-        && (permission_shapes::exact_words(&words[1..], &["of", "chosen", "type"])
-            || permission_shapes::exact_words(&words[1..], &["of", "that", "type"]))
-    {
-        let mut filter = ObjectFilter::default();
-        filter.chosen_creature_type = true;
-        return Some(apply_same_name(filter, same_name));
-    }
-    if permission_shapes::exact_words(&words, &["permanent", "card"])
-        || permission_shapes::exact_words(&words, &["permanent", "cards"])
-    {
-        return Some(apply_same_name(ObjectFilter::permanent_card(), same_name));
-    }
-    if permission_shapes::exact_words(&words, &["historic", "card"])
-        || permission_shapes::exact_words(&words, &["historic", "cards"])
-    {
-        let mut filter = ObjectFilter::default();
-        filter.historic = true;
-        return Some(apply_same_name(filter, same_name));
-    }
-    if permission_shapes::exact_words(&words, &["nonland", "permanent", "card"])
-        || permission_shapes::exact_words(&words, &["nonland", "permanent", "cards"])
-    {
-        let mut filter = ObjectFilter::permanent_card();
-        filter.excluded_card_types.push(CardType::Land);
-        return Some(apply_same_name(filter, same_name));
-    }
-    if let Some(filter) = parse_noncreature_nonland_permanent(filter_tokens, &words) {
-        return Some(apply_same_name(filter, same_name));
-    }
-    if let Some(filter) = parse_conjunctive_negated_card_filter(filter_tokens, &words) {
-        return Some(apply_same_name(filter, same_name));
-    }
-    if let Some(filter) = parse_land_or_legendary_permanent(filter_tokens, &words) {
-        return Some(apply_same_name(filter, same_name));
-    }
-    if let Some(filter) = parse_modified_permanent_cards(filter_tokens, &words) {
-        return Some(apply_same_name(filter, same_name));
-    }
-    if let Some(filter) = parse_filter_disjunction(filter_tokens, &words) {
-        return Some(apply_same_name(filter, same_name));
-    }
-
-    let filter = parse_generic_disjunction_filter(filter_tokens)
-        .or_else(|| parse_object_filter_lexed(filter_tokens, false).ok())?;
-    Some(apply_same_name(filter, same_name))
-}
-
-pub fn strip_up_to_one_looked_card_choice_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    let tokens = trim_lexed_commas(tokens);
-    let Some((count, used)) = parse_choice_count_token_prefix_consumed(tokens) else {
-        return tokens.to_vec();
-    };
-    if count == crate::effect::ChoiceCount::up_to(1) {
-        trim_lexed_commas(tokens.get(used..).unwrap_or_default()).to_vec()
-    } else {
-        tokens.to_vec()
-    }
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::Subtype;
-    use crate::lexer::lex_line;
+#[path = "filters_inline_tests.rs"]
+mod tests;
 
-    #[test]
-    fn comma_separated_negated_characteristics_are_conjunctive() {
-        let tokens = lex_line("a noncreature, nonland card", 0).unwrap();
-        let filter =
-            parse_looked_card_reveal_filter_shape(&tokens).expect("negated characteristic filter");
-
-        assert!(filter.any_of.is_empty(), "{filter:#?}");
-        assert_eq!(
-            filter.excluded_card_types,
-            vec![CardType::Creature, CardType::Land]
-        );
-    }
-
-    #[test]
-    fn repeated_complete_card_union_preserves_branch_scope_and_surface() {
-        let filter = parse("a Doctor card, a card with doctor's companion, or a Vehicle card");
-
-        assert!(filter.has_explicit_union_branch_articles(), "{filter:#?}");
-        assert_eq!(filter.any_of.len(), 3, "{filter:#?}");
-        assert_eq!(filter.any_of[0].subtypes, [Subtype::Doctor]);
-        assert!(filter.any_of[1].subtypes.is_empty(), "{filter:#?}");
-        assert_eq!(
-            filter.any_of[1].ability_markers,
-            ["doctor's companion".to_string()]
-        );
-        assert_eq!(filter.any_of[2].subtypes, [Subtype::Vehicle]);
-        assert_eq!(
-            filter.description(),
-            "a Doctor card, a card with doctor's companion, or a Vehicle card"
-        );
-    }
-
-    fn parse(raw: &str) -> ObjectFilter {
-        parse_looked_card_reveal_filter_shape(&lex_line(raw, 0).unwrap()).unwrap()
-    }
-
-    #[test]
-    fn parses_typed_special_looked_card_filters() {
-        assert_eq!(parse("a permanent card").card_types.len(), 6);
-        assert!(
-            parse("a nonland permanent card")
-                .excluded_card_types
-                .contains(&CardType::Land)
-        );
-        let and_or = parse("a land and/or legendary permanent card");
-        assert_eq!(and_or.any_of.len(), 2);
-        assert_eq!(
-            and_or.union_connective(),
-            crate::filter::ObjectFilterUnionConnective::AndOr
-        );
-        assert_eq!(
-            parse("artifact and/or land cards").union_connective(),
-            crate::filter::ObjectFilterUnionConnective::AndOr
-        );
-        assert_eq!(
-            parse("a card with the chosen name")
-                .tagged_constraints
-                .len(),
-            1
-        );
-
-        let shared =
-            parse("a permanent card that shares a card type with the sacrificed permanent");
-        assert!(shared.tagged_constraints.iter().any(|constraint| {
-            constraint.tag == TagKey::from("sacrificed_0")
-                && constraint.relation == TaggedOpbjectRelation::SharesCardType
-        }));
-    }
-}
+#[path = "filters/library_programs.rs"]
+mod library_programs;
+pub use library_programs::{
+    parse_looked_card_reveal_filter_shape, strip_up_to_one_looked_card_choice_tokens,
+};

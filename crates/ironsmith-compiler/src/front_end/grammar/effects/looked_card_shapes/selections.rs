@@ -376,11 +376,10 @@ pub fn parse_opponent_revealed_card_selection_shape(
     {
         return None;
     }
-    let from_among = (3..tokens.len().saturating_sub(2)).find(|index| {
-        tokens[*index].is_word("from")
-            && tokens[*index + 1].is_word("among")
-            && tokens[*index + 2].is_word("them")
-    });
+    let from_among = crate::slice_primitives::find_window_by(&tokens[3..], 3, |window| {
+        window[0].is_word("from") && window[1].is_word("among") && window[2].is_word("them")
+    })
+    .map(|offset| offset + 3);
     let filter = if let Some(from_among) = from_among {
         if from_among == 3
             || tokens[from_among + 3..]
@@ -395,9 +394,10 @@ pub fn parse_opponent_revealed_card_selection_shape(
             .iter()
             .filter_map(OwnedLexToken::as_word)
             .collect::<Vec<_>>();
-        if words.as_slice() != ["one", "of", "them"]
-            && words.as_slice() != ["one", "of", "those", "cards"]
-        {
+        if !crate::word_primitives::parse_any_sequence_complete(
+            &words,
+            &[&["one", "of", "them"], &["one", "of", "those", "cards"]],
+        ) {
             return None;
         }
         None

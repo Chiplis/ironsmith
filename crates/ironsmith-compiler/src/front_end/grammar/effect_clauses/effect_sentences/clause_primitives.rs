@@ -13,15 +13,14 @@ use super::super::permission_helpers::{
     parse_until_your_next_turn_may_play_tagged_clause,
 };
 use super::super::util::{
-    parse_subject, parse_target_phrase, record_source_reference_surface,
-    source_reference_surface_for_words, span_from_tokens,
+    parse_subject, parse_target_phrase, source_reference_surface_for_words, span_from_tokens,
 };
 use super::parse_restriction_duration;
 use super::sentence_helpers::*;
 use super::subject_verb_primitives::SubjectVerbPrimitiveClause;
 use crate::cards::builders::{
-    COPIED_STACK_OBJECT_TAG, CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, LineAst,
-    OwnedLexToken, PlayerAst, RetargetModeAst, SubjectAst, SubjectVerbActionAst,
+    CHOSEN_OBJECTS_TAG, COPIED_STACK_OBJECT_TAG, CardTextError, EffectAst, GrantedAbilityAst,
+    IT_TAG, LineAst, OwnedLexToken, PlayerAst, RetargetModeAst, SubjectAst, SubjectVerbActionAst,
     SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::effect::Value;
@@ -99,7 +98,13 @@ pub fn parse_copy_targets_clause(
             LexedClause::new(tokens).text()
         )));
     }
-    let fixed_filter = parse_object_filter(shape.target_tokens, false)?;
+    let fixed_target = match parse_target_phrase(shape.target_tokens) {
+        Ok(target) => target,
+        Err(_) if crate::lexer::is_bare_card_name_phrase(shape.target_tokens) => {
+            TargetAst::Source(LexedClause::new(shape.target_tokens).span())
+        }
+        Err(error) => return Err(error),
+    };
     Ok(Some(EffectAst::subject_verb_retarget_stack_object(
         PlayerAst::Implicit,
         TargetAst::Tagged(
@@ -107,7 +112,7 @@ pub fn parse_copy_targets_clause(
             LexedClause::new(tokens).span(),
         ),
         RetargetModeAst::OneToFixed {
-            target: TargetAst::Object(fixed_filter, None, None),
+            target: fixed_target,
         },
         false,
     )))
@@ -119,7 +124,10 @@ pub fn parse_choose_new_targets_clause(
     let Some(split) = split_choose_new_targets_clause_lexed(tokens) else {
         return Ok(None);
     };
-    let plural_copy_reference = crate::lexer::token_word_refs(tokens).contains(&"copies");
+    let plural_copy_reference = crate::word_primitives::sequence_occurs(
+        &crate::lexer::token_word_refs(tokens),
+        &["copies"],
+    );
     if split.reference_target {
         let reference_tag = match clause_shapes::parse_retarget_reference_shape(split.target_tokens)
         {
@@ -263,7 +271,13 @@ fn apply_retarget_constraint(
 
 pub fn parse_unless_pays_clause(
     tokens: &[OwnedLexToken],
-) -> Result<(PlayerAst, crate::cost::TotalCost), CardTextError> {
+) -> Result<
+    (
+        PlayerAst,
+        ironsmith_core::TotalCost<crate::model::CompilerCost>,
+    ),
+    CardTextError,
+> {
     let shape = parse_unless_pays_shape_tokens(tokens).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing typed unless-payment shape (clause: '{}')",
@@ -334,7 +348,11 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
             &["choose", "change"],
             parse_retarget_clause,
         ),
-        ClausePrimitive::specific("copy-targets-clause", &["copy"], parse_copy_targets_clause),
+        ClausePrimitive::specific(
+            "copy-targets-clause",
+            &["the", "copy"],
+            parse_copy_targets_clause,
+        ),
         ClausePrimitive::specific("copy-spell-clause", &["copy"], parse_copy_spell_clause),
         ClausePrimitive::specific(
             "win-game-clause",
@@ -351,11 +369,7 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
             &["it", "that", "those"],
             parse_anaphoric_object_deals_damage_clause,
         ),
-        ClausePrimitive::specific(
-            "fight-clause",
-            &["fight", "target", "it", "that", "they", "each", "you"],
-            parse_fight_clause,
-        ),
+        ClausePrimitive::specific("fight-clause", &[], parse_fight_clause),
         ClausePrimitive::specific(
             "clash-clause",
             &["clash", "you", "target"],
@@ -448,12 +462,18 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
         ),
         ClausePrimitive::specific(
             "attack-or-block-if-able-clause",
-            &["it", "they", "target"],
+            &[
+                "all", "another", "attack", "attacks", "block", "blocks", "each", "it", "that",
+                "they", "those", "target", "up",
+            ],
             parse_attack_or_block_this_turn_if_able_clause,
         ),
         ClausePrimitive::specific(
             "attack-if-able-clause",
-            &["it", "they", "target"],
+            &[
+                "all", "another", "attack", "attacks", "each", "it", "that", "they", "those",
+                "target", "up",
+            ],
             parse_attack_this_turn_if_able_clause,
         ),
         ClausePrimitive::specific(
@@ -463,7 +483,9 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
         ),
         ClausePrimitive::specific(
             "must-block-clause",
-            &["it", "they", "target"],
+            &[
+                "all", "another", "each", "it", "that", "they", "those", "target",
+            ],
             parse_must_block_if_able_clause,
         ),
         ClausePrimitive::specific(
@@ -773,11 +795,12 @@ pub fn parse_attack_this_turn_if_able_clause(
 fn parse_dealt_damage_this_way_subject_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
-    let Some(suffix_start) = tokens.windows(4).position(|window| {
-        window[0].as_word() == Some("dealt")
-            && window[1].as_word() == Some("damage")
-            && window[2].as_word() == Some("this")
-            && window[3].as_word() == Some("way")
+    let Some(suffix_start) = tokens.iter().enumerate().find_map(|(index, token)| {
+        (token.as_word() == Some("dealt")
+            && tokens.get(index + 1).and_then(OwnedLexToken::as_word) == Some("damage")
+            && tokens.get(index + 2).and_then(OwnedLexToken::as_word) == Some("this")
+            && tokens.get(index + 3).and_then(OwnedLexToken::as_word) == Some("way"))
+        .then_some(index)
     }) else {
         return Ok(None);
     };
@@ -830,8 +853,7 @@ pub fn parse_must_be_blocked_if_able_clause(
     if subject_clause
         .tokens()
         .first()
-        .and_then(crate::lexer::OwnedLexToken::as_word)
-        .is_some_and(|word| matches!(word, "that" | "it"))
+        .is_some_and(|token| token.is_word("that") || token.is_word("it"))
     {
         return Ok(Some(EffectAst::subject_verb_cant(
             crate::effect::Restriction::must_be_blocked(ObjectFilter::tagged(IT_TAG)),
@@ -1018,7 +1040,7 @@ pub fn parse_must_block_if_able_clause(
                 target_declarations.insert(
                     0,
                     EffectAst::SnapshotLastObjectTag {
-                        into: TagKey::from("triggering"),
+                        into: crate::tag::CompilerReferenceTag::Triggering.key(),
                     },
                 );
                 ObjectFilter::tagged("triggering")
@@ -1100,9 +1122,8 @@ pub fn parse_until_duration_triggered_clause(
         )));
     }
 
-    let either_of_watched_objects = trigger_words
-        .windows(3)
-        .any(|words| words == ["either", "of", "those"]);
+    let either_of_watched_objects =
+        crate::word_primitives::sequence_occurs(&trigger_words, &["either", "of", "those"]);
 
     Ok(Some(EffectAst::DelayedTriggerForDuration {
         trigger,
@@ -1126,27 +1147,32 @@ pub fn parse_anaphoric_object_deals_damage_clause(
 ) -> Result<Option<EffectAst>, CardTextError> {
     let word_view = TokenWordView::new(tokens);
     let words = word_view.to_word_refs();
-    let Some(deal_idx) = words
-        .iter()
-        .position(|word| matches!(*word, "deal" | "deals"))
+    let Some(deal_idx) =
+        crate::slice_primitives::select_position(&words, |word| matches!(*word, "deal" | "deals"))
     else {
         return Ok(None);
     };
     let source_words = &words[..deal_idx];
     let source_surface = source_reference_surface_for_words(source_words).or_else(|| {
-        matches!(source_words, ["he"] | ["she"] | ["they"]).then(|| {
+        crate::word_primitives::parse_any_sequence_complete(
+            source_words,
+            &[&["he"], &["she"], &["they"]],
+        )
+        .then(|| {
             crate::target::SourceReferenceSurface::ThisPermanentType(source_words[0].to_string())
         })
     });
     if source_surface.is_none()
-        && !matches!(
+        && !crate::word_primitives::parse_any_sequence_complete(
             source_words,
-            ["it"]
-                | ["that", "token"]
-                | ["that", "creature"]
-                | ["that", "land"]
-                | ["that", "permanent"]
-                | ["that", "card"]
+            &[
+                &["it"],
+                &["that", "token"],
+                &["that", "creature"],
+                &["that", "land"],
+                &["that", "permanent"],
+                &["that", "card"],
+            ],
         )
     {
         return Ok(None);
@@ -1155,10 +1181,7 @@ pub fn parse_anaphoric_object_deals_damage_clause(
     // expands the elided second verb ("and that much damage ...") into a
     // sibling damage effect, which lets reference resolution bind that amount
     // to the first damage effect instead of collapsing both clauses here.
-    if words
-        .windows(4)
-        .any(|window| window == ["and", "that", "much", "damage"])
-    {
+    if crate::word_primitives::sequence_occurs(&words, &["and", "that", "much", "damage"]) {
         return Ok(None);
     }
     let source_range = word_view
@@ -1176,37 +1199,40 @@ pub fn parse_anaphoric_object_deals_damage_clause(
     // target into the source of the delayed damage.
     let source_span = span_from_tokens(source_tokens);
     let source = if let Some(surface) = source_surface {
-        record_source_reference_surface(source_span, surface);
-        TargetAst::Source(source_span)
-    } else if source_words == ["it"] && body_words.starts_with(&["an", "additional"]) {
+        TargetAst::Object(
+            ObjectFilter::source_with_surface(surface),
+            None,
+            source_span,
+        )
+    } else if crate::word_primitives::parse_sequence_complete(source_words, &["it"])
+        && crate::word_primitives::parse_sequence_prefix(&body_words, &["an", "additional"])
+    {
         TargetAst::Source(span_from_tokens(source_tokens))
     } else {
-        if source_words == ["that", "land"] {
-            // This demonstrative commonly names the land supplied by a
-            // tap-for-mana or landfall trigger.  Identity still resolves via
-            // the trigger's typed object tag; the surface hint only prevents
-            // the runtime renderer from weakening the authored noun to a
-            // generic "that creature".
-            record_source_reference_surface(
-                source_span,
-                crate::target::SourceReferenceSurface::ThisPermanentType("that land".to_string()),
-            );
+        let mut filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
+        if crate::word_primitives::parse_sequence_complete(source_words, &["that", "land"]) {
+            // Identity remains the typed trigger-object constraint while the
+            // authored demonstrative is explicit rendering provenance.
+            filter.source_surface = Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+                "that land".to_string(),
+            ));
         }
-        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(source_tokens))
+        TargetAst::Object(filter, None, source_span)
     };
-    let distributed_source = if source_words == ["that", "creature"] {
-        let mut filter = ObjectFilter::creature();
-        filter.zone = Some(Zone::Battlefield);
-        filter
-            .tagged_constraints
-            .push(crate::filter::TaggedObjectConstraint {
-                tag: TagKey::from(IT_TAG),
-                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
-            });
-        TargetAst::Object(filter, None, span_from_tokens(source_tokens))
-    } else {
-        source.clone()
-    };
+    let distributed_source =
+        if crate::word_primitives::parse_sequence_complete(source_words, &["that", "creature"]) {
+            let mut filter = ObjectFilter::creature();
+            filter.zone = Some(Zone::Battlefield);
+            filter
+                .tagged_constraints
+                .push(crate::filter::TaggedObjectConstraint {
+                    tag: TagKey::from(IT_TAG),
+                    relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+                });
+            TargetAst::Object(filter, None, span_from_tokens(source_tokens))
+        } else {
+            source.clone()
+        };
     let parsed = super::verb_handlers::parse_deal_damage(body_tokens)?;
     let EffectAst::SubjectVerb(effect) = parsed else {
         return Ok(None);
@@ -1258,22 +1284,27 @@ pub fn parse_deal_damage_equal_to_power_clause(
     let source_words = TokenWordView::new(shape.source_tokens).to_word_refs();
     let iterated_source_filter = if source_words.first() == Some(&"each") {
         if shape.source_is_tagged {
-            let filter_tokens = if source_words.starts_with(&["each", "of", "those"])
-                && shape.source_tokens.len() > 3
+            let filter_tokens = if crate::word_primitives::parse_sequence_prefix(
+                &source_words,
+                &["each", "of", "those"],
+            ) && shape.source_tokens.len() > 3
             {
                 &shape.source_tokens[3..]
             } else {
-                let tapped_idx = shape
-                    .source_tokens
-                    .iter()
-                    .position(|token| token.as_word() == Some("tapped"))
+                let tapped_idx =
+                    crate::slice_primitives::select_position(shape.source_tokens, |token| {
+                        token.as_word() == Some("tapped")
+                    })
                     .ok_or_else(|| {
                         CardTextError::ParseError("missing tagged-set source qualifier".to_string())
                     })?;
                 &shape.source_tokens[1..tapped_idx]
             };
             let mut filter = parse_object_filter(filter_tokens, false)?;
-            if source_words.starts_with(&["each", "of", "those"]) {
+            if crate::word_primitives::parse_sequence_prefix(
+                &source_words,
+                &["each", "of", "those"],
+            ) {
                 filter
                     .set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Those));
             }
@@ -1398,6 +1429,24 @@ pub fn parse_fight_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
         )));
     }
 
+    if shape.right_is_tagged_other
+        && shape.left_tokens.is_some_and(|left| {
+            crate::word_primitives::parse_any_sequence_complete(
+                &crate::lexer::parser_token_word_refs(left),
+                &[&["those", "creatures"], &["the", "chosen", "creatures"]],
+            )
+        })
+    {
+        let tag = TagKey::from(CHOSEN_OBJECTS_TAG);
+        return Ok(Some(EffectAst::subject_verb_fight(
+            TargetAst::Tagged(
+                tag.clone(),
+                span_from_tokens(shape.left_tokens.unwrap_or_default()),
+            ),
+            TargetAst::Tagged(tag, span_from_tokens(shape.right_tokens)),
+        )));
+    }
+
     let creature1 = if let Some(left_tokens) = shape.left_tokens {
         if let Some(filter) = parse_for_each_object_subject(left_tokens)? {
             let creature2 = parse_target_phrase(shape.right_tokens)?;
@@ -1416,7 +1465,12 @@ pub fn parse_fight_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
             }));
         }
         let left_words = crate::lexer::parser_token_word_refs(left_tokens);
-        if left_words.as_slice() == ["it"] || left_words.ends_with(&["you", "may", "have", "it"]) {
+        if crate::word_primitives::parse_sequence_complete(&left_words, &["it"])
+            || crate::word_primitives::parse_sequence_suffix(
+                &left_words,
+                &["you", "may", "have", "it"],
+            )
+        {
             TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(left_tokens))
         } else {
             parse_target_phrase(left_tokens)?
@@ -1493,18 +1547,23 @@ mod result_subject_tests {
             ("You may choose new targets for the copies.", true),
         ] {
             let tokens = crate::lexer::lex_line(text, 0).expect("lex copy retarget");
-            let effect = parse_choose_new_targets_clause(&tokens)
-                .expect("parse copy retarget")
-                .expect("match copy retarget");
+            let effects = crate::effect_sentences::parse_effect_sentence_lexed(&tokens)
+                .expect("parse optional copy retarget");
             assert!(matches!(
-                effect,
-                EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::RetargetStackObject {
-                        copy_reference_plural,
+                effects.as_slice(),
+                [EffectAst::MayByPlayer {
+                    player: PlayerAst::You,
+                    effects,
+                }] if matches!(
+                    effects.as_slice(),
+                    [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::RetargetStackObject {
+                            copy_reference_plural,
+                            ..
+                        },
                         ..
-                    },
-                    ..
-                }) if copy_reference_plural == expected_plural
+                    })] if *copy_reference_plural == expected_plural
+                )
             ));
         }
     }
@@ -1547,19 +1606,21 @@ mod result_subject_tests {
             0,
         )
         .expect("lex named-source excess damage");
-        let effects = crate::util::with_card_source_reference_context(
+        let context = crate::parse_context::ParseContext::for_fragment(
             "Excess Herald",
-            &[CardType::Creature],
-            &[],
-            || super::super::parse_effect_sentence_lexed(&tokens),
-        )
-        .expect("parse named-source excess damage");
+            vec![CardType::Creature],
+            vec![],
+            "Excess Herald deals damage equal to the excess to any target other than that permanent.",
+        );
+        let effects =
+            super::super::parse_effect_sentence_lexed_with_context(context.view(), &tokens)
+                .expect("parse named-source excess damage");
 
         let [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
                     SubjectVerbActionAst::DealDamageEqualToPower {
-                        source: TargetAst::Source(_),
+                        source: TargetAst::Object(source_filter, None, _),
                         amount,
                         target: TargetAst::ObjectOrPlayer(filter, PlayerFilter::Any, Some(_)),
                         ..
@@ -1570,6 +1631,13 @@ mod result_subject_tests {
         else {
             panic!("expected explicit-source damage with a mixed target domain: {effects:#?}");
         };
+        assert!(source_filter.source);
+        assert_eq!(
+            source_filter.source_surface,
+            Some(crate::target::SourceReferenceSurface::FullName(
+                "Excess Herald".to_string()
+            ))
+        );
         assert!(matches!(
             amount.unhinted(),
             Value::EventValue(crate::effect::EventValueSpec::Amount)
@@ -1656,15 +1724,15 @@ mod result_subject_tests {
         else {
             panic!("expected typed explicit-source damage: {effect:#?}");
         };
-        let TargetAst::Source(span) = source else {
-            panic!("expected source target: {source:#?}");
-        };
-        assert_eq!(
-            crate::util::source_reference_surface_for_span(span),
-            Some(crate::target::SourceReferenceSurface::ThisPermanentType(
-                "she".to_string()
-            ))
-        );
+        assert!(matches!(
+            source,
+            TargetAst::Object(filter, None, _)
+                if filter.source
+                    && filter.source_surface
+                        == Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+                            "she".to_string()
+                        ))
+        ));
     }
 
     #[test]
@@ -1678,7 +1746,7 @@ mod result_subject_tests {
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::DealDamageEqualToPower {
-                    source: TargetAst::Tagged(tag, span),
+                    source: TargetAst::Object(source_filter, None, _),
                     amount: Value::Fixed(1),
                     target: TargetAst::Player(PlayerFilter::IteratedPlayer, _),
                     ..
@@ -1688,13 +1756,16 @@ mod result_subject_tests {
         else {
             panic!("expected typed triggering-land damage: {effect:#?}");
         };
-        assert_eq!(tag.as_str(), IT_TAG);
         assert_eq!(
-            crate::util::source_reference_surface_for_span(span),
+            source_filter.source_surface,
             Some(crate::target::SourceReferenceSurface::ThisPermanentType(
                 "that land".to_string()
             ))
         );
+        assert!(source_filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == IT_TAG
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
     }
 
     #[test]

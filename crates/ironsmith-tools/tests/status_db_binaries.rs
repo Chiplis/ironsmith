@@ -1901,10 +1901,17 @@ fn compile_oracle_text_rejects_obsolete_db_flags() {
 }
 
 #[test]
-fn compile_oracle_text_uses_builtin_linked_face_metadata_for_transform_pairs() {
-    let dir = tempdir().expect("tempdir");
-    let cards_path = dir.path().join("cards.json");
-    write_cards_json(&cards_path);
+fn compile_oracle_text_uses_canonical_linked_face_metadata_for_transform_pairs() {
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("ironsmith-tools crate should be inside workspace")
+        .parent()
+        .expect("workspace root should be two levels up");
+    let cards_path = workspace_root.join("cards.json");
+    assert!(
+        cards_path.exists(),
+        "expected workspace cards.json at {cards_path:?}"
+    );
 
     let output = Command::new(env!("CARGO_BIN_EXE_compile_oracle_text"))
         .arg("--name")
@@ -1915,14 +1922,14 @@ fn compile_oracle_text_uses_builtin_linked_face_metadata_for_transform_pairs() {
         .expect("run compile_oracle_text");
     assert!(
         output.status.success(),
-        "compile_oracle_text should succeed for builtin transform pairs"
+        "compile_oracle_text should succeed for canonical transform pairs"
     );
 
     let stdout =
         String::from_utf8(output.stdout).expect("compile_oracle_text stdout should be utf8");
     assert!(
         stdout.contains("other_face: Some"),
-        "expected builtin linked-face metadata in output, got {stdout}"
+        "expected canonical linked-face metadata in output, got {stdout}"
     );
     assert!(
         stdout.contains("linked_face_layout: TransformLike"),

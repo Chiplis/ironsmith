@@ -142,10 +142,19 @@ mod tests {
             1,
             "Clue should have one activated ability"
         );
+        let crate::ability::AbilityKind::Activated(activated) = &clue.abilities[0].kind else {
+            panic!("Clue should carry an activated ability")
+        };
+        assert_eq!(activated.mana_cost.costs().len(), 2);
         assert!(
-            crate::ability::ability_surface_text_for_tests(&clue.abilities[0])
-                .is_some_and(|text| text.to_ascii_lowercase().contains("draw a card")),
-            "Clue should carry the predefined draw ability"
+            activated
+                .effects
+                .all_effects()
+                .into_iter()
+                .any(|effect| effect
+                    .downcast_ref::<crate::effects::DrawCardsEffect>()
+                    .is_some()),
+            "Clue should carry the predefined typed draw effect"
         );
     }
 }

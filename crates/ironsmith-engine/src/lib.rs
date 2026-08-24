@@ -24,10 +24,6 @@
     reason = "runtime rule enums retain family-qualified variants for unambiguous call sites"
 )]
 #![expect(
-    clippy::wrong_self_convention,
-    reason = "runtime query method names describe rules concepts rather than ownership conversions"
-)]
-#![expect(
     clippy::ptr_arg,
     reason = "mutating gameplay helpers retain vector capacity and insertion semantics across calls"
 )]
@@ -42,10 +38,6 @@
 #![expect(
     clippy::if_same_then_else,
     reason = "distinct authored grammar shapes intentionally converge on the same canonical surface"
-)]
-#![expect(
-    clippy::needless_range_loop,
-    reason = "renderer lookahead windows use absolute segment indexes when correlating neighboring effects"
 )]
 
 #[cfg(test)]

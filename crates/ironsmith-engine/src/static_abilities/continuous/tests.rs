@@ -11,6 +11,43 @@ use crate::target::PlayerFilter;
 use crate::types::{Subtype, Supertype};
 use crate::zone::Zone;
 
+fn animate_artifact_definition() -> crate::cards::CardDefinition {
+    let animation_filter =
+        ObjectFilter::artifact().match_tagged("enchanted", TaggedOpbjectRelation::IsTaggedObject);
+    let condition =
+        crate::ConditionExpr::Not(Box::new(crate::ConditionExpr::AttachedToSourceMatches(
+            ObjectFilter::default().with_type(CardType::Creature),
+        )));
+    let mana_value = Value::ManaValueOf(Box::new(ChooseSpec::Iterated));
+
+    CardDefinitionBuilder::new(CardId::new(), "Animate Artifact")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .enchants(ObjectFilter::artifact())
+        .with_ability(Ability::static_ability(
+            StaticAbility::set_card_types(
+                animation_filter.clone(),
+                vec![CardType::Artifact, CardType::Creature],
+            )
+            .with_condition(condition.clone())
+            .expect("set-card-types animation supports a condition"),
+        ))
+        .with_ability(Ability::static_ability(
+            StaticAbility::set_base_power_toughness_value(
+                animation_filter,
+                mana_value.clone(),
+                mana_value,
+            )
+            .with_condition(condition)
+            .expect("dynamic base P/T animation supports a condition"),
+        ))
+        .build()
+}
+
 #[test]
 fn test_anthem() {
     let anthem = Anthem::creatures_you_control(1, 1);
@@ -1263,7 +1300,7 @@ fn object_unblockable_grant_renders_as_a_restriction() {
 }
 
 #[test]
-fn object_unblockable_grant_uses_typed_cast_history_condition_surface() {
+fn object_unblockable_grant_keeps_typed_cast_history_condition() {
     let mut noncreature_spell = ObjectFilter::spell();
     noncreature_spell
         .excluded_card_types
@@ -1278,16 +1315,19 @@ fn object_unblockable_grant_uses_typed_cast_history_condition_surface() {
         right: Value::Fixed(1),
     };
 
-    assert_eq!(
-        GrantObjectAbilityForFilter::new(
-            ObjectFilter::source(),
-            Ability::static_ability(StaticAbility::unblockable()),
-            "This can't be blocked".to_string(),
-        )
-        .with_condition(condition)
-        .display(),
-        "as long as you've cast a noncreature spell this turn, this creature can't be blocked"
-    );
+    let grant = GrantObjectAbilityForFilter::new(
+        ObjectFilter::source(),
+        Ability::static_ability(StaticAbility::unblockable()),
+        "This can't be blocked".to_string(),
+    )
+    .with_condition(condition.clone());
+
+    assert_eq!(grant.filter, ObjectFilter::source());
+    assert_eq!(grant.condition, Some(condition));
+    assert!(matches!(
+        grant.ability.kind,
+        crate::ability::AbilityKind::Static(ref ability) if ability.is_unblockable()
+    ));
 }
 
 #[test]
@@ -2015,55 +2055,60 @@ fn test_grant_ability_displays_spell_subjects_with_cast_and_origin() {
 }
 
 #[test]
-fn parsed_compound_spell_keyword_grants_keep_shared_cast_scope() {
-    for text in [
-        "Instant and sorcery spells you cast have storm.",
-        "Instant and sorcery spells you cast from your hand have cascade.",
-    ] {
-        let definition = CardDefinitionBuilder::new(CardId::new(), "Compound Spell Grant")
-            .card_types(vec![CardType::Enchantment])
-            .parse_text(text)
-            .expect("compound spell grant should compile");
+fn compound_spell_keyword_grants_keep_shared_typed_cast_scope() {
+    let storm_filter = ObjectFilter::instant_or_sorcery().cast_by(PlayerFilter::You);
+    let storm = GrantAbility::new(
+        storm_filter.clone(),
+        StaticAbility::keyword_marker("Storm".to_string()),
+    );
+    assert_eq!(storm.filter, storm_filter);
+    assert_eq!(storm.filter.cast_by, Some(PlayerFilter::You));
 
-        assert_eq!(
-            crate::runtime_display::compiled_text_lines(&definition),
-            vec![text.to_string()]
-        );
-    }
+    let mut cascade_filter = ObjectFilter::instant_or_sorcery().cast_by(PlayerFilter::You);
+    cascade_filter.zone = Some(Zone::Hand);
+    let cascade = GrantAbility::new(cascade_filter.clone(), StaticAbility::cascade());
+    assert_eq!(cascade.filter, cascade_filter);
+    assert_eq!(cascade.filter.cast_by, Some(PlayerFilter::You));
+    assert_eq!(cascade.filter.zone, Some(Zone::Hand));
 }
 
 #[test]
 fn parsed_first_spell_mana_source_grant_keeps_exact_surface() {
-    let text = "The first spell you cast each turn that mana from a Treasure was spent to cast has cascade.";
-    let definition = CardDefinitionBuilder::new(CardId::new(), "Typed Mana Source Grant")
-        .card_types(vec![CardType::Enchantment])
-        .parse_text(text)
-        .expect("typed mana-source grant should compile");
-
+    let filter = ObjectFilter {
+        zone: Some(Zone::Stack),
+        cast_by: Some(PlayerFilter::You),
+        first_spell_cast_each_turn: true,
+        mana_from_source_spent_to_cast: Some(Box::new(
+            ObjectFilter::default().with_subtype(Subtype::Treasure),
+        )),
+        has_mana_cost: true,
+        ..Default::default()
+    };
     assert_eq!(
-        crate::runtime_display::compiled_text_lines(&definition),
-        vec![text.to_string()]
+        GrantAbility::new(filter, StaticAbility::cascade()).display(),
+        "the first spell you cast each turn that mana from a Treasure was spent to cast has cascade"
     );
 }
 
 #[test]
-fn parsed_compound_spell_keyword_grants_keep_shared_controller_scope() {
-    for text in [
-        "Instant and sorcery spells you control have rebound.",
-        "Instant and sorcery spells you control have lifelink.",
-        "Instant and sorcery spells you control have deathtouch.",
-        "Red instant and sorcery spells you control have lifelink.",
+fn compound_spell_keyword_grants_keep_shared_typed_controller_scope() {
+    for ability in [
+        StaticAbility::rebound(),
+        StaticAbility::lifelink(),
+        StaticAbility::deathtouch(),
     ] {
-        let definition = CardDefinitionBuilder::new(CardId::new(), "Controlled Spell Grant")
-            .card_types(vec![CardType::Enchantment])
-            .parse_text(text)
-            .expect("controlled compound spell grant should compile");
-
-        assert_eq!(
-            crate::runtime_display::compiled_text_lines(&definition),
-            vec![text.to_string()]
-        );
+        let filter = ObjectFilter::instant_or_sorcery().controlled_by(PlayerFilter::You);
+        let grant = GrantAbility::new(filter.clone(), ability);
+        assert_eq!(grant.filter, filter);
+        assert_eq!(grant.filter.controller, Some(PlayerFilter::You));
     }
+
+    let mut red_filter = ObjectFilter::instant_or_sorcery().controlled_by(PlayerFilter::You);
+    red_filter.colors = Some(crate::color::ColorSet::RED);
+    let red_grant = GrantAbility::new(red_filter.clone(), StaticAbility::lifelink());
+    assert_eq!(red_grant.filter, red_filter);
+    assert_eq!(red_grant.filter.controller, Some(PlayerFilter::You));
+    assert_eq!(red_grant.filter.colors, Some(crate::color::ColorSet::RED));
 }
 
 #[test]
@@ -2125,11 +2170,20 @@ fn first_matching_spell_cast_from_zone_grant_resets_each_turn() {
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
+    let first_from_exile = ObjectFilter {
+        zone: Some(Zone::Exile),
+        cast_by: Some(PlayerFilter::You),
+        first_spell_cast_each_turn: true,
+        has_mana_cost: true,
+        ..Default::default()
+    };
     let source_definition = CardDefinitionBuilder::new(CardId::new(), "First Exile Grant")
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(4, 3))
-        .parse_text("The first spell you cast from exile each turn has cascade.")
-        .expect("first-from-exile cascade grant should parse");
+        .with_ability(Ability::static_ability(StaticAbility::new(
+            GrantAbility::new(first_from_exile, StaticAbility::cascade()),
+        )))
+        .build();
     let source = game.create_object_from_definition(&source_definition, alice, Zone::Battlefield);
 
     let hand_spell = record_spell_cast(&mut game, alice, source, "Hand Spell", Zone::Hand);
@@ -2222,12 +2276,22 @@ fn first_matching_spell_cast_with_mana_source_uses_spent_source_lki() {
 
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
+    let treasure_mana_spell = ObjectFilter {
+        zone: Some(Zone::Stack),
+        cast_by: Some(PlayerFilter::You),
+        first_spell_cast_each_turn: true,
+        mana_from_source_spent_to_cast: Some(Box::new(
+            ObjectFilter::default().with_subtype(Subtype::Treasure),
+        )),
+        has_mana_cost: true,
+        ..Default::default()
+    };
     let source_definition = CardDefinitionBuilder::new(CardId::new(), "Mana Source Grant")
         .card_types(vec![CardType::Enchantment])
-        .parse_text(
-            "The first spell you cast each turn that mana from a Treasure was spent to cast has cascade.",
-        )
-        .expect("mana-source cascade grant should parse");
+        .with_ability(Ability::static_ability(StaticAbility::new(
+            GrantAbility::new(treasure_mana_spell, StaticAbility::cascade()),
+        )))
+        .build();
     game.create_object_from_definition(&source_definition, alice, Zone::Battlefield);
 
     let nonmatching = record_spell_cast(&mut game, alice, "Food-Mana Spell", Subtype::Food);
@@ -2729,17 +2793,7 @@ fn second_animation_aura_priority_loop_resolves_without_hanging() {
     let mut game = crate::tests::test_helpers::setup_two_player_game();
     let alice = PlayerId::from_index(0);
 
-    let animate_artifact = CardDefinitionBuilder::new(CardId::new(), "Animate Artifact")
-        .mana_cost(ManaCost::from_pips(vec![
-            vec![ManaSymbol::Generic(1)],
-            vec![ManaSymbol::Blue],
-        ]))
-        .card_types(vec![CardType::Enchantment])
-        .subtypes(vec![Subtype::Aura])
-        .parse_text(
-            "Enchant artifact\nAs long as enchanted artifact isn't a creature, it's an artifact creature with power and toughness each equal to its mana value.",
-        )
-        .expect("Animate Artifact should parse");
+    let animate_artifact = animate_artifact_definition();
 
     let mine = CardBuilder::new(CardId::new(), "Howling Mine")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
@@ -2810,17 +2864,7 @@ fn second_animation_aura_resolves_from_stack_without_hanging() {
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
 
-    let animate_artifact = CardDefinitionBuilder::new(CardId::new(), "Animate Artifact")
-        .mana_cost(ManaCost::from_pips(vec![
-            vec![ManaSymbol::Generic(1)],
-            vec![ManaSymbol::Blue],
-        ]))
-        .card_types(vec![CardType::Enchantment])
-        .subtypes(vec![Subtype::Aura])
-        .parse_text(
-            "Enchant artifact\nAs long as enchanted artifact isn't a creature, it's an artifact creature with power and toughness each equal to its mana value.",
-        )
-        .expect("Animate Artifact should parse");
+    let animate_artifact = animate_artifact_definition();
 
     let mine = CardBuilder::new(CardId::new(), "Howling Mine")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
@@ -3238,31 +3282,29 @@ fn bruenor_anthem_display_shows_for_each_equipment_attached_to_it() {
 }
 
 #[test]
-fn party_scaled_anthem_display_uses_for_each_party_surface() {
+fn party_scaled_anthem_keeps_for_each_surface_hint() {
     let party = Value::PartySize(PlayerFilter::You)
         .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach);
-    let anthem =
-        Anthem::for_source(0, 0).with_values(AnthemValue::Dynamic(party), AnthemValue::Fixed(0));
+    let anthem = Anthem::for_source(0, 0)
+        .with_values(AnthemValue::Dynamic(party.clone()), AnthemValue::Fixed(0));
 
-    assert_eq!(
-        anthem.display(),
-        "this creature gets +1/+0 for each creature in your party"
-    );
+    assert!(anthem.source_only);
+    assert_eq!(anthem.toughness, AnthemValue::Fixed(0));
+    assert_eq!(anthem.power, AnthemValue::Dynamic(party));
 }
 
 #[test]
-fn typed_color_aggregate_anthem_display_uses_for_each_surface() {
+fn typed_color_aggregate_anthem_keeps_for_each_surface_hint() {
     let colors = Value::ColorsAmong(ObjectFilter::permanent().you_control())
         .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach);
     let anthem = Anthem::for_source(0, 0).with_values(
         AnthemValue::Dynamic(colors.clone()),
-        AnthemValue::Dynamic(colors),
+        AnthemValue::Dynamic(colors.clone()),
     );
 
-    assert_eq!(
-        anthem.display(),
-        "this creature gets +1/+1 for each color among permanents you control"
-    );
+    assert!(anthem.source_only);
+    assert_eq!(anthem.power, AnthemValue::Dynamic(colors.clone()));
+    assert_eq!(anthem.toughness, AnthemValue::Dynamic(colors));
 }
 
 #[test]

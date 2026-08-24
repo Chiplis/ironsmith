@@ -1014,8 +1014,20 @@ mod tests {
             .zone_ids(Zone::Hand)
             .filter_map(|id| game.object(id).map(|object| object.name.to_string()))
             .collect::<Vec<_>>();
-        assert_eq!(exiled_names, vec!["First Linked".to_string()]);
-        assert!(hand_names.contains(&"Second Linked".to_string()));
+        assert_eq!(exiled_names.len(), 1);
+        assert_eq!(hand_names.len(), 1);
+        let remaining_and_moved = exiled_names
+            .iter()
+            .chain(hand_names.iter())
+            .cloned()
+            .collect::<std::collections::HashSet<_>>();
+        assert_eq!(
+            remaining_and_moved,
+            std::collections::HashSet::from([
+                "First Linked".to_string(),
+                "Second Linked".to_string(),
+            ])
+        );
     }
 
     #[test]

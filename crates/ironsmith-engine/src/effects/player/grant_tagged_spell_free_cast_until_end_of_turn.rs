@@ -223,10 +223,8 @@ mod tests {
         assert!(
             alternatives.iter().any(|alternative| matches!(
                 alternative.method,
-                AlternativeCastingMethod::Composed {
-                    name: "Without paying its mana cost",
-                    ..
-                }
+                AlternativeCastingMethod::Composed { name, .. }
+                    if name.as_str() == "Without paying its mana cost"
             )),
             "the owner should receive a no-mana alternative cast from exile, got {alternatives:?}"
         );

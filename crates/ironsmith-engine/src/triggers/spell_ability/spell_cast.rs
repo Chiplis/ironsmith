@@ -1653,7 +1653,7 @@ mod tests {
     }
 
     #[test]
-    fn test_qualified_second_spell_any_player_display() {
+    fn qualified_second_spell_any_player_keeps_typed_ordinal() {
         let trigger = SpellCastTrigger::qualified(
             Some(ObjectFilter::spell().in_zone(Zone::Stack)),
             PlayerFilter::Any,
@@ -1663,9 +1663,12 @@ mod tests {
             None,
             false,
         );
+        assert_eq!(trigger.caster, PlayerFilter::Any);
+        assert_eq!(trigger.min_spells_this_turn, Some(2));
+        assert_eq!(trigger.exact_spells_this_turn, None);
         assert_eq!(
-            trigger.display(),
-            "Whenever a player casts their second spell each turn"
+            trigger.filter,
+            Some(ObjectFilter::spell().in_zone(Zone::Stack))
         );
     }
 

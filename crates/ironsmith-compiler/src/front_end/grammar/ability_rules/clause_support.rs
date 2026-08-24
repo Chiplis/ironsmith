@@ -105,9 +105,8 @@ fn parse_source_and_another_attack_with_trigger(
 ) -> Result<Option<TriggerSpec>, CardTextError> {
     let object_view = TokenWordView::new(object_tokens);
     let object_words = object_view.word_refs();
-    let Some(and_word) = object_words
-        .windows(2)
-        .position(|window| window == ["and", "another"])
+    let Some(and_word) =
+        crate::word_primitives::parse_sequence_start(&object_words, &["and", "another"])
     else {
         return Ok(None);
     };
@@ -216,9 +215,8 @@ fn parse_attack_group_aggregate_constraint(
 > {
     let view = TokenWordView::new(object_tokens);
     let words = view.word_refs();
-    let Some(metric_word) = words
-        .windows(3)
-        .rposition(|window| window == ["with", "total", "power"])
+    let Some(metric_word) =
+        crate::word_primitives::parse_last_sequence_start(&words, &["with", "total", "power"])
     else {
         return Ok(None);
     };
@@ -298,7 +296,7 @@ fn attacked_player_filter_from_words(words: &[&str]) -> Option<(PlayerFilter, bo
             AttackedPlayerFilterKind::Any => (PlayerFilter::Any, true),
             AttackedPlayerFilterKind::AnyPlayerOrPlaneswalker => (PlayerFilter::Any, false),
             AttackedPlayerFilterKind::Enchanted => (
-                PlayerFilter::TaggedPlayer(crate::TagKey::from("enchanted")),
+                PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.key()),
                 true,
             ),
             AttackedPlayerFilterKind::Opponent => (PlayerFilter::Opponent, true),
@@ -748,15 +746,17 @@ pub fn parse_linked_combat_damage_clause_lexed(
         return Ok(None);
     };
     let trigger_words = TokenWordView::new(trigger_tokens).word_refs();
-    let Some(deal_idx) = trigger_words
-        .iter()
-        .position(|word| matches!(*word, "deal" | "deals"))
-    else {
+    let Some(deal_idx) = crate::slice_primitives::select_position(&trigger_words, |word| {
+        matches!(*word, "deal" | "deals")
+    }) else {
         return Ok(None);
     };
     let subject_words = &trigger_words[..deal_idx];
-    if !subject_words.contains(&"those")
-        || trigger_words.get(deal_idx + 1..deal_idx + 4) != Some(&["combat", "damage", "to"][..])
+    if !crate::slice_primitives::contains(subject_words, &"those")
+        || !crate::word_primitives::parse_sequence_prefix(
+            &trigger_words[deal_idx + 1..],
+            &["combat", "damage", "to"],
+        )
     {
         return Ok(None);
     }
@@ -875,6 +875,48 @@ pub fn parse_triggered_line_lexed(tokens: &[OwnedLexToken]) -> Result<LineAst, C
         *max_triggers_per_turn = Some(max_triggers_per_turn.unwrap_or(cap).min(cap));
     }
     Ok(parsed)
+}
+
+pub fn parse_triggered_line_lexed_with_context(
+    context: crate::parse_context::ParseContextView<'_>,
+    tokens: &[OwnedLexToken],
+) -> Result<LineAst, CardTextError> {
+    let authored_surface = crate::util::authored_named_source_reference_surface(context, tokens);
+    let authored_display = authored_named_source_display(context, tokens);
+    let normalized = crate::util::normalize_source_reference_tokens_with_context(context, tokens)?;
+    let mut parsed = parse_triggered_line_lexed(&normalized)?;
+    if let LineAst::Triggered { trigger, .. } = &mut parsed {
+        if let Some(surface) = authored_surface {
+            super::activation_and_restrictions::trigger_clause_core::restore_authored_source_trigger_surface(
+                trigger, &surface,
+            );
+        }
+        if let Some(display) = authored_display {
+            restore_source_attack_display(trigger, display);
+        }
+    }
+    Ok(parsed)
+}
+
+fn authored_named_source_display(
+    context: crate::parse_context::ParseContextView<'_>,
+    tokens: &[OwnedLexToken],
+) -> Option<String> {
+    match crate::util::authored_named_source_reference_surface(context, tokens)? {
+        crate::target::SourceReferenceSurface::FullName(display)
+        | crate::target::SourceReferenceSurface::ShortName(display) => Some(display),
+        crate::target::SourceReferenceSurface::ThisPermanentType(_) => None,
+    }
+}
+
+fn restore_source_attack_display(trigger: &mut TriggerSpec, display: String) {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => restore_source_attack_display(trigger, display),
+        TriggerSpec::ThisAttacksWithNOthers {
+            display_subject, ..
+        } => *display_subject = Some(display),
+        _ => {}
+    }
 }
 
 fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst, CardTextError> {
@@ -1518,14 +1560,15 @@ mod tests {
 
     #[test]
     fn typed_attack_with_source_and_another_preserves_source_bound_trigger() {
-        let tokens = lex_line(
-            "Whenever you attack with Merry and another legendary creature, draw a card.",
-            0,
-        )
-        .unwrap();
-        let parsed = crate::util::with_source_reference_context("Merry, Esquire of Rohan", || {
-            parse_triggered_line_lexed(&tokens).unwrap()
-        });
+        let text = "Whenever you attack with Merry and another legendary creature, draw a card.";
+        let tokens = lex_line(text, 0).unwrap();
+        let context = crate::parse_context::ParseContext::for_fragment(
+            "Merry, Esquire of Rohan",
+            vec![CardType::Creature],
+            Vec::new(),
+            text,
+        );
+        let parsed = parse_triggered_line_lexed_with_context(context.view(), &tokens).unwrap();
         let LineAst::Triggered {
             trigger:
                 TriggerSpec::ThisAttacksWithNOthers {
@@ -1587,14 +1630,15 @@ mod tests {
 
     #[test]
     fn source_and_filtered_attack_count_can_omit_other_surface() {
-        let tokens = lex_line(
-            "Whenever Probe and at least two Zombies attack, Probe gains indestructible until end of turn.",
-            0,
-        )
-        .unwrap();
-        let parsed = crate::util::with_source_reference_context("Probe", || {
-            parse_triggered_line_lexed(&tokens).unwrap()
-        });
+        let text = "Whenever Probe and at least two Zombies attack, Probe gains indestructible until end of turn.";
+        let tokens = lex_line(text, 0).unwrap();
+        let context = crate::parse_context::ParseContext::for_fragment(
+            "Probe",
+            vec![CardType::Creature],
+            Vec::new(),
+            text,
+        );
+        let parsed = parse_triggered_line_lexed_with_context(context.view(), &tokens).unwrap();
         let LineAst::Triggered {
             trigger:
                 TriggerSpec::ThisAttacksWithNOthers {

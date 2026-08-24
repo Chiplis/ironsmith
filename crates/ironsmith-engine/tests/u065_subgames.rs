@@ -1,4 +1,3 @@
-use ironsmith::cards::builders::CardDefinitionBuilder;
 use ironsmith::decision::{DecisionMaker, GameResult};
 use ironsmith::events::ZoneChangeEvent;
 use ironsmith::rules::state_based::{LoseReason, StateBasedAction};
@@ -7,6 +6,7 @@ use ironsmith::{
     GameState, Object, ObjectKind, PlanarCardKind, PlayerFilter, PlayerId, Step, TriggerQueue,
     Value, Zone,
 };
+use ironsmith_registry::cards::builders::CardDefinitionBuilder;
 
 struct TestDecisionMaker;
 impl DecisionMaker for TestDecisionMaker {}
@@ -97,7 +97,7 @@ fn u065_canonical_subgame_oracle_compiles_to_typed_continuation_and_renders() {
         ironsmith::ChooseSpec::Player(PlayerFilter::IteratedPlayer)
     ));
     assert_eq!(
-        ironsmith::compiled_text::compiled_text_lines(&definition).join("\n"),
+        ironsmith_text::compiled_text_lines(&definition).join("\n"),
         oracle
     );
 }

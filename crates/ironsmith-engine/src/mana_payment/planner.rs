@@ -1516,17 +1516,21 @@ mod tests {
         let island = add_basic("Test Island", ManaSymbol::Blue);
         game.tap(island);
 
-        let tropical =
-            crate::cards::CardDefinitionBuilder::new(CardId::new(), "Test Tropical Island")
+        let flexible_land = |name: &str, colors: [Color; 2]| {
+            crate::cards::CardDefinitionBuilder::new(CardId::new(), name)
                 .card_types(vec![CardType::Land])
-                .parse_text("{T}: Add {G} or {U}.")
-                .expect("flexible mana land should parse");
+                .with_ability(crate::ability::Ability::mana_with_effects(
+                    crate::cost::TotalCost::free(),
+                    vec![crate::effect::Effect::add_mana_of_any_color_restricted(
+                        1,
+                        colors.to_vec(),
+                    )],
+                ))
+                .build()
+        };
+        let tropical = flexible_land("Test Tropical Island", [Color::Green, Color::Blue]);
         let tropical = game.create_object_from_definition(&tropical, alice, Zone::Battlefield);
-        let volcanic =
-            crate::cards::CardDefinitionBuilder::new(CardId::new(), "Test Volcanic Island")
-                .card_types(vec![CardType::Land])
-                .parse_text("{T}: Add {R} or {U}.")
-                .expect("flexible mana land should parse");
+        let volcanic = flexible_land("Test Volcanic Island", [Color::Red, Color::Blue]);
         let volcanic = game.create_object_from_definition(&volcanic, alice, Zone::Battlefield);
         let source = game.new_object_id();
         let request = request(

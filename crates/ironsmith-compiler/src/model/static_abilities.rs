@@ -1,9 +1,67 @@
-use crate::model::ast::{EffectAst, PredicateAst};
+use crate::model::ast::{EffectAst, PredicateAst, TriggerSpec};
 use crate::model::provenance::SemanticProvenance;
 use crate::payload::KeywordAction;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
+
+/// Shared static-ability algebra instantiated entirely with compiler-owned
+/// trigger, effect, and cost nodes. Runtime lowering maps this value into the
+/// engine instantiation after parsing and reference resolution are complete.
+pub type CompilerStaticAbilityCore = ironsmith_core::StaticAbility<
+    TriggerSpec,
+    EffectAst,
+    crate::model::CompilerCost,
+    ironsmith_core::ThisSpellCostCondition,
+>;
+pub type CompilerStaticAbilityPayloadCore = ironsmith_core::StaticAbilityPayload<
+    TriggerSpec,
+    EffectAst,
+    crate::model::CompilerCost,
+    ironsmith_core::ThisSpellCostCondition,
+>;
+pub type CompilerPowerToughnessChoiceOptionCore = ironsmith_core::PowerToughnessChoiceOption<
+    TriggerSpec,
+    EffectAst,
+    crate::model::CompilerCost,
+    ironsmith_core::ThisSpellCostCondition,
+>;
+pub type CompilerGrantAbilityCore = ironsmith_core::GrantAbility<
+    TriggerSpec,
+    EffectAst,
+    crate::model::CompilerCost,
+    ironsmith_core::ThisSpellCostCondition,
+>;
+pub type CompilerGrantObjectAbilityForFilterCore = ironsmith_core::GrantObjectAbilityForFilter<
+    TriggerSpec,
+    EffectAst,
+    crate::model::CompilerCost,
+    ironsmith_core::ThisSpellCostCondition,
+>;
+pub type CompilerAttachedAbilityGrantCore = ironsmith_core::AttachedAbilityGrant<
+    TriggerSpec,
+    EffectAst,
+    crate::model::CompilerCost,
+    ironsmith_core::ThisSpellCostCondition,
+>;
+pub type CompilerEnterAsCopyAsEntersSpecCore = ironsmith_core::EnterAsCopyAsEntersSpec<
+    TriggerSpec,
+    EffectAst,
+    crate::model::CompilerCost,
+    ironsmith_core::ThisSpellCostCondition,
+>;
+pub type CompilerGrantableCore = ironsmith_core::Grantable<
+    CompilerStaticAbilityCore,
+    EffectAst,
+    crate::model::CompilerCost,
+    ironsmith_core::ThisSpellCostCondition,
+>;
+pub type CompilerGrantSpecCore = ironsmith_core::GrantSpec<
+    CompilerStaticAbilityCore,
+    EffectAst,
+    crate::model::CompilerCost,
+    ironsmith_core::ThisSpellCostCondition,
+>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum StaticSubjectAst {

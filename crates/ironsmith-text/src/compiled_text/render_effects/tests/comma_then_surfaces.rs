@@ -103,20 +103,25 @@ fn typed_comma_then_reveal_choose_discard_rejects_a_different_result_tag() {
 
     let rendered = describe_effect(&sequence);
     assert!(
-        !rendered.contains(", then that player discards that card"),
-        "the compact surface must require the discard to consume the actual chosen result set: {rendered}"
+        !rendered.contains("from it, then that player discards that card"),
+        "the compact correlated surface must require the discard to consume the actual chosen result set: {rendered}"
+    );
+    assert!(
+        rendered.starts_with("Target player reveals their hand. You choose"),
+        "a changed result tag must retain the uncorrelated sentence boundary: {rendered}"
     );
 }
 
 #[test]
 fn typed_comma_then_keeps_dynamic_token_pt_before_delayed_cleanup() {
-    let token = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Horror")
-        .token()
-        .card_types(vec![CardType::Creature])
-        .subtypes(vec![Subtype::Horror])
-        .color_indicator(crate::color::ColorSet::RED)
-        .power_toughness(crate::card::PowerToughness::fixed(0, 0))
-        .build();
+    let token =
+        crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Horror")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Horror])
+            .color_indicator(crate::color::ColorSet::RED)
+            .power_toughness(crate::card::PowerToughness::fixed(0, 0))
+            .build();
     let created = TagKey::from("created_0");
     let create =
         Effect::new(crate::effects::CreateTokenEffect::you(token, 1).sacrifice_at_next_end_step())
@@ -139,13 +144,15 @@ fn typed_comma_then_keeps_dynamic_token_pt_before_delayed_cleanup() {
 
 #[test]
 fn typed_comma_then_compacts_prior_destroy_count_into_dynamic_token_pt() {
-    let token =
-        crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Phyrexian Horror")
-            .token()
-            .card_types(vec![CardType::Artifact, CardType::Creature])
-            .subtypes(vec![Subtype::Phyrexian, Subtype::Horror])
-            .power_toughness(crate::card::PowerToughness::fixed(0, 0))
-            .build();
+    let token = crate::cards::builders::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(),
+        "Phyrexian Horror",
+    )
+    .token()
+    .card_types(vec![CardType::Artifact, CardType::Creature])
+    .subtypes(vec![Subtype::Phyrexian, Subtype::Horror])
+    .power_toughness(crate::card::PowerToughness::fixed(0, 0))
+    .build();
     let created = TagKey::from("created_1");
     let create = Effect::new(crate::effects::CreateTokenEffect::you(token, 1)).tag(created.clone());
     let destroyed = Value::PriorEffectMetric {

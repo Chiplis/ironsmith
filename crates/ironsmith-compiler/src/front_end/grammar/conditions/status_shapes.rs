@@ -19,8 +19,23 @@ pub(super) struct PlayerStatusTokenShape<'a> {
 }
 
 pub(super) fn parse_subject_status(tokens: &[OwnedLexToken]) -> Option<SubjectStatusConditionAst> {
+    parse_subject_status_with_optional_context(None, tokens)
+}
+
+pub(super) fn parse_subject_status_with_context(
+    context: crate::parse_context::ParseContextView<'_>,
+    tokens: &[OwnedLexToken],
+) -> Option<SubjectStatusConditionAst> {
+    parse_subject_status_with_optional_context(Some(context), tokens)
+}
+
+fn parse_subject_status_with_optional_context(
+    context: Option<crate::parse_context::ParseContextView<'_>>,
+    tokens: &[OwnedLexToken],
+) -> Option<SubjectStatusConditionAst> {
     let tokens = trim_clause(tokens);
-    parse_subject_status_with_copula(tokens).or_else(|| parse_subject_status_without_copula(tokens))
+    parse_subject_status_with_copula(context, tokens)
+        .or_else(|| parse_subject_status_without_copula(context, tokens))
 }
 
 pub(super) fn parse_subject_descriptor_subject(
@@ -117,7 +132,10 @@ pub(super) fn is_you_subject(tokens: &[OwnedLexToken]) -> bool {
     parse_complete(trim_clause(tokens), primitives::kw("you").void())
 }
 
-fn parse_subject_status_with_copula(tokens: &[OwnedLexToken]) -> Option<SubjectStatusConditionAst> {
+fn parse_subject_status_with_copula(
+    context: Option<crate::parse_context::ParseContextView<'_>>,
+    tokens: &[OwnedLexToken],
+) -> Option<SubjectStatusConditionAst> {
     let mut input = LexStream::new(tokens);
     let subject_tokens = repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(parse_copula))
         .map(|((), ())| ())
@@ -128,12 +146,13 @@ fn parse_subject_status_with_copula(tokens: &[OwnedLexToken]) -> Option<SubjectS
     let state = parse_status_state(&mut input).ok()?;
     parse_end(&mut input).ok()?;
     Some(SubjectStatusConditionAst {
-        subject: parse_status_subject(subject_tokens)?,
+        subject: parse_status_subject(context, subject_tokens)?,
         state,
     })
 }
 
 fn parse_subject_status_without_copula(
+    context: Option<crate::parse_context::ParseContextView<'_>>,
     tokens: &[OwnedLexToken],
 ) -> Option<SubjectStatusConditionAst> {
     let mut search_start = 0usize;
@@ -152,15 +171,22 @@ fn parse_subject_status_without_copula(
     }
     let (state_token, state) = last?;
     Some(SubjectStatusConditionAst {
-        subject: parse_status_subject(&tokens[..state_token])?,
+        subject: parse_status_subject(context, &tokens[..state_token])?,
         state,
     })
 }
 
-fn parse_status_subject(tokens: &[OwnedLexToken]) -> Option<StatusConditionSubjectAst> {
+fn parse_status_subject(
+    context: Option<crate::parse_context::ParseContextView<'_>>,
+    tokens: &[OwnedLexToken],
+) -> Option<StatusConditionSubjectAst> {
     let tokens = trim_clause(tokens);
     let words = TokenWordView::new(tokens).word_refs();
-    if crate::util::is_source_reference_words(&words) {
+    if crate::util::is_source_reference_words(&words)
+        || context.is_some_and(|context| {
+            crate::util::source_reference_surface_for_words_with_context(context, &words).is_some()
+        })
+    {
         return Some(StatusConditionSubjectAst::Source);
     }
 
@@ -421,8 +447,13 @@ mod tests {
     #[test]
     fn named_source_is_a_status_condition_subject() {
         let tokens = lex("Probe is equipped.");
-        let parsed =
-            crate::util::with_source_reference_context("Probe", || parse_subject_status(&tokens));
+        let context = crate::parse_context::ParseContext::for_fragment(
+            "Probe",
+            Vec::new(),
+            Vec::new(),
+            "Probe is equipped.",
+        );
+        let parsed = parse_subject_status_with_context(context.view(), &tokens);
 
         assert_eq!(
             parsed,

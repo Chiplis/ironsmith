@@ -409,7 +409,9 @@
             if for_each.filter.set_quantifier_surface()
                 == Some(ironsmith_core::SetQuantifierSurface::Those)
                 && for_each.filter.has_explicit_card_noun()
-                && let Some(rest) = effect_text.strip_prefix("put it ")
+                && let Some(rest) = effect_text
+                    .strip_prefix("Put it ")
+                    .or_else(|| effect_text.strip_prefix("put it "))
             {
                 effect_text = format!("put that card {rest}");
             }
@@ -1361,7 +1363,7 @@
                 .collect::<Vec<_>>();
             let target = format!("target {}", join_with_or(&target_arms));
             return format!(
-                "the owner of {target} puts it on their choice of the top or bottom of their library"
+                "The owner of {target} puts it on their choice of the top or bottom of their library"
             );
         }
         if choose_spec_is_plural(&move_choice.target) {
@@ -1433,6 +1435,7 @@
             };
 
             if move_to_zone.target_plural_surface {
+                rendered = rendered.replace("those cards in exile", "the exiled cards");
                 if !rendered.contains("the exiled cards") {
                     rendered = rendered.replacen("the exiled card", "the exiled cards", 1);
                 }
@@ -1477,6 +1480,7 @@
             let mut semantic_surface = surface.clone();
             if semantic_surface.subject
                 == ironsmith_core::ExiledWithSourceSubjectSurface::EachCard
+                && !matches!(move_to_zone.target.base(), ChooseSpec::All(_))
                 && move_to_zone.target.count().is_single()
             {
                 semantic_surface.subject =
@@ -6661,15 +6665,15 @@
             if who == "you" {
                 if let Some(rest) = inner.strip_prefix("that player ") {
                     let normalized = normalize_you_verb_phrase(rest);
-                    return format!("you may have that player {normalized}");
+                    return format!("You may have that player {normalized}");
                 }
                 if let Some(rest) = inner.strip_prefix("target opponent ") {
                     let normalized = normalize_you_verb_phrase(rest);
-                    return format!("you may have target opponent {normalized}");
+                    return format!("You may have target opponent {normalized}");
                 }
                 if let Some(rest) = inner.strip_prefix("target player ") {
                     let normalized = normalize_you_verb_phrase(rest);
-                    return format!("you may have target player {normalized}");
+                    return format!("You may have target player {normalized}");
                 }
                 if let Some(causative) = may_causative_clause(&inner) {
                     return format!("you may {causative}");

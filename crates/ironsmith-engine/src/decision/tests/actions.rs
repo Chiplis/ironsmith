@@ -1013,7 +1013,6 @@ fn test_activated_ability_mana_cost_validation() {
 #[test]
 fn test_compute_legal_actions_includes_at_least_graveyard_exile_material_cost() {
     use crate::ability::{AbilityKind, ActivatedAbility};
-    use crate::card::LinkedFaceLayout;
     use crate::color::{Color, ColorSet};
     use crate::cost::TotalCost;
     use crate::costs::Cost;
@@ -1033,9 +1032,6 @@ fn test_compute_legal_actions_includes_at_least_graveyard_exile_material_cost() 
             vec![ManaSymbol::Red],
         ]))
         .card_types(vec![CardType::Artifact])
-        .other_face(CardId::from_raw(40_002))
-        .other_face_name("Cosmium Catalyst")
-        .linked_face_layout(LinkedFaceLayout::TransformLike)
         .build();
     let ore_id = game.create_object_from_card(&ore, alice, Zone::Battlefield);
 
@@ -2379,15 +2375,17 @@ fn test_aloe_alchemist_plot_records_plot_keyword_action_event() {
         .add(ManaSymbol::Green, 2);
 
     let def = crate::cards::CardDefinitionBuilder::new(CardId::from_raw(783), "Aloe Alchemist")
-            .mana_cost(ManaCost::from_pips(vec![
-                vec![ManaSymbol::Generic(1)],
-                vec![ManaSymbol::Green],
-            ]))
-            .card_types(vec![CardType::Creature])
-            .parse_text(
-                "Trample\nWhen this card becomes plotted, target creature gets +3/+2 and gains trample until end of turn.\nPlot {1}{G} (You may pay {1}{G} and exile this card from your hand. Cast it as a sorcery on a later turn without paying its mana cost. Plot only as a sorcery.)",
-            )
-            .expect("Aloe Alchemist oracle text should parse");
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .trample()
+        .plot(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Green],
+        ]))
+        .build();
     let card_id = game.create_object_from_definition(&def, alice, Zone::Hand);
 
     let mut dm = crate::decision::SelectFirstDecisionMaker;
@@ -2476,13 +2474,20 @@ fn test_bestow_alternative_uses_aura_cost_reductions() {
     for _ in 0..4 {
         game.create_object_from_definition(&basic_forest(), alice, Zone::Battlefield);
     }
+    let aura_reduction = || {
+        let mut aura_spells = ObjectFilter::default().with_subtype(Subtype::Aura);
+        aura_spells.cast_by = Some(PlayerFilter::You);
+        Ability::static_ability(StaticAbility::new(
+            crate::static_abilities::CostReduction::new(aura_spells, Value::Fixed(1)),
+        ))
+    };
     game.create_object_from_definition(
         &CardDefinitionBuilder::new(CardId::from_raw(881), "Cost Reducer")
             .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))
             .card_types(vec![CardType::Creature])
             .power_toughness(PowerToughness::fixed(1, 1))
-            .parse_text("Aura spells you cast cost {1} less to cast.")
-            .expect("cost reducer should parse"),
+            .with_ability(aura_reduction())
+            .build(),
         alice,
         Zone::Battlefield,
     );
@@ -2491,8 +2496,8 @@ fn test_bestow_alternative_uses_aura_cost_reductions() {
             .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))
             .card_types(vec![CardType::Creature])
             .power_toughness(PowerToughness::fixed(1, 1))
-            .parse_text("Aura spells you cast cost {1} less to cast.")
-            .expect("cost reducer should parse"),
+            .with_ability(aura_reduction())
+            .build(),
         alice,
         Zone::Battlefield,
     );
@@ -2513,8 +2518,14 @@ fn test_bestow_alternative_uses_aura_cost_reductions() {
         ]))
         .card_types(vec![CardType::Enchantment, CardType::Creature])
         .power_toughness(PowerToughness::fixed(3, 3))
-        .parse_text("Bestow {5}{G}\nEnchanted creature gets +3/+3.")
-        .expect("bestow card should parse");
+        .enchants(ObjectFilter::creature())
+        .alternative_cast(crate::alternative_cast::AlternativeCastingMethod::Bestow {
+            total_cost: crate::cost::TotalCost::mana(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(5)],
+                vec![ManaSymbol::Green],
+            ])),
+        })
+        .build();
     let card_id = game.create_object_from_definition(&bestow_def, alice, Zone::Hand);
     let card = game.object(card_id).expect("bestow card should exist");
     let view = DerivedGameView::new(&game);
@@ -2543,18 +2554,34 @@ fn test_bestow_alternative_uses_aura_cost_reductions() {
     );
 }
 
+fn semblance_anvil_definition(id: u32) -> crate::cards::CardDefinition {
+    let imprint = Effect::new(crate::effects::cards::ImprintFromHandEffect::new(
+        ObjectFilter::default().without_type(CardType::Land),
+    ));
+    let mut discounted_spells =
+        ObjectFilter::default().shares_card_type_with_tagged(crate::tag::SOURCE_EXILED_TAG);
+    discounted_spells.cast_by = Some(PlayerFilter::You);
+
+    CardDefinitionBuilder::new(CardId::from_raw(id), "Semblance Anvil")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Artifact])
+        .with_abilities(vec![
+            Ability::triggered(
+                crate::triggers::Trigger::this_enters_battlefield(),
+                vec![imprint],
+            ),
+            Ability::static_ability(StaticAbility::new(
+                crate::static_abilities::CostReduction::new(discounted_spells, Value::Fixed(2)),
+            )),
+        ])
+        .build()
+}
+
 #[test]
 fn semblance_anvil_imprint_trigger_exiles_card_and_records_source_link() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
-    let semblance = CardDefinitionBuilder::new(CardId::from_raw(9010), "Semblance Anvil")
-            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
-            .card_types(vec![CardType::Artifact])
-            .parse_text(
-                "Imprint — When this artifact enters, you may exile a nonland card from your hand.\n\
-                 Spells you cast that share a card type with the exiled card cost {2} less to cast.",
-            )
-            .expect("Semblance Anvil should parse");
+    let semblance = semblance_anvil_definition(9010);
     let anvil_id = game.create_object_from_definition(&semblance, alice, Zone::Battlefield);
     let spell = CardBuilder::new(CardId::from_raw(9011), "Semblance Anvil Imprint Probe")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
@@ -2610,14 +2637,7 @@ fn semblance_anvil_declined_imprint_leaves_card_in_hand_and_costs_unchanged() {
 
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
-    let semblance = CardDefinitionBuilder::new(CardId::from_raw(9012), "Semblance Anvil")
-            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
-            .card_types(vec![CardType::Artifact])
-            .parse_text(
-                "Imprint — When this artifact enters, you may exile a nonland card from your hand.\n\
-                 Spells you cast that share a card type with the exiled card cost {2} less to cast.",
-            )
-            .expect("Semblance Anvil should parse");
+    let semblance = semblance_anvil_definition(9012);
     let anvil_id = game.create_object_from_definition(&semblance, alice, Zone::Battlefield);
     let imprinted_candidate = CardBuilder::new(
         CardId::from_raw(9013),
@@ -2676,14 +2696,7 @@ fn semblance_anvil_reduces_only_your_spells_sharing_imprinted_card_type() {
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
 
-    let semblance = CardDefinitionBuilder::new(CardId::from_raw(9020), "Semblance Anvil")
-            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
-            .card_types(vec![CardType::Artifact])
-            .parse_text(
-                "Imprint — When this artifact enters, you may exile a nonland card from your hand.\n\
-                 Spells you cast that share a card type with the exiled card cost {2} less to cast.",
-            )
-            .expect("Semblance Anvil should parse");
+    let semblance = semblance_anvil_definition(9020);
     let anvil_id = game.create_object_from_definition(&semblance, alice, Zone::Battlefield);
     let imprinted = CardBuilder::new(CardId::from_raw(9021), "Semblance Anvil Exiled Artifact")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
@@ -2740,14 +2753,7 @@ fn semblance_anvil_reduces_only_your_spells_sharing_imprinted_card_type() {
 fn semblance_anvil_does_not_reduce_without_an_exiled_card() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
-    let semblance = CardDefinitionBuilder::new(CardId::from_raw(9030), "Semblance Anvil")
-            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
-            .card_types(vec![CardType::Artifact])
-            .parse_text(
-                "Imprint — When this artifact enters, you may exile a nonland card from your hand.\n\
-                 Spells you cast that share a card type with the exiled card cost {2} less to cast.",
-            )
-            .expect("Semblance Anvil should parse");
+    let semblance = semblance_anvil_definition(9030);
     game.create_object_from_definition(&semblance, alice, Zone::Battlefield);
 
     let artifact_spell =

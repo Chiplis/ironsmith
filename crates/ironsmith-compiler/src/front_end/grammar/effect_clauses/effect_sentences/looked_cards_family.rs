@@ -8,18 +8,18 @@ use crate::grammar::effects::looked_card_shapes;
 fn parse_imperative_possessive_library_view(
     tokens: &[OwnedLexToken],
 ) -> Option<(PlayerAst, crate::effect::Value, bool)> {
-    let (owner_start, player) = tokens.windows(4).enumerate().find_map(|(index, window)| {
+    let owner_start = crate::slice_primitives::find_window_by(tokens, 4, |window| {
         if !window[0].is_word("of") || !window[3].is_word("library") {
-            return None;
+            return false;
         }
-        if window[1].is_word("target") && window[2].is_word("player's") {
-            Some((index, PlayerAst::Target))
-        } else if window[1].is_word("target") && window[2].is_word("opponent's") {
-            Some((index, PlayerAst::TargetOpponent))
-        } else {
-            None
-        }
+        window[1].is_word("target")
+            && (window[2].is_word("player's") || window[2].is_word("opponent's"))
     })?;
+    let player = if tokens[owner_start + 2].is_word("player's") {
+        PlayerAst::Target
+    } else {
+        PlayerAst::TargetOpponent
+    };
 
     // Reuse the ordinary, fully typed top-card count grammar after replacing
     // only the possessive library owner. The returned PlayerAst retains the
@@ -34,7 +34,7 @@ fn parse_imperative_possessive_library_view(
 pub fn parse_top_cards_view_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<(PlayerAst, crate::effect::Value, bool)> {
-    let tokens = trim_lexed_commas(tokens);
+    let tokens = crate::util::trim_edge_punctuation_tokens(trim_lexed_commas(tokens));
     if let Some(view) = parse_imperative_possessive_library_view(tokens) {
         return Some(view);
     }

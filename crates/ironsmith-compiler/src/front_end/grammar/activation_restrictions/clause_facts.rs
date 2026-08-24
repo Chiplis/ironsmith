@@ -226,7 +226,9 @@ pub fn parse_player_negated_subject_words(words: &[&str]) -> Option<PlayerFilter
     } else if exact_any(words, &[&["players"], &["each", "player"]]) {
         Some(PlayerFilter::Any)
     } else if exact(words, &["enchanted", "player"]) {
-        Some(PlayerFilter::TaggedPlayer(TagKey::from("enchanted")))
+        Some(PlayerFilter::TaggedPlayer(
+            crate::tag::CompilerReferenceTag::Enchanted.key(),
+        ))
     } else {
         None
     }
@@ -238,7 +240,9 @@ pub fn parse_player_restriction_subject_words(words: &[&str]) -> Option<PlayerFi
     } else if exact_any(words, &[&["that", "player"], &["they"]]) {
         Some(PlayerFilter::IteratedPlayer)
     } else if exact(words, &["players", "dealt", "damage", "this", "way"]) {
-        Some(PlayerFilter::TaggedPlayer(TagKey::from("damaged_0")))
+        Some(PlayerFilter::TaggedPlayer(
+            crate::tag::CompilerReferenceTag::Damaged0.key(),
+        ))
     } else if exact_any(
         words,
         &[
@@ -269,7 +273,10 @@ pub fn parse_player_restriction_subject_words(words: &[&str]) -> Option<PlayerFi
 
 pub fn parse_cant_cast_subject_words(words: &[&str]) -> Option<CantCastSubject> {
     let (player, consumed) = if prefix(words, &["players", "dealt", "damage", "this", "way"]) {
-        (PlayerFilter::TaggedPlayer(TagKey::from("damaged_0")), 5)
+        (
+            PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Damaged0.key()),
+            5,
+        )
     } else if prefix(words, &["that", "player"]) {
         (PlayerFilter::IteratedPlayer, 2)
     } else if prefix(words, &["your", "opponents", "who", "have"]) {
@@ -475,187 +482,22 @@ pub fn parse_dealt_damage_this_way_words(words: &[&str]) -> Option<DealtDamageTh
     contains(words, &["dealt", "damage", "this", "way"]).then_some(DealtDamageThisWay)
 }
 
-pub fn parse_dealt_damage_by_source_subject_words(
-    words: &[&str],
-) -> Option<DealtDamageBySourceSubject> {
-    use ironsmith_core::DamagedBySource;
-
-    let alternatives: &[(&[&str], DamagedBySource)] = &[
-        (
-            &["dealt", "damage", "by", "this", "creature", "this", "turn"],
-            DamagedBySource::ThisCreature,
-        ),
-        (
-            &[
-                "that", "was", "dealt", "damage", "by", "this", "creature", "this", "turn",
-            ],
-            DamagedBySource::ThisCreature,
-        ),
-        (
-            &[
-                "that", "were", "dealt", "damage", "by", "this", "creature", "this", "turn",
-            ],
-            DamagedBySource::ThisCreature,
-        ),
-        (
-            &[
-                "dealt", "damage", "by", "equipped", "creature", "this", "turn",
-            ],
-            DamagedBySource::EquippedCreature,
-        ),
-        (
-            &[
-                "that", "was", "dealt", "damage", "by", "equipped", "creature", "this", "turn",
-            ],
-            DamagedBySource::EquippedCreature,
-        ),
-        (
-            &[
-                "that", "were", "dealt", "damage", "by", "equipped", "creature", "this", "turn",
-            ],
-            DamagedBySource::EquippedCreature,
-        ),
-        (
-            &[
-                "dealt",
-                "damage",
-                "by",
-                "enchanted",
-                "creature",
-                "this",
-                "turn",
-            ],
-            DamagedBySource::EnchantedCreature,
-        ),
-        (
-            &[
-                "that",
-                "was",
-                "dealt",
-                "damage",
-                "by",
-                "enchanted",
-                "creature",
-                "this",
-                "turn",
-            ],
-            DamagedBySource::EnchantedCreature,
-        ),
-        (
-            &[
-                "that",
-                "were",
-                "dealt",
-                "damage",
-                "by",
-                "enchanted",
-                "creature",
-                "this",
-                "turn",
-            ],
-            DamagedBySource::EnchantedCreature,
-        ),
-    ];
-
-    alternatives.iter().find_map(|(suffix, damager)| {
-        let base_word_count = words.len().checked_sub(suffix.len())?;
-        (base_word_count > 0 && words.ends_with(suffix)).then_some(DealtDamageBySourceSubject {
-            base_word_count,
-            damager: *damager,
-        })
-    })
-}
-
-pub fn parse_mana_retention_tail_words(words: &[&str]) -> Option<ManaRetentionTailKind> {
-    if let Some(unspent) = super::parse_unspent_mana_retention_tail_words(words) {
-        return Some(ManaRetentionTailKind::Unspent(unspent));
-    }
-    exact_any(
-        words,
-        &[
-            &["lose", "this", "mana", "as", "steps"],
-            &[
-                "lose", "this", "mana", "as", "steps", "and", "phases", "end",
-            ],
-        ],
-    )
-    .then_some(ManaRetentionTailKind::ThisMana)
-}
-
-pub fn parse_mana_retention_negated_clause_words(
-    words: &[&str],
-) -> Option<ManaRetentionNegatedClause> {
-    let tail = prefix_remainder(words, &["you", "dont"])
-        .or_else(|| prefix_remainder(words, &["you", "don't"]))
-        .or_else(|| prefix_remainder(words, &["you", "do", "not"]))?;
-    Some(ManaRetentionNegatedClause {
-        tail: parse_mana_retention_tail_words(tail)?,
-    })
-}
-
-pub fn parse_effect_action_restriction_tail_words(
-    words: &[&str],
-) -> Option<EffectActionRestrictionTail> {
-    matches!(
-        words.first().copied(),
-        Some(
-            "put"
-                | "draw"
-                | "reveal"
-                | "look"
-                | "search"
-                | "create"
-                | "return"
-                | "exile"
-                | "sacrifice"
-                | "discard"
-                | "gain"
-                | "lose"
-        )
-    )
-    .then_some(EffectActionRestrictionTail)
-}
-
-pub fn parse_leading_if_restriction_subject_words(
-    words: &[&str],
-) -> Option<LeadingIfRestrictionSubject> {
-    prefix(words, &["if"]).then_some(LeadingIfRestrictionSubject)
-}
-
-pub(super) fn exact(words: &[&str], expected: &[&str]) -> bool {
-    primitives::parse_word_sequence_complete(words, expected).is_some()
-}
-
-pub(super) fn exact_any(words: &[&str], alternatives: &[&[&str]]) -> bool {
-    alternatives.iter().any(|expected| exact(words, expected))
-}
-
-pub(super) fn prefix(words: &[&str], expected: &[&str]) -> bool {
-    primitives::parse_word_sequence_prefix(words, expected).is_some()
-}
-
-pub(super) fn prefix_any(words: &[&str], alternatives: &[&[&str]]) -> bool {
-    alternatives.iter().any(|expected| prefix(words, expected))
-}
-
-pub(super) fn prefix_remainder<'a>(
-    words: &'a [&'a str],
-    expected: &[&str],
-) -> Option<&'a [&'a str]> {
-    primitives::parse_word_sequence_prefix(words, expected)
-}
-
-pub(super) fn suffix(words: &[&str], expected: &[&str]) -> bool {
-    primitives::parse_word_sequence_suffix(words, expected).is_some()
-}
-
-pub(super) fn suffix_remainder<'a>(
-    words: &'a [&'a str],
-    expected: &[&str],
-) -> Option<&'a [&'a str]> {
-    primitives::parse_word_sequence_suffix(words, expected)
-}
-
-pub(super) fn contains(words: &[&str], expected: &[&str]) -> bool {
-    primitives::parse_word_sequence_span(words, expected).is_some()
-}
+#[path = "clause_facts/core_programs.rs"]
+mod core_programs;
+pub(super) use core_programs::{
+    contains, exact, exact_any, prefix, prefix_any, prefix_remainder, suffix, suffix_remainder,
+};
+#[path = "clause_facts/reference_programs.rs"]
+mod reference_programs;
+pub use reference_programs::parse_leading_if_restriction_subject_words;
+#[path = "clause_facts/condition_programs.rs"]
+mod condition_programs;
+pub use condition_programs::parse_effect_action_restriction_tail_words;
+#[path = "clause_facts/resource_programs.rs"]
+mod resource_programs;
+pub use resource_programs::{
+    parse_mana_retention_negated_clause_words, parse_mana_retention_tail_words,
+};
+#[path = "clause_facts/combat_programs.rs"]
+mod combat_programs;
+pub use combat_programs::parse_dealt_damage_by_source_subject_words;

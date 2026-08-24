@@ -1530,17 +1530,16 @@ pub fn choose_spec_targets_object(spec: &ChooseSpec) -> bool {
 }
 
 pub fn with_target_reference_surface_hint(spec: ChooseSpec, target: &TargetAst) -> ChooseSpec {
-    let span = match target {
-        TargetAst::Source(span)
-        | TargetAst::Tagged(_, span)
-        | TargetAst::Object(_, _, span)
-        | TargetAst::ObjectOrPlayer(_, _, span) => *span,
+    let surface = match target {
+        TargetAst::Object(filter, _, _) | TargetAst::ObjectOrPlayer(filter, _, _) => {
+            filter.source_surface.clone()
+        }
         TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
             return with_target_reference_surface_hint(spec, inner);
         }
         _ => None,
     };
-    target_reference_hinted_spec(spec, span)
+    source_reference_hinted_spec(spec, surface)
 }
 
 fn source_reference_hinted_spec(
@@ -1549,23 +1548,6 @@ fn source_reference_hinted_spec(
 ) -> ChooseSpec {
     match surface {
         Some(surface) => spec.with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
-        None => spec,
-    }
-}
-
-fn source_reference_surface_for_target_span(
-    span: Option<crate::cards::TextSpan>,
-) -> Option<SourceReferenceSurface> {
-    crate::util::source_reference_surface_for_span(span)
-}
-
-fn target_reference_hinted_spec(
-    spec: ChooseSpec,
-    span: Option<crate::cards::TextSpan>,
-) -> ChooseSpec {
-    let spec = source_reference_hinted_spec(spec, source_reference_surface_for_target_span(span));
-    match crate::util::sacrificed_object_kind_for_span(span) {
-        Some(kind) => spec.with_surface_hint(ChooseSpecSurfaceHint::SacrificedObject(kind)),
         None => spec,
     }
 }
@@ -1583,7 +1565,7 @@ fn implicit_source_pronoun_surface(
 
 pub fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
     match target {
-        TargetAst::Source(span) => target_reference_hinted_spec(ChooseSpec::Source, *span),
+        TargetAst::Source(_) => ChooseSpec::Source,
         TargetAst::AnyTarget(_) => ChooseSpec::AnyTarget,
         TargetAst::AnyOtherTarget(_) => ChooseSpec::AnyOtherTarget,
         TargetAst::ObjectOrPlayer(object_filter, player_filter, explicit_target_span) => {
@@ -1618,12 +1600,10 @@ pub fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
             } else {
                 ChooseSpec::Object(filter.clone())
             };
-            target_reference_hinted_spec(spec, *reference_span)
+            let _ = reference_span;
+            source_reference_hinted_spec(spec, filter.source_surface.clone())
         }
-        TargetAst::Tagged(tag, span) => {
-            let spec = ChooseSpec::Tagged(tag.clone());
-            target_reference_hinted_spec(spec, *span)
-        }
+        TargetAst::Tagged(tag, _) => ChooseSpec::Tagged(tag.clone()),
         TargetAst::WithCount(inner, count) => choose_spec_for_target(inner).with_count(*count),
         TargetAst::WithCountValue(inner, count, value) => {
             choose_spec_for_target(inner).with_count_value(*count, value.clone())
@@ -1648,15 +1628,9 @@ pub fn resolve_target_spec_with_choices(
             ChooseSpec::Iterated
         }
         TargetAst::Tagged(tag, span)
-            if tag.as_str() == IT_TAG
-                && crate::util::sacrificed_object_kind_for_span(*span).is_none()
-                && implicit_it_reference_resolves_to_source(refs) =>
+            if tag.as_str() == IT_TAG && implicit_it_reference_resolves_to_source(refs) =>
         {
-            source_reference_hinted_spec(
-                ChooseSpec::Source,
-                source_reference_surface_for_target_span(*span)
-                    .or_else(|| implicit_source_pronoun_surface(*span)),
-            )
+            source_reference_hinted_spec(ChooseSpec::Source, implicit_source_pronoun_surface(*span))
         }
         _ => choose_spec_for_target(target),
     };
@@ -1814,9 +1788,11 @@ mod tests {
 
     #[test]
     fn target_wrapped_implicit_it_value_resolves_to_source() {
-        let mut refs = ReferenceEnv::default();
-        refs.source_object_antecedent = true;
-        refs.last_player_filter = RefState::Known(PlayerFilter::You);
+        let refs = ReferenceEnv {
+            source_object_antecedent: true,
+            last_player_filter: RefState::Known(PlayerFilter::You),
+            ..Default::default()
+        };
 
         let value = Value::PowerOf(Box::new(ChooseSpec::target(ChooseSpec::Object(
             ObjectFilter::tagged(TagKey::from(IT_TAG)),
@@ -1837,7 +1813,9 @@ mod tests {
             last_object_tag: RefState::Known(TagKey::from("__sentence_helper_revealed_l0_s0_e7")),
             ..ReferenceEnv::default()
         };
-        let value = Value::Count(ObjectFilter::tagged(TagKey::from("__public_revealed")));
+        let value = Value::Count(ObjectFilter::tagged(
+            crate::tag::CompilerReferenceTag::PublicRevealed.key(),
+        ));
         let resolved = resolve_value_it_tag(&value, &refs).expect("resolve reveal count");
         let Value::Count(filter) = resolved else {
             panic!("expected count value");
@@ -1946,7 +1924,7 @@ mod tests {
         filter.blocked = true;
         filter.blocked_by = Some(ObjectRef::Tagged(TagKey::from(IT_TAG)));
         let refs = ReferenceEnv {
-            last_object_tag: RefState::Known(TagKey::from("targeted_0")),
+            last_object_tag: RefState::Known(crate::tag::CompilerReferenceTag::Targeted0.key()),
             ..ReferenceEnv::default()
         };
 
@@ -1963,7 +1941,7 @@ mod tests {
         let mut filter = ObjectFilter::creature();
         filter.in_combat_with = Some(ObjectRef::Tagged(TagKey::from(IT_TAG)));
         let refs = ReferenceEnv {
-            last_object_tag: RefState::Known(TagKey::from("targeted_0")),
+            last_object_tag: RefState::Known(crate::tag::CompilerReferenceTag::Targeted0.key()),
             ..ReferenceEnv::default()
         };
 
@@ -1981,7 +1959,7 @@ mod tests {
             .match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
         filter.blocking = true;
         let refs = ReferenceEnv {
-            last_object_tag: RefState::Known(TagKey::from("blocking")),
+            last_object_tag: RefState::Known(crate::tag::CompilerReferenceTag::Blocking.key()),
             ..ReferenceEnv::default()
         };
 
@@ -1998,7 +1976,7 @@ mod tests {
     fn source_exiled_reference_does_not_bind_to_unrelated_sacrifice() {
         let filter = ObjectFilter::tagged(TagKey::from(crate::tag::SOURCE_EXILED_TAG));
         let refs = ReferenceEnv {
-            last_object_tag: RefState::Known(TagKey::from("sacrificed_0")),
+            last_object_tag: RefState::Known(crate::tag::CompilerReferenceTag::Sacrificed0.key()),
             ..ReferenceEnv::default()
         };
 

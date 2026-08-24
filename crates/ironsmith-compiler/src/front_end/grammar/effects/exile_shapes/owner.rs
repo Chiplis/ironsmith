@@ -55,8 +55,10 @@ fn player_owner_surface(input: &mut LexStream<'_>) -> WResult<ExileOwnerSurface>
 
 fn relation_owner_surface(input: &mut LexStream<'_>) -> WResult<ExileOwnerSurface> {
     alt((
+        primitives::phrase(&["its", "controller's"]).value(ExileOwnerSurface::ItsController),
         primitives::phrase(&["its", "controllers"]).value(ExileOwnerSurface::ItsController),
         primitives::phrase(&["its", "controller"]).value(ExileOwnerSurface::ItsController),
+        primitives::phrase(&["its", "owner's"]).value(ExileOwnerSurface::ItsOwner),
         primitives::phrase(&["its", "owners"]).value(ExileOwnerSurface::ItsOwner),
         primitives::phrase(&["its", "owner"]).value(ExileOwnerSurface::ItsOwner),
         primitives::phrase(&["his", "or", "her"]).value(ExileOwnerSurface::HisOrHer),
@@ -191,34 +193,5 @@ pub fn is_each_player_library_shape(tokens: &[OwnedLexToken]) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::lexer::lex_line;
-
-    fn lex(raw: &str) -> Vec<OwnedLexToken> {
-        lex_line(raw, 0).unwrap()
-    }
-
-    #[test]
-    fn parses_zone_owner_prefixes_with_the_historical_word_count() {
-        let graveyard =
-            parse_exile_graveyard_owner_shape(&lex("that player's graveyard cards")).unwrap();
-        assert_eq!(graveyard.player, PlayerAst::That);
-        assert_eq!(graveyard.consumed_words, 3);
-
-        let library =
-            parse_exile_library_owner_shape(&lex("their library"), PlayerAst::Implicit).unwrap();
-        assert_eq!(library.player, PlayerAst::ItsController);
-        assert_eq!(library.consumed_words, 2);
-        assert!(is_each_opponent_library_shape(&lex(
-            "each opponent's library"
-        )));
-        assert!(is_each_player_library_shape(&lex("each player's library")));
-
-        let each_type = parse_exile_one_per_card_type_from_graveyard_shape(&lex(
-            "up to one card of each card type from defending player's graveyard",
-        ))
-        .unwrap();
-        assert_eq!(each_type.owner, PlayerAst::Defending);
-    }
-}
+#[path = "owner_inline_tests.rs"]
+mod tests;

@@ -160,8 +160,10 @@ pub fn parse_consult_traversal_with_inline_followup(
     let each_opponent = matches!(
         &shape.player,
         effect_grammar::ConsultTraversalPlayerShape::Subject(subject)
-            if crate::lexer::parser_token_word_refs(subject).as_slice()
-                == ["each", "opponent"]
+            if crate::word_primitives::parse_sequence_complete(
+                &crate::lexer::parser_token_word_refs(subject),
+                &["each", "opponent"],
+            )
     );
     let Some(parts) = parse_consult_traversal_sentence(tokens)? else {
         return Ok(None);

@@ -6,6 +6,9 @@ edition = "2024"
 [dependencies]
 ironsmith-compiler-grammar = { path = "../ironsmith-compiler-grammar", default-features = false }
 
+[dev-dependencies]
+ironsmith-core = { path = "../ironsmith-core" }
+
 [features]
 default = []
 serialization = ["ironsmith-compiler-grammar/serialization"]

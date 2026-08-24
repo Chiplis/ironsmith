@@ -11,10 +11,10 @@ use crate::target::ObjectRef;
 use crate::{ObjectFilter, PlayerFilter, Value};
 use ironsmith_core::{EffectMetric, EffectMetricSource, PriorEffectAction, ValueSurfaceHint};
 
+#[cfg(all(test, feature = "compiler-internal-tests"))]
+use crate::cards::builders::SubjectVerbRoleAst;
 #[cfg(test)]
-use crate::cards::builders::{
-    ObjectRefAst, PreventNextTimeDamageSourceAst, RetargetModeAst, SubjectVerbRoleAst,
-};
+use crate::cards::builders::{ObjectRefAst, PreventNextTimeDamageSourceAst, RetargetModeAst};
 #[cfg(test)]
 use crate::filter::Comparison;
 
@@ -145,6 +145,10 @@ fn spell_cast_filter_binds_target_count(filter: &ObjectFilter) -> bool {
         || filter.targets_only_player.is_some()
         || filter.targets_only_object.is_some()
         || filter.target_count.is_some()
+        || filter
+            .any_of
+            .iter()
+            .any(spell_cast_filter_binds_target_count)
 }
 
 pub fn annotate_effect_sequence(
@@ -1679,7 +1683,7 @@ fn advance_reference_frame_for_effect(
             }
             advance_reference_frames(if_true, id_gen, &mut true_frame)?;
             if if_false.is_empty() {
-                *frame = true_frame;
+                *frame = saved;
             } else {
                 let mut false_frame = saved.clone();
                 if let Some(player_filter) = predicate_bound_player_filter(predicate) {
@@ -2797,13 +2801,34 @@ fn effect_can_supply_object_memory_for_action(
 }
 
 fn effect_references_pending_effect_metric(effect: &EffectAst) -> bool {
+    let mut references_pending_target = false;
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::Tap { target } | SubjectVerbActionAst::Untap { target },
+        ..
+    }) = effect
+    {
+        references_pending_target = target_references_pending_effect_metric(target);
+    }
+    for_each_nested_effects(effect, true, |nested| {
+        references_pending_target |= nested.iter().any(|nested_effect| {
+            matches!(
+                nested_effect,
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::Tap { target }
+                        | SubjectVerbActionAst::Untap { target },
+                    ..
+                }) if target_references_pending_effect_metric(target)
+            )
+        });
+    });
     let mut references_pending = false;
     visit_effect_values(effect, &mut |value| {
         if value_references_pending_effect_metric(value) {
             references_pending = true;
         }
     });
-    references_pending
+    references_pending || references_pending_target
 }
 
 fn target_references_pending_effect_metric(target: &TargetAst) -> bool {
@@ -2817,38 +2842,14 @@ fn target_references_pending_effect_metric(target: &TargetAst) -> bool {
     }
 }
 
-fn leading_effect_references_pending_effect_metric(effect: &EffectAst) -> bool {
-    match effect {
-        EffectAst::Sequence { effects }
-        | EffectAst::CommaThen { effects }
-        | EffectAst::SourceSentence { effects, .. }
-        | EffectAst::Coordinated { effects, .. }
-        | EffectAst::ResultBranchLabel { effects, .. }
-        | EffectAst::May { effects }
-        | EffectAst::MayByPlayer { effects, .. } => effects
-            .first()
-            .is_some_and(leading_effect_references_pending_effect_metric),
-        EffectAst::TagAffected { effect, .. } => {
-            leading_effect_references_pending_effect_metric(effect)
-        }
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Tap { target },
-            ..
-        }) => target_references_pending_effect_metric(target),
-        _ => effect_references_pending_effect_metric(effect),
-    }
-}
-
 fn typed_result_branch_pinned_metric_id(
     predicate: &IfResultPredicate,
     effects: &[EffectAst],
     condition: EffectId,
 ) -> Option<EffectId> {
-    matches!(predicate, IfResultPredicate::PriorEffectResult(_))
-        .then(|| effects.first())
-        .flatten()
-        .filter(|effect| leading_effect_references_pending_effect_metric(effect))
-        .map(|_| condition)
+    (matches!(predicate, IfResultPredicate::PriorEffectResult(_))
+        && effects.iter().any(effect_references_pending_effect_metric))
+    .then_some(condition)
 }
 
 fn effect_references_only_other_number_metric(effect: &EffectAst) -> bool {
@@ -3420,7 +3421,27 @@ fn advance_reference_env_for_effect(
                 id_gen,
             )?;
             if if_false.is_empty() {
-                return Ok(true_sequence.final_env);
+                return Ok(ReferenceEnv {
+                    last_object_tag: RefState::join(
+                        &true_sequence.final_env.last_object_tag,
+                        &env.last_object_tag,
+                    ),
+                    snapshot_tag_aliases: env.snapshot_tag_aliases.clone(),
+                    last_it_choice_is_set: true_sequence.final_env.last_it_choice_is_set
+                        && env.last_it_choice_is_set,
+                    last_player_filter: RefState::join(
+                        &true_sequence.final_env.last_player_filter,
+                        &env.last_player_filter,
+                    ),
+                    source_object_antecedent: true_sequence.final_env.source_object_antecedent
+                        && env.source_object_antecedent,
+                    last_effect_id: env.last_effect_id.clone(),
+                    last_library_search_effect_id: env.last_library_search_effect_id.clone(),
+                    iterated_player: env.iterated_player,
+                    iterated_object: env.iterated_object,
+                    allow_life_event_value: env.allow_life_event_value,
+                    bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
+                });
             }
 
             let false_sequence =
@@ -3685,6 +3706,11 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::CreateEmblem { .. }
             | SubjectVerbActionAst::LoseGame
             | SubjectVerbActionAst::WinGame
+            | SubjectVerbActionAst::ReorderTopPlanarDeck { .. }
+            | SubjectVerbActionAst::ReturnSourceTransformedFromExile
+            | SubjectVerbActionAst::Reconfigure { .. }
+            | SubjectVerbActionAst::CumulativeUpkeep { .. }
+            | SubjectVerbActionAst::Casualty { .. }
             | SubjectVerbActionAst::PayAnyEnergy { .. }
             | SubjectVerbActionAst::PayAnyLife { .. }
             | SubjectVerbActionAst::DiscardHand
@@ -3926,7 +3952,7 @@ fn resolve_effect_result_values_in_fields(
 }
 
 fn resolve_effect_result_values_in_total_cost(
-    cost: &mut crate::cost::TotalCost,
+    cost: &mut ironsmith_core::TotalCost<crate::model::CompilerCost>,
     state: EffectReferenceResolutionState,
 ) -> Result<(), CardTextError> {
     match cost.kind() {
@@ -3935,25 +3961,25 @@ fn resolve_effect_result_values_in_total_cost(
             for component in &mut components {
                 resolve_effect_result_values_in_cost_component(component, state)?;
             }
-            *cost = crate::cost::TotalCost::from_costs(components);
+            *cost = ironsmith_core::TotalCost::from_costs(components);
         }
         ironsmith_core::TotalCostKind::OneOf(branches) => {
             let mut branches = branches.to_vec();
             for branch in &mut branches {
                 resolve_effect_result_values_in_total_cost(branch, state)?;
             }
-            *cost = crate::cost::TotalCost::one_of(branches);
+            *cost = ironsmith_core::TotalCost::one_of(branches);
         }
     }
     Ok(())
 }
 
 fn resolve_effect_result_values_in_cost_component(
-    component: &mut crate::costs::Cost,
+    component: &mut crate::model::CompilerCost,
     state: EffectReferenceResolutionState,
 ) -> Result<(), CardTextError> {
     match component {
-        crate::costs::Cost::DynamicMana(dynamic) => {
+        crate::model::CompilerCost::DynamicMana(dynamic) => {
             if let Some(value) = dynamic.x_value.as_mut() {
                 resolve_effect_result_value(value, state)?;
             }
@@ -3964,9 +3990,24 @@ fn resolve_effect_result_values_in_cost_component(
                 resolve_effect_result_value(value, state)?;
             }
         }
-        crate::costs::Cost::Energy(value)
-        | crate::costs::Cost::Mill(value)
-        | crate::costs::Cost::Life(value) => resolve_effect_result_value(value, state)?,
+        crate::model::CompilerCost::Life(value) => resolve_effect_result_value(value, state)?,
+        crate::model::CompilerCost::Effect(effect)
+        | crate::model::CompilerCost::ValidatedEffect(effect) => {
+            resolve_effect_result_values_in_fields(effect, state)?;
+            let mut nested_error = None;
+            crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                for effect in nested {
+                    if nested_error.is_none()
+                        && let Err(error) = resolve_effect_result_values_in_fields(effect, state)
+                    {
+                        nested_error = Some(error);
+                    }
+                }
+            });
+            if let Some(error) = nested_error {
+                return Err(error);
+            }
+        }
         _ => {}
     }
     Ok(())
@@ -4078,7 +4119,9 @@ fn resolve_effect_result_value(
                 ));
             }
         }
-        Value::EventValue(EventValueSpec::Amount) if !state.allow_life_event_value => {
+        Value::EventValue(EventValueSpec::Amount)
+            if state.pinned_effect_metric_id.is_some() || !state.allow_life_event_value =>
+        {
             let id = state
                 .pinned_effect_metric_id
                 .or(state.last_effect_id)
@@ -4333,6 +4376,11 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::CreateEmblem { .. }
             | SubjectVerbActionAst::LoseGame
             | SubjectVerbActionAst::WinGame
+            | SubjectVerbActionAst::ReorderTopPlanarDeck { .. }
+            | SubjectVerbActionAst::ReturnSourceTransformedFromExile
+            | SubjectVerbActionAst::Reconfigure { .. }
+            | SubjectVerbActionAst::CumulativeUpkeep { .. }
+            | SubjectVerbActionAst::Casualty { .. }
             | SubjectVerbActionAst::PayAnyEnergy { .. }
             | SubjectVerbActionAst::PayAnyLife { .. }
             | SubjectVerbActionAst::DiscardHand => 0,
@@ -6064,7 +6112,7 @@ mod tests {
             EffectAst::MayByPlayer {
                 player: PlayerAst::You,
                 effects: vec![EffectAst::MoveTaggedGroupToZone {
-                    tag: TagKey::from("chosen"),
+                    tag: crate::tag::CompilerReferenceTag::Chosen.key(),
                     zone: Zone::Battlefield,
                 }],
             },
@@ -6451,7 +6499,7 @@ mod tests {
         let annotated = annotate_effect_sequence(
             &effects,
             &ModelReferenceImports {
-                last_object_tag: Some(TagKey::from("triggering")),
+                last_object_tag: Some(crate::tag::CompilerReferenceTag::Triggering.key()),
                 source_object_antecedent: true,
                 ..Default::default()
             },
@@ -6462,11 +6510,11 @@ mod tests {
 
         assert_eq!(
             annotated.effects[1].in_env.last_object_tag,
-            ModelRefState::Known(TagKey::from("damaged_0"))
+            ModelRefState::Known(crate::tag::CompilerReferenceTag::Damaged0.key())
         );
         assert_eq!(
             annotated.final_env.last_object_tag,
-            ModelRefState::Known(TagKey::from("damaged_0"))
+            ModelRefState::Known(crate::tag::CompilerReferenceTag::Damaged0.key())
         );
     }
 
@@ -6494,11 +6542,11 @@ mod tests {
         assert!(!annotated.effects[0].auto_tag_object_targets);
         assert_eq!(
             annotated.effects[0].out_env.last_object_tag,
-            ModelRefState::Known(TagKey::from("sacrificed_0"))
+            ModelRefState::Known(crate::tag::CompilerReferenceTag::Sacrificed0.key())
         );
         assert_eq!(
             annotated.effects[1].in_env.last_object_tag,
-            ModelRefState::Known(TagKey::from("sacrificed_0"))
+            ModelRefState::Known(crate::tag::CompilerReferenceTag::Sacrificed0.key())
         );
     }
 

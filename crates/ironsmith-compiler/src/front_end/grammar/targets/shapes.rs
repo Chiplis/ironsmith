@@ -78,9 +78,9 @@ pub fn parse_chosen_object_target(tokens: &[OwnedLexToken]) -> Option<ChosenObje
     // Postpositive oracle surface: "creature(s) chosen this way". Keep the
     // object head as the executable filter and attach the accumulated chosen
     // set below, just as for the older "chosen creature(s)" surface.
-    if let Some(chosen_word_idx) = words
-        .windows(3)
-        .position(|window| window == ["chosen", "this", "way"])
+    if let Some(chosen_word_idx) =
+        primitives::parse_word_sequence_span(&words, &["chosen", "this", "way"])
+            .map(|span| span.start)
         && chosen_word_idx > 0
         && chosen_word_idx + 3 == words.len()
     {
@@ -202,7 +202,7 @@ pub fn parse_object_or_player_union_target(
         [object_words @ .., "and", "or"] if !object_words.is_empty() => object_words.len(),
         _ => return None,
     };
-    let connector_token = view.token_boundary_for_word(connector_start)?;
+    let connector_token = view.map_word_to_token_boundary(connector_start)?;
     let object_tokens = trim_comma_edges(tokens.get(..connector_token)?);
     (!object_tokens.is_empty()).then_some(ObjectOrPlayerUnionTarget {
         object_tokens,

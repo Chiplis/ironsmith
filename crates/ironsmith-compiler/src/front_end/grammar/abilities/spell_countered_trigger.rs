@@ -125,7 +125,7 @@ fn infer_subject_controller(tokens: &[OwnedLexToken]) -> PlayerFilter {
             primitives::phrase(&["enchanted", "players"]),
         ))
     }) {
-        PlayerFilter::TaggedPlayer(TagKey::from("enchanted"))
+        PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.key())
     } else if has_parser(tokens, || {
         alt((
             primitives::phrase(&["chosen", "player"]),

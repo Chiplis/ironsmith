@@ -55,9 +55,8 @@ fn starts_with_etb_source_reference(tokens: &[OwnedLexToken]) -> bool {
     // Named-source normalization can encode a multiword `this <type>`
     // reference in one alias token. Use the parser word view so semantic
     // source recognition sees the same words as the ETB capture grammar.
-    let words =
-        crate::grammar::primitives::TokenWordView::new(tokens).to_word_refs();
-    matches!(words.as_slice(), ["it"] | ["its"])
+    let words = crate::grammar::primitives::TokenWordView::new(tokens).to_word_refs();
+    crate::word_primitives::parse_any_sequence_complete(&words, &[&["it"], &["its"]])
         || crate::util::this_source_surface_for_words(&words).is_some()
         || crate::util::source_reference_surface_for_words(&words).is_some()
 }
@@ -122,17 +121,14 @@ pub fn parse_enters_with_counters_line(
     // Support leading conditional form:
     // "If <condition>, it enters with ..."
     if let Some(leading_if) =
-        crate::grammar::static_line_support::parse_leading_if_clause(
-            &clause_tokens,
-        )
+        crate::grammar::static_line_support::parse_leading_if_clause(&clause_tokens)
     {
         let condition_tokens = trim_commas(leading_if.condition_tokens);
         if !condition_tokens.is_empty() {
             let Some(parsed) = parse_enters_with_counter_condition_clause(&condition_tokens) else {
                 return Ok(None);
             };
-            let display =
-                crate::lexer::token_word_refs(&condition_tokens).join(" ");
+            let display = crate::lexer::token_word_refs(&condition_tokens).join(" ");
             condition = Some((parsed, display));
             clause_tokens = trim_commas(leading_if.remainder_tokens);
         }
@@ -225,15 +221,14 @@ pub fn parse_enters_with_counters_line(
         ))
     })?;
 
-    let counter_idx =
-        crate::grammar::static_line_support::parse_counter_keyword(after_with)
-            .map(|counter| counter.index)
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "missing counter keyword for self ETB counters (clause: '{}')",
-                    full_words.join(" ")
-                ))
-            })?;
+    let counter_idx = crate::grammar::static_line_support::parse_counter_keyword(after_with)
+        .map(|counter| counter.index)
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing counter keyword for self ETB counters (clause: '{}')",
+                full_words.join(" ")
+            ))
+        })?;
     let additional_entry_counter_surface = after_with[..counter_idx]
         .iter()
         .any(|token| etb_token_word_is(token, ETB_ADDITIONAL_WORD));
@@ -256,8 +251,7 @@ pub fn parse_enters_with_counters_line(
         }
     }
     let tail = trim_commas(tail);
-    let tail_facts =
-        crate::grammar::static_line_support::parse_counter_tail_facts(&tail);
+    let tail_facts = crate::grammar::static_line_support::parse_counter_tail_facts(&tail);
     if tail_facts.has_words {
         let scaled_for_each_count = |dynamic: Value, base_count: &Value| match base_count {
             Value::Fixed(multiplier) => scale_dynamic_cost_modifier_value(dynamic, *multiplier),
@@ -282,10 +276,8 @@ pub fn parse_enters_with_counters_line(
                     })?;
             match condition_tail.kind {
                 EntersWithCounterConditionTailKind::If => {
-                    let display = crate::lexer::token_word_refs(
-                        condition_tail.condition_tokens,
-                    )
-                    .join(" ");
+                    let display =
+                        crate::lexer::token_word_refs(condition_tail.condition_tokens).join(" ");
                     condition = Some(combine_enters_with_counter_conditions(
                         condition,
                         (parsed, display),
@@ -298,10 +290,8 @@ pub fn parse_enters_with_counters_line(
                     .unwrap_or_else(|| {
                         format!(
                             "not {}",
-                            crate::lexer::token_word_refs(
-                                condition_tail.condition_tokens,
-                            )
-                            .join(" ")
+                            crate::lexer::token_word_refs(condition_tail.condition_tokens,)
+                                .join(" ")
                         )
                     });
                     condition = Some(combine_enters_with_counter_conditions(
@@ -444,10 +434,9 @@ fn parse_enters_with_counter_conjunction_tail_tokens(
         } else {
             parse_value(&rest)?
         };
-        let counter_idx = crate::grammar::primitives::locate_token_index(
-            &rest[used..],
-            |token| etb_token_word_is_any(token, ETB_COUNTER_OR_COUNTERS_WORDS),
-        )? + used;
+        let counter_idx = crate::grammar::primitives::locate_token_index(&rest[used..], |token| {
+            etb_token_word_is_any(token, ETB_COUNTER_OR_COUNTERS_WORDS)
+        })? + used;
         let counter_type = parse_counter_type_from_tokens(&rest[used..=counter_idx])?;
         counters.push((counter_type, count));
 
@@ -798,9 +787,7 @@ fn parse_enters_with_counter_condition_clause(
     }
 
     if let Some(amount) =
-        crate::grammar::filters::parse_same_color_mana_spent_to_cast_predicate(
-            &condition_tokens,
-        )
+        crate::grammar::filters::parse_same_color_mana_spent_to_cast_predicate(&condition_tokens)
     {
         return Some(crate::ConditionExpr::SameColorManaSpentToCastThisSpellAtLeast(amount));
     }
@@ -964,10 +951,10 @@ pub fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
             }
             WhereXKnownValue::ThatPlayerSpeed => Value::Speed(PlayerFilter::target_player()),
             WhereXKnownValue::DiscardedCardManaValue => {
-                Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from("discarded_cost"))))
+                Value::ManaValueOf(Box::new(ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::DiscardedCost.key())))
             }
             WhereXKnownValue::RevealedCardsTotalManaValue => {
-                Value::TotalManaValue(ObjectFilter::tagged(TagKey::from("__public_revealed")))
+                Value::TotalManaValue(ObjectFilter::tagged(crate::tag::CompilerReferenceTag::PublicRevealed.key()))
             }
             WhereXKnownValue::DraftNotedHighestNumber { card_name_tokens } => {
                 Value::DraftNotedHighestNumber {
@@ -1013,9 +1000,10 @@ pub fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
 
     // where X is your devotion to black
     if etb_grammar::etb_tokens_have_devotion_value_marker(tokens)
-        && let Ok(Some(value)) = parse_devotion_value_from_add_clause(tokens) {
-            return Some(value);
-        }
+        && let Ok(Some(value)) = parse_devotion_value_from_add_clause(tokens)
+    {
+        return Some(value);
+    }
 
     // where X is the total number of cards in all players' hands
     if etb_grammar::etb_tokens_have_all_players_hand_count_value(tokens) {
@@ -1031,7 +1019,7 @@ pub fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
             ObjectFilter::default()
                 .in_zone(Zone::Graveyard)
                 .match_tagged(
-                    TagKey::from("triggering"),
+                    crate::tag::CompilerReferenceTag::Triggering.key(),
                     crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
                 ),
         ));
@@ -1143,9 +1131,7 @@ pub fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
     None
 }
 
-pub fn parse_where_x_is_colored_mana_symbols_value(
-    tokens: &[OwnedLexToken],
-) -> Option<Value> {
+pub fn parse_where_x_is_colored_mana_symbols_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     if !etb_grammar::parse_where_x_prefix_tokens(tokens) {
         return None;
     }
@@ -1157,16 +1143,13 @@ pub fn parse_where_x_is_colored_mana_symbols_value(
     (used == tail.len()).then_some(value)
 }
 
-pub fn parse_value_binding_clause_lexed(
-    tokens: &[crate::lexer::OwnedLexToken],
-) -> Option<Value> {
+pub fn parse_value_binding_clause_lexed(tokens: &[crate::lexer::OwnedLexToken]) -> Option<Value> {
     parse_value_binding_clause(tokens)
 }
 
 pub fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let parsed = etb_grammar::parse_where_x_source_stat_tokens(tokens)?;
-    let reference_words =
-        crate::lexer::parser_token_word_refs(parsed.reference_tokens);
+    let reference_words = crate::lexer::parser_token_word_refs(parsed.reference_tokens);
     let value = if let Some(surface) =
         source_reference_surface_for_possessive_words(&reference_words)
     {
@@ -1193,10 +1176,35 @@ pub fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Option<Value
                 }
             }
             (EtbSourceStatFallback::TriggeringSpell, EtbSourceStatKind::ManaValue) => {
-                Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from("triggering"))))
+                Value::ManaValueOf(Box::new(ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::Triggering.key())))
             }
             (EtbSourceStatFallback::TriggeringSpell, _) => return None,
         }
+    };
+    Some(if parsed.as_this_ability_resolves {
+        value.with_surface_hint(ValueSurfaceHint::AsThisAbilityResolves)
+    } else {
+        value
+    })
+}
+
+pub fn parse_where_x_named_source_stat_value(
+    tokens: &[OwnedLexToken],
+    source_name: &str,
+) -> Option<Value> {
+    let parsed = etb_grammar::parse_where_x_source_stat_tokens(tokens)?;
+    let reference_words = crate::lexer::parser_token_word_refs(parsed.reference_tokens);
+    let aliases = crate::grammar::leaf::parse_leaf_source_reference_aliases_for_name(source_name);
+    let surface = crate::grammar::leaf::parse_leaf_source_reference_possessive_alias_words(
+        &aliases,
+        &reference_words,
+    )?;
+    let source =
+        ChooseSpec::Source.with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface));
+    let value = match parsed.kind {
+        EtbSourceStatKind::Power => Value::PowerOf(Box::new(source)),
+        EtbSourceStatKind::Toughness => Value::ToughnessOf(Box::new(source)),
+        EtbSourceStatKind::ManaValue => Value::ManaValueOf(Box::new(source)),
     };
     Some(if parsed.as_this_ability_resolves {
         value.with_surface_hint(ValueSurfaceHint::AsThisAbilityResolves)
@@ -1210,9 +1218,7 @@ fn parse_enters_with_fallback_counter_value(tail: &[OwnedLexToken]) -> Option<Va
         .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
 }
 
-pub fn parse_where_x_is_fixed_plus_reference_value(
-    tokens: &[OwnedLexToken],
-) -> Option<Value> {
+pub fn parse_where_x_is_fixed_plus_reference_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let captured = etb_grammar::parse_where_x_fixed_plus_reference_tokens(tokens)?;
     let (fixed_value, fixed_used) = parse_number(captured.fixed_tokens)?;
     if fixed_used != captured.fixed_tokens.len() {
@@ -1317,9 +1323,9 @@ pub fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Opti
         && parsed.value_kind == EtbAggregateValueKind::ManaValue
         && let Some(value) =
             parse_where_x_greatest_commander_mana_value_filter(parsed.filter_tokens)
-        {
-            return Some(value);
-        }
+    {
+        return Some(value);
+    }
 
     let filter_tokens = parsed.filter_tokens;
     let filter_words = crate::lexer::token_word_refs(filter_tokens);
@@ -1359,10 +1365,7 @@ pub fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Opti
     let mut filter = parse_cast_time_controlled_objects_filter(filter_tokens)
         .or_else(|| {
             if should_try_split {
-                let segments =
-                    crate::grammar::primitives::split_lexed_slices_on_and(
-                        filter_tokens,
-                    );
+                let segments = crate::grammar::primitives::split_lexed_slices_on_and(filter_tokens);
                 let mut branches = Vec::new();
                 for segment in segments {
                     let trimmed = trim_commas(segment);
@@ -1495,8 +1498,8 @@ fn parse_spell_cast_history_aggregate_filter(
     // inclusive domain, not an impossible intersection. Keep that authored
     // conjunction as surface metadata while the branches remain alternatives.
     let words = crate::lexer::token_word_refs(filter_tokens);
-    if words.contains(&"and")
-        && !words.contains(&"or")
+    if crate::word_primitives::sequence_occurs(&words, &["and"])
+        && !crate::word_primitives::sequence_occurs(&words, &["or"])
         && filter.card_types.len() > 1
         && filter.any_of.is_empty()
     {
@@ -1547,9 +1550,7 @@ pub fn parse_where_x_is_number_of_different_powers_filter_value(
     Some(Value::DistinctPowers(filter))
 }
 
-pub fn parse_where_x_is_greatest_number_of_filter_value(
-    tokens: &[OwnedLexToken],
-) -> Option<Value> {
+pub fn parse_where_x_is_greatest_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let filter_tokens = etb_grammar::parse_where_x_greatest_number_filter_tokens(tokens)?;
     const SHARED_CREATURE_TYPE_SUFFIX: &[&str] =
         &["that", "have", "a", "creature", "type", "in", "common"];
@@ -1584,9 +1585,9 @@ pub fn parse_where_x_is_greatest_number_of_filter_value(
 fn parse_shared_domain_relative_selector_filter(
     filter_tokens: &[OwnedLexToken],
 ) -> Option<ObjectFilter> {
-    let relative_idx = filter_tokens
-        .iter()
-        .position(|token| token.is_word("that") || token.is_word("which"))?;
+    let relative_idx = crate::slice_primitives::select_position(filter_tokens, |token| {
+        token.is_word("that") || token.is_word("which")
+    })?;
     let base_tokens = trim_commas(&filter_tokens[..relative_idx]);
     let relative_tokens = trim_commas(&filter_tokens[relative_idx + 1..]);
     if base_tokens.is_empty() || relative_tokens.is_empty() {
@@ -1679,9 +1680,7 @@ fn parse_shared_domain_relative_selector_filter(
 pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let words = crate::lexer::token_word_refs(tokens);
     if words.iter().any(|word| matches!(*word, "plus" | "minus"))
-        || words
-            .windows(3)
-            .any(|window| window == ["in", "excess", "of"])
+        || crate::word_primitives::sequence_occurs(&words, &["in", "excess", "of"])
     {
         // This helper owns only a complete `number of ...` term. Let the
         // arithmetic value-expression parser consume authored tails such as
@@ -1694,14 +1693,17 @@ pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Opti
     // creatures`, that means it can reduce the expression to merely the
     // creature count before the dedicated aggregate sees it. Claim the exact
     // typed ability-list suffix first.
-    if let Some(ability_word) = words
-        .windows(3)
-        .position(|window| matches!(window, ["number", "of", "ability" | "abilities"]))
-        .map(|index| index + 2)
-        && let Some((token_index, _)) =
-            crate::lexer::parser_token_word_positions(tokens)
-                .into_iter()
-                .nth(ability_word)
+    if let Some(ability_word) = crate::word_primitives::find_any_phrase_start(
+        &words,
+        &[
+            &["number", "of", "ability"],
+            &["number", "of", "abilities"],
+        ],
+    )
+        .map(|(_, index)| index + 2)
+        && let Some((token_index, _)) = crate::lexer::parser_token_word_positions(tokens)
+            .into_iter()
+            .nth(ability_word)
         && let Some(value) = parse_static_abilities_among_scope_value(&tokens[token_index..])
     {
         return Some(value);
@@ -1715,44 +1717,67 @@ pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Opti
     let multiplier = captured.multiplier;
     let mut filter_tokens = captured.filter_tokens;
     let filter_words = crate::lexer::token_word_refs(filter_tokens);
-    if matches!(
-        filter_words.as_slice(),
-        ["color" | "colors", "that" | "the", _, "was" | "were"]
-    ) {
+    if filter_words.len() == 4
+        && crate::word_primitives::parse_any_sequence_prefix(
+            &filter_words,
+            &[&["color", "that"], &["color", "the"], &["colors", "that"], &["colors", "the"]],
+        )
+        && crate::word_primitives::parse_any_sequence_suffix(
+            &filter_words,
+            &[&["was"], &["were"]],
+        )
+    {
         // This is a characteristic aggregate over a remembered object, not
         // the cardinality of an object filter. Let the typed where-X grammar
         // lower it to `ColorsAmong(tagged-object)` instead of counting a
         // battlefield creature parsed from the middle of the phrase.
         return None;
     }
-    if let Some(as_cast_index) = filter_words
-        .windows(5)
-        .position(|words| words == ["as", "you", "cast", "this", "spell"])
+    if let Some(as_cast_index) = crate::word_primitives::parse_sequence_start(
+        &filter_words,
+        &["as", "you", "cast", "this", "spell"],
+    )
     {
         filter_tokens = &filter_tokens[..as_cast_index];
     }
     let filter_words = crate::lexer::token_word_refs(filter_tokens);
-    if matches!(
-        filter_words.as_slice(),
-        [
-            "time" | "times",
-            "this" | "it",
-            "spell" | "creature" | "permanent" | "card",
-            "was",
-            "kicked"
-        ] | ["time" | "times", "this" | "it", "was", "kicked"]
+    if crate::word_primitives::parse_choice_sequence_complete(
+        &filter_words,
+        &[
+            &["time", "times"],
+            &["this", "it"],
+            &["spell", "creature", "permanent", "card"],
+            &["was"],
+            &["kicked"],
+        ],
+    ) || crate::word_primitives::parse_choice_sequence_complete(
+        &filter_words,
+        &[
+            &["time", "times"],
+            &["this", "it"],
+            &["was"],
+            &["kicked"],
+        ],
     ) {
         return Some(scale_where_x_number_value(Value::KickCount, multiplier));
     }
-    if matches!(
-        filter_words.as_slice(),
-        [
-            "time" | "times",
-            "this" | "it",
-            "creature" | "permanent",
-            "has",
-            "mutated"
-        ] | ["time" | "times", "this" | "it", "has", "mutated"]
+    if crate::word_primitives::parse_choice_sequence_complete(
+        &filter_words,
+        &[
+            &["time", "times"],
+            &["this", "it"],
+            &["creature", "permanent"],
+            &["has"],
+            &["mutated"],
+        ],
+    ) || crate::word_primitives::parse_choice_sequence_complete(
+        &filter_words,
+        &[
+            &["time", "times"],
+            &["this", "it"],
+            &["has"],
+            &["mutated"],
+        ],
     ) {
         return Some(scale_where_x_number_value(
             Value::SourceMutationCount,
@@ -1760,9 +1785,7 @@ pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Opti
         ));
     }
     if let Some(player) =
-        crate::grammar::shared_util::value_helper_shapes::parse_party_size_player(
-            &filter_words,
-        )
+        crate::grammar::shared_util::value_helper_shapes::parse_party_size_player(&filter_words)
     {
         return Some(scale_where_x_number_value(
             Value::PartySize(player),
@@ -1844,9 +1867,7 @@ pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Opti
     let mut for_each_words = vec!["for", "each"];
     for_each_words.extend(filter_words.iter().copied());
     if let Some((value, used)) =
-        crate::grammar::shared_util::count_shapes::parse_for_each_count_value_words(
-            &for_each_words,
-        )
+        crate::grammar::shared_util::count_shapes::parse_for_each_count_value_words(&for_each_words)
         && used == for_each_words.len()
     {
         return Some(scale_where_x_number_value(value, multiplier));
@@ -1855,9 +1876,7 @@ pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Opti
     Some(scale_where_x_number_value(Value::Count(filter), multiplier))
 }
 
-pub fn parse_static_abilities_among_scope_value(
-    filter_tokens: &[OwnedLexToken],
-) -> Option<Value> {
+pub fn parse_static_abilities_among_scope_value(filter_tokens: &[OwnedLexToken]) -> Option<Value> {
     let parsed = etb_grammar::parse_etb_static_abilities_among_scope_tokens(filter_tokens)?;
     let ability_ids = etb_grammar::parse_etb_static_ability_ids_tokens(parsed.ability_tokens)?;
 
@@ -1901,9 +1920,7 @@ pub fn parse_where_x_is_fixed_plus_number_of_filter_value(
     let filter_tokens = captured.filter_tokens;
     let filter_words = crate::lexer::token_word_refs(filter_tokens);
     if let Some(player) =
-        crate::grammar::shared_util::value_helper_shapes::parse_party_size_player(
-            &filter_words,
-        )
+        crate::grammar::shared_util::value_helper_shapes::parse_party_size_player(&filter_words)
     {
         return Some(Value::Add(
             Box::new(Value::Fixed(fixed_value as i32)),
@@ -1931,13 +1948,14 @@ pub fn parse_where_x_is_fixed_plus_number_of_filter_value(
     ))
 }
 
-pub fn parse_where_x_is_sum_of_number_of_filter_values(
-    tokens: &[OwnedLexToken],
-) -> Option<Value> {
+pub fn parse_where_x_is_sum_of_number_of_filter_values(tokens: &[OwnedLexToken]) -> Option<Value> {
     let words = parser_token_word_refs(tokens);
-    let plus_idx = words.iter().position(|word| *word == "plus")?;
+    let plus_idx = crate::word_primitives::parse_sequence_start(&words, &["plus"])?;
     let prefix = tokens.get(..3)?;
-    if parser_token_word_refs(prefix) != ["where", "x", "is"] {
+    if !crate::word_primitives::parse_sequence_complete(
+        &parser_token_word_refs(prefix),
+        &["where", "x", "is"],
+    ) {
         return None;
     }
     let left_tokens = trim_commas(tokens.get(..plus_idx)?);
@@ -1959,9 +1977,8 @@ pub fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
     let filter_tokens = trim_commas(captured.filter_tokens);
     let filter_words = crate::lexer::token_word_refs(&filter_tokens);
     let count_value = if let Some(player) =
-        crate::grammar::shared_util::value_helper_shapes::parse_party_size_player(
-            &filter_words,
-        ) {
+        crate::grammar::shared_util::value_helper_shapes::parse_party_size_player(&filter_words)
+    {
         Value::PartySize(player)
     } else if etb_grammar::etb_tokens_have_your_hand_count_value(&filter_tokens) {
         Value::CardsInHand(PlayerFilter::You)
@@ -1995,7 +2012,10 @@ pub fn parse_enters_tapped_for_filter_line(
     // temporary replacement rule. It is not a static ability of the spell
     // card itself, so leave the explicitly turn-scoped form to the effect
     // sentence dispatcher.
-    if clause_words.ends_with(&["tapped", "this", "turn"]) {
+    if crate::word_primitives::parse_sequence_suffix(
+        &clause_words,
+        &["tapped", "this", "turn"],
+    ) {
         return Ok(None);
     }
     // A resolution procedure can end with "They enter tapped" (for example,
@@ -2122,8 +2142,7 @@ pub fn parse_enters_untapped_for_filter_line(
 pub fn parse_x_at_most_enters_tapped_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let Some(leading_if) =
-        crate::grammar::static_line_support::parse_leading_if_clause(tokens)
+    let Some(leading_if) = crate::grammar::static_line_support::parse_leading_if_clause(tokens)
     else {
         return Ok(None);
     };
@@ -2142,9 +2161,7 @@ pub fn parse_x_at_most_enters_tapped_line(
     if used != amount_tokens.len() {
         return Ok(None);
     }
-    let Some(maximum) =
-        crate::util::comparison_to_strict_at_most_threshold(&comparison)
-    else {
+    let Some(maximum) = crate::util::comparison_to_strict_at_most_threshold(&comparison) else {
         return Ok(None);
     };
 
@@ -2186,14 +2203,18 @@ pub fn parse_as_enters_reveal_from_hand_line(
     let mut filter = parse_object_filter(&filter_tokens, false)?;
     filter.zone = Some(Zone::Hand);
 
-    let source_subject = if !parsed.source_kind_tokens.is_empty() { {
+    let source_subject = if !parsed.source_kind_tokens.is_empty() {
+        {
             let words = crate::lexer::token_word_refs(parsed.source_kind_tokens);
             if words.is_empty() {
                 "this".to_string()
             } else {
                 format!("this {}", words.join(" "))
             }
-        } } else { "this".to_string() };
+        }
+    } else {
+        "this".to_string()
+    };
     let reveal_filter_text = parser_token_word_refs(&reveal_filter_tokens).join(" ");
     Ok(Some(StaticAbility::reveal_from_hand_as_enters(
         filter,
@@ -2433,11 +2454,9 @@ mod etb_enters_tapped_with_counters_tests {
 
     #[test]
     fn enters_with_counters_uses_capture_parser_for_normalized_subjects() {
-        let tokens = crate::lexer::lex_line(
-            "This creature enters with one +1/+1 counter on it.",
-            0,
-        )
-        .expect("lex");
+        let tokens =
+            crate::lexer::lex_line("This creature enters with one +1/+1 counter on it.", 0)
+                .expect("lex");
 
         let captured = etb_grammar::parse_enters_with_counters_clause_tokens(&tokens)
             .expect("capture parser should normalize source subject");
@@ -2450,8 +2469,7 @@ mod etb_enters_tapped_with_counters_tests {
             "plain self-ETB line must not be classified as a labeled trigger"
         );
         assert!(
-            crate::grammar::static_line_support::parse_leading_if_clause(&tokens)
-                .is_none(),
+            crate::grammar::static_line_support::parse_leading_if_clause(&tokens).is_none(),
             "plain self-ETB line must not be classified as a leading condition"
         );
         assert!(
@@ -2479,7 +2497,7 @@ mod etb_enters_tapped_with_counters_tests {
         let abilities = parse_enters_with_counters_line(&tokens)
             .expect("parser should not error")
             .expect("dynamic enters-with-counters line should parse");
-        let crate::static_abilities::StaticAbilityPayload::EntersWithCountersValue {
+        let ironsmith_core::StaticAbilityPayload::EntersWithCountersValue {
             counter,
             count,
         } = &abilities[0].payload
@@ -2518,11 +2536,8 @@ mod etb_enters_tapped_with_counters_tests {
 
     #[test]
     fn colors_of_mana_spent_condition_uses_capture_parser() {
-        let tokens = crate::lexer::lex_line(
-            "Two or more colors of mana were spent to cast it.",
-            0,
-        )
-        .expect("lex");
+        let tokens = crate::lexer::lex_line("Two or more colors of mana were spent to cast it.", 0)
+            .expect("lex");
 
         assert_eq!(
             parse_enters_with_counter_colors_mana_spent_condition_tokens(&tokens),
@@ -2619,8 +2634,7 @@ mod etb_enters_tapped_with_counters_tests {
             "expected supported plus-for-each tail, got {supported:?}"
         );
 
-        let unsupported_tokens =
-            crate::lexer::lex_line("plus a mystery counter", 0).expect("lex");
+        let unsupported_tokens = crate::lexer::lex_line("plus a mystery counter", 0).expect("lex");
         let unsupported = parse_enters_with_counter_plus_tail_tokens(&unsupported_tokens)
             .expect("unsupported plus tail should not hard-error")
             .expect("plus tail should be recognized");
@@ -2630,8 +2644,7 @@ mod etb_enters_tapped_with_counters_tests {
         ));
 
         let unrelated_tokens =
-            crate::lexer::lex_line("for each creature you control", 0)
-                .expect("lex");
+            crate::lexer::lex_line("for each creature you control", 0).expect("lex");
         assert!(
             parse_enters_with_counter_plus_tail_tokens(&unrelated_tokens)
                 .expect("unrelated tail should not error")
@@ -2642,8 +2655,7 @@ mod etb_enters_tapped_with_counters_tests {
     #[test]
     fn for_each_counter_tail_uses_capture_parser() {
         let tokens =
-            crate::lexer::lex_line("for each creature card in your graveyard", 0)
-                .expect("lex");
+            crate::lexer::lex_line("for each creature card in your graveyard", 0).expect("lex");
 
         let value = parse_enters_with_counter_for_each_tail_tokens(&tokens)
             .expect("tail parser should not error")
@@ -2685,11 +2697,9 @@ mod etb_enters_tapped_with_counters_tests {
 
     #[test]
     fn equal_to_counter_tail_uses_capture_parser() {
-        let tokens = crate::lexer::lex_line(
-            "equal to the number of creature cards in your graveyard",
-            0,
-        )
-        .expect("lex");
+        let tokens =
+            crate::lexer::lex_line("equal to the number of creature cards in your graveyard", 0)
+                .expect("lex");
 
         let value = parse_enters_with_counter_equal_to_tail_tokens(&tokens)
             .expect("equal-to tail should parse");
@@ -2769,8 +2779,7 @@ mod etb_enters_tapped_with_counters_tests {
 
     #[test]
     fn counter_condition_tail_uses_capture_parser() {
-        let if_tokens =
-            crate::lexer::lex_line("if you attacked this turn", 0).expect("lex");
+        let if_tokens = crate::lexer::lex_line("if you attacked this turn", 0).expect("lex");
         let if_tail = etb_grammar::parse_enters_with_counter_condition_tail_tokens(&if_tokens)
             .expect("if condition tail should parse");
         assert_eq!(if_tail.kind, EntersWithCounterConditionTailKind::If);
@@ -2779,11 +2788,9 @@ mod etb_enters_tapped_with_counters_tests {
             ["you", "attacked", "this", "turn"]
         );
 
-        let unless_tokens = crate::lexer::lex_line(
-            "unless two or more colors of mana were spent to cast it",
-            0,
-        )
-        .expect("lex");
+        let unless_tokens =
+            crate::lexer::lex_line("unless two or more colors of mana were spent to cast it", 0)
+                .expect("lex");
         let unless_tail =
             etb_grammar::parse_enters_with_counter_condition_tail_tokens(&unless_tokens)
                 .expect("unless condition tail should parse");
@@ -2874,15 +2881,13 @@ mod etb_control_quantity_tests {
     #[test]
     fn enters_tapped_unless_opponents_condition_uses_capture_parser() {
         let condition_tokens =
-            crate::lexer::lex_line("you have two or more opponents", 0)
-                .expect("lex");
+            crate::lexer::lex_line("you have two or more opponents", 0).expect("lex");
         assert!(
             parse_enters_tapped_unless_two_or_more_opponents_condition(&condition_tokens).is_some()
         );
 
         let wrong_amount_tokens =
-            crate::lexer::lex_line("you have three or more opponents", 0)
-                .expect("lex");
+            crate::lexer::lex_line("you have three or more opponents", 0).expect("lex");
         assert!(
             parse_enters_tapped_unless_two_or_more_opponents_condition(&wrong_amount_tokens)
                 .is_none()
@@ -2906,16 +2911,14 @@ mod etb_control_quantity_tests {
     #[test]
     fn enters_tapped_unless_life_condition_uses_capture_parser() {
         let condition_tokens =
-            crate::lexer::lex_line("a player has 13 or less life", 0)
-                .expect("lex");
+            crate::lexer::lex_line("a player has 13 or less life", 0).expect("lex");
         assert!(
             parse_enters_tapped_unless_a_player_has_13_or_less_life_condition(&condition_tokens)
                 .is_some()
         );
 
         let wrong_amount_tokens =
-            crate::lexer::lex_line("a player has 12 or less life", 0)
-                .expect("lex");
+            crate::lexer::lex_line("a player has 12 or less life", 0).expect("lex");
         assert!(
             parse_enters_tapped_unless_a_player_has_13_or_less_life_condition(&wrong_amount_tokens)
                 .is_none()
@@ -2940,9 +2943,8 @@ mod etb_control_quantity_tests {
 fn parse_enters_tapped_unless_a_player_has_13_or_less_life_condition(
     condition_tokens: &[OwnedLexToken],
 ) -> Option<()> {
-    let condition = crate::grammar::conditions::parse_player_life_total_condition(
-        condition_tokens,
-    )?;
+    let condition =
+        crate::grammar::conditions::parse_player_life_total_condition(condition_tokens)?;
     if condition.player != PlayerFilter::Any {
         return None;
     }
@@ -2957,18 +2959,15 @@ fn parse_enters_tapped_unless_two_or_more_opponents_condition(
     condition_tokens: &[OwnedLexToken],
 ) -> Option<()> {
     let opponent_phrases: &[&[&str]] = &[&["opponents"]];
-    let condition =
-        crate::grammar::conditions::parse_player_has_quantity_object_condition(
-            condition_tokens,
-            opponent_phrases,
-            "enters-tapped opponents condition",
-        )?;
+    let condition = crate::grammar::conditions::parse_player_has_quantity_object_condition(
+        condition_tokens,
+        opponent_phrases,
+        "enters-tapped opponents condition",
+    )?;
     if condition.player != PlayerFilter::You {
         return None;
     }
-    let count = crate::util::comparison_to_strict_at_least_threshold(
-        &condition.comparison,
-    )?;
+    let count = crate::util::comparison_to_strict_at_least_threshold(&condition.comparison)?;
     if count == 2 { Some(()) } else { None }
 }
 
@@ -3022,19 +3021,17 @@ pub fn parse_conditional_enters_tapped_unless_line(
     }
 
     // Generic: "unless you control <object filter>" (covers Mount/Vehicle, etc.).
-    if let Some(control_condition) =
-        crate::grammar::conditions::parse_control_condition(
-            &condition_tokens,
-            crate::grammar::conditions::ControlConditionOptions {
-                allow_that_player: false,
-                allow_opponent_players: false,
-                allow_defending_player: false,
-                bind_filter_controller_to_subject: false,
-                allow_different_powers_tail: false,
-                default_filter_zone: None,
-            },
-        )
-        && !control_condition.has_explicit_quantity()
+    if let Some(control_condition) = crate::grammar::conditions::parse_control_condition(
+        &condition_tokens,
+        crate::grammar::conditions::ControlConditionOptions {
+            allow_that_player: false,
+            allow_opponent_players: false,
+            allow_defending_player: false,
+            bind_filter_controller_to_subject: false,
+            allow_different_powers_tail: false,
+            default_filter_zone: None,
+        },
+    ) && !control_condition.has_explicit_quantity()
     {
         let condition = crate::ConditionExpr::YouControl(control_condition.filter);
         return Ok(Some(StaticAbility::enters_tapped_unless_condition(
@@ -3059,10 +3056,12 @@ struct FilteredEtbCounterIfOtherwise {
 fn split_filtered_etb_counter_if_otherwise(
     tokens: &[OwnedLexToken],
 ) -> Option<FilteredEtbCounterIfOtherwise> {
-    let otherwise_idx = tokens.iter().position(|token| token.is_word("otherwise"))?;
-    let if_idx = tokens[..otherwise_idx]
-        .iter()
-        .rposition(|token| token.is_word("if"))?;
+    let otherwise_idx = crate::slice_primitives::select_position(tokens, |token| {
+        token.is_word("otherwise")
+    })?;
+    let if_idx = crate::slice_primitives::select_last_position(&tokens[..otherwise_idx], |token| {
+        token.is_word("if")
+    })?;
     let primary_tokens = trim_edge_punctuation(&tokens[..if_idx]);
     let condition_tokens = trim_edge_punctuation(&tokens[if_idx + 1..otherwise_idx]);
     let otherwise_tokens = trim_edge_punctuation(&tokens[otherwise_idx + 1..]);
@@ -3123,9 +3122,7 @@ fn parse_entering_object_value_comparison_condition(
             continue;
         }
         let Some((operator, right_tokens)) =
-            crate::grammar::values::parse_value_comparison_tokens(
-                &tokens[comparison_start..],
-            )
+            crate::grammar::values::parse_value_comparison_tokens(&tokens[comparison_start..])
         else {
             continue;
         };
@@ -3157,7 +3154,7 @@ fn parse_filtered_etb_counter_otherwise_count(
     let mut counts = abilities
         .into_iter()
         .filter_map(|ability| match ability.payload {
-            crate::static_abilities::StaticAbilityPayload::EntersWithCountersValue {
+            ironsmith_core::StaticAbilityPayload::EntersWithCountersValue {
                 counter,
                 count,
             } => Some((counter, count)),
@@ -3184,8 +3181,7 @@ pub fn parse_enters_with_additional_counter_for_filter_line(
                 .ok_or_else(|| {
                     CardTextError::ParseError(format!(
                         "unsupported filtered ETB counter branch condition (clause: '{}')",
-                        crate::lexer::token_word_refs(&branches.condition_tokens)
-                            .join(" ")
+                        crate::lexer::token_word_refs(&branches.condition_tokens).join(" ")
                     ))
                 })?;
         let Some(primary) =
@@ -3201,7 +3197,7 @@ pub fn parse_enters_with_additional_counter_for_filter_line(
                 crate::lexer::token_word_refs(&branches.otherwise_tokens).join(" ")
             )));
         };
-        let crate::static_abilities::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
+        let ironsmith_core::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
             filter,
             counter,
             count,
@@ -3291,22 +3287,25 @@ pub fn parse_enters_with_additional_counter_for_filter_line(
     let entry_tokens = where_x_tokens.map_or(tokens, |where_x_tokens| {
         &tokens[..tokens.len().saturating_sub(where_x_tokens.len())]
     });
-    let and_as_idx =
-        crate::lexer::find_token_word_sequence_span(entry_tokens, &["and", "as"])
-            .map(|(idx, _)| idx);
+    let and_as_idx = crate::lexer::find_token_word_sequence_span(entry_tokens, &["and", "as"])
+        .map(|(idx, _)| idx);
     let base_tokens = and_as_idx.map_or(entry_tokens, |idx| &entry_tokens[..idx]);
 
-    let additional_idx =
-        crate::grammar::primitives::locate_token_index(base_tokens, |token| {
-            etb_token_word_is(token, ETB_ADDITIONAL_WORD)
-        })
-        .ok_or_else(|| {
-            CardTextError::ParseError("missing 'additional' keyword for ETB counters".to_string())
-        })?;
+    let additional_idx = crate::grammar::primitives::locate_token_index(base_tokens, |token| {
+        etb_token_word_is(token, ETB_ADDITIONAL_WORD)
+    })
+    .ok_or_else(|| {
+        CardTextError::ParseError("missing 'additional' keyword for ETB counters".to_string())
+    })?;
     let for_each_idx = base_tokens[additional_idx.saturating_add(1)..]
-        .windows(2)
-        .position(|window| {
-            etb_token_word_is(&window[0], "for") && etb_token_word_is(&window[1], "each")
+        .iter()
+        .enumerate()
+        .find_map(|(index, token)| {
+            (etb_token_word_is(token, "for")
+                && base_tokens
+                    .get(additional_idx + index + 2)
+                    .is_some_and(|next| etb_token_word_is(next, "each")))
+            .then_some(index)
         })
         .map(|idx| additional_idx + 1 + idx);
     let count = if let Some(for_each_idx) = for_each_idx {
@@ -3330,6 +3329,17 @@ pub fn parse_enters_with_additional_counter_for_filter_line(
         let value_tokens = trim_commas(base_tokens.get(value_start..).unwrap_or_default());
         parse_value(&value_tokens)
             .map(|(value, _)| value)
+            .or_else(|| {
+                let words = crate::lexer::parser_token_word_refs(&value_tokens);
+                (words.len() >= 2).then(|| match words.last().copied() {
+                    Some("power") => Some(Value::SourcePower),
+                    Some("toughness") => Some(Value::SourceToughness),
+                    Some("value") if words.get(words.len().saturating_sub(2)) == Some(&"mana") => {
+                        Some(Value::ManaValueOf(Box::new(ChooseSpec::Source)))
+                    }
+                    _ => None,
+                })?
+            })
             .ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "unsupported ETB counter count value (clause: '{}')",
@@ -3417,7 +3427,8 @@ fn parse_enters_with_additional_counter_for_each_value(
     if let Some(value) = parse_mana_from_source_spent_to_cast_value(tokens) {
         return Ok(Some(value.with_surface_hint(ValueSurfaceHint::ForEach)));
     }
-    if let Some(value) = crate::grammar::shared_util::value_semantics::parse_turn_history_count_value(tokens)
+    if let Some(value) =
+        crate::grammar::shared_util::value_semantics::parse_turn_history_count_value(tokens)
     {
         return Ok(Some(value.with_surface_hint(ValueSurfaceHint::ForEach)));
     }
@@ -3455,7 +3466,7 @@ mod filtered_turn_history_counter_tests {
     }
 
     fn parsed_count(ability: StaticAbility) -> Value {
-        let crate::static_abilities::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
+        let ironsmith_core::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
             count,
             ..
         } = ability.payload
@@ -3475,7 +3486,7 @@ mod filtered_turn_history_counter_tests {
             crate::lexer::token_word_refs(&tokens)
         );
         let ability = parse_line(text);
-        let crate::static_abilities::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
+        let ironsmith_core::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
             filter,
             counter,
             count,
@@ -3488,12 +3499,11 @@ mod filtered_turn_history_counter_tests {
         };
         assert_eq!(filter.controller, Some(PlayerFilter::You));
         assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
-        assert!(
-            filter
-                .any_of
-                .iter()
-                .any(|branch| { branch.subtypes == vec![Subtype::Vehicle] && branch.other })
-        );
+        assert!(filter.other, "{filter:#?}");
+        assert!(filter
+            .any_of
+            .iter()
+            .any(|branch| branch.subtypes == vec![Subtype::Vehicle]));
         assert!(
             filter
                 .any_of
@@ -3521,11 +3531,7 @@ mod filtered_turn_history_counter_tests {
         let tokens = lex(
             "Each other creature you control enters with a number of additional +1/+1 counters on it equal to Arwen's toughness.",
         );
-        let ability = crate::util::with_card_source_reference_context(
-            "Arwen, Weaver of Hope",
-            &[CardType::Creature],
-            &[Subtype::Elf, Subtype::Noble],
-            || {
+        let ability = (|| {
                 assert!(
                     parse_enters_with_counters_line(&tokens)
                         .expect("self-entry parser should not hard-error")
@@ -3544,9 +3550,8 @@ mod filtered_turn_history_counter_tests {
                 parse_enters_with_additional_counter_for_filter_line(&tokens)
                     .expect("filtered entry parser should not hard-error")
                     .expect("filtered entry replacement should parse")
-            },
-        );
-        let crate::static_abilities::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
+            })();
+        let ironsmith_core::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
             filter,
             count,
             ..
@@ -3581,7 +3586,7 @@ mod filtered_turn_history_counter_tests {
         let ability = parse_line(
             "Other creatures you control enter with an additional +1/+1 counter on them.",
         );
-        let crate::static_abilities::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
+        let ironsmith_core::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
             filter,
             ..
         } = ability.payload
@@ -3802,10 +3807,9 @@ fn parse_snow_mana_of_any_spell_color_spent_to_cast_it_condition(
 }
 
 fn parse_additional_counter_count_from_tokens(tokens: &[OwnedLexToken]) -> Value {
-    let additional_idx =
-        crate::grammar::primitives::locate_token_index(tokens, |token| {
-            etb_token_word_is(token, ETB_ADDITIONAL_WORD)
-        });
+    let additional_idx = crate::grammar::primitives::locate_token_index(tokens, |token| {
+        etb_token_word_is(token, ETB_ADDITIONAL_WORD)
+    });
     let Some(additional_idx) = additional_idx else {
         return Value::Fixed(1);
     };

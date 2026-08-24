@@ -1,27 +1,29 @@
 #[cfg(test)]
 use crate::PtValue;
-use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
-use crate::alternative_cast::AlternativeCastingMethod;
+use crate::ability::ActivationTiming;
 use crate::cards::TextSpan;
-#[cfg(test)]
-use crate::cards::builders::PlayerAst;
 use crate::cards::builders::{
     ADDITIONAL_COST_OBJECT_TAG, AdditionalCostChoiceOptionAst, CardTextError, KeywordAction,
-    ParsedAbility, ReferenceImports, TargetAst,
+    ParsedAbility, PlayerAst, ReferenceImports, SubjectVerbActionAst, SubjectVerbRoleAst,
+    TargetAst,
 };
-use crate::cost::OptionalCost;
 use crate::cost::TotalCost;
 use crate::costs::Cost;
 use crate::effect::{Effect, Value};
 use crate::filter::AlternativeCastKind;
 use crate::mana::{ManaCost, ManaSymbol};
+use crate::model::CompilerAlternativeCastingMethod as AlternativeCastingMethod;
+use crate::model::CompilerOptionalCost as OptionalCost;
+use crate::model::CompilerStaticAbilityCore as StaticAbility;
+use crate::model::compiler_semantic::{
+    CompilerAbilityCore as Ability, CompilerAbilityKindCore as AbilityKind,
+    CompilerActivatedAbilityCore as ActivatedAbility,
+};
 use crate::object::CounterType;
-use crate::static_abilities::StaticAbility;
 #[cfg(test)]
 use crate::target::TaggedOpbjectRelation;
 use crate::target::{
-    ChooseSpec, ChooseSpecSurfaceHint, ObjectFilter, PlayerFilter, SacrificedObjectKind,
-    SourceReferenceSurface,
+    ChooseSpec, ChooseSpecSurfaceHint, ObjectFilter, PlayerFilter, SourceReferenceSurface,
 };
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
@@ -66,59 +68,6 @@ const DISCARD_COST_TAG_PREFIX: &str = "discard_cost_";
 const DISCARDED_COST_TAG: &str = "discarded_cost";
 #[cfg(test)]
 type SourceReferenceAlias = leaf::LeafSourceReferenceAlias;
-/// Run a nested parse with only the card's proper-name aliases installed.
-///
-/// Most full-card parsing should use `with_card_source_reference_context`,
-/// which also makes `this creature`, `this enchantment`, and similar type
-/// surfaces the preferred self-reference. Quoted abilities granted to an
-/// attached object are different: an explicit proper name still denotes the
-/// granting card, while a typed `this ...` reference denotes the object that
-/// receives the ability. The attached-grant parser uses this name-only context
-/// to preserve that authored distinction.
-pub fn with_source_reference_context<T>(_card_name: &str, f: impl FnOnce() -> T) -> T {
-    f()
-}
-
-pub fn with_card_source_reference_context<T>(
-    _card_name: &str,
-    _card_types: &[CardType],
-    _subtypes: &[Subtype],
-    f: impl FnOnce() -> T,
-) -> T {
-    f()
-}
-
-pub fn with_token_source_reference_context<T>(
-    _token_name: &str,
-    _card_types: &[CardType],
-    _subtypes: &[Subtype],
-    f: impl FnOnce() -> T,
-) -> T {
-    f()
-}
-
-pub fn current_source_reference_name() -> Option<String> {
-    None
-}
-
-pub fn preferred_source_reference_self_surface() -> Option<SourceReferenceSurface> {
-    None
-}
-
-pub fn source_reference_surface_for_span(
-    _span: Option<TextSpan>,
-) -> Option<SourceReferenceSurface> {
-    None
-}
-
-pub fn record_source_reference_surface(_span: Option<TextSpan>, _surface: SourceReferenceSurface) {}
-
-pub fn sacrificed_object_kind_for_span(_span: Option<TextSpan>) -> Option<SacrificedObjectKind> {
-    None
-}
-
-pub fn record_sacrificed_object_kind(_span: Option<TextSpan>, _kind: SacrificedObjectKind) {}
-
 #[cfg(test)]
 fn source_reference_aliases_for_name(name: &str) -> Vec<SourceReferenceAlias> {
     leaf::parse_leaf_source_reference_aliases_for_name(name)
@@ -151,10 +100,173 @@ pub fn source_reference_surface_for_words(words: &[&str]) -> Option<SourceRefere
     leaf::parse_leaf_this_source_reference_words(words)
 }
 
+pub fn source_reference_surface_for_words_with_context(
+    context: crate::parse_context::ParseContextView<'_>,
+    words: &[&str],
+) -> Option<SourceReferenceSurface> {
+    if let Some(SourceReferenceSurface::ThisPermanentType(surface)) =
+        source_reference_surface_for_words(words)
+    {
+        let noun = surface.strip_prefix("this ")?;
+        if let Some(card_type) = context
+            .card()
+            .card_types
+            .iter()
+            .find(|card_type| card_type.to_string().eq_ignore_ascii_case(noun))
+        {
+            return Some(SourceReferenceSurface::ThisPermanentType(format!(
+                "this {card_type}"
+            )));
+        }
+        if let Some(subtype) = context
+            .card()
+            .subtypes
+            .iter()
+            .find(|subtype| subtype.to_string().eq_ignore_ascii_case(noun))
+        {
+            return Some(SourceReferenceSurface::ThisPermanentType(format!(
+                "this {subtype}"
+            )));
+        }
+        let generic_matches_source =
+            matches!(noun, "card" | "object" | "source" | "token")
+                || (noun == "permanent"
+                    && context
+                        .card()
+                        .card_types
+                        .iter()
+                        .copied()
+                        .any(is_permanent_type))
+                || (noun == "spell"
+                    && context.card().card_types.iter().any(|card_type| {
+                        matches!(card_type, CardType::Instant | CardType::Sorcery)
+                    }));
+        if generic_matches_source {
+            return Some(SourceReferenceSurface::ThisPermanentType(surface));
+        }
+    }
+
+    let aliases = leaf::parse_leaf_source_reference_aliases_for_name(&context.source().card_name);
+    leaf::parse_leaf_source_reference_alias_words(&aliases, words)
+}
+
+/// Return the authored proper-name surface when a token program contains an
+/// alias for the source identified by the explicit parse context.
+///
+/// Callers use this before normalizing a proper name to `this <type>`, then
+/// attach the returned surface to the typed source reference produced by the
+/// normalized parse. This keeps provenance in the AST instead of relying on
+/// process-local span sidecars.
+pub fn authored_named_source_reference_surface(
+    context: crate::parse_context::ParseContextView<'_>,
+    tokens: &[OwnedLexToken],
+) -> Option<SourceReferenceSurface> {
+    let words = super::lexer::parser_token_word_refs(tokens);
+    let aliases = leaf::parse_leaf_source_reference_aliases_for_name(&context.source().card_name);
+    for start in 0..words.len() {
+        for alias in &aliases {
+            let end = start.checked_add(alias.words.len())?;
+            if end > words.len() {
+                continue;
+            }
+            if let Some(surface) =
+                leaf::parse_leaf_source_reference_alias_words(&aliases, &words[start..end])
+            {
+                return Some(surface);
+            }
+        }
+    }
+    None
+}
+
+fn contextual_this_source_words(
+    context: crate::parse_context::ParseContextView<'_>,
+) -> [&'static str; 2] {
+    let noun = if context.card().card_types.contains(&CardType::Creature) {
+        "creature"
+    } else if context.card().card_types.contains(&CardType::Land) {
+        "land"
+    } else if context.card().card_types.contains(&CardType::Artifact) {
+        "artifact"
+    } else if context.card().card_types.contains(&CardType::Enchantment) {
+        "enchantment"
+    } else if context.card().card_types.contains(&CardType::Planeswalker) {
+        "planeswalker"
+    } else if context.card().card_types.contains(&CardType::Battle) {
+        "battle"
+    } else {
+        "permanent"
+    };
+    ["this", noun]
+}
+
+/// Normalize only a grammar-proven leading proper-name subject.
+///
+/// A card's short name can also be an ordinary rules word (for example,
+/// `Excess`). Rewriting every matching token in a sentence corrupts later
+/// operands such as "damage equal to the excess". Requiring the alias at the
+/// subject boundary and a recognized following effect verb avoids that class
+/// of accidental replacement while retaining typed source parsing.
+pub fn normalize_leading_named_source_reference_tokens_with_context(
+    context: crate::parse_context::ParseContextView<'_>,
+    tokens: &[OwnedLexToken],
+) -> Vec<OwnedLexToken> {
+    let view = super::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let aliases = leaf::parse_leaf_source_reference_aliases_for_name(&context.source().card_name);
+    for alias in &aliases {
+        if alias.words.len() > words.len()
+            || !words[..alias.words.len()]
+                .iter()
+                .zip(&alias.words)
+                .all(|(actual, expected)| actual.eq_ignore_ascii_case(expected))
+        {
+            continue;
+        }
+        let Some(alias_token_end) = view.token_index_after_words(alias.words.len()) else {
+            continue;
+        };
+        if crate::effect_sentences::find_verb(&tokens[alias_token_end..]).is_none() {
+            continue;
+        }
+        let Some(first) = tokens.first() else {
+            return tokens.to_vec();
+        };
+        let Some(last) = tokens.get(alias_token_end.saturating_sub(1)) else {
+            return tokens.to_vec();
+        };
+        let span = TextSpan {
+            line: first.span.line,
+            start: first.span.start,
+            end: last.span.end,
+        };
+        let mut normalized = Vec::with_capacity(tokens.len() - alias_token_end + 2);
+        for word in contextual_this_source_words(context) {
+            normalized.push(OwnedLexToken::word(word, span));
+        }
+        normalized.extend_from_slice(&tokens[alias_token_end..]);
+        return normalized;
+    }
+    tokens.to_vec()
+}
+
 pub fn source_reference_surface_for_possessive_words(
     words: &[&str],
 ) -> Option<SourceReferenceSurface> {
-    leaf::parse_leaf_this_source_reference_words(words)
+    let normalized = possessive_normalized_word_refs(words);
+    leaf::parse_leaf_this_source_reference_words(&normalized)
+}
+
+pub fn source_reference_surface_for_possessive_words_with_context(
+    context: crate::parse_context::ParseContextView<'_>,
+    words: &[&str],
+) -> Option<SourceReferenceSurface> {
+    let normalized = possessive_normalized_word_refs(words);
+    source_reference_surface_for_possessive_words(&normalized).or_else(|| {
+        let aliases =
+            leaf::parse_leaf_source_reference_aliases_for_name(&context.source().card_name);
+        leaf::parse_leaf_source_reference_possessive_alias_words(&aliases, words)
+    })
 }
 
 pub fn source_choose_spec_for_surface(surface: SourceReferenceSurface) -> ChooseSpec {
@@ -300,81 +412,127 @@ pub fn classify_instead_followup_tokens(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum ActivationCostObjectReference {
+enum CompilerActivationCostObjectReference {
     Tagged(TagKey),
     Source,
 }
 
-fn is_activation_cost_object_tag(tag: &TagKey) -> bool {
-    [
-        SACRIFICE_COST_TAG_PREFIX,
-        EXILE_COST_TAG_PREFIX,
-        UNATTACH_COST_TAG_PREFIX,
-        TAP_COST_TAG_PREFIX,
-        RETURN_COST_TAG_PREFIX,
-        DISCARD_COST_TAG_PREFIX,
-    ]
-    .iter()
-    .any(|prefix| tag_has_prefix(tag, prefix))
-        || tag.as_str() == DISCARDED_COST_TAG
+#[derive(Default)]
+struct CompilerActivationCostTagCounters {
+    tap: usize,
+    discard: usize,
+    sacrifice: usize,
+    exile: usize,
+    return_to_hand: usize,
 }
 
-fn activation_cost_effect_object_reference(
-    effect: &Effect,
-) -> Option<ActivationCostObjectReference> {
-    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>()
-        && is_activation_cost_object_tag(&tagged.tag)
-    {
-        return Some(ActivationCostObjectReference::Tagged(tagged.tag.clone()));
-    }
-    if let Some(discard) = effect.downcast_ref::<crate::effects::DiscardEffect>()
-        && let Some(tag) = discard.tag.as_ref()
-    {
-        return Some(ActivationCostObjectReference::Tagged(tag.clone()));
-    }
-    if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
-        && is_activation_cost_object_tag(&choose.tag)
-    {
-        return Some(ActivationCostObjectReference::Tagged(choose.tag.clone()));
-    }
-    if effect
-        .downcast_ref::<crate::effects::TapEffect>()
-        .is_some_and(|tap| matches!(tap.target.base(), ChooseSpec::Source))
-        || effect
-            .downcast_ref::<crate::effects::UntapEffect>()
-            .is_some_and(|untap| matches!(untap.target.base(), ChooseSpec::Source))
-    {
-        return Some(ActivationCostObjectReference::Source);
-    }
-    None
-}
+fn compiler_activation_cost_component_reference(
+    component: &crate::model::CompilerCost,
+    counters: &mut CompilerActivationCostTagCounters,
+) -> Option<CompilerActivationCostObjectReference> {
+    use crate::model::CompilerCost;
 
-fn activation_cost_component_object_reference(
-    cost: &crate::costs::Cost,
-) -> Option<ActivationCostObjectReference> {
-    match cost {
-        crate::costs::Cost::Tap
-        | crate::costs::Cost::Untap
-        | crate::costs::Cost::DiscardSource
-        | crate::costs::Cost::SacrificeSelf
-        | crate::costs::Cost::ExileSelf
-        | crate::costs::Cost::ReturnSelfToHand => Some(ActivationCostObjectReference::Source),
-        crate::costs::Cost::Discard { .. } => Some(ActivationCostObjectReference::Tagged(
-            TagKey::from(DISCARDED_COST_TAG),
-        )),
-        crate::costs::Cost::Effect(effect) => activation_cost_effect_object_reference(effect),
+    match component {
+        CompilerCost::Tap
+        | CompilerCost::Untap
+        | CompilerCost::DiscardSource
+        | CompilerCost::SacrificeSelf { .. }
+        | CompilerCost::ExileSelf { .. }
+        | CompilerCost::ReturnSelfToHand => Some(CompilerActivationCostObjectReference::Source),
+        CompilerCost::TapChosen { .. } => {
+            let tag = TagKey::from(format!("{TAP_COST_TAG_PREFIX}{}", counters.tap));
+            counters.tap += 1;
+            Some(CompilerActivationCostObjectReference::Tagged(tag))
+        }
+        CompilerCost::Blight { .. } => {
+            // Cost materialization shares the tap counter with its private
+            // `blight_cost_*` tag, so retain the index even though that tag is
+            // not an ordinary activation-cost antecedent.
+            counters.tap += 1;
+            None
+        }
+        CompilerCost::Discard {
+            supertypes,
+            filter,
+            random,
+            name,
+            other,
+            ..
+        } => {
+            if *random || name.is_some() || *other || filter.is_some() || !supertypes.is_empty() {
+                let tag = TagKey::from(format!("{DISCARD_COST_TAG_PREFIX}{}", counters.discard));
+                counters.discard += 1;
+                Some(CompilerActivationCostObjectReference::Tagged(tag))
+            } else {
+                Some(CompilerActivationCostObjectReference::Tagged(TagKey::from(
+                    DISCARDED_COST_TAG,
+                )))
+            }
+        }
+        CompilerCost::Sacrifice { .. } => {
+            let tag = TagKey::from(format!("{SACRIFICE_COST_TAG_PREFIX}{}", counters.sacrifice));
+            counters.sacrifice += 1;
+            Some(CompilerActivationCostObjectReference::Tagged(tag))
+        }
+        CompilerCost::Unattach { .. } => {
+            let tag = TagKey::from(format!(
+                "{UNATTACH_COST_TAG_PREFIX}{}",
+                counters.return_to_hand
+            ));
+            counters.return_to_hand += 1;
+            Some(CompilerActivationCostObjectReference::Tagged(tag))
+        }
+        CompilerCost::ExileChosen { .. } => {
+            let tag = TagKey::from(format!("{EXILE_COST_TAG_PREFIX}{}", counters.exile));
+            counters.exile += 1;
+            Some(CompilerActivationCostObjectReference::Tagged(tag))
+        }
+        CompilerCost::ExileSourceAndChosen { .. } => {
+            // Materialization emits one source choice followed by the paid
+            // object choice. The latter is the authored antecedent.
+            counters.exile += 1;
+            let tag = TagKey::from(format!("{EXILE_COST_TAG_PREFIX}{}", counters.exile));
+            counters.exile += 1;
+            Some(CompilerActivationCostObjectReference::Tagged(tag))
+        }
+        CompilerCost::ExileSelfAndNamedArtifacts { names } => {
+            let mut reference = Some(CompilerActivationCostObjectReference::Source);
+            for _ in names {
+                let tag = TagKey::from(format!("{EXILE_COST_TAG_PREFIX}{}", counters.exile));
+                counters.exile += 1;
+                reference = Some(CompilerActivationCostObjectReference::Tagged(tag));
+            }
+            reference
+        }
+        CompilerCost::ReturnChosenToHand { .. } => {
+            let tag = TagKey::from(format!(
+                "{RETURN_COST_TAG_PREFIX}{}",
+                counters.return_to_hand
+            ));
+            counters.return_to_hand += 1;
+            Some(CompilerActivationCostObjectReference::Tagged(tag))
+        }
         _ => None,
     }
 }
 
-fn activation_cost_object_reference(cost: &TotalCost) -> Option<ActivationCostObjectReference> {
+fn compiler_activation_cost_object_reference(
+    cost: &ironsmith_core::TotalCost<crate::model::CompilerCost>,
+) -> Option<CompilerActivationCostObjectReference> {
     match cost.kind() {
-        ironsmith_core::TotalCostKind::All(costs) => costs
-            .iter()
-            .filter_map(activation_cost_component_object_reference)
-            .next_back(),
+        ironsmith_core::TotalCostKind::All(components) => {
+            let mut counters = CompilerActivationCostTagCounters::default();
+            components
+                .iter()
+                .filter_map(|component| {
+                    compiler_activation_cost_component_reference(component, &mut counters)
+                })
+                .next_back()
+        }
         ironsmith_core::TotalCostKind::OneOf(branches) => {
-            let mut references = branches.iter().map(activation_cost_object_reference);
+            let mut references = branches
+                .iter()
+                .map(compiler_activation_cost_object_reference);
             let first = references.next()??;
             references
                 .all(|reference| reference.as_ref() == Some(&first))
@@ -383,17 +541,20 @@ fn activation_cost_object_reference(cost: &TotalCost) -> Option<ActivationCostOb
     }
 }
 
-/// Seed resolution references from the last object-bearing activation cost.
+/// Seed resolution references from the last object-bearing compiler-owned
+/// activation cost.
 ///
-/// Cost choices run before an activated ability is put on the stack, so an
-/// object mentioned by the effect must use the snapshot captured while paying
-/// the cost. Source costs use the stack entry's source LKI instead of inventing
-/// a global `it` binding.
-pub fn activation_cost_reference_imports(cost: &TotalCost) -> ReferenceImports {
-    match activation_cost_object_reference(cost) {
-        Some(ActivationCostObjectReference::Tagged(tag)) => {
+/// Cost choices execute before the resolution program and export stable tags.
+/// Derive those tags from the same component order used by cost
+/// materialization so the semantic front end never has to lower back into a
+/// runtime cost merely to recover an antecedent.
+pub fn compiler_activation_cost_reference_imports(
+    cost: &ironsmith_core::TotalCost<crate::model::CompilerCost>,
+) -> ReferenceImports {
+    match compiler_activation_cost_object_reference(cost) {
+        Some(CompilerActivationCostObjectReference::Tagged(tag)) => {
             let mut imports = ReferenceImports::with_last_object_tag(tag.clone());
-            if tag.as_str().starts_with("sacrifice_cost_") {
+            if tag_has_prefix(&tag, SACRIFICE_COST_TAG_PREFIX) {
                 imports.snapshot_tag_aliases.push((
                     ADDITIONAL_COST_OBJECT_TAG.to_string(),
                     tag.as_str().to_string(),
@@ -401,7 +562,7 @@ pub fn activation_cost_reference_imports(cost: &TotalCost) -> ReferenceImports {
             }
             imports
         }
-        Some(ActivationCostObjectReference::Source) => ReferenceImports {
+        Some(CompilerActivationCostObjectReference::Source) => ReferenceImports {
             source_object_antecedent: true,
             ..Default::default()
         },
@@ -782,11 +943,14 @@ pub fn parse_filter_keyword_constraint_list_words(
 /// keyword is sufficient in that case; otherwise require at least two parsed
 /// keywords to distinguish a serial list from an independent keyword action.
 pub fn starts_filter_keyword_list_continuation_words(words: &[&str]) -> bool {
-    let (has_leading_connective, keyword_words) = match words {
-        ["and", "or", rest @ ..] => (true, rest),
-        ["and" | "or" | "and/or", rest @ ..] => (true, rest),
-        _ => (false, words),
-    };
+    let (has_leading_connective, keyword_words) =
+        if crate::word_primitives::parse_sequence_prefix(words, &["and", "or"]) {
+            (true, &words[2..])
+        } else if crate::word_primitives::first_is_any(words, &["and", "or", "and/or"]) {
+            (true, &words[1..])
+        } else {
+            (false, words)
+        };
     let Some((constraints, _, _consumed)) =
         parse_filter_keyword_constraint_list_words(keyword_words)
     else {
@@ -1126,9 +1290,14 @@ mod tests {
     #[test]
     fn parse_target_phrase_recognizes_source_name_with_internal_article() {
         let tokens = lex_line("Kraven the Hunter", 0).unwrap();
-        let target = with_source_reference_context("Kraven the Hunter", || {
-            parse_target_phrase(&tokens).expect("source name with internal article should parse")
-        });
+        let context = crate::parse_context::ParseContext::for_fragment(
+            "Kraven the Hunter",
+            Vec::new(),
+            Vec::new(),
+            "Kraven the Hunter",
+        );
+        let target = parse_target_phrase_with_context(context.view(), &tokens)
+            .expect("source name with internal article should parse");
 
         assert!(
             matches!(target, TargetAst::Source(_))
@@ -1530,9 +1699,10 @@ mod tests {
         assert!(eternalize_with_additional_cost.costs().iter().any(|cost| {
             matches!(
                 cost,
-                crate::costs::Cost::Discard {
+                crate::model::CompilerCost::Discard {
                     count: 1,
-                    card_types
+                    card_types,
+                    ..
                 } if card_types.is_empty()
             )
         }));
@@ -1661,45 +1831,50 @@ pub fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTe
     // Preserve this exact target envelope before the generic target-head
     // parser can expose that verb as a second effect clause.
     let historical_words = crate::lexer::token_word_refs(tokens);
-    if matches!(
-        historical_words.as_slice(),
-        [
-            "up",
-            "to",
-            "three" | "3",
-            "target",
-            "permanent",
-            "cards",
-            "in",
-            "graveyards",
-            "that",
-            "were",
-            "put",
-            "there",
-            "from",
-            "the",
-            "battlefield",
-            "this",
-            "turn"
-        ] | [
-            "up",
-            "to",
-            "three" | "3",
-            "target",
-            "permanent",
-            "cards",
-            "in",
-            "graveyards",
-            "that",
-            "were",
-            "put",
-            "there",
-            "from",
-            "battlefield",
-            "this",
-            "turn"
-        ]
-    ) {
+    let historical_with_article = crate::word_primitives::parse_choice_sequence_complete(
+        &historical_words,
+        &[
+            &["up"],
+            &["to"],
+            &["three", "3"],
+            &["target"],
+            &["permanent"],
+            &["cards"],
+            &["in"],
+            &["graveyards"],
+            &["that"],
+            &["were"],
+            &["put"],
+            &["there"],
+            &["from"],
+            &["the"],
+            &["battlefield"],
+            &["this"],
+            &["turn"],
+        ],
+    );
+    let historical_without_article = crate::word_primitives::parse_choice_sequence_complete(
+        &historical_words,
+        &[
+            &["up"],
+            &["to"],
+            &["three", "3"],
+            &["target"],
+            &["permanent"],
+            &["cards"],
+            &["in"],
+            &["graveyards"],
+            &["that"],
+            &["were"],
+            &["put"],
+            &["there"],
+            &["from"],
+            &["battlefield"],
+            &["this"],
+            &["turn"],
+        ],
+    );
+    if historical_with_article || historical_without_article {
         let mut filter = ObjectFilter::permanent_card().in_zone(Zone::Graveyard);
         filter.entered_graveyard_this_turn = true;
         filter.entered_graveyard_from_battlefield_this_turn = true;
@@ -1739,6 +1914,8 @@ pub fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTe
             for candidate in envelope.recovery_candidates {
                 if let Ok(mut target) = parse_target_phrase_inner(candidate.tokens) {
                     restore_distinct_combat_damage_controller_target(&mut target, tokens);
+                    restore_drafted_color_qualifier_target(&mut target, tokens);
+                    restore_authored_named_filter_target(&mut target, tokens);
                     return Ok(with_leading_object_set_quantifier(
                         target,
                         leading_set_quantifier,
@@ -1749,10 +1926,91 @@ pub fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTe
         }
     };
     restore_distinct_combat_damage_controller_target(&mut target, tokens);
+    restore_drafted_color_qualifier_target(&mut target, tokens);
+    restore_authored_named_filter_target(&mut target, tokens);
     Ok(with_leading_object_set_quantifier(
         target,
         leading_set_quantifier,
     ))
+}
+
+fn restore_drafted_color_qualifier_target(target: &mut TargetAst, tokens: &[OwnedLexToken]) {
+    let Some((_, card_name)) = super::object_filters::split_drafted_color_qualifier_tokens(tokens)
+    else {
+        return;
+    };
+
+    fn apply(target: &mut TargetAst, card_name: &str) {
+        match target {
+            TargetAst::Object(filter, ..) | TargetAst::ObjectOrPlayer(filter, ..) => {
+                filter.colors_chosen_while_drafting_named = Some(card_name.to_string());
+                filter.name = None;
+            }
+            TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) => {
+                apply(inner, card_name);
+            }
+            _ => {}
+        }
+    }
+
+    apply(target, &card_name);
+}
+
+fn restore_authored_named_filter_target(target: &mut TargetAst, tokens: &[OwnedLexToken]) {
+    if super::object_filters::split_drafted_color_qualifier_tokens(tokens).is_some() {
+        return;
+    }
+    let Some(named_index) =
+        crate::slice_primitives::select_position(tokens, |token| token.is_word("named"))
+    else {
+        return;
+    };
+    let authored_name = render_token_slice(&tokens[named_index + 1..])
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    if authored_name.is_empty() {
+        return;
+    }
+
+    fn apply(target: &mut TargetAst, authored_name: &str) {
+        match target {
+            TargetAst::Object(filter, ..) | TargetAst::ObjectOrPlayer(filter, ..)
+                if filter.name.is_some() =>
+            {
+                filter.name = Some(authored_name.to_string());
+            }
+            TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) => {
+                apply(inner, authored_name);
+            }
+            _ => {}
+        }
+    }
+
+    apply(target, &authored_name);
+}
+
+pub fn normalize_source_reference_tokens_with_context(
+    context: crate::parse_context::ParseContextView<'_>,
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<OwnedLexToken>, CardTextError> {
+    let authored = render_token_slice(tokens);
+    let Some(normalized) = crate::document_parser::normalize_named_source_sentence_with_context(
+        context,
+        authored.as_str(),
+    ) else {
+        return Ok(tokens.to_vec());
+    };
+    let line = tokens.first().map_or(0, |token| token.span.line);
+    super::lexer::lex_line(normalized.as_str(), line)
+}
+
+pub fn parse_target_phrase_with_context(
+    context: crate::parse_context::ParseContextView<'_>,
+    tokens: &[OwnedLexToken],
+) -> Result<TargetAst, CardTextError> {
+    let normalized = normalize_source_reference_tokens_with_context(context, tokens)?;
+    parse_target_phrase(&normalized)
 }
 
 fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
@@ -1787,9 +2045,15 @@ pub fn parse_level_up_line(
     Ok(Some(ParsedAbility {
         ability: Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
-                mana_cost: TotalCost::mana(mana_cost),
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    Effect::put_counters_on_source(CounterType::Level, 1),
+                mana_cost: ironsmith_core::TotalCost::<crate::model::CompilerCost>::mana(mana_cost),
+                effects: ironsmith_core::ResolutionProgram::from_effects(vec![
+                    crate::cards::builders::EffectAst::subject_verb_put_counters(
+                        CounterType::Level,
+                        Value::Fixed(1),
+                        TargetAst::Source(None),
+                        None,
+                        false,
+                    ),
                 ]),
                 choices: vec![],
                 timing: ActivationTiming::SorcerySpeed,
@@ -1909,7 +2173,12 @@ pub fn parse_bargain_line(tokens: &[OwnedLexToken]) -> Result<Option<OptionalCos
 
     Ok(Some(OptionalCost::custom(
         "Bargain",
-        TotalCost::from_cost(Cost::sacrifice(filter)),
+        ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::Sacrifice {
+            count: crate::effect::ChoiceCount::exactly(1),
+            filter,
+            all: false,
+            binding: None,
+        }),
     )))
 }
 
@@ -1922,7 +2191,7 @@ pub fn parse_bargain_line_lexed(
 pub fn parse_optional_cost_keyword_line(
     tokens: &[OwnedLexToken],
     keyword: &str,
-    constructor: fn(TotalCost) -> OptionalCost,
+    constructor: fn(ironsmith_core::TotalCost<crate::model::CompilerCost>) -> OptionalCost,
 ) -> Result<Option<OptionalCost>, CardTextError> {
     keyword_cost_lines::parse_optional_cost(tokens, keyword, constructor)
 }
@@ -2007,7 +2276,13 @@ pub fn parse_entwine_line_lexed(
 
 pub fn parse_escalate_line_lexed(
     tokens: &[OwnedLexToken],
-) -> Result<Option<(TotalCost, String)>, CardTextError> {
+) -> Result<
+    Option<(
+        ironsmith_core::TotalCost<crate::model::CompilerCost>,
+        String,
+    )>,
+    CardTextError,
+> {
     let Some(fact) =
         keyword_line_facts::parse_named_cost_line_tokens(tokens, NamedCostKeyword::Escalate)
     else {
@@ -2016,7 +2291,8 @@ pub fn parse_escalate_line_lexed(
     if fact.cost_tokens.is_empty() {
         return Ok(None);
     }
-    let total_cost = parse_activation_cost(fact.cost_tokens)?;
+    let total_cost =
+        crate::activation_and_restrictions::parse_compiler_activation_cost(fact.cost_tokens)?;
     let display = render_token_slice(fact.cost_tokens).trim().to_string();
     Ok(Some((total_cost, display)))
 }
@@ -2067,7 +2343,7 @@ pub fn parse_prowl_line_lexed(
 
 pub fn parse_eternalize_line_lexed(
     tokens: &[OwnedLexToken],
-) -> Result<Option<TotalCost>, CardTextError> {
+) -> Result<Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>, CardTextError> {
     let Some(fact) =
         keyword_line_facts::parse_named_cost_line_tokens(tokens, NamedCostKeyword::Eternalize)
     else {
@@ -2158,7 +2434,7 @@ pub fn parse_flashback_line(
 /// both halves here before that fallback runs.
 fn parse_leading_mana_and_payment_total_cost(
     tokens: &[OwnedLexToken],
-) -> Result<Option<TotalCost>, CardTextError> {
+) -> Result<Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>, CardTextError> {
     let Some((mana, consumed)) = leading_mana_cost_from_tokens(tokens) else {
         return Ok(None);
     };
@@ -2178,9 +2454,9 @@ fn parse_leading_mana_and_payment_total_cost(
         return Ok(None);
     }
     let mut costs = Vec::with_capacity(nonmana_costs.len() + 1);
-    costs.push(Cost::mana(mana));
+    costs.push(crate::model::CompilerCost::Mana(mana));
     costs.extend(nonmana_costs.iter().cloned());
-    Ok(Some(TotalCost::from_costs(costs)))
+    Ok(Some(ironsmith_core::TotalCost::from_costs(costs)))
 }
 
 #[cfg(test)]
@@ -2205,7 +2481,7 @@ mod mixed_flashback_cost_tests {
             "{R}{R}"
         );
         let debug = format!("{:#?}", total_cost.non_mana_costs().collect::<Vec<_>>());
-        assert!(debug.contains("DiscardEffect"), "{debug}");
+        assert!(debug.contains("action: Discard"), "{debug}");
         assert!(debug.contains("count: X"), "{debug}");
     }
 }
@@ -2224,7 +2500,16 @@ pub fn parse_retrace_line(
     }
 
     Ok(Some(AlternativeCastingMethod::Retrace {
-        total_cost: TotalCost::from_cost(Cost::discard(1, Some(CardType::Land))),
+        total_cost: ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::Discard {
+            count: 1,
+            card_types: vec![CardType::Land],
+            supertypes: Vec::new(),
+            filter: None,
+            random: false,
+            name: None,
+            other: false,
+            binding: None,
+        }),
     }))
 }
 
@@ -2374,26 +2659,32 @@ pub fn parse_reinforce_line(
             words_all.join(" ")
         )));
     };
-    let base_cost = TotalCost::mana(base_mana_cost.clone());
+    let base_cost =
+        ironsmith_core::TotalCost::<crate::model::CompilerCost>::mana(base_mana_cost.clone());
     let mut merged_costs = base_cost.costs().to_vec();
-    merged_costs.push(crate::costs::Cost::discard_source());
-    let mana_cost = crate::cost::TotalCost::from_costs(merged_costs);
+    merged_costs.push(crate::model::CompilerCost::DiscardSource);
+    let mana_cost = ironsmith_core::TotalCost::from_costs(merged_costs);
 
     let mut creature_filter = ObjectFilter::default();
     creature_filter.zone = Some(Zone::Battlefield);
     creature_filter.card_types.push(CardType::Creature);
 
-    let target = ChooseSpec::target(ChooseSpec::Object(creature_filter));
-    let effect = Effect::put_counters(CounterType::PlusOnePlusOne, amount, target);
+    let effect = crate::cards::builders::EffectAst::subject_verb_put_counters(
+        CounterType::PlusOnePlusOne,
+        Value::Fixed(amount),
+        TargetAst::Object(creature_filter, None, None),
+        None,
+        false,
+    );
 
     let cost_text = base_mana_cost.to_oracle();
     let render_text = format!("Reinforce {amount} {cost_text}");
 
     Ok(Some(ParsedAbility {
         ability: Ability {
-            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+            kind: AbilityKind::Activated(ActivatedAbility {
                 mana_cost,
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![effect]),
+                effects: ironsmith_core::ResolutionProgram::from_effects(vec![effect]),
                 choices: Vec::new(),
                 timing: ActivationTiming::AnyTime,
                 additional_restrictions: vec![],

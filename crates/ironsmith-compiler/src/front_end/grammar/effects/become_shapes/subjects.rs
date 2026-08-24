@@ -80,6 +80,26 @@ pub fn parse_become_target_subject_shape<'a>(
     target_tokens: &'a [OwnedLexToken],
     body_tokens: &[OwnedLexToken],
 ) -> BecomeTargetSubjectShape<'a> {
+    parse_become_target_subject_shape_with_optional_context(None, target_tokens, body_tokens)
+}
+
+pub fn parse_become_target_subject_shape_with_context<'a>(
+    context: crate::parse_context::ParseContextView<'_>,
+    target_tokens: &'a [OwnedLexToken],
+    body_tokens: &[OwnedLexToken],
+) -> BecomeTargetSubjectShape<'a> {
+    parse_become_target_subject_shape_with_optional_context(
+        Some(context),
+        target_tokens,
+        body_tokens,
+    )
+}
+
+fn parse_become_target_subject_shape_with_optional_context<'a>(
+    context: Option<crate::parse_context::ParseContextView<'_>>,
+    target_tokens: &'a [OwnedLexToken],
+    body_tokens: &[OwnedLexToken],
+) -> BecomeTargetSubjectShape<'a> {
     let target_tokens = trim_lexed_commas(target_tokens);
     let target_words = parser_token_word_refs(target_tokens);
     let body_words = parser_token_word_refs(body_tokens);
@@ -117,7 +137,11 @@ pub fn parse_become_target_subject_shape<'a>(
     {
         return BecomeTargetSubjectShape::FilteredMany(filter_tokens);
     }
-    if let Some(surface) = source_reference_surface_for_words(&target_words)
+    if let Some(surface) = context
+        .and_then(|context| {
+            crate::util::source_reference_surface_for_words_with_context(context, &target_words)
+        })
+        .or_else(|| source_reference_surface_for_words(&target_words))
         .or_else(|| this_source_surface_for_words(&target_words))
     {
         return BecomeTargetSubjectShape::Source(surface);
@@ -158,51 +182,5 @@ pub fn aura_subject_prefers_source(tokens: &[OwnedLexToken]) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::lexer::lex_line;
-
-    use super::*;
-
-    fn lex(text: &str) -> Vec<OwnedLexToken> {
-        lex_line(text, 0).expect("lex fixture")
-    }
-
-    #[test]
-    fn classifies_typed_target_subjects_and_duration_recovery() {
-        let subject = lex("all");
-        let body = lex("blue");
-        assert!(matches!(
-            parse_become_target_subject_shape(&subject, &body),
-            BecomeTargetSubjectShape::Mass(BecomeMassTargetKind::Creature)
-        ));
-
-        let tagged = lex("each of those creatures");
-        assert!(matches!(
-            parse_become_target_subject_shape(&tagged, &body),
-            BecomeTargetSubjectShape::Tagged
-        ));
-        assert_eq!(
-            become_subject_set_quantifier_surface(&lex("they")),
-            Some(ironsmith_core::SetQuantifierSurface::They)
-        );
-        assert_eq!(become_subject_set_quantifier_surface(&lex("it")), None);
-
-        let duration = lex("until end of turn, target artifact");
-        assert_eq!(
-            parse_leading_duration_target_tokens(&duration)
-                .map(parser_token_word_refs)
-                .unwrap(),
-            ["target", "artifact"]
-        );
-
-        crate::util::with_source_reference_context("Sarkhan, Soul Aflame", || {
-            let named_source = lex("Sarkhan");
-            assert_eq!(
-                parse_become_target_subject_shape(&named_source, &body),
-                BecomeTargetSubjectShape::Source(SourceReferenceSurface::ShortName(
-                    "Sarkhan".to_string()
-                ))
-            );
-        });
-    }
-}
+#[path = "subjects_inline_tests.rs"]
+mod tests;

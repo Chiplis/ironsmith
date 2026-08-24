@@ -100,9 +100,9 @@ pub fn parse_counter_target_phrase(
     tokens: &[OwnedLexToken],
 ) -> Result<TargetAst, CardTextError> {
     let words = crate::lexer::token_word_refs(tokens);
-    if matches!(
-        words.as_slice(),
-        [
+    if crate::word_primitives::parse_sequence_complete(
+        &words,
+        &[
             "all",
             "spells",
             "your",
@@ -114,7 +114,7 @@ pub fn parse_counter_target_phrase(
             "your",
             "opponents",
             "control"
-        ]
+        ],
     ) {
         let mut spells = ObjectFilter::spell();
         spells.controller = Some(PlayerFilter::Opponent);
@@ -619,14 +619,16 @@ pub fn parse_reveal(
     // Revealing every card in a library is a collection operation, not the
     // ordinary singular `RevealTop` fallback. Tag the exact zone contents so
     // later chooser and movement clauses can consume the same stable set.
-    if matches!(
-        words.as_slice(),
-        ["cards", "in", "your", "library"]
-            | ["the", "cards", "in", "your", "library"]
-            | ["reveal", "the", "cards", "in", "your", "library"]
+    if crate::word_primitives::parse_any_sequence_complete(
+        &words,
+        &[
+            &["cards", "in", "your", "library"],
+            &["the", "cards", "in", "your", "library"],
+            &["reveal", "the", "cards", "in", "your", "library"],
+        ],
     )
     {
-        let tag = TagKey::from("__revealed_library__");
+        let tag = crate::tag::CompilerReferenceTag::RevealedLibrary.key();
         let filter = ObjectFilter::default()
             .in_zone(Zone::Library)
             .owned_by(PlayerFilter::You);

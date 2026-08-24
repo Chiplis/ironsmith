@@ -56,7 +56,7 @@ where
     items.into_iter().any(|item| item.borrow() == expected)
 }
 
-pub fn iter_eq<I, J>(left: I, right: J) -> bool
+pub fn iterators_equal<I, J>(left: I, right: J) -> bool
 where
     I: IntoIterator,
     J: IntoIterator,
@@ -91,7 +91,7 @@ pub fn strip_any_suffix<'a, 'p, T: PartialEq>(
         .find_map(|pattern| strip_suffix(items, pattern).map(|head| (*pattern, head)))
 }
 
-pub fn find_index<T>(items: &[T], mut predicate: impl FnMut(&T) -> bool) -> Option<usize> {
+pub fn select_position<T>(items: &[T], mut predicate: impl FnMut(&T) -> bool) -> Option<usize> {
     for (idx, item) in items.iter().enumerate() {
         if predicate(item) {
             return Some(idx);
@@ -100,7 +100,10 @@ pub fn find_index<T>(items: &[T], mut predicate: impl FnMut(&T) -> bool) -> Opti
     None
 }
 
-pub fn rfind_index<T>(items: &[T], mut predicate: impl FnMut(&T) -> bool) -> Option<usize> {
+pub fn select_last_position<T>(
+    items: &[T],
+    mut predicate: impl FnMut(&T) -> bool,
+) -> Option<usize> {
     for (idx, item) in items.iter().enumerate().rev() {
         if predicate(item) {
             return Some(idx);
@@ -109,7 +112,7 @@ pub fn rfind_index<T>(items: &[T], mut predicate: impl FnMut(&T) -> bool) -> Opt
     None
 }
 
-pub fn find_window_index<T: PartialEq>(items: &[T], window: &[T]) -> Option<usize> {
+pub fn select_sequence_position<T: PartialEq>(items: &[T], window: &[T]) -> Option<usize> {
     if window.is_empty() {
         return Some(0);
     }
@@ -147,6 +150,29 @@ pub fn find_window_by<T>(
     None
 }
 
+pub fn find_last_window_by<T>(
+    items: &[T],
+    window_len: usize,
+    mut predicate: impl FnMut(&[T]) -> bool,
+) -> Option<usize> {
+    if window_len == 0 {
+        return Some(items.len());
+    }
+    if items.len() < window_len {
+        return None;
+    }
+    let mut start = items.len() - window_len;
+    loop {
+        if predicate(&items[start..start + window_len]) {
+            return Some(start);
+        }
+        if start == 0 {
+            return None;
+        }
+        start -= 1;
+    }
+}
+
 pub fn contains_sequence<T: PartialEq>(items: &[T], window: &[T]) -> bool {
-    find_window_index(items, window).is_some()
+    select_sequence_position(items, window).is_some()
 }

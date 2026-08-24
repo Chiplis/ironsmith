@@ -16,12 +16,16 @@ fn repeated_die_complete_parity_branches_render_as_per_result_in_source_order() 
     );
     let even = Effect::if_then(
         roll_id,
-        crate::effect::EffectPredicate::Value(crate::effect::Comparison::OneOf(&[2, 4, 6])),
+        crate::effect::EffectPredicate::Value(crate::effect::Comparison::OneOf(
+            (&[2, 4, 6][..]).into(),
+        )),
         vec![Effect::gain_life(2)],
     );
     let odd = Effect::if_then(
         roll_id,
-        crate::effect::EffectPredicate::Value(crate::effect::Comparison::OneOf(&[1, 3, 5])),
+        crate::effect::EffectPredicate::Value(crate::effect::Comparison::OneOf(
+            (&[1, 3, 5][..]).into(),
+        )),
         vec![Effect::gain_life(1)],
     );
     let program = crate::resolution::ResolutionProgram::new(vec![
@@ -49,12 +53,16 @@ fn repeated_die_partial_value_sets_do_not_claim_complete_parity() {
     );
     let incomplete_even = Effect::if_then(
         roll_id,
-        crate::effect::EffectPredicate::Value(crate::effect::Comparison::OneOf(&[2, 4])),
+        crate::effect::EffectPredicate::Value(crate::effect::Comparison::OneOf(
+            (&[2, 4][..]).into(),
+        )),
         vec![Effect::gain_life(2)],
     );
     let odd = Effect::if_then(
         roll_id,
-        crate::effect::EffectPredicate::Value(crate::effect::Comparison::OneOf(&[1, 3, 5])),
+        crate::effect::EffectPredicate::Value(crate::effect::Comparison::OneOf(
+            (&[1, 3, 5][..]).into(),
+        )),
         vec![Effect::gain_life(1)],
     );
     let program = crate::resolution::ResolutionProgram::from_effects(vec![

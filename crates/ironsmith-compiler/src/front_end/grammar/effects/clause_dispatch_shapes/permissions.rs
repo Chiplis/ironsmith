@@ -244,54 +244,9 @@ pub struct CastTargetWithoutPayingShape<'a> {
     pub target_tokens: &'a [OwnedLexToken],
 }
 
-pub fn parse_cast_target_without_paying_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<CastTargetWithoutPayingShape<'_>> {
-    let (head, ()) = primitives::split_lexed_once_before_suffix(tokens, 2, || {
-        (
-            primitives::phrase(&["without", "paying", "its", "mana", "cost"]),
-            primitives::sentence_end(),
-        )
-            .void()
-    })?;
-    let (_, target_tokens) = primitives::parse_prefix(head, primitives::kw("cast"))?;
-    primitives::parse_prefix(target_tokens, primitives::kw("target"))?;
-    Some(CastTargetWithoutPayingShape {
-        target_tokens: trim_lexed_commas(target_tokens),
-    })
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CastTargetFromYourGraveyardThisTurnShape<'a> {
     pub target_tokens: &'a [OwnedLexToken],
-}
-
-pub fn parse_cast_target_from_your_graveyard_this_turn_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<CastTargetFromYourGraveyardThisTurnShape<'_>> {
-    let (_, rest) = primitives::parse_prefix(
-        trim_lexed_commas(tokens),
-        alt((
-            primitives::phrase(&["you", "may", "cast"]),
-            primitives::kw("cast").void(),
-        )),
-    )?;
-    let (target_tokens, ()) = primitives::split_lexed_once_before_suffix(rest, 2, || {
-        (
-            primitives::phrase(&["this", "turn"]),
-            primitives::sentence_end(),
-        )
-            .void()
-    })?;
-    let target_tokens = trim_lexed_commas(target_tokens);
-    let (_, target_body) = primitives::parse_prefix(target_tokens, primitives::kw("target"))?;
-    if target_body.is_empty() {
-        return None;
-    }
-    primitives::split_lexed_once_before_suffix(target_tokens, 2, || {
-        (primitives::phrase(&["from", "your", "graveyard"]), eof).void()
-    })?;
-    Some(CastTargetFromYourGraveyardThisTurnShape { target_tokens })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -299,86 +254,15 @@ pub struct ForEachCardPaymentShape {
     pub life_amount: u32,
 }
 
-pub fn parse_for_each_card_payment_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<ForEachCardPaymentShape> {
-    let (_, body) = primitives::parse_prefix(
-        tokens,
-        primitives::phrase(&["for", "each", "of", "those", "cards"]),
-    )?;
-    let (_, _, after_pay) = primitives::find_prefix(body, || primitives::kw("pay"))?;
-    let (life_amount, after_amount) =
-        primitives::parse_prefix(after_pay, leaf::parse_leaf_number_token_lexed)?;
-    primitives::parse_all(
-        trim_lexed_commas(after_amount),
-        (
-            primitives::phrase(&[
-                "or", "put", "the", "card", "on", "top", "of", "your", "library",
-            ]),
-            primitives::sentence_end(),
-        )
-            .void(),
-        "for each card payment tail",
-    )
-    .ok()?;
-    Some(ForEachCardPaymentShape { life_amount })
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OpponentReturnChoiceShape<'a> {
     pub target_tokens: &'a [OwnedLexToken],
-}
-
-pub fn parse_opponent_return_choice_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<OpponentReturnChoiceShape<'_>> {
-    let (_, choice_tail) = primitives::parse_prefix(
-        tokens,
-        primitives::phrase(&["for", "each", "opponent", "choose"]),
-    )?;
-    let (then_start, _, after_then_return) =
-        primitives::find_prefix(choice_tail, || primitives::phrase(&["then", "return"]))?;
-    let (_, _, after_unless) =
-        primitives::find_prefix(after_then_return, || primitives::kw("unless"))?;
-    primitives::parse_prefix(
-        after_unless,
-        primitives::phrase(&["its", "controller", "has", "you", "draw", "a", "card"]),
-    )?;
-    let target_tokens = trim_lexed_commas(choice_tail.get(..then_start)?);
-    (!target_tokens.is_empty()).then_some(OpponentReturnChoiceShape { target_tokens })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CounterGroupRemovedShape<'a> {
     pub group_size: u32,
     pub effect_tokens: &'a [OwnedLexToken],
-}
-
-fn counter_group_removed<'a>(input: &mut LexStream<'a>) -> WResult<u32> {
-    opt(primitives::kw("for")).parse_next(input)?;
-    primitives::kw("each").parse_next(input)?;
-    let group_size = leaf::parse_leaf_number_token_lexed.parse_next(input)?;
-    repeat_till::<_, _, (), _, _, _, _>(
-        0..,
-        any.void(),
-        (
-            alt((primitives::kw("counter"), primitives::kw("counters"))),
-            primitives::phrase(&["removed", "this", "way"]),
-        )
-            .void(),
-    )
-    .parse_next(input)?;
-    Ok(group_size)
-}
-
-pub fn parse_counter_group_removed_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<CounterGroupRemovedShape<'_>> {
-    let (group_size, effect_tokens) = primitives::parse_prefix(tokens, counter_group_removed)?;
-    Some(CounterGroupRemovedShape {
-        group_size,
-        effect_tokens: trim_lexed_commas(effect_tokens),
-    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -388,159 +272,34 @@ pub struct ForEachPreventShape<'a> {
     pub unless_token: Option<usize>,
 }
 
-pub fn parse_for_each_prevent_shape(tokens: &[OwnedLexToken]) -> Option<ForEachPreventShape<'_>> {
-    let (prevent_token, _, after_prevent) =
-        primitives::find_prefix(tokens, || primitives::kw("prevent"))?;
-    let subject_tokens = trim_lexed_commas(tokens.get(..prevent_token)?);
-    let unless = primitives::find_prefix(after_prevent, || primitives::kw("unless"));
-    let (prevent_tokens, unless_token) = if let Some((relative, _, _)) = unless {
-        (
-            trim_lexed_commas(tokens.get(prevent_token..prevent_token + 1 + relative)?),
-            Some(prevent_token + 1 + relative),
-        )
-    } else {
-        (trim_lexed_commas(tokens.get(prevent_token..)?), None)
-    };
-    Some(ForEachPreventShape {
-        subject_tokens,
-        prevent_tokens,
-        unless_token,
-    })
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct TrailingIfFallbackShape<'a> {
     pub head_tokens: &'a [OwnedLexToken],
     pub predicate: PredicateAst,
 }
 
-pub fn parse_trailing_if_fallback_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<TrailingIfFallbackShape<'_>> {
-    let mut offset = 1usize;
-    let mut found = None;
-    while offset < tokens.len() {
-        let Some((relative, _, _)) =
-            primitives::find_prefix(tokens.get(offset..)?, || primitives::kw("if"))
-        else {
-            break;
-        };
-        let split = offset + relative;
-        if let Some(predicate) =
-            crate::grammar::structure::parse_trailing_if_predicate_lexed(tokens.get(split..)?)
-        {
-            found = Some(TrailingIfFallbackShape {
-                head_tokens: trim_lexed_commas(tokens.get(..split)?),
-                predicate,
-            });
-        }
-        offset = split + 1;
-    }
-    found
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::TokenWordView;
-    use crate::lexer::lex_line;
+#[path = "permissions_inline_tests.rs"]
+mod tests;
 
-    #[test]
-    fn parses_cast_and_counter_group_shapes() {
-        let cast = lex_line(
-            "You may cast any number of spells with mana value X or less from among those cards without paying their mana costs.",
-            0,
-        )
-        .unwrap();
-        assert!(matches!(
-            parse_cast_any_tagged_shape(&cast).unwrap().mana_value,
-            Some(Comparison::LessThanOrEqualExpr(_))
-        ));
-        let group = lex_line("For each two counters removed this way, draw a card.", 0).unwrap();
-        assert_eq!(
-            parse_counter_group_removed_shape(&group)
-                .unwrap()
-                .group_size,
-            2
-        );
-    }
-
-    #[test]
-    fn tagged_collection_cast_shape_preserves_cardinality_filter_and_global_cap() {
-        let cases = [
-            (
-                "You may cast any number of spells with mana value X or less from among them without paying their mana costs.",
-                ChoiceCount::any_number(),
-                vec!["spells"],
-            ),
-            (
-                "You may cast up to two sorcery spells with mana value 3 or less from among them without paying their mana costs.",
-                ChoiceCount::up_to(2),
-                vec!["sorcery", "spells"],
-            ),
-            (
-                "You may cast an instant or sorcery spell with mana value X or less from among them without paying its mana cost.",
-                ChoiceCount::up_to(1),
-                vec!["instant", "or", "sorcery", "spell"],
-            ),
-            (
-                "You may cast instant and sorcery spells with mana value X or less from among them without paying their mana costs.",
-                ChoiceCount::any_number(),
-                vec!["instant", "and", "sorcery", "spells"],
-            ),
-        ];
-        for (text, count, subject) in cases {
-            let tokens = lex_line(text, 0).unwrap();
-            let parsed = parse_cast_tagged_collection_shape(&tokens)
-                .unwrap_or_else(|| panic!("expected tagged collection cast shape for {text}"));
-            assert_eq!(parsed.count, count, "{text}");
-            assert_eq!(
-                TokenWordView::new(parsed.subject_tokens).to_word_refs(),
-                subject,
-                "{text}"
-            );
-            assert!(parsed.mana_value.is_some(), "{text}");
-        }
-    }
-
-    #[test]
-    fn parses_target_from_your_graveyard_this_turn_permission() {
-        let tokens = lex_line(
-            "You may cast target Zombie creature card from your graveyard this turn.",
-            0,
-        )
-        .unwrap();
-        let shape = parse_cast_target_from_your_graveyard_this_turn_shape(&tokens)
-            .expect("targeted graveyard permission");
-
-        assert_eq!(
-            TokenWordView::new(shape.target_tokens).to_word_refs(),
-            vec![
-                "target",
-                "zombie",
-                "creature",
-                "card",
-                "from",
-                "your",
-                "graveyard"
-            ]
-        );
-        let stripped = lex_line(
-            "cast target Zombie creature card from your graveyard this turn.",
-            0,
-        )
-        .unwrap();
-        let stripped_shape = parse_cast_target_from_your_graveyard_this_turn_shape(&stripped)
-            .expect("leading-may chain should route its stripped cast clause");
-        assert_eq!(
-            TokenWordView::new(stripped_shape.target_tokens).to_word_refs(),
-            TokenWordView::new(shape.target_tokens).to_word_refs(),
-        );
-        let wrong_zone = lex_line(
-            "You may cast target Zombie creature card from exile this turn.",
-            0,
-        )
-        .unwrap();
-        assert!(parse_cast_target_from_your_graveyard_this_turn_shape(&wrong_zone).is_none());
-    }
-}
+#[path = "permissions/condition_programs.rs"]
+mod condition_programs;
+pub use condition_programs::parse_trailing_if_fallback_shape;
+#[path = "permissions/combat_programs.rs"]
+mod combat_programs;
+pub use combat_programs::parse_for_each_prevent_shape;
+#[path = "permissions/counter_programs.rs"]
+mod counter_programs;
+use counter_programs::counter_group_removed;
+pub use counter_programs::parse_counter_group_removed_shape;
+#[path = "permissions/choice_programs.rs"]
+mod choice_programs;
+pub use choice_programs::parse_opponent_return_choice_shape;
+#[path = "permissions/library_programs.rs"]
+mod library_programs;
+pub use library_programs::parse_for_each_card_payment_shape;
+#[path = "permissions/reference_programs.rs"]
+mod reference_programs;
+pub use reference_programs::{
+    parse_cast_target_from_your_graveyard_this_turn_shape, parse_cast_target_without_paying_shape,
+};

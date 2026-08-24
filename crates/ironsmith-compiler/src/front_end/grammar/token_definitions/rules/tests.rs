@@ -142,7 +142,7 @@ fn token_tap_mana_rule_preserves_usage_restriction() {
     assert_eq!(parsed.mana, vec![ManaSymbol::Red]);
     assert!(matches!(
         parsed.restrictions.as_slice(),
-        [crate::ability::ManaUsageRestriction::CastSpell { card_types, .. }]
+        [ironsmith_core::ManaUsageRestriction::CastSpell { card_types, .. }]
             if card_types == &[crate::types::CardType::Planeswalker]
     ));
 }

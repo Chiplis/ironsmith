@@ -72,6 +72,26 @@ use ui_snapshot::{
 static TEST_ID_COUNTER_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(test)]
+fn compile_test_card_definitions(
+    query: &str,
+) -> Result<Vec<ironsmith::cards::CardDefinition>, String> {
+    let path = ironsmith_tools::default_cards_path();
+    let payloads = ironsmith_tools::load_card_payloads_by_name(
+        path.to_str()
+            .ok_or_else(|| format!("catalog path is not valid UTF-8: {}", path.display()))?,
+        query,
+    )
+    .map_err(|error| format!("failed to load {query:?} from the test catalog: {error}"))?;
+    if payloads.is_empty() {
+        return Err(format!("unknown card name: {query}"));
+    }
+    payloads
+        .iter()
+        .map(ironsmith_tools::compile_runtime_definition_from_payload)
+        .collect()
+}
+
+#[cfg(test)]
 pub(crate) fn test_id_counter_guard() -> std::sync::MutexGuard<'static, ()> {
     TEST_ID_COUNTER_LOCK
         .lock()

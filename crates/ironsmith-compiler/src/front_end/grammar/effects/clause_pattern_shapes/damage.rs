@@ -263,7 +263,7 @@ fn token_is_word(token: &OwnedLexToken, expected: &str) -> bool {
 /// that choice. Oracle text uses both "artifact source of your choice" and
 /// "creature of your choice with shadow" orderings.
 fn damage_source_choice_filter(tokens: &[OwnedLexToken]) -> Option<Option<ObjectFilter>> {
-    let choice_index = tokens.windows(3).position(|window| {
+    let choice_index = crate::slice_primitives::find_window_by(tokens, 3, |window| {
         token_is_word(&window[0], "of")
             && token_is_word(&window[1], "your")
             && token_is_word(&window[2], "choice")
@@ -573,229 +573,17 @@ fn parse_all_to_target_by_choice<'a>(
     })
 }
 
-fn classify_next_time_destination(
-    tokens: &[OwnedLexToken],
-) -> Option<RedirectDamageDestinationShape<'_>> {
-    if primitives::parse_all(
-        tokens,
-        (source_reference, winnow::combinator::eof).void(),
-        "redirect source destination",
-    )
-    .is_ok()
-    {
-        return Some(RedirectDamageDestinationShape::SourceObject);
-    }
-    if primitives::parse_all(
-        tokens,
-        (primitives::kw("you"), winnow::combinator::eof).void(),
-        "redirect controller destination",
-    )
-    .is_ok()
-    {
-        return Some(RedirectDamageDestinationShape::Controller);
-    }
-    let is_target = primitives::parse_prefix(tokens, primitives::kw("target")).is_some();
-    let mentions_choice = {
-        let mut input = LexStream::new(tokens);
-        repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), primitives::kw("choice"))
-            .parse_next(&mut input)
-            .is_ok()
-    };
-    if is_target && mentions_choice {
-        Some(RedirectDamageDestinationShape::TargetOfChoice(tokens))
-    } else {
-        is_target.then_some(RedirectDamageDestinationShape::Target(tokens))
-    }
-}
-
-fn next_time_tail<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken]> {
-    alt((
-        primitives::phrase(&["that", "damage", "is", "dealt", "to"]),
-        primitives::phrase(&["that", "source", "deals", "that", "damage", "to"]),
-    ))
-    .parse_next(input)?;
-    let destination_tokens = one_or_more_tokens_before(input, primitives::kw("instead").void())?;
-    primitives::kw("instead").parse_next(input)?;
-    primitives::sentence_end().parse_next(input)?;
-    Ok(destination_tokens)
-}
-
-fn parse_next_time<'a>(input: &mut LexStream<'a>) -> WResult<RedirectNextDamageShape<'a>> {
-    primitives::phrase(&["the", "next", "time"]).parse_next(input)?;
-    let source_tokens = one_or_more_tokens_before(input, primitives::kw("would").void())?;
-    primitives::phrase(&["would", "deal", "damage", "to"]).parse_next(input)?;
-    let target_tokens = one_or_more_tokens_before(input, primitives::phrase(&["this", "turn"]))?;
-    primitives::phrase(&["this", "turn"]).parse_next(input)?;
-    opt(primitives::comma()).parse_next(input)?;
-    let destination_tokens = next_time_tail.parse_next(input)?;
-    let destination = classify_next_time_destination(destination_tokens)
-        .ok_or_else(|| winnow::error::ErrMode::Backtrack(winnow::error::ContextError::new()))?;
-    Ok(RedirectNextDamageShape::NextTime {
-        source: classify_damage_source(source_tokens)
-            .ok_or_else(|| winnow::error::ErrMode::Backtrack(winnow::error::ContextError::new()))?,
-        target_tokens,
-        destination,
-    })
-}
-
-fn classify_next_amount_destination(
-    tokens: &[OwnedLexToken],
-) -> RedirectDamageDestinationShape<'_> {
-    if primitives::parse_all(
-        tokens,
-        (primitives::kw("you"), winnow::combinator::eof).void(),
-        "redirect amount controller destination",
-    )
-    .is_ok()
-    {
-        RedirectDamageDestinationShape::Controller
-    } else {
-        RedirectDamageDestinationShape::Target(tokens)
-    }
-}
-
-fn parse_next_amount<'a>(input: &mut LexStream<'a>) -> WResult<RedirectNextDamageShape<'a>> {
-    primitives::phrase(&["the", "next"]).parse_next(input)?;
-    let amount_tokens = any.void().take().parse_next(input)?;
-    primitives::phrase(&["damage", "that", "would", "be", "dealt", "to"]).parse_next(input)?;
-    let protected_shape = if peek((source_reference, primitives::phrase(&["this", "turn"])))
-        .parse_next(input)
-        .is_ok()
-    {
-        source_reference.parse_next(input)?;
-        None
-    } else {
-        Some(one_or_more_tokens_before(
-            input,
-            primitives::phrase(&["this", "turn"]),
-        )?)
-    };
-    primitives::phrase(&["this", "turn", "is", "dealt", "to"]).parse_next(input)?;
-    let destination_tokens = one_or_more_tokens_before(input, primitives::kw("instead").void())?;
-    primitives::kw("instead").parse_next(input)?;
-    primitives::sentence_end().parse_next(input)?;
-    Ok(RedirectNextDamageShape::NextAmount {
-        amount_tokens,
-        protected_tokens: protected_shape,
-        destination: classify_next_amount_destination(destination_tokens),
-    })
-}
-
-fn parse_redirect_next_damage_lexed<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<RedirectNextDamageShape<'a>> {
-    alt((
-        parse_all_to_you_and_permanents,
-        parse_all_by_source,
-        parse_all_to_target_by_choice,
-        parse_next_time,
-        parse_next_amount,
-    ))
-    .parse_next(input)
-}
-
-pub fn parse_redirect_next_damage_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<RedirectNextDamageShape<'_>> {
-    primitives::parse_all(
-        tokens,
-        parse_redirect_next_damage_lexed,
-        "redirect next damage",
-    )
-    .ok()
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::lexer::lex_line;
+#[path = "damage_inline_tests.rs"]
+mod tests;
 
-    fn lex(text: &str) -> Vec<OwnedLexToken> {
-        lex_line(text, 0).unwrap()
-    }
-
-    #[test]
-    fn parses_prevent_next_damage_shape() {
-        let tokens = lex(
-            "Prevent the next 3 damage that would be dealt to you and permanents you control this turn by a source of your choice.",
-        );
-        let shape = parse_prevent_next_damage_tokens(&tokens).expect("shape");
-        assert!(shape.source_of_your_choice);
-        assert!(shape.protects_you_and_permanents_you_control);
-    }
-
-    #[test]
-    fn parses_passive_next_damage_destroy_replacement() {
-        let tokens = lex(
-            "The next time damage would be dealt to target creature this turn, destroy that creature instead.",
-        );
-        let shape = parse_replace_next_damage_with_destroy_tokens(&tokens).expect("shape");
-        assert_eq!(
-            shape.destroyed_reference,
-            DestroyDamageTargetReference::Creature
-        );
-        assert_eq!(
-            crate::lexer::token_word_refs(shape.target_tokens),
-            ["target", "creature"]
-        );
-    }
-
-    #[test]
-    fn parses_source_controller_redirect_without_raw_text() {
-        let tokens = lex(
-            "All damage that would be dealt this turn by target spell is dealt to that spell's controller instead.",
-        );
-        assert!(matches!(
-            parse_redirect_next_damage_tokens(&tokens),
-            Some(RedirectNextDamageShape::AllBySourceToSourceController { .. })
-        ));
-    }
-
-    #[test]
-    fn parses_next_time_redirect_target() {
-        let tokens = lex(
-            "The next time a red source would deal damage to target creature this turn, that damage is dealt to target player instead.",
-        );
-        assert!(matches!(
-            parse_redirect_next_damage_tokens(&tokens),
-            Some(RedirectNextDamageShape::NextTime {
-                destination: RedirectDamageDestinationShape::Target(_),
-                ..
-            })
-        ));
-    }
-
-    #[test]
-    fn parses_source_object_and_chosen_destination_redirect_shapes() {
-        let next_time = lex(
-            "The next time a source of your choice would deal damage to target creature this turn, that damage is dealt to this creature instead.",
-        );
-        assert!(matches!(
-            parse_redirect_next_damage_tokens(&next_time),
-            Some(RedirectNextDamageShape::NextTime {
-                destination: RedirectDamageDestinationShape::SourceObject,
-                ..
-            })
-        ));
-        let all_damage = lex(
-            "All damage that would be dealt to target creature this turn by a source of your choice is dealt to this creature instead.",
-        );
-        assert!(matches!(
-            parse_redirect_next_damage_tokens(&all_damage),
-            Some(RedirectNextDamageShape::AllToTargetByChosenSource {
-                destination: RedirectDamageDestinationShape::SourceObject,
-                ..
-            })
-        ));
-        let chosen_destination = lex(
-            "The next time a source of your choice would deal damage to you this turn, that damage is dealt to target creature of an opponent's choice instead.",
-        );
-        assert!(matches!(
-            parse_redirect_next_damage_tokens(&chosen_destination),
-            Some(RedirectNextDamageShape::NextTime {
-                destination: RedirectDamageDestinationShape::TargetOfChoice(_),
-                ..
-            })
-        ));
-    }
-}
+#[path = "damage/combat_programs.rs"]
+mod combat_programs;
+use combat_programs::parse_redirect_next_damage_lexed;
+pub use combat_programs::parse_redirect_next_damage_tokens;
+#[path = "damage/core_programs.rs"]
+mod core_programs;
+use core_programs::{next_time_tail, parse_next_amount, parse_next_time};
+#[path = "damage/condition_programs.rs"]
+mod condition_programs;
+use condition_programs::{classify_next_amount_destination, classify_next_time_destination};

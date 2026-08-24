@@ -36,20 +36,18 @@ fn has_target_separator(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn has_target_and_attached_set(words: &[&str]) -> bool {
-    let Some(and_all) = words.windows(2).position(|window| window == ["and", "all"]) else {
+    let Some(and_all) = crate::word_primitives::parse_sequence_start(words, &["and", "all"]) else {
         return false;
     };
     let attached_tail = &words[and_all + 2..];
-    let Some(attached_to) = attached_tail
-        .windows(2)
-        .position(|window| window == ["attached", "to"])
+    let Some(attached_to) =
+        crate::word_primitives::parse_sequence_start(attached_tail, &["attached", "to"])
     else {
         return false;
     };
-    matches!(
-        &attached_tail[attached_to + 2..],
-        ["it"] | ["them"] | ["that", _]
-    )
+    let reference = &attached_tail[attached_to + 2..];
+    crate::word_primitives::parse_any_sequence_complete(reference, &[&["it"], &["them"]])
+        || (reference.len() == 2 && crate::word_primitives::first_is(reference, "that"))
 }
 
 pub fn parse_destroy_multi_target_shape(
@@ -65,10 +63,7 @@ pub fn parse_destroy_multi_target_shape(
     }
     // "target X and all other Ys with the same name ..." is the same-name
     // fanout family (one target + a mass action), not a multi-target list.
-    if words
-        .windows(3)
-        .any(|window| window == ["and", "all", "other"])
-    {
+    if crate::word_primitives::sequence_occurs(&words, &["and", "all", "other"]) {
         return None;
     }
     // A declared target plus the complete set attached to that declaration
@@ -99,33 +94,5 @@ pub fn parse_destroy_multi_target_shape(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::lexer::lex_line;
-
-    #[test]
-    fn identifies_destroy_fanout_and_repeated_target_starts() {
-        let tokens = lex_line(
-            "Destroy up to one target artifact and up to one target enchantment.",
-            0,
-        )
-        .unwrap();
-        let shape = parse_destroy_multi_target_shape(&tokens).unwrap();
-        assert!(shape.repeated_target_words);
-        assert_eq!(
-            up_to_one_target_word_starts(&TokenWordView::new(&tokens).to_word_refs()),
-            [1, 7]
-        );
-    }
-
-    #[test]
-    fn leaves_target_and_attached_object_sets_for_the_linked_destroy_parser() {
-        let tokens = lex_line(
-            "Destroy target creature with flying and all Equipment attached to that creature.",
-            0,
-        )
-        .unwrap();
-
-        assert!(parse_destroy_multi_target_shape(&tokens).is_none());
-    }
-}
+#[path = "destroy_inline_tests.rs"]
+mod tests;

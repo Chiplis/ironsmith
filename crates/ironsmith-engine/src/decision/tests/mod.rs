@@ -2,9 +2,7 @@ use super::*;
 use crate::CardDefinitionBuilder;
 use crate::ability::{Ability, AbilityKind};
 use crate::card::{CardBuilder, PowerToughness};
-use crate::cards::definitions::{
-    basic_forest, basic_island, counterspell, force_of_will, lightning_bolt,
-};
+use crate::cards::definitions::{basic_forest, basic_island};
 use crate::color::ColorSet;
 use crate::costs::PaymentReason;
 use crate::decisions::context::{TargetRequirementContext, TargetsContext};

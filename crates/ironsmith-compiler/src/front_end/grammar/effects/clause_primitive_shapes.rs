@@ -322,12 +322,14 @@ fn source_is_tagged(tokens: &[OwnedLexToken]) -> bool {
         || exact_phrase(tokens, &["that", "creature"])
         || exact_phrase(tokens, &["that", "permanent"])
         || exact_phrase(tokens, &["that", "card"])
-        || TokenWordView::new(tokens)
-            .to_word_refs()
-            .starts_with(&["each", "of", "those"])
-        || TokenWordView::new(tokens)
-            .to_word_refs()
-            .ends_with(&["tapped", "this", "way"])
+        || crate::word_primitives::parse_sequence_prefix(
+            &TokenWordView::new(tokens).to_word_refs(),
+            &["each", "of", "those"],
+        )
+        || crate::word_primitives::parse_sequence_suffix(
+            &TokenWordView::new(tokens).to_word_refs(),
+            &["tapped", "this", "way"],
+        )
 }
 
 fn target_shape(tokens: &[OwnedLexToken], allow_self: bool) -> PowerDamageTargetShape<'_> {
@@ -382,9 +384,10 @@ pub fn parse_power_damage_shape(
     let after_equal = trim_shape_edges(after_equal);
     let power_words = TokenWordView::new(after_equal);
     let word_refs = power_words.to_word_refs();
-    let (amount, used_words) = if word_refs.starts_with(&["its", "power"])
-        || word_refs.starts_with(&["its", "toughness"])
-    {
+    let (amount, used_words) = if crate::word_primitives::parse_any_sequence_prefix(
+        &word_refs,
+        &[&["its", "power"], &["its", "toughness"]],
+    ) {
         let Some((value, used)) = crate::util::parse_value_expr_words(&word_refs) else {
             return Ok(None);
         };
@@ -480,143 +483,17 @@ fn clash_opponent<'a>(input: &mut crate::lexer::LexStream<'a>) -> WResult<ClashO
     .parse_next(input)
 }
 
-pub fn parse_clash_shape(tokens: &[OwnedLexToken]) -> Option<ClashOpponentAst> {
-    let tokens = trim_shape_edges(tokens);
-    let (_, tail) = primitives::parse_prefix(
-        tokens,
-        (
-            alt((primitives::kw("clash"), primitives::kw("clashes"))),
-            opt(primitives::kw("with")),
-        ),
-    )?;
-    let target_tokens = primitives::split_lexed_once_on_separator(tail, || {
-        alt((primitives::kw("then").void(), primitives::comma().void()))
-    })
-    .map(|(head, _)| head)
-    .unwrap_or(tail);
-    primitives::parse_all(
-        trim_shape_edges(target_tokens),
-        (clash_opponent, eof).map(|(opponent, _)| opponent),
-        "clash opponent",
-    )
-    .ok()
-}
-
-pub fn parse_retarget_reference_shape(tokens: &[OwnedLexToken]) -> Option<RetargetReferenceShape> {
-    let tokens = trim_shape_edges(tokens);
-    if primitives::parse_prefix(
-        tokens,
-        alt((
-            primitives::phrase(&["the", "copy"]),
-            primitives::phrase(&["the", "copies"]),
-            primitives::phrase(&["that", "copy"]),
-            primitives::phrase(&["those", "copies"]),
-        )),
-    )
-    .is_some()
-    {
-        Some(RetargetReferenceShape::Copy)
-    } else if primitives::parse_prefix(
-        tokens,
-        alt((
-            primitives::kw("it").void(),
-            primitives::kw("them").void(),
-            primitives::phrase(&["the", "spell"]).void(),
-            primitives::phrase(&["that", "spell"]).void(),
-        )),
-    )
-    .is_some()
-    {
-        Some(RetargetReferenceShape::Other)
-    } else {
-        None
-    }
-}
-
-pub fn parse_retarget_constraint_shapes(tokens: &[OwnedLexToken]) -> Vec<RetargetConstraintShape> {
-    let tokens = trim_shape_edges(tokens);
-    let mut constraints = Vec::new();
-    let candidates: &'static [(&'static [&'static str], RetargetConstraintShape)] = &[
-        (
-            &["with", "a", "single", "target"],
-            RetargetConstraintShape::SingleTarget,
-        ),
-        (
-            &["targets", "only", "a", "single", "creature"],
-            RetargetConstraintShape::SingleCreatureTarget,
-        ),
-        (
-            &["targets", "only", "this", "creature"],
-            RetargetConstraintShape::SourceOnlyTarget,
-        ),
-        (
-            &["targets", "only", "this", "permanent"],
-            RetargetConstraintShape::SourceOnlyTarget,
-        ),
-        (
-            &["targets", "only", "you"],
-            RetargetConstraintShape::YouOnlyTarget,
-        ),
-        (
-            &["targets", "only", "a", "player"],
-            RetargetConstraintShape::AnyPlayerTarget,
-        ),
-        (
-            &["if", "that", "target", "is", "you"],
-            RetargetConstraintShape::YouOnlyTarget,
-        ),
-    ];
-    for &(phrase, constraint) in candidates {
-        if primitives::find_prefix(tokens, || primitives::phrase(phrase)).is_some() {
-            constraints.push(constraint);
-        }
-    }
-    constraints
-}
-
-fn parse_repeat_process<'a>(
-    input: &mut crate::lexer::LexStream<'a>,
-) -> WResult<(bool, RepeatProcessShape)> {
-    opt(primitives::kw("and")).parse_next(input)?;
-    let explicit_may = opt(primitives::phrase(&["you", "may"]))
-        .parse_next(input)?
-        .is_some();
-    primitives::phrase(&["repeat", "this", "process"]).parse_next(input)?;
-    let shape = alt((
-        primitives::phrase(&["any", "number", "of", "times"]).value(RepeatProcessShape::May),
-        primitives::kw("once").value(RepeatProcessShape::Once),
-        eof.value(RepeatProcessShape::Required),
-    ))
-    .parse_next(input)?;
-    primitives::sentence_end().parse_next(input)?;
-    Ok((explicit_may, shape))
-}
-
-pub fn parse_repeat_process_shape(tokens: &[OwnedLexToken]) -> Option<RepeatProcessShape> {
-    let (explicit_may, shape) = primitives::parse_all(
-        trim_shape_edges(tokens),
-        parse_repeat_process,
-        "repeat process clause",
-    )
-    .ok()?;
-    match (explicit_may, shape) {
-        (true, RepeatProcessShape::Required | RepeatProcessShape::May) => {
-            Some(RepeatProcessShape::May)
-        }
-        (false, shape) => Some(shape),
-        (true, RepeatProcessShape::Once) => None,
-    }
-}
-
-pub fn is_dont_lose_mana_between_steps_shape(tokens: &[OwnedLexToken]) -> bool {
-    exact_phrase(
-        tokens,
-        &[
-            "you", "dont", "lose", "this", "mana", "as", "steps", "and", "phases", "end",
-        ],
-    )
-}
-
 #[cfg(test)]
 #[path = "clause_primitive_shapes/tests.rs"]
 mod tests;
+
+#[path = "clause_primitive_shapes/resource_programs.rs"]
+mod resource_programs;
+pub use resource_programs::is_dont_lose_mana_between_steps_shape;
+#[path = "clause_primitive_shapes/core_programs.rs"]
+mod core_programs;
+use core_programs::parse_repeat_process;
+pub use core_programs::{parse_clash_shape, parse_repeat_process_shape};
+#[path = "clause_primitive_shapes/reference_programs.rs"]
+mod reference_programs;
+pub use reference_programs::{parse_retarget_constraint_shapes, parse_retarget_reference_shape};

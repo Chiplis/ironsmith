@@ -453,7 +453,7 @@ pub fn parse_anthem_and_keyword_line(
         parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, &clause_words)?
     {
         granted_activated_display = Some(display);
-        granted_activated_ability = Some(ability);
+        granted_activated_ability = Some(*ability);
     } else if let Some(actions) = parse_ability_line(&ability_tokens) {
         reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
         keyword_actions = actions
@@ -514,7 +514,7 @@ pub fn parse_anthem_and_goaded_line(
 
     Ok(Some(vec![
         build_anthem_static_ability(&clause).into(),
-        crate::static_abilities::StaticAbility::attached_goaded_by_source_controller(format!(
+        crate::model::CompilerStaticAbilityCore::attached_goaded_by_source_controller(format!(
             "{} is goaded",
             capitalize_display_subject(&display_subject)
         ))
@@ -831,24 +831,8 @@ fn every_subtype_family_for_subject(
     let ability = condition
         .as_ref()
         .map(|cond| base.clone().with_condition(cond.clone()))
-        .unwrap_or({
-            #[cfg(not(feature = "serialization"))]
-            {
-                base
-            }
-            #[cfg(feature = "serialization")]
-            {
-                Some(base)
-            }
-        });
-    #[cfg(not(feature = "serialization"))]
-    {
-        StaticAbilityAst::Static(ability)
-    }
-    #[cfg(feature = "serialization")]
-    {
-        StaticAbilityAst::Static(ability.expect("runtime static ability should exist"))
-    }
+        .unwrap_or(base);
+    StaticAbilityAst::Static(ability)
 }
 
 fn grant_keyword_action_for_anthem_subject(
@@ -937,10 +921,29 @@ fn granted_object_ability_for_keyword_action(
     action: &KeywordAction,
 ) -> Option<(ParsedAbility, String)> {
     match action {
-        KeywordAction::Afflict(amount) => Some((
-            parsed_ability_from_ability(afflict_triggered_ability(*amount)),
-            action.display_text(),
-        )),
+        KeywordAction::Afflict(amount) => {
+            let ability = Ability {
+                kind: AbilityKind::Triggered(TriggeredAbility {
+                    trigger: TriggerSpec::ThisBecomesBlocked,
+                    effects: ironsmith_core::ResolutionProgram::from_effects(vec![
+                        EffectAst::subject_verb(
+                            SubjectVerbRoleAst::AffectedPlayer,
+                            PlayerAst::Defending,
+                            SubjectVerbActionAst::LoseLife {
+                                amount: Value::Fixed(*amount as i32),
+                            },
+                        ),
+                    ]),
+                    choices: Vec::new(),
+                    intervening_if: None,
+                    presentation_label: Some(PresentationLabel::Keyword(
+                        PresentationKeyword::Afflict(*amount),
+                    )),
+                }),
+                functional_zones: vec![Zone::Battlefield],
+            };
+            Some((parsed_ability_from_ability(ability), action.display_text()))
+        }
         _ => None,
     }
 }
@@ -1105,16 +1108,17 @@ pub fn parse_equipment_you_control_have_equip_line(
         return Ok(None);
     };
     let condition = parse_static_condition_clause(shape.condition_tokens)?;
-    let total_cost = parse_activation_cost(shape.cost_tokens)?;
-    let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().you_control()));
+    let total_cost = parse_compiler_activation_cost(shape.cost_tokens)?;
+    let target = TargetAst::Object(ObjectFilter::creature().you_control(), None, None);
     let ability = ParsedAbility {
         ability: Ability {
-            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+            kind: AbilityKind::Activated(
+                crate::model::compiler_semantic::CompilerActivatedAbilityCore {
                 mana_cost: total_cost,
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    Effect::attach_to(target.clone()),
+                effects: ironsmith_core::ResolutionProgram::from_effects(vec![
+                    EffectAst::subject_verb_attach(TargetAst::Source(None), target),
                 ]),
-                choices: vec![target],
+                choices: vec![],
                 timing: crate::ability::ActivationTiming::SorcerySpeed,
                 additional_restrictions: vec![],
                 activation_restrictions: vec![],
@@ -1122,7 +1126,8 @@ pub fn parse_equipment_you_control_have_equip_line(
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
-            }),
+                },
+            ),
             functional_zones: vec![Zone::Battlefield],
         }
         .into(),
@@ -1142,34 +1147,30 @@ pub fn parse_equipment_you_control_have_equip_line(
 }
 
 fn parsed_exploit_ability() -> ParsedAbility {
-    let effect_id = 0;
-    let ability = Ability::triggered(
-        Trigger::this_enters_battlefield(),
-        vec![
-            Effect::with_id(
-                effect_id,
-                Effect::may(vec![Effect::sacrifice(ObjectFilter::creature(), 1)]),
-            ),
-            Effect::if_then(
-                effect_id,
-                crate::effect::EffectPredicate::Happened,
-                vec![Effect::emit_keyword_action_with_affected_object_memory_tag(
-                    crate::events::KeywordActionKind::Exploit,
-                    1,
-                    crate::effect::EffectId(effect_id),
-                    crate::tag::EXPLOITED_TAG,
-                )],
-            ),
-        ],
+    let trigger = TriggerSpec::ThisEntersBattlefield {
+        origin_condition: None,
+    };
+    let effect = EffectAst::subject_verb(
+        SubjectVerbRoleAst::Actor,
+        PlayerAst::You,
+        SubjectVerbActionAst::Exploit,
     );
+    let ability = Ability {
+        kind: AbilityKind::Triggered(TriggeredAbility {
+            trigger: trigger.clone(),
+            effects: ironsmith_core::ResolutionProgram::from_effects(vec![effect]),
+            choices: Vec::new(),
+            intervening_if: None,
+            presentation_label: None,
+        }),
+        functional_zones: vec![Zone::Battlefield],
+    };
     ParsedAbility {
         ability: ability.into(),
         text: Some("Exploit".to_string()),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
-        trigger_spec: Some(TriggerSpec::ThisEntersBattlefield {
-            origin_condition: None,
-        }),
+        trigger_spec: Some(Box::new(trigger)),
     }
 }
 
@@ -1300,7 +1301,7 @@ fn parse_granted_object_ability_segment(
     if let Some(GrantedAbilityAst::ParsedObjectAbility { ability, display }) =
         parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, clause_words)?
     {
-        return Ok(Some((ability, display)));
+        return Ok(Some((*ability, display)));
     }
 
     if let Some(parsed) = parse_attached_nonstatic_keyword_ability(&ability_tokens)? {
@@ -1337,54 +1338,74 @@ fn parse_granted_object_ability_segment(
     Ok(None)
 }
 
+fn compiler_soulshift_ability(amount: Value, label: String) -> Ability {
+    let filter = ObjectFilter::default()
+        .with_subtype(Subtype::Spirit)
+        .owned_by(PlayerFilter::You)
+        .in_zone(Zone::Graveyard)
+        .with_mana_value(crate::filter::Comparison::LessThanOrEqualExpr(Box::new(
+            amount,
+        )));
+    let target = TargetAst::WithCount(
+        Box::new(TargetAst::Object(filter, None, None)),
+        ChoiceCount::up_to(1),
+    );
+    Ability {
+        kind: AbilityKind::Triggered(TriggeredAbility {
+            trigger: TriggerSpec::ThisDies,
+            effects: ironsmith_core::ResolutionProgram::from_effects(vec![
+                EffectAst::subject_verb_move_to_zone(
+                    target,
+                    Zone::Hand,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                ),
+            ]),
+            choices: Vec::new(),
+            intervening_if: None,
+            presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Soulshift(
+                label,
+            ))),
+        }),
+        functional_zones: vec![Zone::Battlefield],
+    }
+}
+
 fn nonstatic_keyword_action_as_granted_object_ability(
     action: KeywordAction,
 ) -> Option<(ParsedAbility, String)> {
     match action {
         KeywordAction::Soulshift(amount) => {
-            let ability =
-                crate::CardDefinitionBuilder::new(crate::CardId::from_raw(0), "Soulshift")
-                    .soulshift(amount)
-                    .build()
-                    .abilities
-                    .into_iter()
-                    .next()?;
+            let value = Value::Fixed(amount as i32);
+            let ability = compiler_soulshift_ability(value, format!("Soulshift {amount}"));
             Some((
                 parsed_ability_from_ability(ability),
                 format!("Soulshift {amount}"),
             ))
         }
         KeywordAction::SoulshiftValue(value) => Some((
-            parsed_ability_from_ability(
-                crate::CardDefinitionBuilder::soulshift_triggered_ability_from_value(value.clone()),
-            ),
+            parsed_ability_from_ability(compiler_soulshift_ability(
+                value.clone(),
+                "Soulshift X".to_string(),
+            )),
             format!(
                 "Soulshift X, where X is {}",
                 crate::payload::describe_soulshift_value(&value)
             ),
         )),
         KeywordAction::Casualty(power) => {
-            let mut creature_filter = ObjectFilter::creature().you_control();
-            creature_filter.power =
-                Some(crate::filter::Comparison::GreaterThanOrEqual(power as i32));
             let ability = Ability {
                 kind: AbilityKind::Triggered(TriggeredAbility {
-                    trigger: Trigger::you_cast_this_spell(),
-                    effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::may(
-                        vec![
-                            Effect::sacrifice(creature_filter, 1),
-                            Effect::with_id(
-                                0,
-                                Effect::new(crate::effects::CopySpellEffect::single(
-                                    ChooseSpec::Source,
-                                )),
-                            ),
-                            Effect::may_choose_new_targets_player(
-                                crate::effect::EffectId(0),
-                                PlayerFilter::You,
-                            ),
-                        ],
-                    )]),
+                    trigger: TriggerSpec::YouCastThisSpell,
+                    effects: ironsmith_core::ResolutionProgram::from_effects(vec![
+                        EffectAst::subject_verb(
+                            SubjectVerbRoleAst::Actor,
+                            PlayerAst::You,
+                            SubjectVerbActionAst::Casualty { power },
+                        ),
+                    ]),
                     choices: Vec::new(),
                     intervening_if: None,
                     presentation_label: Some(PresentationLabel::Keyword(
@@ -1571,28 +1592,28 @@ pub fn parse_attached_anthem_reach_shadow_permission_line(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<StaticAbilityAst>> {
     let words = crate::lexer::parser_token_word_refs(tokens);
-    if !matches!(
-        words.as_slice(),
-        [
-            "enchanted",
-            "creature",
-            "gets",
-            "+1/+1",
-            "has",
-            "reach",
-            "and",
-            "can",
-            "block",
-            "creatures",
-            "with",
-            "shadow",
-            "as",
-            "though",
-            "they",
-            "didnt" | "didn't",
-            "have",
-            "shadow"
-        ]
+    if !crate::word_primitives::parse_choice_sequence_complete(
+        &words,
+        &[
+            &["enchanted"],
+            &["creature"],
+            &["gets"],
+            &["+1/+1"],
+            &["has"],
+            &["reach"],
+            &["and"],
+            &["can"],
+            &["block"],
+            &["creatures"],
+            &["with"],
+            &["shadow"],
+            &["as"],
+            &["though"],
+            &["they"],
+            &["didnt", "didn't"],
+            &["have"],
+            &["shadow"],
+        ],
     ) {
         return None;
     }
@@ -1626,7 +1647,7 @@ pub fn parse_source_can_block_shadow_as_though_no_shadow_line(
         .iter()
         .filter_map(|token| token.as_word().map(|_| token.parser_text()))
         .collect::<Vec<_>>();
-    if !matches!(words.as_slice(), ["this", "creature", ..])
+    if !crate::word_primitives::parse_sequence_prefix(&words, &["this", "creature"])
         || !is_can_block_shadow_as_though_no_shadow_clause(&tokens[2..])
     {
         return Ok(None);
@@ -1819,17 +1840,7 @@ fn wrap_conditioned_animation_static_ability(
     condition: &Option<crate::ConditionExpr>,
 ) -> StaticAbilityAst {
     if let Some(condition) = condition {
-        #[cfg(not(feature = "serialization"))]
-        {
-            return ability.with_condition(condition.clone()).into();
-        }
-        #[cfg(feature = "serialization")]
-        {
-            return ability
-                .with_condition(condition.clone())
-                .expect("runtime conditioned static ability should exist")
-                .into();
-        }
+        return ability.with_condition(condition.clone()).into();
     }
     ability.into()
 }
@@ -1923,7 +1934,7 @@ fn parse_continuing_anthem_granted_segment(
         parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, clause_words)?
     {
         return Ok(Some(vec![grant_object_ability_for_anthem_subject(
-            clause, ability, display,
+            clause, *ability, display,
         )]));
     }
 
@@ -1957,9 +1968,9 @@ fn parse_continuing_anthem_granted_segment(
     {
         return Ok(Some(vec![grant_for_anthem_subject(
             clause,
-            StaticAbility::ward(crate::cost::TotalCost::from_cost(crate::costs::Cost::life(
-                amount,
-            ))),
+            StaticAbility::ward(ironsmith_core::TotalCost::from_cost(
+                crate::model::CompilerCost::Life(Value::Fixed(amount as i32)),
+            )),
         )]));
     }
     if let Some(marker) = parse_static_text_marker_line(&ability_tokens_with_period) {
@@ -2125,6 +2136,23 @@ pub fn parse_anthem_with_trailing_segments_line(
             if ability_tokens.is_empty() {
                 return Ok(None);
             }
+            if crate::word_primitives::parse_sequence_complete(
+                &crate::lexer::token_word_refs(&ability_tokens),
+                &["all", "abilities"],
+            ) {
+                let remove: StaticAbilityAst = StaticAbility::remove_all_abilities(
+                    anthem_subject_filter(&clause.subject),
+                )
+                .into();
+                extras.push(match &clause.condition {
+                    Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
+                        ability: Box::new(remove),
+                        condition: condition.clone(),
+                    },
+                    None => remove,
+                });
+                continue;
+            }
             let Some(actions) = parse_ability_line(&ability_tokens) else {
                 return Ok(None);
             };
@@ -2194,7 +2222,7 @@ pub fn parse_anthem_with_trailing_segments_line(
                 )?
             {
                 granted_activated_display = Some(display);
-                granted_activated = Some(ability);
+                granted_activated = Some(*ability);
                 None
             } else if let Some(actions) = parse_ability_line(&ability_tokens) {
                 Some(actions)
@@ -2345,7 +2373,7 @@ fn persistent_lure_cards_lower_to_specific_attacker_rule_restrictions() {
         let StaticAbilityAst::Static(ability) = ability else {
             panic!("expected a static rule restriction: {ability:#?}");
         };
-        let crate::static_abilities::StaticAbilityPayload::RuleRestriction {
+        let ironsmith_core::StaticAbilityPayload::RuleRestriction {
             restriction,
             additional_restrictions,
             display,
@@ -2489,19 +2517,29 @@ pub fn parse_attacked_player_can_attack_as_though_no_defender_line(
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let trimmed = trim_edge_punctuation(tokens);
     let words = crate::lexer::token_word_refs(&trimmed);
-    if words.as_slice()
-        != [
-            "this", "creature", "can", "attack", "players", "who", "attacked", "you",
-            "during", "their", "last", "turn", "as", "though", "it", "didn't", "have",
-            "defender",
-        ]
-        && words.as_slice()
-            != [
-                "this", "creature", "can", "attack", "players", "who", "attacked", "you",
-                "during", "their", "last", "turn", "as", "though", "it", "didnt", "have",
-                "defender",
-            ]
-    {
+    if !crate::word_primitives::parse_choice_sequence_complete(
+        &words,
+        &[
+            &["this"],
+            &["creature"],
+            &["can"],
+            &["attack"],
+            &["players"],
+            &["who"],
+            &["attacked"],
+            &["you"],
+            &["during"],
+            &["their"],
+            &["last"],
+            &["turn"],
+            &["as"],
+            &["though"],
+            &["it"],
+            &["didn't", "didnt"],
+            &["have"],
+            &["defender"],
+        ],
+    ) {
         return Ok(None);
     }
     Ok(Some(StaticAbilityAst::Static(
@@ -2699,6 +2737,11 @@ pub fn parse_multi_subject_anthem_line(
     ) {
         return Ok(None);
     }
+    if subject_tokens.iter().any(OwnedLexToken::is_comma)
+        && parse_anthem_line(tokens)?.is_some()
+    {
+        return Ok(None);
+    }
     let Some(segments) = anthem_grant_grammar::parse_multi_subject_segments(&subject_tokens) else {
         return Ok(None);
     };
@@ -2760,7 +2803,7 @@ fn shared_head_supertype_subtype_anthem_remains_one_typed_subject() {
     let ability = parse_anthem_line(&tokens)
         .expect("parse shared-head anthem")
         .expect("single-subject anthem should match");
-    let crate::static_abilities::StaticAbilityPayload::Anthem(anthem) = &ability.payload else {
+    let ironsmith_core::StaticAbilityPayload::Anthem(anthem) = &ability.payload else {
         panic!("expected a typed anthem: {ability:#?}");
     };
     let filter = anthem
@@ -2810,14 +2853,7 @@ pub fn parse_has_base_power_toughness_static_line(
         }
     };
     let condition = bind_attachment_condition_to_subject(condition, &subject);
-    #[cfg(not(feature = "serialization"))]
-    {
-        Ok(Some(base.with_condition(condition)))
-    }
-    #[cfg(feature = "serialization")]
-    {
-        Ok(base.with_condition(condition))
-    }
+    Ok(Some(base.with_condition(condition)))
 }
 
 pub fn parse_has_base_power_toughness_and_type_color_addition_static_line(
@@ -3377,14 +3413,16 @@ fn leading_attached_characteristic_condition_binds_pronoun_grant_to_the_host() {
     let near_miss = parse_filter_has_granted_ability_line(&near_miss)
         .expect("parse source grant near miss")
         .expect("source grant near miss should match");
-    assert!(matches!(
-        near_miss.as_slice(),
-        [StaticAbilityAst::GrantKeywordAction {
-            filter,
-            action: KeywordAction::Lifelink,
-            ..
-        }] if filter.source
-    ));
+    assert!(
+        matches!(
+            near_miss.as_slice(),
+            [StaticAbilityAst::ConditionalKeywordAction {
+                action: KeywordAction::Lifelink,
+                ..
+            }]
+        ),
+        "{near_miss:#?}"
+    );
 }
 
 #[test]
@@ -3554,7 +3592,7 @@ fn keyword_and_attack_requirements_before_anthem_share_the_clean_subject_filter(
     else {
         panic!("expected trample, attack requirement, then anthem: {abilities:#?}");
     };
-    let crate::static_abilities::StaticAbilityPayload::Anthem(anthem) = &anthem.payload else {
+    let ironsmith_core::StaticAbilityPayload::Anthem(anthem) = &anthem.payload else {
         panic!("expected terminal anthem: {anthem:#?}");
     };
     let anthem_filter = anthem.filter.as_ref().expect("filtered anthem subject");
@@ -3849,7 +3887,7 @@ fn exact_one_control_condition_binds_that_creature_subject() {
         for ability in &abilities {
             match ability {
                 StaticAbilityAst::Static(static_ability) => {
-                    let crate::static_abilities::StaticAbilityPayload::Anthem(anthem) =
+                    let ironsmith_core::StaticAbilityPayload::Anthem(anthem) =
                         &static_ability.payload
                     else {
                         panic!("expected anthem payload: {static_ability:#?}");
@@ -3932,7 +3970,7 @@ fn broad_spell_grant_moves_trailing_mana_source_predicate_into_spell_filter() {
             ..
         } => Some(filter),
         StaticAbilityAst::Static(static_ability) => {
-            let crate::static_abilities::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) =
+            let ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) =
                 &static_ability.payload
             else {
                 return None;
@@ -4035,7 +4073,7 @@ fn attachment_count_conditions_bind_typed_hosts_for_target_cards() {
             "Equipped creature has double strike as long as two or more Equipment are attached to it.",
             &[
                 "AttachmentCount",
-                "SourceAttachedObject",
+                "__it__",
                 "GreaterThanOrEqual",
                 "equipped",
             ][..],
@@ -4105,9 +4143,7 @@ fn base_power_toughness_grants_accept_quoted_triggered_abilities() {
 
 #[test]
 fn attached_combat_restrictions_preserve_quoted_ability_grants() {
-    crate::util::with_source_reference_context(
-        "Hold for Ransom",
-        || {
+    (|| {
             let text = "Enchanted creature can't attack or block and has \"{7}: Hold for Ransom's controller sacrifices it and draws a card. Activate only as a sorcery.\"";
             let tokens = crate::lexer::lex_line(text, 0)
                 .expect("lex restriction and grant");
@@ -4118,14 +4154,13 @@ fn attached_combat_restrictions_preserve_quoted_ability_grants() {
             let debug = format!("{abilities:#?}");
             assert!(debug.contains("AttachedObjectAbilityGrant"), "{debug}");
             assert!(
-                debug.contains("source_surface: Some")
-                    && debug.contains("FullName")
+                debug.contains("player: ItsController")
+                    && debug.contains("__it__")
                     && debug.contains("Hold for Ransom"),
                 "{debug}"
             );
             assert!(debug.contains("SorcerySpeed"), "{debug}");
-        },
-    );
+        })();
 }
 
 #[test]

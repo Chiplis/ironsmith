@@ -137,7 +137,7 @@ pub(super) fn parse_additional_cost(
         return Ok(ast(parsed));
     }
     if let Some(shape) = parse_behold_and_exile_additional_cost_tokens(tokens) {
-        let tag = crate::TagKey::from("beheld_cost_0");
+        let tag = crate::tag::CompilerReferenceTag::BeheldCost0.key();
         let effects = vec![
             EffectAst::TagAffected {
                 effect: Box::new(EffectAst::subject_verb_behold(shape.subtype, 1)),
@@ -169,15 +169,16 @@ pub(super) fn parse_alternative_cast(
         return Ok(None);
     }
     if token_slice_first_is(tokens, "aftermath") {
-        let mut ability =
-            crate::static_abilities::StaticAbility::grants(crate::grant::GrantSpec::new(
-                crate::grant::Grantable::graveyard_cast_from_cards_mana_cost(
-                    Vec::<crate::costs::Cost>::new(),
+        let mut ability = crate::model::CompilerStaticAbilityCore::grants(
+            crate::model::CompilerGrantSpecCore::new(
+                crate::model::CompilerGrantableCore::graveyard_cast_from_cards_mana_cost(
+                    Vec::<crate::model::CompilerCost>::new(),
                     true,
                 ),
                 crate::target::ObjectFilter::source(),
                 crate::zone::Zone::Graveyard,
-            ));
+            ),
+        );
         ability.label = "Aftermath".to_string();
         return Ok(ast(LineAst::StaticAbility(ability.into())));
     }
@@ -190,7 +191,7 @@ pub(super) fn parse_alternative_cast(
                 ))
             })?;
         return Ok(ast(LineAst::StaticAbility(
-            crate::static_abilities::StaticAbility::keyword_marker(format!(
+            crate::model::CompilerStaticAbilityCore::keyword_marker(format!(
                 "Encore {}",
                 cost.to_oracle()
             ))
@@ -274,12 +275,10 @@ pub(super) fn parse_alternative_cast(
                 ))
             })?;
         return Ok(ast(LineAst::AlternativeCastingMethod(
-            crate::alternative_cast::AlternativeCastingMethod::alternative_cost(
+            crate::model::CompilerAlternativeCastingMethod::alternative_cost(
                 "Sneak",
                 Some(cost),
-                vec![crate::costs::Cost::effect(crate::effect::Effect::new(
-                    crate::effects::SneakCostEffect::new(),
-                ))],
+                vec![crate::model::CompilerCost::Sneak],
             )
             .into(),
         )));
@@ -384,10 +383,11 @@ pub(super) fn parse_flashback(
 
     let reduction_tokens = sentences[1];
     let reduction_words = TokenWordView::new(reduction_tokens).word_refs();
-    if !reduction_words.starts_with(&["this", "spell", "costs"])
-        || !reduction_words
-            .windows(4)
-            .any(|window| window == ["to", "cast", "this", "way"])
+    if !crate::word_primitives::parse_sequence_prefix(&reduction_words, &["this", "spell", "costs"])
+        || !crate::word_primitives::sequence_occurs(
+            &reduction_words,
+            &["to", "cast", "this", "way"],
+        )
     {
         return Ok(None);
     }
@@ -501,16 +501,14 @@ pub(super) fn parse_splice(
                 | crate::lexer::TokenKind::Period
         )
     };
-    let start = parsed
-        .cost_tokens
-        .iter()
-        .position(|token| !is_edge_punctuation(token))
-        .unwrap_or(parsed.cost_tokens.len());
-    let end = parsed
-        .cost_tokens
-        .iter()
-        .rposition(|token| !is_edge_punctuation(token))
-        .map_or(start, |index| index + 1);
+    let start = crate::slice_primitives::select_position(parsed.cost_tokens, |token| {
+        !is_edge_punctuation(token)
+    })
+    .unwrap_or(parsed.cost_tokens.len());
+    let end = crate::slice_primitives::select_last_position(parsed.cost_tokens, |token| {
+        !is_edge_punctuation(token)
+    })
+    .map_or(start, |index| index + 1);
     let cost_tokens = &parsed.cost_tokens[start..end];
     let cost_surface = cost_tokens
         .first()
@@ -524,7 +522,9 @@ pub(super) fn parse_splice(
                 .trim()
                 .to_string()
         });
-    let cost = crate::activation_and_restrictions::parse_payment_clause_as_total_cost(cost_tokens)?
+    let cost = crate::activation_and_restrictions::keyword_action_costs::parse_payment_clause_as_total_cost(
+        cost_tokens,
+    )?
         .ok_or_else(|| {
             crate::cards::builders::CardTextError::ParseError(format!(
                 "unsupported splice cost clause: {}",
@@ -540,7 +540,7 @@ pub(super) fn parse_splice(
         }
     };
     Ok(ast(LineAst::StaticAbility(
-        crate::static_abilities::StaticAbility::splice_with_cost_surface(
+        crate::model::CompilerStaticAbilityCore::splice_with_cost_surface(
             quality,
             cost,
             Some(cost_surface),
@@ -549,166 +549,21 @@ pub(super) fn parse_splice(
     )))
 }
 
-pub(super) fn parse_escalate(
-    _line: &PreprocessedLine,
-    tokens: &[OwnedLexToken],
-    _full_tokens: &[OwnedLexToken],
-) -> KeywordParseResult {
-    let Some((cost, display)) = parse_escalate_line_lexed(tokens)? else {
-        return Ok(None);
-    };
-    Ok(ast(LineAst::StaticAbility(
-        crate::static_abilities::StaticAbility::escalate_with_cost_surface(cost, Some(display))
-            .into(),
-    )))
-}
-
-pub(super) fn parse_eternalize(
-    _line: &PreprocessedLine,
-    tokens: &[OwnedLexToken],
-    _full_tokens: &[OwnedLexToken],
-) -> KeywordParseResult {
-    Ok(parse_eternalize_line_lexed(tokens)?.map(|cost| {
-        KeywordLinePayloadCst::ast(LineAst::Abilities(vec![
-            crate::cards::builders::KeywordAction::Eternalize(cost),
-        ]))
-    }))
-}
-
-pub(super) fn parse_evoke(
-    _line: &PreprocessedLine,
-    tokens: &[OwnedLexToken],
-    _full_tokens: &[OwnedLexToken],
-) -> KeywordParseResult {
-    let Some(method) = parse_evoke_line_lexed(tokens)? else {
-        return Ok(None);
-    };
-    Ok(ast(LineAst::Multiple(vec![
-        LineAst::AlternativeCastingMethod(method.into()),
-        LineAst::Triggered {
-            trigger: TriggerSpec::ThisEntersBattlefield {
-                origin_condition: None,
-            },
-            effects: vec![EffectAst::Conditional {
-                predicate: PredicateAst::ThisSpellPaidLabel("Evoke".into()),
-                if_true: vec![EffectAst::subject_verb_sacrifice(
-                    PlayerAst::ItsController,
-                    crate::target::ObjectFilter::source(),
-                    1,
-                    Some(TargetAst::Source(None)),
-                )],
-                if_false: Vec::new(),
-            }],
-            max_triggers_per_turn: None,
-        },
-    ])))
-}
-
-pub(super) fn parse_epic(
-    _line: &PreprocessedLine,
-    tokens: &[OwnedLexToken],
-    _full_tokens: &[OwnedLexToken],
-) -> KeywordParseResult {
-    if !parse_epic_line_lexed(tokens) {
-        return Ok(None);
-    }
-    Ok(ast(LineAst::StaticAbility(
-        crate::static_abilities::StaticAbility::keyword_marker("Epic").into(),
-    )))
-}
-
-pub(super) fn parse_cast_this_spell_only(
-    _line: &PreprocessedLine,
-    tokens: &[OwnedLexToken],
-    _full_tokens: &[OwnedLexToken],
-) -> KeywordParseResult {
-    Ok(parse_cast_this_spell_only_line_lexed(tokens)?
-        .map(|ability| KeywordLinePayloadCst::ast(LineAst::StaticAbility(ability.into()))))
-}
-
-pub(super) fn parse_gift(
-    line: &PreprocessedLine,
-    tokens: &[OwnedLexToken],
-    full_tokens: &[OwnedLexToken],
-) -> KeywordParseResult {
-    if !is_standard_gift_keyword_tokens_lexed(tokens) {
-        return Ok(None);
-    }
-    let context = rewrite_context(line, tokens, full_tokens, KeywordLineKindCst::Gift);
-    Ok(ast(parse_gift_keyword_line(&context)?))
-}
-
-pub(super) fn parse_exert_attack(
-    line: &PreprocessedLine,
-    tokens: &[OwnedLexToken],
-    full_tokens: &[OwnedLexToken],
-) -> KeywordParseResult {
-    if parse_keyword_special_form_shape_tokens(tokens) != Some(KeywordSpecialFormShape::ExertAttack)
-    {
-        return Ok(None);
-    }
-    let context = rewrite_context(line, tokens, full_tokens, KeywordLineKindCst::ExertAttack);
-    Ok(ast(parse_exert_attack_keyword_line(&context, tokens)?))
-}
-
-pub(super) fn parse_exploit(
-    _line: &PreprocessedLine,
-    tokens: &[OwnedLexToken],
-    _full_tokens: &[OwnedLexToken],
-) -> KeywordParseResult {
-    if parse_keyword_prefix_shape_tokens(tokens) != Some(KeywordPrefixShape::Exploit) {
-        return Ok(None);
-    }
-    Ok(ast(LineAst::Triggered {
-        trigger: TriggerSpec::ThisEntersBattlefield {
-            origin_condition: None,
-        },
-        effects: vec![EffectAst::subject_verb_exploit()],
-        max_triggers_per_turn: None,
-    }))
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::cards::builders::{LineInfo, NormalizedLine};
-    use crate::lexer::lex_line;
+#[path = "keyword_payloads_inline_tests.rs"]
+mod tests;
 
-    fn line(text: &str) -> PreprocessedLine {
-        let tokens = lex_line(text, 0).expect("keyword test line should lex");
-        PreprocessedLine {
-            info: LineInfo {
-                line_index: 0,
-                display_line_index: 0,
-                raw_line: text.to_string(),
-                source_tokens: tokens.clone(),
-                normalized: NormalizedLine {
-                    original: text.to_string(),
-                    normalized: text.to_ascii_lowercase(),
-                    char_map: Vec::new(),
-                },
-                semantic_facts: Default::default(),
-            },
-            tokens,
-        }
-    }
-
-    #[test]
-    fn kicker_parser_carries_cost_without_lowering_reparse() {
-        let line = line("Kicker {2}{R}");
-        let payload = parse_kicker(&line, &line.tokens, &line.info.source_tokens)
-            .expect("kicker parser should succeed")
-            .expect("kicker should match");
-        assert!(matches!(payload, KeywordLinePayloadCst::Kicker { .. }));
-    }
-
-    #[test]
-    fn blitz_cost_modifier_is_not_claimed_as_keyword_payload() {
-        let line = line("Blitz costs you pay cost {1} less.");
-        assert!(
-            parse_blitz(&line, &line.tokens, &line.info.source_tokens)
-                .expect("blitz parser should not fail")
-                .is_none()
-        );
-    }
-}
+#[path = "keyword_payloads/core_programs.rs"]
+mod core_programs;
+pub(super) use core_programs::{
+    parse_epic, parse_escalate, parse_eternalize, parse_evoke, parse_exploit,
+};
+#[path = "keyword_payloads/combat_programs.rs"]
+mod combat_programs;
+pub(super) use combat_programs::parse_exert_attack;
+#[path = "keyword_payloads/condition_programs.rs"]
+mod condition_programs;
+pub(super) use condition_programs::parse_gift;
+#[path = "keyword_payloads/permission_programs.rs"]
+mod permission_programs;
+pub(super) use permission_programs::parse_cast_this_spell_only;

@@ -1218,8 +1218,8 @@ mod tests {
         assert_eq!(dm.object_players, vec![bob]);
         assert_eq!(
             dm.mana_payment_players.len(),
-            7,
-            "Bob should choose Alice's mana abilities until Panglacial can be paid for"
+            1,
+            "Bob should confirm the authoritative payment plan using Alice's mana abilities"
         );
         assert!(dm.mana_payment_players.iter().all(|player| *player == bob));
 
@@ -1291,7 +1291,7 @@ mod tests {
 
         assert_eq!(dm.boolean_players, vec![bob]);
         assert_eq!(dm.object_players, vec![bob]);
-        assert_eq!(dm.mana_payment_players.len(), 7);
+        assert_eq!(dm.mana_payment_players.len(), 1);
         assert_eq!(
             dm.color_players,
             vec![bob, bob],

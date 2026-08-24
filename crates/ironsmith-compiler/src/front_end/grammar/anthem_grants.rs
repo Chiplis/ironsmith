@@ -472,9 +472,9 @@ pub fn parse_keywords_and_cant_be_blocked_by_more_than_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<KeywordsAndCantBeBlockedByMoreThanClause<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
-    let has_token = tokens
-        .iter()
-        .position(|token| token.is_any_word(&["has", "have"]))?;
+    let has_token = crate::slice_primitives::select_position(tokens, |token| {
+        token.is_any_word(&["has", "have"])
+    })?;
     if has_token == 0 {
         return None;
     }
@@ -483,20 +483,23 @@ pub fn parse_keywords_and_cant_be_blocked_by_more_than_clause(
             continue;
         }
         let tail = tokens.get(and_token + 1..)?;
-        let starts_with_words = |words: &[&str]| {
-            tail.get(..words.len()).is_some_and(|prefix| {
-                prefix
-                    .iter()
-                    .zip(words)
-                    .all(|(token, word)| token.is_word(word))
-            })
-        };
-        let blocked_prefix = if starts_with_words(&["can't", "be", "blocked", "by"])
-            || starts_with_words(&["cant", "be", "blocked", "by"])
-            || starts_with_words(&["cannot", "be", "blocked", "by"])
+        let blocked_prefix = if primitives::parse_prefix(
+            tail,
+            primitives::any_phrase(&[
+                &["can't", "be", "blocked", "by"],
+                &["cant", "be", "blocked", "by"],
+                &["cannot", "be", "blocked", "by"],
+            ]),
+        )
+        .is_some()
         {
             4
-        } else if starts_with_words(&["can", "t", "be", "blocked", "by"]) {
+        } else if primitives::parse_prefix(
+            tail,
+            primitives::phrase(&["can", "t", "be", "blocked", "by"]),
+        )
+        .is_some()
+        {
             5
         } else {
             continue;
@@ -689,7 +692,10 @@ pub fn granted_keyword_subject_is_rejected(tokens: &[OwnedLexToken]) -> bool {
     let has_attached_marker = words
         .iter()
         .any(|word| matches!(*word, "equipped" | "enchanted"));
-    let has_bare_mana = words.contains(&"mana") && !word_phrase_occurs(&words, &["mana", "value"]);
+    let has_bare_mana = crate::slice_primitives::contains(&words, &"mana")
+        && !word_phrase_occurs(&words, &["mana", "value"])
+        && !parse_first_spell_each_turn_clause(tokens)
+            .is_some_and(|clause| clause.mana_source_tokens.is_some());
     let has_rejected_word = words.iter().any(|word| {
         matches!(
             *word,
@@ -1665,10 +1671,7 @@ fn parse_first_spell_each_turn_clause_lexed<'a>(
         }
         Some(source_tokens)
     };
-    if !filter_tokens
-        .windows(2)
-        .any(|pair| pair[0].is_word("you") && pair[1].is_word("cast"))
-    {
+    if primitives::find_prefix(filter_tokens, || primitives::phrase(&["you", "cast"])).is_none() {
         return Err(primitives::backtrack_err(
             "first-spell-each-turn subject",
             "a spell subject followed by 'you cast'",
@@ -1917,347 +1920,18 @@ fn first_token_word(tokens: &[OwnedLexToken], expected: AnthemWordClass) -> Opti
     }
 }
 
-fn first_token_kind_from(
-    tokens: &[OwnedLexToken],
-    start: usize,
-    expected: TokenKind,
-) -> Option<usize> {
-    let mut input = LexStream::new(tokens.get(start..)?);
-    let initial_len = input.len();
-    while let Ok(token) = take_token(&mut input) {
-        if token.kind == expected {
-            return Some(start + initial_len.saturating_sub(input.len() + 1));
-        }
-    }
-    None
-}
-
-fn find_no_defender_phrase(
-    tokens: &[OwnedLexToken],
-    with_condition_tail: bool,
-) -> Option<(usize, usize)> {
-    const BASE_IT: &[&[&str]] = &[
-        &[
-            "can", "attack", "as", "though", "it", "didnt", "have", "defender",
-        ],
-        &[
-            "can", "attack", "as", "though", "it", "didn't", "have", "defender",
-        ],
-    ];
-    const BASE_THEY: &[&[&str]] = &[
-        &[
-            "can", "attack", "as", "though", "they", "didnt", "have", "defender",
-        ],
-        &[
-            "can", "attack", "as", "though", "they", "didn't", "have", "defender",
-        ],
-    ];
-    const CONDITIONAL: &[&[&str]] = &[
-        &[
-            "can", "attack", "as", "though", "it", "didnt", "have", "defender", "as", "long", "as",
-        ],
-        &[
-            "can", "attack", "as", "though", "it", "didn't", "have", "defender", "as", "long", "as",
-        ],
-    ];
-    let phrases = if with_condition_tail {
-        CONDITIONAL
-    } else {
-        BASE_IT
-    };
-    let mut input = LexStream::new(tokens);
-    let initial_len = input.len();
-    loop {
-        let start = initial_len.saturating_sub(input.len());
-        let mut candidate = input.clone();
-        if primitives::any_phrase(phrases)
-            .parse_next(&mut candidate)
-            .is_ok()
-        {
-            return Some((start, initial_len.saturating_sub(candidate.len())));
-        }
-        if !with_condition_tail {
-            let mut plural_candidate = input.clone();
-            if primitives::any_phrase(BASE_THEY)
-                .parse_next(&mut plural_candidate)
-                .is_ok()
-            {
-                return Some((start, initial_len.saturating_sub(plural_candidate.len())));
-            }
-        }
-        take_token(&mut input).ok()?;
-    }
-}
-
-fn find_cant_gain_tail(
-    tokens: &[OwnedLexToken],
-) -> Option<(usize, usize, ironsmith_core::AbilityLossMode)> {
-    const CANT_HAVE_OR_GAIN_PHRASES: &[&[&str]] = &[
-        &["cant", "have", "or", "gain"],
-        &["can't", "have", "or", "gain"],
-        &["cannot", "have", "or", "gain"],
-        &["can", "t", "have", "or", "gain"],
-    ];
-    const CANT_GAIN_PHRASES: &[&[&str]] = &[
-        &["cant", "gain"],
-        &["can't", "gain"],
-        &["cannot", "gain"],
-        &["can", "t", "gain"],
-    ];
-    let mut input = LexStream::new(tokens);
-    let initial_len = input.len();
-    while let Ok(token) = take_token(&mut input) {
-        let and_token = initial_len.saturating_sub(input.len() + 1);
-        if !token.is_word("and") {
-            continue;
-        }
-        let after_and = &tokens[and_token + 1..];
-        let (rest, loss_mode) = if let Some((_, rest)) =
-            primitives::parse_prefix(after_and, primitives::any_phrase(CANT_HAVE_OR_GAIN_PHRASES))
-        {
-            (rest, ironsmith_core::AbilityLossMode::LoseAndCantHaveOrGain)
-        } else if let Some((_, rest)) =
-            primitives::parse_prefix(after_and, primitives::any_phrase(CANT_GAIN_PHRASES))
-        {
-            (rest, ironsmith_core::AbilityLossMode::LoseAndCantGain)
-        } else {
-            continue;
-        };
-        let consumed = after_and.len().saturating_sub(rest.len());
-        return Some((and_token, and_token + 1 + consumed, loss_mode));
-    }
-    None
-}
-
-fn token_phrase_prefix(tokens: &[OwnedLexToken], expected: &'static [&'static str]) -> bool {
-    let mut input = LexStream::new(trim_anthem_clause_tokens(tokens));
-    primitives::phrase(expected).parse_next(&mut input).is_ok()
-}
-
-fn token_phrase_complete(tokens: &[OwnedLexToken], expected: &'static [&'static str]) -> bool {
-    let tokens = trim_anthem_clause_tokens(tokens);
-    primitives::parse_all(tokens, primitives::phrase(expected), "anthem-exact-phrase").is_ok()
-}
-
-fn token_any_phrase_complete(
-    tokens: &[OwnedLexToken],
-    expected: &'static [&'static [&'static str]],
-) -> bool {
-    let tokens = trim_anthem_clause_tokens(tokens);
-    primitives::parse_all(
-        tokens,
-        primitives::any_phrase(expected),
-        "anthem-exact-alternative",
-    )
-    .is_ok()
-}
-
 #[cfg(test)]
-mod tests {
-    use super::super::super::lexer::lex_line;
-    use super::*;
+#[path = "anthem_grants_inline_tests.rs"]
+mod tests;
 
-    #[test]
-    fn recognizes_only_the_complete_defending_player_most_creatures_condition() {
-        let exact = lex_line(
-            "defending player controls the most creatures or is tied for the most.",
-            0,
-        )
-        .expect("lex exact condition");
-        assert!(parse_defending_player_controls_most_creatures_or_tied_condition(&exact));
-
-        let truncated = lex_line("defending player controls the most creatures.", 0)
-            .expect("lex truncated condition");
-        let ordinary =
-            lex_line("defending player controls a creature.", 0).expect("lex ordinary condition");
-        assert!(!parse_defending_player_controls_most_creatures_or_tied_condition(&truncated));
-        assert!(!parse_defending_player_controls_most_creatures_or_tied_condition(&ordinary));
-    }
-
-    #[test]
-    fn parses_cards_drawn_thresholds() {
-        let tokens = lex_line("You've drawn three or more cards this turn", 0).unwrap();
-        assert_eq!(
-            parse_cards_drawn_this_turn_threshold(&tokens),
-            Some(TurnThreshold {
-                player: TurnThresholdPlayer::You,
-                count: 3,
-            })
-        );
-
-        let tokens = lex_line("An opponent has drawn two or more card this turn", 0).unwrap();
-        assert_eq!(
-            parse_cards_drawn_this_turn_threshold(&tokens),
-            Some(TurnThreshold {
-                player: TurnThresholdPlayer::Opponent,
-                count: 2,
-            })
-        );
-    }
-
-    #[test]
-    fn parses_dice_rolled_thresholds() {
-        let tokens = lex_line("Players have rolled four or more dice this turn", 0).unwrap();
-        assert_eq!(
-            parse_dice_rolled_this_turn_threshold(&tokens),
-            Some(TurnThreshold {
-                player: TurnThresholdPlayer::Any,
-                count: 4,
-            })
-        );
-
-        let tokens = lex_line("You have rolled one or more die this turn", 0).unwrap();
-        assert_eq!(
-            parse_dice_rolled_this_turn_threshold(&tokens),
-            Some(TurnThreshold {
-                player: TurnThresholdPlayer::You,
-                count: 1,
-            })
-        );
-    }
-
-    #[test]
-    fn parses_source_color_tails() {
-        let tokens = lex_line("it is blue", 0).unwrap();
-        assert_eq!(parse_if_source_is_color(&tokens), Some(ColorSet::BLUE));
-
-        let tokens = lex_line("this creature is red", 0).unwrap();
-        assert_eq!(parse_if_source_is_color(&tokens), Some(ColorSet::RED));
-
-        let tokens = lex_line("it is blue and red", 0).unwrap();
-        assert_eq!(parse_if_source_is_color(&tokens), None);
-    }
-
-    #[test]
-    fn parses_source_counter_count_clause() {
-        let tokens = lex_line("three lore counters on this enchantment", 0).unwrap();
-        let parsed = parse_source_counter_count_clause(&tokens).unwrap();
-        assert_eq!(parsed.counter_type_word, "lore");
-        assert!(parsed.starts_with_source_pronoun);
-        assert_eq!(
-            primitives::TokenWordView::new(parsed.source_tokens).word_refs(),
-            ["this", "enchantment"]
-        );
-
-        let tokens = lex_line("counters on this enchantment", 0).unwrap();
-        assert_eq!(parse_source_counter_count_clause(&tokens), None);
-    }
-
-    #[test]
-    fn first_spell_each_turn_clause_retains_cast_origin_words() {
-        for (text, expected) in [
-            (
-                "The first spell you cast each turn",
-                vec!["spell", "you", "cast"],
-            ),
-            (
-                "The first noncreature spell you cast from exile each turn",
-                vec!["noncreature", "spell", "you", "cast", "from", "exile"],
-            ),
-        ] {
-            let tokens = lex_line(text, 0).expect("first-spell fixture should lex");
-            let parsed = parse_first_spell_each_turn_clause(&tokens)
-                .unwrap_or_else(|| panic!("first-spell clause should parse: {text}"));
-            assert_eq!(
-                TokenWordView::new(parsed.filter_tokens).word_refs(),
-                expected,
-                "{text}"
-            );
-            assert!(parsed.mana_source_tokens.is_none(), "{text}");
-        }
-
-        let mana_source = lex_line(
-            "The first spell you cast each turn that mana from a Treasure was spent to cast",
-            0,
-        )
-        .expect("mana-source first-spell fixture should lex");
-        let parsed = parse_first_spell_each_turn_clause(&mana_source)
-            .expect("mana-source first-spell clause should parse");
-        assert_eq!(
-            TokenWordView::new(parsed.filter_tokens).word_refs(),
-            ["spell", "you", "cast"]
-        );
-        assert_eq!(
-            TokenWordView::new(
-                parsed
-                    .mana_source_tokens
-                    .expect("relative source tokens should be preserved")
-            )
-            .word_refs(),
-            ["a", "Treasure"]
-        );
-
-        let noncast = lex_line("The first spell revealed each turn", 0).unwrap();
-        assert!(parse_first_spell_each_turn_clause(&noncast).is_none());
-
-        let malformed = lex_line(
-            "The first spell you cast each turn that mana from a Treasure was produced",
-            0,
-        )
-        .unwrap();
-        assert!(parse_first_spell_each_turn_clause(&malformed).is_none());
-    }
-
-    #[test]
-    fn lose_all_abilities_shape_does_not_steal_preceding_anthem() {
-        let direct = lex_line("Enchanted creature loses all abilities.", 0).unwrap();
-        assert!(parse_lose_all_abilities_shape(&direct).is_some());
-
-        let compound =
-            lex_line("Enchanted creature gets -5/-0 and loses all abilities.", 0).unwrap();
-        assert!(parse_lose_all_abilities_shape(&compound).is_none());
-    }
-
-    #[test]
-    fn captures_keyword_and_maximum_blocker_clause_without_flattening_subject() {
-        let tokens = lex_line(
-            "Enchanted creature has hexproof and can't be blocked by more than one creature.",
-            0,
-        )
-        .unwrap();
-        let parsed = parse_keywords_and_cant_be_blocked_by_more_than_clause(&tokens)
-            .expect("compound attached grant should parse");
-
-        assert_eq!(
-            TokenWordView::new(parsed.subject_tokens).word_refs(),
-            ["enchanted", "creature"]
-        );
-        assert_eq!(
-            TokenWordView::new(parsed.keyword_tokens).word_refs(),
-            ["hexproof"]
-        );
-        assert_eq!(
-            TokenWordView::new(parsed.blocker_threshold_tokens).word_refs(),
-            ["more", "than", "one"]
-        );
-    }
-
-    #[test]
-    fn subject_keyword_loss_preserves_have_or_gain_prohibition_mode() {
-        let tokens = lex_line(
-            "Creatures your opponents control lose flying and can't have or gain flying.",
-            0,
-        )
-        .unwrap();
-        let parsed = parse_subject_loses_keywords_clause(&tokens)
-            .expect("Archetype-style keyword loss should parse");
-
-        assert_eq!(
-            parsed.loss_mode,
-            ironsmith_core::AbilityLossMode::LoseAndCantHaveOrGain
-        );
-        assert_eq!(
-            TokenWordView::new(parsed.loss_tokens).word_refs(),
-            ["flying"]
-        );
-        assert_eq!(
-            TokenWordView::new(
-                parsed
-                    .additional_gain_tokens
-                    .expect("prohibited keyword should be retained"),
-            )
-            .word_refs(),
-            ["flying"]
-        );
-    }
-}
+#[path = "anthem_grants/object_action_programs.rs"]
+mod object_action_programs;
+use object_action_programs::{
+    first_token_kind_from, token_any_phrase_complete, token_phrase_complete, token_phrase_prefix,
+};
+#[path = "anthem_grants/condition_programs.rs"]
+mod condition_programs;
+use condition_programs::find_cant_gain_tail;
+#[path = "anthem_grants/combat_programs.rs"]
+mod combat_programs;
+use combat_programs::find_no_defender_phrase;

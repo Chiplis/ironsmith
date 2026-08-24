@@ -1,4 +1,3 @@
-use ironsmith::cards::builders::CardDefinitionBuilder;
 use ironsmith::events::{KeywordActionEvent, KeywordActionKind};
 use ironsmith::triggers::Trigger;
 use ironsmith::{
@@ -7,6 +6,7 @@ use ironsmith::{
     TriggerQueue, TurnAction, TurnRunner, TurnRunnerState, Zone, apply_state_based_actions,
     check_state_based_actions, check_triggers,
 };
+use ironsmith_registry::cards::builders::CardDefinitionBuilder;
 
 fn scheme(name: &str, ongoing: bool) -> CardDefinition {
     let mut builder = CardBuilder::new(CardId::new(), name).card_types(vec![CardType::Scheme]);

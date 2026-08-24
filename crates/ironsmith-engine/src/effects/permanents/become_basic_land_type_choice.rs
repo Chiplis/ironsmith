@@ -95,12 +95,18 @@ impl EffectExecutor for BecomeBasicLandTypeChoiceEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::ability::AbilityKind;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::cards::CardDefinitionBuilder;
     use crate::decision::DecisionMaker;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::ids::{CardId, PlayerId};
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::test_prelude::*;
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::types::{CardType, Subtype};
+    #[cfg(ironsmith_runtime_parser_tests)]
     use crate::zone::Zone;
 
     fn setup_game() -> GameState {

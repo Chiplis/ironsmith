@@ -166,7 +166,7 @@ pub fn parse_attached_color_choice_fact(
     if choose_word <= 6 {
         return None;
     }
-    let choose_token = view.token_boundary_for_word(choose_word)?;
+    let choose_token = view.map_word_to_token_boundary(choose_word)?;
     Some(AttachedColorChoiceFact {
         subject,
         choice_tokens: tokens.get(choose_token..)?,
@@ -258,7 +258,7 @@ fn parse_target_fact(
     {
         return Some(CostTargetFact::AnyPlayer);
     }
-    let target_token = view.token_boundary_for_word(target_start)?;
+    let target_token = view.map_word_to_token_boundary(target_start)?;
     let filter = parse_object_filter_with_grammar_entrypoint_lexed(
         trim_lexed_commas(tokens.get(target_token..)?),
         false,
@@ -436,7 +436,7 @@ pub fn parse_known_spell_cost_condition(
         && has_suffix(&words, &["in", "your", "hand"])
     {
         let start_word = words.len().checked_sub(rest.len())?;
-        let start_token = view.token_boundary_for_word(start_word)?;
+        let start_token = view.map_word_to_token_boundary(start_word)?;
         if let Ok(filter) = parse_object_filter_with_grammar_entrypoint_lexed(
             trim_lexed_commas(tokens.get(start_token..)?),
             false,
@@ -453,7 +453,7 @@ pub fn parse_known_spell_cost_condition(
         && has_suffix(&words, &["in", "your", "graveyard"])
     {
         let start_word = words.len().checked_sub(rest.len())?;
-        let start_token = view.token_boundary_for_word(start_word)?;
+        let start_token = view.map_word_to_token_boundary(start_word)?;
         if let Ok(filter) = parse_object_filter_with_grammar_entrypoint_lexed(
             trim_lexed_commas(tokens.get(start_token..)?),
             false,
@@ -547,7 +547,7 @@ pub fn parse_spell_cost_between_fact(tokens: &[OwnedLexToken]) -> SpellCostBetwe
     let target_tokens = ["target", "targets"].into_iter().find_map(|target_word| {
         let span = primitives::parse_word_sequence_span(&words, &["that", target_word])?;
         let target_start_word = span.start + span.len;
-        let target_start_token = view.token_boundary_for_word(target_start_word)?;
+        let target_start_token = view.map_word_to_token_boundary(target_start_word)?;
         let tail = trim_lexed_commas(tokens.get(target_start_token..)?);
         (!tail.is_empty()).then_some(tail)
     });
@@ -605,7 +605,7 @@ pub fn parse_where_x_clause_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLe
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     let span = primitives::parse_word_sequence_span(&words, &["where", "x", "is"])?;
-    let token = view.token_boundary_for_word(span.start)?;
+    let token = view.map_word_to_token_boundary(span.start)?;
     Some(trim_lexed_commas(tokens.get(token..)?))
 }
 
@@ -630,11 +630,11 @@ pub fn parse_cycling_cost_alternative_fact(
     )?;
     let rather_word = body_start + rather.start;
     let cost_start_word = body_start + 3;
-    let cost_start_token = view.token_boundary_for_word_or_end(cost_start_word)?;
-    let cost_end_token = view.token_boundary_for_word(rather_word)?;
+    let cost_start_token = view.map_word_or_end_to_token_boundary(cost_start_word)?;
+    let cost_end_token = view.map_word_to_token_boundary(rather_word)?;
     let condition_tokens = condition_words.and_then(|(start, end)| {
-        let start_token = view.token_boundary_for_word(start)?;
-        let end_token = view.token_boundary_for_word(end)?;
+        let start_token = view.map_word_to_token_boundary(start)?;
+        let end_token = view.map_word_to_token_boundary(end)?;
         Some(trim_lexed_commas(&tokens[start_token..end_token]))
     });
     Some(CyclingCostAlternativeFact {
@@ -683,7 +683,7 @@ pub fn parse_trailing_target_condition(
     let span = primitives::parse_word_sequence_span(&words, &["if", "it", "targets"])
         .or_else(|| primitives::parse_word_sequence_span(&words, &["if", "it", "target"]))?;
     let target_word = span.start + span.len;
-    let target_token = view.token_boundary_for_word_or_end(target_word)?;
+    let target_token = view.map_word_or_end_to_token_boundary(target_word)?;
     let target_tokens = trim_lexed_commas(tokens.get(target_token..)?);
     Some(TrailingTargetConditionFact { target_tokens })
 }

@@ -331,11 +331,21 @@ impl GameState {
         // Use the object's current typed abilities while it is still in the
         // origin zone. This honors ability-loss effects on the battlefield and
         // still lets an all-zone retention ability operate from other zones.
-        let retain_counters = self.current_abilities(old_id).is_some_and(|abilities| {
-            abilities
-                .iter()
-                .any(|ability| ability_retains_counters_moving_to(ability, new_zone))
-        });
+        let retain_counters = lki_snapshot.as_ref().map_or_else(
+            || {
+                self.current_abilities(old_id).is_some_and(|abilities| {
+                    abilities
+                        .iter()
+                        .any(|ability| ability_retains_counters_moving_to(ability, new_zone))
+                })
+            },
+            |snapshot| {
+                snapshot
+                    .abilities
+                    .iter()
+                    .any(|ability| ability_retains_counters_moving_to(ability, new_zone))
+            },
+        );
         let was_face_down = self.is_face_down(old_id);
         let preserved_exile_viewers = if self
             .objects
@@ -3567,7 +3577,12 @@ impl GameState {
                     if ability.functions_in(&object.zone)
                         && static_ability.id() == ability_id
                         && static_ability.is_active(self, id))
-            })
+            }) || object
+                .temporary_static_ability_grants
+                .iter()
+                .filter(|grant| !grant.is_expired(self.turn.turn_number))
+                .filter_map(|grant| grant.materialize())
+                .any(|ability| ability.id() == ability_id && ability.is_active(self, id))
         })
     }
 

@@ -80,6 +80,14 @@ pub fn parse_condition_predicate_lexed(
 ) -> Result<PredicateAst, CardTextError> {
     predicate_phrases::parse_predicate(tokens)
 }
+
+pub fn parse_condition_predicate_lexed_with_context(
+    context: crate::parse_context::ParseContextView<'_>,
+    tokens: &[OwnedLexToken],
+) -> Result<PredicateAst, CardTextError> {
+    let normalized = crate::util::normalize_source_reference_tokens_with_context(context, tokens)?;
+    predicate_phrases::parse_predicate(&normalized)
+}
 pub(super) use reference_tag_stage::*;
 
 pub use counter_constraints::{
@@ -96,7 +104,8 @@ pub use decorations::{
 };
 pub use meld_and_special_subjects::parse_same_color_mana_spent_to_cast_predicate;
 pub use reference_tag_stage::{
-    apply_supertype_or_mana_capability_union, parse_object_filter_with_grammar_entrypoint_lexed,
+    apply_supertype_or_mana_capability_union, is_attack_destination_relation,
+    parse_object_filter_with_grammar_entrypoint_lexed,
 };
 pub use simple::{
     parse_filter_face_state_words, parse_simple_object_filter_lexed,

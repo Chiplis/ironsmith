@@ -17,8 +17,7 @@ use super::super::keyword_static::{
 use super::super::lexer::TokenWordView;
 use super::super::object_filters::parse_object_filter;
 use super::super::util::{
-    parse_counter_type_from_tokens, parse_target_phrase, parse_value,
-    record_source_reference_surface, span_from_tokens,
+    parse_counter_type_from_tokens, parse_target_phrase, parse_value, span_from_tokens,
 };
 use crate::activation_and_restrictions::controller_filter_for_token_player;
 use crate::grammar::effects::zone_counter_shapes as shapes;
@@ -325,7 +324,7 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
     // fact before inspecting the remaining target phrase: words in the target
     // such as "creature" are otherwise valid named-counter surfaces and can
     // be mistaken for a counter descriptor.
-    if let Value::CountersOn(spec, None) = &count_value {
+    if let Value::CountersOn(spec, None) = count_value.unhinted() {
         let target = parse_counter_target_phrase(&target_tokens)?;
         let from = target_from_counter_source_spec(spec.as_ref(), span_from_tokens(tokens))
             .ok_or_else(|| {
@@ -630,10 +629,12 @@ fn parse_transform_like(
         }
         shapes::TransformTargetShape::Source { surface } => {
             let span = span_from_tokens(tokens);
-            if let Some(surface) = surface {
-                record_source_reference_surface(span, surface);
-            }
-            Ok(action(TargetAst::Source(span)))
+            Ok(action(match surface {
+                Some(surface) => {
+                    TargetAst::Object(ObjectFilter::source_with_surface(surface), None, span)
+                }
+                None => TargetAst::Source(span),
+            }))
         }
         shapes::TransformTargetShape::Target {
             target_tokens,

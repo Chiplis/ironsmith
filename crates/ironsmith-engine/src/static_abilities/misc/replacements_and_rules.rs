@@ -2389,6 +2389,22 @@ impl StaticAbilityKind for ExileWouldDieInstead {
         StaticAbilityId::ExileWouldDieInstead
     }
 
+    fn exile_would_die_instead_spec(
+        &self,
+    ) -> Option<(
+        &ObjectFilter,
+        Option<DamagedBySource>,
+        &[(CounterType, u32)],
+        &[Effect],
+    )> {
+        Some((
+            &self.filter,
+            self.damaged_by,
+            &self.exile_with_counters,
+            &self.follow_up_effects,
+        ))
+    }
+
     fn display(&self) -> String {
         let counter_suffix = if self.exile_with_counters.is_empty() {
             String::new()

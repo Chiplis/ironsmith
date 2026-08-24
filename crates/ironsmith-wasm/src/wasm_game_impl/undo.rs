@@ -489,7 +489,7 @@ impl WasmGame {
         if query.trim().is_empty() {
             return false;
         }
-        self.registry.ensure_cards_loaded([query]);
+        self.ensure_card_definitions_loaded([query]);
         self.registry.get(query).is_some()
     }
 
@@ -577,7 +577,7 @@ impl WasmGame {
         let spells_needed = deck_size - land_count;
         let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(self.next_deck_seed());
 
-        self.registry.ensure_cards_loaded(
+        self.ensure_card_definitions_loaded(
             DEMO_BASIC_LANDS
                 .iter()
                 .copied()
@@ -745,8 +745,7 @@ impl WasmGame {
         player_id: PlayerId,
         deck_names: &[String],
     ) -> Result<(), String> {
-        self.registry
-            .ensure_cards_loaded(deck_names.iter().map(|name| name.as_str()));
+        self.ensure_card_definitions_loaded(deck_names.iter().map(|name| name.as_str()));
 
         for name in deck_names {
             let Some(definition) = self.find_card_definition(name).cloned() else {
@@ -762,6 +761,55 @@ impl WasmGame {
 
         self.game.shuffle_player_library(player_id);
         Ok(())
+    }
+
+    fn ensure_card_definitions_loaded<'a>(
+        &mut self,
+        names: impl IntoIterator<Item = &'a str>,
+    ) {
+        let names = names
+            .into_iter()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(ToOwned::to_owned)
+            .collect::<Vec<_>>();
+        self.registry
+            .ensure_cards_loaded(names.iter().map(String::as_str));
+
+        #[cfg(test)]
+        for query in names {
+            if self.find_card_definition(&query).is_some() {
+                continue;
+            }
+            match crate::compile_test_card_definitions(&query) {
+                Ok(mut definitions) => {
+                    let face_ids = definitions
+                        .iter()
+                        .map(|definition| (definition.name().to_string(), definition.card.id))
+                        .collect::<std::collections::HashMap<_, _>>();
+                    for definition in &mut definitions {
+                        if let Some(other_face_name) = definition.card.other_face_name.as_ref()
+                            && let Some(other_face_id) = face_ids.get(other_face_name)
+                        {
+                            definition.card.other_face = Some(*other_face_id);
+                        }
+                    }
+                    for definition in definitions {
+                        self.registry.register(definition);
+                    }
+                    if self.find_card_definition(&query).is_none() {
+                        self.external_compile_errors.insert(
+                            query.to_ascii_lowercase(),
+                            format!("unknown card name: {query}"),
+                        );
+                    }
+                }
+                Err(error) => {
+                    self.external_compile_errors
+                        .insert(query.to_ascii_lowercase(), error);
+                }
+            }
+        }
     }
 
     fn find_card_definition(&self, query: &str) -> Option<&CardDefinition> {
@@ -1361,7 +1409,7 @@ impl WasmGame {
         });
 
         if !query.is_empty() {
-            self.registry.ensure_cards_loaded([query]);
+            self.ensure_card_definitions_loaded([query]);
         }
         let registry_definition = self.find_card_definition(query).cloned();
         let compiled_definition = registry_definition.or_else(|| {
@@ -1909,7 +1957,7 @@ impl WasmGame {
             return Some("card name cannot be empty".to_string());
         }
 
-        self.registry.ensure_cards_loaded([trimmed]);
+        self.ensure_card_definitions_loaded([trimmed]);
         if let Some(definition) = self.find_card_definition(trimmed).cloned() {
             return ironsmith::cards::unsupported_generated_definition_error(&definition);
         }
@@ -1936,6 +1984,7 @@ impl WasmGame {
         &mut self,
         query: &str,
     ) -> Result<ironsmith::cards::CardDefinition, String> {
+        self.ensure_card_definitions_loaded([query]);
         if let Some(definition) = self.find_card_definition(query).cloned() {
             if let Some(error) =
                 ironsmith::cards::unsupported_generated_definition_error(&definition)

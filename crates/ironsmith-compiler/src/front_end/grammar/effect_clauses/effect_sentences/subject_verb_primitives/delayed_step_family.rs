@@ -188,10 +188,10 @@ pub fn parse_sentence_delayed_timing_suffix(
     // relation instead of treating the pronoun as an unrelated iterated
     // player, which could make the delayed trigger fire on the wrong upkeep.
     if marker.player == PlayerAst::That
-        && before_timing
-            .trimmed_word_refs()
-            .windows(4)
-            .any(|words| words == ["under", "its", "owners", "control"])
+        && crate::word_primitives::sequence_occurs(
+            &before_timing.trimmed_word_refs(),
+            &["under", "its", "owners", "control"],
+        )
     {
         marker.player = PlayerAst::ItsOwner;
     }
@@ -330,8 +330,11 @@ fn parse_causative_source_damage_to_player(
     let (amount, used) = parse_value(shape.damage_tokens)?;
     let tail = SubjectVerbPrimitiveClause::new(&shape.damage_tokens[used..]).trimmed();
     let words = tail.word_refs();
-    if !matches!(words.first(), Some(&"damage"))
-        || !(words.ends_with(&["to", "them"]) || words.ends_with(&["to", "that", "player"]))
+    if !crate::word_primitives::first_is(&words, "damage")
+        || !crate::word_primitives::parse_any_sequence_suffix(
+            &words,
+            &[&["to", "them"], &["to", "that", "player"]],
+        )
     {
         return None;
     }
@@ -360,13 +363,15 @@ fn rewrite_value_source_to_it_tag(value: &mut Value) {
     }
 }
 
-fn rewrite_cost_source_values_to_it_tag(cost: &mut crate::cost::TotalCost) {
+fn rewrite_cost_source_values_to_it_tag(
+    cost: &mut ironsmith_core::TotalCost<crate::model::CompilerCost>,
+) {
     match cost.kind() {
         ironsmith_core::TotalCostKind::All(_) => {
             let mut components = cost.costs().to_vec();
             for component in &mut components {
                 match component {
-                    crate::costs::Cost::DynamicMana(dynamic) => {
+                    crate::model::CompilerCost::DynamicMana(dynamic) => {
                         if let Some(value) = dynamic.x_value.as_mut() {
                             rewrite_value_source_to_it_tag(value);
                         }
@@ -377,40 +382,31 @@ fn rewrite_cost_source_values_to_it_tag(cost: &mut crate::cost::TotalCost) {
                             rewrite_value_source_to_it_tag(value);
                         }
                     }
-                    crate::costs::Cost::Energy(value)
-                    | crate::costs::Cost::Mill(value)
-                    | crate::costs::Cost::Life(value) => rewrite_value_source_to_it_tag(value),
-                    crate::costs::Cost::SacrificeSelf => {
-                        *component = crate::costs::Cost::sacrifice(
-                            crate::target::ObjectFilter::tagged(TagKey::from(IT_TAG)),
-                        );
+                    crate::model::CompilerCost::Life(value) => {
+                        rewrite_value_source_to_it_tag(value)
                     }
-                    crate::costs::Cost::Sacrifice(filter) if filter.source => {
+                    crate::model::CompilerCost::SacrificeSelf { .. } => {
+                        *component = crate::model::CompilerCost::Sacrifice {
+                            count: crate::effect::ChoiceCount::exactly(1),
+                            filter: crate::target::ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                            all: false,
+                            binding: None,
+                        };
+                    }
+                    crate::model::CompilerCost::Sacrifice { filter, .. } if filter.source => {
                         *filter = crate::target::ObjectFilter::tagged(TagKey::from(IT_TAG));
-                    }
-                    crate::costs::Cost::Effect(effect) => {
-                        if let Some(sacrifice) =
-                            effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()
-                            && matches!(sacrifice.target.base(), crate::target::ChooseSpec::Source)
-                        {
-                            *effect = crate::effect::Effect::new(
-                                crate::effects::SacrificeTargetEffect::new(
-                                    crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG)),
-                                ),
-                            );
-                        }
                     }
                     _ => {}
                 }
             }
-            *cost = crate::cost::TotalCost::from_costs(components);
+            *cost = ironsmith_core::TotalCost::from_costs(components);
         }
         ironsmith_core::TotalCostKind::OneOf(branches) => {
             let mut branches = branches.to_vec();
             for branch in &mut branches {
                 rewrite_cost_source_values_to_it_tag(branch);
             }
-            *cost = crate::cost::TotalCost::one_of(branches);
+            *cost = ironsmith_core::TotalCost::one_of(branches);
         }
     }
 }
@@ -574,7 +570,7 @@ pub fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
         effects: vec![EffectAst::UnlessPays {
             effects: vec![EffectAst::subject_verb_lose_game(PlayerAst::You)],
             player: PlayerAst::You,
-            cost: crate::cost::TotalCost::mana(crate::mana::ManaCost::from_symbols(mana)),
+            cost: ironsmith_core::TotalCost::mana(crate::mana::ManaCost::from_symbols(mana)),
             before_delayed_step: false,
         }],
     });
@@ -607,7 +603,7 @@ fn normalize_unless_payment_clause_tokens(
 
 fn parse_unless_put_counters_clause_as_cost(
     clause: SubjectVerbPrimitiveClause<'_>,
-) -> Result<Option<crate::cost::TotalCost>, CardTextError> {
+) -> Result<Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>, CardTextError> {
     let payment_clause = clause
         .split_once_on_word_trimmed("before")
         .map(|(payment_clause, _)| payment_clause.trimmed())
@@ -637,22 +633,15 @@ fn parse_unless_put_counters_clause_as_cost(
     let TargetAst::Object(filter, _, _) = target else {
         return Ok(None);
     };
-    let mut target = crate::target::ChooseSpec::Object(filter.clone());
-    if let Some(count) = target_count {
-        target = target.with_count(count.clone());
-    }
-    Ok(Some(crate::cost::TotalCost::from_cost(
-        crate::costs::Cost::validated_effect(crate::effect::Effect::put_counters(
-            *counter_type,
-            *count,
-            target,
-        )),
+    let _ = (filter, target_count, counter_type, count);
+    Ok(Some(ironsmith_core::TotalCost::from_cost(
+        crate::model::CompilerCost::ValidatedEffect(Box::new(effects[0].clone())),
     )))
 }
 
 fn parse_unless_payment_clause_as_cost(
     clause: SubjectVerbPrimitiveClause<'_>,
-) -> Result<Option<crate::cost::TotalCost>, CardTextError> {
+) -> Result<Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>, CardTextError> {
     if let Some(cost) = parse_unless_put_counters_clause_as_cost(clause)? {
         return Ok(Some(cost));
     }
@@ -675,7 +664,7 @@ fn parse_unless_payment_clause_as_cost(
 
 fn parse_unless_sacrifice_clause_as_cost(
     clause: SubjectVerbPrimitiveClause<'_>,
-) -> Result<Option<crate::cost::TotalCost>, CardTextError> {
+) -> Result<Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>, CardTextError> {
     let words = clause.word_refs();
     if !matches!(words.first().copied(), Some("sacrifice" | "sacrifices")) {
         return Ok(None);
@@ -690,14 +679,25 @@ fn parse_unless_sacrifice_clause_as_cost(
     else {
         return Ok(None);
     };
-    Ok(Some(crate::cost::TotalCost::from_cost(
-        crate::costs::Cost::sacrifice(filter),
+    Ok(Some(ironsmith_core::TotalCost::from_cost(
+        crate::model::CompilerCost::Sacrifice {
+            count: crate::effect::ChoiceCount::exactly(1),
+            filter,
+            all: false,
+            binding: None,
+        },
     )))
 }
 
 fn parse_unless_sacrifice_or_pay_cost(
     after_clause: SubjectVerbPrimitiveClause<'_>,
-) -> Result<Option<(PlayerAst, crate::cost::TotalCost)>, CardTextError> {
+) -> Result<
+    Option<(
+        PlayerAst,
+        ironsmith_core::TotalCost<crate::model::CompilerCost>,
+    )>,
+    CardTextError,
+> {
     let after_words = after_clause.words().to_word_refs();
     let Some((player, action_word_start)) = parse_delayed_player_prefix(&after_words) else {
         return Ok(None);
@@ -731,7 +731,7 @@ fn parse_unless_sacrifice_or_pay_cost(
     };
     Ok(Some((
         player,
-        crate::cost::TotalCost::one_of(vec![sacrifice_cost, payment_cost]),
+        ironsmith_core::TotalCost::one_of(vec![sacrifice_cost, payment_cost]),
     )))
 }
 
@@ -741,7 +741,9 @@ fn parse_unless_sacrifice_or_pay_cost(
 /// `... unless target opponent sacrifices ... or pays 3 life` into a choice
 /// made by the source controller.
 pub fn has_unless_sacrifice_or_pay_choice(tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
-    let Some(unless_idx) = tokens.iter().position(|token| token.is_word("unless")) else {
+    let Some(unless_idx) =
+        crate::slice_primitives::select_position(tokens, |token| token.is_word("unless"))
+    else {
         return Ok(false);
     };
     let after_clause = SubjectVerbPrimitiveClause::new(&tokens[unless_idx + 1..]).trimmed();
@@ -757,14 +759,13 @@ pub fn try_build_unless(
 ) -> Result<Option<EffectAst>, CardTextError> {
     let after_clause = clause.from(unless_idx + 1).trimmed();
     let after_words = after_clause.words().to_word_refs();
-    let before_delayed_step = after_words
-        .iter()
-        .position(|word| *word == "before")
-        .is_some_and(|before| {
-            after_words[before + 1..]
-                .iter()
-                .any(|word| matches!(*word, "step" | "upkeep"))
-        });
+    let before_delayed_step = crate::word_primitives::parse_sequence_start(
+        &after_words,
+        &["before"],
+    )
+    .is_some_and(|before| {
+        crate::slice_primitives::contains_any(&after_words[before + 1..], &["step", "upkeep"])
+    });
     let payment_shape = delayed_grammar::split_delayed_payment_action_shape(after_clause.tokens());
 
     if let Some((player, cost)) = parse_unless_sacrifice_or_pay_cost(after_clause)? {
@@ -1345,7 +1346,7 @@ mod tests {
             panic!("expected one sacrifice component: {cost:#?}");
         };
         match component {
-            crate::costs::Cost::Sacrifice(filter) => {
+            crate::model::CompilerCost::Sacrifice { filter, .. } => {
                 assert!(
                     !filter.source
                         && filter.tagged_constraints.iter().any(|constraint| {
@@ -1354,18 +1355,6 @@ mod tests {
                                 && constraint.tag.as_str() == IT_TAG
                         }),
                     "the pronoun must survive until lowering can bind it: {filter:#?}"
-                );
-            }
-            crate::costs::Cost::Effect(effect) => {
-                let sacrifice = effect
-                    .downcast_ref::<crate::effects::SacrificeTargetEffect>()
-                    .expect("effect-backed cost should be a target sacrifice");
-                assert!(
-                    matches!(
-                        sacrifice.target.base(),
-                        crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG
-                    ),
-                    "the pronoun must survive until lowering can bind it: {sacrifice:#?}"
                 );
             }
             other => panic!("expected a referential sacrifice cost: {other:#?}"),

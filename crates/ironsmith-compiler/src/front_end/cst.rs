@@ -9,7 +9,7 @@ use crate::model::facts::{LineInfo, MetadataLine};
 pub enum KeywordLinePayloadCst {
     Ast(LineAst),
     Kicker {
-        cost: crate::cost::TotalCost,
+        cost: ironsmith_core::TotalCost<crate::model::CompilerCost>,
         label: Option<String>,
     },
 }
@@ -19,7 +19,7 @@ impl KeywordLinePayloadCst {
         Self::Ast(ast)
     }
 
-    pub fn kicker(cost: crate::cost::TotalCost) -> Self {
+    pub fn kicker(cost: ironsmith_core::TotalCost<crate::model::CompilerCost>) -> Self {
         Self::Kicker { cost, label: None }
     }
 
@@ -40,8 +40,8 @@ impl KeywordLinePayloadCst {
             Self::Ast(ast) => ast.clone(),
             Self::Kicker { cost, label } => {
                 let cost = match label {
-                    Some(label) => crate::cost::OptionalCost::custom(label, cost.clone()),
-                    None => crate::cost::OptionalCost::kicker(cost.clone()),
+                    Some(label) => crate::model::CompilerOptionalCost::custom(label, cost.clone()),
+                    None => crate::model::CompilerOptionalCost::kicker(cost.clone()),
                 };
                 LineAst::OptionalCost(cost.into())
             }

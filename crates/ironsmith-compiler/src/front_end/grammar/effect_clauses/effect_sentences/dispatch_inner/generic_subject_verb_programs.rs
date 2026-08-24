@@ -11,15 +11,8 @@ fn parse_source_exiled_owner_library_bottom_subject_verb(
             tokens,
         )?;
     let source_words = crate::lexer::token_word_refs(shape.source_tokens);
-    let source_surface =
-        crate::util::source_reference_surface_for_words(
-            &source_words,
-        )
-        .or_else(|| {
-            crate::util::this_source_surface_for_words(
-                &source_words,
-            )
-        })?;
+    let source_surface = crate::util::source_reference_surface_for_words(&source_words)
+        .or_else(|| crate::util::this_source_surface_for_words(&source_words))?;
     let target = TargetAst::Object(
         ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile),
         None,
@@ -48,17 +41,19 @@ fn parse_source_exiled_owner_library_bottom_subject_verb(
 fn parse_triggering_object_had_counters_create_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = crate::lexer::token_word_refs(tokens);
-    let wrap_condition = words.starts_with(&["if", "it", "had", "counters", "on", "it", "create"]);
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let wrap_condition = crate::word_primitives::parse_sequence_prefix(
+        &words,
+        &["if", "it", "had", "counters", "on", "it", "create"],
+    );
     if !wrap_condition && words.first().is_none_or(|word| *word != "create") {
         return Ok(None);
     }
     let where_words = [
         "where", "x", "is", "the", "number", "of", "counters", "it", "had", "on", "it",
     ];
-    let Some(where_word_index) = words
-        .windows(where_words.len())
-        .position(|window| window == where_words)
+    let Some(where_word_index) =
+        crate::word_primitives::parse_sequence_start(&words, &where_words)
     else {
         return Ok(None);
     };
@@ -66,13 +61,13 @@ fn parse_triggering_object_had_counters_create_tokens(
         return Ok(None);
     }
 
-    let create_start = tokens
-        .iter()
-        .position(|token| token.is_word("create"))
+    let create_start = crate::slice_primitives::select_position(tokens, |token| {
+        token.is_word("create")
+    })
         .ok_or_else(|| CardTextError::ParseError("missing token-creation clause".to_string()))?;
-    let where_start = tokens
-        .iter()
-        .position(|token| token.is_word("where"))
+    let where_start = crate::slice_primitives::select_position(tokens, |token| {
+        token.is_word("where")
+    })
         .ok_or_else(|| CardTextError::ParseError("missing counter-count definition".to_string()))?;
     let mut create_effects = parse_effect_chain_lexed(&tokens[create_start..where_start])?;
     let [
@@ -84,7 +79,7 @@ fn parse_triggering_object_had_counters_create_tokens(
     else {
         return Ok(None);
     };
-    let triggering = ChooseSpec::Tagged(TagKey::from("triggering"));
+    let triggering = ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::Triggering.key());
     *count = Value::CountersOn(Box::new(triggering.clone()), None).with_surface_hints([
         ironsmith_core::ValueSurfaceHint::WhereXIs,
         ironsmith_core::ValueSurfaceHint::TriggeringObjectCountersItHad,
@@ -119,15 +114,19 @@ fn parse_source_exiled_counted_return_remainder_to_owners_libraries(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
     const RETURNED_SOURCE_EXILED_TAG: &str = "source_exiled_returned";
-    let split = (0..tokens.len().saturating_sub(3)).find(|&idx| {
-        tokens[idx].is_word("and")
-            && tokens[idx + 1].is_word("put")
-            && tokens[idx + 2].is_word("the")
-            && tokens[idx + 3].is_word("rest")
+    let split = tokens.iter().enumerate().find_map(|(idx, token)| {
+        (token.is_word("and")
+            && tokens.get(idx + 1).is_some_and(|next| next.is_word("put"))
+            && tokens.get(idx + 2).is_some_and(|next| next.is_word("the"))
+            && tokens.get(idx + 3).is_some_and(|next| next.is_word("rest")))
+        .then_some(idx)
     })?;
     let suffix_words = crate::lexer::token_word_refs(&tokens[split + 1..]);
     if suffix_words.len() != 10
-        || suffix_words[..8] != ["put", "the", "rest", "on", "the", "bottom", "of", "their"]
+        || !crate::word_primitives::parse_sequence_prefix(
+            &suffix_words,
+            &["put", "the", "rest", "on", "the", "bottom", "of", "their"],
+        )
         || !matches!(suffix_words[8], "owner" | "owners" | "owner's" | "owners'")
         || !matches!(suffix_words[9], "library" | "libraries")
     {
@@ -763,12 +762,14 @@ const FUTURE_GRAVEYARD_EXILE_CONDITION_PATTERN: effect_grammar::EffectSequence<'
         ),
         effect_grammar::EffectSequence::phrase(&["this", "turn"]),
     ]);
+const FUTURE_GRAVEYARD_DESTINATION_PHRASES: &[&[&str]] = &[
+    &["into", "your", "graveyard"],
+    &["into", "your", "graveyard", "from", "anywhere"],
+];
 const FUTURE_GRAVEYARD_DESTINATION_PATTERN: effect_grammar::EffectSequence<'static> =
-    effect_grammar::EffectSequence::new(&[effect_grammar::EffectSequence::phrase(&[
-        "into",
-        "your",
-        "graveyard",
-    ])]);
+    effect_grammar::EffectSequence::new(&[effect_grammar::EffectSequence::any_phrase(
+        FUTURE_GRAVEYARD_DESTINATION_PHRASES,
+    )]);
 const EXILE_THAT_CARD_INSTEAD_PATTERN: effect_grammar::EffectSequence<'static> =
     effect_grammar::EffectSequence::new(&[effect_grammar::EffectSequence::phrase(
         EXILE_THAT_CARD_INSTEAD_PHRASE,
@@ -1238,7 +1239,8 @@ pub fn parse_any_player_may_have_source_deal_damage(
     };
     if deal_tail
         .get(used)
-        .and_then(OwnedLexToken::as_word).is_none_or(|word| word != "damage")
+        .and_then(OwnedLexToken::as_word)
+        .is_none_or(|word| word != "damage")
     {
         return Ok(None);
     }
@@ -1291,9 +1293,11 @@ fn parse_branch_scoped_collection_subject_verb(
     }
 
     let clause = trim_edge_punctuation(tokens);
-    let clause = if clause
-        .first()
-        .is_some_and(|token| token.is_word("then")) { trim_edge_punctuation(&clause[1..]) } else { clause };
+    let clause = if clause.first().is_some_and(|token| token.is_word("then")) {
+        trim_edge_punctuation(&clause[1..])
+    } else {
+        clause
+    };
     let (route, effect) = if clause.first().is_some_and(|token| token.is_word("return")) {
         (
             "subject-verb verb=Return subject=implicit recognizer=branch-scoped-collection",
@@ -1332,8 +1336,13 @@ pub fn parse_top_level_subject_verb_recognition(
     // must reach the generic animation parser before the broad `are`/`get`
     // subject-verb recognizers reinterpret the type and power text as a
     // granted static ability.
-    if effect_grammar::clause_dispatch_shapes::parse_copular_animation_shape(tokens).is_some() {
-        let effect = super::clause_dispatch::parse_effect_clause(tokens)?;
+    if let Some(shape) =
+        effect_grammar::clause_dispatch_shapes::parse_copular_animation_shape(tokens)
+    {
+        let effect = super::clause_dispatch::parse_become_clause(
+            shape.subject_tokens,
+            shape.animation_tokens,
+        )?;
         return Ok(Some((
             "subject-verb verb=Become subject=explicit recognizer=copular-animation",
             vec![effect],
@@ -1481,16 +1490,21 @@ fn parse_as_you_cast_from_zone_this_turn_grant(
     let clause = LexedClause::new(tokens).trimmed();
     let word_view = clause.words();
     let words = word_view.word_refs();
-    if !words.starts_with(&["as", "you", "cast"]) || words.len() < 9 {
+    if !crate::word_primitives::parse_sequence_prefix(&words, &["as", "you", "cast"])
+        || words.len() < 9
+    {
         return Ok(None);
     }
-    let Some(turn_index) = words
-        .windows(2)
-        .position(|window| window == ["this", "turn"])
+    let Some(turn_index) =
+        crate::word_primitives::parse_sequence_start(&words, &["this", "turn"])
     else {
         return Ok(None);
     };
-    if turn_index <= 3 || words.get(turn_index + 2..turn_index + 4) != Some(&["they", "gain"]) {
+    if turn_index <= 3
+        || !words.get(turn_index + 2..).is_some_and(|tail| {
+            crate::word_primitives::parse_sequence_prefix(tail, &["they", "gain"])
+        })
+    {
         return Ok(None);
     }
     let Some(subject_range) = word_view.token_span_for_words(3, turn_index) else {
@@ -1501,18 +1515,25 @@ fn parse_as_you_cast_from_zone_this_turn_grant(
     };
     let subject_tokens = &clause.tokens()[subject_range];
     let subject_words = TokenWordView::new(subject_tokens).word_refs();
-    let Some(from_index) = subject_words.iter().rposition(|word| *word == "from") else {
+    let Some(from_index) =
+        crate::word_primitives::parse_last_sequence_start(&subject_words, &["from"])
+    else {
         return Ok(None);
     };
     let origin_words = &subject_words[from_index + 1..];
-    let origin_word = match origin_words {
-        [zone] => *zone,
-        ["a" | "an" | "the" | "your" | "their" | "its", zone] => *zone,
-        _ => return Ok(None),
+    let origin_word = if origin_words.len() == 1 {
+        origin_words[0]
+    } else if origin_words.len() == 2
+        && crate::word_primitives::first_is_any(
+            origin_words,
+            &["a", "an", "the", "your", "their", "its"],
+        )
+    {
+        origin_words[1]
+    } else {
+        return Ok(None);
     };
-    let Some(origin_zone) =
-        crate::util::parse_zone_word(origin_word)
-    else {
+    let Some(origin_zone) = crate::util::parse_zone_word(origin_word) else {
         return Ok(None);
     };
 
@@ -1525,15 +1546,15 @@ fn parse_as_you_cast_from_zone_this_turn_grant(
     // objects. In this as-you-cast trigger, however, the authored `from ...`
     // phrase is the pre-cast origin and must replace that default stack zone.
     filter.zone = Some(origin_zone);
-    let Some(ability) = crate::activation_and_restrictions::parse_ability_phrase(
-        &clause.tokens()[ability_range],
-    ) else {
+    let Some(ability) =
+        crate::activation_and_restrictions::parse_ability_phrase(&clause.tokens()[ability_range])
+    else {
         return Ok(None);
     };
     filter.set_as_you_cast_this_turn_surface(true);
     Ok(Some(EffectAst::subject_verb_grant_abilities_all(
         filter,
-        vec![GrantedAbilityAst::KeywordAction(ability)],
+        vec![ability.into()],
         Until::EndOfTurn,
     )))
 }
@@ -1660,7 +1681,7 @@ fn parse_destroy_attached_object_then_source_damage_to_controller(
     let [destroy_tokens, damage_tokens] = segments.as_slice() else {
         return Ok(None);
     };
-    let destroy_words = crate::lexer::token_word_refs(destroy_tokens);
+    let destroy_words = crate::lexer::parser_token_word_refs(destroy_tokens);
     let ["destroy", attachment_word, object_noun] = destroy_words.as_slice() else {
         return Ok(None);
     };
@@ -1668,15 +1689,13 @@ fn parse_destroy_attached_object_then_source_damage_to_controller(
         return Ok(None);
     }
 
-    let damage_words = crate::lexer::token_word_refs(damage_tokens);
-    let Some(deals_idx) = damage_words.iter().position(|word| *word == "deals") else {
+    let damage_words = crate::lexer::parser_token_word_refs(damage_tokens);
+    let Some(deals_idx) = crate::word_primitives::parse_sequence_start(&damage_words, &["deals"])
+    else {
         return Ok(None);
     };
     if deals_idx == 0
-        || crate::util::source_reference_surface_for_words(
-            &damage_words[..deals_idx],
-        )
-        .is_none()
+        || crate::util::source_reference_surface_for_words(&damage_words[..deals_idx]).is_none()
     {
         return Ok(None);
     }
@@ -1696,9 +1715,8 @@ fn parse_destroy_attached_object_then_source_damage_to_controller(
     if *possessive_noun != format!("{object_noun}s") {
         return Ok(None);
     }
-    let Some(amount) =
-        crate::util::parse_number_word_u32(amount_word)
-            .and_then(|amount| i32::try_from(amount).ok())
+    let Some(amount) = crate::util::parse_number_word_u32(amount_word)
+        .and_then(|amount| i32::try_from(amount).ok())
     else {
         return Ok(None);
     };
@@ -1736,20 +1754,19 @@ pub fn parse_target_gets_unblockable_subject_verb(
     // verb/duration boundaries before consulting that surface-sensitive
     // pattern. This is still deliberately narrow: one target subject, one
     // P/T modifier, and the complete same-turn blocking restriction.
-    let gets_idx = tokens
-        .iter()
-        .position(|token| token.is_word("get") || token.is_word("gets"));
+    let gets_idx = crate::slice_primitives::select_position(tokens, |token| {
+        token.is_word("get") || token.is_word("gets")
+    });
     let until_idx = gets_idx.and_then(|gets_idx| {
-        tokens[gets_idx + 1..]
-            .iter()
-            .position(|token| token.is_word("until"))
+        crate::slice_primitives::select_position(&tokens[gets_idx + 1..], |token| {
+            token.is_word("until")
+        })
             .map(|offset| gets_idx + 1 + offset)
     });
     if let (Some(gets_idx), Some(until_idx)) = (gets_idx, until_idx) {
         let subject_tokens = trim_edge_punctuation(&tokens[..gets_idx]);
         let modifier_tokens = trim_edge_punctuation(&tokens[gets_idx + 1..until_idx]);
-        let tail_words =
-            crate::util::words(&tokens[until_idx..]);
+        let tail_words = crate::util::words(&tokens[until_idx..]);
         let tail_text = tail_words.join(" ").replace("can't", "cant");
         let exact_tail = matches!(
             tail_text.as_str(),
@@ -2032,15 +2049,23 @@ fn parse_target_gets_then_gains_subject_verb(
 
 fn subject_has_creature_type_choice(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::lexer::token_word_refs(tokens);
-    words
-        .windows(5)
-        .any(|window| window == ["creature", "type", "of", "your", "choice"])
+    crate::word_primitives::sequence_occurs(
+        &words,
+        &["creature", "type", "of", "your", "choice"],
+    )
 }
 
 fn patch_creature_type_choice_effect(effect: &mut EffectAst) -> bool {
     // Compound gain sentences wrap their members in coordination nodes;
     // patch through them.
     match effect {
+        EffectAst::Coordination(coordination) => {
+            let mut patched = false;
+            for inner in coordination.effects_mut() {
+                patched |= patch_creature_type_choice_effect(inner);
+            }
+            return patched;
+        }
         EffectAst::Coordinated { effects, .. } | EffectAst::Sequence { effects, .. } => {
             let mut patched = false;
             for inner in effects.iter_mut() {
@@ -2115,9 +2140,7 @@ fn parse_target_has_base_pt_then_loses_subject_verb(
 fn parse_target_player_controls_get_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if let Some(trailing_if) =
-        crate::grammar::structure::split_trailing_if_clause_lexed(tokens)
-    {
+    if let Some(trailing_if) = crate::grammar::structure::split_trailing_if_clause_lexed(tokens) {
         let Some(program) = parse_target_controlled_pump_program(trailing_if.leading_tokens)?
         else {
             return Ok(None);
@@ -2182,8 +2205,10 @@ fn parse_target_controlled_pump_program(
         };
         let ability_clause = ability_clause.trimmed();
         let ability_words = ability_clause.word_refs();
-        add_all_creature_types =
-            ability_words == ["all", "creature", "types", "until", "end", "of", "turn"];
+        add_all_creature_types = crate::word_primitives::parse_sequence_complete(
+            &ability_words,
+            &["all", "creature", "types", "until", "end", "of", "turn"],
+        );
         remove_all_creature_types = add_all_creature_types
             && tail_clause
                 .word_refs()
@@ -2209,13 +2234,13 @@ fn keyword_abilities_from_clause(ability_clause: LexedClause<'_>) -> Vec<Granted
         .locate_in(ability_clause)
         .is_some()
     {
-        abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::FirstStrike));
+        abilities.push(KeywordAction::FirstStrike.into());
     }
     if ABILITY_HASTE_PATTERN.locate_in(ability_clause).is_some() {
-        abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Haste));
+        abilities.push(KeywordAction::Haste.into());
     }
     if ABILITY_TRAMPLE_PATTERN.locate_in(ability_clause).is_some() {
-        abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Trample));
+        abilities.push(KeywordAction::Trample.into());
     }
     abilities
 }
@@ -2282,14 +2307,8 @@ pub fn parse_generic_top_cards_put_counted_into_hand_rest_graveyard_subject_verb
     let graveyard_owner_clause = matched.capture_clause("graveyard_owner", tail_clause)?;
     put_counted_top_cards_owner(graveyard_owner_clause, player)?;
 
-    let looked_tag = crate::util::helper_tag_for_tokens(
-        &prefix_tokens,
-        "revealed",
-    );
-    let chosen_tag = crate::util::helper_tag_for_tokens(
-        &tail_tokens,
-        "chosen",
-    );
+    let looked_tag = crate::util::helper_tag_for_tokens(&prefix_tokens, "revealed");
+    let chosen_tag = crate::util::helper_tag_for_tokens(&tail_tokens, "chosen");
     let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
         player,
         count,
@@ -2545,12 +2564,11 @@ pub(super) fn parse_generic_consult_reveal_until_battlefield_bottom_subject_verb
     // Honor the authored remainder wording: bare "the rest" (Kethek) vs
     // "the rest of the revealed cards" (Fathom Trawl).
     let followup_words = crate::lexer::token_word_refs(&followup_tokens);
-    let bare_rest = followup_words
-        .windows(2)
-        .any(|window| window == ["the", "rest"])
-        && !followup_words
-            .windows(3)
-            .any(|window| window == ["rest", "of", "the"]);
+    let bare_rest = crate::word_primitives::sequence_occurs(&followup_words, &["the", "rest"])
+        && !crate::word_primitives::sequence_occurs(
+            &followup_words,
+            &["rest", "of", "the"],
+        );
     effects.push(
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library_with_surface(
             parts.all_tag,
@@ -2754,9 +2772,10 @@ pub fn parse_generic_control_combat_choices_subject_verb(
 
     let action_clause = action_clause.trimmed();
     let scope_clause = scope_clause.trimmed();
-    let this_combat = scope_clause
-        .words()
-        .to_word_refs().contains(&"combat");
+    let this_combat = crate::word_primitives::sequence_occurs(
+        &scope_clause.words().to_word_refs(),
+        &["combat"],
+    );
     if CONTROL_COMBAT_ATTACK_ACTION_PATTERN.accepts_full(action_clause)
         && CONTROL_COMBAT_ATTACK_SCOPE_PATTERN.accepts_full(scope_clause)
     {
@@ -2849,7 +2868,7 @@ fn apply_lesser_mana_value_consult_constraint(tokens: &[OwnedLexToken], effects:
                 constraint.relation,
                 TaggedOpbjectRelation::ManaValueLtTagged
             ) {
-                constraint.tag = TagKey::from("sacrificed_0");
+                constraint.tag = crate::tag::CompilerReferenceTag::Sacrificed0.key();
                 had_lesser_constraint = true;
             }
         }
@@ -2857,7 +2876,7 @@ fn apply_lesser_mana_value_consult_constraint(tokens: &[OwnedLexToken], effects:
             continue;
         }
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from("sacrificed_0"),
+            tag: crate::tag::CompilerReferenceTag::Sacrificed0.key(),
             relation: TaggedOpbjectRelation::ManaValueLtTagged,
         });
     }
@@ -2965,7 +2984,7 @@ pub fn parse_choice_complement_subject_verb(
             GenericChoiceComplementProgram {
                 chooser_scope: shape.chooser,
                 base_filter: shape.filter,
-                keep_tag: TagKey::from("keep"),
+                keep_tag: crate::tag::CompilerReferenceTag::Keep.key(),
                 keep_filters: shape.slot_filters,
                 keep_count: shape.count_per_slot,
                 aggregate_constraint: None,
@@ -2978,7 +2997,7 @@ pub fn parse_choice_complement_subject_verb(
             GenericChoiceComplementProgram {
                 chooser_scope: shape.chooser,
                 base_filter: shape.filter,
-                keep_tag: TagKey::from("keep"),
+                keep_tag: crate::tag::CompilerReferenceTag::Keep.key(),
                 keep_filters: Vec::new(),
                 keep_count: shape.count,
                 aggregate_constraint: Some(shape.constraint),
@@ -3026,7 +3045,7 @@ pub fn parse_choice_complement_subject_verb(
                 GenericChoiceComplementProgram {
                     chooser_scope: PlayerAst::Any,
                     base_filter,
-                    keep_tag: TagKey::from("keep"),
+                    keep_tag: crate::tag::CompilerReferenceTag::Keep.key(),
                     keep_filters: vec![ObjectFilter::default()],
                     keep_count,
                     aggregate_constraint: None,
@@ -3106,7 +3125,7 @@ pub fn parse_choice_complement_subject_verb(
         GenericChoiceComplementProgram {
             chooser_scope: PlayerAst::Any,
             base_filter,
-            keep_tag: TagKey::from("keep"),
+            keep_tag: crate::tag::CompilerReferenceTag::Keep.key(),
             keep_filters,
             keep_count: ChoiceCount::exactly(1),
             aggregate_constraint: None,
@@ -3128,7 +3147,7 @@ pub fn parse_for_each_type_slot_choice_clause(
     tokens: &[OwnedLexToken],
     chooser: PlayerAst,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(choose_idx) = tokens.iter().position(|token| {
+    let Some(choose_idx) = crate::slice_primitives::select_position(tokens, |token| {
         token
             .as_word()
             .is_some_and(|word| matches!(word, "choose" | "chooses"))
@@ -3165,7 +3184,7 @@ pub fn parse_for_each_type_slot_choice_clause(
     if base_filter.controller.is_none() {
         base_filter.controller = Some(PlayerFilter::IteratedPlayer);
     }
-    let keep_tag = TagKey::from("chosen_for_each_player");
+    let keep_tag = crate::tag::CompilerReferenceTag::ChosenForEachPlayer.key();
     let mut choices = Vec::new();
     for segment in split_choose_list(&list_tokens) {
         let segment = strip_leading_articles(&segment);
@@ -3201,7 +3220,8 @@ pub fn parse_triggered_spell_opponent_damage_subject_verb(
     let Some(shape) = effect_grammar::parse_triggered_spell_opponent_damage_shape(tokens) else {
         return Ok(None);
     };
-    let triggering_spell = TargetAst::Tagged(TagKey::from("triggering"), None);
+    let triggering_spell =
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None);
     Ok(Some(EffectAst::ForEachOpponent {
         effects: vec![EffectAst::subject_verb_damage_with_source(
             triggering_spell,
@@ -3224,7 +3244,7 @@ pub fn parse_vote_affinity_subject_verb(
         let effect_tokens = trim_commas(shape.effect_tokens);
         let effects = parse_effect_chain_lexed(&effect_tokens)?;
         return Ok(Some(vec![EffectAst::ForEachTaggedPlayer {
-            tag: TagKey::from("voted_against_you"),
+            tag: crate::tag::CompilerReferenceTag::VotedAgainstYou.key(),
             effects,
         }]));
     }
@@ -3394,216 +3414,6 @@ fn parse_secret_number_choice_vote_start(
     }))
 }
 
-fn parse_generic_vote_start(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
-    let clause = LexedClause::new(tokens).trimmed();
-    let Some(matched) = GENERIC_VOTE_START_PATTERN.parse_full(clause) else {
-        return Ok(None);
-    };
-    let Some(voters_clause) =
-        matched.capture_clause_by_role(effect_grammar::EffectCaptureRole::Subject, clause)
-    else {
-        return Ok(None);
-    };
-    let Some(options_clause) =
-        matched.capture_clause_by_role(effect_grammar::EffectCaptureRole::Tail, clause)
-    else {
-        return Ok(None);
-    };
-
-    let voters_clause = voters_clause.trimmed();
-    if EACH_PLAYER_VOTER_PATTERN.locate_in(voters_clause).is_none() {
-        return Ok(None);
-    }
-    let secret = SECRET_VOTER_PATTERN.locate_in(voters_clause).is_some();
-    let starting_with_controller = STARTING_WITH_CONTROLLER_VOTER_PATTERN
-        .locate_in(voters_clause)
-        .is_some();
-
-    let option_clause = vote_options_clause_before_reveal_tail(options_clause);
-    if let Some(options) = named_vote_options_from_clause(option_clause) {
-        return Ok(Some(EffectAst::VoteStart {
-            options,
-            secret,
-            starting_with_controller,
-        }));
-    }
-
-    let option_tokens = option_clause.tokens().to_vec();
-    if let Ok(target) = parse_target_phrase(&option_tokens) {
-        match target {
-            TargetAst::Player(filter, _) => {
-                let exclude_voter = option_clause
-                    .first_word()
-                    .is_some_and(|word| matches!(word, "other" | "another"));
-                let filter = if exclude_voter && matches!(filter, PlayerFilter::NotYou) {
-                    PlayerFilter::Any
-                } else {
-                    filter
-                };
-                return Ok(Some(EffectAst::VoteStartPlayers {
-                    filter,
-                    exclude_voter,
-                    secret,
-                    starting_with_controller,
-                }));
-            }
-            TargetAst::Object(filter, _, _) => {
-                return Ok(Some(EffectAst::VoteStartObjects {
-                    filter,
-                    count: ChoiceCount::exactly(1),
-                    secret,
-                    starting_with_controller,
-                }));
-            }
-            TargetAst::WithCount(inner, count) => {
-                if let TargetAst::Object(filter, _, _) = *inner {
-                    return Ok(Some(EffectAst::VoteStartObjects {
-                        filter,
-                        count,
-                        secret,
-                        starting_with_controller,
-                    }));
-                }
-            }
-            _ => {}
-        }
-    }
-    if let Ok(filter) = parse_object_filter_lexed(&option_tokens, false)
-        && filter != ObjectFilter::default()
-    {
-        return Ok(Some(EffectAst::VoteStartObjects {
-            filter,
-            count: ChoiceCount::exactly(1),
-            secret,
-            starting_with_controller,
-        }));
-    }
-
-    let Some(options) = named_vote_options_from_clause(option_clause) else {
-        return Err(CardTextError::ParseError(
-            "vote clause requires at least two options".to_string(),
-        ));
-    };
-
-    Ok(Some(EffectAst::VoteStart {
-        options,
-        secret,
-        starting_with_controller,
-    }))
-}
-
-fn parse_generic_vote_option_effects(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
-    if let Some(effect) = parse_generic_player_vote_received_effects(tokens)? {
-        return Ok(Some(effect));
-    }
-
-    let Some(shape) = effect_grammar::parse_named_vote_option_effects_shape(tokens) else {
-        return Ok(None);
-    };
-    let option_clause = LexedClause::new(shape.option_tokens);
-    let Some(option) = captured_non_article_label(option_clause) else {
-        return Err(CardTextError::ParseError(
-            "missing vote option name".to_string(),
-        ));
-    };
-
-    let effect_tokens = trim_commas(shape.effect_tokens);
-    let effects = parse_effect_chain_lexed(&effect_tokens)?;
-    Ok(Some(EffectAst::VoteOption { option, effects }))
-}
-
-fn parse_generic_player_vote_received_effects(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<EffectAst>, CardTextError> {
-    let clause = LexedClause::new(tokens).trimmed();
-    let Some(matched) = GENERIC_PLAYER_VOTE_RECEIVED_PATTERN.parse_full(clause) else {
-        return Ok(None);
-    };
-    let Some(player_clause) =
-        matched.capture_clause_by_role(effect_grammar::EffectCaptureRole::Subject, clause)
-    else {
-        return Ok(None);
-    };
-    let Some(effect_clause) =
-        matched.capture_clause_by_role(effect_grammar::EffectCaptureRole::Tail, clause)
-    else {
-        return Ok(None);
-    };
-    let player_tokens = captured_non_article_tokens(player_clause);
-    if player_tokens.is_empty() {
-        return Ok(None);
-    }
-    let TargetAst::Player(filter, _) = parse_target_phrase(&player_tokens)? else {
-        return Ok(None);
-    };
-    let effect_tokens = trim_commas(effect_clause.tokens());
-    let effects = parse_effect_chain_lexed(&effect_tokens)?;
-    if filter == PlayerFilter::You {
-        return Ok(Some(EffectAst::RepeatEffects {
-            count: Value::PlayerVoteCount(PlayerFilter::You),
-            effects,
-        }));
-    }
-    Ok(Some(EffectAst::ForEachPlayersFiltered {
-        filter,
-        effects: vec![EffectAst::RepeatEffects {
-            count: Value::PlayerVoteCount(PlayerFilter::IteratedPlayer),
-            effects,
-        }],
-    }))
-}
-
-fn captured_non_article_tokens(clause: LexedClause<'_>) -> Vec<OwnedLexToken> {
-    clause
-        .trimmed()
-        .tokens()
-        .iter()
-        .filter(|token| token.as_word().is_none_or(|word| !is_article(word)))
-        .cloned()
-        .collect()
-}
-
-fn captured_non_article_label(clause: LexedClause<'_>) -> Option<String> {
-    let tokens = captured_non_article_tokens(clause);
-    (!tokens.is_empty()).then(|| render_token_slice(&tokens).trim().to_string())
-}
-
-fn captured_numeric_label(clause: LexedClause<'_>) -> Option<String> {
-    let tokens = captured_non_article_tokens(clause);
-    if tokens.len() == 1
-        && let Some(word) = tokens[0].as_word()
-        && word.chars().all(|ch| ch.is_ascii_digit())
-    {
-        return Some(word.to_string());
-    }
-    None
-}
-
-fn parse_generic_extra_vote(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
-    let clause = LexedClause::new(tokens).trimmed();
-    if OPTIONAL_EXTRA_VOTE_PATTERN.parse_full(clause).is_some() {
-        return Some(EffectAst::VoteExtra {
-            count: 1,
-            optional: true,
-        });
-    }
-    if REQUIRED_EXTRA_VOTE_PATTERN.parse_full(clause).is_some() {
-        return Some(EffectAst::VoteExtra {
-            count: 1,
-            optional: false,
-        });
-    }
-    if SUBJECTLESS_EXTRA_VOTE_PATTERN.parse_full(clause).is_some() {
-        return Some(EffectAst::VoteExtra {
-            count: 1,
-            optional: false,
-        });
-    }
-    None
-}
-
 const EXILE_COUNTED_FACE_DOWN_OBJECT_PHRASES: &[&[&str]] = &[
     &["of", "them"],
     &["them"],
@@ -3682,1723 +3492,19 @@ const EXILE_FACE_DOWN_COUNTER_MODIFIER_PATTERN: effect_grammar::EffectSequence<'
         effect_grammar::EffectSequence::tail("remainder", effect_grammar::EffectCaptureKind::Rest),
     ]);
 
-pub fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
-    tokens: &[OwnedLexToken],
-) -> Option<Vec<EffectAst>> {
-    let sentence_tokens = trim_commas(tokens);
-    let sentence_clause = LexedClause::new(&sentence_tokens).trimmed();
-    let matched = LOOK_EXILE_COUNTED_FACE_DOWN_PATTERN.parse_full(sentence_clause)?;
-    let look_clause = matched
-        .capture_clause("look_clause", sentence_clause)?
-        .trimmed();
-    let look_effect = super::verb_handlers::parse_look(look_clause.tokens(), None).ok()?;
-    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        subject: SubjectVerbSubjectAst { player, .. },
-        action: SubjectVerbActionAst::LookAtTopCards { count, .. },
-    }) = look_effect
-    else {
-        return None;
-    };
-
-    let count_clause = matched
-        .capture_clause("exile_count", sentence_clause)?
-        .trimmed();
-    let count_tokens = trim_commas(count_clause.tokens());
-    let (exile_count, _used) =
-        crate::util::parse_choice_count_token_prefix_consumed(&count_tokens)?;
-
-    let remainder_clause = matched
-        .capture_clause_by_role(effect_grammar::EffectCaptureRole::Tail, sentence_clause)?
-        .trimmed();
-    let counter_modifier = if remainder_clause.word_refs().first() == Some(&"with") {
-        let modifier_match =
-            EXILE_FACE_DOWN_COUNTER_MODIFIER_PATTERN.parse_full(remainder_clause)?;
-        let descriptor_clause = modifier_match
-            .capture_clause("counter_descriptor", remainder_clause)?
-            .trimmed();
-        Some(
-            super::super::grammar::effects::zone_counter_shapes::parse_counter_descriptor_shape(
-                descriptor_clause.tokens(),
-            )?,
-        )
-    } else {
-        None
-    };
-    if EXILE_FACE_DOWN_REST_BOTTOM_PATTERN
-        .locate_in(remainder_clause)
-        .is_none()
-        || EXILE_FACE_DOWN_REST_LIBRARY_PATTERN
-            .locate_in(remainder_clause)
-            .is_none()
-    {
-        return None;
-    }
-    let singleton_remainder = matches!(count.unhinted(), Value::Fixed(2))
-        && exile_count.min == 1
-        && exile_count.max == Some(1)
-        && !exile_count.dynamic_x
-        && !exile_count.up_to_x
-        && !exile_count.random;
-    let bottom_order = if EXILE_FACE_DOWN_REST_RANDOM_ORDER_PATTERN
-        .locate_in(remainder_clause)
-        .is_some()
-    {
-        crate::cards::builders::LibraryBottomOrderAst::Random
-    } else if EXILE_FACE_DOWN_REST_ANY_ORDER_PATTERN
-        .locate_in(remainder_clause)
-        .is_some()
-    {
-        crate::cards::builders::LibraryBottomOrderAst::ChooserChooses
-    } else if singleton_remainder {
-        // Ordering a one-card complement is meaningless, so Oracle omits an
-        // order clause ("put the other on the bottom of that library").  The
-        // runtime still uses the ordinary chooser-order primitive; with one
-        // card it has exactly one legal ordering.
-        crate::cards::builders::LibraryBottomOrderAst::ChooserChooses
-    } else {
-        return None;
-    };
-
-    let looked_tag = crate::util::helper_tag_for_tokens(tokens, "looked");
-    let exiled_tag = TagKey::from(IT_TAG);
-    let mut choice_filter = ObjectFilter::tagged(looked_tag.clone());
-    choice_filter.zone = Some(Zone::Library);
-
-    let mut effects = vec![
-        EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag.clone()),
-        EffectAst::ChooseObjects {
-            filter: choice_filter,
-            count: exile_count,
-            count_value: None,
-            player: PlayerAst::You,
-            tag: exiled_tag.clone(),
-        },
-        EffectAst::subject_verb_exile(TargetAst::Tagged(exiled_tag.clone(), None), true),
-    ];
-    if let Some(descriptor) = counter_modifier {
-        effects.push(EffectAst::subject_verb_put_counters(
-            descriptor.counter_type,
-            Value::Fixed(descriptor.count as i32),
-            TargetAst::Tagged(exiled_tag.clone(), None),
-            None,
-            false,
-        ));
-    }
-    effects.push(
-        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-            looked_tag,
-            Some(exiled_tag),
-            bottom_order,
-            player,
-        ),
-    );
-    Some(effects)
-}
-
 #[cfg(test)]
-mod generic_subject_verb_program_tests {
-    use super::*;
-    use crate::Subtype;
-
-    #[test]
-    fn as_you_cast_from_zone_this_turn_grant_preserves_origin_duration_and_keyword() {
-        let tokens = crate::lexer::lex_line(
-            "As you cast spells from your hand this turn, they gain cascade.",
-            0,
-        )
-        .expect("cast-origin grant should lex");
-        let effects = super::parse_effect_sentence_lexed(&tokens)
-            .expect("public sentence route should retain the cast-origin grant");
-        let [effect] = effects.as_slice() else {
-            panic!("expected one cast-origin grant: {effects:#?}")
-        };
-        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::GrantAbilitiesAll {
-                    filter,
-                    abilities,
-                    duration,
-                    ..
-                },
-            ..
-        }) = effect
-        else {
-            panic!("expected typed grant-all effect")
-        };
-
-        assert_eq!(filter.zone, Some(Zone::Hand));
-        assert_eq!(
-            filter.stack_kind,
-            Some(crate::filter::StackObjectKind::Spell)
-        );
-        assert_eq!(filter.cast_by, Some(PlayerFilter::You));
-        assert!(filter.has_as_you_cast_this_turn_surface());
-        assert_eq!(*duration, Until::EndOfTurn);
-        assert!(matches!(
-            abilities.as_slice(),
-            [GrantedAbilityAst::KeywordAction(KeywordAction::Cascade)]
-        ));
-    }
-
-    #[test]
-    fn permanent_grant_does_not_enter_cast_origin_route() {
-        let tokens = crate::lexer::lex_line(
-            "Creatures you control gain trample until end of turn.",
-            0,
-        )
-        .expect("ordinary grant should lex");
-
-        assert!(
-            parse_as_you_cast_from_zone_this_turn_grant(&tokens)
-                .expect("ordinary grant route should not error")
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn top_level_cant_route_preserves_leading_end_of_turn_surface() {
-        let parse_surface = |text: &str| {
-            let tokens = crate::lexer::lex_line(text, 0)
-                .expect("temporary restriction should lex");
-            let (_, effects) = parse_top_level_subject_verb_recognition(&tokens)
-                .expect("top-level restriction route should not error")
-                .expect("top-level restriction route should match");
-            effects
-                .iter()
-                .find_map(|effect| {
-                    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                        action:
-                            SubjectVerbActionAst::Cant {
-                                duration: crate::effect::Until::EndOfTurn,
-                                duration_surface,
-                                ..
-                            },
-                        ..
-                    }) = effect
-                    else {
-                        return None;
-                    };
-                    Some(*duration_surface)
-                })
-                .expect("expected a typed end-of-turn restriction")
-        };
-
-        assert_eq!(
-            parse_surface("Until end of turn, target creature can't be blocked by Walls."),
-            crate::effect::RestrictionDurationSurface::LeadingUntilEndOfTurn
-        );
-        assert_eq!(
-            parse_surface("Target creature can't be blocked by Walls this turn."),
-            crate::effect::RestrictionDurationSurface::Default
-        );
-    }
-
-    #[test]
-    fn top_cards_counted_hand_remainder_uses_captured_owners() {
-        let tokens = crate::lexer::lex_line(
-            "look at the top three cards of your library, then put one of those cards into that player's hand and the rest into that player's graveyard.",
-            0,
-        )
-        .expect("rewrite lexer should classify looked-card bundle");
-        let effects =
-            parse_generic_top_cards_put_counted_into_hand_rest_graveyard_subject_verb(&tokens)
-                .expect("top-card hand/remainder parser should match");
-        let debug = format!("{effects:#?}");
-
-        assert!(debug.contains("LookAtTopCards"), "{debug}");
-        assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
-        assert!(debug.contains("MoveTaggedGroupToZone"), "{debug}");
-        assert!(debug.contains("PutTaggedRemainderInZone"), "{debug}");
-        assert!(debug.contains("player: That"), "{debug}");
-        assert!(!debug.contains("Unsupported"), "{debug}");
-    }
-
-    #[test]
-    fn counted_face_down_exile_keeps_target_opponents_library_owner() {
-        let tokens = crate::lexer::lex_line(
-            "Look at the top nine cards of target opponent's library, exile two of them face down, then put the rest on the bottom of their library in a random order.",
-            0,
-        )
-        .expect("counted face-down exile bundle should lex");
-        let effects =
-            parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(&tokens)
-                .expect("counted face-down exile bundle should match");
-        let debug = format!("{effects:#?}");
-
-        assert!(debug.contains("LookAtTopCards"), "{debug}");
-        assert!(
-            debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
-            "{debug}"
-        );
-        assert!(
-            debug.matches("player: TargetOpponent").count() >= 2,
-            "{debug}"
-        );
-    }
-
-    #[test]
-    fn source_exiled_counted_return_keeps_original_set_for_the_remainder() {
-        let tokens = crate::lexer::lex_line(
-            "Return two cards exiled with this Saga to the battlefield under their owners' control and put the rest on the bottom of their owners' libraries.",
-            0,
-        )
-        .expect("source-exiled partition should lex");
-        let effects = parse_source_exiled_counted_return_remainder_to_owners_libraries(&tokens)
-            .expect("typed source-exiled partition should match");
-        let debug = format!("{effects:#?}");
-        assert!(debug.contains("WithCount"), "{debug}");
-        assert!(debug.contains("max: Some(2)"), "{debug}");
-        assert!(debug.contains("PutTaggedRemainderInZone"), "{debug}");
-        assert!(debug.matches("__source_exiled__").count() >= 2, "{debug}");
-        let EffectAst::TagAffected { effect, tag } = &effects[0] else {
-            panic!("expected distinctly tagged counted return: {debug}");
-        };
-        assert_eq!(tag.as_str(), "source_exiled_returned");
-        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::MoveToZone {
-                    target: TargetAst::WithCount(returned, _),
-                    ..
-                },
-            ..
-        }) = effect.as_ref()
-        else {
-            panic!("expected counted typed return inside result tag: {debug}");
-        };
-        let TargetAst::Object(returned, _, _) = returned.as_ref() else {
-            panic!("expected source-linked object filter: {debug}");
-        };
-        assert_eq!(
-            returned,
-            &ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile),
-            "the source's Saga type is provenance, not a restriction on returned cards"
-        );
-        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::PutTaggedRemainderInZone {
-                    tag: original_set,
-                    keep_tagged,
-                    ..
-                },
-            ..
-        }) = &effects[1]
-        else {
-            panic!("expected typed source-exiled complement: {debug}");
-        };
-        assert_eq!(original_set.as_str(), crate::tag::SOURCE_EXILED_TAG);
-        assert_eq!(keep_tagged, tag);
-        assert_ne!(keep_tagged, original_set);
-
-        let near_miss = crate::lexer::lex_line(
-            "Return two cards exiled with this Saga to the battlefield under their owners' control and put those cards on the bottom of their owners' libraries.",
-            0,
-        )
-        .expect("near miss should lex");
-        assert!(
-            parse_source_exiled_counted_return_remainder_to_owners_libraries(&near_miss).is_none()
-        );
-    }
-
-    #[test]
-    fn counted_face_down_exile_accepts_implicit_looked_set() {
-        let tokens = crate::lexer::lex_line(
-            "Look at the top four cards of your library, exile one face down, then put the rest on the bottom of your library in any order.",
-            0,
-        )
-        .expect("implicit looked-set face-down exile bundle should lex");
-        let effects =
-            parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(&tokens)
-                .expect("implicit looked-set face-down exile bundle should match");
-        let debug = format!("{effects:#?}");
-
-        assert!(debug.contains("LookAtTopCards"), "{debug}");
-        assert!(debug.contains("ChooseObjects"), "{debug}");
-        assert!(debug.contains("face_down: true"), "{debug}");
-        assert!(
-            debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
-            "{debug}"
-        );
-    }
-
-    #[test]
-    fn full_sentence_dispatch_keeps_the_face_down_looked_partition_before_comma_then() {
-        let tokens = crate::lexer::lex_line(
-            "Look at the top four cards of your library, exile one face down, then put the rest on the bottom of your library in any order.",
-            0,
-        )
-        .expect("face-down looked partition should lex");
-        let effects = super::super::dispatch_entry::parse_effect_sentences_lexed(&tokens)
-            .expect("full sentence dispatcher should preserve the partition");
-        let debug = format!("{effects:#?}");
-
-        assert!(debug.contains("LookAtTopCards"), "{debug}");
-        assert!(debug.contains("ChooseObjects"), "{debug}");
-        assert!(debug.contains("face_down: true"), "{debug}");
-        assert!(
-            debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
-            "{debug}"
-        );
-    }
-
-    #[test]
-    fn two_card_face_down_partition_accepts_the_single_other_without_order_text() {
-        let tokens = crate::lexer::lex_line(
-            "Look at the top two cards of target opponent's library. Exile one of them face down and put the other on the bottom of that library.",
-            0,
-        )
-        .expect("two-card face-down partition should lex");
-        let effects =
-            parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(&tokens)
-                .expect("two-card face-down partition should match");
-        let debug = format!("{effects:#?}");
-
-        assert!(debug.contains("LookAtTopCards"), "{debug}");
-        assert!(debug.contains("ChooseObjects"), "{debug}");
-        assert!(
-            debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
-            "{debug}"
-        );
-        assert!(
-            debug.matches("player: TargetOpponent").count() >= 2,
-            "{debug}"
-        );
-    }
-
-    #[test]
-    fn face_down_exile_counter_stays_on_the_selected_card_not_the_remainder() {
-        let tokens = crate::lexer::lex_line(
-            "Look at the top three cards of your library. Exile one of them face down with a hatching counter on it, then put the rest on the bottom of your library in any order.",
-            0,
-        )
-        .expect("face-down counter partition should lex");
-        let effects =
-            parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(&tokens)
-                .expect("face-down counter partition should match");
-        let [
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action:
-                    SubjectVerbActionAst::LookAtTopCards {
-                        tag: looked_tag, ..
-                    },
-                ..
-            }),
-            EffectAst::ChooseObjects {
-                tag: selected_tag, ..
-            },
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action:
-                    SubjectVerbActionAst::Exile {
-                        target: TargetAst::Tagged(exile_tag, _),
-                        face_down: true,
-                        ..
-                    },
-                ..
-            }),
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action:
-                    SubjectVerbActionAst::PutCounters {
-                        counter_type: CounterType::Named(counter_name),
-                        count: Value::Fixed(1),
-                        target: TargetAst::Tagged(counter_tag, _),
-                        ..
-                    },
-                ..
-            }),
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action:
-                    SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
-                        tag: remainder_pool_tag,
-                        keep_tagged: Some(remainder_keep_tag),
-                        ..
-                    },
-                ..
-            }),
-        ] = effects.as_slice()
-        else {
-            panic!("unexpected face-down counter partition AST: {effects:#?}");
-        };
-        assert_eq!(counter_name.as_str(), "hatching");
-
-        assert_eq!(exile_tag, selected_tag);
-        assert_eq!(counter_tag, selected_tag);
-        assert_eq!(remainder_pool_tag, looked_tag);
-        assert_eq!(remainder_keep_tag, selected_tag);
-    }
-
-    #[test]
-    fn consult_reveal_until_hand_uses_captured_consult_and_followup_clauses() {
-        let tokens = crate::lexer::lex_line(
-            "Reveal cards from the top of your library until you reveal a nonland card, then put all cards revealed this way into your hand.",
-            0,
-        )
-        .expect("consult all-revealed-to-hand text should lex");
-        let effects =
-            parse_generic_consult_reveal_until_put_all_revealed_into_hand_subject_verb(&tokens)
-                .expect("consult hand parser should not error")
-                .expect("consult hand parser should match");
-        let debug = format!("{effects:#?}");
-
-        assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
-        assert!(debug.contains("MoveToZone"), "{debug}");
-        assert!(debug.contains("Hand"), "{debug}");
-        assert!(debug.contains("revealed"), "{debug}");
-    }
-
-    #[test]
-    fn undying_flames_exile_until_uses_typed_consult_traversal() {
-        let tokens = crate::lexer::lex_line(
-            "Exile cards from the top of your library until you exile a nonland card.",
-            0,
-        )
-        .expect("Undying Flames consult text should lex");
-        let effects = parse_generic_consult_reveal_until_subject_verb(&tokens)
-            .expect("Undying Flames consult parser should not error")
-            .expect("Undying Flames consult parser should match");
-
-        assert!(matches!(
-            effects.as_slice(),
-            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ConsultTopOfLibrary {
-                    mode: crate::cards::builders::LibraryConsultModeAst::Exile,
-                    filter,
-                    ..
-                },
-                ..
-            })] if filter.excluded_card_types.contains(&crate::types::CardType::Land)
-        ));
-    }
-
-    #[test]
-    fn consult_reveal_until_graveyard_moves_all_revealed_cards() {
-        let tokens = crate::lexer::lex_line(
-            "Each opponent reveals cards from the top of their library until they reveal X land cards, then puts all cards revealed this way into their graveyard.",
-            0,
-        )
-        .expect("consult all-revealed-to-graveyard text should lex");
-        let effects =
-            parse_generic_consult_reveal_until_put_all_revealed_into_graveyard_subject_verb(
-                &tokens,
-            )
-            .expect("consult graveyard parser should not error")
-            .expect("consult graveyard parser should match");
-        let debug = format!("{effects:#?}");
-
-        assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
-        assert!(debug.contains("MoveToZone"), "{debug}");
-        assert!(debug.contains("Graveyard"), "{debug}");
-        assert!(debug.contains("revealed"), "{debug}");
-        assert!(debug.contains("Opponent"), "{debug}");
-    }
-
-    #[test]
-    fn consult_reveal_until_battlefield_bottom_uses_captured_consult_and_followup_clauses() {
-        let tokens = crate::lexer::lex_line(
-            "Reveal cards from the top of your library until you reveal a creature card, put it onto the battlefield, then put the rest on the bottom of your library in any order.",
-            0,
-        )
-        .expect("consult battlefield-bottom text should lex");
-        let effects = parse_generic_consult_reveal_until_battlefield_bottom_subject_verb(&tokens)
-            .expect("consult battlefield-bottom parser should not error")
-            .expect("consult battlefield-bottom parser should match");
-        let debug = format!("{effects:#?}");
-
-        assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
-        assert!(debug.contains("MoveToZone"), "{debug}");
-        assert!(debug.contains("Battlefield"), "{debug}");
-        assert!(
-            debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
-            "{debug}"
-        );
-    }
-
-    #[test]
-    fn consult_reveal_until_battlefield_bottom_preserves_tapped_land_group() {
-        let tokens = crate::lexer::lex_line(
-            "Reveal cards from the top of your library until you reveal X land cards, put those land cards onto the battlefield tapped and the rest on the bottom of your library in a random order.",
-            0,
-        )
-        .expect("consult tapped land battlefield-bottom text should lex");
-        let effects = parse_generic_consult_reveal_until_battlefield_bottom_subject_verb(&tokens)
-            .expect("consult tapped land battlefield-bottom parser should not error")
-            .expect("consult tapped land battlefield-bottom parser should match");
-        let debug = format!("{effects:#?}");
-
-        assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
-        assert!(debug.contains("MatchCount"), "{debug}");
-        assert!(debug.contains("zone: Battlefield"), "{debug}");
-        assert!(debug.contains("battlefield_tapped: true"), "{debug}");
-        assert!(
-            debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
-            "{debug}"
-        );
-    }
-
-    #[test]
-    fn each_player_exile_top_cast_uses_captured_exile_and_cast_clauses() {
-        let tokens = crate::lexer::lex_line(
-            "Exile the top card of each player's library, then you may cast any number of spells from among the nonland cards exiled this way without paying their mana costs.",
-            0,
-        )
-        .expect("each-player exile-top cast text should lex");
-        let effects =
-            parse_generic_each_player_exile_top_then_cast_any_number_subject_verb(&tokens)
-                .expect("each-player exile-top cast parser should not error")
-                .expect("each-player exile-top cast parser should match");
-        let debug = format!("{effects:#?}");
-
-        assert!(debug.contains("ForEachPlayer"), "{debug}");
-        assert!(debug.contains("ForEachObject"), "{debug}");
-        assert!(debug.contains("CastTagged"), "{debug}");
-        assert!(debug.contains("without_paying_mana_cost: true"), "{debug}");
-    }
-
-    #[test]
-    fn zone_replacement_uses_captured_condition_and_replacement_clauses() {
-        let tokens = crate::lexer::lex_line(
-            "If that card would be put into your graveyard this turn, exile that card instead.",
-            0,
-        )
-        .expect("future graveyard exile replacement text should lex");
-        let effect = parse_zone_replacement_subject_verb(&tokens)
-            .expect("zone replacement parser should not error")
-            .expect("zone replacement parser should match");
-        let debug = format!("{effect:#?}");
-
-        assert!(debug.contains("AffectedPlayer"), "{debug}");
-        assert!(debug.contains("You"), "{debug}");
-        assert!(debug.contains("ExileInsteadOfGraveyardThisTurn"), "{debug}");
-    }
-
-    #[test]
-    fn play_permission_uses_captured_duration_and_permission_tail() {
-        let tokens = crate::lexer::lex_line(
-            "Until end of turn, you may play lands and cast spells from your graveyard.",
-            0,
-        )
-        .expect("graveyard play permission text should lex");
-        let effect = parse_play_permission_subject_verb(&tokens)
-            .expect("play permission parser should not error")
-            .expect("play permission parser should match");
-        let debug = format!("{effect:#?}");
-
-        assert!(debug.contains("PlayFromGraveyardUntilEot"), "{debug}");
-        assert!(debug.contains("You"), "{debug}");
-    }
-
-    #[test]
-    fn secret_number_choice_vote_uses_captured_participants_and_options() {
-        let tokens = crate::lexer::lex_line(
-            "You and target opponent each secretly choose 1, 2, or 3.",
-            0,
-        )
-        .expect("secret numeric choice vote text should lex");
-        let effect = parse_secret_number_choice_vote_start(&tokens)
-            .expect("secret numeric choice vote parser should not error")
-            .expect("secret numeric choice vote parser should match");
-        let debug = format!("{effect:#?}");
-
-        assert!(debug.contains("SecretChoiceStart"), "{debug}");
-        assert!(debug.contains("\"1\""), "{debug}");
-        assert!(debug.contains("\"2\""), "{debug}");
-        assert!(debug.contains("\"3\""), "{debug}");
-        assert!(debug.contains("Target"), "{debug}");
-    }
-
-    #[test]
-    fn generic_vote_start_uses_captured_voters_and_options() {
-        let tokens = crate::lexer::lex_line("Each player votes for death or torture.", 0)
-            .expect("generic vote-start text should lex");
-        let effect = parse_generic_vote_start(&tokens)
-            .expect("generic vote-start parser should not error")
-            .expect("generic vote-start parser should match");
-        let debug = format!("{effect:#?}");
-
-        assert!(debug.contains("VoteStart"), "{debug}");
-        assert!(debug.contains("death"), "{debug}");
-        assert!(debug.contains("torture"), "{debug}");
-    }
-
-    #[test]
-    fn generic_vote_start_prefers_named_options_over_source_name_alias() {
-        let tokens = crate::lexer::lex_line(
-            "Each player secretly votes for truth or consequences, then those votes are revealed.",
-            0,
-        )
-        .expect("source-name vote text should lex");
-        let effect = crate::util::with_source_reference_context(
-            "Truth or Consequences",
-            || {
-                parse_generic_vote_start(&tokens)
-                    .expect("generic vote-start parser should not error")
-                    .expect("generic vote-start parser should match")
-            },
-        );
-        let debug = format!("{effect:#?}");
-
-        assert!(debug.contains("VoteStart"), "{debug}");
-        assert!(debug.contains("truth"), "{debug}");
-        assert!(debug.contains("consequences"), "{debug}");
-        assert!(!debug.contains("VoteStartObjects"), "{debug}");
-    }
-
-    #[test]
-    fn generic_vote_option_effect_uses_captured_option_and_effect_tail() {
-        let tokens = crate::lexer::lex_line("For each death vote, draw a card.", 0)
-            .expect("generic vote-option effect text should lex");
-        let effect = parse_generic_vote_option_effects(&tokens)
-            .expect("generic vote-option parser should not error")
-            .expect("generic vote-option parser should match");
-        let debug = format!("{effect:#?}");
-
-        assert!(debug.contains("VoteOption"), "{debug}");
-        assert!(debug.contains("death"), "{debug}");
-        assert!(debug.contains("Draw"), "{debug}");
-    }
-
-    #[test]
-    fn player_vote_received_effect_uses_captured_player_and_effect_tail() {
-        let tokens =
-            crate::lexer::lex_line("For each vote you received, draw a card.", 0)
-                .expect("player vote-received effect text should lex");
-        let effect = parse_generic_vote_option_effects(&tokens)
-            .expect("player vote-received parser should not error")
-            .expect("player vote-received parser should match");
-        let debug = format!("{effect:#?}");
-
-        assert!(debug.contains("RepeatEffects"), "{debug}");
-        assert!(debug.contains("PlayerVoteCount"), "{debug}");
-        assert!(debug.contains("You"), "{debug}");
-        assert!(debug.contains("Draw"), "{debug}");
-    }
-
-    #[test]
-    fn extra_vote_uses_captured_optional_vote_shape() {
-        let tokens = crate::lexer::lex_line("You may vote an additional time.", 0)
-            .expect("optional extra vote text should lex");
-        let effect =
-            parse_generic_extra_vote(&tokens).expect("optional extra vote parser should match");
-        let debug = format!("{effect:#?}");
-
-        assert!(debug.contains("VoteExtra"), "{debug}");
-        assert!(debug.contains("count: 1"), "{debug}");
-        assert!(debug.contains("optional: true"), "{debug}");
-    }
-
-    #[test]
-    fn extra_vote_uses_captured_required_vote_shape() {
-        let tokens = crate::lexer::lex_line("You vote an additional time.", 0)
-            .expect("required extra vote text should lex");
-        let effect =
-            parse_generic_extra_vote(&tokens).expect("required extra vote parser should match");
-        let debug = format!("{effect:#?}");
-
-        assert!(debug.contains("VoteExtra"), "{debug}");
-        assert!(debug.contains("count: 1"), "{debug}");
-        assert!(debug.contains("optional: false"), "{debug}");
-    }
-
-    #[test]
-    fn extra_vote_accepts_subjectless_clause_inside_optional_wrapper() {
-        let tokens = crate::lexer::lex_line("Vote an additional time.", 0)
-            .expect("subjectless extra vote text should lex");
-        let effect =
-            parse_generic_extra_vote(&tokens).expect("subjectless extra vote parser should match");
-        let debug = format!("{effect:#?}");
-
-        assert!(debug.contains("VoteExtra"), "{debug}");
-        assert!(debug.contains("count: 1"), "{debug}");
-        assert!(debug.contains("optional: false"), "{debug}");
-    }
-
-    #[test]
-    fn vote_reveal_uses_captured_choice_reveal_shape() {
-        let tokens = crate::lexer::lex_line("Then those choices are revealed.", 0)
-            .expect("vote reveal text should lex");
-        let effect = parse_vote_reveal_sentence(&tokens).expect("vote reveal parser should match");
-        let debug = format!("{effect:#?}");
-
-        assert!(debug.contains("SecretChoiceReveal"), "{debug}");
-    }
-
-    #[test]
-    fn control_combat_choices_uses_captured_attack_shape() {
-        let tokens =
-            crate::lexer::lex_line("You choose which creatures attack this turn.", 0)
-                .expect("combat choice attack text should lex");
-        let effect = parse_generic_control_combat_choices_subject_verb(&tokens)
-            .expect("combat choice attack parser should not error")
-            .expect("combat choice attack parser should match");
-        let debug = format!("{effect:#?}");
-
-        assert!(debug.contains("ControlCombatChoicesThisTurn"), "{debug}");
-        assert!(debug.contains("attackers: true"), "{debug}");
-        assert!(debug.contains("blockers: false"), "{debug}");
-    }
-
-    #[test]
-    fn control_combat_choices_uses_captured_block_shape() {
-        for (text, this_combat) in [
-            (
-                "You choose which creatures block this turn and how those creatures block.",
-                false,
-            ),
-            (
-                "You choose which creatures block this combat and how those creatures block.",
-                true,
-            ),
-        ] {
-            let tokens = crate::lexer::lex_line(text, 0)
-                .expect("combat choice block text should lex");
-            let effect = parse_generic_control_combat_choices_subject_verb(&tokens)
-                .expect("combat choice block parser should not error")
-                .expect("combat choice block parser should match");
-            let debug = format!("{effect:#?}");
-
-            assert!(debug.contains("ControlCombatChoicesThisTurn"), "{debug}");
-            assert!(debug.contains("attackers: false"), "{debug}");
-            assert!(debug.contains("blockers: true"), "{debug}");
-            assert!(
-                debug.contains(&format!("this_combat: {this_combat}")),
-                "{debug}"
-            );
-        }
-    }
-
-    #[test]
-    fn control_combat_choices_accepts_anaphoric_block_assignment_shape() {
-        let tokens = crate::lexer::lex_line("You choose how those creatures block.", 0)
-            .expect("anaphoric combat-choice text should lex");
-        let effect = parse_generic_control_combat_choices_subject_verb(&tokens)
-            .expect("combat-choice parser should not error")
-            .expect("anaphoric block-assignment parser should match");
-        let debug = format!("{effect:#?}");
-
-        assert!(debug.contains("ControlCombatChoicesThisTurn"), "{debug}");
-        assert!(debug.contains("attackers: false"), "{debug}");
-        assert!(debug.contains("blockers: true"), "{debug}");
-        assert!(debug.contains("this_combat: false"), "{debug}");
-    }
-
-    #[test]
-    fn where_x_value_binding_uses_captured_effect_and_definition() {
-        let tokens = crate::lexer::lex_line(
-            "Target creature gets +X/+X until end of turn, where X is the number of cards in your hand.",
-            0,
-        )
-        .expect("where-x value-binding text should lex");
-        let non_binding_tokens =
-            crate::lexer::lex_line("Target creature gets +1/+1 until end of turn.", 0)
-                .expect("non-binding pump text should lex");
-
-        assert!(has_where_x_value_binding(&tokens));
-        assert!(!has_where_x_value_binding(&non_binding_tokens));
-    }
-
-    #[test]
-    fn where_x_player_comparison_keeps_participant_cardinality() {
-        for text in [
-            "Search your library for up to X Plains cards, where X is the number of players who control more lands than you.",
-            "Create X 1/1 white Spirit creature tokens with flying, where X is the number of opponents who control more lands than you.",
-        ] {
-            let tokens = crate::lexer::lex_line(text, 0)
-                .expect("player-comparison where-X text should lex");
-            let effects = parse_effect_sentence_with_where_x_lexed(&tokens)
-                .expect("player-comparison where-X text should parse");
-            let debug = format!("{effects:#?}");
-
-            assert!(
-                debug.contains("PlayersWhoControlMoreThanYou"),
-                "participant cardinality collapsed to an object count: {debug}"
-            );
-        }
-
-        let tokens = crate::lexer::lex_line(
-            "Search your library for up to X basic land cards, where X is the number of players who control at least two more lands than you.",
-            0,
-        )
-        .expect("minimum-difference player-comparison text should lex");
-        let effects = parse_effect_sentence_with_where_x_lexed(&tokens)
-            .expect("minimum-difference player-comparison text should parse");
-        let debug = format!("{effects:#?}");
-        assert!(
-            debug.contains("PlayersWhoControlAtLeastMoreThanYou")
-                && debug.contains("minimum_difference: 2"),
-            "minimum-difference participant cardinality collapsed: {debug}"
-        );
-    }
-
-    #[test]
-    fn where_x_scry_amount_binds_the_dynamic_counter_target_count() {
-        let tokens = crate::lexer::lex_line(
-            "Put a +1/+1 counter on each of up to X target creatures, where X is the number of cards looked at while scrying this way.",
-            0,
-        )
-        .expect("scry-derived target-count text should lex");
-
-        assert!(has_where_x_value_binding(&tokens));
-        let effects = parse_effect_sentence_with_where_x_lexed(&tokens)
-            .expect("scry-derived target-count text should parse");
-        let debug = format!("{effects:#?}");
-        assert!(debug.contains("WithCountValue"), "{debug}");
-        assert!(debug.contains("EventValue"), "{debug}");
-        assert!(
-            debug.contains("CardsLookedAtWhileScryingThisWay"),
-            "{debug}"
-        );
-    }
-
-    #[test]
-    fn where_x_binding_prioritizes_spell_history_aggregate_over_plain_count() {
-        let tokens = crate::lexer::lex_line(
-            "Create an X/X blue and red Elemental creature token with flying and haste, where X is the greatest mana value among instant and sorcery spells you've cast this turn.",
-            0,
-        )
-        .expect("spell-history aggregate create text should lex");
-        let effects = super::super::dispatch_entry::parse_effect_sentences_lexed(&tokens)
-            .expect("spell-history aggregate create text should parse");
-        let [EffectAst::SubjectVerb(subject_verb)] = effects.as_slice() else {
-            panic!("expected one token-creation effect: {effects:#?}");
-        };
-        let SubjectVerbActionAst::CreateTokenWithMods {
-            dynamic_power_toughness: Some((power, toughness)),
-            ..
-        } = &subject_verb.action
-        else {
-            panic!("expected dynamic token power and toughness: {effects:#?}");
-        };
-        for value in [power, toughness] {
-            let Value::GreatestManaValue(filter) = value.unhinted() else {
-                panic!("aggregate must not collapse into a count: {value:#?}");
-            };
-            assert!(filter.cast_this_turn, "{filter:#?}");
-            assert_eq!(filter.cast_by, Some(PlayerFilter::You), "{filter:#?}");
-        }
-    }
-
-    #[test]
-    fn shared_where_x_sum_binds_the_full_value_to_each_pump_clause() {
-        let text = "Target creature you control gets +X/+0 until end of turn and up to one target creature an opponent controls gets -0/-X until end of turn, where X is the number of Elves you control plus the number of Elf cards in your graveyard.";
-        let tokens = crate::lexer::lex_line(text, 0)
-            .expect("shared sum where-x pump text should lex");
-        let effects = parse_effect_sentence_with_where_x_lexed(&tokens)
-            .expect("shared sum where-x pump text should parse");
-        let debug = format!("{effects:#?}");
-
-        assert_eq!(effects.len(), 1, "{debug}");
-        assert!(debug.contains("Coordinated"), "{debug}");
-        assert_eq!(debug.matches("action: Pump {").count(), 2, "{debug}");
-        assert_eq!(debug.matches("Add(").count(), 2, "{debug}");
-        assert!(debug.matches("Battlefield").count() >= 2, "{debug}");
-        assert_eq!(debug.matches("Graveyard").count(), 2, "{debug}");
-        assert_eq!(debug.matches("WhereXIs").count(), 2, "{debug}");
-        assert!(debug.contains("Scaled("), "{debug}");
-        assert!(debug.contains("-1,"), "{debug}");
-    }
-
-    #[test]
-    fn shared_where_x_sum_binds_the_full_value_to_damage() {
-        let text = "This deals X damage to target creature, where X is the number of creatures you control plus the number of Foods you control.";
-        let tokens =
-            crate::lexer::lex_line(text, 0).expect("shared sum damage text should lex");
-        let effects = parse_effect_sentence_with_where_x_lexed(&tokens)
-            .expect("shared sum damage text should parse");
-        let debug = format!("{effects:#?}");
-
-        assert_eq!(effects.len(), 1, "{debug}");
-        assert_eq!(debug.matches("Add(").count(), 1, "{debug}");
-        assert!(debug.contains("Food"), "{debug}");
-        assert!(debug.contains("Creature"), "{debug}");
-        assert_eq!(debug.matches("WhereXIs").count(), 1, "{debug}");
-    }
-
-    #[test]
-    fn shared_where_x_dynamic_subtraction_binds_both_hand_counts() {
-        fn collect_hand_players<'a>(value: &'a Value, players: &mut Vec<&'a PlayerFilter>) {
-            match value {
-                Value::SurfaceHinted { value, .. } | Value::Scaled(value, _) => {
-                    collect_hand_players(value, players);
-                }
-                Value::Add(left, right) => {
-                    collect_hand_players(left, players);
-                    collect_hand_players(right, players);
-                }
-                Value::Count(filter) if filter.zone == Some(Zone::Hand) => {
-                    if let Some(owner) = filter.owner.as_ref() {
-                        players.push(owner);
-                    }
-                }
-                Value::CardsInHand(player) => players.push(player),
-                _ => {}
-            }
-        }
-
-        for (text, expected_players) in [
-            (
-                "That player loses X life, where X is the number of cards in that player's hand minus the number of cards in your hand.",
-                [PlayerFilter::IteratedPlayer, PlayerFilter::You],
-            ),
-            (
-                "This enchantment deals X damage to target opponent, where X is the number of cards in your hand minus the number of cards in that player's hand.",
-                [PlayerFilter::You, PlayerFilter::IteratedPlayer],
-            ),
-        ] {
-            let tokens = crate::lexer::lex_line(text, 0)
-                .expect("dynamic subtraction where-x text should lex");
-            let effects = parse_effect_sentence_with_where_x_lexed(&tokens)
-                .expect("dynamic subtraction where-x text should parse");
-            let debug = format!("{effects:#?}");
-
-            assert_eq!(debug.matches("Add(").count(), 1, "{text}: {debug}");
-            assert!(debug.contains("Scaled("), "{text}: {debug}");
-            assert!(debug.contains("-1,"), "{text}: {debug}");
-            assert_eq!(debug.matches("Hand").count(), 2, "{text}: {debug}");
-            assert_eq!(debug.matches("WhereXIs").count(), 1, "{text}: {debug}");
-            assert_eq!(
-                debug.matches("ThatPlayerPossessive").count(),
-                1,
-                "{text}: authored that-player possessive provenance: {debug}"
-            );
-
-            let [EffectAst::SubjectVerb(subject_verb)] = effects.as_slice() else {
-                panic!("{text}: expected one subject-verb effect: {effects:#?}");
-            };
-            let amount = match &subject_verb.action {
-                SubjectVerbActionAst::LoseLife { amount }
-                | SubjectVerbActionAst::DealDamage { amount, .. } => amount,
-                action => panic!("{text}: expected life-loss or damage action: {action:#?}"),
-            };
-            let mut actual_players = Vec::new();
-            collect_hand_players(amount, &mut actual_players);
-            assert_eq!(
-                actual_players,
-                expected_players.iter().collect::<Vec<_>>(),
-                "{text}: hand-count player references must remain typed: {amount:#?}"
-            );
-        }
-    }
-
-    #[test]
-    fn where_x_binding_reaches_granted_entry_counter_static_ability() {
-        for (text, expected) in [
-            (
-                "That creature enters with X additional +1/+1 counters on it, where X is the number of ingredient counters on this enchantment.",
-                &[
-                    "CountersOn(",
-                    "spec: Source",
-                    "this enchantment",
-                    "ingredient",
-                    "WhereXIs",
-                ][..],
-            ),
-            (
-                "That creature enters with X additional +1/+1 counters on it, where X is its mana value minus 4.",
-                &["ManaValueOf(", "Fixed(", "-4", "WhereXIs"][..],
-            ),
-            (
-                "That creature enters with X additional +1/+1 counters on it, where X is the number of colors of mana spent to cast it.",
-                &["ColorsOfManaSpentToCastThisSpell", "WhereXIs"][..],
-            ),
-        ] {
-            let tokens = crate::lexer::lex_line(text, 0)
-                .expect("dynamic entry-counter text should lex");
-            let effects = parse_effect_sentence_with_where_x_lexed(&tokens)
-                .expect("dynamic entry-counter text should parse");
-            let debug = format!("{effects:#?}");
-
-            assert!(
-                debug.contains("EntersWithCountersAndSubtypesForFilter"),
-                "{text}: {debug}"
-            );
-            for fragment in expected {
-                assert!(
-                    debug.contains(fragment),
-                    "{text}: missing {fragment}: {debug}"
-                );
-            }
-            assert!(
-                !debug.contains("count: Fixed(\n                            1,"),
-                "{text}: dynamic X must not freeze to one: {debug}"
-            );
-        }
-    }
-
-    #[test]
-    fn where_x_value_binding_accepts_quoted_token_abilities() {
-        for text in [
-            "Create X 1/1 black Fungus creature tokens with \"This token can't block,\" where X is the number of times you descended this turn.",
-            "Create X 1/1 black Rat creature tokens with \"This token can't block,\" where X is the amount of damage dealt to it this turn.",
-            "Create X 1/1 black and green Pest creature tokens with \"When this token dies, you gain 1 life,\" where X is the sacrificed creature's power.",
-        ] {
-            let tokens = crate::lexer::lex_line(text, 0)
-                .expect("quoted token where-x text should lex");
-            assert!(has_where_x_value_binding(&tokens), "{text}");
-        }
-    }
-
-    #[test]
-    fn choice_complement_uses_captured_choice_and_sacrifice_shape() {
-        let tokens = crate::lexer::lex_line(
-            "Each player chooses a creature from among creatures they control, then sacrifices the rest.",
-            0,
-        )
-        .expect("choice-complement text should lex");
-        let effect = parse_choice_complement_subject_verb(&tokens)
-            .expect("choice-complement parser should not error")
-            .expect("choice-complement parser should match");
-        let debug = format!("{effect:#?}");
-
-        assert!(debug.contains("ForEachPlayer"), "{debug}");
-        assert!(debug.contains("ChooseObjects"), "{debug}");
-        assert!(debug.contains("Sacrifice"), "{debug}");
-        assert!(debug.contains("keep"), "{debug}");
-    }
-
-    #[test]
-    fn counted_choice_complement_keeps_that_many_and_sacrifices_others() {
-        let tokens = crate::lexer::lex_line(
-            "Each player chooses five lands they control and sacrifices the rest.",
-            0,
-        )
-        .expect("counted choice-complement text should lex");
-        let effect = parse_choice_complement_subject_verb(&tokens)
-            .expect("counted choice-complement parser should not error")
-            .expect("counted choice-complement parser should match");
-        let debug = format!("{effect:#?}");
-
-        assert!(debug.contains("ForEachPlayer"), "{debug}");
-        assert!(debug.contains("ChooseObjects"), "{debug}");
-        assert!(debug.contains("min: 5"), "{debug}");
-        assert!(
-            debug.contains("max: Some(\n                    5"),
-            "{debug}"
-        );
-        assert!(debug.contains("SacrificeAll"), "{debug}");
-        assert!(debug.contains("keep"), "{debug}");
-    }
-
-    #[test]
-    fn aggregate_choice_complement_keeps_the_group_power_constraint() {
-        let tokens = crate::lexer::lex_line(
-            "Each player chooses any number of creatures they control with total power 4 or less, then sacrifices all other creatures they control.",
-            0,
-        )
-        .expect("aggregate choice-complement text should lex");
-        let effect = parse_choice_complement_subject_verb(&tokens)
-            .expect("aggregate choice-complement parser should not error")
-            .expect("aggregate choice-complement parser should match");
-        let debug = format!("{effect:#?}");
-
-        assert!(debug.contains("ForEachPlayer"), "{debug}");
-        assert!(
-            debug.contains("ChooseObjectsWithAggregateConstraint"),
-            "{debug}"
-        );
-        assert!(
-            debug.contains("Power") && debug.contains("maximum: Fixed(\n                    4"),
-            "{debug}"
-        );
-        assert!(debug.contains("SacrificeAll"), "{debug}");
-
-        let effects =
-            crate::effect_sentences::parse_effect_sentence_lexed(
-                &tokens,
-            )
-            .expect("aggregate choice-complement full sentence should parse");
-        let full_debug = format!("{effects:#?}");
-        assert!(
-            full_debug.contains("ChooseObjectsWithAggregateConstraint"),
-            "{full_debug}"
-        );
-    }
-
-    #[test]
-    fn party_choice_complement_uses_four_optional_distinct_role_slots() {
-        let tokens = crate::lexer::lex_line(
-            "Each player chooses a party from among creatures they control, then sacrifices the rest.",
-            0,
-        )
-        .expect("party choice text should lex");
-        let effect = parse_choice_complement_subject_verb(&tokens)
-            .expect("party choice parser should not error")
-            .expect("party choice parser should match");
-        let EffectAst::ForEachPlayer { effects } = effect else {
-            panic!("party choice must iterate over players: {effect:#?}");
-        };
-        assert_eq!(effects.len(), 5, "{effects:#?}");
-        let mut roles = Vec::new();
-        for choice in &effects[..4] {
-            let EffectAst::ChooseObjects { filter, count, .. } = choice else {
-                panic!("party slot must be an object choice: {choice:#?}");
-            };
-            assert_eq!(*count, ChoiceCount::up_to(1));
-            assert!(filter.card_types.contains(&CardType::Creature));
-            assert!(filter.controller == Some(PlayerFilter::IteratedPlayer));
-            roles.extend(filter.subtypes.iter().copied());
-        }
-        assert_eq!(
-            roles,
-            vec![
-                Subtype::Cleric,
-                Subtype::Rogue,
-                Subtype::Warrior,
-                Subtype::Wizard,
-            ]
-        );
-        assert!(
-            matches!(effects[4], EffectAst::SubjectVerb(_)),
-            "{effects:#?}"
-        );
-
-        let effects =
-            crate::effect_sentences::parse_effect_sentence_lexed(
-                &tokens,
-            )
-            .expect("full effect parser should accept party complement");
-        let full_debug = format!("{effects:#?}");
-        assert_eq!(
-            full_debug.matches("ChooseObjects").count(),
-            4,
-            "{full_debug}"
-        );
-        assert!(full_debug.contains("SacrificeAll"), "{full_debug}");
-    }
-
-    #[test]
-    fn triggering_spell_damage_uses_triggering_spell_as_source_and_fans_out() {
-        let tokens = crate::lexer::lex_line(
-            "That spell deals damage to each opponent equal to the number of instant and sorcery spells you've cast this turn.",
-            0,
-        )
-        .expect("triggering-spell damage text should lex");
-        let effect = parse_triggered_spell_opponent_damage_subject_verb(&tokens)
-            .expect("triggering-spell damage parser should not error")
-            .expect("triggering-spell damage parser should match");
-        let debug = format!("{effect:#?}");
-
-        assert!(debug.contains("ForEachOpponent"), "{debug}");
-        assert!(debug.contains("triggering"), "{debug}");
-        assert!(debug.contains("SpellsCastThisTurnMatching"), "{debug}");
-        assert!(
-            debug.contains("Instant") && debug.contains("Sorcery"),
-            "{debug}"
-        );
-
-        let effects =
-            crate::effect_sentences::parse_effect_sentence_lexed(
-                &tokens,
-            )
-            .expect("triggering-spell damage full sentence should parse");
-        let full_debug = format!("{effects:#?}");
-        assert!(full_debug.contains("ForEachOpponent"), "{full_debug}");
-        assert!(full_debug.contains("triggering"), "{full_debug}");
-    }
-
-    #[test]
-    fn choice_complement_preserves_independent_keep_slots_for_type_lists() {
-        let tokens = crate::lexer::lex_line(
-            "Each player chooses from among the permanents they control an artifact, a creature, an enchantment, and a land, then sacrifices the rest.",
-            0,
-        )
-        .expect("choice-complement type-list text should lex");
-        let recovered = choice_complement_choice_clause_from_word_order(LexedClause::new(&tokens))
-            .expect("from-among word-order helper should recover choice clause");
-        assert!(
-            crate::lexer::render_token_slice(recovered.tokens())
-                .contains("from among"),
-            "{}",
-            crate::lexer::render_token_slice(recovered.tokens())
-        );
-        let recovered_tokens = recovered.tokens();
-        let from_idx = find_from_among(recovered_tokens).expect("should find from among");
-        assert_eq!(from_idx, 0);
-        let list_start = find_list_start(&recovered_tokens[2..])
-            .map(|idx| idx + 2)
-            .expect("should find choice list start");
-        let base_tokens = trim_commas(recovered_tokens.get(2..list_start).unwrap_or_default());
-        let list_tokens = trim_commas(recovered_tokens.get(list_start..).unwrap_or_default());
-        assert!(
-            !base_tokens.is_empty(),
-            "base was empty; recovered={}",
-            crate::lexer::render_token_slice(recovered.tokens())
-        );
-        assert!(
-            !list_tokens.is_empty(),
-            "list was empty; recovered={}",
-            crate::lexer::render_token_slice(recovered.tokens())
-        );
-        let effect = parse_choice_complement_subject_verb(&tokens)
-            .expect("choice-complement parser should not error")
-            .expect("choice-complement parser should match");
-        let debug = format!("{effect:#?}");
-
-        assert!(debug.contains("ForEachPlayer"), "{debug}");
-        assert_eq!(debug.matches("ChooseObjects").count(), 4, "{debug}");
-        assert!(debug.contains("Artifact"), "{debug}");
-        assert!(debug.contains("Creature"), "{debug}");
-        assert!(debug.contains("Enchantment"), "{debug}");
-        assert!(debug.contains("Land"), "{debug}");
-        assert!(debug.contains("Sacrifice"), "{debug}");
-    }
-
-    #[test]
-    fn choice_complement_full_effect_sentence_keeps_comma_list_together() {
-        let tokens = crate::lexer::lex_line(
-            "Each player chooses from among the permanents they control an artifact, a creature, an enchantment, and a land, then sacrifices the rest.",
-            0,
-        )
-        .expect("choice-complement type-list text should lex");
-        let effects =
-            crate::effect_sentences::parse_effect_sentence_lexed(
-                &tokens,
-            )
-            .expect("choice-complement full sentence should parse");
-        let debug = format!("{effects:#?}");
-
-        assert_eq!(debug.matches("ChooseObjects").count(), 4, "{debug}");
-        assert!(debug.contains("Artifact"), "{debug}");
-        assert!(debug.contains("Creature"), "{debug}");
-        assert!(debug.contains("Enchantment"), "{debug}");
-        assert!(debug.contains("Land"), "{debug}");
-        assert!(debug.contains("Sacrifice"), "{debug}");
-    }
-
-    #[test]
-    fn source_gets_unblockable_uses_captured_subject_modifier_and_tail() {
-        let tokens = crate::lexer::lex_line(
-            "This creature gets +1/+1 until end of turn and can't be blocked this turn.",
-            0,
-        )
-        .expect("source pump plus unblockable text should lex");
-        let effects = parse_source_gets_unblockable_subject_verb(&tokens)
-            .expect("source pump plus unblockable parser should not error")
-            .expect("source pump plus unblockable parser should match");
-        let debug = format!("{effects:#?}");
-
-        assert_eq!(effects.len(), 2, "{debug}");
-        assert!(debug.contains("Pump"), "{debug}");
-        assert!(debug.contains("Fixed") && debug.contains("1"), "{debug}");
-        assert!(debug.contains("BeBlocked"), "{debug}");
-        assert!(debug.contains("source: true"), "{debug}");
-    }
-
-    #[test]
-    fn attached_object_destroy_and_source_damage_keeps_one_linked_program() {
-        let tokens = crate::lexer::lex_line(
-            "Destroy enchanted land and this Aura deals 2 damage to that land's controller.",
-            0,
-        )
-        .expect("attached-object damage chain should lex");
-        let effects = parse_destroy_attached_object_then_source_damage_to_controller(&tokens)
-            .expect("attached-object damage parser should not error")
-            .expect("attached-object damage parser should match");
-        let debug = format!("{effects:#?}");
-
-        assert_eq!(effects.len(), 1, "{debug}");
-        assert!(debug.contains("Destroy"), "{debug}");
-        assert!(debug.contains("DealDamage"), "{debug}");
-        assert!(debug.contains("enchanted"), "{debug}");
-        assert!(debug.contains("ControllerOf"), "{debug}");
-    }
-
-    #[test]
-    fn attached_object_damage_rejects_a_mismatched_controller_noun() {
-        let tokens = crate::lexer::lex_line(
-            "Destroy enchanted land and this Aura deals 2 damage to that creature's controller.",
-            0,
-        )
-        .expect("near-miss chain should lex");
-        assert!(
-            parse_destroy_attached_object_then_source_damage_to_controller(&tokens)
-                .expect("near-miss parser should not error")
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn source_gets_filter_gains_uses_captured_filter_and_ability_tail() {
-        let tokens = crate::lexer::lex_line(
-            "This creature gets +1/+1 and creatures you control gain trample until end of turn.",
-            0,
-        )
-        .expect("source pump plus ability-grant text should lex");
-        let effects = parse_source_gets_filter_gains_subject_verb(&tokens)
-            .expect("source pump plus ability-grant parser should not error")
-            .expect("source pump plus ability-grant parser should match");
-        let debug = format!("{effects:#?}");
-
-        assert_eq!(effects.len(), 2, "{debug}");
-        assert!(debug.contains("Pump"), "{debug}");
-        assert!(
-            debug.contains("power: Fixed") && debug.contains("1"),
-            "{debug}"
-        );
-        assert!(debug.contains("GrantAbilitiesAll"), "{debug}");
-        assert!(debug.contains("Trample"), "{debug}");
-    }
-
-    #[test]
-    fn target_gains_then_gets_gate_uses_captured_ability_and_pump_tail() {
-        let tokens = crate::lexer::lex_line(
-            "Target creature gains trample and gets +1/+0 until end of turn.",
-            0,
-        )
-        .expect("target gains then gets text should lex");
-        let effects = parse_target_gains_then_gets_subject_verb(&tokens)
-            .expect("target gains then gets parser should not error")
-            .expect("target gains then gets parser should match");
-        let debug = format!("{effects:#?}");
-
-        assert!(debug.contains("Trample"), "{debug}");
-        assert!(debug.contains("Pump"), "{debug}");
-        assert!(debug.contains("Fixed") && debug.contains("1"), "{debug}");
-    }
-
-    #[test]
-    fn target_gains_then_gets_where_x_reuses_the_exact_declared_target() {
-        let tokens = crate::lexer::lex_line(
-            "Target creature gains trample and gets +X/+0 until end of turn, where X is that creature's mana value.",
-            0,
-        )
-        .expect("target mana-value pump text should lex");
-        let effects = parse_target_gains_then_gets_subject_verb(&tokens)
-            .expect("target gain-then-get parser should not error")
-            .expect("target gain-then-get parser should match");
-        let [
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::TargetOnly { target, .. },
-                ..
-            }),
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action:
-                    SubjectVerbActionAst::GrantAbilitiesToTarget {
-                        target: grant,
-                        duration: grant_duration,
-                        ..
-                    },
-                ..
-            }),
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action:
-                    SubjectVerbActionAst::Pump {
-                        target: pump,
-                        power,
-                        duration: pump_duration,
-                        ..
-                    },
-                ..
-            }),
-        ] = effects.as_slice()
-        else {
-            panic!("expected one target declaration plus grant/pump consumers, got {effects:#?}");
-        };
-
-        assert_eq!(grant, pump, "the shared subject must reuse one target");
-        assert!(matches!(target, TargetAst::Object(..)), "{target:#?}");
-        assert!(matches!(grant, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG));
-        assert_eq!(grant_duration, &crate::effect::Until::EndOfTurn);
-        assert_eq!(pump_duration, &crate::effect::Until::EndOfTurn);
-        assert!(matches!(
-            power.unhinted(),
-            Value::ManaValueOf(spec)
-                if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG)
-        ));
-    }
-
-    #[test]
-    fn full_dispatch_keeps_gain_then_get_on_one_declared_target() {
-        let tokens = crate::lexer::lex_line(
-            "Target creature gains trample and gets +X/+0 until end of turn, where X is that creature's mana value.",
-            0,
-        )
-        .expect("target mana-value pump text should lex");
-        let effects = super::super::dispatch_entry::parse_effect_sentences_lexed(&tokens)
-            .expect("full sentence dispatcher should preserve the gain/get compound");
-        let [
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::TargetOnly { target, .. },
-                ..
-            }),
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action:
-                    SubjectVerbActionAst::GrantAbilitiesToTarget {
-                        target: grant,
-                        duration: grant_duration,
-                        ..
-                    },
-                ..
-            }),
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action:
-                    SubjectVerbActionAst::Pump {
-                        target: pump,
-                        duration: pump_duration,
-                        ..
-                    },
-                ..
-            }),
-        ] = effects.as_slice()
-        else {
-            panic!(
-                "expected one target declaration plus shared grant/pump consumers, got {effects:#?}"
-            );
-        };
-
-        assert_eq!(grant, pump, "both arms must reuse the declared target");
-        assert!(matches!(target, TargetAst::Object(..)), "{target:#?}");
-        assert!(matches!(grant, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG));
-        assert_eq!(grant_duration, &crate::effect::Until::EndOfTurn);
-        assert_eq!(pump_duration, &crate::effect::Until::EndOfTurn);
-    }
-
-    #[test]
-    fn target_gets_then_gains_gate_uses_captured_pump_and_ability_tail() {
-        let tokens = crate::lexer::lex_line(
-            "Target creature gets +1/+1 and gains trample until end of turn.",
-            0,
-        )
-        .expect("target gets then gains text should lex");
-        let effects = parse_target_gets_then_gains_subject_verb(&tokens)
-            .expect("target gets then gains parser should not error")
-            .expect("target gets then gains parser should match");
-        let debug = format!("{effects:#?}");
-
-        assert!(debug.contains("Pump"), "{debug}");
-        assert!(debug.contains("Fixed") && debug.contains("1"), "{debug}");
-        assert!(debug.contains("Trample"), "{debug}");
-    }
-
-    #[test]
-    fn target_gets_then_gains_preserves_other_than_source_filter() {
-        let tokens = crate::lexer::lex_line(
-            "Target creature other than this creature gets +1/+1 and gains trample until end of turn.",
-            0,
-        )
-        .expect("other-target get-then-gain text should lex");
-        let effects = parse_target_gets_then_gains_subject_verb(&tokens)
-            .expect("other-target parser should not error")
-            .expect("other-target parser should match");
-        let debug = format!("{effects:#?}");
-
-        assert!(debug.contains("other: true"), "{debug}");
-        assert!(debug.contains("source: false"), "{debug}");
-        assert!(!debug.contains("target: Source"), "{debug}");
-        assert!(debug.contains("Trample"), "{debug}");
-    }
-
-    #[test]
-    fn target_gets_then_gains_preserves_sticker_filter_before_reflexive_pronoun() {
-        let tokens = crate::lexer::lex_line(
-            "Another target creature with an art sticker on it gets +2/+0 and gains menace until end of turn.",
-            0,
-        )
-        .expect("stickered-target get-then-gain text should lex");
-        let effects = parse_target_gets_then_gains_subject_verb(&tokens)
-            .expect("stickered-target parser should not error")
-            .expect("stickered-target parser should match");
-        let debug = format!("{effects:#?}");
-
-        assert!(debug.contains("other: true"), "{debug}");
-        assert!(
-            debug.contains("sticker: Some") && debug.contains("ArtSticker"),
-            "{debug}"
-        );
-        assert!(!debug.contains("target: Source"), "{debug}");
-        assert!(debug.contains("Menace"), "{debug}");
-    }
-
-    #[test]
-    fn conditional_another_target_gets_then_gains_preserves_source_exclusion() {
-        let tokens = crate::lexer::lex_line(
-            "If you do, another target attacking creature gets +1/+0 and gains menace until end of turn.",
-            0,
-        )
-        .expect("conditional another-target sentence should lex");
-        let effects = parse_target_gets_then_gains_subject_verb(&tokens)
-            .expect("conditional another-target parser should not error")
-            .expect("conditional another-target parser should match");
-        let debug = format!("{effects:?}");
-
-        assert!(debug.contains("other: true"), "{debug}");
-        assert!(debug.contains("attacking: true"), "{debug}");
-        assert!(debug.contains("Menace"), "{debug}");
-    }
-
-    #[test]
-    fn duration_led_another_target_gets_then_gains_preserves_source_exclusion() {
-        let tokens = crate::lexer::lex_line(
-            "Until end of turn, another target creature you control gets +2/+0 and gains \"When this creature dies, return it to the battlefield tapped under its owner's control.\"",
-            0,
-        )
-        .expect("duration-led another-target sentence should lex");
-        let effects = parse_target_gets_then_gains_subject_verb(&tokens)
-            .expect("duration-led another-target parser should not error")
-            .expect("duration-led another-target parser should match");
-        let debug = format!("{effects:?}");
-
-        assert!(debug.contains("other: true"), "{debug}");
-        assert!(debug.contains("controller: Some(You)"), "{debug}");
-        assert!(debug.contains("ParsedObjectAbility"), "{debug}");
-    }
-
-    #[test]
-    fn attached_and_related_creatures_keep_both_subject_branches() {
-        let tokens = crate::lexer::lex_line(
-            "Enchanted creature and other creatures that share a creature type with it get +1/+0 and gain first strike until end of turn.",
-            0,
-        )
-        .expect("attached and related creature text should lex");
-        let effects = parse_target_gets_then_gains_subject_verb(&tokens)
-            .expect("attached and related parser should not error")
-            .expect("attached and related parser should match");
-        let debug = format!("{effects:#?}");
-
-        assert_eq!(effects.len(), 2, "{debug}");
-        assert!(debug.contains("IsTaggedObject"), "{debug}");
-        assert!(debug.contains("IsNotTaggedObject"), "{debug}");
-        assert!(debug.contains("SharesSubtypeWithTagged"), "{debug}");
-        assert!(debug.contains("FirstStrike"), "{debug}");
-    }
-
-    #[test]
-    fn attached_and_related_stat_pump_keeps_both_subject_branches() {
-        let tokens = crate::lexer::lex_line(
-            "Enchanted creature and other creatures that share a creature type with it get +1/+1 until end of turn.",
-            0,
-        )
-        .expect("attached and related creature text should lex");
-        let effects = parse_attached_and_related_get_subject_verb(&tokens)
-            .expect("attached and related pump parser should not error")
-            .expect("attached and related pump parser should match");
-        let debug = format!("{effects:#?}");
-
-        assert_eq!(effects.len(), 1, "{debug}");
-        assert!(debug.contains("IsTaggedObject"), "{debug}");
-        assert!(debug.contains("IsNotTaggedObject"), "{debug}");
-        assert!(debug.contains("SharesSubtypeWithTagged"), "{debug}");
-        assert!(debug.contains("Fixed") && debug.contains('1'), "{debug}");
-    }
-
-    #[test]
-    fn target_controlled_pump_uses_captured_granted_ability_tail() {
-        let tokens = crate::lexer::lex_line(
-            "Creatures target player controls get +1/+1 and gain haste until end of turn.",
-            0,
-        )
-        .expect("target-controlled pump plus grant text should lex");
-        let effects = parse_target_player_controls_get_subject_verb(&tokens)
-            .expect("target-controlled pump parser should not error")
-            .expect("target-controlled pump parser should match");
-        let debug = format!("{effects:#?}");
-
-        assert_eq!(effects.len(), 2, "{debug}");
-        assert!(debug.contains("Pump"), "{debug}");
-        assert!(debug.contains("Target") && debug.contains("Any"), "{debug}");
-        assert!(debug.contains("GrantAbilitiesAll"), "{debug}");
-        assert!(debug.contains("Haste"), "{debug}");
-    }
-
-    #[test]
-    fn target_controlled_pump_can_grant_all_creature_types() {
-        let tokens = crate::lexer::lex_line(
-            "Creatures target player controls get +0/+1 and gain all creature types until end of turn.",
-            0,
-        )
-        .expect("target-controlled pump plus creature-type text should lex");
-        let effects = parse_target_player_controls_get_subject_verb(&tokens)
-            .expect("target-controlled pump parser should not error")
-            .expect("target-controlled pump parser should match");
-        let debug = format!("{effects:#?}");
-
-        assert_eq!(effects.len(), 2, "{debug}");
-        assert!(debug.contains("PumpAll"), "{debug}");
-        assert!(debug.contains("AddAllSubtypesOfFamily"), "{debug}");
-        assert!(debug.contains("Creature"), "{debug}");
-        assert!(debug.contains("Target") && debug.contains("Any"), "{debug}");
-    }
-
-    #[test]
-    fn target_controlled_pump_can_remove_all_creature_types() {
-        let tokens = crate::lexer::lex_line(
-            "Creatures target player controls get -2/-0 and lose all creature types until end of turn.",
-            0,
-        )
-        .expect("target-controlled pump plus creature-type loss should lex");
-        let effects = parse_target_player_controls_get_subject_verb(&tokens)
-            .expect("target-controlled pump parser should not error")
-            .expect("target-controlled pump parser should match");
-        let debug = format!("{effects:#?}");
-
-        assert_eq!(effects.len(), 2, "{debug}");
-        assert!(debug.contains("PumpAll"), "{debug}");
-        assert!(debug.contains("RemoveAllSubtypesOfFamily"), "{debug}");
-        assert!(!debug.contains("AddAllSubtypesOfFamily"), "{debug}");
-    }
-
-    #[test]
-    fn target_controlled_pump_keeps_trailing_mana_spent_condition() {
-        let tokens = crate::lexer::lex_line(
-            "Creatures target player controls get +2/+0 and gain haste until end of turn if {R} was spent to cast this spell.",
-            0,
-        )
-        .expect("conditional target-controlled pump text should lex");
-        let effects = parse_target_player_controls_get_subject_verb(&tokens)
-            .expect("conditional target-controlled pump parser should not error")
-            .expect("conditional target-controlled pump parser should match");
-
-        let [EffectAst::TrailingIf { predicate, effects }] = effects.as_slice() else {
-            panic!("expected one trailing-if program, got {effects:#?}");
-        };
-        assert!(matches!(
-            predicate,
-            crate::cards::builders::PredicateAst::ManaSpentToCastThisSpellAtLeast {
-                amount: 1,
-                symbol: Some(crate::mana::ManaSymbol::Red),
-            }
-        ));
-        assert_eq!(effects.len(), 2, "{effects:#?}");
-        let debug = format!("{effects:#?}");
-        assert!(debug.contains("Pump"), "{debug}");
-        assert!(debug.contains("GrantAbilitiesAll"), "{debug}");
-        assert!(debug.contains("Haste"), "{debug}");
-    }
-
-    #[test]
-    fn result_gated_sacrificed_card_type_consult_uses_typed_traversal() {
-        let tokens = crate::lexer::lex_line(
-            "they reveal cards from the top of their library until they reveal a permanent card that shares a card type with the sacrificed permanent, put that card onto the battlefield, then shuffle",
-            0,
-        )
-        .expect("consult sentence should lex");
-        let effects = parse_generic_consult_reveal_until_subject_verb(&tokens)
-            .expect("consult parser should not error")
-            .expect("consult parser should match");
-        let debug = format!("{effects:#?}");
-        assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
-        assert!(debug.contains("SharesCardType"), "{debug}");
-        assert!(debug.contains("sacrificed_0"), "{debug}");
-    }
-
-    #[test]
-    fn triggering_object_counter_total_binds_create_x_without_duplicating_condition() {
-        let tokens = crate::lexer::lex_line(
-            "Create X tapped 2/1 white and black Inkling creature tokens with flying, where X is the number of counters it had on it.",
-            0,
-        )
-        .expect("counter-count token sentence should lex");
-        let effect = parse_triggering_object_had_counters_create_tokens(&tokens)
-            .expect("counter-count parser should not error")
-            .expect("counter-count parser should match");
-        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::CreateTokenWithMods { count, .. },
-            ..
-        }) = effect
-        else {
-            panic!("expected direct token creation for the already-separated intervening-if body");
-        };
-        assert!(matches!(
-            count.unhinted(),
-            Value::CountersOn(spec, None)
-                if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "triggering")
-        ));
-    }
-}
+#[path = "generic_subject_verb_programs_inline_generic_subject_verb_program_tests.rs"]
+mod generic_subject_verb_program_tests;
+
+#[path = "generic_subject_verb_programs/library_programs.rs"]
+mod library_programs;
+pub use library_programs::{parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb};
+#[path = "generic_subject_verb_programs/choice_programs.rs"]
+mod choice_programs;
+use choice_programs::{parse_generic_extra_vote, parse_generic_player_vote_received_effects, parse_generic_vote_option_effects, parse_generic_vote_start};
+#[path = "generic_subject_verb_programs/core_programs.rs"]
+mod core_programs;
+use core_programs::{captured_non_article_label, captured_numeric_label};
+#[path = "generic_subject_verb_programs/object_action_programs.rs"]
+mod object_action_programs;
+use object_action_programs::{captured_non_article_tokens};

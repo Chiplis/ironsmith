@@ -37,7 +37,7 @@ fn is_cant(token: &OwnedLexToken) -> bool {
 }
 
 fn optional_companion_separator(tokens: &[OwnedLexToken]) -> Option<usize> {
-    tokens.windows(3).position(|window| {
+    crate::slice_primitives::find_window_by(tokens, 3, |window| {
         word(&window[0]) == Some("and")
             && word(&window[1]) == Some("up")
             && word(&window[2]) == Some("to")
@@ -70,24 +70,25 @@ pub fn parse_shared_subject_optional_companion_shape(
     }
 
     let companion_and_action = &tokens[separator + 1..];
-    let (action_idx, action_word_idx, join) = companion_and_action
-        .windows(2)
-        .enumerate()
-        .find_map(|(idx, window)| match (word(&window[0]), word(&window[1])) {
-            (Some("each"), Some("get" | "gets")) => {
-                Some((idx, idx + 1, OptionalCompanionJoin::Each))
-            }
-            (Some("both"), Some("gain" | "gains")) => {
-                Some((idx, idx + 1, OptionalCompanionJoin::Both))
-            }
-            _ => None,
+    let coordinated_action =
+        crate::slice_primitives::find_window_by(companion_and_action, 2, |window| {
+            matches!(
+                (word(&window[0]), word(&window[1])),
+                (Some("each"), Some("get" | "gets")) | (Some("both"), Some("gain" | "gains"))
+            )
         })
-        .or_else(|| {
-            companion_and_action
-                .iter()
-                .position(is_cant)
-                .map(|idx| (idx, idx, OptionalCompanionJoin::Plain))
-        })?;
+        .map(|idx| {
+            let join = if word(&companion_and_action[idx]) == Some("each") {
+                OptionalCompanionJoin::Each
+            } else {
+                OptionalCompanionJoin::Both
+            };
+            (idx, idx + 1, join)
+        });
+    let (action_idx, action_word_idx, join) = coordinated_action.or_else(|| {
+        crate::slice_primitives::select_position(companion_and_action, is_cant)
+            .map(|idx| (idx, idx, OptionalCompanionJoin::Plain))
+    })?;
 
     let companion_tokens = trim_lexed_commas(&companion_and_action[..action_idx]);
     let action_tokens = trim_lexed_commas(&companion_and_action[action_word_idx..]);

@@ -142,11 +142,24 @@ fn direct_tap_block_cost_excludes_declared_combatants() {
     else {
         unreachable!();
     };
+    fn choose_in_cost_effect(
+        effect: &ironsmith_compiler::effect::Effect,
+    ) -> Option<&ChooseObjectsEffect> {
+        if let Some(choose) = effect.downcast_ref::<ChooseObjectsEffect>() {
+            return Some(choose);
+        }
+        if let Some(sequence) = effect.downcast_ref::<ironsmith_compiler::effects::SequenceEffect>()
+        {
+            return sequence.effects.iter().find_map(choose_in_cost_effect);
+        }
+        None
+    }
+
     let chosen = cost
         .costs()
         .iter()
         .find_map(|component| match component {
-            Cost::Effect(effect) => effect.downcast_ref::<ChooseObjectsEffect>(),
+            Cost::Effect(effect) => choose_in_cost_effect(effect),
             _ => None,
         })
         .expect("tap cost should choose an eligible creature");

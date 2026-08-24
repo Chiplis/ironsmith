@@ -182,14 +182,3 @@ pub fn furthest_committed_diagnostic(diagnostics: Vec<ParseDiagnostic>) -> Optio
 fn span_key(span: &TextSpan) -> (usize, usize, usize) {
     (span.line, span.end, span.start)
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct LegacyOrderRank(pub u16);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LegacyCompatibilityRule {
-    pub registry: RuleId,
-    pub rule: RuleId,
-    pub rank: LegacyOrderRank,
-    pub removal_pr: u8,
-}

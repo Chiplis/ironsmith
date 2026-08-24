@@ -31,7 +31,6 @@ pub(in crate::compiled_text) fn describe_historical_block_reanimation(
         return None;
     }
     let blocker_target = describe_choose_spec(&target.target);
-    let blocker_reference = blocker_target.strip_prefix("target ")?;
     let blocker_filter = match target.target.unhinted() {
         ChooseSpec::Target(inner) => match inner.unhinted() {
             ChooseSpec::Object(filter) => filter,
@@ -57,6 +56,11 @@ pub(in crate::compiled_text) fn describe_historical_block_reanimation(
     if !creature_subtype || blocker_base != ObjectFilter::default() {
         return None;
     }
+    let blocker_target = blocker_target
+        .strip_suffix(" creature")
+        .unwrap_or(&blocker_target)
+        .to_string();
+    let blocker_reference = blocker_target.strip_prefix("target ")?;
 
     let (destroyed_tag, destroy_effect) = exact_outcome_tag(destroy_effect)?;
     let destroy = destroy_effect.downcast_ref::<crate::effects::DestroyNoRegenerationEffect>()?;

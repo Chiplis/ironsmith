@@ -129,8 +129,8 @@ pub fn wrap_chosen_option_static_chunk(
                         .clone()
                         .with_condition(condition.clone())
                         .unwrap_or_else(|| {
-                            crate::static_abilities::StaticAbility::new(
-                                crate::static_abilities::GrantAbility::source(
+                            crate::model::CompilerStaticAbilityCore::new(
+                                crate::model::CompilerGrantAbilityCore::source(
                                     static_ability.clone(),
                                 )
                                 .with_condition(condition.clone()),

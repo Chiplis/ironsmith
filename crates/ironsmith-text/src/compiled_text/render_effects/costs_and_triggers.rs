@@ -486,6 +486,22 @@ fn describe_effect_cost_program(effect: &Effect) -> Option<String> {
     while index < sequence.effects.len() {
         let member = structural_unwrap_render_wrappers(&sequence.effects[index]);
         if let Some(choose) = member.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && choose_exact_count(choose) == Some(1)
+            && choose.count_value.is_none()
+            && choose.aggregate_constraint.is_none()
+            && choose.chooser == PlayerFilter::You
+            && choose.filter.untapped
+            && let Some(next) = sequence.effects.get(index + 1)
+            && let Some(tap) =
+                structural_unwrap_render_wrappers(next).downcast_ref::<crate::effects::TapEffect>()
+            && choose_spec_references_exact_tag(&tap.target, &choose.tag)
+        {
+            parts.push(format!("Tap {}", describe_choose_selection(choose)));
+            compacted_choice = true;
+            index += 2;
+            continue;
+        }
+        if let Some(choose) = member.downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(next) = sequence.effects.get(index + 1)
             && let Some(sacrifice) = sacrifice_view(structural_unwrap_render_wrappers(next))
             && let Some(compact) = describe_choose_then_sacrifice(choose, sacrifice)
@@ -847,7 +863,8 @@ mod colored_discard_cost_tests {
             false,
             Some(red_or_green_hand_card(PlayerFilter::You)),
         ));
-        let cost = crate::costs::Cost::validated_effect(Effect::with_id(7, discard));
+        let cost = crate::costs::Cost::try_from_runtime_effect(Effect::with_id(7, discard))
+            .expect("discard should be a valid cost effect");
 
         assert_eq!(
             describe_cost_component(&cost),
@@ -2730,7 +2747,7 @@ mod for_each_tagged_set_surface_tests {
     #[test]
     fn public_reveal_each_unless_payment_program_keeps_the_authored_set_surface() {
         let oracle = "Reveal the top three cards of your library. For each of those cards, put that card into your hand unless any opponent pays 3 life. Then exile the rest.";
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Reveal Payment Probe",
         )
@@ -2745,7 +2762,7 @@ mod for_each_tagged_set_surface_tests {
         let debug = format!("{:#?}", definition.spell_effect);
         assert!(debug.contains("UnlessPaysEffect"), "{debug}");
         assert!(debug.contains("player: Opponent"), "{debug}");
-        assert!(debug.contains("PayLife"), "{debug}");
+        assert!(debug.contains("LoseLifeEffect"), "{debug}");
     }
 
     #[test]
@@ -3036,10 +3053,10 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
         return format!("other {}{}", pluralize_noun_phrase(rest), trailing);
     }
     for (relation, plural_relation, predicate_is_adjectival) in [
-        (" that's ", " that are ", false),
-        (" that is ", " that are ", false),
         (" that isn't ", " that aren't ", true),
         (" that is not ", " that aren't ", true),
+        (" that's ", " that are ", false),
+        (" that is ", " that are ", false),
     ] {
         if let Some((head, selectors)) = base.split_once(relation) {
             let selectors = strip_indefinite_article(selectors.trim());
@@ -5381,7 +5398,9 @@ pub(super) fn describe_sacrifice_effect(sacrifice: SacrificeView<'_>) -> String 
         let authored_each = sacrifice.filter.set_quantifier_surface()
             == Some(ironsmith_core::SetQuantifierSurface::Each);
         let subject = if authored_each {
-            noun
+            noun.strip_prefix("another ")
+                .map(|rest| format!("other {rest}"))
+                .unwrap_or(noun)
         } else {
             pluralize_noun_phrase(&noun)
         };

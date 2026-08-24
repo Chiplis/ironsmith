@@ -18,7 +18,21 @@ fn synthetic_word(word: &str) -> OwnedLexToken {
 }
 
 fn parse_rewritten_effects(tokens: Vec<OwnedLexToken>) -> Result<Vec<EffectAst>, CardTextError> {
-    let effects = parse_effect_sentence_lexed(&tokens)?;
+    let shared_keyword_choice = tokens.iter().any(|token| token.is_word("gain"))
+        && crate::slice_primitives::find_window_by(&tokens, 2, |window| {
+            window[0].is_word("choice") && window[1].is_word("of")
+        })
+        .is_some();
+    let effects = if shared_keyword_choice {
+        super::gain_ability::parse_gain_ability_sentence(&tokens)?.ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "optional-companion keyword choice was not claimed by gain grammar (clause: '{}')",
+                crate::lexer::token_word_refs(&tokens).join(" ")
+            ))
+        })?
+    } else {
+        parse_effect_sentence_lexed(&tokens)?
+    };
     if effects.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "optional-companion branch produced no semantic effects (clause: '{}')",

@@ -18,29 +18,154 @@ impl RewriteNormalizationState {
     }
 }
 
+fn materialize_optional_cost(
+    cost: crate::model::compiler_semantic::ParsedOptionalCostAst,
+) -> Result<crate::cost::OptionalCost, CardTextError> {
+    match cost {
+        crate::model::compiler_semantic::ParsedOptionalCostAst::LegacyRuntime(cost) => Ok(cost),
+        crate::model::compiler_semantic::ParsedOptionalCostAst::Compiler(cost) => {
+            Ok(ironsmith_core::OptionalCost {
+                kind: cost.kind,
+                reference: cost.reference,
+                source_label: cost.source_label,
+                cost: crate::lowering::cost_materialization::materialize_compiler_core_total_cost(
+                    &cost.cost,
+                )?,
+                repeatable: cost.repeatable,
+                returns_to_hand: cost.returns_to_hand,
+            })
+        }
+    }
+}
+
+fn materialize_alternative_casting_method(
+    method: crate::model::compiler_semantic::ParsedAlternativeCastingMethodAst,
+) -> Result<crate::alternative_cast::AlternativeCastingMethod, CardTextError> {
+    match method {
+        crate::model::compiler_semantic::ParsedAlternativeCastingMethodAst::LegacyRuntime(
+            method,
+        ) => Ok(method),
+        crate::model::compiler_semantic::ParsedAlternativeCastingMethodAst::Compiler(method) => {
+            use ironsmith_core::AlternativeCastingMethod as Method;
+
+            let lower_effects = |effects: Vec<EffectAst>| {
+                effects
+                    .into_iter()
+                    .map(crate::lowering_support::lower_compiler_child_effect)
+                    .collect::<Result<Vec<_>, _>>()
+            };
+            let lower_cost = |cost: ironsmith_core::TotalCost<crate::model::CompilerCost>| {
+                crate::lowering::cost_materialization::materialize_compiler_core_total_cost(&cost)
+            };
+
+            Ok(match method {
+                Method::Dash { cost } => Method::Dash { cost },
+                Method::Blitz { total_cost } => Method::Blitz {
+                    total_cost: lower_cost(total_cost)?,
+                },
+                Method::Warp { cost } => Method::Warp { cost },
+                Method::Plot { cost } => Method::Plot { cost },
+                Method::Suspend { cost, time } => Method::Suspend { cost, time },
+                Method::Disturb { cost } => Method::Disturb { cost },
+                Method::Overload { cost, effects } => Method::Overload {
+                    cost,
+                    effects: lower_effects(effects)?,
+                },
+                Method::Cleave { cost, effects } => Method::Cleave {
+                    cost,
+                    effects: lower_effects(effects)?,
+                },
+                Method::Awaken {
+                    amount,
+                    cost,
+                    effects,
+                } => Method::Awaken {
+                    amount,
+                    cost,
+                    effects: lower_effects(effects)?,
+                },
+                Method::Flashback { total_cost } => Method::Flashback {
+                    total_cost: lower_cost(total_cost)?,
+                },
+                Method::Harmonize { total_cost } => Method::Harmonize {
+                    total_cost: lower_cost(total_cost)?,
+                },
+                Method::Retrace { total_cost } => Method::Retrace {
+                    total_cost: lower_cost(total_cost)?,
+                },
+                Method::JumpStart { additional_cost } => Method::JumpStart {
+                    additional_cost: lower_cost(additional_cost)?,
+                },
+                Method::Escape {
+                    cost,
+                    exile_count,
+                    additional_cost,
+                } => Method::Escape {
+                    cost,
+                    exile_count,
+                    additional_cost: lower_cost(additional_cost)?,
+                },
+                Method::Madness { cost } => Method::Madness { cost },
+                Method::Miracle { cost } => Method::Miracle { cost },
+                Method::FlashWithAdditionalCost {
+                    additional_cost,
+                    total_cost,
+                } => Method::FlashWithAdditionalCost {
+                    additional_cost,
+                    total_cost: lower_cost(total_cost)?,
+                },
+                Method::Foretell { cost } => Method::Foretell { cost },
+                Method::Composed {
+                    name,
+                    total_cost,
+                    condition,
+                    prototype_power_toughness,
+                } => Method::Composed {
+                    name,
+                    total_cost: lower_cost(total_cost)?,
+                    condition,
+                    prototype_power_toughness,
+                },
+                Method::FromZone {
+                    name,
+                    zone,
+                    total_cost,
+                    condition,
+                    exiles_after_resolution,
+                } => Method::FromZone {
+                    name,
+                    zone,
+                    total_cost: lower_cost(total_cost)?,
+                    condition,
+                    exiles_after_resolution,
+                },
+                Method::Trap {
+                    name,
+                    cost,
+                    condition,
+                } => Method::Trap {
+                    name,
+                    cost,
+                    condition,
+                },
+                Method::Bestow { total_cost } => Method::Bestow {
+                    total_cost: lower_cost(total_cost)?,
+                },
+                Method::Mutate { cost } => Method::Mutate { cost },
+            })
+        }
+    }
+}
+
 fn normalize_rewrite_parsed_ability(
     parsed: ParsedAbility,
 ) -> Result<NormalizedParsedAbility, CardTextError> {
-    fn cost_removes_source_counters(cost: &crate::costs::Cost) -> bool {
-        matches!(
-            cost,
-            crate::costs::Cost::RemoveCounters { .. }
-                | crate::costs::Cost::RemoveAnyCountersFromSource { .. }
-        ) || cost.effect_ref().is_some_and(|effect| {
-            effect
-                .downcast_ref::<crate::effects::RemoveCountersEffect>()
-                .is_some()
-                || effect
-                    .downcast_ref::<crate::effects::RemoveAnyCountersFromSourceEffect>()
-                    .is_some()
-                || effect
-                    .downcast_ref::<crate::effects::RemoveAnyCountersAmongEffect>()
-                    .is_some()
-        })
+    fn cost_removes_source_counters(cost: &crate::model::CompilerCost) -> bool {
+        matches!(cost, crate::model::CompilerCost::RemoveCounters { .. })
     }
 
     fn total_cost_removes_source_counters(
-        cost: &ironsmith_core::TotalCost<crate::costs::Cost>,
+        cost: &ironsmith_core::TotalCost<crate::model::CompilerCost>,
     ) -> bool {
         cost.as_all()
             .is_some_and(|costs| costs.iter().any(cost_removes_source_counters))
@@ -54,7 +179,7 @@ fn normalize_rewrite_parsed_ability(
         Some(_)
             if matches!(
                 parsed.kind(),
-                AbilityKind::Activated(activated)
+                crate::model::CompilerAbilityKindCore::Activated(activated)
                     if !activated.effects.is_empty() || !activated.choices.is_empty()
             ) =>
         {
@@ -63,22 +188,22 @@ fn normalize_rewrite_parsed_ability(
         Some(_)
             if matches!(
                 parsed.kind(),
-                AbilityKind::Triggered(triggered)
+                crate::model::CompilerAbilityKindCore::Triggered(triggered)
                     if !triggered.effects.is_empty() || !triggered.choices.is_empty()
             ) =>
         {
             None
         }
         Some(effects_ast) => match (parsed.kind(), parsed.trigger_spec.as_ref()) {
-            (AbilityKind::Triggered(_), Some(trigger)) => {
+            (crate::model::CompilerAbilityKindCore::Triggered(_), Some(trigger)) => {
                 let (trigger, prepared) = rewrite_prepare_triggered_effects_for_lowering(
-                    trigger.clone(),
+                    (**trigger).clone(),
                     effects_ast,
                     parsed.reference_imports.clone(),
                 )?;
                 Some(NormalizedPreparedAbility::Triggered { trigger, prepared })
             }
-            (AbilityKind::Activated(activated), _) => {
+            (crate::model::CompilerAbilityKindCore::Activated(activated), _) => {
                 let mut effects = effects_ast.clone();
                 if total_cost_removes_source_counters(&activated.mana_cost) {
                     super::super::lowering_support::replace_pending_removed_counter_metrics_with_x(
@@ -171,7 +296,8 @@ fn normalize_rewrite_line_chunk(
         LineAst::Statement { effects } => {
             let mut imports = state.statement_reference_imports();
             if let Some(cost_tag) = imports.last_object_tag.as_ref()
-                && let Some(cost_index) = cost_tag.as_str().strip_prefix("tapped_")
+                && cost_tag.as_str().starts_with("tapped_")
+                && let Some(cost_index) = cost_tag.as_str().get("tapped_".len()..)
             {
                 let alias = format!("tap_cost_{cost_index}");
                 if effects
@@ -230,7 +356,9 @@ fn normalize_rewrite_line_chunk(
                 prepared,
             }
         }
-        LineAst::OptionalCost(cost) => NormalizedLineChunk::OptionalCost(cost.into_runtime()),
+        LineAst::OptionalCost(cost) => {
+            NormalizedLineChunk::OptionalCost(materialize_optional_cost(cost)?)
+        }
         LineAst::GiftKeyword {
             cost,
             effects,
@@ -240,7 +368,7 @@ fn normalize_rewrite_line_chunk(
             let prepared =
                 rewrite_prepare_effects_for_lowering(&effects, ReferenceImports::default())?;
             NormalizedLineChunk::GiftKeyword {
-                cost: cost.into_runtime(),
+                cost: materialize_optional_cost(cost)?,
                 prepared,
                 followup_text,
                 timing,
@@ -256,7 +384,7 @@ fn normalize_rewrite_line_chunk(
                 state.latest_additional_cost_exports.to_imports(),
             )?;
             NormalizedLineChunk::OptionalCostWithCastTrigger {
-                cost: cost.into_runtime(),
+                cost: materialize_optional_cost(cost)?,
                 prepared,
                 followup_text,
             }
@@ -287,9 +415,9 @@ fn normalize_rewrite_line_chunk(
                 options: normalized_options,
             }
         }
-        LineAst::AlternativeCastingMethod(method) => {
-            NormalizedLineChunk::AlternativeCastingMethod(method.into_runtime())
-        }
+        LineAst::AlternativeCastingMethod(method) => NormalizedLineChunk::AlternativeCastingMethod(
+            materialize_alternative_casting_method(method)?,
+        ),
     });
     Ok(())
 }

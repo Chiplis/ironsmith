@@ -705,99 +705,14 @@ fn tagged_into_their_library<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub fn parse_resource_shuffle_shape(
-    tokens: &[OwnedLexToken],
-    default_player: PlayerAst,
-) -> Option<ResourceShuffleShape> {
-    let clause = trimmed(tokens);
-    if let Some((into_idx, (), after_into)) =
-        primitives::find_prefix(clause, || primitives::kw("into").void())
-    {
-        let target = trimmed(&clause[..into_idx]);
-        let normalized_destination = without_articles(trimmed(after_into));
-        if exact_unit(target, tagged_reference)
-            && let Some((destination_player, rest)) =
-                primitives::parse_prefix(&normalized_destination, destination)
-            && supported_source_tail(trimmed(rest))
-        {
-            return Some(ResourceShuffleShape::TaggedIntoLibrary {
-                player: resolve_destination(destination_player, default_player),
-                to_bottom: false,
-            });
-        }
-        if consult_remainder(target)
-            && let Some((destination_player, rest)) =
-                primitives::parse_prefix(&normalized_destination, destination)
-            && supported_source_tail(trimmed(rest))
-        {
-            return Some(ResourceShuffleShape::ShuffleLibrary {
-                player: resolve_destination(destination_player, default_player),
-            });
-        }
-    }
-
-    if matches!(default_player, PlayerAst::ItsOwner)
-        && exact_unit(clause, tagged_into_their_library)
-    {
-        return Some(ResourceShuffleShape::TaggedIntoLibrary {
-            player: PlayerAst::ItsOwner,
-            to_bottom: true,
-        });
-    }
-    if required_shuffle_markers(clause) {
-        return None;
-    }
-
-    let normalized = without_articles(clause);
-    let (destination_player, rest) = primitives::parse_prefix(&normalized, destination)?;
-    if !trimmed(rest).is_empty() {
-        return None;
-    }
-    let _ = destination_player;
-    Some(ResourceShuffleShape::SimpleLibrary)
-}
-
-fn chosen_name_tail<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    (
-        alt((primitives::kw("name"), primitives::kw("names"))),
-        primitives::phrase(&["chosen", "for", "this"]),
-        object_noun,
-        repeat::<_, _, (), _, _>(0.., alt((primitives::kw("this"), primitives::kw("way")))),
-    )
-        .void()
-        .parse_next(input)
-}
-
-pub fn parse_resource_chosen_name_target_shape(
-    tokens: &[OwnedLexToken],
-) -> Option<ResourceChosenNameTargetShape<'_>> {
-    let tokens = trimmed(tokens);
-    let mut search = tokens;
-    while !search.is_empty() {
-        let consumed = tokens.len().saturating_sub(search.len());
-        let (with_idx, (), after_with) =
-            primitives::find_prefix(search, || primitives::kw("with").void())?;
-        let absolute_with = consumed + with_idx;
-        let tail = strip_articles(after_with);
-        let base = trimmed(&tokens[..absolute_with]);
-        if !base.is_empty() && exact_unit(tail, chosen_name_tail) {
-            let words = TokenWordView::new(tail).word_refs();
-            let chosen_name_source = words.windows(4).find_map(|window| match window {
-                ["chosen", "for", "this", noun] => {
-                    ironsmith_core::ChosenNameSourceSurface::from_noun(noun)
-                }
-                _ => None,
-            })?;
-            return Some(ResourceChosenNameTargetShape {
-                base_tokens: base,
-                chosen_name_source,
-            });
-        }
-        search = after_with;
-    }
-    None
-}
-
 #[cfg(test)]
 #[path = "resource_shapes/tests.rs"]
 mod tests;
+
+#[path = "resource_shapes/choice_programs.rs"]
+mod choice_programs;
+use choice_programs::chosen_name_tail;
+pub use choice_programs::parse_resource_chosen_name_target_shape;
+#[path = "resource_shapes/library_programs.rs"]
+mod library_programs;
+pub use library_programs::parse_resource_shuffle_shape;

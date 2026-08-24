@@ -223,7 +223,8 @@ mod tests {
             })
             .expect("expected Portcullis-style line to normalize into a triggered ability");
 
-        let AbilityKind::Triggered(_triggered) = parsed.parsed.kind() else {
+        let crate::model::CompilerAbilityKindCore::Triggered(_triggered) = parsed.parsed.kind()
+        else {
             panic!(
                 "expected Portcullis-style line to normalize into a triggered ability, got {:?}",
                 parsed.parsed.kind()

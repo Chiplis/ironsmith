@@ -254,15 +254,6 @@ fn recognize_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
     }
 }
 
-/// Compatibility facade for callers that have not yet moved their runtime
-/// materialization boundary. Recognition itself always completes first.
-pub fn lower_activation_cost_cst(
-    cst: &ActivationCostCst,
-) -> Result<crate::cost::TotalCost, CardTextError> {
-    let cost = recognize_activation_cost_cst(cst)?;
-    crate::lowering::cost_materialization::materialize_compiler_total_cost(&cost)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,27 +263,19 @@ mod tests {
         let cst =
             crate::grammar::activation_costs::parse_activation_cost_rewrite("Sacrifice a creature")
                 .expect("activation cost should parse");
-        let cost = lower_activation_cost_cst(&cst).expect("activation cost should lower");
-        let [component] = cost.costs() else {
+        let cost = recognize_activation_cost_cst(&cst).expect("activation cost should lower");
+        let [component] = cost.costs().expect("ordinary cost") else {
             panic!("expected one sacrifice cost component: {cost:#?}");
         };
-        let tagged = component
-            .effect_ref()
-            .and_then(|effect| effect.downcast_ref::<crate::effects::TaggedEffect>())
-            .expect("the paid creature must be retained by a typed cost tag");
-        assert_eq!(tagged.tag.as_str(), "sacrifice_cost_0");
         assert!(
-            tagged
-                .effect
-                .downcast_ref::<crate::effects::SacrificeEffect>()
-                .is_some(),
-            "the tag must wrap the executable sacrifice: {tagged:#?}"
+            matches!(component, crate::model::CompilerCost::Sacrifice { count, filter, .. }
+                if *count == crate::effect::ChoiceCount::exactly(1)
+                    && filter.card_types.contains(&crate::types::CardType::Creature)),
+            "the compiler cost must retain the typed sacrifice: {component:#?}"
         );
 
-        let imports = crate::util::activation_cost_reference_imports(&cost);
-        assert_eq!(
-            imports.last_object_tag.as_ref().map(|tag| tag.as_str()),
-            Some("sacrifice_cost_0")
-        );
+        let imports =
+            crate::util::compiler_activation_cost_reference_imports(&cost.to_core_total_cost());
+        assert!(!imports.source_object_antecedent);
     }
 }

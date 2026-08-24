@@ -13,7 +13,10 @@ use super::super::grammar::primitives::{
 use super::super::grammar::structure::{
     LeadingResultPrefixKind, split_leading_result_prefix_lexed,
 };
-use super::super::keyword_static::{parse_value_binding_clause, parse_value_binding_clause_lexed};
+use super::super::keyword_static::{
+    parse_enters_with_additional_counter_for_filter_line, parse_value_binding_clause,
+    parse_value_binding_clause_lexed,
+};
 use super::super::lexer::{LexedClause, OwnedLexToken, render_token_slice, token_slice_first_is};
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::rule_engine::LexClauseView;

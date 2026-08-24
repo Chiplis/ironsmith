@@ -32,17 +32,13 @@ fn direct_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilityS
             | DirectCantFact::SourceCantAttackOrBlockUnlessMaxSpeed
     )
     .then(|| {
-        tokens
-            .iter()
-            .position(|token| {
-                token.is_word("can't") || token.is_word("cant") || token.is_word("cannot")
-            })
-            .and_then(|cant| {
-                source_reference_surface_for_span(span_from_tokens(&tokens[..cant])).or_else(|| {
-                    let subject_words = words(&tokens[..cant]);
-                    source_reference_surface_for_words(&subject_words)
-                })
-            })
+        crate::slice_primitives::select_position(tokens, |token| {
+            token.is_word("can't") || token.is_word("cant") || token.is_word("cannot")
+        })
+        .and_then(|cant| {
+            let subject_words = words(&tokens[..cant]);
+            source_reference_surface_for_words(&subject_words)
+        })
     })
     .flatten();
     let mut ability = match fact {
@@ -226,91 +222,102 @@ fn strip_per_blocking_creature_tail(tokens: &[OwnedLexToken]) -> &[OwnedLexToken
 fn block_cost_static_ability(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let Some(cant_index) = tokens.iter().position(|token| {
+    let Some(cant_index) = crate::slice_primitives::select_position(tokens, |token| {
         token.is_word("can't") || token.is_word("cant") || token.is_word("cannot")
     }) else {
         return Ok(None);
     };
-    let Some(unless_index) = tokens
-        .iter()
-        .enumerate()
-        .skip(cant_index + 1)
-        .find_map(|(index, token)| token.is_word("unless").then_some(index))
+    let Some(unless_index) =
+        crate::slice_primitives::select_position(&tokens[cant_index + 1..], |token| {
+            token.is_word("unless")
+        })
+        .map(|idx| idx + cant_index + 1)
     else {
         return Ok(None);
     };
 
     let subject_words = crate::lexer::token_word_refs(&tokens[..cant_index]);
-    let (blockers, blocker_is_attached_to_source) = match subject_words.as_slice() {
-        ["this"] | ["this", "creature"] => (ObjectFilter::source(), false),
-        ["creatures"] => (ObjectFilter::creature(), false),
-        ["enchanted", "creature"] | ["equipped", "creature"] => (ObjectFilter::creature(), true),
-        _ => return Ok(None),
-    };
+    let (blockers, blocker_is_attached_to_source) =
+        if crate::word_primitives::parse_any_sequence_complete(
+            &subject_words,
+            &[&["this"], &["this", "creature"]],
+        ) {
+            (ObjectFilter::source(), false)
+        } else if crate::word_primitives::parse_sequence_complete(&subject_words, &["creatures"]) {
+            (ObjectFilter::creature(), false)
+        } else if crate::word_primitives::parse_any_sequence_complete(
+            &subject_words,
+            &[&["enchanted", "creature"], &["equipped", "creature"]],
+        ) {
+            (ObjectFilter::creature(), true)
+        } else {
+            return Ok(None);
+        };
 
     let action_tokens = trim_edge_punctuation_tokens(&tokens[cant_index + 1..unless_index]);
     let action_words = crate::lexer::token_word_refs(action_tokens);
-    let attackers = match action_words.as_slice() {
+    let attackers = if crate::word_primitives::parse_any_sequence_complete(
+        &action_words,
+        &[&["block"], &["attack", "or", "block"]],
+    ) {
         // A number of cards use the combined restriction wording even when
         // the declaration-time cost is the CR 509.1d blocking cost.  Keep the
         // typed BlockCost lowering for that shared wording; the attack-side
         // restriction is handled by the ordinary cant/attack parser when it
         // has its own semantics.
-        ["block"] | ["attack", "or", "block"] => ObjectFilter::creature(),
-        ["block", ..] => {
-            let Some(block_token_index) = action_tokens
-                .iter()
-                .position(|token| token.is_word("block"))
-            else {
-                return Ok(None);
-            };
-            let attacker_tokens =
-                trim_edge_punctuation_tokens(&action_tokens[block_token_index + 1..]);
-            parse_subject_object_filter(attacker_tokens)?
-                .or_else(|| parse_object_filter(attacker_tokens, false).ok())
-                .ok_or_else(|| {
-                    CardTextError::ParseError(format!(
-                        "unsupported attacker filter for blocking cost (clause: '{}')",
-                        crate::lexer::token_word_refs(attacker_tokens).join(" ")
-                    ))
-                })?
-        }
-        _ => return Ok(None),
+        ObjectFilter::creature()
+    } else if crate::word_primitives::parse_sequence_prefix(&action_words, &["block"]) {
+        let Some(block_token_index) =
+            crate::slice_primitives::select_position(action_tokens, |token| token.is_word("block"))
+        else {
+            return Ok(None);
+        };
+        let attacker_tokens = trim_edge_punctuation_tokens(&action_tokens[block_token_index + 1..]);
+        parse_subject_object_filter(attacker_tokens)?
+            .or_else(|| parse_object_filter(attacker_tokens, false).ok())
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported attacker filter for blocking cost (clause: '{}')",
+                    crate::lexer::token_word_refs(attacker_tokens).join(" ")
+                ))
+            })?
+    } else {
+        return Ok(None);
     };
 
     let payment_tokens = trim_edge_punctuation_tokens(&tokens[unless_index + 1..]);
     let direct_action_cost = payment_tokens
         .first()
         .is_some_and(|token| token.is_word("you"))
-        && !payment_tokens
-            .iter()
-            .any(|token| token.is_word("pay") || token.is_word("pays"));
+        && crate::slice_primitives::select_position(payment_tokens, |token| {
+            token.is_word("pay") || token.is_word("pays")
+        })
+        .is_none();
     let mut cost_tokens = if direct_action_cost {
         // Some declaration costs state the action directly ("unless you tap
         // ...") rather than introducing it with "pay". Feed the ordinary
         // activation-cost grammar the action after the payer pronoun.
         trim_edge_punctuation_tokens(&payment_tokens[1..])
     } else {
-        let Some(pay_index) = payment_tokens
-            .iter()
-            .position(|token| token.is_word("pay") || token.is_word("pays"))
-        else {
+        let Some(pay_index) = crate::slice_primitives::select_position(payment_tokens, |token| {
+            token.is_word("pay") || token.is_word("pays")
+        }) else {
             return Ok(None);
         };
         let payer_words = crate::lexer::token_word_refs(&payment_tokens[..pay_index]);
-        if !matches!(
-            payer_words.as_slice(),
-            ["you"] | ["its", "controller"] | ["their", "controller"]
+        if !crate::word_primitives::parse_any_sequence_complete(
+            &payer_words,
+            &[&["you"], &["its", "controller"], &["their", "controller"]],
         ) {
             return Ok(None);
         }
         trim_edge_punctuation_tokens(&payment_tokens[pay_index.saturating_add(1)..])
     };
-    if subject_words.as_slice() == ["creatures"] {
+    if crate::word_primitives::parse_sequence_complete(&subject_words, &["creatures"]) {
         cost_tokens = trim_edge_punctuation_tokens(strip_per_blocking_creature_tail(cost_tokens));
     }
     let parsed_cost = if direct_action_cost {
-        Some(parse_activation_cost(cost_tokens)?)
+        Some(parse_compiler_activation_cost(cost_tokens)?)
     } else {
         parse_payment_clause_as_total_cost(cost_tokens)?
     };
@@ -337,9 +344,8 @@ fn except_for_cant_attack_static_ability(
     {
         return Ok(None);
     }
-    let Some(comma_idx) = tokens
-        .iter()
-        .position(|token| token.kind == TokenKind::Comma)
+    let Some(comma_idx) =
+        crate::slice_primitives::select_position(tokens, |token| token.kind == TokenKind::Comma)
     else {
         return Ok(None);
     };
@@ -406,14 +412,14 @@ fn except_for_cant_attack_static_ability(
         }
         if !affected_types
             .iter()
-            .all(|card_type| exception_types.contains(card_type))
+            .all(|card_type| crate::slice_primitives::contains(&exception_types, card_type))
         {
             return Ok(None);
         }
         let additional_types = exception_types
             .iter()
             .copied()
-            .filter(|card_type| !affected_types.contains(card_type))
+            .filter(|card_type| !crate::slice_primitives::contains(&affected_types, card_type))
             .collect::<Vec<_>>();
         if let Some(name) = exception.name {
             if !additional_types.is_empty()
@@ -432,7 +438,7 @@ fn except_for_cant_attack_static_ability(
                 return Ok(None);
             }
             for card_type in additional_types {
-                if !affected.excluded_card_types.contains(&card_type) {
+                if !crate::slice_primitives::contains(&affected.excluded_card_types, &card_type) {
                     affected.excluded_card_types.push(card_type);
                 }
             }
@@ -643,16 +649,8 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
         let Some(ability) = parse_cant_clause(&remainder)? else {
             return Ok(None);
         };
-        #[cfg(not(feature = "serialization"))]
-        {
-            let conditioned = ability.clone().with_condition(condition.clone());
-            return Ok(Some(conditioned));
-        }
-        #[cfg(feature = "serialization")]
-        {
-            let conditioned = ability.clone().with_condition(condition.clone());
-            return Ok(conditioned);
-        }
+        let conditioned = ability.clone().with_condition(condition.clone());
+        return Ok(Some(conditioned));
     }
     if let Some((_, remainder)) = parse_restriction_duration(tokens)?
         && !remainder.is_empty()
@@ -834,14 +832,9 @@ mod tests {
             "{repeated:#?}"
         );
 
-        let contextual = crate::util::with_card_source_reference_context(
-            "Disciple of Caelus Nin",
-            &[crate::types::CardType::Creature],
-            &[],
-            || parse_cant_clauses(&tokens),
-        )
-        .expect("phase-in restriction should parse in a card source context")
-        .expect("phase-in restriction should remain static in a card source context");
+        let contextual = parse_cant_clauses(&tokens)
+            .expect("phase-in restriction should parse in a card source context")
+            .expect("phase-in restriction should remain static in a card source context");
         assert!(
             format!("{:#?}", contextual[0]).contains("PhaseIn"),
             "{contextual:#?}"
@@ -865,7 +858,7 @@ mod tests {
             abilities[0].display(),
             "Except for creatures named Akron Legionnaire and artifact creatures, creatures you control can't attack"
         );
-        let crate::static_abilities::StaticAbilityPayload::RuleRestriction {
+        let ironsmith_core::StaticAbilityPayload::RuleRestriction {
             restriction: crate::effect::Restriction::Attack(filter),
             ..
         } = &abilities[0].payload
@@ -892,14 +885,14 @@ mod tests {
             .expect("expected two typed restrictions");
         assert_eq!(abilities.len(), 2, "{abilities:#?}");
 
-        let crate::static_abilities::StaticAbilityPayload::RuleRestriction {
+        let ironsmith_core::StaticAbilityPayload::RuleRestriction {
             restriction: crate::effect::Restriction::Block(blockers),
             ..
         } = &abilities[0].payload
         else {
             panic!("expected a block restriction: {:#?}", abilities[0]);
         };
-        let crate::static_abilities::StaticAbilityPayload::RuleRestriction {
+        let ironsmith_core::StaticAbilityPayload::RuleRestriction {
             restriction:
                 crate::effect::Restriction::AttackPlayerOrPlaneswalkersControlledBy {
                     attackers,
@@ -960,7 +953,7 @@ mod tests {
         assert_eq!(abilities.len(), 1, "{abilities:#?}");
         assert!(matches!(
             abilities[0].payload,
-            crate::static_abilities::StaticAbilityPayload::BlockCost { .. }
+            ironsmith_core::StaticAbilityPayload::BlockCost { .. }
         ));
     }
 

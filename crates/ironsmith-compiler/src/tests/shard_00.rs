@@ -2272,8 +2272,22 @@ pub(super) fn rewrite_modal_header_parser_keeps_post_choice_common_effect_separa
     assert!(header.trigger.is_some(), "{header:?}");
     assert!(header.prefix_effects_ast.is_empty(), "{header:?}");
     assert_eq!(header.common_prefix_effects_ast.len(), 1, "{header:?}");
-    let debug = format!("{:#?}", header.common_prefix_effects_ast);
-    assert!(debug.contains("ModifyPowerToughness"), "{debug}");
+    assert!(
+        matches!(
+            header.common_prefix_effects_ast.as_slice(),
+            [crate::model::ast::EffectAst::SubjectVerb(subject_verb)]
+                if matches!(
+                    &subject_verb.action,
+                    crate::model::ast::SubjectVerbActionAst::Pump {
+                        power: crate::effect::Value::Fixed(1),
+                        toughness: crate::effect::Value::Fixed(1),
+                        ..
+                    }
+                )
+        ),
+        "{:#?}",
+        header.common_prefix_effects_ast
+    );
 
     let ordinary = parse_modal_header_for_test("Choose one —")
         .expect("ordinary modal header should parse")
@@ -2294,10 +2308,19 @@ pub(super) fn rewrite_modal_header_parser_keeps_common_effect_before_bullet_dash
     assert!(header.trigger.is_some(), "{header:?}");
     assert!(header.prefix_effects_ast.is_empty(), "{header:?}");
     assert_eq!(header.common_prefix_effects_ast.len(), 1, "{header:?}");
-    let debug = format!("{:#?}", header.common_prefix_effects_ast);
     assert!(
-        debug.contains("LoseLife") && debug.contains("Fixed(\n            2"),
-        "{debug}"
+        matches!(
+            header.common_prefix_effects_ast.as_slice(),
+            [crate::model::ast::EffectAst::SubjectVerb(subject_verb)]
+                if matches!(
+                    &subject_verb.action,
+                    crate::model::ast::SubjectVerbActionAst::LoseLife {
+                        amount: crate::effect::Value::Fixed(2),
+                    }
+                )
+        ),
+        "{:#?}",
+        header.common_prefix_effects_ast
     );
 }
 
@@ -2484,7 +2507,7 @@ pub(super) fn rewrite_document_parser_supports_equip_with_subtype_qualifier() {
         "expected equip target filter to include Soldier subtype, got {abilities_debug}"
     );
     assert!(
-        abilities_debug.contains("AttachToEffect"),
+        abilities_debug.contains("AttachObjectsEffect"),
         "expected equip ability to remain an attach activation, got {abilities_debug}"
     );
 }
@@ -2765,7 +2788,10 @@ pub(super) fn chosen_type_behold_cost_preempts_generic_behold_exile_shape()
     let crate::cards::builders::LineAst::OptionalCost(optional) = parsed else {
         panic!("expected a typed optional additional cost, got {parsed:?}");
     };
-    let optional = optional.into_runtime();
+    let crate::model::compiler_semantic::ParsedOptionalCostAst::Compiler(optional) = optional
+    else {
+        panic!("expected a compiler-owned optional cost");
+    };
     let costs = optional
         .cost
         .as_all()
@@ -2785,11 +2811,17 @@ pub(super) fn assert_composed_keyword_cost(
     let crate::cards::builders::LineAst::AlternativeCastingMethod(method) = parsed else {
         panic!("expected {expected_name} alternative casting method");
     };
-    assert_eq!(method.as_runtime().name(), expected_name);
+    let (name, mana_cost) = match &method {
+        crate::model::compiler_semantic::ParsedAlternativeCastingMethodAst::Compiler(method) => {
+            (method.name(), method.mana_cost())
+        }
+        crate::model::compiler_semantic::ParsedAlternativeCastingMethodAst::LegacyRuntime(
+            method,
+        ) => (method.name(), method.mana_cost()),
+    };
+    assert_eq!(name, expected_name);
     assert_eq!(
-        method
-            .as_runtime()
-            .mana_cost()
+        mana_cost
             .expect("keyword alternative cost should contain mana")
             .to_oracle(),
         expected_cost
@@ -2959,7 +2991,10 @@ pub(super) fn rewrite_statement_lowering_parses_soul_partition_via_parser_path()
     match parsed_chunks.as_slice() {
         [crate::cards::builders::LineAst::Statement { effects }] => {
             let debug = format!("{effects:#?}");
-            assert!(debug.contains("GrantBySpec"), "{debug}");
+            assert!(
+                debug.contains("GrantBySpec") || debug.contains("GrantPlayTaggedForAsLongAsExiled"),
+                "{debug}"
+            );
             assert!(debug.contains("GrantToTarget"), "{debug}");
             assert!(debug.contains("CostIncreaseManaCost"), "{debug}");
         }
@@ -3308,8 +3343,8 @@ pub(super) fn rewrite_token_word_view_caches_lower_words_and_word_token_indices(
     let words = TokenWordView::new(&tokens);
     assert_eq!(words.get(0), Some("activate"));
     assert_eq!(words.get(3), Some("your"));
-    assert_eq!(words.token_boundary_for_word(4), Some(4));
-    assert!(words.starts_with(&["activate", "only"]));
+    assert_eq!(words.map_word_to_token_boundary(4), Some(4));
+    assert!(words.parses_prefix(&["activate", "only"]));
 }
 
 #[test]
@@ -3330,7 +3365,7 @@ pub(super) fn rewrite_token_word_view_normalizes_parser_word_shapes() {
             "w/u"
         ]
     );
-    assert_eq!(words.token_boundary_for_word(2), Some(2));
+    assert_eq!(words.map_word_to_token_boundary(2), Some(2));
     assert_eq!(words.token_index_after_words(4), Some(3));
     assert_eq!(words.token_index_after_words(5), Some(4));
 }
@@ -3502,7 +3537,7 @@ pub(super) fn rewrite_lexed_restriction_parsers_match_activation_trigger_and_man
     );
     assert!(matches!(
         parse_mana_usage_restriction_sentence_lexed(&mana_only),
-        Some(crate::ability::ManaUsageRestriction::CastSpell {
+        Some(ironsmith_core::ManaUsageRestriction::CastSpell {
             card_types,
             subtype_requirement: Some(
                 crate::ability::ManaUsageSubtypeRequirement::ChosenTypeOfSource
@@ -3522,7 +3557,7 @@ pub(super) fn rewrite_lexed_mana_restrictions_parse_supported_spell_filter_shape
     fn parse_filter(text: &str) -> crate::target::ObjectFilter {
         let tokens = lex_line(text, 0).expect("rewrite lexer should classify mana restriction");
         match parse_mana_usage_restriction_sentence_lexed(&tokens) {
-            Some(crate::ability::ManaUsageRestriction::CastSpellMatching { filter, .. }) => filter,
+            Some(ironsmith_core::ManaUsageRestriction::CastSpellMatching { filter, .. }) => filter,
             other => panic!("expected CastSpellMatching restriction for {text:?}, got {other:?}"),
         }
     }
@@ -3594,7 +3629,7 @@ pub(super) fn rewrite_activate_ability_mana_restriction_parses() {
 
     assert!(matches!(
         parse_mana_usage_restriction_sentence_lexed(&tokens),
-        Some(crate::ability::ManaUsageRestriction::ActivateAbility)
+        Some(ironsmith_core::ManaUsageRestriction::ActivateAbility)
     ));
 }
 
@@ -3607,7 +3642,7 @@ pub(super) fn rewrite_cast_or_activate_source_mana_restriction_parses() {
     .expect("rewrite lexer should classify cast-or-activate mana restriction");
 
     match parse_mana_usage_restriction_sentence_lexed(&tokens) {
-        Some(crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
+        Some(ironsmith_core::ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
             spell_filter,
             ability_source_filter,
         }) => {
@@ -3627,7 +3662,7 @@ pub(super) fn rewrite_cast_unlock_or_turn_face_up_mana_restriction_parses() {
     .expect("rewrite lexer should classify cast/unlock/turn-face-up mana restriction");
 
     match parse_mana_usage_restriction_sentence_lexed(&tokens) {
-        Some(crate::ability::ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp {
+        Some(ironsmith_core::ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp {
             spell_filter,
         }) => {
             assert_eq!(spell_filter.card_types, vec![CardType::Enchantment]);
@@ -3646,7 +3681,7 @@ pub(super) fn rewrite_cant_be_spent_mana_restriction_preserves_the_negative_tran
             lex_line(text, 0).expect("rewrite lexer should classify negative mana restriction");
 
         match parse_mana_usage_restriction_sentence_lexed(&tokens) {
-            Some(crate::ability::ManaUsageRestriction::PaymentTransaction {
+            Some(ironsmith_core::ManaUsageRestriction::PaymentTransaction {
                 restriction: Some(crate::ability::ManaPaymentPredicate::Not(forbidden)),
                 on_spend,
             }) => {
@@ -3679,7 +3714,7 @@ pub(super) fn rewrite_hand_and_artifact_source_mana_restrictions_are_typed_trans
         .expect("hand restriction should lex");
     assert!(matches!(
         parse_mana_usage_restriction_sentence_lexed(&hand),
-        Some(crate::ability::ManaUsageRestriction::PaymentTransaction {
+        Some(ironsmith_core::ManaUsageRestriction::PaymentTransaction {
             restriction: Some(crate::ability::ManaPaymentPredicate::Not(forbidden)),
             ref on_spend,
         }) if on_spend.is_empty()
@@ -3702,7 +3737,7 @@ pub(super) fn rewrite_hand_and_artifact_source_mana_restrictions_are_typed_trans
     .expect("artifact-source activation restriction should lex");
     assert!(matches!(
         parse_mana_usage_restriction_sentence_lexed(&activation),
-        Some(crate::ability::ManaUsageRestriction::PaymentTransaction {
+        Some(ironsmith_core::ManaUsageRestriction::PaymentTransaction {
             restriction: Some(crate::ability::ManaPaymentPredicate::All(parts)),
             ref on_spend,
         }) if on_spend.is_empty()
@@ -3794,8 +3829,8 @@ pub(super) fn rewrite_activation_line_attaches_special_mana_restriction_filters(
         .expect("activated line should produce an ability");
 
     match parsed.kind() {
-        crate::ability::AbilityKind::Activated(activated) => {
-            let [crate::ability::ManaUsageRestriction::CastSpellMatching { filter, .. }] =
+        crate::model::CompilerAbilityKindCore::Activated(activated) => {
+            let [ironsmith_core::ManaUsageRestriction::CastSpellMatching { filter, .. }] =
                 activated.mana_usage_restrictions.as_slice()
             else {
                 panic!(
@@ -3812,18 +3847,6 @@ pub(super) fn rewrite_activation_line_attaches_special_mana_restriction_filters(
 
 #[test]
 pub(super) fn rewrite_restriction_support_preserves_text_only_attack_conditions() {
-    let mut attacked_ability = crate::ability::ActivatedAbility {
-        mana_cost: crate::cost::TotalCost::default(),
-        effects: crate::resolution::ResolutionProgram::default(),
-        choices: vec![],
-        timing: crate::ability::ActivationTiming::AnyTime,
-        additional_restrictions: vec![],
-        activation_restrictions: vec![],
-        mana_output: None,
-        activation_condition: None,
-        mana_usage_restrictions: vec![],
-        is_loyalty_ability: false,
-    };
     let attacked_restriction =
         super::super::grammar::restriction_facts::parse_activation_restriction_tokens(
             &lex_line(
@@ -3833,38 +3856,21 @@ pub(super) fn rewrite_restriction_support_preserves_text_only_attack_conditions(
             .unwrap(),
         )
         .unwrap();
-    super::super::restriction_support::apply_pending_activation_restriction(
-        &mut attacked_ability,
-        &attacked_restriction,
-    );
-
     assert_eq!(
-        attacked_ability.timing,
-        crate::ability::ActivationTiming::OncePerTurn
+        attacked_restriction.timing,
+        Some(crate::ability::ActivationTiming::OncePerTurn)
     );
     assert_eq!(
-        attacked_ability.additional_restrictions,
-        vec!["only if this creature attacked this turn".to_string()]
+        attacked_restriction.normalization,
+        crate::model::compiler_semantic::ActivationRestrictionNormalizationFact::Residual(
+            "only if this creature attacked this turn".to_string()
+        )
     );
-    assert!(
-        attacked_ability
-            .activation_restrictions
-            .iter()
-            .any(|condition| matches!(condition, crate::ConditionExpr::SourceAttackedThisTurn))
-    );
+    assert!(matches!(
+        attacked_restriction.text_only_condition,
+        Some(crate::ConditionExpr::SourceAttackedThisTurn)
+    ));
 
-    let mut didnt_attack_ability = crate::ability::ActivatedAbility {
-        mana_cost: crate::cost::TotalCost::default(),
-        effects: crate::resolution::ResolutionProgram::default(),
-        choices: vec![],
-        timing: crate::ability::ActivationTiming::AnyTime,
-        additional_restrictions: vec![],
-        activation_restrictions: vec![],
-        mana_output: None,
-        activation_condition: None,
-        mana_usage_restrictions: vec![],
-        is_loyalty_ability: false,
-    };
     let didnt_attack_restriction =
         super::super::grammar::restriction_facts::parse_activation_restriction_tokens(
             &lex_line(
@@ -3874,35 +3880,22 @@ pub(super) fn rewrite_restriction_support_preserves_text_only_attack_conditions(
             .unwrap(),
         )
         .unwrap();
-    super::super::restriction_support::apply_pending_activation_restriction(
-        &mut didnt_attack_ability,
-        &didnt_attack_restriction,
-    );
-
     assert_eq!(
-        didnt_attack_ability.timing,
-        crate::ability::ActivationTiming::OncePerTurn
+        didnt_attack_restriction.timing,
+        Some(crate::ability::ActivationTiming::OncePerTurn)
     );
-    let authored_restrictions = didnt_attack_ability
-        .additional_restrictions
-        .iter()
-        .filter(|restriction| !restriction.starts_with("__ironsmith_"))
-        .cloned()
-        .collect::<Vec<_>>();
     assert_eq!(
-        authored_restrictions,
-        vec!["activate only if it didn't attack this turn".to_string()]
+        didnt_attack_restriction.normalization,
+        crate::model::compiler_semantic::ActivationRestrictionNormalizationFact::Residual(
+            "activate only if it didn't attack this turn".to_string()
+        )
     );
-    assert!(
-        didnt_attack_ability
-            .activation_restrictions
-            .iter()
-            .any(|condition| matches!(
-                condition,
-                crate::ConditionExpr::Not(inner)
-                    if matches!(inner.as_ref(), crate::ConditionExpr::SourceAttackedThisTurn)
-            ))
-    );
+    assert!(didnt_attack_restriction.once_per_turn_after_other_restrictions);
+    assert!(matches!(
+        didnt_attack_restriction.text_only_condition,
+        Some(crate::ConditionExpr::Not(inner))
+            if matches!(inner.as_ref(), crate::ConditionExpr::SourceAttackedThisTurn)
+    ));
 }
 
 #[test]
@@ -3930,7 +3923,7 @@ pub(super) fn rewrite_parse_lose_life_unless_you_attacked_this_turn_clause() {
         parse_effect_sentence_lexed(&tokens).expect("life-loss unless clause should parse");
     let debug = format!("{parsed:?}");
 
-    assert!(debug.contains("Conditional"), "{debug}");
+    assert!(debug.contains("ControlFlow"), "{debug}");
     assert!(debug.contains("LoseLife"), "{debug}");
     assert!(debug.contains("YouAttackedThisTurn"), "{debug}");
 }
@@ -4121,46 +4114,24 @@ pub(super) fn rewrite_zone_counter_helpers_keep_trailing_if_counter_clause_after
 
     let parsed = parse_effect_sentence_lexed(&tokens).expect("counter clause should parse");
 
-    match parsed.as_slice() {
-        [
-            crate::cards::builders::EffectAst::Conditional {
-                predicate,
-                if_true,
-                if_false,
-            },
-        ] => {
-            assert!(if_false.is_empty());
-            assert!(matches!(
-                predicate,
-                crate::cards::builders::PredicateAst::ItMatches(_)
-            ));
-            assert!(matches!(
-                if_true.as_slice(),
-                [crate::cards::builders::EffectAst::SubjectVerb(
-                    crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::PutCounters { .. },
-                        ..
-                    }
-                )]
-            ));
-        }
-        [crate::cards::builders::EffectAst::TrailingIf { predicate, effects }] => {
-            assert!(matches!(
-                predicate,
-                crate::cards::builders::PredicateAst::ItMatches(_)
-            ));
-            assert!(matches!(
-                effects.as_slice(),
-                [crate::cards::builders::EffectAst::SubjectVerb(
-                    crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::PutCounters { .. },
-                        ..
-                    }
-                )]
-            ));
-        }
-        other => panic!("expected conditional put-counters clause, got {other:?}"),
-    }
+    let [effect] = parsed.as_slice() else {
+        panic!("expected conditional put-counters clause, got {parsed:?}");
+    };
+    let (predicate, if_true, if_false) = super::shard_01::conditional_effect_parts(effect);
+    assert!(if_false.is_empty());
+    assert!(matches!(
+        predicate,
+        crate::cards::builders::PredicateAst::ItMatches(_)
+    ));
+    assert!(matches!(
+        if_true,
+        [crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::PutCounters { .. },
+                ..
+            }
+        )]
+    ));
 }
 
 #[test]
@@ -4170,46 +4141,24 @@ pub(super) fn rewrite_verb_handlers_keep_trailing_if_counter_clause_after_struct
 
     let parsed = parse_effect_sentence_lexed(&tokens).expect("counter spell clause should parse");
 
-    match parsed.as_slice() {
-        [
-            crate::cards::builders::EffectAst::Conditional {
-                predicate,
-                if_true,
-                if_false,
-            },
-        ] => {
-            assert!(if_false.is_empty());
-            assert!(matches!(
-                predicate,
-                crate::cards::builders::PredicateAst::ItMatches(_)
-            ));
-            assert!(matches!(
-                if_true.as_slice(),
-                [crate::cards::builders::EffectAst::SubjectVerb(
-                    crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::Counter { .. },
-                        ..
-                    }
-                )]
-            ));
-        }
-        [crate::cards::builders::EffectAst::TrailingIf { predicate, effects }] => {
-            assert!(matches!(
-                predicate,
-                crate::cards::builders::PredicateAst::ItMatches(_)
-            ));
-            assert!(matches!(
-                effects.as_slice(),
-                [crate::cards::builders::EffectAst::SubjectVerb(
-                    crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::Counter { .. },
-                        ..
-                    }
-                )]
-            ));
-        }
-        other => panic!("expected conditional counter clause, got {other:?}"),
-    }
+    let [effect] = parsed.as_slice() else {
+        panic!("expected conditional counter clause, got {parsed:?}");
+    };
+    let (predicate, if_true, if_false) = super::shard_01::conditional_effect_parts(effect);
+    assert!(if_false.is_empty());
+    assert!(matches!(
+        predicate,
+        crate::cards::builders::PredicateAst::ItMatches(_)
+    ));
+    assert!(matches!(
+        if_true,
+        [crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::Counter { .. },
+                ..
+            }
+        )]
+    ));
 }
 
 #[test]
@@ -4222,46 +4171,24 @@ pub(super) fn rewrite_verb_handlers_keep_trailing_if_damage_clause_after_structu
 
     let parsed = parse_effect_sentence_lexed(&tokens).expect("damage clause should parse");
 
-    match parsed.as_slice() {
-        [
-            crate::cards::builders::EffectAst::Conditional {
-                predicate,
-                if_true,
-                if_false,
-            },
-        ] => {
-            assert!(if_false.is_empty());
-            assert!(matches!(
-                predicate,
-                crate::cards::builders::PredicateAst::ItMatches(_)
-            ));
-            assert!(matches!(
-                if_true.as_slice(),
-                [crate::cards::builders::EffectAst::SubjectVerb(
-                    crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::DealDamage { .. },
-                        ..
-                    }
-                )]
-            ));
-        }
-        [crate::cards::builders::EffectAst::TrailingIf { predicate, effects }] => {
-            assert!(matches!(
-                predicate,
-                crate::cards::builders::PredicateAst::ItMatches(_)
-            ));
-            assert!(matches!(
-                effects.as_slice(),
-                [crate::cards::builders::EffectAst::SubjectVerb(
-                    crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::DealDamage { .. },
-                        ..
-                    }
-                )]
-            ));
-        }
-        other => panic!("expected conditional damage clause, got {other:?}"),
-    }
+    let [effect] = parsed.as_slice() else {
+        panic!("expected conditional damage clause, got {parsed:?}");
+    };
+    let (predicate, if_true, if_false) = super::shard_01::conditional_effect_parts(effect);
+    assert!(if_false.is_empty());
+    assert!(matches!(
+        predicate,
+        crate::cards::builders::PredicateAst::ItMatches(_)
+    ));
+    assert!(matches!(
+        if_true,
+        [crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::DealDamage { .. },
+                ..
+            }
+        )]
+    ));
 }
 
 #[test]

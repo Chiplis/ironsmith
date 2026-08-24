@@ -297,13 +297,11 @@ pub fn parse_leaf_conditional_duration_prefix_tokens<'a>(
     let duration = parse_leaf_conditional_duration_kind_tokens(tokens)?;
     let condition_end = match duration {
         LeafConditionalDurationKind::SourceRemainsOnBattlefield => {
-            tokens
-                .iter()
-                .position(|token| token.is_word("battlefield"))?
+            crate::slice_primitives::select_position(tokens, |token| token.is_word("battlefield"))?
                 + 1
         }
         LeafConditionalDurationKind::SourceRemainsTapped => {
-            tokens.iter().position(|token| token.is_word("tapped"))? + 1
+            crate::slice_primitives::select_position(tokens, |token| token.is_word("tapped"))? + 1
         }
         LeafConditionalDurationKind::YouControlSource => {
             primitives::find_prefix(tokens, || primitives::comma().void())?.0

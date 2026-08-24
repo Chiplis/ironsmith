@@ -485,9 +485,7 @@ pub fn parse_draw_equal_to_value(
         return Ok(None);
     };
     let words = crate::lexer::token_word_refs(tokens);
-    if words
-        .windows(2)
-        .any(|window| window == ["differently", "named"])
+    if crate::word_primitives::sequence_occurs(&words, &["differently", "named"])
         && let Some(value) = parse_equal_to_number_of_filter_value(tokens)
     {
         return Ok(Some(value));
@@ -567,7 +565,7 @@ fn counter_unless_payment_total_cost(
     mana_multiplier: Option<Value>,
     x_value: Option<Value>,
     display_hint: ironsmith_core::DynamicManaDisplayHint,
-) -> crate::cost::TotalCost {
+) -> ironsmith_core::TotalCost<crate::model::CompilerCost> {
     let mut components = Vec::new();
     let mana_cost = crate::mana::ManaCost::from_symbols(mana);
     if !mana_cost.is_empty()
@@ -580,7 +578,7 @@ fn counter_unless_payment_total_cost(
             || mana_multiplier.is_some()
             || x_value.is_some()
         {
-            components.push(crate::costs::Cost::dynamic_mana(
+            components.push(crate::model::CompilerCost::DynamicMana(
                 ironsmith_core::DynamicManaCost::new(
                     mana_cost,
                     x_value,
@@ -590,13 +588,13 @@ fn counter_unless_payment_total_cost(
                 ),
             ));
         } else {
-            components.push(crate::costs::Cost::mana(mana_cost));
+            components.push(crate::model::CompilerCost::Mana(mana_cost));
         }
     }
     if let Some(life) = life {
-        components.push(crate::costs::Cost::life(life));
+        components.push(crate::model::CompilerCost::Life(life));
     }
-    crate::cost::TotalCost::from_costs(components)
+    ironsmith_core::TotalCost::from_costs(components)
 }
 
 pub fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
@@ -816,7 +814,10 @@ fn parse_counter_unless_source_damage(
         return Ok(None);
     };
     let controller_words = controller_clause.trimmed_word_refs();
-    if controller_words.as_slice() != ["its", "controller"] {
+    if !crate::word_primitives::parse_sequence_complete(
+        &controller_words,
+        &["its", "controller"],
+    ) {
         return Ok(None);
     }
 
@@ -827,9 +828,9 @@ fn parse_counter_unless_source_damage(
         return Ok(None);
     };
     let source_words = source_clause.trimmed_word_refs();
-    if !matches!(
-        source_words.as_slice(),
-        ["this"] | ["this", "spell"] | ["this", "source"]
+    if !crate::word_primitives::parse_any_sequence_complete(
+        &source_words,
+        &[&["this"], &["this", "spell"], &["this", "source"]],
     ) {
         return Ok(None);
     }
@@ -844,9 +845,14 @@ fn parse_counter_unless_source_damage(
     }
     let target_words =
         SubjectVerbPrimitiveClause::new(&damage_tokens[used + 1..]).trimmed_word_refs();
-    if !matches!(
-        target_words.as_slice(),
-        ["them"] | ["to", "them"] | ["that", "player"] | ["to", "that", "player"]
+    if !crate::word_primitives::parse_any_sequence_complete(
+        &target_words,
+        &[
+            &["them"],
+            &["to", "them"],
+            &["that", "player"],
+            &["to", "that", "player"],
+        ],
     ) {
         return Ok(None);
     }

@@ -103,6 +103,13 @@ fn describe_player_controls_only_implicit_tagged_object(
 
     let subject = describe_player_filter(player);
     if negated {
+        if stripped == ObjectFilter::creature() {
+            return Some(format!(
+                "{} {} neither creature",
+                subject,
+                player_verb(&subject, "control", "controls")
+            ));
+        }
         let verb = if subject == "you" {
             "don't control"
         } else {
@@ -4413,8 +4420,11 @@ fn compact_reveal_until_creature_reanimate_surface(line: &str) -> Option<String>
 }
 
 fn compact_each_opponent_who_didnt_draws_surface(line: &str) -> Option<String> {
-    let artifact = "At the beginning of your end step, draw a card, each player may put a land card from their hand onto the battlefield, then for each opponent, if effect #0 that doesn't happen, that player draws a card.";
-    if line != artifact {
+    let artifacts = [
+        "At the beginning of your end step, draw a card, each player may put a land card from their hand onto the battlefield, then for each opponent, if effect #0 that doesn't happen, that player draws a card.",
+        "At the beginning of your end step, draw a card, each player may put a land card from their hand onto the battlefield, then for each opponent, otherwise, that player draws a card.",
+    ];
+    if !artifacts.contains(&line) {
         return None;
     }
     Some(

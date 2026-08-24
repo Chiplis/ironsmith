@@ -379,7 +379,7 @@ pub(super) fn leading_comma_name(tokens: &[OwnedLexToken]) -> Option<String> {
             let starts_appositive = suffix_words
                 .first()
                 .is_some_and(|word| matches!(*word, "a" | "an"));
-            let describes_token = suffix_words.contains(&"token");
+            let describes_token = crate::word_primitives::contains_word(&suffix_words, "token");
             (starts_appositive && describes_token).then_some(idx)
         })
         .next()?;
@@ -438,145 +438,14 @@ fn parse_referenced_card_name<'a>()
     }
 }
 
-pub(super) fn leading_explicit_name(words: &[&str]) -> Option<String> {
-    let first = *words.first()?;
-    if !simple_name_word(first)
-        || explicit_name_descriptor(first)
-        || is_token_pt(first)
-        || is_card_type(first)
-        || is_subtype(first)
-    {
-        return None;
-    }
-
-    let mut name_words = vec![first];
-    for word in words.iter().skip(1) {
-        if !simple_name_word(word)
-            || explicit_name_descriptor(word)
-            || is_token_pt(word)
-            || is_card_type(word)
-            || is_subtype(word)
-        {
-            break;
-        }
-        name_words.push(*word);
-    }
-
-    if name_words.len() >= 2
-        || words
-            .get(1)
-            .is_some_and(|word| explicit_name_descriptor(word) || is_token_pt(word))
-    {
-        Some(title_case_words(&name_words))
-    } else {
-        None
-    }
-}
-
-pub(super) fn leading_name_phrase(words: &[&str]) -> Option<String> {
-    let mut name_words = Vec::new();
-    for word in words {
-        if LEADING_NAME_STOP_WORDS.contains(word)
-            || is_token_pt(word)
-            || is_card_type(word)
-            || !simple_name_word(word)
-        {
-            break;
-        }
-        name_words.push(*word);
-    }
-
-    (name_words.len() >= 2).then(|| title_case_words(&name_words))
-}
-
-pub(super) fn vehicle_surface_name(words: &[&str], named: Option<&str>) -> String {
-    if let Some(named) = named {
-        return named.to_string();
-    }
-    for word in words {
-        if is_token_pt(word)
-            || !simple_name_word(word)
-            || matches!(
-                *word,
-                "artifact"
-                    | "token"
-                    | "tokens"
-                    | "vehicle"
-                    | "colorless"
-                    | "named"
-                    | "with"
-                    | "and"
-                    | "crew"
-                    | "flying"
-                    | "white"
-                    | "blue"
-                    | "black"
-                    | "red"
-                    | "green"
-            )
-            || is_card_type(word)
-            || is_subtype(word)
-        {
-            continue;
-        }
-        return title_case_words(&[*word]);
-    }
-    "Vehicle".to_string()
-}
-
-pub(super) fn artifact_surface_name(words: &[&str], named: Option<&str>) -> String {
-    if let Some(named) = named {
-        return named.to_string();
-    }
-    for word in words {
-        if !matches!(
-            *word,
-            "artifact"
-                | "token"
-                | "tokens"
-                | "named"
-                | "colorless"
-                | "white"
-                | "blue"
-                | "black"
-                | "red"
-                | "green"
-        ) {
-            let mut chars = word.chars();
-            if let Some(first) = chars.next() {
-                let mut name = first.to_uppercase().to_string();
-                name.push_str(chars.as_str());
-                return name;
-            }
-        }
-    }
-    "Artifact".to_string()
-}
-
-pub(super) fn creature_surface_name(
-    words: &[&str],
-    named: Option<&str>,
-    subtype_fallback: Option<&str>,
-) -> String {
-    named
-        .map(str::to_string)
-        .or_else(|| leading_name_phrase(words))
-        .or_else(|| leading_explicit_name(words))
-        .or_else(|| subtype_fallback.map(str::to_string))
-        .unwrap_or_else(|| "OwnedLexToken".to_string())
-}
-
-pub(super) fn graveyard_anthem_card_name(words: &[&str]) -> Option<String> {
-    let named_card_idx = common::phrase_offset(words, &["card", "named"])?;
-    let start = named_card_idx + 2;
-    let mut end = start;
-    while end < words.len()
-        && !matches!(
-            words[end],
-            "in" | "from" | "and" | "or" | "with" | "that" | "where" | "when" | "whenever"
-        )
-    {
-        end += 1;
-    }
-    (end > start).then(|| title_case_words(&words[start..end]))
-}
+#[path = "names/library_programs.rs"]
+mod library_programs;
+pub(super) use library_programs::graveyard_anthem_card_name;
+#[path = "names/core_programs.rs"]
+mod core_programs;
+pub(super) use core_programs::{
+    creature_surface_name, leading_explicit_name, leading_name_phrase, vehicle_surface_name,
+};
+#[path = "names/condition_programs.rs"]
+mod condition_programs;
+pub(super) use condition_programs::artifact_surface_name;

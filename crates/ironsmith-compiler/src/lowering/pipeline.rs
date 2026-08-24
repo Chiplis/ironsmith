@@ -224,21 +224,43 @@ mod tests {
             .iter()
             .find_map(|effect| effect.downcast_ref::<crate::effects::ConditionalEffect>())
             .expect("expected the base mana-value gate");
-        let crate::effect::Condition::TaggedObjectMatches(base_tag, base_filter) =
-            &base_conditional.condition
-        else {
-            panic!("expected a tagged base spell filter, got {base_conditional:#?}");
+        let base_tag = match &base_conditional.condition {
+            crate::effect::Condition::ValueComparison {
+                left: crate::effect::Value::ManaValueOf(base_spec),
+                operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
+                right: crate::effect::Value::Fixed(3),
+            } => {
+                let crate::target::ChooseSpec::Tagged(base_tag) = base_spec.base() else {
+                    panic!("expected a tagged base spell reference, got {base_spec:#?}");
+                };
+                base_tag
+            }
+            crate::effect::Condition::TaggedObjectMatches(base_tag, base_filter)
+                if matches!(
+                    base_filter.mana_value.as_ref(),
+                    Some(crate::target::Comparison::LessThanOrEqual(3))
+                ) =>
+            {
+                base_tag
+            }
+            _ => {
+                panic!("expected a tagged base spell mana-value gate, got {base_conditional:#?}")
+            }
         };
-        assert!(matches!(
-            base_filter.mana_value.as_ref(),
-            Some(crate::target::Comparison::LessThanOrEqual(3))
-        ));
 
         let kicked_branch = segment
             .self_replacements
             .iter()
-            .find(|branch| branch.condition == crate::effect::Condition::ThisSpellWasKicked)
-            .expect("expected kicked replacement branch");
+            .find(|branch| {
+                matches!(
+                    branch.condition,
+                    crate::effect::Condition::ThisSpellWasKicked
+                        | crate::effect::Condition::TurnHistory(
+                            ironsmith_core::TurnHistoryCondition::SourceWasKicked { .. }
+                        )
+                )
+            })
+            .unwrap_or_else(|| panic!("expected kicked replacement branch, got {segment:#?}"));
         let conditional = kicked_branch
             .replacement_effects
             .iter()

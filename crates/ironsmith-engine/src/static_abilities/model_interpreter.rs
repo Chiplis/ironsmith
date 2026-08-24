@@ -1942,6 +1942,26 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         Some(&self.model)
     }
 
+    fn exile_would_die_instead_spec(
+        &self,
+    ) -> Option<(
+        &crate::target::ObjectFilter,
+        Option<ironsmith_core::DamagedBySource>,
+        &[(crate::object::CounterType, u32)],
+        &[crate::effect::Effect],
+    )> {
+        let ironsmith_core::StaticAbilityPayload::ExileWouldDieInstead {
+            filter,
+            damaged_by,
+            exile_with_counters,
+            follow_up_effects,
+        } = &self.model.payload
+        else {
+            return None;
+        };
+        Some((filter, *damaged_by, exile_with_counters, follow_up_effects))
+    }
+
     fn prefers_card_name_subject(&self) -> bool {
         // A generic condition wrapper can lower a leaf ability through a
         // `GrantAbility::source` fallback when that leaf has no native

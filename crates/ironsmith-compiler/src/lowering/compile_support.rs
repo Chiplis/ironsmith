@@ -56,8 +56,9 @@ use super::reference_resolution::{
     effect_references_prior_prevention_amount, effect_references_typed_removed_counter_metric,
     preserves_existing_it_for_power_self_damage_followup,
 };
-use super::static_ability_helpers::{
+use super::runtime_static_ability_helpers::{
     lower_granted_abilities_ast, lower_granted_abilities_ast_to_object_abilities,
+    object_abilities_to_static_carriers,
 };
 use crate::model::ast::{EmblemAbilityAst, EmblemDescriptionAst};
 use crate::model::reference_state::{
@@ -1183,11 +1184,18 @@ fn prepend_missing_target_choice_prelude(
         if !choice.is_target() {
             continue;
         }
+        let correlated_fight_target = compiled.iter().any(|effect| {
+            let Some(fight) = effect.downcast_ref::<crate::effects::FightEffect>() else {
+                return false;
+            };
+            (matches!(&fight.creature1, ChooseSpec::Tagged(_)) && fight.creature2 == *choice)
+                || (matches!(&fight.creature2, ChooseSpec::Tagged(_)) && fight.creature1 == *choice)
+        });
         let exposed_count = compiled
             .iter()
             .filter(|effect| effect_exposes_target_choice(effect, choice))
             .count();
-        if exposed_count != 1 {
+        if correlated_fight_target || exposed_count != 1 {
             missing_targets.push(Effect::new(crate::effects::TargetOnlyEffect::new(
                 choice.clone(),
             )));
@@ -2168,7 +2176,7 @@ fn compile_emblem_description(
             }
             EmblemAbilityAst::Activated(ability) => {
                 if let Ok(ability) = lower_parsed_ability(ability.clone()) {
-                    abilities.push(ability.into_runtime());
+                    abilities.push(ability);
                 }
             }
             EmblemAbilityAst::Triggered {
@@ -2186,7 +2194,7 @@ fn compile_emblem_description(
                     ReferenceImports::default(),
                 );
                 if let Ok(ability) = lower_parsed_ability(parsed) {
-                    abilities.push(ability.into_runtime());
+                    abilities.push(ability);
                 }
             }
         }
@@ -2927,7 +2935,7 @@ fn apply_embedded_token_rules(
                 } else {
                     Trigger::this_deals_damage_to(ObjectFilter::planeswalker())
                 };
-                let damaged_tag = TagKey::from("damaged");
+                let damaged_tag = crate::tag::CompilerReferenceTag::Damaged.key();
                 builder.with_ability(Ability {
                     kind: AbilityKind::Triggered(TriggeredAbility {
                         trigger,
@@ -3155,8 +3163,18 @@ pub fn token_white_tap_target_creature_ability() -> Ability {
     }
 }
 
-pub fn token_tap_mana_ability(shape: token_grammar::TokenTapManaAbilityShape) -> Ability {
-    Ability {
+pub fn token_tap_mana_ability(shape: token_grammar::TokenTapManaAbilityShape) -> Option<Ability> {
+    let mana_usage_restrictions = shape
+        .restrictions
+        .into_iter()
+        .map(|restriction| {
+            restriction.try_map_effects(&mut |effect| {
+                super::lowering_support::lower_compiler_child_effect(effect)
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .ok()?;
+    Some(Ability {
         kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
             mana_cost: TotalCost::from_costs(vec![crate::costs::Cost::tap()]),
             effects: crate::resolution::ResolutionProgram::default(),
@@ -3166,11 +3184,11 @@ pub fn token_tap_mana_ability(shape: token_grammar::TokenTapManaAbilityShape) ->
             activation_restrictions: vec![],
             mana_output: Some(shape.mana),
             activation_condition: None,
-            mana_usage_restrictions: shape.restrictions,
+            mana_usage_restrictions,
             is_loyalty_ability: false,
         }),
         functional_zones: vec![Zone::Battlefield],
-    }
+    })
 }
 
 pub fn token_damage_to_player_poison_counter_ability() -> Ability {
@@ -3567,7 +3585,7 @@ fn build_creature_token_definition(
         builder = builder.cumulative_upkeep(total_cost);
     }
     if let Some(shape) = rules.tap_mana_ability {
-        builder = builder.with_ability(token_tap_mana_ability(shape));
+        builder = builder.with_ability(token_tap_mana_ability(shape)?);
     }
     if let Some(amount) = rules.saddle_crew_power_bonus {
         builder = builder.with_ability(Ability::static_ability(StaticAbility::keyword_marker(

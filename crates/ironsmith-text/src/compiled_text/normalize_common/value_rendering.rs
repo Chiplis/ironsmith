@@ -995,7 +995,7 @@ pub(crate) fn describe_shared_tagged_attachment_union_count_subject(
             .iter()
             .any(|branch| branch.subtypes == [crate::types::Subtype::Equipment])
     {
-        return Some("Aura and Equipment attached to it".to_string());
+        return Some("Auras and Equipment attached to it".to_string());
     }
     let subject = describe_count_filter_value_subject(&unlinked);
     let subject = subject
