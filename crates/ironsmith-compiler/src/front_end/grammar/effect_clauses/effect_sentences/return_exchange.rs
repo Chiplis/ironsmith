@@ -4,23 +4,17 @@ use crate::effect_sentences::SubjectVerbPrimitiveClause;
 fn parse_return_back_reference_target(
     tokens: &[OwnedLexToken],
 ) -> Result<TargetAst, CardTextError> {
-    if crate::grammar::effects::is_return_back_reference_shape(tokens) {
+    if let Some(reference) = crate::grammar::effects::parse_return_back_reference_shape(tokens) {
         let span = span_from_tokens(tokens);
-        let words = crate::lexer::token_word_refs(tokens);
-        if words.as_slice() == ["them"] {
+        if reference == crate::grammar::effects::ReturnBackReferenceShape::Them {
             let mut filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
             filter.set_plural_pronoun_reference_surface(true);
             return Ok(TargetAst::Object(filter, None, span));
         }
-        if words.len() == 2
-            && crate::word_primitives::first_is_any(&words, &["that", "those"])
-            && words
-                .get(1)
-                .is_some_and(|noun| crate::util::is_demonstrative_object_head(noun))
-        {
+        if reference == crate::grammar::effects::ReturnBackReferenceShape::Demonstrative {
             let mut filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
             filter.source_surface = Some(crate::target::SourceReferenceSurface::ThisPermanentType(
-                words.join(" "),
+                crate::lexer::render_token_slice(tokens).trim().to_string(),
             ));
             return Ok(TargetAst::Object(filter, None, span));
         }

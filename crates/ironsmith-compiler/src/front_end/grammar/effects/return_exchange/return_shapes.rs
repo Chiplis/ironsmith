@@ -460,22 +460,44 @@ fn paired_source_and_exiled(tokens: &[OwnedLexToken]) -> Option<Option<Subtype>>
         })
 }
 
-pub fn is_return_back_reference_shape(tokens: &[OwnedLexToken]) -> bool {
-    exact_any(
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReturnBackReferenceShape {
+    It,
+    Them,
+    Demonstrative,
+}
+
+pub fn parse_return_back_reference_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<ReturnBackReferenceShape> {
+    primitives::parse_all(
         tokens,
-        &[
-            &["it"],
-            &["them"],
-            &["that", "card"],
-            &["that", "creature"],
-            &["that", "object"],
-            &["that", "permanent"],
-            &["those", "cards"],
-            &["those", "creatures"],
-            &["those", "objects"],
-            &["those", "permanents"],
-        ],
+        (
+            alt((
+                primitives::kw("it").value(ReturnBackReferenceShape::It),
+                primitives::kw("them").value(ReturnBackReferenceShape::Them),
+                primitives::any_phrase(&[
+                    &["that", "card"],
+                    &["that", "creature"],
+                    &["that", "object"],
+                    &["that", "permanent"],
+                    &["those", "cards"],
+                    &["those", "creatures"],
+                    &["those", "objects"],
+                    &["those", "permanents"],
+                ])
+                .value(ReturnBackReferenceShape::Demonstrative),
+            )),
+            primitives::sentence_end(),
+        )
+            .map(|(shape, ())| shape),
+        "return back-reference",
     )
+    .ok()
+}
+
+pub fn is_return_back_reference_shape(tokens: &[OwnedLexToken]) -> bool {
+    parse_return_back_reference_shape(tokens).is_some()
 }
 
 fn starts_multi_target(tokens: &[OwnedLexToken]) -> bool {

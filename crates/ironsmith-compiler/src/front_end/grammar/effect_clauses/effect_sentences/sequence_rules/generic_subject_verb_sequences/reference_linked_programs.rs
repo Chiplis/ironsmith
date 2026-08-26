@@ -2479,8 +2479,10 @@ pub fn parse_may_cast_target_graveyard_spell_then_exile_replacement(
     let Ok(filter) = parse_object_filter_lexed(&target_filter_tokens, false) else {
         return Ok(None);
     };
-    let spell_card = filter.card_types.contains(&CardType::Instant)
-        || filter.card_types.contains(&CardType::Sorcery);
+    let spell_card = filter
+        .card_types
+        .iter()
+        .any(|card_type| matches!(card_type, CardType::Instant | CardType::Sorcery));
     if filter.zone != Some(Zone::Graveyard)
         || !matches!(filter.owner, None | Some(PlayerFilter::You))
         || !spell_card

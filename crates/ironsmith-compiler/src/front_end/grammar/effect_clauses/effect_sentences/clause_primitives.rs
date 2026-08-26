@@ -31,6 +31,8 @@ use crate::registry::{
 };
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::zone::Zone;
+use winnow::Parser;
+use winnow::combinator::alt;
 
 pub type ClausePrimitiveParser = fn(&[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError>;
 
@@ -1098,20 +1100,21 @@ pub fn parse_until_duration_triggered_clause(
     }
 
     fn watched_set_surface(tokens: &[OwnedLexToken]) -> Option<String> {
-        let start = tokens.iter().enumerate().find_map(|(index, token)| {
-            (matches!(token.parser_text(), "any" | "either")
-                && tokens
-                    .get(index + 1)
-                    .is_some_and(|token| token.is_word("of"))
-                && tokens
-                    .get(index + 2)
-                    .is_some_and(|token| token.is_word("those")))
-            .then_some(index)
+        let (start, _, _) = crate::grammar::primitives::find_prefix(tokens, || {
+            (
+                alt((
+                    crate::grammar::primitives::kw("any"),
+                    crate::grammar::primitives::kw("either"),
+                )),
+                crate::grammar::primitives::phrase(&["of", "those"]),
+            )
+                .void()
         })?;
-        let end = tokens[start..]
-            .iter()
-            .position(|token| token.is_word("deals"))
-            .map(|offset| start + offset)?;
+        let (relative_end, _, _) =
+            crate::grammar::primitives::find_prefix(&tokens[start..], || {
+                crate::grammar::primitives::kw("deals").void()
+            })?;
+        let end = start + relative_end;
         (end > start)
             .then(|| render_token_slice(&tokens[start..end]).trim().to_string())
             .filter(|surface| !surface.is_empty())

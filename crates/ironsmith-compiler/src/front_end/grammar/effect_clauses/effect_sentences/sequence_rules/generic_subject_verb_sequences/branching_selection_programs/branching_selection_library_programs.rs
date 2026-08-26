@@ -132,14 +132,8 @@ pub fn parse_look_at_top_optional_battlefield_then_conditional_remainder(
     // modifiers such as Turntimber Symbiosis also follow an optional
     // looked-card move, and used to be rewritten into an invented
     // "put the rest into your hand" branch.
-    let has_remainder_to_hand = conditional_tokens.windows(6).any(|tokens| {
-        tokens[0].is_word("put")
-            && tokens[1].is_word("the")
-            && tokens[2].is_word("rest")
-            && tokens[3].is_word("into")
-            && tokens[4].is_word("your")
-            && tokens[5].is_word("hand")
-    });
+    let has_remainder_to_hand =
+        crate::grammar::effects::parse_remainder_to_hand_presence(&conditional_tokens);
     if !has_remainder_to_hand {
         return Ok(None);
     }

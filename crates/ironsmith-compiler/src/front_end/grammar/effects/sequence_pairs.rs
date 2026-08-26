@@ -11,6 +11,9 @@ pub use copy::*;
 #[path = "sequence_pairs/library.rs"]
 mod library;
 pub use library::*;
+#[path = "sequence_pairs/library_remainders.rs"]
+mod library_remainders;
+pub use library_remainders::*;
 #[path = "sequence_pairs/misc.rs"]
 mod misc;
 pub use misc::*;

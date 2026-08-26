@@ -51,9 +51,8 @@ pub fn parse_effect_sentence_lexed(
     // The unless parser recurses only on the proven prefix, so this route is
     // terminating and leaves unsupported counter-specific forms to their
     // dedicated grammar.
-    let contains_quantified_opponent = tokens
-        .windows(2)
-        .any(|pair| pair[0].is_word("each") && pair[1].is_word("opponent"));
+    let contains_quantified_opponent =
+        effect_grammar::for_each_shapes::parse_quantified_opponent_presence(tokens);
     if crate::lexer::split_lexed_sentences(tokens).len() == 1
         && !contains_quantified_opponent
         && !tokens.first().is_some_and(|token| token.is_word("if"))

@@ -279,40 +279,12 @@ fn authored_named_source_surface_after(
     source: &[OwnedLexToken],
     action_word: &str,
 ) -> Option<crate::target::SourceReferenceSurface> {
-    let mut surfaces = source
-        .iter()
-        .enumerate()
-        .filter(|(_, token)| token.is_word(action_word))
-        .filter_map(|(action_index, _)| {
-            let start = action_index + 1;
-            let end = source[start..]
-                .iter()
-                .position(|token| {
-                    matches!(token.kind, TokenKind::Comma | TokenKind::Period)
-                        || token.is_word("then")
-                })
-                .map_or(source.len(), |offset| start + offset);
-            let candidate = source.get(start..end)?;
-            if let Some(surface) =
-                crate::util::authored_named_source_reference_surface(context, candidate)
-            {
-                return Some(surface);
-            }
-            crate::lexer::is_authored_proper_name_phrase(candidate).then(|| {
-                let text = render_token_slice(candidate).trim().to_string();
-                if token_word_refs(candidate).len() == 1 {
-                    crate::target::SourceReferenceSurface::ShortName(text)
-                } else {
-                    crate::target::SourceReferenceSurface::FullName(text)
-                }
-            })
-        })
-        .collect::<Vec<_>>();
-    surfaces.dedup();
-    let [surface] = surfaces.as_slice() else {
-        return None;
-    };
-    Some(surface.clone())
+    crate::grammar::source_surface_shapes::parse_unique_named_operand_after(
+        Some(context),
+        source,
+        action_word,
+    )
+    .map(|shape| shape.surface)
 }
 
 fn authored_source_surface_after(
@@ -320,51 +292,12 @@ fn authored_source_surface_after(
     source: &[OwnedLexToken],
     action_word: &str,
 ) -> Option<crate::target::SourceReferenceSurface> {
-    let mut surfaces = source
-        .iter()
-        .enumerate()
-        .filter(|(_, token)| token.is_word(action_word))
-        .filter_map(|(action_index, _)| {
-            let start = action_index + 1;
-            let end = source[start..]
-                .iter()
-                .position(|token| {
-                    matches!(token.kind, TokenKind::Comma | TokenKind::Period)
-                        || token.is_word("then")
-                })
-                .map_or(source.len(), |offset| start + offset);
-            let candidate = source.get(start..end)?;
-            let words = token_word_refs(candidate);
-            let authored_pronoun = (candidate.len() == 1
-                && matches!(
-                    candidate[0].slice.to_ascii_lowercase().as_str(),
-                    "it" | "him" | "her"
-                ))
-            .then(|| {
-                crate::target::SourceReferenceSurface::ThisPermanentType(candidate[0].slice.clone())
-            });
-            authored_pronoun
-                .or_else(|| crate::util::this_source_surface_for_words(&words))
-                .or_else(|| {
-                    crate::util::authored_named_source_reference_surface(context, candidate)
-                })
-                .or_else(|| {
-                    crate::lexer::is_authored_proper_name_phrase(candidate).then(|| {
-                        let text = render_token_slice(candidate).trim().to_string();
-                        if words.len() == 1 {
-                            crate::target::SourceReferenceSurface::ShortName(text)
-                        } else {
-                            crate::target::SourceReferenceSurface::FullName(text)
-                        }
-                    })
-                })
-        })
-        .collect::<Vec<_>>();
-    surfaces.dedup();
-    let [surface] = surfaces.as_slice() else {
-        return None;
-    };
-    Some(surface.clone())
+    crate::grammar::source_surface_shapes::parse_unique_source_operand_after(
+        context,
+        source,
+        action_word,
+    )
+    .map(|shape| shape.surface)
 }
 
 fn plain_source_target(target: &crate::cards::builders::TargetAst) -> bool {
@@ -607,10 +540,7 @@ fn preserve_named_source_chosen_complement_surface(
     source: &[OwnedLexToken],
     effects: &mut [crate::model::ast::EffectAst],
 ) {
-    let words = token_word_refs(source);
-    if !crate::word_primitives::sequence_occurs(&words, &["creatures", "other", "than"])
-        || !crate::word_primitives::sequence_occurs(&words, &["and", "the", "chosen", "creature"])
-    {
+    if !crate::grammar::source_surface_shapes::parse_chosen_complement_surface(source) {
         return;
     }
     let Some(surface) = crate::util::authored_named_source_reference_surface(context, source)
@@ -632,7 +562,8 @@ fn preserve_named_source_chosen_complement_surface(
         let [chosen_exclusion] = filter.tagged_constraints.as_slice() else {
             return None;
         };
-        (filter.card_types.as_slice() == [crate::types::CardType::Creature]
+        (filter.card_types.len() == 1
+            && filter.card_types.first() == Some(&crate::types::CardType::Creature)
             && filter.other
             && matches!(
                 filter.source_surface,
@@ -698,14 +629,11 @@ fn preserve_split_participant_order_surface(
         }
     }
 
-    let full_words = token_word_refs(full_tokens);
-    let trigger_words = token_word_refs(trigger_tokens);
-    let effect_words = token_word_refs(effect_tokens);
-    let authored_order = crate::word_primitives::sequence_occurs(
-        &full_words,
-        &["starting", "with", "you", "each", "player"],
-    ) || (trigger_words.ends_with(&["starting", "with", "you"])
-        && effect_words.starts_with(&["each", "player"]));
+    let authored_order = crate::grammar::line_families::parse_starting_with_controller_boundary(
+        full_tokens,
+        trigger_tokens,
+        effect_tokens,
+    );
     if !authored_order || !first_effect_is_each_player_loop(effects) {
         return;
     }

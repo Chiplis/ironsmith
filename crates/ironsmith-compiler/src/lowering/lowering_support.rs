@@ -4070,25 +4070,23 @@ pub(crate) fn lower_compiler_static_ability_core(
             only_if_not_exerted_this_turn,
             linked_trigger,
             display,
-        } => {
-            return Ok(StaticAbility {
-                id,
-                label,
-                payload: crate::static_abilities::StaticAbilityPayload::ExertAttack {
-                    only_if_not_exerted_this_turn,
-                    linked_trigger: linked_trigger
-                        .map(lower_compiler_triggered_ability_core)
-                        .transpose()?,
-                    display,
-                },
-            });
-        }
+        } => Ok(StaticAbility {
+            id,
+            label,
+            payload: crate::static_abilities::StaticAbilityPayload::ExertAttack {
+                only_if_not_exerted_this_turn,
+                linked_trigger: linked_trigger
+                    .map(lower_compiler_triggered_ability_core)
+                    .transpose()?,
+                display,
+            },
+        }),
         crate::model::CompilerStaticAbilityPayloadCore::EnterAsCopyAsEnters { spec, display } => {
             let mut added_abilities = Vec::with_capacity(spec.added_abilities.len());
             for ability in spec.added_abilities {
                 added_abilities.push(lower_compiler_ability_core(ability)?);
             }
-            return Ok(StaticAbility {
+            Ok(StaticAbility {
                 id,
                 label,
                 payload: crate::static_abilities::StaticAbilityPayload::EnterAsCopyAsEnters {
@@ -4112,59 +4110,41 @@ pub(crate) fn lower_compiler_static_ability_core(
                     },
                     display,
                 },
-            });
+            })
         }
-        crate::model::CompilerStaticAbilityPayloadCore::Ward(cost) => {
-            return Ok(StaticAbility {
-                id,
-                label,
-                payload: crate::static_abilities::StaticAbilityPayload::Ward(
-                    crate::lowering::cost_materialization::materialize_compiler_core_total_cost(
-                        &cost,
-                    )?,
-                ),
-            });
-        }
-        crate::model::CompilerStaticAbilityPayloadCore::Morph(cost) => {
-            return Ok(StaticAbility {
-                id,
-                label,
-                payload: crate::static_abilities::StaticAbilityPayload::Morph(
-                    crate::lowering::cost_materialization::materialize_compiler_core_total_cost(
-                        &cost,
-                    )?,
-                ),
-            });
-        }
-        crate::model::CompilerStaticAbilityPayloadCore::Disguise(cost) => {
-            return Ok(StaticAbility {
-                id,
-                label,
-                payload: crate::static_abilities::StaticAbilityPayload::Disguise(
-                    crate::lowering::cost_materialization::materialize_compiler_core_total_cost(
-                        &cost,
-                    )?,
-                ),
-            });
-        }
-        crate::model::CompilerStaticAbilityPayloadCore::Megamorph(cost) => {
-            return Ok(StaticAbility {
-                id,
-                label,
-                payload: crate::static_abilities::StaticAbilityPayload::Megamorph(
-                    crate::lowering::cost_materialization::materialize_compiler_core_total_cost(
-                        &cost,
-                    )?,
-                ),
-            });
-        }
-        payload => {
-            return crate::model::CompilerStaticAbilityCore { id, label, payload }.try_map(
-                |trigger| Ok(compile_trigger_spec(trigger)),
-                lower_compiler_child_effect,
-                lower_compiler_cost_component,
-            );
-        }
+        crate::model::CompilerStaticAbilityPayloadCore::Ward(cost) => Ok(StaticAbility {
+            id,
+            label,
+            payload: crate::static_abilities::StaticAbilityPayload::Ward(
+                crate::lowering::cost_materialization::materialize_compiler_core_total_cost(&cost)?,
+            ),
+        }),
+        crate::model::CompilerStaticAbilityPayloadCore::Morph(cost) => Ok(StaticAbility {
+            id,
+            label,
+            payload: crate::static_abilities::StaticAbilityPayload::Morph(
+                crate::lowering::cost_materialization::materialize_compiler_core_total_cost(&cost)?,
+            ),
+        }),
+        crate::model::CompilerStaticAbilityPayloadCore::Disguise(cost) => Ok(StaticAbility {
+            id,
+            label,
+            payload: crate::static_abilities::StaticAbilityPayload::Disguise(
+                crate::lowering::cost_materialization::materialize_compiler_core_total_cost(&cost)?,
+            ),
+        }),
+        crate::model::CompilerStaticAbilityPayloadCore::Megamorph(cost) => Ok(StaticAbility {
+            id,
+            label,
+            payload: crate::static_abilities::StaticAbilityPayload::Megamorph(
+                crate::lowering::cost_materialization::materialize_compiler_core_total_cost(&cost)?,
+            ),
+        }),
+        payload => crate::model::CompilerStaticAbilityCore { id, label, payload }.try_map(
+            |trigger| Ok(compile_trigger_spec(trigger)),
+            lower_compiler_child_effect,
+            lower_compiler_cost_component,
+        ),
     }
 }
 

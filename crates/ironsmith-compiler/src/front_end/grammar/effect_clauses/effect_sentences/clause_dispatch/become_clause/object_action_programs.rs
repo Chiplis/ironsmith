@@ -1,4 +1,5 @@
 use super::*;
+use winnow::Parser;
 
 pub fn parse_become_clause(
     subject_tokens: &[OwnedLexToken],
@@ -217,7 +218,11 @@ pub fn parse_become_clause(
         }
         become_grammar::BecomeCopySourceShape::Source(source_tokens) => {
             let mut source = parse_target_phrase(source_tokens)?;
-            if !crate::lexer::parser_token_word_refs(source_tokens).contains(&"target") {
+            if crate::grammar::primitives::find_prefix(source_tokens, || {
+                crate::grammar::primitives::kw("target").void()
+            })
+            .is_none()
+            {
                 fn clear_explicit_target_span(target: &mut TargetAst) {
                     match target {
                         TargetAst::Object(_, explicit_target_span, _) => {

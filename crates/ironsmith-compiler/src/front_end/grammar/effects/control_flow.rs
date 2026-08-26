@@ -1,4 +1,7 @@
+use winnow::Parser;
+
 use crate::diagnostics::TextSpan;
+use crate::grammar::primitives;
 use crate::grammar::structure::{
     parse_if_result_predicate, parse_predicate_with_grammar_entrypoint_lexed,
     split_trailing_if_clause_lexed,
@@ -463,9 +466,10 @@ fn is_face_down_return_if_then_turn_procedure(tokens: &[OwnedLexToken]) -> bool 
         || !return_tokens
             .iter()
             .any(|token| token.is_word("battlefield"))
-        || !return_tokens
-            .windows(2)
-            .any(|window| window[0].is_word("face") && window[1].is_word("down"))
+        || primitives::find_prefix(return_tokens, || {
+            primitives::phrase(&["face", "down"]).void()
+        })
+        .is_none()
     {
         return false;
     }
@@ -478,6 +482,14 @@ fn is_face_down_return_if_then_turn_procedure(tokens: &[OwnedLexToken]) -> bool 
         return false;
     }
     let followup = trim_lexed_commas(&condition_and_followup[comma_index + 1..]);
+    let followup = if followup
+        .last()
+        .is_some_and(|token| token.kind == TokenKind::Period)
+    {
+        &followup[..followup.len() - 1]
+    } else {
+        followup
+    };
     followup.len() == 5
         && followup[0].is_word("then")
         && followup[1].is_word("turn")

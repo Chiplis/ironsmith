@@ -4284,13 +4284,12 @@ pub(super) fn describe_coordinated_sequence(
     {
         return Some(compact);
     }
-    if let [first, second] = sequence.effects.as_slice() {
-        if let Some(draw) = first.downcast_ref::<crate::effects::DrawCardsEffect>()
-            && let Some(lose) = second.downcast_ref::<crate::effects::LoseLifeEffect>()
-            && let Some(compact) = describe_draw_then_lose_life(draw, lose)
-        {
-            return Some(compact);
-        }
+    if let [first, second] = sequence.effects.as_slice()
+        && let Some(draw) = first.downcast_ref::<crate::effects::DrawCardsEffect>()
+        && let Some(lose) = second.downcast_ref::<crate::effects::LoseLifeEffect>()
+        && let Some(compact) = describe_draw_then_lose_life(draw, lose)
+    {
+        return Some(compact);
     }
     if let Some(compact) =
         describe_coordinated_put_counters_then_grant_same_filter(&sequence.effects)

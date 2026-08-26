@@ -546,6 +546,7 @@ fn tracked_rs_files(repo_root: &Path, root: &str) -> Vec<PathBuf> {
             !path.contains("/tests/")
                 && !path.ends_with("/tests.rs")
                 && !path.ends_with("_tests.rs")
+                && !path.contains("_tests_")
         })
         .map(|path| repo_root.join(path))
         .filter(|path| path.is_file())

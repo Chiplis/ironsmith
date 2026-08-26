@@ -95,6 +95,22 @@ pub fn parse_exile_would_die_tokens(tokens: &[OwnedLexToken]) -> Option<ExileWou
     .ok()
 }
 
+pub fn parse_you_controlled_source_filter_tokens(tokens: &[OwnedLexToken]) -> bool {
+    primitives::parse_all(
+        tokens,
+        (
+            opt(primitives::kw("a")),
+            primitives::kw("source"),
+            primitives::kw("you"),
+            alt((primitives::kw("control"), primitives::kw("controlled"))),
+            primitives::sentence_end(),
+        )
+            .void(),
+        "source controlled by you",
+    )
+    .is_ok()
+}
+
 fn parse_exile_to_graveyard_replacement_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<ExileToGraveyardReplacementSpec<'a>> {

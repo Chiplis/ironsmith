@@ -14,7 +14,7 @@ pub(super) fn parse_participant_creature_type_choice_program(
     let and_idx = crate::slice_primitives::select_position(tokens, |token| token.is_word("and"));
     let choice_end = and_idx.unwrap_or(tokens.len());
     let choice_tokens = crate::util::trim_edge_punctuation_tokens(&tokens[..choice_end]);
-    let choice_words = crate::lexer::token_word_refs(&choice_tokens);
+    let choice_words = crate::lexer::token_word_refs(choice_tokens);
     let Some(parsed) = crate::grammar::choices::parse_choice_creature_type_phrase_words(
         &choice_words,
     )
@@ -42,7 +42,7 @@ pub(super) fn parse_participant_creature_type_choice_program(
         return Ok(None);
     }
     let tail = if chooser == PlayerAst::That {
-        prepend_that_player_subject(&tail)
+        prepend_that_player_subject(tail)
     } else {
         tail.to_vec()
     };

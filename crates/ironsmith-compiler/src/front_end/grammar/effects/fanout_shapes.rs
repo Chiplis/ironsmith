@@ -7,6 +7,10 @@ use crate::effect::{EventValueSpec, Value};
 use crate::grammar::{primitives, values};
 use crate::lexer::{LexStream, LexedClause, OwnedLexToken};
 
+#[path = "fanout_shapes/back_references.rs"]
+mod back_references;
+pub use back_references::*;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReferenceSpanShape {
     pub start: usize,

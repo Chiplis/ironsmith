@@ -183,18 +183,23 @@ pub fn parse_exile_then_return_same_object_sentence(
         return Ok(None);
     }
     let source_exiled_tag = TagKey::from(crate::tag::SOURCE_EXILED_TAG);
-    let return_words = crate::lexer::token_word_refs(shape.return_tokens);
-    let return_reference_surface = match return_words.as_slice() {
-        ["return", "it", ..] => Some(ironsmith_core::SearchResultReferenceSurface::It),
-        ["return", "that", "card", ..] => {
-            Some(ironsmith_core::SearchResultReferenceSurface::ThatCard)
-        }
-        ["return", "them", ..] => Some(ironsmith_core::SearchResultReferenceSurface::Them),
-        ["return", "those", "cards", ..] => {
-            Some(ironsmith_core::SearchResultReferenceSurface::ThoseCards)
-        }
-        _ => None,
-    };
+    let return_reference_surface =
+        replacement_grammar::parse_exile_return_reference_shape(shape.return_tokens).map(
+            |surface| match surface {
+                replacement_grammar::ExileReturnReferenceShape::It => {
+                    ironsmith_core::SearchResultReferenceSurface::It
+                }
+                replacement_grammar::ExileReturnReferenceShape::ThatCard => {
+                    ironsmith_core::SearchResultReferenceSurface::ThatCard
+                }
+                replacement_grammar::ExileReturnReferenceShape::Them => {
+                    ironsmith_core::SearchResultReferenceSurface::Them
+                }
+                replacement_grammar::ExileReturnReferenceShape::ThoseCards => {
+                    ironsmith_core::SearchResultReferenceSurface::ThoseCards
+                }
+            },
+        );
     for effect in &mut first_effects {
         if matches!(
             effect,

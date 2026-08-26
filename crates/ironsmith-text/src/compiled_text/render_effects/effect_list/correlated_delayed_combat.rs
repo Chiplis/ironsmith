@@ -229,7 +229,7 @@ mod tests {
         )
         .card_types(vec![CardType::Enchantment])
         .subtypes(vec![Subtype::Aura])
-        .parse_text(&format!("Enchant creature\n{LINE}"))
+        .parse_text(format!("Enchant creature\n{LINE}"))
         .expect("correlated delayed combat program should compile");
         let triggered = definition
             .abilities
@@ -250,7 +250,7 @@ mod tests {
         )
         .card_types(vec![CardType::Enchantment])
         .subtypes(vec![Subtype::Aura])
-        .parse_text(&format!("Enchant creature\n{LINE}"))
+        .parse_text(format!("Enchant creature\n{LINE}"))
         .expect("correlated delayed combat program should compile");
         assert_eq!(
             crate::compiled_text::compiled_text_lines(&definition).join("\n"),

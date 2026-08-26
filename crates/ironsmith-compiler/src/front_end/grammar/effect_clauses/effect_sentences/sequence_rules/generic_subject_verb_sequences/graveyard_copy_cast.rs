@@ -265,7 +265,9 @@ fn parse_graveyard_exile_then_copy_comma_then_cast(
         return Ok(None);
     };
     let copy_tokens = crate::util::trim_commas(&second.lowered()[..then_idx]);
-    if crate::lexer::token_word_refs(&copy_tokens).as_slice() != ["copy", "it"] {
+    if crate::grammar::effects::parse_copy_card_reference_shape(&copy_tokens)
+        != Some(crate::grammar::effects::CopyCardReferenceShape::It)
+    {
         return Ok(None);
     }
     let cast_tokens = crate::util::trim_commas(&second.lowered()[then_idx + 1..]);
@@ -409,12 +411,9 @@ pub fn parse_graveyard_exile_then_copy_then_may_cast_copy(
     let [copy_effect] = copy_effects.as_slice() else {
         return Ok(None);
     };
-    let copy_words = crate::lexer::token_word_refs(second.lowered());
-    let source_copy_reference = is_exact_single_source_copy(copy_effect)
-        && matches!(
-            copy_words.as_slice(),
-            ["copy", "it"] | ["copy", "that"] | ["copy", "that", "card"]
-        );
+    let copy_reference = crate::grammar::effects::parse_copy_card_reference_shape(second.lowered());
+    let source_copy_reference =
+        is_exact_single_source_copy(copy_effect) && copy_reference.is_some();
     let exiled_tag = if let Some(tag) = exact_tagged_graveyard_exile_tag(exile_effect) {
         tag
     } else if is_exact_graveyard_exile(exile_effect) {
@@ -460,11 +459,13 @@ pub fn parse_graveyard_exile_then_copy_then_may_cast_copy(
         return Ok(None);
     }
     cast.tag = exiled_tag;
-    cast.copy_instruction_surface = Some(if copy_words.as_slice() == ["copy", "that", "card"] {
-        ironsmith_core::effect::CopyInstructionSurface::SeparateThatCard
-    } else {
-        ironsmith_core::effect::CopyInstructionSurface::SeparateIt
-    });
+    cast.copy_instruction_surface = Some(
+        if copy_reference == Some(crate::grammar::effects::CopyCardReferenceShape::ThatCard) {
+            ironsmith_core::effect::CopyInstructionSurface::SeparateThatCard
+        } else {
+            ironsmith_core::effect::CopyInstructionSurface::SeparateIt
+        },
+    );
 
     Ok(Some(vec![
         exile_effect.clone(),

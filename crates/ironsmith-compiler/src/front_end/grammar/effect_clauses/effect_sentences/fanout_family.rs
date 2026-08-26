@@ -726,49 +726,30 @@ fn parse_damage_part(
     player_context: Option<PlayerFilter>,
 ) -> Result<Option<CompoundDamagePart>, CardTextError> {
     let reference_tokens = trim_edge_punctuation(tokens);
-    let reference_words = non_article_token_word_refs(&reference_tokens);
-    if crate::word_primitives::parse_sequence_complete(&reference_words, &["itself"]) {
+    if let Some(reference) = fanout_grammar::parse_damage_back_reference_shape(&reference_tokens) {
+        let target = match reference {
+            fanout_grammar::DamageBackReferenceShape::Itself => {
+                TargetAst::Source(span_from_tokens(&reference_tokens))
+            }
+            fanout_grammar::DamageBackReferenceShape::ThatPlayerOrPlaneswalker => {
+                TargetAst::PlayerOrPlaneswalker(
+                    PlayerFilter::TargetPlayerOrControllerOfTarget,
+                    None,
+                )
+            }
+            fanout_grammar::DamageBackReferenceShape::ThatObject => {
+                TargetAst::Tagged(TagKey::from(IT_TAG), None)
+            }
+            fanout_grammar::DamageBackReferenceShape::ThatObjectController => TargetAst::Player(
+                PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged(IT_TAG)),
+                None,
+            ),
+        };
         // In a repeated damage head (`... deals N damage to X and M damage
         // to itself`), `itself` denotes the same explicit damage source.  It
         // is not a target-selection phrase, so preserve it before the generic
         // target grammar rejects the otherwise complete paired fanout.
-        return Ok(Some(CompoundDamagePart::Target(TargetAst::Source(
-            span_from_tokens(&reference_tokens),
-        ))));
-    }
-    if crate::word_primitives::parse_sequence_complete(
-        &reference_words,
-        &["that", "player", "or", "planeswalker"],
-    ) {
-        return Ok(Some(CompoundDamagePart::Target(
-            TargetAst::PlayerOrPlaneswalker(PlayerFilter::TargetPlayerOrControllerOfTarget, None),
-        )));
-    }
-    if crate::word_primitives::parse_any_sequence_complete(
-        &reference_words,
-        &[
-            &["that", "creature"],
-            &["that", "planeswalker"],
-            &["that", "permanent"],
-        ],
-    ) {
-        return Ok(Some(CompoundDamagePart::Target(TargetAst::Tagged(
-            TagKey::from(IT_TAG),
-            None,
-        ))));
-    }
-    if reference_words.len() == 3
-        && reference_words[0] == "that"
-        && reference_words[2] == "controller"
-        && (crate::util::is_demonstrative_object_head(reference_words[1])
-            || reference_words[1]
-                .strip_suffix('s')
-                .is_some_and(crate::util::is_demonstrative_object_head))
-    {
-        return Ok(Some(CompoundDamagePart::Target(TargetAst::Player(
-            PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged(IT_TAG)),
-            None,
-        ))));
+        return Ok(Some(CompoundDamagePart::Target(target)));
     }
     let Some(shape) = fanout_grammar::parse_damage_part_shape(tokens, false) else {
         return Ok(None);

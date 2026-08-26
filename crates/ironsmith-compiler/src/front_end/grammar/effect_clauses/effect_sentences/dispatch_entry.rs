@@ -3892,10 +3892,8 @@ fn parse_created_token_counter_kind_distribution_followup(
     else {
         return Ok(None);
     };
-    let target_words = crate::lexer::parser_token_word_refs(shape.target_tokens);
-    if !matches!(
-        target_words.as_slice(),
-        ["either", "of", "those", "tokens"] | ["one", "of", "those", "tokens"]
+    if !effect_grammar::counter_marker_shapes::parse_created_token_distribution_target(
+        shape.target_tokens,
     ) {
         return Ok(None);
     }
@@ -3991,7 +3989,7 @@ fn parse_quoted_token_rule_then_linked_counter_followup(
         return Ok(None);
     }
     let trailing = &tokens[closing_quote + 1..];
-    let trailing_words = crate::lexer::parser_token_word_refs(&trailing);
+    let trailing_words = crate::lexer::parser_token_word_refs(trailing);
     if trailing_words.first() != Some(&"put") {
         return Ok(None);
     }

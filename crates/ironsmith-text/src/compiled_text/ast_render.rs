@@ -18526,10 +18526,9 @@ fn removed_counter_type_in_effect_scope(
         for member in &sequence.effects {
             if let Some(next) =
                 removed_counter_type_in_effect_scope(member, effect_id, matching_scope)
+                && counter_type.replace(next).is_some()
             {
-                if counter_type.replace(next).is_some() {
-                    return None;
-                }
+                return None;
             }
         }
         return counter_type;

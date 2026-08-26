@@ -349,21 +349,15 @@ pub(super) fn preserve_triggered_effect_surfaces(
     else {
         return parsed;
     };
-    let full_words = crate::lexer::token_word_refs(full_parse_tokens);
-    let explicit_participant_order = crate::word_primitives::sequence_occurs(
-        &full_words,
-        &["starting", "with", "you", "each", "player"],
-    ) || {
-        // The migrated document route owns the comma after `starting with
-        // you` as part of the trigger head.  Its effect slice therefore
-        // begins at `each player`, and neither slice alone contains the full
-        // participant-order phrase.  Prove the same typed boundary using the
-        // two adjacent parser slices instead of falling back to source text.
-        let trigger_words = crate::lexer::token_word_refs(trigger_parse_tokens);
-        let effect_words = crate::lexer::token_word_refs(effect_parse_tokens);
-        trigger_words.ends_with(&["starting", "with", "you"])
-            && effect_words.starts_with(&["each", "player"])
-    };
+    // The migrated document route may own the comma after `starting with you`
+    // as part of the trigger head, so the grammar consumes the two adjacent
+    // parser slices as one participant-order boundary.
+    let explicit_participant_order =
+        crate::grammar::line_families::parse_starting_with_controller_boundary(
+            full_parse_tokens,
+            trigger_parse_tokens,
+            effect_parse_tokens,
+        );
     if explicit_participant_order
         && let Some(EffectAst::SourceSentence {
             starting_with_controller,

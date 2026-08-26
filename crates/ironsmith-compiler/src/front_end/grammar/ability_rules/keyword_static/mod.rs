@@ -2968,13 +2968,11 @@ fn parse_counters_remain_across_zone_changes_line(
             } else {
                 (parse_zone_word(words[idx])?, 1)
             };
-        if excluded_destinations
-            .iter()
-            .any(|destination| *destination == zone)
-        {
+        let previous_destination_count = excluded_destinations.len();
+        crate::slice_primitives::push_unique(&mut excluded_destinations, zone);
+        if excluded_destinations.len() == previous_destination_count {
             return None;
         }
-        excluded_destinations.push(zone);
         idx += consumed;
     }
     if excluded_destinations.is_empty() {

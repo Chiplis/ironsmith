@@ -107,9 +107,16 @@ pub fn exact_target_graveyard_any_type_may_cast_bundle(
     let TargetAst::Object(filter, ..) = &target else {
         return None;
     };
+    let mut excludes_land = false;
+    for card_type in &filter.excluded_card_types {
+        if *card_type == CardType::Land {
+            excludes_land = true;
+            break;
+        }
+    }
     if filter.zone != Some(Zone::Graveyard)
         || filter.owner != Some(PlayerFilter::IteratedPlayer)
-        || !filter.excluded_card_types.contains(&CardType::Land)
+        || !excludes_land
     {
         return None;
     }

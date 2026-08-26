@@ -33,6 +33,30 @@ pub struct ExileReturnSameShape<'a> {
     pub delayed_until_end_of_combat: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExileReturnReferenceShape {
+    It,
+    ThatCard,
+    Them,
+    ThoseCards,
+}
+
+pub fn parse_exile_return_reference_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<ExileReturnReferenceShape> {
+    let (_, tail) = primitives::parse_prefix(tokens, primitives::kw("return"))?;
+    primitives::parse_prefix(
+        tail,
+        alt((
+            primitives::kw("it").value(ExileReturnReferenceShape::It),
+            primitives::phrase(&["that", "card"]).value(ExileReturnReferenceShape::ThatCard),
+            primitives::kw("them").value(ExileReturnReferenceShape::Them),
+            primitives::phrase(&["those", "cards"]).value(ExileReturnReferenceShape::ThoseCards),
+        )),
+    )
+    .map(|(shape, _)| shape)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExileEachTargetTypeShape<'a> {
     pub filter_tokens: Vec<&'a [OwnedLexToken]>,

@@ -3,7 +3,7 @@ use winnow::prelude::*;
 
 use crate::effect::Until;
 use crate::grammar::{leaf, primitives};
-use crate::lexer::{OwnedLexToken, TokenWordView, trim_lexed_commas};
+use crate::lexer::{OwnedLexToken, TokenKind, TokenWordView, trim_lexed_commas};
 
 use super::durations::parse_simple_ability_duration_shape;
 
@@ -12,6 +12,18 @@ pub enum GrantedAbilitySurface {
     CantBeBlockedExceptByHaste,
     HexproofFrom { filter_start_token: usize },
     Other,
+}
+
+pub fn parse_top_level_activated_ability_surface(tokens: &[OwnedLexToken]) -> bool {
+    let Some((colon, _, _)) =
+        primitives::find_prefix(tokens, || primitives::token_kind(TokenKind::Colon).void())
+    else {
+        return false;
+    };
+    primitives::find_prefix(tokens, || {
+        primitives::token_kind(TokenKind::Apostrophe).void()
+    })
+    .is_none_or(|(inner_quote, _, _)| colon < inner_quote)
 }
 
 #[derive(Clone, Debug)]

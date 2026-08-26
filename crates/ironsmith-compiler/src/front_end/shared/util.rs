@@ -192,37 +192,10 @@ pub fn reconcile_unique_named_source_exile_surface(
     authored_tokens: &[OwnedLexToken],
 ) {
     fn authored_surface(tokens: &[OwnedLexToken]) -> Option<SourceReferenceSurface> {
-        let mut surfaces = tokens
-            .iter()
-            .enumerate()
-            .filter(|(_, token)| token.is_word("exile"))
-            .filter_map(|(exile_index, _)| {
-                let start = exile_index + 1;
-                let end = tokens[start..]
-                    .iter()
-                    .position(|token| {
-                        matches!(
-                            token.kind,
-                            TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon
-                        ) || token.is_word("then")
-                    })
-                    .map_or(tokens.len(), |offset| start + offset);
-                let candidate = tokens.get(start..end)?;
-                super::lexer::is_authored_proper_name_phrase(candidate).then(|| {
-                    let text = render_token_slice(candidate).trim().to_string();
-                    if super::lexer::token_word_refs(candidate).len() == 1 {
-                        SourceReferenceSurface::ShortName(text)
-                    } else {
-                        SourceReferenceSurface::FullName(text)
-                    }
-                })
-            })
-            .collect::<Vec<_>>();
-        surfaces.dedup();
-        let [surface] = surfaces.as_slice() else {
-            return None;
-        };
-        Some(surface.clone())
+        crate::grammar::source_surface_shapes::parse_unique_named_operand_after(
+            None, tokens, "exile",
+        )
+        .map(|shape| shape.surface)
     }
 
     fn plain_source_target(target: &TargetAst) -> bool {

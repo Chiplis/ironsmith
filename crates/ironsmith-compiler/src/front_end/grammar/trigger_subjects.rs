@@ -230,10 +230,11 @@ pub fn parse_discard_trigger_envelope(
 
 pub fn parse_source_or_another_shape(words: &[&str]) -> Option<SourceOrAnotherShape> {
     let shape = parse_source_or_filter_shape(words)?;
-    let (other_word, one_or_more) = if words
-        .get(shape.filter_word..shape.filter_word + 4)
-        .is_some_and(|words| words == ["one", "or", "more", "other"])
-    {
+    let one_or_more_other = words.get(shape.filter_word) == Some(&"one")
+        && words.get(shape.filter_word + 1) == Some(&"or")
+        && words.get(shape.filter_word + 2) == Some(&"more")
+        && words.get(shape.filter_word + 3) == Some(&"other");
+    let (other_word, one_or_more) = if one_or_more_other {
         (shape.filter_word + 3, true)
     } else {
         (shape.filter_word, false)

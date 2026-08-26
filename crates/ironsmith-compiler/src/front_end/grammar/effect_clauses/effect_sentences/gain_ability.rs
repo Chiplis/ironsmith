@@ -600,15 +600,7 @@ fn parse_granted_ability_component_for_gain(
     }
     let ability_words = crate::lexer::token_word_refs(&ability_tokens);
     let top_level_activated_ability = authored_as_quoted_ability
-        && ability_tokens
-            .iter()
-            .position(|token| token.kind == TokenKind::Colon)
-            .is_some_and(|colon| {
-                ability_tokens
-                    .iter()
-                    .position(|token| token.kind == TokenKind::Apostrophe)
-                    .is_none_or(|inner_quote| colon < inner_quote)
-            });
+        && gain_shapes::parse_top_level_activated_ability_surface(&ability_tokens);
     if crate::word_primitives::parse_any_sequence_complete(
         &ability_words,
         &[

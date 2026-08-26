@@ -1,4 +1,5 @@
 use super::*;
+use winnow::Parser;
 
 pub fn parse_sacrifice(
     tokens: &[OwnedLexToken],
@@ -140,17 +141,21 @@ pub fn parse_sacrifice(
         && !choice_count.is_single()
     {
         let choice_body = &tokens[used..];
-        let comma_then = choice_body
-            .windows(2)
-            .position(|window| window[0].is_comma() && window[1].is_word("then"));
-        let (filter_tokens, followup_tokens) = comma_then.map_or((choice_body, None), |split| {
-            (
-                crate::util::trim_edge_punctuation_tokens(&choice_body[..split]),
-                Some(crate::util::trim_edge_punctuation_tokens(
-                    &choice_body[split + 2..],
-                )),
-            )
-        });
+        let comma_then =
+            crate::grammar::primitives::split_lexed_once_on_separator(choice_body, || {
+                (
+                    crate::grammar::primitives::comma(),
+                    crate::grammar::primitives::kw("then"),
+                )
+                    .void()
+            });
+        let (filter_tokens, followup_tokens) =
+            comma_then.map_or((choice_body, None), |(filter_tokens, followup_tokens)| {
+                (
+                    crate::util::trim_edge_punctuation_tokens(filter_tokens),
+                    Some(crate::util::trim_edge_punctuation_tokens(followup_tokens)),
+                )
+            });
         if filter_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing sacrifice object after choice count (clause: '{}')",

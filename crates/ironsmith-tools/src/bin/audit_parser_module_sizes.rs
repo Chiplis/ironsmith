@@ -1742,6 +1742,68 @@ fn main() {
             path: "lowering/lower/modal_and_level_lowering.rs",
             max_lines: 2200,
         },
+        // PR-34 extractions are independently budgeted so moving code out of
+        // a legacy module cannot make it invisible to this audit.
+        Budget {
+            path: "front_end/grammar/source_surface_shapes.rs",
+            max_lines: 225,
+        },
+        Budget {
+            path: "front_end/grammar/ability_rules/keyword_static/attached_object_static_lines/type_transform.rs",
+            max_lines: 225,
+        },
+        Budget {
+            path: "front_end/grammar/effect_clauses/effect_sentences/chain_carry/surface_preservation.rs",
+            max_lines: 400,
+        },
+        Budget {
+            path: "front_end/semantic_line_parsing/lines/trigger_reconciliation.rs",
+            max_lines: 425,
+        },
+        Budget {
+            path: "front_end/semantic_line_parsing/lines/statement_grouping_tests.rs",
+            max_lines: 325,
+        },
+        Budget {
+            path: "front_end/grammar/effects/creation_shapes/reference_shapes.rs",
+            max_lines: 75,
+        },
+        Budget {
+            path: "front_end/grammar/effects/sequence_pairs/library_remainders.rs",
+            max_lines: 25,
+        },
+        Budget {
+            path: "front_end/grammar/effects/fanout_shapes/back_references.rs",
+            max_lines: 100,
+        },
+        Budget {
+            path: "front_end/grammar/effects/counter_marker_shapes/followups.rs",
+            max_lines: 125,
+        },
+        Budget {
+            path: "front_end/grammar/effects/misc_action_shapes/die.rs",
+            max_lines: 100,
+        },
+        Budget {
+            path: "front_end/grammar/effects/token_copy_control_shapes/comma_then.rs",
+            max_lines: 150,
+        },
+        Budget {
+            path: "front_end/grammar/effects/subject_verb_registry_shapes/attacking.rs",
+            max_lines: 75,
+        },
+        Budget {
+            path: "front_end/grammar/effects/subject_verb_registry_shapes/joint/entrypoints.rs",
+            max_lines: 25,
+        },
+        Budget {
+            path: "front_end/grammar/effects/divvy_shapes/helpers.rs",
+            max_lines: 100,
+        },
+        Budget {
+            path: "front_end/grammar/attached_object_static_lines/grant_shapes/grant_loss.rs",
+            max_lines: 75,
+        },
     ];
 
     let mut failures = Vec::new();

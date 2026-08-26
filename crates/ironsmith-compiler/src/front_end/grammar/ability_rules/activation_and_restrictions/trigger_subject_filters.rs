@@ -1958,7 +1958,7 @@ mod typed_trigger_subject_migration_tests {
             ),
             "{words:?}"
         );
-        assert!(!words.iter().any(|word| *word == "leaves"), "{words:?}");
+        assert!(!words.contains(&"leaves"), "{words:?}");
 
         let changed = lex_line(
             "Create a token that's a copy of that creature, except it's a Spirit in addition to its other types and another creature has \"Flying.\"",

@@ -1614,12 +1614,7 @@ pub fn parse_lose_all_abilities_and_transform_base_pt_line(
             continue;
         }
         if let Some(subtype) = parse_subtype_flexible(descriptor) {
-            if !creature_subtypes
-                .iter()
-                .any(|existing| existing == &subtype)
-            {
-                creature_subtypes.push(subtype);
-            }
+            crate::slice_primitives::push_unique(&mut creature_subtypes, subtype);
             continue;
         }
         return Err(CardTextError::ParseError(format!(
@@ -1629,12 +1624,8 @@ pub fn parse_lose_all_abilities_and_transform_base_pt_line(
         )));
     }
 
-    if !creature_subtypes.is_empty()
-        && !set_card_types
-            .iter()
-            .any(|existing| *existing == CardType::Creature)
-    {
-        set_card_types.push(CardType::Creature);
+    if !creature_subtypes.is_empty() {
+        crate::slice_primitives::push_unique(&mut set_card_types, CardType::Creature);
     }
 
     let set_name = shape

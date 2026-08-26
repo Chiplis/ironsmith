@@ -32,6 +32,10 @@ pub struct ForEachParticipantClauseShape<'a> {
     pub inner_tokens: &'a [OwnedLexToken],
 }
 
+pub fn parse_quantified_opponent_presence(tokens: &[OwnedLexToken]) -> bool {
+    primitives::find_prefix(tokens, || primitives::phrase(&["each", "opponent"]).void()).is_some()
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct RelativeControlClauseShape<'a> {
     pub controls_most: bool,
@@ -156,6 +160,17 @@ fn negated_auxiliary<'a>(input: &mut LexStream<'a>) -> winnow::error::ModalResul
             primitives::phrase(&["can", "t"]),
         ))
         .void(),
+    ))
+    .void()
+    .parse_next(input)
+}
+
+fn cant_failure_auxiliary<'a>(input: &mut LexStream<'a>) -> winnow::error::ModalResult<()> {
+    alt((
+        primitives::kw("can't").void(),
+        primitives::kw("cant").void(),
+        primitives::kw("cannot").void(),
+        primitives::phrase(&["can", "not"]).void(),
     ))
     .void()
     .parse_next(input)

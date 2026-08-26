@@ -1,10 +1,8 @@
-use winnow::ascii::{Caseless, digit1};
-use winnow::combinator::{alt, eof, preceded};
+use winnow::combinator::alt;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
-use winnow::token::{literal, take_till};
 
-use super::super::{leaf, permission_shapes, primitives, values};
+use super::super::{permission_shapes, primitives, values};
 use crate::cards::builders::{CardTextError, PlayerAst};
 use crate::effect::{EventValueSpec, Value};
 use crate::lexer::{LexStream, OwnedLexToken, TokenWordView, trim_lexed_commas};
@@ -14,6 +12,9 @@ use ironsmith_core::ValueSurfaceHint;
 #[path = "misc_action_shapes/payment_and_untap.rs"]
 mod payment_and_untap;
 pub use payment_and_untap::*;
+#[path = "misc_action_shapes/die.rs"]
+mod die;
+pub use die::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BecomePlayerSurface {
@@ -65,12 +66,6 @@ pub enum FlipTargetSurface<'a> {
 pub struct FlipActionShape<'a> {
     pub target: FlipTargetSurface<'a>,
     pub delayed_until_next_end_step: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RollDieShape {
-    pub sides: u32,
-    pub die_text: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -273,66 +268,6 @@ pub fn parse_flip_action_tokens(tokens: &[OwnedLexToken]) -> FlipActionShape<'_>
         target: FlipTargetSurface::Explicit(tokens),
         delayed_until_next_end_step: false,
     }
-}
-
-fn compact_die_size(input: &mut &str) -> WResult<u32> {
-    preceded(
-        Caseless("d"),
-        digit1.try_map(|digits: &str| digits.parse::<u32>()),
-    )
-    .parse_next(input)
-}
-
-fn suffixed_die_size(input: &mut &str) -> WResult<u32> {
-    let amount: &str = take_till(1.., '-').parse_next(input)?;
-    literal("-sided").parse_next(input)?;
-    eof.parse_next(input)?;
-    leaf::parse_number_complete(amount)
-        .map_err(|_| primitives::backtrack_err("die size", "number followed by -sided"))
-}
-
-fn parse_die_word(word: &str) -> Option<u32> {
-    compact_die_size.parse(word).ok()
-}
-
-fn is_die_noun(token: &OwnedLexToken) -> bool {
-    token.is_word("die") || token.is_word("dice")
-}
-
-pub fn parse_roll_die_tokens(tokens: &[OwnedLexToken]) -> Option<RollDieShape> {
-    let tokens = if tokens
-        .first()
-        .is_some_and(|token| token.is_word("a") || token.is_word("an"))
-    {
-        &tokens[1..]
-    } else {
-        tokens
-    };
-    let first = tokens.first()?.parser_text().to_ascii_lowercase();
-    if let Some(sides) = parse_die_word(&first) {
-        return Some(RollDieShape {
-            sides,
-            die_text: None,
-        });
-    }
-    if tokens.get(1).is_some_and(is_die_noun)
-        && let Ok(sides) = suffixed_die_size.parse(first.as_str())
-    {
-        return Some(RollDieShape {
-            sides,
-            die_text: Some(format!("{first} {}", tokens[1].parser_text())),
-        });
-    }
-    if tokens.get(1).is_some_and(|token| token.is_word("sided"))
-        && tokens.get(2).is_some_and(is_die_noun)
-    {
-        let sides = leaf::parse_number_complete(&first).ok()?;
-        return Some(RollDieShape {
-            sides,
-            die_text: Some(format!("{first}-sided {}", tokens[2].parser_text())),
-        });
-    }
-    None
 }
 
 fn player_filter_for_library_count(player: PlayerAst) -> Option<PlayerFilter> {

@@ -27,6 +27,73 @@ pub enum StatementStaticPreference {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FilterListContinuationShape;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReflexiveConditionalFollowupShape;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EndCombatNextEndStepFollowupShape;
+
+pub fn parse_reflexive_conditional_followup(
+    tokens: &[OwnedLexToken],
+) -> Option<ReflexiveConditionalFollowupShape> {
+    primitives::find_prefix(tokens, || {
+        (
+            primitives::token_kind(TokenKind::Period),
+            primitives::phrase(&["when", "you", "do", "if"]),
+        )
+            .void()
+    })?;
+    Some(ReflexiveConditionalFollowupShape)
+}
+
+pub fn parse_end_combat_next_end_step_followup(
+    tokens: &[OwnedLexToken],
+) -> Option<EndCombatNextEndStepFollowupShape> {
+    let sentences = structure::split_lexed_sentences(tokens);
+    let [action, followup] = sentences.as_slice() else {
+        return None;
+    };
+    primitives::find_prefix(action, || {
+        primitives::phrase(&["at", "end", "of", "combat"]).void()
+    })?;
+    let (_, followup_tail) = primitives::parse_prefix(
+        followup,
+        primitives::phrase(&["at", "the", "beginning", "of", "the", "next", "end", "step"]),
+    )?;
+    primitives::find_prefix(followup_tail, || primitives::kw("if").void())?;
+    primitives::find_prefix(followup_tail, || {
+        primitives::phrase(&["this", "way"]).void()
+    })?;
+    Some(EndCombatNextEndStepFollowupShape)
+}
+
+pub fn parse_starting_with_controller_boundary(
+    full_tokens: &[OwnedLexToken],
+    trigger_tokens: &[OwnedLexToken],
+    effect_tokens: &[OwnedLexToken],
+) -> bool {
+    if primitives::find_prefix(full_tokens, || {
+        primitives::phrase(&["starting", "with", "you", "each", "player"]).void()
+    })
+    .is_some()
+    {
+        return true;
+    }
+    let Some((_, _, trigger_tail)) = primitives::find_prefix(trigger_tokens, || {
+        primitives::phrase(&["starting", "with", "you"]).void()
+    }) else {
+        return false;
+    };
+    primitives::parse_all(
+        trigger_tail,
+        primitives::sentence_end(),
+        "starting-with-controller trigger suffix",
+    )
+    .is_ok()
+        && primitives::parse_prefix(effect_tokens, primitives::phrase(&["each", "player"]))
+            .is_some()
+}
+
 pub fn parse_multi_sentence_effect_head(
     tokens: &[OwnedLexToken],
 ) -> Option<MultiSentenceEffectHead> {

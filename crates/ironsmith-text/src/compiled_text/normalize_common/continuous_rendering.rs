@@ -1085,7 +1085,7 @@ pub(crate) fn describe_apply_continuous_target(
             ChooseSpec::Object(filter) | ChooseSpec::All(filter) => Some(filter),
             _ => None,
         })
-        .or_else(|| match &effect.target {
+        .or(match &effect.target {
             crate::continuous::EffectTarget::Filter(filter) => Some(filter),
             _ => None,
         });
@@ -1193,7 +1193,7 @@ pub(crate) fn describe_apply_continuous_target(
                     ChooseSpec::Object(filter) => Some(filter),
                     _ => None,
                 })
-                .or_else(|| match &effect.target {
+                .or(match &effect.target {
                     crate::continuous::EffectTarget::Filter(filter) => Some(filter),
                     _ => None,
                 })

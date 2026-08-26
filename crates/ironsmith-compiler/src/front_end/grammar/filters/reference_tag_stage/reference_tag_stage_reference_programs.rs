@@ -2207,8 +2207,7 @@ pub(in super::super) fn parse_object_filter_inner(
             filter
                 .any_of
                 .iter()
-                .filter_map(|branch| branch.zone)
-                .find(|zone| *zone != Zone::Battlefield)
+                .find_map(|branch| branch.zone.filter(|zone| *zone != Zone::Battlefield))
         });
         let shared_owner = filter
             .owner

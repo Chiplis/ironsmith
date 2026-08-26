@@ -83,6 +83,9 @@ pub struct AttachedLandAbilityResetSpec<'a> {
 #[path = "grant_shapes/land_reset.rs"]
 mod land_reset;
 pub use land_reset::parse_attached_land_ability_reset_tokens;
+#[path = "grant_shapes/grant_loss.rs"]
+mod grant_loss;
+pub use grant_loss::*;
 
 pub fn parse_attached_has_and_loses_tokens(
     tokens: &[OwnedLexToken],

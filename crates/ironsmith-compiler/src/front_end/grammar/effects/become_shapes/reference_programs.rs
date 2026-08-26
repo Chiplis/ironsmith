@@ -3,12 +3,11 @@ use super::*;
 pub fn parse_base_power_toughness_subject_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<BasePowerToughnessSubjectShape<'_>> {
-    let word_view = TokenWordView::new(tokens);
-    let words = word_view.word_refs();
-    const LEADING_CHARACTERISTIC_OF: &[&str] = &["the", "base", "power", "and", "toughness", "of"];
-    if words.starts_with(LEADING_CHARACTERISTIC_OF) {
-        let target_start = word_view.token_index_after_words(LEADING_CHARACTERISTIC_OF.len())?;
-        let target_tokens = crate::lexer::trim_lexed_commas(tokens.get(target_start..)?);
+    if let Some((_, target_tokens)) = primitives::parse_prefix(
+        tokens,
+        primitives::phrase(&["the", "base", "power", "and", "toughness", "of"]),
+    ) {
+        let target_tokens = crate::lexer::trim_lexed_commas(target_tokens);
         if !target_tokens.is_empty() {
             return Some(BasePowerToughnessSubjectShape { target_tokens });
         }

@@ -41,7 +41,10 @@ fn returns_typed_payment_possessive_and_half_life_shapes() {
 
     assert_eq!(
         parse_half_life(&["half", "your", "life", "rounded", "down"]),
-        Some(HalfLifeShape { rounded_down: true })
+        Some(HalfLifeShape {
+            rounded_down: true,
+            owner: HalfLifeOwnerShape::You,
+        })
     );
 
     assert_eq!(

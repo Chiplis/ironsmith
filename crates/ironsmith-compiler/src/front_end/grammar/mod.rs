@@ -37,6 +37,7 @@ pub mod restriction_normalization;
 pub mod semantic_lowering;
 pub mod sentence_markers;
 pub mod shared_util;
+pub mod source_surface_shapes;
 pub mod splice_keyword_lines;
 pub mod statement_grouping;
 pub mod statement_shapes;

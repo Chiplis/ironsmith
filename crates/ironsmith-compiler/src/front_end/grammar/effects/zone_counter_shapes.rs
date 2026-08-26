@@ -552,6 +552,29 @@ pub fn split_for_each_counter_target(
     (!base.is_empty() && !count.is_empty()).then_some((base, count))
 }
 
+pub fn parse_atomic_put_counter_for_each_shape(tokens: &[OwnedLexToken]) -> bool {
+    if primitives::parse_prefix(tokens, primitives::kw("put")).is_none() {
+        return false;
+    }
+    let Some((for_each, _, _)) =
+        primitives::find_prefix(tokens, || primitives::phrase(&["for", "each"]).void())
+    else {
+        return false;
+    };
+    let counter_tokens = &tokens[..for_each];
+    if primitives::find_prefix(counter_tokens, || {
+        alt((primitives::kw("counter"), primitives::kw("counters"))).void()
+    })
+    .is_none()
+        || primitives::find_prefix(counter_tokens, || primitives::kw("on").void()).is_none()
+    {
+        return false;
+    }
+    let count_words = crate::lexer::token_word_refs(&tokens[for_each..]);
+    crate::grammar::shared_util::count_shapes::parse_for_each_count_value_words(&count_words)
+        .is_some_and(|(_, used)| used == count_words.len())
+}
+
 pub fn parse_shared_counter_target_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<counter_marker_shapes::SharedCounterTargetShape<'_>> {

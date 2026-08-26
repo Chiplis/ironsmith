@@ -1190,20 +1190,9 @@ fn player_filter_for_life_reference(player: PlayerAst) -> Option<PlayerFilter> {
 pub(super) fn parse_half_life_value(tokens: &[OwnedLexToken], player: PlayerAst) -> Option<Value> {
     let clause_words = crate::lexer::token_word_refs(tokens);
     let shape = counter_grammar::parse_half_life(&clause_words)?;
-    let life_idx = clause_words.iter().position(|word| *word == "life")?;
-    if life_idx != 2
-        || !matches!(clause_words[1], "your" | "their" | "his" | "her")
-        || !matches!(
-            &clause_words[life_idx + 1..],
-            [] | ["rounded", "up"] | ["rounded", "down"]
-        )
-    {
-        return None;
-    }
-    let reference_player = if clause_words[1] == "your" {
-        PlayerAst::You
-    } else {
-        player
+    let reference_player = match shape.owner {
+        counter_grammar::HalfLifeOwnerShape::You => PlayerAst::You,
+        counter_grammar::HalfLifeOwnerShape::Contextual => player,
     };
     let player_filter = player_filter_for_life_reference(reference_player)?;
     if shape.rounded_down {

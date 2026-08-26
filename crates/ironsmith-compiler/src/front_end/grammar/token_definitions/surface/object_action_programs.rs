@@ -7,7 +7,8 @@ pub fn parse_token_definition_shape_tokens(
     let has = |word| common::word_present(&words, word);
     let all = |expected: &[&str]| common::all_words_present(&words, expected);
     let pt = token_pt(&words);
-    let named_card = names::named_card_name(tokens).or_else(|| names::leading_comma_name(tokens));
+    let named_card =
+        names::named_card_name(tokens).or_else(|| names::leading_appositive_token_name(tokens));
 
     let builtin = if has("treasure") && !has("creature") {
         Some(BuiltinTokenShape::Treasure)

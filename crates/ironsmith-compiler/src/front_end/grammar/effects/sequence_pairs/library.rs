@@ -299,7 +299,7 @@ fn looked_cloak_partition_tail(
 pub fn parse_look_cloak_partition_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LookedCloakPartitionShape> {
-    let cloak_at = tokens.iter().position(|token| token.is_word("cloak"))?;
+    let (cloak_at, _, _) = primitives::find_prefix(tokens, || primitives::kw("cloak").void())?;
     if cloak_at == 0 {
         return None;
     }

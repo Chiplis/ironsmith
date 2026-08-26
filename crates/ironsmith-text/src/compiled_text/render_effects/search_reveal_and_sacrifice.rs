@@ -1663,10 +1663,11 @@ pub(in crate::compiled_text) fn describe_choose_two_move_one_put_counters_on_oth
     let put = put_effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
     let put_text = described_counter_put_on_the_other(put)?;
     let plural_noun = simple_filter_plural_noun(target_filter)?;
-    let controller_qualifier = target_filter
-        .target_set_same_controller
-        .then_some(" controlled by the same player")
-        .unwrap_or_default();
+    let controller_qualifier = if target_filter.target_set_same_controller {
+        " controlled by the same player"
+    } else {
+        ""
+    };
     Some(format!(
         "Choose two target {plural_noun}{controller_qualifier}. Exile one of those {plural_noun} and {put_text}"
     ))

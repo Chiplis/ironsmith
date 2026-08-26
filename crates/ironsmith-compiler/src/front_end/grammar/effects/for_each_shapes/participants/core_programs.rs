@@ -17,11 +17,7 @@ pub(super) fn tapped_land_shape(tokens: &[OwnedLexToken]) -> Option<WhoClauseSha
 
 pub(super) fn negated_shape(tokens: &[OwnedLexToken]) -> Option<WhoClauseShape<'_>> {
     let (_, after_who) = primitives::parse_prefix(trim(tokens), primitives::kw("who"))?;
-    let negation_words = crate::lexer::token_word_refs(after_who);
-    let is_cant_failure = negation_words
-        .first()
-        .is_some_and(|word| matches!(*word, "can't" | "cant" | "cannot"))
-        || matches!(negation_words.as_slice(), ["can", "not", ..]);
+    let is_cant_failure = primitives::parse_prefix(after_who, cant_failure_auxiliary).is_some();
     let (_, after_negation) = primitives::parse_prefix(after_who, negated_auxiliary)?;
     let effect_tokens = if is_cant_failure {
         // `can't` refers back to the preceding per-player action; everything

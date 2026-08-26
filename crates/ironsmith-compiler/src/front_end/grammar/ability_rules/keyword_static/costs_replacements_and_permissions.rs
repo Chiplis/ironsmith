@@ -1779,15 +1779,13 @@ pub fn parse_subject_are_card_types_in_addition_to_their_other_types_line(
     };
     if fact.chosen_type {
         let filter = parse_object_filter_lexed(fact.subject_tokens, false)?;
-        if filter
-            .card_types
-            .iter()
-            .any(|card_type| *card_type == CardType::Land)
-        {
-            return Ok(Some(vec![StaticAbility::add_chosen_basic_land_type(
-                filter,
-                render_token_slice(tokens),
-            )]));
+        for card_type in &filter.card_types {
+            if *card_type == CardType::Land {
+                return Ok(Some(vec![StaticAbility::add_chosen_basic_land_type(
+                    filter,
+                    render_token_slice(tokens),
+                )]));
+            }
         }
         return Ok(Some(vec![StaticAbility::add_chosen_creature_type(
             filter,
@@ -4339,12 +4337,8 @@ pub fn parse_exile_would_die_instead_line(
                 }
             };
             let damager_words = crate::lexer::token_word_refs(&damager_filter_tokens);
-            let damager_filter = if matches!(
-                damager_words.as_slice(),
-                ["a", "source", "you", "controlled"]
-                    | ["source", "you", "controlled"]
-                    | ["a", "source", "you", "control"]
-                    | ["source", "you", "control"]
+            let damager_filter = if keyword_static_lines::parse_you_controlled_source_filter_tokens(
+                &damager_filter_tokens,
             ) {
                 ObjectFilter::default().controlled_by(PlayerFilter::You)
             } else {

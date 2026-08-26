@@ -14,13 +14,7 @@ fn comma_split_tail_starts_with_filter_list_continuation(tokens: &[OwnedLexToken
 }
 
 pub(super) fn contains_reflexive_conditional_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
-    tokens.iter().enumerate().any(|(index, token)| {
-        token.kind == TokenKind::Period
-            && tokens.get(index + 1..).is_some_and(|tail| {
-                let words = crate::lexer::parser_token_word_refs(tail);
-                words.starts_with(&["when", "you", "do", "if"])
-            })
-    })
+    line_families::parse_reflexive_conditional_followup(tokens).is_some()
 }
 
 /// A delayed action can establish the exact object consumed by a later
@@ -29,25 +23,7 @@ pub(super) fn contains_reflexive_conditional_followup_sentence(tokens: &[OwnedLe
 /// creature was destroyed this way, ...`. The later `if` comma is internal to
 /// the resolution program and must not become the outer trigger/effect split.
 fn has_end_of_combat_action_then_next_end_step_result_followup(tokens: &[OwnedLexToken]) -> bool {
-    let sentences = split_lexed_sentences(tokens);
-    let [action, followup] = sentences.as_slice() else {
-        return false;
-    };
-    let action_words = crate::lexer::parser_token_word_refs(action);
-    let followup_words = crate::lexer::parser_token_word_refs(followup);
-    crate::word_primitives::sequence_occurs(&action_words, &["at", "end", "of", "combat"])
-        && followup_words.starts_with(&[
-            "at",
-            "the",
-            "beginning",
-            "of",
-            "the",
-            "next",
-            "end",
-            "step",
-        ])
-        && crate::word_primitives::contains_word(&followup_words, "if")
-        && crate::word_primitives::sequence_occurs(&followup_words, &["this", "way"])
+    line_families::parse_end_combat_next_end_step_followup(tokens).is_some()
 }
 
 fn rewrite_count_that_number_life_total_trigger_tokens(

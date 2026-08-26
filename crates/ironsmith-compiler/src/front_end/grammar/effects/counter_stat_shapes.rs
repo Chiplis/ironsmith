@@ -165,6 +165,13 @@ pub struct CounterAdditionalPaymentShape<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HalfLifeShape {
     pub rounded_down: bool,
+    pub owner: HalfLifeOwnerShape,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HalfLifeOwnerShape {
+    You,
+    Contextual,
 }
 
 pub fn parse_prefix_at(

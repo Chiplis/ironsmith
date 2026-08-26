@@ -1,9 +1,9 @@
 use super::*;
 
-fn named_surface_for_span(
+fn authored_name_text_for_span(
     info: &LineInfo,
     span: crate::cards::builders::TextSpan,
-) -> Option<crate::target::SourceReferenceSurface> {
+) -> Option<String> {
     let original_span = crate::util::map_span_to_original(
         span,
         info.normalized.normalized.as_str(),
@@ -15,10 +15,6 @@ fn named_surface_for_span(
         .original
         .get(original_span.start..original_span.end)?
         .trim_matches(|ch: char| ch.is_whitespace() || ch == ',' || ch == '.');
-    // Some legacy target spans include the action verb (and a historical
-    // source-map can begin one byte into it). Select the authored proper name
-    // inside that grammar-proven source-target span rather than treating the
-    // action verb as part of the reference surface.
     let authored_start = authored_span
         .char_indices()
         .filter(|(index, _)| {
@@ -42,37 +38,29 @@ fn named_surface_for_span(
                 .any(|verb| verb.starts_with(parser_word.as_str())))
             .then_some(index)
         })?;
-    let authored = crate::string_primitives::split_once(&authored_span[authored_start..], " and ")
-        .map_or(&authored_span[authored_start..], |(source, _)| source)
-        .trim_matches(|ch: char| ch.is_whitespace() || ch == ',' || ch == '.');
-    let authored_tokens = crate::lexer::lex_line(authored, info.line_index).ok()?;
+    Some(
+        crate::string_primitives::split_once(&authored_span[authored_start..], " and ")
+            .map_or(&authored_span[authored_start..], |(source, _)| source)
+            .trim_matches(|ch: char| ch.is_whitespace() || ch == ',' || ch == '.')
+            .to_string(),
+    )
+}
+
+fn named_surface_for_span(
+    info: &LineInfo,
+    span: crate::cards::builders::TextSpan,
+) -> Option<crate::target::SourceReferenceSurface> {
+    // Some legacy target spans include the action verb (and a historical
+    // source-map can begin one byte into it). Select the authored proper name
+    // inside that grammar-proven source-target span rather than treating the
+    // action verb as part of the reference surface.
+    let authored = authored_name_text_for_span(info, span)?;
+    let authored_tokens = crate::lexer::lex_line(&authored, info.line_index).ok()?;
     // Source maps produced before the final comma/`then` split can retain a
     // few bytes from the following clause (for example `Jace, th`). Reapply
     // the grammar boundary to the mapped slice before accepting it as a name.
-    let name_end = authored_tokens
-        .iter()
-        .position(|token| {
-            matches!(
-                token.kind,
-                crate::lexer::TokenKind::Comma
-                    | crate::lexer::TokenKind::Period
-                    | crate::lexer::TokenKind::Semicolon
-            ) || token.is_word("then")
-        })
-        .unwrap_or(authored_tokens.len());
-    let name_tokens = authored_tokens.get(..name_end)?;
-    if !crate::lexer::is_authored_proper_name_phrase(name_tokens) {
-        return None;
-    }
-    let words = crate::lexer::parser_token_word_refs(name_tokens);
-    let authored = crate::lexer::render_token_slice(name_tokens)
-        .trim()
-        .to_string();
-    Some(if words.len() == 1 {
-        crate::target::SourceReferenceSurface::ShortName(authored)
-    } else {
-        crate::target::SourceReferenceSurface::FullName(authored)
-    })
+    crate::grammar::source_surface_shapes::parse_leading_named_surface(&authored_tokens)
+        .map(|shape| shape.surface)
 }
 
 /// Restore an authored named-source surface on source exile actions after
@@ -92,83 +80,20 @@ pub(super) fn reconcile_named_source_action_surfaces(info: &LineInfo, effects: &
             &info.normalized.char_map,
         );
         let tokens = crate::lexer::lex_line(&info.normalized.original, info.line_index).ok()?;
-        let (_, name_tokens) = tokens
-            .iter()
-            .enumerate()
-            .filter(|(_, token)| token.is_word("exile"))
-            .filter_map(|(exile_index, exile)| {
-                let start = exile_index + 1;
-                let end = tokens[start..]
-                    .iter()
-                    .position(|token| {
-                        matches!(
-                            token.kind,
-                            crate::lexer::TokenKind::Comma
-                                | crate::lexer::TokenKind::Period
-                                | crate::lexer::TokenKind::Semicolon
-                        ) || token.is_word("then")
-                    })
-                    .map_or(tokens.len(), |offset| start + offset);
-                let candidate = tokens.get(start..end)?;
-                crate::lexer::is_authored_proper_name_phrase(candidate)
-                    .then_some((exile.span.start.abs_diff(original_span.start), candidate))
-            })
-            .min_by_key(|(distance, _)| *distance)?;
-        let authored = crate::lexer::render_token_slice(name_tokens)
-            .trim()
-            .to_string();
-        let words = crate::lexer::parser_token_word_refs(name_tokens);
-        Some(if words.len() == 1 {
-            crate::target::SourceReferenceSurface::ShortName(authored)
-        } else {
-            crate::target::SourceReferenceSurface::FullName(authored)
-        })
+        crate::grammar::source_surface_shapes::parse_named_operand_nearest_to(
+            &tokens,
+            "exile",
+            original_span.start,
+        )
+        .map(|shape| shape.surface)
     }
 
     fn named_surface_from_authored_counter_clause(
         info: &LineInfo,
     ) -> Option<crate::target::SourceReferenceSurface> {
         let tokens = crate::lexer::lex_line(&info.normalized.original, info.line_index).ok()?;
-        let words = crate::lexer::TokenWordView::new(&tokens);
-        let mut surfaces = (0..words.len().saturating_sub(1))
-            .filter(|index| {
-                words.parses_any_word_at(*index, &["counter", "counters"])
-                    && words.parses_word_at(*index + 1, "on")
-            })
-            .filter_map(|counter_index| {
-                let start = words.map_word_to_token_boundary(counter_index + 2)?;
-                let end = tokens[start..]
-                    .iter()
-                    .position(|token| {
-                        matches!(
-                            token.kind,
-                            crate::lexer::TokenKind::Comma
-                                | crate::lexer::TokenKind::Period
-                                | crate::lexer::TokenKind::Semicolon
-                        ) || token.is_word("then")
-                    })
-                    .map_or(tokens.len(), |offset| start + offset);
-                let name_tokens = tokens.get(start..end)?;
-                if !crate::lexer::is_authored_proper_name_phrase(name_tokens) {
-                    return None;
-                }
-                let authored = crate::lexer::render_token_slice(name_tokens)
-                    .trim()
-                    .to_string();
-                Some(
-                    if crate::lexer::parser_token_word_refs(name_tokens).len() == 1 {
-                        crate::target::SourceReferenceSurface::ShortName(authored)
-                    } else {
-                        crate::target::SourceReferenceSurface::FullName(authored)
-                    },
-                )
-            })
-            .collect::<Vec<_>>();
-        surfaces.dedup();
-        let [surface] = surfaces.as_slice() else {
-            return None;
-        };
-        Some(surface.clone())
+        crate::grammar::source_surface_shapes::parse_unique_named_counter_on_operand(&tokens)
+            .map(|shape| shape.surface)
     }
 
     fn apply_target(info: &LineInfo, target: &mut TargetAst) {
@@ -205,24 +130,8 @@ pub(super) fn reconcile_named_source_action_surfaces(info: &LineInfo, effects: &
         if !tokens.iter().any(|token| token.is_word("exile")) {
             return None;
         }
-        let mut surfaces = tokens
-            .windows(2)
-            .filter(|pair| pair[0].is_word("return"))
-            .filter_map(|pair| {
-                matches!(
-                    pair[1].slice.to_ascii_lowercase().as_str(),
-                    "him" | "her" | "it"
-                )
-                .then(|| {
-                    crate::target::SourceReferenceSurface::ThisPermanentType(pair[1].slice.clone())
-                })
-            })
-            .collect::<Vec<_>>();
-        surfaces.dedup();
-        let [surface] = surfaces.as_slice() else {
-            return None;
-        };
-        Some(surface.clone())
+        crate::grammar::source_surface_shapes::parse_unique_pronoun_operand_after(&tokens, "return")
+            .map(|shape| shape.surface)
     }
 
     fn transformed_source_return_count(effects: &[EffectAst]) -> usize {

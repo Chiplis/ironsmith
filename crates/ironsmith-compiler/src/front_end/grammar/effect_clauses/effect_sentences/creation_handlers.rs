@@ -1286,7 +1286,10 @@ pub fn parse_create(
             let authored_name = render_token_slice(&tail_tokens[named.name.clone()])
                 .trim()
                 .to_string();
-            if authored_name.contains(',') {
+            if tail_tokens[named.name.clone()]
+                .iter()
+                .any(OwnedLexToken::is_comma)
+            {
                 raw_name_override = Some(authored_name);
             }
             name_words.push("named");

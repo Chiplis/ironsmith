@@ -366,7 +366,9 @@ pub(super) fn named_card_name(tokens: &[OwnedLexToken]) -> Option<String> {
 /// `Tamiyo's Notebook, a legendary ... token`. Keeping the original token
 /// slice here is important: parser words intentionally normalize apostrophes,
 /// but the token's runtime/display name must retain them.
-pub(super) fn leading_comma_name(tokens: &[OwnedLexToken]) -> Option<String> {
+/// Preserve and title-case a proper token name that precedes its appositive
+/// definition (`Name, Epithet, a legendary ... token`).
+pub fn leading_appositive_token_name(tokens: &[OwnedLexToken]) -> Option<String> {
     // The separator belongs to the appositive token description, not
     // necessarily the first comma: proper token names themselves can contain
     // commas (for example, `Name, Epithet, a legendary ... token`).
