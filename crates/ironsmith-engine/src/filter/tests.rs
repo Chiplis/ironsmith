@@ -2844,6 +2844,39 @@ fn dynamic_comparison_resolves_surface_hinted_source_counter_count() {
 }
 
 #[test]
+fn exact_mana_cost_filter_distinguishes_equal_mana_values() {
+    use crate::card::CardBuilder;
+    use crate::game_state::GameState;
+    use crate::ids::CardId;
+    use crate::mana::{ManaCost, ManaSymbol};
+
+    let you = PlayerId::from_index(0);
+    let mut game = GameState::new(vec!["You".to_string()], 20);
+    let generic_cost = ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]);
+    let generic = CardBuilder::new(CardId::from_raw(40_123), "Generic Artifact")
+        .card_types(vec![CardType::Artifact])
+        .mana_cost(generic_cost.clone())
+        .build();
+    let white = CardBuilder::new(CardId::from_raw(40_124), "White Artifact")
+        .card_types(vec![CardType::Artifact])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::White]))
+        .build();
+    let generic_id = game.create_object_from_card(&generic, you, Zone::Library);
+    let white_id = game.create_object_from_card(&white, you, Zone::Library);
+    let filter = ObjectFilter {
+        exact_mana_cost: Some(generic_cost),
+        ..ObjectFilter::artifact().in_zone(Zone::Library)
+    };
+    let ctx = FilterContext::new(you);
+
+    assert!(filter.matches(game.object(generic_id).unwrap(), &ctx, &game));
+    assert!(
+        !filter.matches(game.object(white_id).unwrap(), &ctx, &game),
+        "{{W}} and {{1}} share mana value 1 but are not the same printed mana cost"
+    );
+}
+
+#[test]
 fn dynamic_comparison_describes_player_counter_count() {
     let filter = ObjectFilter {
         mana_value: Some(Comparison::GreaterThanExpr(Box::new(

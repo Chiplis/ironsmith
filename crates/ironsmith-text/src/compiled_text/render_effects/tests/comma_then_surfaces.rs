@@ -1,5 +1,51 @@
 use super::*;
 
+fn target_opponent_life_loss_random_reveal_sequence(reveal_tag: &str) -> Effect {
+    let declared = ChooseSpec::target(ChooseSpec::Player(PlayerFilter::Opponent));
+    let target = Effect::new(crate::effects::TargetOnlyEffect::new(declared));
+    let lose = Effect::new(crate::effects::LoseLifeEffect::with_filter(
+        2,
+        PlayerFilter::Target(Box::new(PlayerFilter::Opponent)),
+    ));
+    let chosen = TagKey::from("random_hand_card");
+    let choose = Effect::new(
+        crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::default()
+                .in_zone(Zone::Hand)
+                .owned_by(PlayerFilter::Target(Box::new(PlayerFilter::Opponent))),
+            ChoiceCount::exactly(1).at_random(),
+            PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Opponent)),
+            chosen,
+        )
+        .in_zone(Zone::Hand),
+    );
+    let reveal = Effect::new(crate::effects::RevealTaggedEffect::new(reveal_tag));
+    Effect::new(crate::effects::SequenceEffect::comma_then(vec![
+        target, lose, choose, reveal,
+    ]))
+}
+
+#[test]
+fn typed_comma_then_life_loss_random_reveal_hides_internal_choice() {
+    assert_eq!(
+        describe_effect(&target_opponent_life_loss_random_reveal_sequence(
+            "random_hand_card"
+        )),
+        "Target opponent loses 2 life, then reveals a card at random from their hand"
+    );
+}
+
+#[test]
+fn typed_comma_then_life_loss_random_reveal_requires_the_same_result_tag() {
+    let rendered = describe_effect(&target_opponent_life_loss_random_reveal_sequence(
+        "different_hand_card",
+    ));
+    assert_ne!(
+        rendered,
+        "Target opponent loses 2 life, then reveals a card at random from their hand"
+    );
+}
+
 #[test]
 fn typed_comma_then_draw_discard_keeps_the_shared_player_subject() {
     let player = PlayerFilter::target_player();

@@ -155,7 +155,24 @@ pub(super) fn parse_additional_cost(
     {
         return Ok(None);
     }
-    let effects = parse_effect_sentences_lexed(effect_tokens)?;
+    let cost_segments = super::grammar::primitives::split_lexed_slices_on_and(effect_tokens);
+    let has_heterogeneous_cost_heads = cost_segments.len() > 1
+        && cost_segments.iter().all(|segment| {
+            super::grammar::primitives::parse_prefix(
+                segment,
+                super::grammar::leaf::parse_leaf_activation_cost_head_lexed,
+            )
+            .is_some()
+        });
+    let effects = if has_heterogeneous_cost_heads {
+        let mut effects = Vec::new();
+        for segment in cost_segments {
+            effects.extend(parse_effect_sentences_lexed(segment)?);
+        }
+        effects
+    } else {
+        parse_effect_sentences_lexed(effect_tokens)?
+    };
     Ok(ast(LineAst::AdditionalCost { effects }))
 }
 
@@ -364,9 +381,22 @@ alternative_method_parser!(parse_warp, parse_warp_line_lexed);
 pub(super) fn parse_flashback(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
-    _full_tokens: &[OwnedLexToken],
+    full_tokens: &[OwnedLexToken],
 ) -> KeywordParseResult {
-    let sentences = split_lexed_sentences(tokens);
+    // Semantic preprocessing may present the keyword registry with only the
+    // leading keyword sentence while retaining the complete source line in
+    // `full_tokens`.  The Commander 2021 "Visions of" cycle uses the second
+    // sentence to qualify its flashback cost reduction, so parsing only the
+    // selected sentence silently loses the alternative casting method.
+    let selected_sentences = split_lexed_sentences(tokens);
+    let full_sentences = split_lexed_sentences(full_tokens);
+    let sentences = if selected_sentences.len() >= 2 {
+        selected_sentences
+    } else if token_slice_first_is(full_tokens, "flashback") && full_sentences.len() >= 2 {
+        full_sentences[..2].to_vec()
+    } else {
+        selected_sentences
+    };
     let Some(flashback_tokens) = sentences.first().copied() else {
         return Ok(None);
     };

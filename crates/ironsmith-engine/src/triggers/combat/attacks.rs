@@ -41,11 +41,30 @@ pub struct PlayersAttackedTrigger {
 pub struct PlayerAttacksOneOrMoreTrigger {
     pub attacker: PlayerFilter,
     pub target: ironsmith_core::AttackTargetRestriction,
+    /// When true, each matching attacked defender owns an independent group
+    /// of attackers. When false, all matching defenders share one group for
+    /// the attack declaration.
+    pub group_by_target: bool,
 }
 
 impl PlayerAttacksOneOrMoreTrigger {
     pub fn new(attacker: PlayerFilter, target: ironsmith_core::AttackTargetRestriction) -> Self {
-        Self { attacker, target }
+        Self {
+            attacker,
+            target,
+            group_by_target: false,
+        }
+    }
+
+    pub fn grouped_by_target(
+        attacker: PlayerFilter,
+        target: ironsmith_core::AttackTargetRestriction,
+    ) -> Self {
+        Self {
+            attacker,
+            target,
+            group_by_target: true,
+        }
     }
 
     fn player_matches(
@@ -96,6 +115,7 @@ impl PlayerAttacksOneOrMoreTrigger {
     fn is_first_matching_attacker_this_combat(
         &self,
         attacker: ObjectId,
+        attack_target: &crate::combat_state::AttackTarget,
         ctx: &TriggerContext,
     ) -> bool {
         let Some(current_attacker) = ctx.game.object(attacker) else {
@@ -112,6 +132,7 @@ impl PlayerAttacksOneOrMoreTrigger {
             if ctx.game.controller_of(candidate) == current_player
                 && self.attacker_matches(info.creature, ctx)
                 && self.target_matches(&info.target, ctx)
+                && (!self.group_by_target || &info.target == attack_target)
             {
                 return info.creature == attacker;
             }
@@ -193,6 +214,46 @@ fn player_attack_target(restriction: &ironsmith_core::AttackTargetRestriction) -
                     "{} and/or {}",
                     player_attack_subject(filter),
                     controlled_planeswalker_target(filter)
+                ),
+            }
+        }
+    }
+}
+
+fn player_attack_target_with_one_or_more_creatures(
+    restriction: &ironsmith_core::AttackTargetRestriction,
+) -> String {
+    match restriction {
+        ironsmith_core::AttackTargetRestriction::Player(filter) => {
+            format!(
+                "{} with one or more creatures",
+                player_attack_subject(filter)
+            )
+        }
+        ironsmith_core::AttackTargetRestriction::PlaneswalkerControlledBy(filter) => match filter {
+            PlayerFilter::You => {
+                "a planeswalker you control with one or more creatures".to_string()
+            }
+            PlayerFilter::Opponent => {
+                "a planeswalker an opponent controls with one or more creatures".to_string()
+            }
+            _ => format!(
+                "a planeswalker {} controls with one or more creatures",
+                filter.description()
+            ),
+        },
+        ironsmith_core::AttackTargetRestriction::PlayerOrPlaneswalkerControlledBy(filter) => {
+            match filter {
+                PlayerFilter::You => {
+                    "you or a planeswalker you control with one or more creatures".to_string()
+                }
+                PlayerFilter::Opponent => {
+                    "an opponent or a planeswalker they control with one or more creatures"
+                        .to_string()
+                }
+                _ => format!(
+                    "{} or a planeswalker they control with one or more creatures",
+                    player_attack_subject(filter)
                 ),
             }
         }
@@ -790,7 +851,7 @@ impl TriggerMatcher for PlayerAttacksOneOrMoreTrigger {
             }
         };
         self.target_matches(&target, ctx)
-            && self.is_first_matching_attacker_this_combat(event.attacker, ctx)
+            && self.is_first_matching_attacker_this_combat(event.attacker, &target, ctx)
     }
 
     fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
@@ -798,10 +859,15 @@ impl TriggerMatcher for PlayerAttacksOneOrMoreTrigger {
     }
 
     fn display(&self) -> String {
+        let target = if self.group_by_target {
+            player_attack_target_with_one_or_more_creatures(&self.target)
+        } else {
+            player_attack_target(&self.target)
+        };
         format!(
             "Whenever {} attacks {}",
             player_attack_subject(&self.attacker),
-            player_attack_target(&self.target)
+            target
         )
     }
 }
@@ -983,6 +1049,79 @@ mod tests {
         assert_eq!(
             planeswalker_only.display(),
             "Whenever an opponent attacks one or more planeswalkers you control"
+        );
+    }
+
+    #[test]
+    fn per_defender_player_attack_group_triggers_once_for_each_attacked_planeswalker() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source_id = ObjectId::from_raw(100);
+        let first = create_creature(&mut game, "First", bob);
+        let second = create_creature(&mut game, "Second", bob);
+        let third = create_creature(&mut game, "Third", bob);
+        let first_walker_card = CardBuilder::new(CardId::from_raw(903), "First Walker")
+            .card_types(vec![CardType::Planeswalker])
+            .loyalty(3)
+            .build();
+        let first_walker =
+            game.create_object_from_card(&first_walker_card, alice, Zone::Battlefield);
+        let second_walker_card = CardBuilder::new(CardId::from_raw(904), "Second Walker")
+            .card_types(vec![CardType::Planeswalker])
+            .loyalty(3)
+            .build();
+        let second_walker =
+            game.create_object_from_card(&second_walker_card, alice, Zone::Battlefield);
+
+        game.combat = Some(CombatState {
+            attackers: vec![
+                AttackerInfo {
+                    creature: first,
+                    target: AttackTarget::Planeswalker(first_walker),
+                },
+                AttackerInfo {
+                    creature: second,
+                    target: AttackTarget::Planeswalker(first_walker),
+                },
+                AttackerInfo {
+                    creature: third,
+                    target: AttackTarget::Planeswalker(second_walker),
+                },
+            ],
+            ..CombatState::default()
+        });
+
+        let target =
+            ironsmith_core::AttackTargetRestriction::PlaneswalkerControlledBy(PlayerFilter::You);
+        let across_all_targets =
+            PlayerAttacksOneOrMoreTrigger::new(PlayerFilter::Opponent, target.clone());
+        let per_target =
+            PlayerAttacksOneOrMoreTrigger::grouped_by_target(PlayerFilter::Opponent, target);
+        let event = |attacker, walker| {
+            TriggerEvent::new_with_provenance(
+                CreatureAttackedEvent::with_total_attackers(
+                    attacker,
+                    AttackEventTarget::Planeswalker(walker),
+                    3,
+                ),
+                crate::provenance::ProvNodeId::default(),
+            )
+        };
+        let first_event = event(first, first_walker);
+        let second_event = event(second, first_walker);
+        let third_event = event(third, second_walker);
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+
+        assert!(per_target.matches(&first_event, &ctx));
+        assert!(!per_target.matches(&second_event, &ctx));
+        assert!(per_target.matches(&third_event, &ctx));
+        assert!(across_all_targets.matches(&first_event, &ctx));
+        assert!(!across_all_targets.matches(&second_event, &ctx));
+        assert!(!across_all_targets.matches(&third_event, &ctx));
+        assert_eq!(
+            per_target.display(),
+            "Whenever an opponent attacks a planeswalker you control with one or more creatures"
         );
     }
 

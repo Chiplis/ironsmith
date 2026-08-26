@@ -761,6 +761,63 @@ fn conditional_remainder_branches_share_the_looked_minus_selected_partition() {
 }
 
 #[test]
+fn conditional_entry_modifier_is_not_claimed_as_a_remainder_branch() {
+    let raw = [
+        "Look at the top seven cards of your library",
+        "You may put a creature card from among them onto the battlefield",
+        "If that card has mana value 3 or less, it enters with three additional +1/+1 counters on it",
+        "Put the rest on the bottom of your library in a random order",
+    ];
+    let lexed = raw
+        .iter()
+        .enumerate()
+        .map(|(idx, line)| lex_line(line, idx).expect("sentence should lex"))
+        .collect::<Vec<_>>();
+    let sentences = lexed
+        .iter()
+        .map(|tokens| SentenceInput::from_lexed(tokens))
+        .collect::<Vec<_>>();
+
+    assert!(
+        parse_look_at_top_optional_battlefield_then_conditional_remainder(&sentences, 0)
+            .expect("ownership check should not error")
+            .is_none(),
+        "conditional entry modifiers must remain available to ordinary sentence dispatch"
+    );
+}
+
+#[test]
+fn conditional_entry_modifier_keeps_one_looked_partition_program() {
+    let tokens = lex_line(
+        "Look at the top seven cards of your library. You may put a creature card from among them onto the battlefield. If that card has mana value 3 or less, it enters with three additional +1/+1 counters on it. Put the rest on the bottom of your library in a random order.",
+        0,
+    )
+    .expect("fixture should lex");
+    let split = crate::split_lexed_sentences(&tokens);
+    let sentences = split
+        .iter()
+        .map(|sentence| SentenceInput::from_lexed(sentence))
+        .collect::<Vec<_>>();
+
+    let effects =
+        parse_look_at_top_optional_battlefield_conditional_entry_counters_then_rest_bottom(
+            &sentences, 0,
+        )
+        .expect("typed program should not error")
+        .expect("conditional entry-counter partition should match");
+    assert_eq!(effects.len(), 5, "{effects:#?}");
+    assert!(matches!(effects[2], EffectAst::ForEachTagged { .. }));
+    assert!(matches!(effects[3], EffectAst::Conditional { .. }));
+    assert!(matches!(
+        effects[4],
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary { .. },
+            ..
+        })
+    ));
+}
+
+#[test]
 fn optional_source_payment_does_not_replace_plural_looked_card_branches() {
     let raw = [
         "Look at the top two cards of your library",

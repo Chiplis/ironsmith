@@ -263,12 +263,21 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target }
             | SubjectVerbActionAst::RemoveUpToAnyCounters { target, .. }
             | SubjectVerbActionAst::DoubleCountersOnTarget { target, .. }
-            | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target, .. }
             | SubjectVerbActionAst::PutCounterOfChosenKind { target }
             | SubjectVerbActionAst::PutSticker { target, .. }
             | SubjectVerbActionAst::SwitchPowerToughness { target, .. }
             | SubjectVerbActionAst::GrantProtectionChoice { target, .. }
             | SubjectVerbActionAst::ReturnToHand { target, .. } => visit(target),
+            SubjectVerbActionAst::ForEachCounterKindPutOrRemove {
+                target,
+                counter_source,
+                ..
+            } => {
+                visit(target);
+                if let Some(counter_source) = counter_source {
+                    visit(counter_source);
+                }
+            }
             SubjectVerbActionAst::ExileUntilSourceLeaves {
                 target,
                 leave_watcher,
@@ -324,6 +333,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             SubjectVerbActionAst::Fight {
                 creature1,
                 creature2,
+                ..
             } => {
                 visit(creature1);
                 visit(creature2);
@@ -833,6 +843,7 @@ pub fn predicate_references_tag(predicate: &PredicateAst, tag: &str) -> bool {
         PredicateAst::ValueComparison { left, right, .. } => {
             value_references_tag(left, tag) || value_references_tag(right, tag)
         }
+        PredicateAst::ValueIsPrime(value) => value_references_tag(value, tag),
         PredicateAst::Not(inner) => predicate_references_tag(inner, tag),
         PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
             predicate_references_tag(left, tag) || predicate_references_tag(right, tag)
@@ -1708,6 +1719,38 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
         | EffectAst::DelayedWhenLastObjectLeavesBattlefield { .. } => true,
         EffectAst::ForEachObject { filter, effects } => {
             filter_references_tag(filter, IT_TAG) || effects_reference_it_tag(effects)
+        }
+        EffectAst::ControlFlow(control) => {
+            let condition_references_it = |condition: &crate::model::ControlConditionAst| {
+                matches!(
+                    &condition.predicate,
+                    crate::model::ControlPredicateAst::State(predicate)
+                        if predicate_uses_implicit_it_reference(predicate)
+                            || predicate_references_tag(predicate, IT_TAG)
+                )
+            };
+            let node_references_it = match &control.node {
+                crate::model::ControlFlowNodeAst::Condition { condition, .. } => {
+                    condition_references_it(condition)
+                }
+                crate::model::ControlFlowNodeAst::Replacement(replacement) => replacement
+                    .condition
+                    .as_ref()
+                    .is_some_and(condition_references_it),
+                crate::model::ControlFlowNodeAst::Prevention(prevention) => prevention
+                    .condition
+                    .as_ref()
+                    .is_some_and(condition_references_it),
+                crate::model::ControlFlowNodeAst::Permission(_)
+                | crate::model::ControlFlowNodeAst::Duration { .. }
+                | crate::model::ControlFlowNodeAst::Delayed { .. }
+                | crate::model::ControlFlowNodeAst::NestedAbility { .. } => false,
+            };
+            node_references_it
+                || control
+                    .programs
+                    .iter()
+                    .any(|program| effects_reference_it_tag(&program.effects))
         }
         _ => {
             if let Some(filter) = effect_tagged_filter(effect) {

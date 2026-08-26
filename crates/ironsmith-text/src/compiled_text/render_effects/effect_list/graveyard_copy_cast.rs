@@ -416,6 +416,22 @@ mod tests {
     }
 
     #[test]
+    fn public_route_keeps_separate_that_card_copy_instruction() {
+        let oracle = "Exile target instant or sorcery card from an opponent's graveyard. Copy that card. You may cast the copy without paying its mana cost.";
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Separate Copy Instruction Probe",
+        )
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(oracle)
+        .expect("separate graveyard copy instruction should parse");
+        assert_eq!(
+            crate::compiled_text::compiled_text_lines(&definition),
+            vec![oracle.to_string()]
+        );
+    }
+
+    #[test]
     fn graveyard_exile_copy_cast_renderer_requires_shared_provenance_tag() {
         let tag = "__sentence_helper_exiled_l0_s0_e40";
         let effects = graveyard_copy_cast(tag, tag);

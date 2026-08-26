@@ -1,5 +1,13 @@
 use super::*;
 
+fn render_public(text: &str, name: &str) -> String {
+    let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .parse_text(text)
+        .expect("typed copy-and-retarget route should compile");
+    crate::compiled_text::compiled_text_lines(&definition).join("\n")
+}
+
 fn artifact_copy_program(reference_kind: StackObjectKind) -> Vec<Effect> {
     let copied = TagKey::from("__copied_stack_object__");
     let copy = Effect::with_id(
@@ -144,4 +152,22 @@ fn copiable_fixed_pt_subtype_exception_renders_directly_on_the_copy_effect() {
         describe_effect(&copy),
         "Copy that spell, except the copy is a 1/1 Spirit in addition to its other types"
     );
+}
+
+#[test]
+fn chosen_legal_target_copy_program_keeps_its_authored_assignment_surface() {
+    let text = "Whenever you cast an instant or sorcery spell that targets only this creature, if you control one or more other creatures that spell could target, choose one of those creatures. Copy that spell. The copy targets the chosen creature.";
+    assert_eq!(render_public(text, "Copy Target Probe"), text);
+}
+
+#[test]
+fn each_other_opponent_copy_loop_keeps_its_correlated_assignment_surface() {
+    let text = "{2}, {T}: When you next cast an instant or sorcery spell that targets only a single opponent or a single permanent an opponent controls this turn, for each other opponent, choose that player or a permanent they control, copy that spell, and the copy targets the chosen player or permanent.";
+    assert_eq!(render_public(text, "Opponent Copy Loop Probe"), text);
+}
+
+#[test]
+fn chosen_creature_complement_copy_keeps_the_filtered_recipient_set() {
+    let text = "{U}, {T}: Choose target creature you control. Each creature you control other than the chosen creature becomes a copy of that creature until end of turn, except it isn't legendary. Activate only as a sorcery.";
+    assert_eq!(render_public(text, "Complement Copy Probe"), text);
 }

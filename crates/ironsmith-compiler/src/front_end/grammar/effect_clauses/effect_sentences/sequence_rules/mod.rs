@@ -288,7 +288,8 @@ fn damage_excess_exile_permission_window(sentences: &[SentenceInput], sentence_i
 }
 
 fn general_looked_destination_fallback(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
-    first_word_then_target_exile_look_or_reveal(sentences, sentence_idx)
+    (first_word_then_target_exile_look_or_reveal(sentences, sentence_idx)
+        || sentence_head_word_is(sentences, sentence_idx, "if"))
         && !matches!(
             generic_subject_verb_sequences::ordered_control_flow_programs::parse_look_at_top_may_put_with_counter_then_rest_bottom(
                 sentences,
@@ -461,6 +462,13 @@ const DOCUMENT_PROGRAM_RULES: &[DocumentProgramRuleDef] = &[
         consumed_sentences: 4,
         predicate: first_word_exile,
         parser: generic_subject_verb_sequences::exiled_collections::parse_exile_each_player_put_return_exiled_then_exile_source,
+    },
+    DocumentProgramRuleDef {
+        name: "graveyard-exile-then-copy-cast-copy",
+        feature_tag: Some("graveyard-card-copy-cast"),
+        consumed_sentences: 3,
+        predicate: first_word_exile,
+        parser: generic_subject_verb_sequences::graveyard_copy_cast::parse_graveyard_exile_then_copy_then_may_cast_copy,
     },
     DocumentProgramRuleDef {
         name: "graveyard-exile-if-copy-cast-copy",
@@ -663,6 +671,13 @@ const DOCUMENT_PROGRAM_RULES: &[DocumentProgramRuleDef] = &[
         consumed_sentences: 4,
         predicate: first_word_look,
         parser: generic_subject_verb_sequences::branching_selection_programs::parse_look_at_top_conditional_hand_counts_then_rest_bottom,
+    },
+    DocumentProgramRuleDef {
+        name: "look-at-top-optional-battlefield-conditional-entry-counters-rest-bottom",
+        feature_tag: Some("looked-card-conditional-entry-counters"),
+        consumed_sentences: 4,
+        predicate: first_word_look,
+        parser: generic_subject_verb_sequences::branching_selection_programs::parse_look_at_top_optional_battlefield_conditional_entry_counters_then_rest_bottom,
     },
     DocumentProgramRuleDef {
         name: "look-at-top-optional-battlefield-conditional-remainder",
@@ -1595,6 +1610,68 @@ mod tests {
                         keep_tagged: Some(keep_tagged),
                         ..
                     },
+                ..
+            }) if tag == looked && keep_tagged == chosen
+        ));
+    }
+
+    #[test]
+    fn conditional_looked_partition_keeps_the_full_looked_collection_for_the_remainder() {
+        let tokens = lex_line(
+            "If you do, look at the top X cards of your library, where X is that creature's mana value. You may put a creature card from among them onto the battlefield. Put the rest on the bottom of your library in a random order.",
+            0,
+        )
+        .expect("lex");
+        let split = split_lexed_sentences(&tokens);
+        let sentences = split
+            .iter()
+            .map(|sentence| SentenceInput::from_lexed(sentence))
+            .collect::<Vec<_>>();
+
+        assert!(general_looked_destination_fallback(&sentences, 0));
+        let matched = try_parse_document_program(&sentences, 0)
+            .expect("sequence parse")
+            .expect("conditional looked partition should match a typed sequence rule");
+        assert_eq!(
+            matched.name,
+            "top-cards-put-any-matching-to-zone-rest-bottom"
+        );
+
+        let [
+            EffectAst::IfResult {
+                predicate: IfResultPredicate::Did,
+                effects,
+            },
+        ] = matched.effects.as_slice()
+        else {
+            panic!(
+                "expected one conditional looked partition: {:#?}",
+                matched.effects
+            );
+        };
+        let [look, choose, move_each, remainder] = effects.as_slice() else {
+            panic!("expected look/choose/move/remainder effects: {effects:#?}");
+        };
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::LookAtTopCards { tag: looked, .. },
+            ..
+        }) = look
+        else {
+            panic!("expected a looked-card producer: {look:#?}");
+        };
+        let EffectAst::ChooseTaggedObjectsInZone { tag: chosen, .. } = choose else {
+            panic!("expected a typed looked-card choice: {choose:#?}");
+        };
+        assert!(matches!(move_each, EffectAst::ForEachTagged { tag, .. } if tag == chosen));
+        assert!(matches!(
+            remainder,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                    tag,
+                    keep_tagged: Some(keep_tagged),
+                    order: crate::cards::builders::LibraryBottomOrderAst::Random,
+                    ..
+                },
                 ..
             }) if tag == looked && keep_tagged == chosen
         ));

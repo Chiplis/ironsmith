@@ -151,6 +151,22 @@ mod tests {
     }
 
     #[test]
+    fn dynamic_half_life_payment_rounds_up_against_the_payers_current_total() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        game.player_mut(alice).expect("alice exists").life = 19;
+
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let outcome = PayLifeEffect::you(Value::HalfLifeTotalRoundedUp(PlayerFilter::You))
+            .execute(&mut game, &mut ctx)
+            .expect("dynamic life payment should resolve");
+
+        assert_eq!(outcome.as_count(), Some(10));
+        assert_eq!(game.player(alice).expect("alice exists").life, 9);
+    }
+
+    #[test]
     fn active_player_decides_and_pays_single_optional_life_payment() {
         #[derive(Default)]
         struct AcceptAndCapturePlayer {

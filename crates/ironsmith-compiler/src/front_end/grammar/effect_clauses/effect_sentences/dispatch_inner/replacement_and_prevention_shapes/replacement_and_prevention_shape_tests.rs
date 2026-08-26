@@ -36,6 +36,23 @@ fn exile_then_return_same_object_uses_captured_clauses_and_counter_followup() {
     assert!(debug.contains("ReturnToBattlefield"), "{debug}");
     assert!(debug.contains("PutCounters"), "{debug}");
     assert!(debug.contains("PlusOnePlusOne"), "{debug}");
+    assert!(debug.contains("target_reference_surface: Some("), "{debug}");
+    assert!(debug.contains("                    It,"), "{debug}");
+}
+
+#[test]
+fn exile_then_return_that_card_preserves_the_authored_reference_surface() {
+    let tokens = crate::lexer::lex_line(
+        "Exile target artifact or creature, then return that card to the battlefield under its owner's control with a +1/+1 counter on it.",
+        0,
+    )
+    .expect("exile-return text should lex");
+    let effects = parse_exile_then_return_same_object_sentence(&tokens)
+        .expect("exile-return parser should not error")
+        .expect("exile-return parser should match");
+    let debug = format!("{effects:#?}");
+    assert!(debug.contains("target_reference_surface: Some("), "{debug}");
+    assert!(debug.contains("                    ThatCard,"), "{debug}");
 }
 
 #[test]

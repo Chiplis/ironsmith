@@ -55,11 +55,17 @@ fn parse_as_enters_effect_program_facts(
             primitives::phrase(&["enters", "with"])
         })
         .is_some();
+    let source_pronoun_enters_with_counter_surface =
+        primitives::find_prefix(&tokens[comma_idx + 1..], || {
+            primitives::phrase(&["it", "enters", "with"])
+        })
+        .is_some();
     Some(AsEntersEffectProgramFacts {
         subject: super::super::lexer::render_token_slice(&tokens[1..subject_end_idx]),
         also_turns_face_up,
         turns_face_up_only,
         uses_enters_with_counter_surface,
+        source_pronoun_enters_with_counter_surface,
     })
 }
 
@@ -82,11 +88,26 @@ fn parse_as_transforms_effect_program_facts(
     {
         return None;
     }
-    let comma_idx =
-        crate::slice_primitives::select_position(&tokens[transforms_idx + 2..], |token| {
-            token.is_comma()
-        })? + transforms_idx
-            + 2;
+    let destination_start = transforms_idx + 2;
+    let comma_idx = tokens[destination_start..]
+        .iter()
+        .enumerate()
+        .find_map(|(offset, token)| {
+            if !token.is_comma() {
+                return None;
+            }
+            let comma_idx = destination_start + offset;
+            let tail = &tokens[comma_idx + 1..];
+            (tail.first().is_some_and(|token| token.is_word("it"))
+                && tail.get(1).is_some_and(|token| token.is_word("becomes")))
+            .then_some(comma_idx)
+        })
+        .or_else(|| {
+            crate::slice_primitives::select_position(&tokens[destination_start..], |token| {
+                token.is_comma()
+            })
+            .map(|offset| destination_start + offset)
+        })?;
     if transforms_idx + 2 >= comma_idx || comma_idx + 1 >= tokens.len() {
         return None;
     }
@@ -113,8 +134,8 @@ fn parse_as_transforms_effect_program_facts(
 fn parse_trailing_instead_if_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::model::ast::PredicateAst> {
-    let (instead_idx, _, _) =
-        primitives::find_prefix(tokens, || (primitives::kw("instead"), primitives::kw("if")))?;
+    let instead_idx =
+        crate::slice_primitives::select_position(tokens, |token| token.is_word("instead"))?;
     structure::parse_trailing_instead_if_predicate_lexed(&tokens[instead_idx..])
 }
 
@@ -140,14 +161,19 @@ fn parse_statement_semantic_facts(
             leaf::ConditionIntro::AsLongAs => StatementConditionIntro::AsLongAs,
             leaf::ConditionIntro::ForAsLongAs => StatementConditionIntro::ForAsLongAs,
         });
-    let replacement_surfaces =
+    let replacement_surfaces: Vec<_> =
         lowering_surfaces::parse_statement_replacement_surface_tokens(tokens)
             .into_iter()
             .collect();
+    let instead_semantics = if replacement_surfaces.is_empty() {
+        instead.semantics
+    } else {
+        crate::cards::builders::InsteadSemantics::SelfReplacement
+    };
 
     StatementLineSemanticFacts {
         instead_followup: InsteadFollowupFacts {
-            semantics: instead.semantics,
+            semantics: instead_semantics,
             conditional_intro: instead.conditional_intro,
             leading_instead_surface: instead.leading_instead_surface,
         },
@@ -327,6 +353,14 @@ mod tests {
             Some(StatementConditionIntro::If)
         );
         assert!(parsed.statement.trailing_instead_if_predicate.is_some());
+
+        let trailing = facts(
+            "You may put that card onto the battlefield instead of putting it into your hand if a creature died this turn.",
+        );
+        assert!(
+            trailing.statement.trailing_instead_if_predicate.is_some(),
+            "the trailing condition after an expanded instead-of phrase must remain typed: {trailing:#?}"
+        );
     }
 
     #[test]
@@ -343,6 +377,7 @@ mod tests {
         assert!(as_enters.also_turns_face_up);
         assert!(!as_enters.turns_face_up_only);
         assert!(!as_enters.uses_enters_with_counter_surface);
+        assert!(!as_enters.source_pronoun_enters_with_counter_surface);
 
         let face_up_only =
             facts("As this creature is turned face up, put four +1/+1 counters on it.")
@@ -353,6 +388,7 @@ mod tests {
         assert!(face_up_only.also_turns_face_up);
         assert!(face_up_only.turns_face_up_only);
         assert!(!face_up_only.uses_enters_with_counter_surface);
+        assert!(!face_up_only.source_pronoun_enters_with_counter_surface);
 
         let counter_surface = facts(
             "As this creature enters, remove all counters from all permanents. This creature enters with a +1/+1 counter on it for each counter removed this way.",
@@ -361,6 +397,16 @@ mod tests {
         .as_enters_effect_program
         .expect("entry-counter wording should retain the enclosing as-enters timing");
         assert!(counter_surface.uses_enters_with_counter_surface);
+        assert!(!counter_surface.source_pronoun_enters_with_counter_surface);
+
+        let source_pronoun = facts(
+            "As this creature enters, you may sacrifice any number of creatures. If you do, it enters with twice that many +1/+1 counters on it.",
+        )
+        .statement
+        .as_enters_effect_program
+        .expect("source-relative entry-counter wording should remain typed");
+        assert!(source_pronoun.uses_enters_with_counter_surface);
+        assert!(source_pronoun.source_pronoun_enters_with_counter_surface);
     }
 
     #[test]
@@ -392,6 +438,18 @@ mod tests {
                 .expect("normalized destination should remain typed")
                 .destination,
             "Shinryu"
+        );
+
+        let punctuated = facts(
+            "As this creature transforms into Olag, Ludevic's Hubris, it becomes a copy of a creature card exiled with it.",
+        );
+        assert_eq!(
+            punctuated
+                .statement
+                .as_transforms_effect_program
+                .expect("a comma-bearing transform destination should remain intact")
+                .destination,
+            "Olag, Ludevic's Hubris"
         );
     }
 

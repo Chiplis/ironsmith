@@ -225,6 +225,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn public_trigger_route_keeps_relative_player_and_optional_consult() {
+        let text = "At the beginning of each player's upkeep, that player chooses target player who controls more creatures than they do and is their opponent. The first player may reveal cards from the top of their library until they reveal a creature card. If the first player does, that player puts that card onto the battlefield and all other cards revealed this way into their graveyard.";
+        let definition = crate::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Relative Player Consult Probe",
+        )
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(text)
+        .expect("relative-player consult route should compile");
+
+        assert_eq!(
+            crate::compiled_text::compiled_text_lines(&definition).join("\n"),
+            text
+        );
+    }
+
+    #[test]
     fn targeted_opponent_consult_keeps_complement_and_authored_disposition_order() {
         let all_tag = TagKey::from("revealed");
         let match_tag = TagKey::from("matched");
@@ -277,6 +294,53 @@ mod tests {
             Some(
                 "Target opponent reveals cards from the top of their library until they reveal a creature card. That player puts all noncreature cards revealed this way into their graveyard, then you put the creature card onto the battlefield under your control"
             )
+        );
+    }
+
+    #[test]
+    fn targeted_opponent_consult_requires_controller_owned_match_destination() {
+        let all_tag = TagKey::from("revealed");
+        let match_tag = TagKey::from("matched");
+        let target = Effect::new(crate::effects::TargetOnlyEffect::new(
+            ChooseSpec::target_opponent(),
+        ));
+        let consult = Effect::new(crate::effects::ConsultTopOfLibraryEffect::new(
+            PlayerFilter::target_opponent(),
+            crate::effects::consult_helpers::LibraryConsultMode::Reveal,
+            ObjectFilter::default().with_type(CardType::Creature),
+            crate::effects::ConsultTopOfLibraryStopRule::FirstMatch,
+            all_tag.clone(),
+            match_tag.clone(),
+        ));
+        let remainder = Effect::new(crate::effects::ForEachTaggedEffect::new(
+            all_tag,
+            vec![Effect::new(crate::effects::ConditionalEffect::new(
+                crate::effect::Condition::TaggedObjectMatches(
+                    match_tag.clone(),
+                    ObjectFilter::default().same_stable_id_as_tagged(TagKey::from("__it__")),
+                ),
+                Vec::new(),
+                vec![Effect::new(crate::effects::MoveToZoneEffect::new(
+                    ChooseSpec::Iterated,
+                    Zone::Graveyard,
+                    false,
+                ))],
+            ))],
+        ));
+        let wrong_controller = Effect::new(crate::effects::PutOntoBattlefieldEffect::new(
+            ChooseSpec::Tagged(match_tag),
+            false,
+            PlayerFilter::target_opponent(),
+        ));
+
+        assert!(
+            describe_target_opponent_consult_remainder_then_match(&[
+                &target,
+                &consult,
+                &remainder,
+                &wrong_controller,
+            ])
+            .is_none()
         );
     }
 }

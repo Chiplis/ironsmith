@@ -119,6 +119,49 @@ fn structured_copy_exceptions_preserve_typed_characteristic_bundles() {
 }
 
 #[test]
+fn structured_copy_exception_combines_name_type_pt_and_keyword() {
+    let exception = parse_become_copy_exception_shape(&lex(
+        "his name is Mirror Adept, he's a legendary 4/4 Human Villain creature in addition to his other types, and he has vigilance",
+    ))
+    .expect("combined named copy exception");
+
+    assert_eq!(exception.name_override.as_deref(), Some("Mirror Adept"));
+    assert_eq!(exception.add_supertypes, [Supertype::Legendary]);
+    assert_eq!(exception.add_card_types, [CardType::Creature]);
+    assert_eq!(exception.add_subtypes, [Subtype::Human, Subtype::Villain]);
+    assert_eq!(exception.set_base_power_toughness, Some((4, 4)));
+    assert_eq!(
+        parser_token_word_refs(
+            exception
+                .granted_ability_tokens
+                .as_deref()
+                .expect("vigilance tokens")
+        ),
+        ["vigilance"]
+    );
+}
+
+#[test]
+fn structured_copy_exception_combines_name_colors_types_and_pt() {
+    let exception = parse_become_copy_exception_shape(&lex(
+        "its name is Final Form, it's 4/4, and it's a legendary blue and black Zombie creature in addition to its other colors and types",
+    ))
+    .expect("combined color and type copy exception");
+
+    assert_eq!(exception.name_override.as_deref(), Some("Final Form"));
+    assert_eq!(exception.add_supertypes, [Supertype::Legendary]);
+    assert_eq!(exception.add_colors, ColorSet::BLUE.union(ColorSet::BLACK));
+    assert_eq!(exception.add_card_types, [CardType::Creature]);
+    assert_eq!(exception.add_subtypes, [Subtype::Zombie]);
+    assert_eq!(exception.set_base_power_toughness, Some((4, 4)));
+
+    assert!(parse_become_copy_exception_shape(&lex(
+        "its name is Final Form, it's 4/4, and it's a legendary blueishly Zombie creature in addition to its other colors and types",
+    ))
+    .is_none());
+}
+
+#[test]
 fn no_name_copular_copy_exceptions_share_the_typed_path() {
     let dermotaxi = parse_become_copy_exception_shape(&lex(
         "it's a Vehicle artifact in addition to its other types",

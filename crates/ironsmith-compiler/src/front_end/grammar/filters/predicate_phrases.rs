@@ -1293,6 +1293,8 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
     }
     let counter_clause =
         matched.capture_clause_by_role(WinnowCaptureRole::Object, relation.tail_clause)?;
+    let counter_words = counter_clause.word_refs();
+    let explicit_one_or_more = counter_words.as_slice().starts_with(&["one", "or", "more"]);
     // An indefinite article expresses presence here ("has a counter"), not an
     // exact cardinality of one. Keep explicit quantities such as "exactly one"
     // exact while lowering "a"/"an" to an at-least-one comparison.
@@ -1325,7 +1327,11 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
         return Some(PredicateAst::SourceHasCounterAtLeast {
             counter_type,
             count: count.try_into().ok()?,
-            surface: crate::SourceCounterThresholdSurface::SourceHas,
+            surface: if explicit_one_or_more && count == 1 {
+                crate::SourceCounterThresholdSurface::SourceHasOneOrMore
+            } else {
+                crate::SourceCounterThresholdSurface::SourceHas
+            },
         });
     }
     Some(PredicateAst::ValueComparison {

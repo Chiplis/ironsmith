@@ -1,5 +1,20 @@
 use super::*;
 
+pub fn parse_combat_except_filter_shape_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<CombatExceptFilterShape<'_>> {
+    let (except_idx, (), after_except) =
+        primitives::find_prefix(tokens, || primitives::phrase(&["except", "for"]).void())?;
+    let included_filter_tokens = trim_lexed_commas(&tokens[..except_idx]);
+    let excluded_filter_tokens = trim_lexed_commas(after_except);
+    (!included_filter_tokens.is_empty() && !excluded_filter_tokens.is_empty()).then_some(
+        CombatExceptFilterShape {
+            included_filter_tokens,
+            excluded_filter_tokens,
+        },
+    )
+}
+
 pub fn parse_combat_damage_target_shape_lexed(
     tokens: &[OwnedLexToken],
     used: usize,

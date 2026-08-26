@@ -54,6 +54,32 @@ fn parses_face_down_selection_with_exact_graveyard_remainder() {
 }
 
 #[test]
+fn parses_cloaked_subset_with_exact_random_bottom_remainder() {
+    let positive = lex(
+        "Look at the top five cards of your library, cloak two of them, and put the rest on the bottom of your library in a random order",
+    );
+    assert_eq!(
+        parse_look_cloak_partition_shape(&positive),
+        Some(LookedCloakPartitionShape {
+            look: 0..10,
+            selected_count: ChoiceCount::exactly(2),
+            remainder_order: LibraryBottomOrderAst::Random,
+        }),
+        "tokens: {positive:#?}"
+    );
+
+    for near_miss in [
+        "Look at the top five cards of your library, manifest two of them, and put the rest on the bottom of your library in a random order",
+        "Look at the top five cards of your library, cloak two of them, and put the rest into your graveyard",
+    ] {
+        assert!(
+            parse_look_cloak_partition_shape(&lex(near_miss)).is_none(),
+            "near miss must not claim the cloak partition: {near_miss}"
+        );
+    }
+}
+
+#[test]
 fn parses_complete_looked_card_partitions_with_independent_orders() {
     assert_eq!(
         parse_looked_card_partition_shape(&lex(

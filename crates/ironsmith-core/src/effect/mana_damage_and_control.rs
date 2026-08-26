@@ -365,27 +365,40 @@ impl DealDistributedDamageEffect {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForEachCounterKindPutOrRemoveEffect {
     pub target: ChooseSpec,
+    /// Optional object set whose counters define the distinct counter kinds.
+    /// When absent, `target` is both the source and destination set.
+    pub counter_source: Option<ChooseSpec>,
     pub all_kinds: bool,
     pub fixed_counter_type: Option<crate::counter::CounterType>,
     pub optional_action: bool,
+    /// Put one counter without offering the ordinary put-or-remove choice.
+    pub put_only: bool,
+    /// Choose one object from `target` independently for every counter kind.
+    pub choose_target_per_kind: bool,
 }
 
 impl ForEachCounterKindPutOrRemoveEffect {
     pub fn new(target: ChooseSpec) -> Self {
         Self {
             target,
+            counter_source: None,
             all_kinds: true,
             fixed_counter_type: None,
             optional_action: false,
+            put_only: false,
+            choose_target_per_kind: false,
         }
     }
 
     pub fn one_kind(target: ChooseSpec) -> Self {
         Self {
             target,
+            counter_source: None,
             all_kinds: false,
             fixed_counter_type: None,
             optional_action: false,
+            put_only: false,
+            choose_target_per_kind: false,
         }
     }
 
@@ -396,9 +409,24 @@ impl ForEachCounterKindPutOrRemoveEffect {
     ) -> Self {
         Self {
             target,
+            counter_source: None,
             all_kinds: false,
             fixed_counter_type: Some(counter_type),
             optional_action,
+            put_only: false,
+            choose_target_per_kind: false,
+        }
+    }
+
+    pub fn put_each_kind_from(counter_source: ChooseSpec, target: ChooseSpec) -> Self {
+        Self {
+            target,
+            counter_source: Some(counter_source),
+            all_kinds: true,
+            fixed_counter_type: None,
+            optional_action: false,
+            put_only: true,
+            choose_target_per_kind: true,
         }
     }
 }
@@ -2386,6 +2414,11 @@ impl TagTriggeringAttackerEffect {
 pub struct TagOtherBlockParticipantEffect {
     pub tag: TagKey,
     pub filter: Option<ObjectFilter>,
+    /// When present, identify the authored combat subject by filter rather
+    /// than assuming the resolving ability's source is a participant. This
+    /// supports Auras and other external sources that watch an attached or
+    /// tagged creature block.
+    pub subject_filter: Option<ObjectFilter>,
 }
 
 impl TagOtherBlockParticipantEffect {
@@ -2393,6 +2426,19 @@ impl TagOtherBlockParticipantEffect {
         Self {
             tag: tag.into(),
             filter,
+            subject_filter: None,
+        }
+    }
+
+    pub fn matching_subject(
+        tag: impl Into<TagKey>,
+        subject_filter: ObjectFilter,
+        other_filter: ObjectFilter,
+    ) -> Self {
+        Self {
+            tag: tag.into(),
+            filter: Some(other_filter),
+            subject_filter: Some(subject_filter),
         }
     }
 }

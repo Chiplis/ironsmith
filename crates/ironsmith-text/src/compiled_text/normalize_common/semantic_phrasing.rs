@@ -70,6 +70,18 @@ fn compact_each_player_and_controlled_creatures_damage(line: &str) -> Option<Str
     ))
 }
 
+fn normalize_irregular_creature_type_plurals(line: &str) -> String {
+    // Runtime trigger displays intentionally use a lightweight noun inflector.
+    // Keep the small set of irregular Magic creature-type plurals canonical at
+    // the final text boundary, including when punctuation follows the noun.
+    line.replace("Elfs", "Elves")
+        .replace("Dwarfs", "Dwarves")
+        .replace("Wolfs", "Wolves")
+        .replace("Werewolfs", "Werewolves")
+        .replace("Funguses", "Fungi")
+        .replace("Mouses", "Mice")
+}
+
 fn restore_draw_exile_time_counter_granted_cast_surface(line: &str) -> Option<String> {
     const PREFIX: &str = "Draw a card. You exile a card from your hand, then put a number of time counters on the exiled card equal to its mana value. The exiled card gains \"";
     const SUFFIX: &str = "\" For each other card in your exile, remove a time counter from it.";
@@ -694,9 +706,14 @@ fn restore_destroyed_target_controller_noun(line: &str) -> Option<String> {
 
 fn reorder_equal_damage_recipient(line: &str) -> Option<String> {
     let (prefix, remainder) = line.split_once(" deals damage equal to ")?;
+    let remainder_lower = remainder.to_ascii_lowercase();
     if remainder.contains(" deals damage equal to ")
         || remainder.contains(" and that much damage to ")
         || remainder.contains(" to up to ")
+        // An unless clause belongs to the whole damage instruction. Treating
+        // its final object as the damage recipient moves the amount across the
+        // payment alternative and changes the authored meaning.
+        || remainder_lower.contains(" unless ")
     {
         return None;
     }
@@ -1846,14 +1863,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace(
             "Choose target creature you control and a creature an opponent controls",
             "Choose target creature you control and target creature an opponent controls",
-        )
-        .replace(
-            ". Those creatures fight each other",
-            ". Then those creatures fight each other",
-        )
-        .replace(
-            ". The chosen creatures fight each other",
-            ". Then the chosen creatures fight each other",
         )
         .replace(
             "Each opponent discards a card and you create ",
@@ -3876,6 +3885,14 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace(
             "target attacking/blocking creatures",
             "target attacking or blocking creatures",
+        )
+        .replace(
+            "Target attacking creature or blocking creature",
+            "Target attacking or blocking creature",
+        )
+        .replace(
+            "target attacking creature or blocking creature",
+            "target attacking or blocking creature",
         )
         .replace(
             "an attacking/blocking creature",
@@ -6476,7 +6493,18 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if let Some(compact) = restore_sacrificed_power_each_opponent_draw_surface(&normalized) {
         normalized = compact;
     }
-    normalized
+    if (normalized.starts_with("Each opponent who lost ")
+        || normalized.contains("each opponent who lost "))
+        && normalized.contains(" faces a villainous choice — ")
+    {
+        normalized = normalized
+            .replace(
+                " faces a villainous choice — Draw ",
+                " faces a villainous choice — You draw ",
+            )
+            .replace(", or they discard ", ", or that player discards ");
+    }
+    normalize_irregular_creature_type_plurals(&normalized)
 }
 
 pub(crate) fn normalize_reveal_match_filter(filter: &str) -> String {

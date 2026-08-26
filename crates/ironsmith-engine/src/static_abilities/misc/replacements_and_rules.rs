@@ -2328,6 +2328,8 @@ impl ReplacementMatcher for WouldGoToGraveyardFromAnywhereMatcher {
 pub struct ExileWouldDieInstead {
     pub filter: ObjectFilter,
     pub damaged_by: Option<DamagedBySource>,
+    pub damager_filter: Option<ObjectFilter>,
+    pub damager_filter_surface: Option<String>,
     pub exile_with_counters: Vec<(CounterType, u32)>,
     pub follow_up_effects: Vec<Effect>,
 }
@@ -2337,6 +2339,8 @@ impl ExileWouldDieInstead {
         Self {
             filter,
             damaged_by: None,
+            damager_filter: None,
+            damager_filter_surface: None,
             exile_with_counters: Vec::new(),
             follow_up_effects: Vec::new(),
         }
@@ -2346,6 +2350,8 @@ impl ExileWouldDieInstead {
         Self {
             filter,
             damaged_by: Some(damaged_by),
+            damager_filter: None,
+            damager_filter_surface: None,
             exile_with_counters: Vec::new(),
             follow_up_effects: Vec::new(),
         }
@@ -2359,6 +2365,25 @@ impl ExileWouldDieInstead {
         Self::with_counters_and_follow_up(filter, damaged_by, Vec::new(), follow_up_effects)
     }
 
+    pub fn damaged_by_filter(filter: ObjectFilter, damager_filter: ObjectFilter) -> Self {
+        Self::damaged_by_filter_with_surface(filter, damager_filter, None)
+    }
+
+    pub fn damaged_by_filter_with_surface(
+        filter: ObjectFilter,
+        damager_filter: ObjectFilter,
+        damager_filter_surface: Option<String>,
+    ) -> Self {
+        Self {
+            filter,
+            damaged_by: None,
+            damager_filter: Some(damager_filter),
+            damager_filter_surface,
+            exile_with_counters: Vec::new(),
+            follow_up_effects: Vec::new(),
+        }
+    }
+
     pub fn with_counters_and_follow_up(
         filter: ObjectFilter,
         damaged_by: Option<DamagedBySource>,
@@ -2368,6 +2393,8 @@ impl ExileWouldDieInstead {
         Self {
             filter,
             damaged_by,
+            damager_filter: None,
+            damager_filter_surface: None,
             exile_with_counters,
             follow_up_effects,
         }
@@ -2384,6 +2411,27 @@ fn is_simple_source_would_die_filter(filter: &ObjectFilter) -> bool {
     filter_without_type == ObjectFilter::source()
 }
 
+fn with_indefinite_article(text: String) -> String {
+    let lower = text.to_ascii_lowercase();
+    if lower.starts_with("a ")
+        || lower.starts_with("an ")
+        || lower.starts_with("the ")
+        || lower.starts_with("another ")
+    {
+        return text;
+    }
+    let article = if lower
+        .chars()
+        .next()
+        .is_some_and(|first| matches!(first, 'a' | 'e' | 'i' | 'o' | 'u'))
+    {
+        "an"
+    } else {
+        "a"
+    };
+    format!("{article} {text}")
+}
+
 impl StaticAbilityKind for ExileWouldDieInstead {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::ExileWouldDieInstead
@@ -2394,12 +2442,14 @@ impl StaticAbilityKind for ExileWouldDieInstead {
     ) -> Option<(
         &ObjectFilter,
         Option<DamagedBySource>,
+        Option<&ObjectFilter>,
         &[(CounterType, u32)],
         &[Effect],
     )> {
         Some((
             &self.filter,
             self.damaged_by,
+            self.damager_filter.as_ref(),
             &self.exile_with_counters,
             &self.follow_up_effects,
         ))
@@ -2416,7 +2466,22 @@ impl StaticAbilityKind for ExileWouldDieInstead {
                 .collect();
             format!(" with {} on it", join_english(&counter_phrases))
         };
-        if let Some(damaged_by) = self.damaged_by {
+        if let Some(damager_filter) = &self.damager_filter {
+            let source_text = self.damager_filter_surface.clone().unwrap_or_else(|| {
+                let mut source_filter = damager_filter.clone();
+                source_filter.zone = None;
+                source_filter
+                    .description()
+                    .replace(" you control", " you controlled")
+                    .replace(" an opponent controls", " an opponent controlled")
+            });
+            format!(
+                "If {} dealt damage this turn by {} would die, exile it{} instead.",
+                with_indefinite_article(self.filter.description()),
+                source_text,
+                counter_suffix
+            )
+        } else if let Some(damaged_by) = self.damaged_by {
             let source_text = match damaged_by {
                 DamagedBySource::ThisCreature => "this creature",
                 DamagedBySource::EquippedCreature => "equipped creature",
@@ -2442,6 +2507,20 @@ impl StaticAbilityKind for ExileWouldDieInstead {
         source: ObjectId,
         controller: PlayerId,
     ) -> Option<ReplacementEffect> {
+        if let Some(damager_filter) = &self.damager_filter {
+            return Some(ReplacementEffect::with_matcher(
+                source,
+                controller,
+                WouldDieDamagedByFilteredSourceThisTurnMatcher::new(
+                    self.filter.clone(),
+                    damager_filter.clone(),
+                ),
+                ReplacementAction::ExileWithSourceLinkCountersThen {
+                    counters: self.exile_with_counters.clone(),
+                    effects: self.follow_up_effects.clone(),
+                },
+            ));
+        }
         if let Some(damaged_by) = self.damaged_by {
             return Some(ReplacementEffect::with_matcher(
                 source,

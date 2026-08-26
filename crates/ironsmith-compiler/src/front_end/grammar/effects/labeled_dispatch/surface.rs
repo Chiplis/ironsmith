@@ -7,6 +7,8 @@ use super::common;
 const EACH_PLAYER_CHOOSE_PREFIXES: &[&[&str]] = &[
     &["each", "player", "choose"],
     &["each", "player", "chooses"],
+    &["each", "opponent", "choose"],
+    &["each", "opponent", "chooses"],
 ];
 const PRE_EXTENSION_HEADS: &[&[&str]] = &[&["prevent"], &["take"], &["monstrosity"]];
 const HAND_WORDS: &[&[&str]] = &[&["hand"], &["hands"]];

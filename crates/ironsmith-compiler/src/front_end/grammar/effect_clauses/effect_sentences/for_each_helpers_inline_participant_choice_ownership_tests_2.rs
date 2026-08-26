@@ -151,6 +151,53 @@ fn standalone_participant_choices_use_an_aggregate_tag_but_nested_choices_remain
 }
 
 #[test]
+fn participant_creature_type_choice_is_not_claimed_as_an_object_choice() {
+    let standalone = parsed_debug("Each player chooses a creature type.");
+    assert!(standalone.contains("ChooseCreatureType"), "{standalone}");
+    assert!(!standalone.contains("ChooseObjects"), "{standalone}");
+
+    let text = "Each player chooses a creature type and returns any number of cards of that type from their graveyard to their hand.";
+    let effect = parsed_debug(text);
+    assert!(effect.contains("ChooseCreatureType"), "{effect}");
+    assert!(!effect.contains("ChooseObjects"), "{effect}");
+    assert!(effect.contains("chosen_creature_type: true"), "{effect}");
+
+    let object_choice = parsed_debug(
+        "Each player chooses a creature they control and returns it to its owner's hand.",
+    );
+    assert!(object_choice.contains("ChooseObjects"), "{object_choice}");
+    assert!(
+        !object_choice.contains("ChooseCreatureType"),
+        "{object_choice}"
+    );
+}
+
+#[test]
+fn participant_graveyard_choice_keeps_the_remainder_in_the_same_loop() {
+    let tokens = lex_line(
+        "Each opponent chooses two cards in their graveyard and exiles the rest.",
+        0,
+    )
+    .expect("participant graveyard choice should lex");
+    let effect = parse_for_each_opponent_clause(&tokens)
+        .expect("participant graveyard choice should parse")
+        .expect("participant graveyard choice should match");
+    let EffectAst::ForEachOpponent { effects } = effect else {
+        panic!("expected opponent loop: {effect:#?}");
+    };
+    assert!(
+        format!("{effects:#?}").contains("ChooseObjects"),
+        "{effects:#?}"
+    );
+    assert!(format!("{effects:#?}").contains("Exile"), "{effects:#?}");
+    assert_eq!(
+        effects.len(),
+        2,
+        "choice and remainder must be adjacent: {effects:#?}"
+    );
+}
+
+#[test]
 fn for_each_object_filter_preserves_typed_those_set_surface() {
     let those_tokens = lex_line("those permanents", 0).expect("those filter should lex");
     let those = parse_for_each_object_filter(&those_tokens).expect("those filter should parse");

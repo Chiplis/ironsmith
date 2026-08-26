@@ -40,3 +40,25 @@ fn classifies_multi_zone_search_exile_remainder_to_ordered_top() {
         Some(DivvySequenceShape::SearchLibraryGraveyardExileRemainderToTop)
     );
 }
+
+#[test]
+fn classifies_different_power_search_with_delegated_partition() {
+    let lines = [
+        lex_line(
+            "Search your library for up to four creature cards with different powers and reveal them.",
+            0,
+        )
+        .unwrap(),
+        lex_line("An opponent chooses two of those cards.", 1).unwrap(),
+        lex_line(
+            "Shuffle the chosen cards into your library and put the rest into your hand.",
+            2,
+        )
+        .unwrap(),
+    ];
+    let slices = lines.iter().map(Vec::as_slice).collect::<Vec<_>>();
+    assert_eq!(
+        parse_divvy_sequence_shape(&slices),
+        Some(DivvySequenceShape::SearchFourDifferentPowers)
+    );
+}

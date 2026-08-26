@@ -45,6 +45,7 @@ pub(super) fn is_keyword_phrase(phrase: &str) -> bool {
         || lower.starts_with("modular ")
         || lower.starts_with("poisonous ")
         || lower.starts_with("rampage ")
+        || lower.starts_with("renown ")
         || lower.starts_with("scavenge ")
         || lower.starts_with("transfigure ")
         || lower.starts_with("transmute ")

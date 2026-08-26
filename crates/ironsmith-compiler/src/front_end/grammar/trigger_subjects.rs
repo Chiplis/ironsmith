@@ -50,13 +50,17 @@ pub struct DiscardTriggerEnvelope<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SourceOrAnotherShape {
     pub source_word_end: usize,
+    pub connector_word: usize,
+    pub connector_words: usize,
     pub other_word: usize,
+    pub one_or_more: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SourceOrFilterShape {
     pub source_word_end: usize,
     pub connector_word: usize,
+    pub connector_words: usize,
     pub filter_word: usize,
 }
 
@@ -226,7 +230,14 @@ pub fn parse_discard_trigger_envelope(
 
 pub fn parse_source_or_another_shape(words: &[&str]) -> Option<SourceOrAnotherShape> {
     let shape = parse_source_or_filter_shape(words)?;
-    let other_word = shape.filter_word;
+    let (other_word, one_or_more) = if words
+        .get(shape.filter_word..shape.filter_word + 4)
+        .is_some_and(|words| words == ["one", "or", "more", "other"])
+    {
+        (shape.filter_word + 3, true)
+    } else {
+        (shape.filter_word, false)
+    };
     if !words
         .get(other_word)
         .is_some_and(|word| matches!(*word, "other" | "another"))
@@ -235,7 +246,10 @@ pub fn parse_source_or_another_shape(words: &[&str]) -> Option<SourceOrAnotherSh
     }
     Some(SourceOrAnotherShape {
         source_word_end: shape.source_word_end,
+        connector_word: shape.connector_word,
+        connector_words: shape.connector_words,
         other_word,
+        one_or_more,
     })
 }
 
@@ -247,11 +261,19 @@ pub fn parse_source_or_another_shape(words: &[&str]) -> Option<SourceOrAnotherSh
 /// authored alternatives such as `this creature or an instant spell`.
 pub fn parse_source_or_filter_shape(words: &[&str]) -> Option<SourceOrFilterShape> {
     let connector_word = parse_word_slice_index(words, &["and", "or", "and/or"])?;
-    let filter_word = connector_word + 1;
+    let connector_words = if words.get(connector_word) == Some(&"and")
+        && words.get(connector_word + 1) == Some(&"or")
+    {
+        2
+    } else {
+        1
+    };
+    let filter_word = connector_word + connector_words;
     words.get(filter_word)?;
     Some(SourceOrFilterShape {
         source_word_end: connector_word,
         connector_word,
+        connector_words,
         filter_word,
     })
 }

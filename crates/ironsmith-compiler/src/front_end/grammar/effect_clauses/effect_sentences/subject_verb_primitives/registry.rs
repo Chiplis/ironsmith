@@ -802,11 +802,9 @@ pub fn parse_you_and_player_each_create_sentence(
     let Some(shape) = registry_shapes::parse_joint_create_shape(clause.tokens()) else {
         return Ok(None);
     };
-    let Ok(parsed) = crate::effect_sentences::parse_effect_sentence_lexed(shape.effect_tokens)
+    let Ok(EffectAst::SubjectVerb(template)) =
+        super::super::parse_create(shape.effect_tokens, None)
     else {
-        return Ok(None);
-    };
-    let [EffectAst::SubjectVerb(template)] = parsed.as_slice() else {
         return Ok(None);
     };
     fn with_subject_player(
@@ -825,8 +823,8 @@ pub fn parse_you_and_player_each_create_sentence(
         copy
     }
     Ok(Some(vec![
-        EffectAst::SubjectVerb(with_subject_player(template, PlayerAst::You)),
-        EffectAst::SubjectVerb(with_subject_player(template, shape.other_player)),
+        EffectAst::SubjectVerb(with_subject_player(&template, PlayerAst::You)),
+        EffectAst::SubjectVerb(with_subject_player(&template, shape.other_player)),
     ]))
 }
 
@@ -834,6 +832,49 @@ pub fn parse_sentence_you_and_player_each_create(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_you_and_player_each_create_sentence(clause)
+}
+
+/// "This creature and that creature each get ..." applies one authored
+/// action chain independently to the ability source and to the previously
+/// tagged object. Keeping this as a joint-subject primitive preserves both
+/// actors without teaching the ordinary chain splitter to clone arbitrary
+/// conjunctions.
+pub fn parse_source_and_tagged_object_each_actions_sentence(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(shape) = registry_shapes::parse_joint_object_each_actions_shape(clause.tokens())
+    else {
+        return Ok(None);
+    };
+
+    let parse_for_subject = |subject: &[OwnedLexToken]| {
+        let mut sentence = Vec::with_capacity(subject.len() + shape.action_tokens.len());
+        sentence.extend_from_slice(subject);
+        sentence.extend_from_slice(shape.action_tokens);
+        // The authored joint subject takes the plural verb (`each get`).
+        // Each independently lowered singular subject takes `gets`; later
+        // coordinated verbs retain their ordinary base form and are carried
+        // by the existing chain parser.
+        if let Some(action_head) = sentence.get_mut(subject.len())
+            && action_head.as_word() == Some("get")
+        {
+            action_head.replace_word("gets");
+        }
+        parse_effect_chain_lexed(&sentence)
+    };
+    let mut effects = parse_for_subject(shape.source_tokens)?;
+    effects.extend(parse_for_subject(shape.tagged_tokens)?);
+    Ok(Some(vec![EffectAst::Coordinated {
+        effects,
+        leading_duration: false,
+        result_conjunction: false,
+    }]))
+}
+
+pub fn parse_sentence_source_and_tagged_object_each_actions(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    parse_source_and_tagged_object_each_actions_sentence(clause)
 }
 
 pub fn parse_sentence_choose_player_to_effect(
@@ -1230,6 +1271,29 @@ mod tests {
                     },
                 }),
             ]
+        ));
+
+        let public_tokens = lex_line("You and target opponent each draw three cards", 0)
+            .expect("shared target-opponent draw should lex");
+        let public = crate::effect_sentences::parse_effect_sentences_lexed(&public_tokens)
+            .expect("public sentence registry should parse the coordinated draw");
+        assert_eq!(
+            public.len(),
+            2,
+            "the public route must retain both coordinated player actions: {public:#?}"
+        );
+        assert!(matches!(
+            public.get(1),
+            Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                subject: SubjectVerbSubjectAst {
+                    player: PlayerAst::TargetOpponent,
+                    ..
+                },
+                action: SubjectVerbActionAst::Draw {
+                    count: Value::Fixed(3),
+                },
+                ..
+            }))
         ));
     }
 

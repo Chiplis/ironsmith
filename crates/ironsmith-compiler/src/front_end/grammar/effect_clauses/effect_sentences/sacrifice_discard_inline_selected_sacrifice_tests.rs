@@ -34,6 +34,47 @@ fn chooser_sacrifices_only_the_selected_set() {
 }
 
 #[test]
+fn any_number_sacrifice_keeps_a_comma_then_mana_followup() {
+    let tokens = lex_line("Sacrifice any number of lands, then add that much {C}.", 0)
+        .expect("sacrifice and mana clause should lex");
+    let parsed = parse_sacrifice(&tokens, None, None)
+        .expect("sacrifice and mana clause should remain one typed sequence");
+    let EffectAst::Sequence { effects } = parsed else {
+        panic!("expected chosen sacrifice and mana sequence");
+    };
+    let [
+        EffectAst::ChooseObjects { filter, tag, .. },
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::SacrificeAll { filter: sacrificed },
+            ..
+        }),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::AddManaScaled { mana, amount },
+            ..
+        }),
+    ] = effects.as_slice()
+    else {
+        panic!("expected exact choose/sacrifice/add sequence: {effects:#?}");
+    };
+    assert_eq!(filter.card_types, [crate::types::CardType::Land]);
+    assert_eq!(sacrificed, &ObjectFilter::tagged(tag.clone()));
+    assert_eq!(mana, &[crate::mana::ManaSymbol::Colorless]);
+    assert_eq!(
+        amount,
+        &Value::EventValue(crate::effect::EventValueSpec::Amount)
+    );
+
+    let near_miss = lex_line("Sacrifice any number of nonbasic lands.", 0)
+        .expect("ordinary sacrifice clause should lex");
+    let EffectAst::Sequence { effects } =
+        parse_sacrifice(&near_miss, None, None).expect("ordinary sacrifice should parse")
+    else {
+        panic!("ordinary chosen sacrifice should remain a sequence");
+    };
+    assert_eq!(effects.len(), 2, "ordinary sacrifice gained a followup");
+}
+
+#[test]
 fn one_of_them_is_a_choice_from_the_referenced_set() {
     let tokens =
         lex_line("Sacrifice one of them.", 0).expect("tagged-set sacrifice clause should lex");

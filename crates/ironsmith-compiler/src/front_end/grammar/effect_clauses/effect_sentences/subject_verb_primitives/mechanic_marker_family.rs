@@ -221,6 +221,13 @@ pub const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
         parse_sentence_you_and_player_each_create
     ),
     primitive!(
+        "source-and-tagged-object-each-actions",
+        97,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("this")],
+        parse_sentence_source_and_tagged_object_each_actions
+    ),
+    primitive!(
         "choose-player-to-effect",
         100,
         PreDiagnostic,
@@ -885,6 +892,68 @@ mod tests {
     use crate::util::tokenize_line;
 
     #[test]
+    fn preconditional_registry_preserves_both_joint_create_actors() {
+        let tokens = tokenize_line("You and target opponent each create a Food token.", 0);
+        let effects = run_subject_verb_primitives_lexed(
+            &tokens,
+            PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
+            &PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
+        )
+        .expect("registry parse should succeed")
+        .expect("joint-create primitive should claim the sentence");
+
+        assert!(
+            matches!(
+                effects.as_slice(),
+                [
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        subject: SubjectVerbSubjectAst {
+                            player: PlayerAst::You,
+                            ..
+                        },
+                        action: SubjectVerbActionAst::CreateTokenWithMods {
+                            player: PlayerAst::You,
+                            ..
+                        },
+                        ..
+                    }),
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        subject: SubjectVerbSubjectAst {
+                            player: PlayerAst::TargetOpponent,
+                            ..
+                        },
+                        action: SubjectVerbActionAst::CreateTokenWithMods {
+                            player: PlayerAst::TargetOpponent,
+                            ..
+                        },
+                        ..
+                    })
+                ]
+            ),
+            "{effects:#?}"
+        );
+
+        let public = parse_effect_sentence_lexed(&tokens)
+            .expect("public sentence route should preserve both joint-create actors");
+        assert_eq!(public, effects, "{public:#?}");
+    }
+
+    #[test]
+    fn preconditional_registry_preserves_both_joint_object_actors() {
+        for text in [
+            "You may have this creature become a copy of another target creature you control until end of turn, except its name is Gogo, Mysterious Mime.",
+            "This creature gets +2/+0 and gains haste until end of turn and attacks this turn if able.",
+            "That creature gets +2/+0 and gains haste until end of turn and attacks this turn if able.",
+            "This creature and that creature each get +2/+0 and gain haste until end of turn and attack this turn if able.",
+            "If you do, this creature and that creature each get +2/+0 and gain haste until end of turn and attack this turn if able.",
+        ] {
+            let tokens = tokenize_line(text, 0);
+            parse_effect_chain_lexed(&tokens)
+                .unwrap_or_else(|error| panic!("failed to parse '{text}': {error}"));
+        }
+    }
+
+    #[test]
     fn parse_sentence_implicit_become_clause_handles_explicit_self_negative_type_with_duration() {
         let tokens = tokenize_line("this creature isn't a creature until end of turn.", 0);
         let effects =
@@ -1005,6 +1074,16 @@ mod tests {
                 .iter()
                 .all(|effect| matches!(effect, EffectAst::Conditional { .. })),
             "{effects:#?}"
+        );
+
+        let public_effects = parse_effect_chain_lexed(&tokens)
+            .expect("the public effect-chain route should preserve both sibling arms");
+        assert_eq!(public_effects.len(), 2, "{public_effects:#?}");
+        assert!(
+            public_effects
+                .iter()
+                .all(|effect| matches!(effect, EffectAst::Conditional { .. })),
+            "{public_effects:#?}"
         );
     }
 

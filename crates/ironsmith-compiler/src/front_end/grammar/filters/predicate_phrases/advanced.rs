@@ -4181,6 +4181,35 @@ pub(super) fn parse_revealed_or_controlled_subtype_predicate(
     ))
 }
 
+fn parse_you_controlled_as_cast_predicate(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    const SUFFIX: &[&str] = &["as", "you", "cast", "this", "spell"];
+    let clause = LexedClause::new(tokens);
+    if !surface::prefix(clause, &["you", "controlled"]) {
+        return Ok(None);
+    }
+    let Some(without_suffix) = primitives::strip_lexed_suffix_phrase(tokens, SUFFIX) else {
+        return Ok(None);
+    };
+    let Some(object_tokens) = without_suffix.get(2..) else {
+        return Ok(None);
+    };
+    let object_tokens = strip_leading_article_tokens(object_tokens);
+    if object_tokens.is_empty() {
+        return Ok(None);
+    }
+    let mut filter = parse_object_filter_lexed(object_tokens, false)?;
+    if filter == ObjectFilter::default() {
+        return Ok(None);
+    }
+    filter.set_as_you_cast_this_turn_surface(true);
+    Ok(Some(PredicateAst::PlayerControls {
+        player: PlayerAst::You,
+        filter,
+    }))
+}
+
 pub(super) fn single_subtype_descriptor_clause<'a>(
     clause: LexedClause<'a>,
     optional_suffix: &[&str],
@@ -4787,6 +4816,14 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
         tokens
     };
 
+    // Trigger structure owns the subject in "attacks while saddled" and may
+    // pass only the typed state tail to the predicate grammar.  The omitted
+    // subject is therefore the source object, just as in the complete
+    // "this creature is saddled" spelling handled below.
+    if surface::exact(LexedClause::new(predicate_tokens), &["saddled"]) {
+        return Ok(PredicateAst::SourceIsSaddled);
+    }
+
     if !predicate_tokens.iter().any(|token| {
         token
             .as_word()
@@ -4795,6 +4832,10 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
         return Err(CardTextError::ParseError(
             "empty predicate in if clause".to_string(),
         ));
+    }
+
+    if let Some(predicate) = parse_you_controlled_as_cast_predicate(predicate_tokens)? {
+        return Ok(predicate);
     }
 
     // Repeated articles on both sides of "and" are independent existential

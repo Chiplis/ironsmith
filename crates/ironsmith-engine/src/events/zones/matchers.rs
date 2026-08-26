@@ -5,6 +5,7 @@ use crate::events::context::EventContext;
 use crate::events::traits::{
     EventKind, GameEventType, ReplacementMatcher, ReplacementPriority, downcast_event,
 };
+use crate::events::{DamageEvent, DamageTarget};
 use crate::filter::PlayerFilterExt;
 use crate::filter::{ObjectFilterExt as _, StackObjectKind};
 use crate::ids::ObjectId;
@@ -287,6 +288,117 @@ impl ReplacementMatcher for WouldDieDamagedBySourceThisTurnMatcher {
             "When {} dealt damage by {} this turn would die",
             self.filter.description(),
             source_text
+        )
+    }
+}
+
+/// Matches a would-die event after damage from any source satisfying a typed
+/// filter at the time that damage was dealt.
+#[derive(Debug, Clone)]
+pub struct WouldDieDamagedByFilteredSourceThisTurnMatcher {
+    pub victim_filter: ObjectFilter,
+    pub damager_filter: ObjectFilter,
+}
+
+impl WouldDieDamagedByFilteredSourceThisTurnMatcher {
+    pub fn new(victim_filter: ObjectFilter, damager_filter: ObjectFilter) -> Self {
+        Self {
+            victim_filter,
+            damager_filter,
+        }
+    }
+
+    fn victim_matches(
+        &self,
+        victim_id: ObjectId,
+        zone_change: &ZoneChangeEvent,
+        ctx: &EventContext,
+    ) -> bool {
+        if let Some(snapshot) = zone_change.snapshot.as_ref()
+            && snapshot.object_id == victim_id
+        {
+            return self
+                .victim_filter
+                .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game);
+        }
+        ctx.game.object(victim_id).is_some_and(|object| {
+            self.victim_filter
+                .matches(object, &ctx.filter_ctx, ctx.game)
+        })
+    }
+
+    fn was_damaged_by_matching_source(
+        &self,
+        victim_id: ObjectId,
+        victim_stable_id: Option<crate::ids::StableId>,
+        ctx: &EventContext,
+    ) -> bool {
+        ctx.game
+            .turn_store
+            .turn_history
+            .projected_records()
+            .any(|record| {
+                let Some(damage) = record.event.downcast::<DamageEvent>() else {
+                    return false;
+                };
+                if damage.amount == 0 {
+                    return false;
+                }
+                let target_matches = match damage.target {
+                    DamageTarget::Object(target) if target == victim_id => true,
+                    DamageTarget::Object(_) => victim_stable_id.is_some_and(|stable_id| {
+                        damage
+                            .target_snapshot
+                            .as_ref()
+                            .is_some_and(|snapshot| snapshot.stable_id == stable_id)
+                    }),
+                    DamageTarget::Player(_) => false,
+                };
+                if !target_matches {
+                    return false;
+                }
+
+                if let Some(source_snapshot) = record.source_snapshot.as_ref() {
+                    return self.damager_filter.matches_snapshot(
+                        source_snapshot,
+                        &ctx.filter_ctx,
+                        ctx.game,
+                    );
+                }
+                ctx.game.object(damage.source).is_some_and(|source| {
+                    self.damager_filter
+                        .matches(source, &ctx.filter_ctx, ctx.game)
+                })
+            })
+    }
+}
+
+impl ReplacementMatcher for WouldDieDamagedByFilteredSourceThisTurnMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        if event.event_kind() != EventKind::ZoneChange {
+            return false;
+        }
+        let Some(zone_change) = downcast_event::<ZoneChangeEvent>(event) else {
+            return false;
+        };
+        if zone_change.from != Zone::Battlefield || zone_change.to != Zone::Graveyard {
+            return false;
+        }
+
+        zone_change.objects.iter().any(|&victim_id| {
+            let victim_stable_id = zone_change.snapshot.as_ref().and_then(|snapshot| {
+                (snapshot.object_id == victim_id).then_some(snapshot.stable_id)
+            });
+            self.victim_matches(victim_id, zone_change, ctx)
+                && self.was_damaged_by_matching_source(victim_id, victim_stable_id, ctx)
+        })
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "When {} dealt damage this turn by {} would die",
+            self.victim_filter.description(),
+            self.damager_filter.description()
         )
     }
 }
@@ -726,6 +838,9 @@ mod tests {
     use crate::game_state::GameState;
     use crate::ids::CardId;
     use crate::ids::{ObjectId, PlayerId};
+    use crate::provenance::ProvNodeId;
+    use crate::snapshot::ObjectSnapshot;
+    use crate::triggers::TriggerEvent;
     use crate::types::CardType;
 
     fn setup_game() -> GameState {
@@ -823,6 +938,53 @@ mod tests {
 
         let matcher = WouldDieMatcher::creature();
         assert_eq!(matcher.display(), "When a creature would die");
+    }
+
+    #[test]
+    fn filtered_damage_history_replacement_uses_source_controller_at_damage_time() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let ability_source = create_creature_in_zone(&mut game, alice, Zone::Battlefield);
+        let alice_damager = create_creature_in_zone(&mut game, alice, Zone::Battlefield);
+        let bob_damager = create_creature_in_zone(&mut game, bob, Zone::Battlefield);
+        let alice_victim = create_creature_in_zone(&mut game, bob, Zone::Battlefield);
+        let bob_victim = create_creature_in_zone(&mut game, bob, Zone::Battlefield);
+
+        for (damager, victim) in [(alice_damager, alice_victim), (bob_damager, bob_victim)] {
+            let target_snapshot = ObjectSnapshot::from_object(
+                game.object(victim).expect("damage victim should exist"),
+                &game,
+            );
+            let damage = TriggerEvent::new(
+                DamageEvent::with_cause(
+                    damager,
+                    DamageTarget::Object(victim),
+                    1,
+                    false,
+                    crate::events::cause::EventCause::effect(),
+                )
+                .with_target_snapshot(target_snapshot),
+                ProvNodeId::default(),
+            );
+            game.record_turn_history_event(&damage);
+        }
+
+        let matcher = WouldDieDamagedByFilteredSourceThisTurnMatcher::new(
+            ObjectFilter::creature(),
+            ObjectFilter::default().you_control(),
+        );
+        let ctx = EventContext::for_replacement_effect(alice, ability_source, &game);
+        let would_die = |victim| {
+            let snapshot = ObjectSnapshot::from_object(
+                game.object(victim).expect("dying victim should exist"),
+                &game,
+            );
+            effect_zone_change(victim, Zone::Battlefield, Zone::Graveyard, Some(snapshot))
+        };
+
+        assert!(matcher.matches_event(&would_die(alice_victim), &ctx));
+        assert!(!matcher.matches_event(&would_die(bob_victim), &ctx));
     }
 
     #[test]

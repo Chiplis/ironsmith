@@ -610,6 +610,40 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         }
     }
 
+    // A tagged or filtered subject can occupy either side of one concrete
+    // blocking pair: "enchanted creature blocks or becomes blocked by a
+    // creature ...". Parse that relationship before the broad `or` splitter;
+    // otherwise its right arm is interpreted independently and `becomes`
+    // can fall through to an unrelated phase trigger.
+    if let Some(blocks_word_idx) = trigger_atom_word(&words, TriggerClauseAtom::Block)
+        && words.get(blocks_word_idx..blocks_word_idx + 5)
+            == Some(&["blocks", "or", "becomes", "blocked", "by"])
+    {
+        let subject_end = trigger_word_token_start(tokens, blocks_word_idx).unwrap_or(tokens.len());
+        let other_start =
+            trigger_word_token_start(tokens, blocks_word_idx + 5).unwrap_or(tokens.len());
+        if subject_end > 0
+            && other_start < tokens.len()
+            && let Some(subject) =
+                parse_attack_trigger_subject_filter_lexed(&tokens[..subject_end])?
+        {
+            let raw_other_tokens = trim_commas(&tokens[other_start..]);
+            let one_or_more = has_leading_one_or_more(&raw_other_tokens);
+            let other_tokens = strip_leading_one_or_more_lexed(&raw_other_tokens);
+            if !other_tokens.is_empty() {
+                let mut other = parse_object_filter_lexed(other_tokens, false).map_err(|_| {
+                    CardTextError::ParseError(format!(
+                        "unsupported opposite blocking-object filter in trigger clause (clause: '{}')",
+                        words.join(" ")
+                    ))
+                })?;
+                preserve_trigger_filter_union_surface(&mut other, other_tokens);
+                other.set_union_one_or_more(one_or_more);
+                return Ok(TriggerSpec::BlocksOrBecomesBlockedByObject { subject, other });
+            }
+        }
+    }
+
     if let Some(or_idx) = split_trigger_or_index(tokens) {
         let left_tokens = &tokens[..or_idx];
         let right_tokens = &tokens[or_idx + 1..];
@@ -1343,6 +1377,37 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     )),
                 ));
             }
+        }
+        let subject_word_view = ActivationRestrictionCompatWords::new(subject_tokens);
+        let subject_words = subject_word_view.to_word_refs();
+        if let Some(shape) =
+            crate::grammar::trigger_subjects::parse_source_or_another_shape(&subject_words)
+            && shape.one_or_more
+            && (shape.connector_words == 2
+                || subject_words.get(shape.connector_word) == Some(&"and/or"))
+            && let Some((source_filter, mut other_filter)) =
+                parse_source_or_another_trigger_subject_filters(subject_tokens)
+        {
+            other_filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
+            let cause_filter = if contains_window(&words, &["without", "being", "played"]) {
+                Some(crate::events::cause::CauseFilter::not_type(
+                    crate::events::cause::CauseType::SpecialAction,
+                ))
+            } else {
+                None
+            };
+            return Ok(TriggerSpec::Either(
+                Box::new(this_enters_battlefield_trigger_spec(
+                    source_filter.source_surface,
+                    ironsmith_core::trigger_model::TriggerSubjectNumber::Singular,
+                    origin_condition.clone(),
+                )),
+                Box::new(TriggerSpec::EntersBattlefieldOneOrMore {
+                    filter: other_filter,
+                    cause_filter,
+                    origin_condition,
+                }),
+            ));
         }
         if let Some(or_idx) = trigger_atom_token(subject_tokens, TriggerClauseAtom::Or) {
             let or_is_one_or_more_quantifier = or_idx == 1
@@ -3782,6 +3847,14 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     if let Some(attacks_word_idx) = trigger_atom_word(&words, TriggerClauseAtom::Attack) {
         let subject_words = &words[..attacks_word_idx];
         let tail = &words[attacks_word_idx + 1..];
+        if let Some(target) = parse_planeswalker_attacked_with_one_or_more_creatures_target(tail) {
+            let attacks_token_idx =
+                trigger_word_token_start(tokens, attacks_word_idx).unwrap_or(tokens.len());
+            let subject_tokens = &tokens[..attacks_token_idx];
+            if let Some(attacker) = trigger_subject_player_selector_lexed(subject_tokens) {
+                return Ok(TriggerSpec::PlayerAttacksTargetWithOneOrMore { attacker, target });
+            }
+        }
         if let Some(target) = parse_one_or_more_planeswalker_attack_target(tail) {
             let attacks_token_idx =
                 trigger_word_token_start(tokens, attacks_word_idx).unwrap_or(tokens.len());

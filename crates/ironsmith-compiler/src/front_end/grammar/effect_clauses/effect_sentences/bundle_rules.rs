@@ -1291,7 +1291,7 @@ fn parse_choose_counter_on_target_then_put_additional_bundle(
     ]))
 }
 
-fn parse_search_library_slots_to_hand_bundle(
+pub(super) fn parse_search_library_slots_to_hand_bundle(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = bundle_grammar::parse_search_library_slots_shape(tokens) else {

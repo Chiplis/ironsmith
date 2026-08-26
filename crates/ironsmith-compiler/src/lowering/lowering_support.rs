@@ -100,6 +100,22 @@ pub fn replace_pending_removed_counter_metrics_with_x(effects: &mut [EffectAst])
     }
 }
 
+fn value_counts_creature_deaths(value: &Value) -> bool {
+    match value {
+        Value::CreaturesDiedThisTurn
+        | Value::CreaturesDiedThisTurnControlledBy(_)
+        | Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died { .. }) => true,
+        Value::SurfaceHinted { value, .. }
+        | Value::Scaled(value, _)
+        | Value::DividedRoundedDown(value, _)
+        | Value::HalfRoundedDown(value) => value_counts_creature_deaths(value),
+        Value::Add(left, right) | Value::Min(left, right) => {
+            value_counts_creature_deaths(left) || value_counts_creature_deaths(right)
+        }
+        _ => false,
+    }
+}
+
 fn predicate_counts_creature_deaths(predicate: &PredicateAst) -> bool {
     match predicate {
         PredicateAst::CreatureDiedThisTurn | PredicateAst::CreatureDiedThisTurnOrMore(_) => true,
@@ -108,25 +124,9 @@ fn predicate_counts_creature_deaths(predicate: &PredicateAst) -> bool {
         }
         PredicateAst::Not(inner) => predicate_counts_creature_deaths(inner),
         PredicateAst::ValueComparison { left, right, .. } => {
-            fn value_counts_creature_deaths(value: &Value) -> bool {
-                match value {
-                    Value::CreaturesDiedThisTurn
-                    | Value::CreaturesDiedThisTurnControlledBy(_)
-                    | Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died { .. }) => {
-                        true
-                    }
-                    Value::SurfaceHinted { value, .. }
-                    | Value::Scaled(value, _)
-                    | Value::DividedRoundedDown(value, _)
-                    | Value::HalfRoundedDown(value) => value_counts_creature_deaths(value),
-                    Value::Add(left, right) | Value::Min(left, right) => {
-                        value_counts_creature_deaths(left) || value_counts_creature_deaths(right)
-                    }
-                    _ => false,
-                }
-            }
             value_counts_creature_deaths(left) || value_counts_creature_deaths(right)
         }
+        PredicateAst::ValueIsPrime(value) => value_counts_creature_deaths(value),
         _ => false,
     }
 }
@@ -372,10 +372,7 @@ fn rewrite_delayed_return_control_loss_sacrifice_followup(lowered: &mut LoweredE
         let Some(followup) = lowered.effects.segments.get(1) else {
             return false;
         };
-        if followup.starts_new_source_line
-            || !followup.self_replacements.is_empty()
-            || followup.default_effects.len() != 2
-        {
+        if !followup.self_replacements.is_empty() || followup.default_effects.len() != 2 {
             return false;
         }
         true
@@ -470,15 +467,24 @@ fn rewrite_source_control_loss_sacrifice_followup(lowered: &mut LoweredEffects) 
     if rewrite_delayed_return_control_loss_sacrifice_followup(lowered) {
         return;
     }
-    let Some(segment) = lowered.effects.segments.first_mut() else {
-        return;
+    let split_followup_segment = match lowered.effects.segments.as_slice() {
+        [first, second, ..]
+            if first.default_effects.len() == 1
+                && second.default_effects.len() == 2
+                && first.self_replacements.is_empty()
+                && second.self_replacements.is_empty() =>
+        {
+            true
+        }
+        [first, ..] if first.default_effects.len() >= 3 && first.self_replacements.is_empty() => {
+            false
+        }
+        _ => return,
     };
-    if segment.default_effects.len() < 3 {
-        return;
-    }
-
-    let Some(tagged_move) =
-        segment.default_effects[0].downcast_ref::<crate::effects::TaggedEffect>()
+    let first_segment = &lowered.effects.segments[0];
+    let Some(tagged_move) = first_segment.default_effects[0]
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .cloned()
     else {
         return;
     };
@@ -495,8 +501,18 @@ fn rewrite_source_control_loss_sacrifice_followup(lowered: &mut LoweredEffects) 
     }
     let moved_tag = tagged_move.tag.clone();
 
-    let Some(choose) =
-        segment.default_effects[1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+    let (choose_effect, sacrifice_effect) = if split_followup_segment {
+        let followup = &lowered.effects.segments[1];
+        (&followup.default_effects[0], &followup.default_effects[1])
+    } else {
+        (
+            &first_segment.default_effects[1],
+            &first_segment.default_effects[2],
+        )
+    };
+    let Some(choose) = choose_effect
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        .cloned()
     else {
         return;
     };
@@ -508,8 +524,9 @@ fn rewrite_source_control_loss_sacrifice_followup(lowered: &mut LoweredEffects) 
     }
     let sacrificed_tag = choose.tag.clone();
 
-    let Some(sacrifice) =
-        segment.default_effects[2].downcast_ref::<crate::effects::SacrificePlayerEffect>()
+    let Some(sacrifice) = sacrifice_effect
+        .downcast_ref::<crate::effects::SacrificePlayerEffect>()
+        .cloned()
     else {
         return;
     };
@@ -536,9 +553,16 @@ fn rewrite_source_control_loss_sacrifice_followup(lowered: &mut LoweredEffects) 
         PlayerFilter::You,
     )
     .watch_ability_source();
-    segment
-        .default_effects
-        .splice(1..3, [Effect::new(schedule)]);
+    if split_followup_segment {
+        lowered.effects.segments[0]
+            .default_effects
+            .push(Effect::new(schedule));
+        lowered.effects.segments.remove(1);
+    } else {
+        lowered.effects.segments[0]
+            .default_effects
+            .splice(1..3, [Effect::new(schedule)]);
+    }
 }
 
 fn replace_it_target_with_filter(target: &mut TargetAst, filter: &ObjectFilter) -> bool {
@@ -804,6 +828,9 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<&str> {
     if this_blocks_or_becomes_blocked_other_filter(trigger).is_some() {
         return Some("blocking");
     }
+    if matches!(trigger, TriggerSpec::BlocksOrBecomesBlockedByObject { .. }) {
+        return Some("blocking");
+    }
     if match trigger {
         TriggerSpec::ThisBecomesBlockedByObject(_)
         | TriggerSpec::BecomesBlockedByObjectWithLesserPower { .. } => true,
@@ -881,6 +908,13 @@ fn default_trigger_last_object_prelude(
     }
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => default_trigger_last_object_prelude(trigger, tag),
+        TriggerSpec::BlocksOrBecomesBlockedByObject { subject, other } => {
+            Some(EffectPreludeTag::OtherBlockParticipantMatchingSubject {
+                tag: tag.clone(),
+                subject: event_participant_filter(subject),
+                other: event_participant_filter(other),
+            })
+        }
         TriggerSpec::ThisBecomesBlockedByObject(filter) => Some(
             EffectPreludeTag::TriggeringBlockers(tag.clone(), event_participant_filter(filter)),
         ),
@@ -1142,6 +1176,125 @@ fn preserve_copy_reference_kind_from_trigger(effects: &mut [EffectAst], trigger:
         crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
             preserve_copy_reference_kind_from_trigger(nested, trigger)
         });
+    }
+}
+
+fn spell_cast_trigger_caster(trigger: &TriggerSpec) -> Option<&PlayerFilter> {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. }
+        | TriggerSpec::ConditionQualified { trigger, .. } => spell_cast_trigger_caster(trigger),
+        TriggerSpec::SpellCast { caster, .. } => Some(caster),
+        _ => None,
+    }
+}
+
+fn effect_copies_triggering_stack_object(effect: &EffectAst) -> bool {
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::CopySpell { target, .. },
+        ..
+    }) = effect
+        && copy_target_is_triggering_stack_object(target)
+    {
+        return true;
+    }
+
+    let mut found = false;
+    for_each_nested_effects(effect, true, |nested| {
+        found |= nested.iter().any(effect_copies_triggering_stack_object);
+    });
+    found
+}
+
+/// A definite reference such as "copy it, then exile the spell you cast"
+/// can be weakened by sentence-boundary parsing into the generic stack
+/// filter "a spell cast by you". Once the same triggered program has already
+/// copied its triggering stack object, that exact un-targeted filter denotes
+/// the triggering spell rather than a new choice.
+fn bind_post_copy_cast_spell_exile_to_triggering_object(
+    effects: &mut [EffectAst],
+    trigger: &TriggerSpec,
+) {
+    let Some(caster) = spell_cast_trigger_caster(trigger) else {
+        return;
+    };
+    if !effects.iter().any(effect_copies_triggering_stack_object) {
+        return;
+    }
+
+    let mut cast_spell = ObjectFilter::spell().cast_by(caster.clone());
+    // The lexical noun "spell" carries the explicit mana-cost capability
+    // marker even though the stack-domain constructor intentionally does not.
+    cast_spell.has_mana_cost = true;
+    fn candidate_count(effect: &EffectAst, cast_spell: &ObjectFilter) -> usize {
+        let mut count = usize::from(match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Exile {
+                        target: TargetAst::Object(filter, _, _),
+                        ..
+                    },
+                ..
+            }) => filter == cast_spell,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::MoveToZone {
+                        target: TargetAst::Object(filter, _, _),
+                        zone: Zone::Exile,
+                        ..
+                    },
+                ..
+            }) => filter == cast_spell,
+            _ => false,
+        });
+        for_each_nested_effects(effect, true, |nested| {
+            count += nested
+                .iter()
+                .map(|nested_effect| candidate_count(nested_effect, cast_spell))
+                .sum::<usize>();
+        });
+        count
+    }
+    let candidate_count = effects
+        .iter()
+        .map(|effect| candidate_count(effect, &cast_spell))
+        .sum::<usize>();
+    if candidate_count != 1 {
+        return;
+    }
+
+    fn rebind(effect: &mut EffectAst, cast_spell: &ObjectFilter) {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Exile { target, .. },
+            ..
+        }) = effect
+            && matches!(target, TargetAst::Object(filter, _, _) if filter == cast_spell)
+        {
+            *target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None);
+            return;
+        }
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::MoveToZone {
+                    target,
+                    zone: Zone::Exile,
+                    ..
+                },
+            ..
+        }) = effect
+            && matches!(target, TargetAst::Object(filter, _, _) if filter == cast_spell)
+        {
+            *target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None);
+            return;
+        }
+        for_each_nested_effects_mut(effect, true, |nested| {
+            for nested_effect in nested {
+                rebind(nested_effect, cast_spell);
+            }
+        });
+    }
+
+    for effect in effects {
+        rebind(effect, &cast_spell);
     }
 }
 
@@ -1420,12 +1573,21 @@ fn bind_phase_step_trigger_untap_after_incompatible_discard(
 fn retarget_bare_it_effect_targets_to_source(effect: &mut EffectAst) {
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         match &mut subject_verb.action {
+            SubjectVerbActionAst::ForEachCounterKindPutOrRemove {
+                target,
+                counter_source,
+                ..
+            } => {
+                retarget_it_target_to_source(target);
+                if let Some(counter_source) = counter_source {
+                    retarget_it_target_to_source(counter_source);
+                }
+            }
             SubjectVerbActionAst::PutCounters { target, .. }
             | SubjectVerbActionAst::PutCounterChoice { target, .. }
             | SubjectVerbActionAst::PutOrRemoveCounters { target, .. }
             | SubjectVerbActionAst::RemoveUpToAnyCounters { target, .. }
-            | SubjectVerbActionAst::DoubleCountersOnTarget { target, .. }
-            | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target, .. } => {
+            | SubjectVerbActionAst::DoubleCountersOnTarget { target, .. } => {
                 retarget_it_target_to_source(target);
             }
             SubjectVerbActionAst::MoveToZone {
@@ -2409,6 +2571,7 @@ pub fn rewrite_prepare_effects_with_trigger_context_for_lowering(
     let mut normalized = normalize_effects_ast(effects);
     if let Some(trigger) = trigger {
         preserve_copy_reference_kind_from_trigger(&mut normalized, trigger);
+        bind_post_copy_cast_spell_exile_to_triggering_object(&mut normalized, trigger);
         bind_unblocked_trigger_attacker_combat_assignment(&mut normalized, trigger);
         bind_phase_step_trigger_untap_after_incompatible_discard(&mut normalized, trigger);
         // A stack retarget can never act on the source permanent, so an
@@ -2690,6 +2853,7 @@ pub fn rewrite_prepare_triggered_effects_for_lowering(
         );
     }
     preserve_copy_reference_kind_from_trigger(&mut normalized, &trigger);
+    bind_post_copy_cast_spell_exile_to_triggering_object(&mut normalized, &trigger);
     bind_source_and_trigger_object_destroy_pair(&mut normalized, &trigger);
     preserve_blocker_regeneration_followup_as_restriction(&mut normalized, &trigger);
     bind_unblocked_trigger_attacker_combat_assignment(&mut normalized, &trigger);
@@ -3900,11 +4064,206 @@ pub fn rewrite_lower_static_ability_ast(
 pub(crate) fn lower_compiler_static_ability_core(
     ability: crate::model::CompilerStaticAbilityCore,
 ) -> Result<StaticAbility, CardTextError> {
-    ability.try_map(
-        |trigger| Ok(compile_trigger_spec(trigger)),
-        lower_compiler_child_effect,
-        lower_compiler_cost_component,
-    )
+    let crate::model::CompilerStaticAbilityCore { id, label, payload } = ability;
+    match payload {
+        crate::model::CompilerStaticAbilityPayloadCore::ExertAttack {
+            only_if_not_exerted_this_turn,
+            linked_trigger,
+            display,
+        } => {
+            return Ok(StaticAbility {
+                id,
+                label,
+                payload: crate::static_abilities::StaticAbilityPayload::ExertAttack {
+                    only_if_not_exerted_this_turn,
+                    linked_trigger: linked_trigger
+                        .map(lower_compiler_triggered_ability_core)
+                        .transpose()?,
+                    display,
+                },
+            });
+        }
+        crate::model::CompilerStaticAbilityPayloadCore::EnterAsCopyAsEnters { spec, display } => {
+            let mut added_abilities = Vec::with_capacity(spec.added_abilities.len());
+            for ability in spec.added_abilities {
+                added_abilities.push(lower_compiler_ability_core(ability)?);
+            }
+            return Ok(StaticAbility {
+                id,
+                label,
+                payload: crate::static_abilities::StaticAbilityPayload::EnterAsCopyAsEnters {
+                    spec: crate::static_abilities::EnterAsCopyAsEntersSpec {
+                        filter: spec.filter,
+                        affected_filter: spec.affected_filter,
+                        may: spec.may,
+                        enters_tapped_if_chosen: spec.enters_tapped_if_chosen,
+                        copy_duration: spec.copy_duration,
+                        linked_exile_pair: spec.linked_exile_pair,
+                        copy_source_self: spec.copy_source_self,
+                        copy_source_enchanted: spec.copy_source_enchanted,
+                        name_override: spec.name_override,
+                        added_colors: spec.added_colors,
+                        added_card_types: spec.added_card_types,
+                        removed_supertypes: spec.removed_supertypes,
+                        added_subtypes: spec.added_subtypes,
+                        added_abilities,
+                        set_base_power_toughness: spec.set_base_power_toughness,
+                        set_base_power_toughness_from_self: spec.set_base_power_toughness_from_self,
+                    },
+                    display,
+                },
+            });
+        }
+        crate::model::CompilerStaticAbilityPayloadCore::Ward(cost) => {
+            return Ok(StaticAbility {
+                id,
+                label,
+                payload: crate::static_abilities::StaticAbilityPayload::Ward(
+                    crate::lowering::cost_materialization::materialize_compiler_core_total_cost(
+                        &cost,
+                    )?,
+                ),
+            });
+        }
+        crate::model::CompilerStaticAbilityPayloadCore::Morph(cost) => {
+            return Ok(StaticAbility {
+                id,
+                label,
+                payload: crate::static_abilities::StaticAbilityPayload::Morph(
+                    crate::lowering::cost_materialization::materialize_compiler_core_total_cost(
+                        &cost,
+                    )?,
+                ),
+            });
+        }
+        crate::model::CompilerStaticAbilityPayloadCore::Disguise(cost) => {
+            return Ok(StaticAbility {
+                id,
+                label,
+                payload: crate::static_abilities::StaticAbilityPayload::Disguise(
+                    crate::lowering::cost_materialization::materialize_compiler_core_total_cost(
+                        &cost,
+                    )?,
+                ),
+            });
+        }
+        crate::model::CompilerStaticAbilityPayloadCore::Megamorph(cost) => {
+            return Ok(StaticAbility {
+                id,
+                label,
+                payload: crate::static_abilities::StaticAbilityPayload::Megamorph(
+                    crate::lowering::cost_materialization::materialize_compiler_core_total_cost(
+                        &cost,
+                    )?,
+                ),
+            });
+        }
+        payload => {
+            return crate::model::CompilerStaticAbilityCore { id, label, payload }.try_map(
+                |trigger| Ok(compile_trigger_spec(trigger)),
+                lower_compiler_child_effect,
+                lower_compiler_cost_component,
+            );
+        }
+    }
+}
+
+fn lower_compiler_resolution_program(
+    program: ironsmith_core::ResolutionProgram<EffectAst>,
+) -> Result<(ironsmith_core::ResolutionProgram<Effect>, Vec<ChooseSpec>), CardTextError> {
+    let mut choices = Vec::new();
+    let lowered = program.try_map_effects(|effect| {
+        let (mut effects, effect_choices) = crate::compile_support::compile_effect(
+            &effect,
+            &mut crate::model::facts::EffectLoweringContext::new(),
+        )?;
+        if effects.is_empty() {
+            return Err(CardTextError::InvariantViolation(
+                "compiler ability child must lower to at least one runtime effect".to_string(),
+            ));
+        }
+        for choice in effect_choices {
+            if !choices.contains(&choice) {
+                choices.push(choice);
+            }
+        }
+        if effects.len() == 1 {
+            Ok(effects.remove(0))
+        } else {
+            Ok(Effect::new(crate::effects::SequenceEffect::new(effects)))
+        }
+    })?;
+    Ok((lowered, choices))
+}
+
+fn lower_compiler_triggered_ability_core(
+    triggered: crate::model::CompilerTriggeredAbilityCore,
+) -> Result<crate::ability::TriggeredAbility, CardTextError> {
+    let (effects, derived_choices) = lower_compiler_resolution_program(triggered.effects)?;
+    let mut choices = triggered.choices;
+    for choice in derived_choices {
+        if !choices.contains(&choice) {
+            choices.push(choice);
+        }
+    }
+    Ok(crate::ability::TriggeredAbility {
+        trigger: compile_trigger_spec(triggered.trigger),
+        effects,
+        choices,
+        intervening_if: triggered.intervening_if,
+        presentation_label: triggered.presentation_label,
+    })
+}
+
+fn lower_compiler_activated_ability_core(
+    activated: crate::model::CompilerActivatedAbilityCore,
+) -> Result<crate::ability::ActivatedAbility, CardTextError> {
+    let (effects, derived_choices) = lower_compiler_resolution_program(activated.effects)?;
+    let mut choices = activated.choices;
+    for choice in derived_choices {
+        if !choices.contains(&choice) {
+            choices.push(choice);
+        }
+    }
+    let mut mana_usage_restrictions = Vec::with_capacity(activated.mana_usage_restrictions.len());
+    for restriction in activated.mana_usage_restrictions {
+        let mut restriction_choices = Vec::new();
+        let lowered = restriction.try_map_effects(&mut |effect| {
+            let (program, derived) = lower_compiler_resolution_program(
+                ironsmith_core::ResolutionProgram::from_effects(vec![effect]),
+            )?;
+            restriction_choices.extend(derived);
+            program
+                .flattened_default_effects()
+                .first()
+                .cloned()
+                .ok_or_else(|| {
+                    CardTextError::InvariantViolation(
+                        "mana restriction child must lower to one runtime effect".to_string(),
+                    )
+                })
+        })?;
+        for choice in restriction_choices {
+            if !choices.contains(&choice) {
+                choices.push(choice);
+            }
+        }
+        mana_usage_restrictions.push(lowered);
+    }
+    Ok(crate::ability::ActivatedAbility {
+        mana_cost: crate::lowering::cost_materialization::materialize_compiler_core_total_cost(
+            &activated.mana_cost,
+        )?,
+        effects,
+        choices,
+        timing: activated.timing,
+        is_loyalty_ability: activated.is_loyalty_ability,
+        additional_restrictions: activated.additional_restrictions,
+        activation_restrictions: activated.activation_restrictions,
+        mana_output: activated.mana_output,
+        activation_condition: activated.activation_condition,
+        mana_usage_restrictions,
+    })
 }
 
 pub(crate) fn lower_compiler_child_effect(effect: EffectAst) -> Result<Effect, CardTextError> {
@@ -3956,12 +4315,22 @@ pub(crate) fn lower_compiler_cost_component(
 pub(crate) fn lower_compiler_ability_core(
     ability: crate::model::CompilerAbilityCore,
 ) -> Result<Ability, CardTextError> {
-    ability.try_map(
-        lower_compiler_static_ability_core,
-        |trigger| Ok(compile_trigger_spec(trigger)),
-        lower_compiler_child_effect,
-        lower_compiler_cost_component,
-    )
+    let functional_zones = ability.functional_zones;
+    let kind = match ability.kind {
+        crate::model::CompilerAbilityKindCore::Static(static_ability) => {
+            AbilityKind::Static(lower_compiler_static_ability_core(static_ability)?)
+        }
+        crate::model::CompilerAbilityKindCore::Triggered(triggered) => {
+            AbilityKind::Triggered(lower_compiler_triggered_ability_core(triggered)?)
+        }
+        crate::model::CompilerAbilityKindCore::Activated(activated) => {
+            AbilityKind::Activated(lower_compiler_activated_ability_core(activated)?)
+        }
+    };
+    Ok(Ability {
+        kind,
+        functional_zones,
+    })
 }
 
 pub(crate) fn lower_compiler_grantable(
@@ -4488,6 +4857,79 @@ mod tests {
     use crate::Until;
     use crate::lexer::lex_line;
 
+    fn second_spell_cast_trigger() -> TriggerSpec {
+        TriggerSpec::SpellCast {
+            filter: Some(ObjectFilter::spell()),
+            mana_source_filter: None,
+            caster: PlayerFilter::You,
+            timing: None,
+            during_turn: None,
+            min_spells_this_turn: None,
+            exact_spells_this_turn: Some(2),
+            from_not_hand: false,
+        }
+    }
+
+    fn copy_then_exile_cast_spell(caster: PlayerFilter) -> Vec<EffectAst> {
+        let triggering =
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None);
+        let mut cast_spell = ObjectFilter::spell().cast_by(caster);
+        cast_spell.has_mana_cost = true;
+        vec![EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_copy_spell(
+                    triggering,
+                    Value::Fixed(1),
+                    crate::cards::builders::PlayerAst::Implicit,
+                    false,
+                    false,
+                    Vec::new(),
+                ),
+                EffectAst::subject_verb_exile(TargetAst::Object(cast_spell, None, None), false),
+            ],
+        }]
+    }
+
+    #[test]
+    fn copied_triggering_spell_owns_the_definite_same_caster_exile_only() {
+        let trigger = second_spell_cast_trigger();
+        let mut effects = copy_then_exile_cast_spell(PlayerFilter::You);
+        bind_post_copy_cast_spell_exile_to_triggering_object(&mut effects, &trigger);
+
+        let EffectAst::Sequence { effects } = &effects[0] else {
+            panic!("expected ordered copy/exile program: {effects:#?}");
+        };
+        assert!(matches!(
+            &effects[1],
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Exile {
+                    target: TargetAst::Tagged(tag, _),
+                    ..
+                },
+                ..
+            }) if tag.as_str() == "triggering"
+        ));
+
+        let mut wrong_caster = copy_then_exile_cast_spell(PlayerFilter::Opponent);
+        bind_post_copy_cast_spell_exile_to_triggering_object(&mut wrong_caster, &trigger);
+        let EffectAst::Sequence {
+            effects: wrong_caster,
+        } = &wrong_caster[0]
+        else {
+            panic!("expected ordered near-miss program: {wrong_caster:#?}");
+        };
+        assert!(matches!(
+            &wrong_caster[1],
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Exile {
+                    target: TargetAst::Object(filter, _, _),
+                    ..
+                },
+                ..
+            }) if filter.cast_by == Some(PlayerFilter::Opponent)
+        ));
+    }
+
     #[test]
     fn phase_step_attachment_survives_incompatible_discard_antecedent() {
         let tokens = lex_line(
@@ -4689,6 +5131,7 @@ mod tests {
             .push(crate::resolution::ResolutionSegment::from_effects(
                 followup_effects,
             ));
+        lowered.effects.segments[1].starts_new_source_line = true;
         rewrite_source_control_loss_sacrifice_followup(&mut lowered);
         assert_eq!(lowered.effects.segments.len(), 1, "{:#?}", lowered.effects);
 
@@ -4714,6 +5157,53 @@ mod tests {
                 .map(crate::tag::TagKey::as_str),
             Some("returned_control_loss")
         );
+        assert!(control_loss.watch_ability_source);
+    }
+
+    #[test]
+    fn immediate_return_and_control_loss_sacrifice_rejoin_across_sentence_segments() {
+        let tokens = lex_line(
+            "Put that card onto the battlefield under your control. Sacrifice it when you lose control of this creature.",
+            0,
+        )
+        .expect("linked immediate return should lex");
+        let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
+            .expect("linked immediate return should parse");
+        let (_, prepared) = rewrite_prepare_triggered_effects_for_lowering(
+            TriggerSpec::DiesCreatureDealtDamageByThisTurn {
+                victim: ObjectFilter::creature(),
+                damager: crate::cards::builders::DamageBySpec::ThisCreature,
+            },
+            &effects,
+            ReferenceImports::default(),
+        )
+        .expect("linked immediate return should prepare in its trigger context");
+        let (mut lowered, intervening_if) = materialize_prepared_triggered_effects(&prepared)
+            .expect("linked immediate return should lower");
+        assert!(intervening_if.is_none());
+        assert_eq!(lowered.effects.segments.len(), 2, "{:#?}", lowered.effects);
+
+        rewrite_source_control_loss_sacrifice_followup(&mut lowered);
+        assert_eq!(lowered.effects.segments.len(), 1, "{:#?}", lowered.effects);
+        let [returned, control_loss] = lowered.effects.segments[0].default_effects.as_slice()
+        else {
+            panic!(
+                "expected returned object plus one control-loss watcher: {:#?}",
+                lowered.effects
+            );
+        };
+        let returned = returned
+            .downcast_ref::<crate::effects::TaggedEffect>()
+            .expect("the returned identity must stay tagged");
+        assert_eq!(returned.tag.as_str(), "triggering");
+        let control_loss = control_loss
+            .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+            .expect("the returned identity must receive a control-loss watcher");
+        assert!(matches!(
+            control_loss.trigger,
+            ironsmith_core::DelayedTriggerSpec::SourceControllerLosesControl { .. }
+        ));
+        assert_eq!(control_loss.target_tag.as_ref(), Some(&returned.tag));
         assert!(control_loss.watch_ability_source);
     }
 

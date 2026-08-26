@@ -40,3 +40,22 @@ fn opposite_coin_branch_preserves_player_or_planeswalker_target_noun() {
         );
     }
 }
+
+#[test]
+fn quoted_token_creation_then_coin_flip_preserves_all_public_instructions() {
+    let text = "At the beginning of your upkeep, create a colorless artifact token named Land Mine with \"{R}, Sacrifice this token: This token deals 2 damage to target attacking creature without flying.\" Then flip a coin. If you lose the flip, this creature deals 2 damage to itself.";
+    let definition =
+        crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Goblin Kaboomist")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![
+                crate::types::Subtype::Goblin,
+                crate::types::Subtype::Warrior,
+            ])
+            .parse_text(text)
+            .expect("quoted token creation and coin-flip trigger should compile");
+
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&definition).join("\n"),
+        text
+    );
+}

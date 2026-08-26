@@ -437,6 +437,16 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
                     }],
                     if_false: Vec::new(),
                 },
+                ConditionalPredicateTailSpec::Plain(PredicateAst::SourceIsInZone(
+                    Zone::Battlefield,
+                )) if target_is_anaphoric_battlefield_object(&target) => {
+                    // The target filter already means "that referenced
+                    // object, currently on the battlefield". Keeping a
+                    // separate SourceIsInZone condition would instead test
+                    // the resolving spell/ability source and can suppress
+                    // the whole action after a sacrifice cost.
+                    EffectAst::subject_verb_destroy(target)
+                }
                 ConditionalPredicateTailSpec::Plain(predicate) => EffectAst::Conditional {
                     predicate,
                     if_true: vec![EffectAst::subject_verb_destroy(target)],
@@ -507,6 +517,24 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
         }
     };
     Ok(wrap_destroy_with_delayed_timing(effect, timing))
+}
+
+fn target_is_anaphoric_battlefield_object(target: &TargetAst) -> bool {
+    match target {
+        TargetAst::Tagged(_, _) => true,
+        TargetAst::Object(filter, _, _) => {
+            filter.zone == Some(Zone::Battlefield)
+                && (!filter.tagged_constraints.is_empty()
+                    || matches!(
+                        filter.source_surface,
+                        Some(crate::target::SourceReferenceSurface::ThisPermanentType(_))
+                    ))
+        }
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            target_is_anaphoric_battlefield_object(inner)
+        }
+        _ => false,
+    }
 }
 
 pub fn apply_except_filter_exclusions(base: &mut ObjectFilter, exception: &ObjectFilter) {

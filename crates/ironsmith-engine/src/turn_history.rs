@@ -85,6 +85,7 @@ pub struct TurnHistory {
     /// has paid to ignore until the turn ends.
     pub players_ignoring_source_static_effects_this_turn: HashSet<(ObjectId, PlayerId)>,
     pub creatures_attacked_this_turn: HashSet<ObjectId>,
+    pub creatures_attacked_battles_this_turn: HashSet<ObjectId>,
     pub creature_attack_counts_this_turn: HashMap<ObjectId, u32>,
     pub crewed_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
     pub saddled_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
@@ -117,6 +118,7 @@ impl TurnHistory {
         self.players_ignoring_source_static_effects_this_turn
             .clear();
         self.creatures_attacked_this_turn.clear();
+        self.creatures_attacked_battles_this_turn.clear();
         self.creature_attack_counts_this_turn.clear();
         self.crewed_this_turn.clear();
         self.saddled_this_turn.clear();

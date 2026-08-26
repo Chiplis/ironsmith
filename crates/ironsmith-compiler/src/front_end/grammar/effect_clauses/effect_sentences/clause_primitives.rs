@@ -4,7 +4,7 @@ use super::super::grammar::effects::{
     split_change_target_clause_lexed, split_change_target_unless_clause_lexed,
     split_choose_new_targets_clause_lexed,
 };
-use super::super::lexer::{LexedClause, TokenWordView};
+use super::super::lexer::{LexedClause, TokenWordView, render_token_slice};
 use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::{
     parse_additional_land_plays_clause, parse_cast_or_play_tagged_clause,
@@ -1079,6 +1079,44 @@ pub fn parse_must_block_if_able_clause(
 pub fn parse_until_duration_triggered_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    fn combat_source_filter_mut(
+        trigger: &mut crate::model::ast::TriggerSpec,
+    ) -> Option<&mut ObjectFilter> {
+        match trigger {
+            crate::model::ast::TriggerSpec::WithIntro { trigger, .. }
+            | crate::model::ast::TriggerSpec::ConditionQualified { trigger, .. } => {
+                combat_source_filter_mut(trigger)
+            }
+            crate::model::ast::TriggerSpec::DealsCombatDamage(source)
+            | crate::model::ast::TriggerSpec::DealsCombatDamageToPlayer { source, .. }
+            | crate::model::ast::TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
+                source, ..
+            }
+            | crate::model::ast::TriggerSpec::DealsCombatDamageTo { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+
+    fn watched_set_surface(tokens: &[OwnedLexToken]) -> Option<String> {
+        let start = tokens.iter().enumerate().find_map(|(index, token)| {
+            (matches!(token.parser_text(), "any" | "either")
+                && tokens
+                    .get(index + 1)
+                    .is_some_and(|token| token.is_word("of"))
+                && tokens
+                    .get(index + 2)
+                    .is_some_and(|token| token.is_word("those")))
+            .then_some(index)
+        })?;
+        let end = tokens[start..]
+            .iter()
+            .position(|token| token.is_word("deals"))
+            .map(|offset| start + offset)?;
+        (end > start)
+            .then(|| render_token_slice(&tokens[start..end]).trim().to_string())
+            .filter(|surface| !surface.is_empty())
+    }
+
     let clause = LexedClause::new(tokens);
     if clause_shapes::parse_duration_trigger_prefix_shape(tokens).is_none() {
         return Ok(None);
@@ -1100,7 +1138,7 @@ pub fn parse_until_duration_triggered_clause(
         return Ok(None);
     }
 
-    let (trigger, effects, max_triggers_per_turn) =
+    let (mut trigger, effects, max_triggers_per_turn) =
         match parse_triggered_line_lexed(&trigger_tokens)? {
             LineAst::Triggered {
                 trigger,
@@ -1120,6 +1158,25 @@ pub fn parse_until_duration_triggered_clause(
             "duration-scoped delayed triggers with a per-turn frequency limit are not supported (clause: '{}')",
             clause.text()
         )));
+    }
+
+    if let Some(surface) = watched_set_surface(&trigger_tokens)
+        && let Some(source) = combat_source_filter_mut(&mut trigger)
+    {
+        if !source.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == IT_TAG
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }) {
+            source
+                .tagged_constraints
+                .push(crate::target::TaggedObjectConstraint {
+                    tag: TagKey::from(IT_TAG),
+                    relation: TaggedOpbjectRelation::IsTaggedObject,
+                });
+        }
+        source.source_surface = Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+            surface,
+        ));
     }
 
     let either_of_watched_objects =
@@ -1438,13 +1495,16 @@ pub fn parse_fight_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
         })
     {
         let tag = TagKey::from(CHOSEN_OBJECTS_TAG);
-        return Ok(Some(EffectAst::subject_verb_fight(
-            TargetAst::Tagged(
-                tag.clone(),
-                span_from_tokens(shape.left_tokens.unwrap_or_default()),
-            ),
-            TargetAst::Tagged(tag, span_from_tokens(shape.right_tokens)),
-        )));
+        return Ok(Some(
+            EffectAst::subject_verb_fight(
+                TargetAst::Tagged(
+                    tag.clone(),
+                    span_from_tokens(shape.left_tokens.unwrap_or_default()),
+                ),
+                TargetAst::Tagged(tag, span_from_tokens(shape.right_tokens)),
+            )
+            .with_mutual_fight_surface(),
+        ));
     }
 
     let creature1 = if let Some(left_tokens) = shape.left_tokens {

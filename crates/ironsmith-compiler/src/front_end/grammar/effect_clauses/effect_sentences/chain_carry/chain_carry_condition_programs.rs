@@ -68,6 +68,13 @@ pub fn parse_effect_clause_with_trailing_if_lexed(
     let Some(trailing_if) = split_trailing_if_clause_lexed(tokens) else {
         return parse_effect_clause_lexed(tokens);
     };
+    if crate::grammar::effects::control_flow::is_anaphoric_destroy_battlefield_guard(tokens) {
+        // The destroy parser owns this complete shape so it can fold the
+        // authored guard into the referenced object's battlefield filter.
+        // Wrapping the leading destroy here would turn the pronoun into a
+        // condition on the resolving source instead.
+        return parse_effect_clause_lexed(tokens);
+    }
     let mut predicate = trailing_if.predicate;
     if !trailing_if_predicate_supported(&predicate) {
         return parse_effect_clause_lexed(tokens);

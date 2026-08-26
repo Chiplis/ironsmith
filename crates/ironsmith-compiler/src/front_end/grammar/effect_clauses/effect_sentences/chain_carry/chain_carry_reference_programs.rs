@@ -503,6 +503,9 @@ pub(super) fn player_target_carry_context(target: &TargetAst) -> Option<CarryCon
 }
 
 pub fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryContext> {
+    if let EffectAst::Sequence { effects } = effect {
+        return effects.iter().find_map(explicit_player_for_carry);
+    }
     if matches!(effect, EffectAst::ForEachPlayer { .. }) {
         return Some(CarryContext::ForEachPlayer);
     }

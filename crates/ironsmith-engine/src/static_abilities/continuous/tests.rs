@@ -836,6 +836,51 @@ fn describe_static_condition_displays_equipped_subtype_match() {
 }
 
 #[test]
+fn attached_subject_condition_renders_target_relative_color_and_supertype() {
+    assert_eq!(
+        describe_attached_subject_static_condition(
+            &crate::ConditionExpr::TargetMatches(
+                ObjectFilter::default().with_supertype(Supertype::Legendary),
+            ),
+            "equipped creature",
+        )
+        .as_deref(),
+        Some("as long as it's legendary")
+    );
+    assert_eq!(
+        describe_attached_subject_static_condition(
+            &crate::ConditionExpr::TargetMatches(
+                ObjectFilter::default().with_colors(crate::color::ColorSet::RED),
+            ),
+            "equipped creature",
+        )
+        .as_deref(),
+        Some("as long as it's red")
+    );
+    assert!(
+        describe_attached_subject_static_condition(
+            &crate::ConditionExpr::TargetMatches(
+                ObjectFilter::default().with_supertype(Supertype::Legendary),
+            ),
+            "creatures you control",
+        )
+        .is_none(),
+        "target-relative pronoun rendering is limited to attached subjects"
+    );
+    assert_eq!(
+        AttachedAbilityGrant::new(
+            Ability::static_ability(StaticAbility::trample()),
+            "equipped creature has trample".to_string(),
+        )
+        .with_condition(crate::ConditionExpr::TargetMatches(
+            ObjectFilter::default().with_colors(crate::color::ColorSet::RED),
+        ))
+        .display(),
+        "equipped creature has trample as long as it's red"
+    );
+}
+
+#[test]
 fn remove_card_types_display_keeps_source_creature_subject() {
     let remove = RemoveCardTypesForFilter::new(
         ObjectFilter::source().with_type(CardType::Creature),

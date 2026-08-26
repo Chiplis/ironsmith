@@ -88,7 +88,7 @@ pub(super) fn quantified_chosen_collection_followups_keep_structured_set_surface
         ),
         (
             "Unstable Glyphbridge",
-            "for each player, you choose a creature with power 2 or less that player controls. Then destroy all creatures except creatures chosen this way",
+            "for each player, choose a creature with power 2 or less that player controls. Then destroy all creatures except creatures chosen this way",
             &[
                 "ForPlayersEffect",
                 "ChooseObjectsEffect",

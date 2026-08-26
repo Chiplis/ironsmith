@@ -73,6 +73,127 @@ pub fn exact_target_same_name_graveyard_may_cast_bundle(
     ])
 }
 
+/// Preserve the immediate targeted graveyard cast permission used by combat-
+/// damage triggers such as `you may cast target ... from that player's
+/// graveyard, and mana of any type can be spent to cast that spell`.
+///
+/// The ordinary permission grammar intentionally models durable play grants.
+/// This wording is instead a one-shot resolution instruction: declare one
+/// target, then optionally cast that exact tagged card with the stated mana
+/// spending mode. Keeping the two operations typed also lets trigger-reference
+/// resolution bind `that player` to the damaged player.
+pub fn exact_target_graveyard_any_type_may_cast_bundle(
+    effect_parse_tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    const PREFIX: &[&str] = &["you", "may", "cast", "target"];
+    const SUFFIX: &[&str] = &[
+        "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "that", "spell",
+    ];
+
+    let words = crate::lexer::parser_token_word_refs(effect_parse_tokens);
+    if words.len() <= PREFIX.len() + SUFFIX.len()
+        || !crate::word_primitives::parse_sequence_prefix(&words, PREFIX)
+        || !crate::word_primitives::parse_sequence_suffix(&words, SUFFIX)
+    {
+        return None;
+    }
+
+    let view = crate::lexer::TokenWordView::new(effect_parse_tokens);
+    let target_start = view.token_index_after_words(PREFIX.len() - 1)?;
+    let suffix_start_word = words.len() - SUFFIX.len();
+    let target_end = view.map_word_to_token_start(suffix_start_word)?;
+    let target_tokens = crate::util::trim_commas(&effect_parse_tokens[target_start..target_end]);
+    let target = crate::util::parse_target_phrase(&target_tokens).ok()?;
+    let TargetAst::Object(filter, ..) = &target else {
+        return None;
+    };
+    if filter.zone != Some(Zone::Graveyard)
+        || filter.owner != Some(PlayerFilter::IteratedPlayer)
+        || !filter.excluded_card_types.contains(&CardType::Land)
+    {
+        return None;
+    }
+
+    let target_tag =
+        crate::util::helper_tag_for_tokens(effect_parse_tokens, "targeted_graveyard_any_type_cast");
+    Some(vec![
+        EffectAst::TagAffected {
+            effect: Box::new(EffectAst::subject_verb_explicit_target_only(target)),
+            tag: target_tag.clone(),
+        },
+        EffectAst::May {
+            effects: vec![
+                EffectAst::subject_verb_cast_tagged_with_additional_cost_and_mana_spend_mode(
+                    target_tag,
+                    PlayerAst::You,
+                    false,
+                    false,
+                    false,
+                    None,
+                    None,
+                    ironsmith_core::value_model::ManaSpendMode::AnyType,
+                ),
+            ],
+        },
+    ])
+}
+
+#[cfg(test)]
+#[test]
+pub(super) fn targeted_relative_graveyard_cast_keeps_target_player_and_any_type_mana() {
+    let tokens = lex_line(
+        "You may cast target nonland permanent card from that player's graveyard, and mana of any type can be spent to cast that spell.",
+        0,
+    )
+    .expect("targeted graveyard cast should lex");
+    let effects = exact_target_graveyard_any_type_may_cast_bundle(&tokens)
+        .expect("the typed immediate graveyard cast bundle should match");
+    let [
+        EffectAst::TagAffected {
+            effect: target_effect,
+            tag: target_tag,
+        },
+        EffectAst::May {
+            effects: may_effects,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected explicit target followed by an optional cast: {effects:#?}");
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::TargetOnly {
+                target: TargetAst::Object(filter, ..),
+                explicit_declaration: true,
+            },
+        ..
+    }) = target_effect.as_ref()
+    else {
+        panic!("expected an explicit graveyard object target: {target_effect:#?}");
+    };
+    assert_eq!(filter.zone, Some(Zone::Graveyard));
+    assert_eq!(filter.owner, Some(PlayerFilter::IteratedPlayer));
+    assert!(filter.excluded_card_types.contains(&CardType::Land));
+    assert!(matches!(
+        may_effects.as_slice(),
+        [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::CastTagged {
+                tag,
+                mana_spend_mode: ironsmith_core::value_model::ManaSpendMode::AnyType,
+                ..
+            },
+            ..
+        })] if tag == target_tag
+    ));
+
+    let changed = lex_line(
+        "You may cast target nonland permanent card from that player's graveyard.",
+        0,
+    )
+    .expect("changed mana clause should lex");
+    assert!(exact_target_graveyard_any_type_may_cast_bundle(&changed).is_none());
+}
+
 #[cfg(test)]
 #[test]
 pub(super) fn targeted_same_name_graveyard_cast_keeps_target_and_optional_normal_payment() {

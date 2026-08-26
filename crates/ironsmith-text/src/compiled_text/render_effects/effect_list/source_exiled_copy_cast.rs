@@ -53,7 +53,10 @@ pub(in crate::compiled_text) fn describe_optional_source_exiled_copy_then_cast_p
         || result.predicate != crate::effect::EffectPredicate::Happened
         || !result.else_.is_empty()
         || result.prior_result_replacement_surface
-        || optional_cast.decider.is_some()
+        || optional_cast
+            .decider
+            .as_ref()
+            .is_some_and(|decider| *decider != PlayerFilter::You)
         || optional_cast.fallback != crate::decision::FallbackStrategy::Decline
         || cast.tag != choice.tag
         || cast.player != PlayerFilter::You
@@ -166,6 +169,22 @@ mod tests {
         assert_eq!(
             describe_optional_source_exiled_copy_then_cast_pair(&producer, &noncopy),
             None
+        );
+    }
+
+    #[test]
+    fn public_route_preserves_copy_then_cast_for_source_linked_exile() {
+        let oracle = "Imprint — When this artifact enters, you may exile an instant card with mana value 2 or less from your hand.\n{2}, {T}: You may copy the exiled card. If you do, you may cast the copy without paying its mana cost.";
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Source Exiled Copy Probe",
+        )
+        .card_types(vec![CardType::Artifact])
+        .parse_text(oracle)
+        .expect("source-linked optional copy/cast should parse");
+        assert_eq!(
+            crate::compiled_text::compiled_text_lines(&definition),
+            oracle.lines().map(str::to_string).collect::<Vec<_>>()
         );
     }
 }

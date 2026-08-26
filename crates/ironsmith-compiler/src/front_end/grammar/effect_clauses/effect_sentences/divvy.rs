@@ -702,6 +702,45 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         return Ok(Some(effects));
     }
 
+    if shape == DivvySequenceShape::SearchFourDifferentPowers {
+        let source_tag = crate::tag::CompilerReferenceTag::Searched.key();
+        let chosen_tag = crate::tag::CompilerReferenceTag::DivvyChosen.key();
+        let mut effects = parse_effect_sentence_lexed(sentences[0].lowered())?;
+        effects.push(EffectAst::ChooseObjectsAcrossZones {
+            filter: ObjectFilter::tagged(source_tag.clone()),
+            count: ChoiceCount::exactly(2),
+            count_value: None,
+            player: PlayerAst::Opponent,
+            tag: chosen_tag.clone(),
+            zones: vec![Zone::Library],
+            search_mode: None,
+        });
+        effects.push(EffectAst::Coordinated {
+            effects: vec![
+                EffectAst::subject_verb_shuffle_objects_into_library(
+                    PlayerAst::You,
+                    TargetAst::Tagged(chosen_tag.clone(), None),
+                ),
+                EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Object(
+                        ObjectFilter::tagged(source_tag)
+                            .match_tagged(chosen_tag, TaggedOpbjectRelation::IsNotTaggedObject),
+                        None,
+                        None,
+                    ),
+                    Zone::Hand,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                ),
+            ],
+            leading_duration: false,
+            result_conjunction: false,
+        });
+        return Ok(Some(effects));
+    }
+
     if shape == DivvySequenceShape::TargetOpponentChoosesOne {
         let mut effects = parse_effect_sentence_lexed(sentences[0].lowered())?;
         effects.push(EffectAst::subject_verb_tag_matching_objects(

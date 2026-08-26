@@ -120,3 +120,39 @@ fn explicitly_coordinated_token_grants_remain_one_sentence() {
         Some("Create a 1/1 red Goblin creature token, and it gains haste until end of turn")
     );
 }
+
+#[test]
+fn copied_token_grant_precedes_its_embedded_next_end_step_cleanup() {
+    use crate::effects::TokenCopyReferenceSurface as Surface;
+
+    let created = TagKey::from("created_0");
+    let create = Effect::new(
+        copy_of_it(1)
+            .sacrifice_at_next_end_step(true)
+            .sacrifice_at_next_end_step_reference_surface(Some(Surface::It)),
+    )
+    .tag(created.clone());
+    let grant = Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::Tagged(created.clone()),
+        crate::continuous::Modification::AddAbility(crate::static_abilities::StaticAbility::haste()),
+        Until::Forever,
+    ));
+
+    assert_eq!(
+        describe_created_copy_grant_before_embedded_cleanup(&[create.clone(), grant]).as_deref(),
+        Some(
+            "Create a token that's a copy of it. It gains haste. Sacrifice it at the beginning of the next end step"
+        )
+    );
+
+    let wrong_grant = Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::Tagged(TagKey::from("other")),
+        crate::continuous::Modification::AddAbility(crate::static_abilities::StaticAbility::haste()),
+        Until::Forever,
+    ));
+    assert_eq!(
+        describe_created_copy_grant_before_embedded_cleanup(&[create, wrong_grant]),
+        None,
+        "the grant must consume the exact created-token result tag"
+    );
+}

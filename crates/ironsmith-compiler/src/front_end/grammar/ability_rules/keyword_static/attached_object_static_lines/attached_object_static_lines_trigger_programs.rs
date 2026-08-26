@@ -1,6 +1,5 @@
 use super::*;
 
-
 pub fn parse_attached_has_keywords_and_triggered_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -32,9 +31,7 @@ pub fn parse_attached_has_keywords_and_triggered_ability_line(
         return Ok(None);
     }
 
-    let triggered = match crate::clause_support::parse_triggered_line_lexed(
-        &trigger_tokens,
-    )? {
+    let triggered = match crate::clause_support::parse_triggered_line_lexed(&trigger_tokens)? {
         LineAst::Triggered {
             trigger,
             effects,

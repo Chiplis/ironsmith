@@ -194,6 +194,9 @@
     if let Some(compact) = describe_target_pump_unblockable_bundle(&filtered) {
         return compact;
     }
+    if let Some(compact) = describe_declared_target_for_each_pump_unblockable_bundle(&filtered) {
+        return compact;
+    }
     if let Some(compact) = describe_tap_freeze_bundle(&filtered) {
         return compact;
     }

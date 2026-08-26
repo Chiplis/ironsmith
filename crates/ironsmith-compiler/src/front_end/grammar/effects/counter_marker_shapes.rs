@@ -49,6 +49,12 @@ pub struct ForEachCounterKindShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CounterKindDistributionShape<'a> {
+    pub counter_source_tokens: &'a [OwnedLexToken],
+    pub target_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GetsThenFightsShape<'a> {
     pub pump_tokens: &'a [OwnedLexToken],
     pub first_target_tokens: &'a [OwnedLexToken],
@@ -486,6 +492,39 @@ pub fn parse_for_each_counter_kind_tokens(
         tokens,
         parse_for_each_counter_kind_lexed,
         "for each counter kind",
+    )
+    .ok()
+}
+
+fn parse_counter_kind_distribution_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<CounterKindDistributionShape<'a>> {
+    opt(primitives::kw("then")).parse_next(input)?;
+    primitives::phrase(&["for", "each", "kind", "of", "counter", "among"]).parse_next(input)?;
+    let counter_source_tokens = repeat_till(1.., any.void(), peek(primitives::comma()))
+        .map(|((), _)| ())
+        .take()
+        .parse_next(input)?;
+    primitives::comma().parse_next(input)?;
+    primitives::phrase(&["put", "a", "counter", "of", "that", "kind", "on"]).parse_next(input)?;
+    let target_tokens = repeat_till(1.., any.void(), peek(primitives::sentence_end()))
+        .map(|((), _)| ())
+        .take()
+        .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(CounterKindDistributionShape {
+        counter_source_tokens,
+        target_tokens,
+    })
+}
+
+pub fn parse_counter_kind_distribution_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<CounterKindDistributionShape<'_>> {
+    primitives::parse_all(
+        tokens,
+        parse_counter_kind_distribution_lexed,
+        "counter kind distribution",
     )
     .ok()
 }

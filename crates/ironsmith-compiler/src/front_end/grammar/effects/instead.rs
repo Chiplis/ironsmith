@@ -34,6 +34,10 @@ pub fn parse_instead_followup_semantics_lexed<'a>(
 }
 
 pub fn classify_instead_followup_semantics_tokens(tokens: &[OwnedLexToken]) -> InsteadSemantics {
+    if super::super::lowering_surfaces::parse_statement_replacement_surface_tokens(tokens).is_some()
+    {
+        return InsteadSemantics::SelfReplacement;
+    }
     primitives::parse_prefix(tokens, parse_instead_followup_semantics_lexed)
         .map(|(semantics, _)| semantics)
         .unwrap_or(InsteadSemantics::NonReplacement)
@@ -149,6 +153,12 @@ mod tests {
         assert_eq!(
             classify("countered this way, exile it instead of putting it into its graveyard"),
             InsteadSemantics::FutureReplacement
+        );
+        assert_eq!(
+            classify(
+                "If this spell was bargained, put one of those cards with mana value 4 or less onto the battlefield instead of putting it into your hand"
+            ),
+            InsteadSemantics::SelfReplacement
         );
     }
 

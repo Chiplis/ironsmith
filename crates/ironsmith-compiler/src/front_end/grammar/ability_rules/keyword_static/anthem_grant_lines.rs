@@ -141,12 +141,11 @@ fn triggered_grant_effects_and_condition(
         let reference_env = crate::model::reference_state::ReferenceEnv::from_imports(
             &imports, false, false, false, None,
         );
-        let condition =
-            crate::compile_support::compile_condition_from_predicate_ast_with_env(
-                predicate,
-                &reference_env,
-                None,
-            )?;
+        let condition = crate::compile_support::compile_condition_from_predicate_ast_with_env(
+            predicate,
+            &reference_env,
+            None,
+        )?;
         return Ok((if_true.clone(), Some(condition)));
     }
 
@@ -615,9 +614,7 @@ fn parse_filtered_object_animation_static_line(
 
 fn filtered_object_animation_abilities(
     filter: ObjectFilter,
-    shape: crate::grammar::effects::become_shapes::FilteredObjectAnimationShape<
-        '_,
-    >,
+    shape: crate::grammar::effects::become_shapes::FilteredObjectAnimationShape<'_>,
 ) -> Vec<StaticAbility> {
     let mut abilities = Vec::new();
     if shape.removes_all_abilities {
@@ -716,10 +713,8 @@ fn split_union_grant_subjects(
             continue;
         }
         let left_words = crate::lexer::parser_token_word_refs(&left);
-        let left_subject = if crate::word_primitives::parse_sequence_complete(
-            &left_words,
-            &["you"],
-        ) {
+        let left_subject = if crate::word_primitives::parse_sequence_complete(&left_words, &["you"])
+        {
             UnionGrantSubject::PlayerYou
         } else if anthem_grant_grammar::is_source_it_subject(&left)
             || is_source_reference_words(&left_words)
@@ -832,7 +827,9 @@ pub fn parse_granted_keyword_static_line(
         };
         let zone = filter.zone.unwrap_or(Zone::Battlefield);
         filter.zone = None;
-        Ok(Some(crate::model::CompilerGrantSpecCore::new(grantable, filter, zone)))
+        Ok(Some(crate::model::CompilerGrantSpecCore::new(
+            grantable, filter, zone,
+        )))
     }
 
     fn parse_granted_escape_cost_tail(
@@ -867,9 +864,7 @@ pub fn parse_granted_keyword_static_line(
         };
 
         let Some((cost, used)) =
-            crate::util::leading_mana_cost_from_tokens(
-                parsed.reduction_cost_tokens,
-            )
+            crate::util::leading_mana_cost_from_tokens(parsed.reduction_cost_tokens)
         else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported miracle cost reduction clause (clause: '{}')",
@@ -930,7 +925,9 @@ pub fn parse_granted_keyword_static_line(
                 };
                 extract_grant_spec_from_subject(
                     subject_tokens,
-                    crate::model::CompilerGrantableCore::miracle_from_cards_mana_cost_reduced_by(reduction),
+                    crate::model::CompilerGrantableCore::miracle_from_cards_mana_cost_reduced_by(
+                        reduction,
+                    ),
                 )?
             }
             Some(anthem_grant_grammar::GrantedAlternativeCastKeyword::Escape) => {
@@ -973,9 +970,11 @@ pub fn parse_granted_keyword_static_line(
     }
 
     if verb_facts.starts_with_as_long_as
-        && !verb_facts.tail_has_have && verb_facts.tail_has_get_or_be {
-            return Ok(None);
-        }
+        && !verb_facts.tail_has_have
+        && verb_facts.tail_has_get_or_be
+    {
+        return Ok(None);
+    }
 
     let (prefix_condition, subject_start) =
         match parse_anthem_prefix_condition(tokens, have_token_idx) {
@@ -998,8 +997,7 @@ pub fn parse_granted_keyword_static_line(
 
     let mut tail_tokens = tail_tokens;
     let mut trailing_clause_tokens: Vec<OwnedLexToken> = Vec::new();
-    let tail_sentences =
-        crate::grammar::primitives::split_lexed_slices_on_period(&tail_tokens);
+    let tail_sentences = crate::grammar::primitives::split_lexed_slices_on_period(&tail_tokens);
     if tail_sentences.len() > 1 {
         let leading = trim_edge_punctuation(tail_sentences[0]);
         let trailing = tail_sentences[1..]
@@ -1752,9 +1750,7 @@ pub fn parse_lose_all_abilities_and_base_pt_line(
     let word_view = TokenWordView::new(tokens);
     let words = word_view.word_refs();
     if let Some(animation) =
-        crate::grammar::effects::become_shapes::parse_filtered_object_animation_tokens(
-            tokens,
-        )
+        crate::grammar::effects::become_shapes::parse_filtered_object_animation_tokens(tokens)
         && animation.removes_all_abilities
         && !animation.dependent_subject
     {
@@ -1783,9 +1779,11 @@ pub fn parse_lose_all_abilities_and_base_pt_line(
         else {
             return Ok(None);
         };
-        let Some(descriptor) = crate::grammar::effects::become_shapes::parse_become_creature_descriptor_words(
-            power_toughness.descriptor_words,
-        ) else {
+        let Some(descriptor) =
+            crate::grammar::effects::become_shapes::parse_become_creature_descriptor_words(
+                power_toughness.descriptor_words,
+            )
+        else {
             return Ok(None);
         };
 
@@ -1871,12 +1869,12 @@ pub fn parse_lose_all_abilities_and_base_pt_line(
 
     if let Some(modifier_word) = shape.base_power_toughness_word
         && let Some(modifier_token) = words.get(modifier_word)
-            && let Ok((power, toughness)) = parse_pt_modifier(modifier_token)
-        {
-            abilities.push(StaticAbility::set_base_power_toughness(
-                filter, power, toughness,
-            ));
-        }
+        && let Ok((power, toughness)) = parse_pt_modifier(modifier_token)
+    {
+        abilities.push(StaticAbility::set_base_power_toughness(
+            filter, power, toughness,
+        ));
+    }
 
     Ok(Some(abilities))
 }
@@ -2073,31 +2071,35 @@ fn granted_scavenge_abilities_from_subject(
     }
 
     let ability = Ability {
-        kind: AbilityKind::Activated(crate::model::compiler_semantic::CompilerActivatedAbilityCore {
-            mana_cost: ironsmith_core::TotalCost::from_costs(vec![
-                crate::model::CompilerCost::DynamicMana(
-                    ironsmith_core::DynamicManaCost::from_source_mana_cost(),
-                ),
-                crate::model::CompilerCost::ExileSelf { from_graveyard: false },
-            ]),
-            effects: ironsmith_core::ResolutionProgram::from_effects(vec![
-                EffectAst::subject_verb_put_counters(
-                    CounterType::PlusOnePlusOne,
-                    Value::SourcePower,
-                    TargetAst::Object(ObjectFilter::creature(), None, None),
-                    None,
-                    false,
-                ),
-            ]),
-            choices: vec![],
-            timing: crate::ability::ActivationTiming::SorcerySpeed,
-            additional_restrictions: Vec::new(),
-            activation_restrictions: Vec::new(),
-            mana_output: None,
-            activation_condition: None,
-            mana_usage_restrictions: Vec::new(),
-            is_loyalty_ability: false,
-        }),
+        kind: AbilityKind::Activated(
+            crate::model::compiler_semantic::CompilerActivatedAbilityCore {
+                mana_cost: ironsmith_core::TotalCost::from_costs(vec![
+                    crate::model::CompilerCost::DynamicMana(
+                        ironsmith_core::DynamicManaCost::from_source_mana_cost(),
+                    ),
+                    crate::model::CompilerCost::ExileSelf {
+                        from_graveyard: false,
+                    },
+                ]),
+                effects: ironsmith_core::ResolutionProgram::from_effects(vec![
+                    EffectAst::subject_verb_put_counters(
+                        CounterType::PlusOnePlusOne,
+                        Value::SourcePower,
+                        TargetAst::Object(ObjectFilter::creature(), None, None),
+                        None,
+                        false,
+                    ),
+                ]),
+                choices: vec![],
+                timing: crate::ability::ActivationTiming::SorcerySpeed,
+                additional_restrictions: Vec::new(),
+                activation_restrictions: Vec::new(),
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: Vec::new(),
+                is_loyalty_ability: false,
+            },
+        ),
         functional_zones: vec![Zone::Graveyard],
     };
     let grant = StaticAbilityAst::GrantObjectAbility {
@@ -2275,9 +2277,7 @@ pub fn parse_best_object_filter_suffix(tokens: &[OwnedLexToken]) -> Option<Objec
     })
 }
 
-pub fn parse_anthem_subject(
-    tokens: &[OwnedLexToken],
-) -> Result<AnthemSubjectAst, CardTextError> {
+pub fn parse_anthem_subject(tokens: &[OwnedLexToken]) -> Result<AnthemSubjectAst, CardTextError> {
     let subject_words = crate::lexer::parser_token_word_refs(tokens);
     if let Some(subject) = first_spell_each_turn_subject_tokens(tokens)? {
         return Ok(subject);
@@ -2379,7 +2379,9 @@ fn parse_enchanted_player_controls_subject(
         return Ok(None);
     };
     let mut filter = parse_object_filter(prefix_tokens, false)?;
-    filter.controller = Some(PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.key()));
+    filter.controller = Some(PlayerFilter::TaggedPlayer(
+        crate::tag::CompilerReferenceTag::Enchanted.key(),
+    ));
     Ok(Some(filter))
 }
 
@@ -2543,8 +2545,7 @@ fn parse_negated_subject_descriptor_condition(
     if let Some(not_token) = remove_not {
         positive.remove(not_token);
     }
-    let condition =
-        crate::grammar::conditions::parse_subject_descriptor_condition(&positive)?;
+    let condition = crate::grammar::conditions::parse_subject_descriptor_condition(&positive)?;
     let positive_display = crate::lexer::token_word_refs(&positive).join(" ");
     Some(crate::ConditionExpr::Not(Box::new(
         condition.condition_expr(positive_display),
@@ -2563,6 +2564,51 @@ pub fn parse_static_condition_clause(
         ));
     }
     let display = clause_words.join(" ");
+
+    // Target-kind attack history is more specific than a source
+    // characteristic filter. Give the complete temporal form first refusal
+    // so `attacked a battle this turn` cannot collapse to `is a Battle`.
+    if matches!(
+        anthem_grant_grammar::parse_fixed_static_condition_kind(&tokens),
+        Some(anthem_grant_grammar::FixedStaticConditionKind::SourceAttackedBattleThisTurn)
+    ) {
+        return Ok(crate::ConditionExpr::SourceAttackedBattleThisTurn);
+    }
+
+    // A condition on an affected attached object may quantify permanents
+    // controlled by that object's controller. Reuse the ordinary control-
+    // condition grammar with an explicit temporary subject, then bind the
+    // resulting filter to the affected target instead of reducing the final
+    // object noun to `TargetMatches`.
+    if matches!(
+        clause_words.get(..3),
+        Some(["its", "controller", "controls"])
+    ) {
+        let mut explicit_controller = vec![
+            OwnedLexToken::word("you".to_string(), TextSpan::synthetic()),
+            OwnedLexToken::word("control".to_string(), TextSpan::synthetic()),
+        ];
+        explicit_controller.extend_from_slice(&tokens[3..]);
+        if let Some(mut control) = crate::grammar::conditions::parse_control_condition(
+            &explicit_controller,
+            crate::grammar::conditions::ControlConditionOptions {
+                allow_that_player: false,
+                allow_opponent_players: false,
+                allow_defending_player: false,
+                bind_filter_controller_to_subject: true,
+                allow_different_powers_tail: false,
+                default_filter_zone: Some(Zone::Battlefield),
+            },
+        ) {
+            control.filter.controller =
+                Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target));
+            return Ok(crate::ConditionExpr::CountComparison {
+                count: AnthemCountExpression::MatchingFilter(control.filter),
+                comparison: control.comparison,
+                display: Some(display.clone()),
+            });
+        }
+    }
 
     // A trailing mana-source predicate on a granted spell ability is parsed
     // initially as a condition, then moved onto the affected spell filter by
@@ -2591,8 +2637,7 @@ pub fn parse_static_condition_clause(
         });
     }
 
-    if let Some(condition) =
-        crate::grammar::conditions::parse_removed_from_draft_condition(&tokens)
+    if let Some(condition) = crate::grammar::conditions::parse_removed_from_draft_condition(&tokens)
     {
         return Ok(crate::ConditionExpr::PlayerRemovedDraftCardMatching {
             player: condition.player,
@@ -2612,9 +2657,7 @@ pub fn parse_static_condition_clause(
         return Ok(condition);
     }
     if let Some(filter) =
-        crate::grammar::filters::parse_source_keyword_condition_filter_lexed(
-            &tokens,
-        )
+        crate::grammar::filters::parse_source_keyword_condition_filter_lexed(&tokens)
     {
         return Ok(crate::ConditionExpr::SourceMatches(filter));
     }
@@ -2669,6 +2712,9 @@ pub fn parse_static_condition_clause(
             FixedStaticConditionKind::SourceAttackedThisTurn => {
                 Ok(crate::ConditionExpr::SourceAttackedThisTurn)
             }
+            FixedStaticConditionKind::SourceAttackedBattleThisTurn => {
+                Ok(crate::ConditionExpr::SourceAttackedBattleThisTurn)
+            }
             FixedStaticConditionKind::YouAttackedThisTurn => {
                 Ok(crate::ConditionExpr::AttackedThisTurn)
             }
@@ -2710,13 +2756,9 @@ pub fn parse_static_condition_clause(
         return Ok(crate::ConditionExpr::LifeTotalOrLess(life as i32));
     }
 
-    if let Some(counter) =
-        crate::grammar::conditions::parse_player_counter_condition(&tokens)
-    {
+    if let Some(counter) = crate::grammar::conditions::parse_player_counter_condition(&tokens) {
         let Some((operator, value)) =
-            crate::util::comparison_to_value_comparison_operator(
-                counter.comparison,
-            )
+            crate::util::comparison_to_value_comparison_operator(counter.comparison)
         else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported player-counter comparison (clause: '{display}')"
@@ -2730,9 +2772,7 @@ pub fn parse_static_condition_clause(
     }
 
     if let Some(attachment) =
-        crate::grammar::conditions::parse_object_attached_to_object_condition(
-            &tokens,
-        )
+        crate::grammar::conditions::parse_object_attached_to_object_condition(&tokens)
     {
         return Ok(crate::ConditionExpr::AttachmentCount {
             attachment: attachment.attachment_filter,
@@ -2746,27 +2786,22 @@ pub fn parse_static_condition_clause(
         return Ok(condition);
     }
 
-    if let Some(condition) =
-        crate::grammar::conditions::parse_subject_status_condition(&tokens)
-            .and_then(|condition| condition.condition_expr())
+    if let Some(condition) = crate::grammar::conditions::parse_subject_status_condition(&tokens)
+        .and_then(|condition| condition.condition_expr())
     {
         return Ok(condition);
     }
-    if let Some(condition) =
-        crate::grammar::conditions::parse_subject_descriptor_condition(&tokens)
+    if let Some(condition) = crate::grammar::conditions::parse_subject_descriptor_condition(&tokens)
     {
         return Ok(condition.condition_expr(display.clone()));
     }
-    if let Some(condition) =
-        crate::grammar::conditions::parse_player_status_condition(&tokens)
-    {
+    if let Some(condition) = crate::grammar::conditions::parse_player_status_condition(&tokens) {
         return Ok(condition.condition_expr());
     }
     if let Some(count) = anthem_grant_grammar::parse_x_value_at_least_condition(&tokens) {
         return Ok(crate::ConditionExpr::XValueAtLeast(count));
     }
-    if let Some(condition) =
-        crate::grammar::conditions::parse_player_achievement_condition(&tokens)
+    if let Some(condition) = crate::grammar::conditions::parse_player_achievement_condition(&tokens)
     {
         return Ok(condition.condition_expr());
     }
@@ -2820,9 +2855,7 @@ pub fn parse_static_condition_clause(
                 }
                 ExistentialConditionTail::CardsInYourGraveyard => {
                     let Some((operator, value)) =
-                        crate::util::comparison_to_value_comparison_operator(
-                            shape.comparison,
-                        )
+                        crate::util::comparison_to_value_comparison_operator(shape.comparison)
                     else {
                         return Err(CardTextError::ParseError(format!(
                             "unsupported graveyard card-count condition (clause: '{display}')"
@@ -2895,25 +2928,21 @@ pub fn parse_static_condition_clause(
     }
 
     let count_condition_tokens =
-        crate::grammar::leaf::parse_leaf_static_condition_intro_prefix_tokens(
-            &tokens,
-        )
-        .map(|parsed| parsed.rest)
-        .unwrap_or(&tokens);
+        crate::grammar::leaf::parse_leaf_static_condition_intro_prefix_tokens(&tokens)
+            .map(|parsed| parsed.rest)
+            .unwrap_or(&tokens);
 
-    if let Some(mut control_condition) =
-        crate::grammar::conditions::parse_control_condition(
-            count_condition_tokens,
-            crate::grammar::conditions::ControlConditionOptions {
-                allow_that_player: true,
-                allow_opponent_players: true,
-                allow_defending_player: false,
-                bind_filter_controller_to_subject: true,
-                allow_different_powers_tail: false,
-                default_filter_zone: None,
-            },
-        )
-    {
+    if let Some(mut control_condition) = crate::grammar::conditions::parse_control_condition(
+        count_condition_tokens,
+        crate::grammar::conditions::ControlConditionOptions {
+            allow_that_player: true,
+            allow_opponent_players: true,
+            allow_defending_player: false,
+            bind_filter_controller_to_subject: true,
+            allow_different_powers_tail: false,
+            default_filter_zone: None,
+        },
+    ) {
         // In a per-player static grant, "that player" denotes the player
         // whose affected objects are currently being evaluated. Preserve the
         // quantitative control condition before the general predicate
@@ -2930,16 +2959,14 @@ pub fn parse_static_condition_clause(
         });
     }
 
-    if let Some(ownership_condition) =
-        crate::grammar::conditions::parse_ownership_condition(
-            count_condition_tokens,
-            crate::grammar::conditions::OwnershipConditionOptions {
-                allow_opponent_players: true,
-                bind_filter_owner_to_subject: true,
-                default_filter_zone: None,
-            },
-        )
-    {
+    if let Some(ownership_condition) = crate::grammar::conditions::parse_ownership_condition(
+        count_condition_tokens,
+        crate::grammar::conditions::OwnershipConditionOptions {
+            allow_opponent_players: true,
+            bind_filter_owner_to_subject: true,
+            default_filter_zone: None,
+        },
+    ) {
         return Ok(crate::ConditionExpr::CountComparison {
             count: AnthemCountExpression::MatchingFilter(ownership_condition.filter),
             comparison: ownership_condition.comparison,
@@ -2962,9 +2989,7 @@ pub fn parse_static_condition_clause(
         Ok(Some(shape)) => {
             let Some(counter_type) = shape.counter_type else {
                 let Some((operator, value)) =
-                    crate::util::comparison_to_value_comparison_operator(
-                        shape.comparison,
-                    )
+                    crate::util::comparison_to_value_comparison_operator(shape.comparison)
                 else {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported total-counter comparison (clause: '{display}')"
@@ -3012,14 +3037,12 @@ pub fn parse_static_condition_clause(
     // above, then use the typed predicate compiler as the general fallback.
     // This covers conditions such as "you've cast an instant or sorcery spell
     // this turn" without adding a second spell-history grammar here.
-    if let Ok(predicate) =
-        crate::grammar::filters::parse_condition_predicate_lexed(&tokens)
-        && let Ok(condition) =
-            crate::compile_support::compile_condition_from_predicate_ast_with_env(
-                &predicate,
-                &crate::model::reference_state::ReferenceEnv::default(),
-                None,
-            )
+    if let Ok(predicate) = crate::grammar::filters::parse_condition_predicate_lexed(&tokens)
+        && let Ok(condition) = crate::compile_support::compile_condition_from_predicate_ast_with_env(
+            &predicate,
+            &crate::model::reference_state::ReferenceEnv::default(),
+            None,
+        )
     {
         return Ok(condition);
     }
@@ -3045,8 +3068,7 @@ fn parse_independently_articled_graveyard_cards_static_condition(
             && filter.card_types.len() == 1
     }
 
-    let predicate =
-        crate::grammar::filters::parse_condition_predicate_lexed(tokens).ok()?;
+    let predicate = crate::grammar::filters::parse_condition_predicate_lexed(tokens).ok()?;
     let crate::cards::builders::PredicateAst::And(left, right) = &predicate else {
         return None;
     };
@@ -3143,10 +3165,7 @@ fn parse_conjoined_static_condition_clause(
 fn parse_cards_drawn_this_turn_static_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::ConditionExpr> {
-    let threshold =
-        crate::grammar::anthem_grants::parse_cards_drawn_this_turn_threshold(
-            tokens,
-        )?;
+    let threshold = crate::grammar::anthem_grants::parse_cards_drawn_this_turn_threshold(tokens)?;
     let player = anthem_turn_threshold_player_filter(threshold.player);
 
     Some(crate::ConditionExpr::ValueComparison {
@@ -3159,10 +3178,7 @@ fn parse_cards_drawn_this_turn_static_condition(
 fn parse_dice_rolled_this_turn_static_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::ConditionExpr> {
-    let threshold =
-        crate::grammar::anthem_grants::parse_dice_rolled_this_turn_threshold(
-            tokens,
-        )?;
+    let threshold = crate::grammar::anthem_grants::parse_dice_rolled_this_turn_threshold(tokens)?;
     let player = anthem_turn_threshold_player_filter(threshold.player);
 
     Some(crate::ConditionExpr::ValueComparison {
@@ -3184,28 +3200,19 @@ fn anthem_turn_threshold_player_filter(
 }
 
 fn parse_cards_in_hand_static_condition(tokens: &[OwnedLexToken]) -> Option<crate::ConditionExpr> {
-    crate::grammar::conditions::parse_player_cards_in_hand_condition(tokens)?
-        .condition_expr()
+    crate::grammar::conditions::parse_player_cards_in_hand_condition(tokens)?.condition_expr()
 }
 
 fn parse_life_total_static_condition(tokens: &[OwnedLexToken]) -> Option<crate::ConditionExpr> {
-    crate::grammar::conditions::parse_player_life_total_condition(tokens)?
-        .condition_expr()
+    crate::grammar::conditions::parse_player_life_total_condition(tokens)?.condition_expr()
 }
 
 fn explicit_source_counter_surface(
     source_words: &[&str],
 ) -> Option<crate::target::SourceReferenceSurface> {
-    crate::util::source_reference_surface_for_words(
-        source_words,
-    )
-    .or_else(|| {
+    crate::util::source_reference_surface_for_words(source_words).or_else(|| {
         (source_words.len() > 1)
-            .then(|| {
-                crate::util::this_source_surface_for_words(
-                    source_words,
-                )
-            })
+            .then(|| crate::util::this_source_surface_for_words(source_words))
             .flatten()
     })
 }
@@ -3541,10 +3548,7 @@ fn bind_unique_count_condition_anthem_subject(
         return;
     }
 
-    crate::condition_antecedent::bind_condition_filter_antecedent(
-        subject_filter,
-        antecedent,
-    );
+    crate::condition_antecedent::bind_condition_filter_antecedent(subject_filter, antecedent);
 }
 
 pub fn parse_anthem_clause(
@@ -3838,9 +3842,8 @@ pub fn parse_anthem_clause(
     }
 
     parser_trace_stack("parse_static:anthem-clause:matched", tokens);
-    let modifier_words = crate::lexer::token_word_refs(
-        tokens.get(get_idx + 1..tail_end).unwrap_or_default(),
-    );
+    let modifier_words =
+        crate::lexer::token_word_refs(tokens.get(get_idx + 1..tail_end).unwrap_or_default());
     let additional_surface = modifier_shape.additional_surface
         || crate::word_primitives::any_sequence_occurs(
             &modifier_words,
@@ -3984,8 +3987,7 @@ pub fn parse_type_color_addition_clause(
     // behavior handled below. Reject non-color unscoped descriptors here so
     // the dedicated type-changing parsers can keep their layer semantics.
     if shape.scopes.is_empty() {
-        let descriptor_word_storage =
-            crate::lexer::token_word_refs(shape.descriptor_tokens);
+        let descriptor_word_storage = crate::lexer::token_word_refs(shape.descriptor_tokens);
         let descriptor_words = non_article_word_refs_except(&descriptor_word_storage, &["and"]);
         if descriptor_words.is_empty() {
             return Ok(None);
@@ -4857,7 +4859,7 @@ mod dynamic_anthem_tests {
             Box::new(source),
             Some(crate::CounterType::Named("rev".into())),
         )
-            .with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo);
+        .with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo);
 
         assert!(matches!(
             anthem_count_expression_from_value(value),

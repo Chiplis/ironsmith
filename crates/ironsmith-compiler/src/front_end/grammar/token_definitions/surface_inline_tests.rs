@@ -117,6 +117,20 @@ fn creature_token_shape_preserves_generic_ward_cost() {
 }
 
 #[test]
+fn creature_token_shape_preserves_dalek_subtype() {
+    let shape =
+        parse_token_definition_shape_text("3/3 black Dalek artifact creature token with menace")
+            .expect("Dalek token should parse");
+    let TokenDefinitionSpec::Creature(creature) = shape else {
+        panic!("expected creature token shape");
+    };
+
+    assert_eq!(creature.subtypes, vec![Subtype::Dalek]);
+    assert_eq!(creature.name, "Dalek");
+    assert_eq!(creature.keywords, vec![TokenKeywordShape::Menace]);
+}
+
+#[test]
 fn leading_artifact_token_name_preserves_apostrophe_and_subtype() {
     let shape = parse_token_definition_shape_text(
         "Tamiyo's Notebook, a legendary colorless Book artifact token with \"{T}: Draw a card.\"",

@@ -52,11 +52,14 @@ pub struct VillainousChoiceStatementShape<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VillainousChoicePlayerIteration {
     EachOpponent,
+    TargetOpponent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VillainousChoicePlayerStatementShape<'a> {
+    pub leading_then: bool,
     pub iteration: VillainousChoicePlayerIteration,
+    pub minimum_life_lost_this_turn: Option<u32>,
     pub chooser_tokens: &'a [OwnedLexToken],
     pub first_mode_tokens: &'a [OwnedLexToken],
     pub second_mode_tokens: &'a [OwnedLexToken],
@@ -226,10 +229,35 @@ fn parse_villainous_choice_statement_lexed<'a>(
 fn parse_villainous_choice_player_statement_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<VillainousChoicePlayerStatementShape<'a>> {
-    opt(primitives::kw("then")).parse_next(input)?;
-    let chooser_tokens = primitives::phrase(&["each", "opponent"])
-        .take()
-        .parse_next(input)?;
+    let leading_then = opt(primitives::kw("then")).parse_next(input)?.is_some();
+    let (iteration, chooser_tokens, minimum_life_lost_this_turn) = alt((
+        (
+            primitives::phrase(&["each", "opponent"]).take(),
+            opt((
+                primitives::phrase(&["who", "lost"]),
+                leaf::parse_leaf_number_prefix_lexed,
+                primitives::phrase(&["or", "more", "life", "this", "turn"]),
+            )
+                .map(|(_, count, _)| count)),
+        )
+            .map(|(tokens, minimum)| {
+                (
+                    VillainousChoicePlayerIteration::EachOpponent,
+                    tokens,
+                    minimum,
+                )
+            }),
+        primitives::phrase(&["target", "opponent"])
+            .take()
+            .map(|tokens| {
+                (
+                    VillainousChoicePlayerIteration::TargetOpponent,
+                    tokens,
+                    None,
+                )
+            }),
+    ))
+    .parse_next(input)?;
     primitives::phrase(&["faces", "a", "villainous", "choice"]).parse_next(input)?;
     opt(parse_choice_separator).parse_next(input)?;
 
@@ -251,7 +279,9 @@ fn parse_villainous_choice_player_statement_lexed<'a>(
     eof.parse_next(input)?;
 
     Ok(VillainousChoicePlayerStatementShape {
-        iteration: VillainousChoicePlayerIteration::EachOpponent,
+        leading_then,
+        iteration,
+        minimum_life_lost_this_turn,
         chooser_tokens,
         first_mode_tokens,
         second_mode_tokens,
@@ -365,11 +395,13 @@ mod tests {
         )
         .unwrap();
         let shape = parse_villainous_choice_player_statement_tokens(&tokens).unwrap();
+        assert!(shape.leading_then);
         assert_eq!(
             shape.iteration,
             VillainousChoicePlayerIteration::EachOpponent
         );
         assert_eq!(render_token_slice(shape.chooser_tokens), "each opponent");
+        assert_eq!(shape.minimum_life_lost_this_turn, None);
         assert_eq!(
             render_token_slice(shape.first_mode_tokens),
             "That player discards a card"
@@ -386,5 +418,54 @@ mod tests {
             shape.second_mode_program,
             VillainousChoiceModeProgram::Direct(shape.second_mode_tokens)
         );
+    }
+
+    #[test]
+    fn parses_life_loss_qualified_each_opponent_choice() {
+        let tokens = lex_line(
+            "Then each opponent who lost 3 or more life this turn faces a villainous choice — You draw a card, or that player discards a card.",
+            0,
+        )
+        .unwrap();
+        let shape = parse_villainous_choice_player_statement_tokens(&tokens).unwrap();
+
+        assert!(shape.leading_then);
+        assert_eq!(
+            shape.iteration,
+            VillainousChoicePlayerIteration::EachOpponent
+        );
+        assert_eq!(shape.minimum_life_lost_this_turn, Some(3));
+        assert_eq!(render_token_slice(shape.chooser_tokens), "each opponent");
+    }
+
+    #[test]
+    fn parses_target_opponent_villainous_choice_without_widening_the_chooser() {
+        let tokens = lex_line(
+            "Then target opponent faces a villainous choice — They discard three cards, or you may cast a spell from your hand without paying its mana cost.",
+            0,
+        )
+        .unwrap();
+        let shape = parse_villainous_choice_player_statement_tokens(&tokens).unwrap();
+        assert!(shape.leading_then);
+        assert_eq!(
+            shape.iteration,
+            VillainousChoicePlayerIteration::TargetOpponent
+        );
+        assert_eq!(render_token_slice(shape.chooser_tokens), "target opponent");
+        assert_eq!(
+            render_token_slice(shape.first_mode_tokens),
+            "They discard three cards"
+        );
+        assert_eq!(
+            render_token_slice(shape.second_mode_tokens),
+            "you may cast a spell from your hand without paying its mana cost"
+        );
+
+        let untargeted = lex_line(
+            "Then an opponent faces a villainous choice — They discard three cards, or you draw three cards.",
+            0,
+        )
+        .unwrap();
+        assert!(parse_villainous_choice_player_statement_tokens(&untargeted).is_none());
     }
 }

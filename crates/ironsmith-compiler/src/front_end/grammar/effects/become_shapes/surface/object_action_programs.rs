@@ -8,6 +8,18 @@ pub(super) fn parse_structured_become_copy_exception_shape(
         &["in", "addition", "to", "his", "other", "types"],
         &["in", "addition", "to", "her", "other", "types"],
         &["in", "addition", "to", "their", "other", "types"],
+        &[
+            "in", "addition", "to", "its", "other", "colors", "and", "types",
+        ],
+        &[
+            "in", "addition", "to", "his", "other", "colors", "and", "types",
+        ],
+        &[
+            "in", "addition", "to", "her", "other", "colors", "and", "types",
+        ],
+        &[
+            "in", "addition", "to", "their", "other", "colors", "and", "types",
+        ],
     ];
 
     let tokens = trim_lexed_commas(tokens);
@@ -53,11 +65,9 @@ pub(super) fn parse_structured_become_copy_exception_shape(
 
     let ability_tokens = if let Some(tokens) = prefixed_has_tokens {
         Some(tokens)
-    } else if let Some((start, end, kind)) = find_copy_exception_followup(descriptor_tokens, false)
+    } else if let Some((start, end, CopyExceptionFollowupKind::Has)) =
+        find_copy_exception_followup(descriptor_tokens, false)
     {
-        if kind != CopyExceptionFollowupKind::Has {
-            return None;
-        }
         let ability_tokens = trim_lexed_commas(&descriptor_tokens[end..]);
         descriptor_tokens = trim_lexed_commas(&descriptor_tokens[..start]);
         Some(ability_tokens)
@@ -115,6 +125,8 @@ pub(super) fn parse_structured_become_copy_exception_shape(
             if !crate::slice_primitives::contains(&parsed.add_supertypes, &supertype) {
                 parsed.add_supertypes.push(supertype);
             }
+        } else if let Ok(colors) = leaf::parse_leaf_color_complete(word) {
+            parsed.add_colors = parsed.add_colors.union(colors);
         } else if let Ok(card_type) = leaf::parse_leaf_card_type_complete(word) {
             if !crate::slice_primitives::contains(&card_types, &card_type) {
                 card_types.push(card_type);
@@ -145,6 +157,7 @@ pub(super) fn parse_structured_become_copy_exception_shape(
         || parsed.preserve_source_abilities
         || parsed.set_base_power_toughness.is_some()
         || !parsed.add_supertypes.is_empty()
+        || !parsed.add_colors.is_empty()
         || !parsed.add_card_types.is_empty()
         || !parsed.set_card_types.is_empty()
         || !parsed.add_subtypes.is_empty()

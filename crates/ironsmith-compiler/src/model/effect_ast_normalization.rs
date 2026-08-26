@@ -163,6 +163,7 @@ fn replace_bound_x_in_predicate(predicate: &mut PredicateAst, replacement: &Valu
             replace_bound_x_in_value(left, replacement);
             replace_bound_x_in_value(right, replacement);
         }
+        PredicateAst::ValueIsPrime(value) => replace_bound_x_in_value(value, replacement),
         PredicateAst::Not(inner) => replace_bound_x_in_predicate(inner, replacement),
         PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
             replace_bound_x_in_predicate(left, replacement);
@@ -257,6 +258,7 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     bind_quantified_choice_collections_to_destroy_followups(effects);
     bind_counted_set_followups(effects);
     bind_until_next_turn_permissions_to_prior_exiled_collection(effects);
+    bind_choice_remainder_to_choice_domain(effects);
     bind_consult_remainder_to_revealed_collection(effects);
     if let Some(rewritten) = rewrite_repeat_process(effects) {
         *effects = rewritten;
@@ -340,6 +342,35 @@ fn bind_consult_remainder_to_revealed_collection(effects: &mut [EffectAst]) {
                 surface: ironsmith_core::LibraryRemainderSurface::Rest,
             }
         };
+    }
+}
+
+/// Bind an adjacent object choice's `the rest` consumer to the exact
+/// complement of that choice domain. Inside a quantified-player loop, the
+/// chosen tag is iteration-local, so the complement must retain the same
+/// owner/controller and zone constraints as its producer.
+fn bind_choice_remainder_to_choice_domain(effects: &mut [EffectAst]) {
+    for index in 1..effects.len() {
+        let (before, after) = effects.split_at_mut(index);
+        let EffectAst::ChooseObjects { filter, tag, .. } = &before[index - 1] else {
+            continue;
+        };
+        let EffectAst::SubjectVerb(subject_verb) = &mut after[0] else {
+            continue;
+        };
+        let target = match &mut subject_verb.action {
+            SubjectVerbActionAst::MoveToZone { target, .. }
+            | SubjectVerbActionAst::Exile { target, .. } => target,
+            _ => continue,
+        };
+        if !matches!(
+            target,
+            TargetAst::Tagged(rest, _)
+                if rest.as_str() == crate::tag::CompilerReferenceTag::Rest.as_str()
+        ) {
+            continue;
+        }
+        *target = TargetAst::Object(filter.clone().not_tagged(tag.clone()), None, None);
     }
 }
 
@@ -2940,6 +2971,89 @@ mod tests {
             ] if tag.as_str() == "conditional_pool__delegated_subset"
                 && pool.as_str() == "conditional_pool"
                 && keep_tagged == tag
+        ));
+    }
+
+    #[test]
+    fn normalize_binds_player_choice_remainder_to_the_same_graveyard_domain() {
+        let tag = TagKey::from(IT_TAG);
+        let choice_filter = ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .owned_by(crate::target::PlayerFilter::IteratedPlayer);
+        let choose = EffectAst::ChooseObjects {
+            filter: choice_filter,
+            count: ChoiceCount::exactly(2),
+            count_value: None,
+            player: PlayerAst::That,
+            tag: tag.clone(),
+        };
+        let exile_rest = EffectAst::subject_verb_exile(
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Rest.key(), None),
+            false,
+        );
+
+        let normalized = normalize_effects_ast(&[choose, exile_rest]);
+        let EffectAst::SubjectVerb(subject_verb) = &normalized[1] else {
+            panic!("expected move-to-exile consumer");
+        };
+        let SubjectVerbActionAst::Exile {
+            target: TargetAst::Object(filter, ..),
+            ..
+        } = &subject_verb.action
+        else {
+            panic!("the rest must be an executable complement: {subject_verb:#?}");
+        };
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(
+            filter.owner,
+            Some(crate::target::PlayerFilter::IteratedPlayer)
+        );
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == tag && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+        }));
+    }
+
+    #[test]
+    fn normalize_binds_consult_remainder_to_revealed_minus_matched_collection() {
+        let revealed = TagKey::from("consult_revealed");
+        let matched = TagKey::from("consult_matched");
+        let consult = EffectAst::subject_verb_consult_top_of_library(
+            PlayerAst::You,
+            crate::cards::builders::LibraryConsultModeAst::Reveal,
+            ObjectFilter::creature(),
+            crate::cards::builders::LibraryConsultStopRuleAst::FirstMatch,
+            revealed.clone(),
+            matched.clone(),
+        );
+        let remainder = EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Rest.key(), None),
+            Zone::Library,
+            false,
+            crate::cards::builders::ReturnControllerAst::Preserve,
+            false,
+            None,
+        )
+        .with_library_order(
+            Some(crate::cards::builders::LibraryBottomOrderAst::Random),
+            PlayerAst::You,
+        );
+
+        let normalized = normalize_effects_ast(&[consult, remainder]);
+        assert!(matches!(
+            normalized.as_slice(),
+            [
+                _,
+                EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                        tag,
+                        keep_tagged: Some(keep_tagged),
+                        order: crate::cards::builders::LibraryBottomOrderAst::Random,
+                        player: PlayerAst::You,
+                        ..
+                    },
+                    ..
+                })
+            ] if tag == &revealed && keep_tagged == &matched
         ));
     }
 

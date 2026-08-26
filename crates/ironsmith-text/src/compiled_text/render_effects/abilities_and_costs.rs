@@ -850,6 +850,68 @@ fn graveyard_self_exile_damage_uses_it_subject(
         .is_some()
 }
 
+fn sacrifice_cost_copy_reference_noun(
+    activated: &crate::ability::ActivatedAbility,
+    target: &ChooseSpec,
+) -> Option<&'static str> {
+    let costs = activated.mana_cost.as_all()?;
+    costs.iter().find_map(|cost| {
+        let cost_effect = cost.downcast_ref::<crate::costs::CostEffect>()?;
+        let tagged = cost_effect
+            .effect
+            .downcast_ref::<crate::effects::TaggedEffect>()?;
+        if !choose_spec_references_exact_tag(target, &tagged.tag) {
+            return None;
+        }
+        let sacrifice = tagged
+            .effect
+            .downcast_ref::<crate::effects::SacrificeEffect>()?;
+        if sacrifice.player != PlayerFilter::You || sacrifice.count != Value::Fixed(1) {
+            return None;
+        }
+        if sacrifice.filter.card_types.contains(&CardType::Creature)
+            || sacrifice
+                .filter
+                .subtypes
+                .iter()
+                .any(crate::types::Subtype::is_creature_type)
+        {
+            Some("creature")
+        } else if sacrifice.filter.card_types == [CardType::Artifact] {
+            Some("artifact")
+        } else if sacrifice.filter.card_types == [CardType::Land] {
+            Some("land")
+        } else {
+            None
+        }
+    })
+}
+
+fn rewrite_sacrifice_cost_token_copy_reference(
+    mut rendered: String,
+    activated: &crate::ability::ActivatedAbility,
+) -> String {
+    let [effect] = activated.effects.flattened_default_effects() else {
+        return rendered;
+    };
+    let Some(copy) = structural_unwrap_render_wrappers(effect)
+        .downcast_ref::<crate::effects::CreateTokenCopyEffect>()
+    else {
+        return rendered;
+    };
+    let Some(noun) = sacrifice_cost_copy_reference_noun(activated, &copy.target) else {
+        return rendered;
+    };
+    rendered = rendered.replace(
+        "tokens that are copies of it",
+        &format!("tokens that are copies of the sacrificed {noun}"),
+    );
+    rendered.replace(
+        "token that's a copy of it",
+        &format!("token that's a copy of the sacrificed {noun}"),
+    )
+}
+
 fn describe_exiled_last_time_counter_creatures_unblockable(ability: &Ability) -> Option<String> {
     if ability.functional_zones.as_slice() != [Zone::Exile] {
         return None;
@@ -913,6 +975,24 @@ pub(crate) fn describe_ability(
     if let Some(rendered) = describe_exiled_last_time_counter_creatures_unblockable(ability) {
         return vec![format!("Triggered ability {index}: {rendered}")];
     }
+    if let Some(rendered) = describe_conditional_spell_uncounterability(ability) {
+        return vec![format!("Static ability {index}: {rendered}")];
+    }
+    if let AbilityKind::Static(static_ability) = &ability.kind
+        && matches!(
+            static_ability.compiled_model().map(|model| &model.payload),
+            Some(ironsmith_core::StaticAbilityPayload::CharacteristicDefiningPt { .. })
+        )
+    {
+        // The runtime leaf intentionally uses a compact value debug surface
+        // for dynamic characteristics. Render the retained typed payload
+        // before any keyword or legacy-display fallback can expose `Count`
+        // or `SurfaceHinted` in compiled Oracle text.
+        return vec![format!(
+            "Static ability {index}: {}",
+            describe_static_ability_with_subject(static_ability, subject)
+        )];
+    }
     if let AbilityKind::Static(static_ability) = &ability.kind
         && let Some(model) = static_ability.compiled_model()
         && let ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) =
@@ -961,6 +1041,7 @@ pub(crate) fn describe_ability(
     if let AbilityKind::Static(static_ability) = &ability.kind
         && let Some(surface) = static_ability.authored_line_surface()
     {
+        let surface = restore_modeled_value_surface(static_ability, surface);
         return vec![format!("Static ability {index}: {surface}")];
     }
     if let Some(keyword) = describe_keyword_ability(ability) {
@@ -999,8 +1080,12 @@ pub(crate) fn describe_ability(
             if static_ability.id() == crate::static_abilities::StaticAbilityId::SoulbondSharedBonus
                 && let Some(granted) = static_ability.granted_inline_ability()
             {
-                let granted_surface =
-                    normalize_granted_triggered_ability_surface(describe_inline_ability(granted));
+                let granted_surface = describe_soulbond_shared_delayed_return(granted)
+                    .unwrap_or_else(|| {
+                        normalize_granted_triggered_ability_surface(describe_inline_ability(
+                            granted,
+                        ))
+                    });
                 return vec![format!(
                     "Static ability {index}: As long as this creature is paired with another creature, each of those creatures has \"{}\"",
                     granted_surface
@@ -1031,7 +1116,9 @@ pub(crate) fn describe_ability(
                     "Static ability {index}: {subject} can be your commander"
                 )];
             }
-            let normalized = normalize_sentence_surface_style(static_ability.display().trim());
+            let restored_display =
+                restore_modeled_value_surface(static_ability, static_ability.display());
+            let normalized = normalize_sentence_surface_style(restored_display.trim());
             let lower = normalized.to_ascii_lowercase();
             let prefer_safe_label_text = matches!(
                 static_ability.id(),
@@ -1416,6 +1503,7 @@ pub(crate) fn describe_ability(
                 let flat_costs = activated.mana_cost.as_all().unwrap_or(&[]);
                 effects = rewrite_cost_bound_x_phrases(effects, flat_costs);
                 effects = rewrite_removed_counter_type_surface(effects, flat_costs);
+                effects = rewrite_sacrifice_cost_token_copy_reference(effects, activated);
                 if subject != "This spell" {
                     effects = replace_this_spell_self_reference(effects, subject);
                 }
@@ -1431,6 +1519,17 @@ pub(crate) fn describe_ability(
                     line.push_str(". ");
                     line.push_str(&clause);
                 }
+            }
+            let restriction_clauses = collect_activation_restriction_clauses(
+                &activated.timing,
+                &activated.additional_restrictions,
+                &activated.activation_restrictions,
+            );
+            if !restriction_clauses.is_empty() {
+                append_activation_clause(
+                    &mut line,
+                    &join_activation_restriction_clauses(&restriction_clauses),
+                );
             }
             for clause in describe_mana_usage_restriction_clauses_for_activated(activated) {
                 line.push_str(". ");
@@ -1605,6 +1704,7 @@ pub(crate) fn describe_ability(
                 let flat_costs = activated.mana_cost.as_all().unwrap_or(&[]);
                 effects = rewrite_cost_bound_x_phrases(effects, flat_costs);
                 effects = rewrite_removed_counter_type_surface(effects, flat_costs);
+                effects = rewrite_sacrifice_cost_token_copy_reference(effects, activated);
                 if subject != "This spell" {
                     effects = replace_this_spell_self_reference(effects, subject);
                 }
@@ -1644,6 +1744,182 @@ pub(crate) fn describe_ability(
             line = normalize_graveyard_source_return_surface(&line, ability);
             vec![line]
         }
+    }
+}
+
+pub(in crate::compiled_text) fn describe_conditional_spell_uncounterability(
+    ability: &Ability,
+) -> Option<String> {
+    let AbilityKind::Static(static_ability) = &ability.kind else {
+        return None;
+    };
+    let model = static_ability.compiled_model()?;
+    let ironsmith_core::StaticAbilityPayload::Conditional {
+        ability: inner,
+        condition,
+    } = &model.payload
+    else {
+        return None;
+    };
+    if model.id != Some(crate::static_abilities::StaticAbilityId::CantBeCountered)
+        || inner.id != Some(crate::static_abilities::StaticAbilityId::CantBeCountered)
+        || !matches!(inner.payload, ironsmith_core::StaticAbilityPayload::None)
+    {
+        return None;
+    }
+
+    Some(format!(
+        "If {}, this spell can't be countered",
+        describe_condition(condition)
+    ))
+}
+
+/// Preserve the verb-first surface of the exact soulbond-shared delayed
+/// return program. The triggering-object tag is the executable antecedent;
+/// the one-shot next-upkeep schedule owns the optional return. Generic delayed
+/// rendering is timing-first, but the authored granted ability reads
+/// "you may return it ... at the beginning of your next upkeep."
+fn describe_soulbond_shared_delayed_return(granted: &Ability) -> Option<String> {
+    let AbilityKind::Triggered(triggered) = &granted.kind else {
+        return None;
+    };
+    if triggered.intervening_if.is_some()
+        || !triggered.choices.is_empty()
+        || triggered.presentation_label.is_some()
+    {
+        return None;
+    }
+
+    let dies = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::ZoneChangeTrigger>()?;
+    if !dies.this_object
+        || dies.from != crate::triggers::ZonePattern::Specific(Zone::Battlefield)
+        || dies.to != crate::triggers::ZonePattern::Specific(Zone::Graveyard)
+        || dies.player != crate::triggers::PlayerRelation::Any
+        || dies.cause_filter.is_some()
+        || dies.count_mode != crate::triggers::CountMode::Each
+    {
+        return None;
+    }
+    if dies.object_filter != ObjectFilter::creature() {
+        return None;
+    }
+
+    let [tag_effect, schedule_effect] = triggered.effects.flattened_default_effects() else {
+        return None;
+    };
+    let tag = tag_effect.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?;
+    let schedule =
+        schedule_effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()?;
+    if !schedule.one_shot
+        || !schedule.start_next_turn
+        || schedule.duration != ironsmith_core::DelayedTriggerDuration::Forever
+        || schedule.until_end_of_turn
+        || schedule.until_end_of_combat
+        || schedule.leading_duration_surface
+        || schedule.watch_ability_source
+        || schedule.watch_all_object_targets
+        || schedule.either_of_watched_objects
+        || schedule.while_any_tagged_object_in_zone.is_some()
+        || !schedule.target_objects.is_empty()
+        || schedule.target_tag.is_some()
+        || schedule.target_filter.is_some()
+        || schedule.controller != PlayerFilter::You
+        || schedule.prepayment.is_some()
+        || schedule.event_value_from_prior_prevention
+        || !schedule
+            .trigger
+            .downcast_ref::<crate::triggers::BeginningOfUpkeepTrigger>()
+            .is_some_and(|upkeep| upkeep.player == PlayerFilter::You)
+    {
+        return None;
+    }
+
+    let [may_effect] = schedule.effects.flattened_default_effects() else {
+        return None;
+    };
+    let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if may
+        .decider
+        .as_ref()
+        .is_some_and(|player| *player != PlayerFilter::You)
+        || may.fallback != crate::decision::FallbackStrategy::Decline
+    {
+        return None;
+    }
+    let [move_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let move_to_zone = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let expected = crate::effects::MoveToZoneEffect::new(
+        ChooseSpec::Tagged(tag.tag.clone()),
+        Zone::Battlefield,
+        false,
+    )
+    .with_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Return)
+    .under_owner_control();
+    if move_to_zone != &expected {
+        return None;
+    }
+
+    Some(
+        "When this creature dies, you may return it to the battlefield under its owner's control at the beginning of your next upkeep."
+            .to_string(),
+    )
+}
+
+#[cfg(test)]
+mod soulbond_shared_delayed_return_tests {
+    use super::*;
+
+    fn fixture(start_next_turn: bool) -> Ability {
+        let tag = crate::tag::TagKey::from("triggering");
+        let return_effect = Effect::new(
+            crate::effects::MoveToZoneEffect::new(
+                ChooseSpec::Tagged(tag.clone()),
+                Zone::Battlefield,
+                false,
+            )
+            .with_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Return)
+            .under_owner_control(),
+        );
+        let may = Effect::new(crate::effects::MayEffect::new_for_player(
+            vec![return_effect],
+            PlayerFilter::You,
+        ));
+        let mut schedule = crate::effects::ScheduleDelayedTriggerEffect::new(
+            crate::triggers::Trigger::beginning_of_upkeep(PlayerFilter::You),
+            vec![may],
+            true,
+            Vec::new(),
+            PlayerFilter::You,
+        );
+        schedule.start_next_turn = start_next_turn;
+
+        Ability::triggered(
+            crate::triggers::Trigger::this_dies(),
+            vec![
+                Effect::new(crate::effects::TagTriggeringObjectEffect::new(tag)),
+                Effect::new(schedule),
+            ],
+        )
+    }
+
+    #[test]
+    fn exact_tagged_next_upkeep_return_uses_verb_first_surface() {
+        let fixture = fixture(true);
+        assert_eq!(
+            describe_soulbond_shared_delayed_return(&fixture).as_deref(),
+            Some(
+                "When this creature dies, you may return it to the battlefield under its owner's control at the beginning of your next upkeep."
+            )
+        );
+    }
+
+    #[test]
+    fn non_next_turn_schedule_is_not_rewritten() {
+        assert!(describe_soulbond_shared_delayed_return(&fixture(false)).is_none());
     }
 }
 
@@ -2449,7 +2725,12 @@ pub(crate) fn describe_additional_costs(costs: &[crate::costs::Cost]) -> String 
         }
     }
 
-    let described = describe_cost_list(costs);
+    let described = join_with_and(
+        &describe_cost_component_parts(costs)
+            .into_iter()
+            .map(|part| lowercase_first(&part))
+            .collect::<Vec<_>>(),
+    );
     if described == "may put a -1/-1 counter on a creature you control" {
         return describe_blight_cost("1");
     }
@@ -2735,12 +3016,46 @@ pub(super) fn optional_additional_source_line(cost: &crate::cost::OptionalCost) 
     {
         return Some(ensure_trailing_period(source));
     }
+    if let Some(source_amount) =
+        lower.strip_prefix("as an additional cost to cast this spell, you may blight ")
+        && let Some(costs) = cost.cost.as_all()
+        && describe_additional_costs(costs).to_ascii_lowercase()
+            == format!("you may blight {source_amount}")
+    {
+        // The typed choose-and-counter payment proves Blight; the source
+        // label preserves only its keyword spelling and must agree on the
+        // amount before it can replace the expanded payment description.
+        return Some(ensure_trailing_period(source));
+    }
     if lower.starts_with("as an additional cost to cast this spell, reveal ")
         && lower.contains(" card from your hand or pay ")
     {
         return Some(ensure_trailing_period(source));
     }
     None
+}
+
+#[cfg(test)]
+mod optional_blight_additional_cost_surface_tests {
+    use super::*;
+
+    #[test]
+    fn public_route_keeps_typed_optional_blight_keyword_surface() {
+        for oracle in [
+            "As an additional cost to cast this spell, you may blight 1.\nDestroy target creature with mana value 2 or less. If this spell's additional cost was paid, you gain 2 life.",
+            "As an additional cost to cast this spell, you may blight 2.\nDestroy target artifact.",
+        ] {
+            let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+                crate::ids::CardId::new(),
+                "Optional Blight Probe",
+            )
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(oracle)
+            .expect("optional Blight additional cost should parse");
+            let lines = crate::compiled_text::compiled_text_lines(&definition);
+            assert_eq!(lines.first().map(String::as_str), oracle.lines().next());
+        }
+    }
 }
 
 pub(super) fn repeatable_optional_cost_action(action: &str) -> String {
@@ -2772,6 +3087,53 @@ mod activation_condition_surface_tests {
         assert_eq!(
             describe_mana_activation_condition(&condition),
             "Activate only during your turn and only once each turn"
+        );
+    }
+
+    #[test]
+    fn token_copy_uses_the_exact_tagged_sacrifice_cost_antecedent() {
+        let sacrificed = TagKey::from("sacrifice_cost_0");
+        let sacrifice = crate::costs::Cost::try_effect(
+            Effect::sacrifice(
+                ObjectFilter::default().with_subtype(crate::types::Subtype::Zombie),
+                1,
+            )
+            .tag(sacrificed.clone()),
+        )
+        .expect("tagged sacrifice remains a cost");
+        let copy = Effect::new(crate::effects::CreateTokenCopyEffect::new(
+            ChooseSpec::Tagged(sacrificed),
+            2,
+            PlayerFilter::You,
+        ));
+        let ability = Ability::activated(crate::cost::TotalCost::from_cost(sacrifice), vec![copy]);
+        let AbilityKind::Activated(activated) = &ability.kind else {
+            unreachable!("fixture is activated")
+        };
+
+        assert_eq!(
+            rewrite_sacrifice_cost_token_copy_reference(
+                "Create two tokens that are copies of it".to_string(),
+                activated,
+            ),
+            "Create two tokens that are copies of the sacrificed creature"
+        );
+
+        let unrelated_copy = Effect::new(crate::effects::CreateTokenCopyEffect::new(
+            ChooseSpec::Tagged(TagKey::from("other")),
+            2,
+            PlayerFilter::You,
+        ));
+        let unrelated = Ability::activated(activated.mana_cost.clone(), vec![unrelated_copy]);
+        let AbilityKind::Activated(unrelated) = &unrelated.kind else {
+            unreachable!("fixture is activated")
+        };
+        assert_eq!(
+            rewrite_sacrifice_cost_token_copy_reference(
+                "Create two tokens that are copies of it".to_string(),
+                unrelated,
+            ),
+            "Create two tokens that are copies of it"
         );
     }
 }

@@ -334,6 +334,7 @@ fn try_compile_for_each_object_become_copy_of_prior_choice(
                     name_override_surface,
                     add_supertypes,
                     remove_supertypes,
+                    add_colors,
                     add_card_types,
                     set_card_types,
                     add_subtypes,
@@ -393,6 +394,7 @@ fn try_compile_for_each_object_become_copy_of_prior_choice(
         name_override_surface.clone(),
         add_supertypes.clone(),
         remove_supertypes.clone(),
+        *add_colors,
         add_card_types.clone(),
         set_card_types.clone(),
         add_subtypes.clone(),
@@ -781,8 +783,20 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let runtime_cost =
                 crate::lowering::cost_materialization::materialize_compiler_core_total_cost(cost)?;
             let payer_relative_cost = normalize_unless_cost_for_payer(runtime_cost);
+            let mut cost_reference_env = current_reference_env(ctx);
+            // A payment clause is evaluated after its primary instruction.
+            // If that instruction declared and tagged a target, an authored
+            // `it` in the payment names that exact target even when a wrapper
+            // (for example ExecuteWithSource) restored the ambient lowering
+            // frame after producing the runtime tag.
+            if let Some((tag, _)) =
+                super::prepared_effects::last_tagged_default_target(&inner_effects)
+            {
+                cost_reference_env.last_object_tag =
+                    crate::model::reference_state::RefState::Known(tag);
+            }
             let resolved_cost =
-                resolve_total_cost_it_tags(&payer_relative_cost, &current_reference_env(ctx))?;
+                resolve_total_cost_it_tags(&payer_relative_cost, &cost_reference_env)?;
             let effect = Effect::new(crate::effects::UnlessPaysEffect {
                 player: player_filter,
                 effects: inner_effects,

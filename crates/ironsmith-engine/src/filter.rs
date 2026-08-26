@@ -4073,6 +4073,11 @@ impl ObjectFilterExt for ObjectFilter {
                 return false;
             }
         }
+        if let Some(required_cost) = &self.exact_mana_cost
+            && object.mana_cost.as_deref() != Some(required_cost)
+        {
+            return false;
+        }
         if let Some(total_counters_parity) = self.total_counters_parity {
             let total_counters = object.counters.values().copied().sum::<u32>() as i32;
             if !total_counters_parity.matches(total_counters, game, ctx) {
@@ -4984,6 +4989,11 @@ impl ObjectFilterExt for ObjectFilter {
             if mv != required {
                 return false;
             }
+        }
+        if let Some(required_cost) = &self.exact_mana_cost
+            && snapshot.mana_cost.as_ref() != Some(required_cost)
+        {
+            return false;
         }
         if let Some(total_counters_parity) = self.total_counters_parity {
             let total_counters = snapshot.counters.values().copied().sum::<u32>() as i32;
@@ -6445,6 +6455,9 @@ impl ObjectFilterExt for ObjectFilter {
                 "with total power and toughness {}",
                 describe_comparison(total_power_toughness)
             ));
+        }
+        if let Some(ref exact_mana_cost) = self.exact_mana_cost {
+            parts.push(format!("with mana cost {}", exact_mana_cost.to_oracle()));
         }
         if let Some(ref mana_value) = self.mana_value {
             parts.push(format!(

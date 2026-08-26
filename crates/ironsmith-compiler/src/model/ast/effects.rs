@@ -1244,12 +1244,31 @@ impl EffectAst {
                 allow_land,
                 as_copy,
                 copy_cast_reminder_surface: false,
+                copy_instruction_surface: None,
                 without_paying_mana_cost,
                 additional_mana_cost,
                 cost_reduction,
                 mana_spend_mode,
             },
         )
+    }
+
+    pub fn with_copy_instruction_surface(
+        mut self,
+        surface: ironsmith_core::effect::CopyInstructionSurface,
+    ) -> Self {
+        if let Self::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::CastTagged {
+                    copy_instruction_surface,
+                    ..
+                },
+            ..
+        }) = &mut self
+        {
+            *copy_instruction_surface = Some(surface);
+        }
+        self
     }
 
     pub fn may_cast_matching_spell_without_paying_mana_cost(
@@ -1600,6 +1619,7 @@ impl EffectAst {
             PlayerAst::Implicit,
             SubjectVerbActionAst::ReturnToBattlefield {
                 target,
+                target_reference_surface: None,
                 from_graveyard_or_exile: false,
                 tapped,
                 transformed,
@@ -2588,6 +2608,7 @@ impl EffectAst {
         name_override_surface: Option<SourceReferenceSurface>,
         add_supertypes: Vec<Supertype>,
         remove_supertypes: Vec<Supertype>,
+        add_colors: ColorSet,
         add_card_types: Vec<CardType>,
         set_card_types: Vec<CardType>,
         add_subtypes: Vec<Subtype>,
@@ -2608,6 +2629,7 @@ impl EffectAst {
                 name_override_surface,
                 add_supertypes,
                 remove_supertypes,
+                add_colors,
                 add_card_types,
                 set_card_types,
                 add_subtypes,
@@ -3885,8 +3907,20 @@ impl EffectAst {
             SubjectVerbActionAst::Fight {
                 creature1,
                 creature2,
+                mutual_surface: false,
             },
         )
+    }
+
+    pub fn with_mutual_fight_surface(mut self) -> Self {
+        if let Self::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Fight { mutual_surface, .. },
+            ..
+        }) = &mut self
+        {
+            *mutual_surface = true;
+        }
+        self
     }
 
     pub fn subject_verb_fight_iterated(creature2: TargetAst) -> Self {
@@ -5072,9 +5106,31 @@ impl EffectAst {
             PlayerAst::Implicit,
             SubjectVerbActionAst::ForEachCounterKindPutOrRemove {
                 target,
+                counter_source: None,
                 all_kinds: false,
                 fixed_counter_type: Some(counter_type),
                 optional_action,
+                put_only: false,
+                choose_target_per_kind: false,
+            },
+        )
+    }
+
+    pub fn subject_verb_put_each_counter_kind_from_on_one_of(
+        counter_source: TargetAst,
+        target: TargetAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::ForEachCounterKindPutOrRemove {
+                target,
+                counter_source: Some(counter_source),
+                all_kinds: true,
+                fixed_counter_type: None,
+                optional_action: false,
+                put_only: true,
+                choose_target_per_kind: true,
             },
         )
     }
@@ -5085,9 +5141,12 @@ impl EffectAst {
             PlayerAst::Implicit,
             SubjectVerbActionAst::ForEachCounterKindPutOrRemove {
                 target,
+                counter_source: None,
                 all_kinds,
                 fixed_counter_type: None,
                 optional_action: false,
+                put_only: false,
+                choose_target_per_kind: false,
             },
         )
     }

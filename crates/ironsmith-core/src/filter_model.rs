@@ -1,6 +1,6 @@
 use crate::{
     CardType, ChoiceAggregateConstraint, ChoiceCount, ChooseSpec, Color, ColorSet, CounterType,
-    EffectMetric, KeywordActionKind, ManaSymbol, ObjectId, PlayerId, PriorEffectAction,
+    EffectMetric, KeywordActionKind, ManaCost, ManaSymbol, ObjectId, PlayerId, PriorEffectAction,
     SourceReferenceSurface, StaticAbilityId, Subtype, SubtypeFamily, Supertype, TagKey, Value,
     Zone, effect_model::EventValueSpec,
 };
@@ -80,6 +80,64 @@ fn describe_filter_union_list(
         ObjectFilterUnionConnective::AndOr => "and/or",
     };
     format!("{}, {joiner} {last}", parts.join(", "))
+}
+
+/// Rejoin an exact-mana-cost union that shares every other characteristic.
+/// `{1}` is an executable printed-cost predicate, not a mana-value spelling,
+/// so this compaction is safe only when the typed branch costs are the sole
+/// branch difference.
+fn describe_exact_mana_cost_union(filter: &ObjectFilter) -> Option<String> {
+    if filter.any_of.len() < 2
+        || filter.has_conjunctive_set_surface()
+        || filter.union_connective() != ObjectFilterUnionConnective::Or
+    {
+        return None;
+    }
+
+    let mut outer_remainder = filter.clone();
+    outer_remainder.any_of.clear();
+    outer_remainder.zone = None;
+    outer_remainder.controller = None;
+    outer_remainder.owner = None;
+    outer_remainder.other = false;
+    outer_remainder.union_surface = ObjectFilterUnionSurface::default();
+    if outer_remainder != ObjectFilter::default() {
+        return None;
+    }
+
+    let mut common_base = None;
+    let mut costs = Vec::with_capacity(filter.any_of.len());
+    for branch in &filter.any_of {
+        if !branch.any_of.is_empty() {
+            return None;
+        }
+        let mut base = branch.clone();
+        let cost = base.exact_mana_cost.take()?;
+        if let Some(expected) = common_base.as_ref() {
+            if &base != expected {
+                return None;
+            }
+        } else {
+            common_base = Some(base);
+        }
+        costs.push(cost.to_oracle());
+    }
+
+    let mut base = common_base?;
+    if base.controller.is_none() {
+        base.controller = filter.controller.clone();
+    }
+    if base.owner.is_none() {
+        base.owner = filter.owner.clone();
+    }
+    if filter.other {
+        base.other = true;
+    }
+    Some(format!(
+        "{} with mana cost {}",
+        base.description(),
+        describe_filter_union_list(costs, ObjectFilterUnionConnective::Or, false)
+    ))
 }
 
 fn describe_conjunctive_filter_list(mut parts: Vec<String>) -> String {
@@ -506,6 +564,10 @@ pub struct ObjectFilterUnionSurface {
     /// relative clause. The ordinary zone and history predicate remain the
     /// executable semantics; this retains only the authored surface.
     entered_battlefield_explicit_surface: bool,
+    /// Oracle used the causative entry surface `a player puts ... onto the
+    /// battlefield`. The ordinary zone-change trigger and triggering-object
+    /// controller relation remain the executable semantics.
+    player_puts_onto_battlefield_surface: bool,
     /// Oracle introduced an entry-history condition with "you had ...
     /// enter" rather than the canonical past-tense relative clause.
     you_had_entry_surface: bool,
@@ -564,6 +626,7 @@ impl ObjectFilterUnionSurface {
             graveyard_entry_history: None,
             global_characteristic_domain: None,
             entered_battlefield_explicit_surface: false,
+            player_puts_onto_battlefield_surface: false,
             you_had_entry_surface: false,
             mana_source_spent_trailing_if_surface: false,
             as_you_cast_this_turn_surface: false,
@@ -962,6 +1025,15 @@ impl ObjectFilterUnionSurface {
 
     pub const fn entered_battlefield_explicit_surface(self) -> bool {
         self.entered_battlefield_explicit_surface
+    }
+
+    pub const fn with_player_puts_onto_battlefield_surface(mut self, authored: bool) -> Self {
+        self.player_puts_onto_battlefield_surface = authored;
+        self
+    }
+
+    pub const fn player_puts_onto_battlefield_surface(self) -> bool {
+        self.player_puts_onto_battlefield_surface
     }
 
     pub const fn with_you_had_entry_surface(mut self, authored: bool) -> Self {
@@ -1887,6 +1959,10 @@ pub struct ObjectFilter {
     pub mana_value: Option<Comparison>,
     pub mana_value_parity: Option<ParityRequirement>,
     pub mana_value_eq_counters_on_source: Option<CounterType>,
+    /// Requires the candidate's printed mana cost to equal this exact cost.
+    /// This is intentionally distinct from mana value: `{1}` must not match
+    /// `{W}`, even though both have mana value 1.
+    pub exact_mana_cost: Option<ManaCost>,
     pub has_mana_cost: bool,
     /// Requires at least one printed mana-cost pip that can be paid with life
     /// (a Phyrexian mana symbol). Oracle represents this family as `{H}` in
@@ -2434,6 +2510,18 @@ impl ObjectFilter {
         self.union_surface.entered_battlefield_explicit_surface()
     }
 
+    /// Preserve the causative `a player puts ... onto the battlefield`
+    /// spelling without changing object-filter matching.
+    pub fn set_player_puts_onto_battlefield_surface(&mut self, authored: bool) {
+        self.union_surface = self
+            .union_surface
+            .with_player_puts_onto_battlefield_surface(authored);
+    }
+
+    pub const fn has_player_puts_onto_battlefield_surface(&self) -> bool {
+        self.union_surface.player_puts_onto_battlefield_surface()
+    }
+
     /// Preserve the authored "you had ... enter" history surface without
     /// changing the executable entry-history filter.
     pub fn set_you_had_entry_surface(&mut self, authored: bool) {
@@ -2541,6 +2629,7 @@ impl ObjectFilter {
             || self.mana_value.is_some()
             || self.mana_value_parity.is_some()
             || self.mana_value_eq_counters_on_source.is_some()
+            || self.exact_mana_cost.is_some()
             || self.has_mana_cost
             || self.has_phyrexian_mana_symbol
             || !self.could_produce_mana.is_empty()
@@ -3335,6 +3424,9 @@ impl ObjectFilter {
             return description;
         }
         if let Some(description) = describe_possessive_commander_subject(self) {
+            return description;
+        }
+        if let Some(description) = describe_exact_mana_cost_union(self) {
             return description;
         }
         if any_of_keyword_clause.is_none() && !self.any_of.is_empty() {
@@ -4835,6 +4927,9 @@ impl ObjectFilter {
                 describe_comparison(total_power_toughness)
             ));
         }
+        if let Some(ref exact_mana_cost) = self.exact_mana_cost {
+            parts.push(format!("with mana cost {}", exact_mana_cost.to_oracle()));
+        }
         if let Some(ref mana_value) = self.mana_value {
             parts.push(
                 describe_extremum_filter_comparison(mana_value, "mana value").unwrap_or_else(
@@ -5557,6 +5652,7 @@ fn describe_possessive_commander_subject(filter: &ObjectFilter) -> Option<String
         || filter.power.is_some()
         || filter.toughness.is_some()
         || filter.mana_value.is_some()
+        || filter.exact_mana_cost.is_some()
         || filter.with_counter.is_some()
         || filter.without_counter.is_some()
         || filter.colors.is_some()

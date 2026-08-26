@@ -107,6 +107,47 @@ fn one_or_more_subject_description(filter: &crate::target::ObjectFilter) -> Stri
     format!("one or more {description}")
 }
 
+fn describe_source_and_or_one_or_more_other_enters(
+    left: &TriggerSpec,
+    right: &TriggerSpec,
+) -> Option<String> {
+    fn pair<'a>(
+        source: &'a TriggerSpec,
+        others: &'a TriggerSpec,
+    ) -> Option<(
+        &'a crate::target::SourceReferenceSurface,
+        &'a crate::target::ObjectFilter,
+    )> {
+        let TriggerSpec::ThisEntersBattlefieldWithSurface {
+            surface,
+            subject_number: ironsmith_core::trigger_model::TriggerSubjectNumber::Singular,
+            origin_condition: source_origin,
+        } = source
+        else {
+            return None;
+        };
+        let TriggerSpec::EntersBattlefieldOneOrMore {
+            filter,
+            cause_filter: None,
+            origin_condition: other_origin,
+        } = others
+        else {
+            return None;
+        };
+        (source_origin == other_origin
+            && filter.other
+            && filter.union_connective() == crate::filter::ObjectFilterUnionConnective::AndOr)
+            .then_some((surface, filter))
+    }
+
+    let (surface, filter) = pair(left, right).or_else(|| pair(right, left))?;
+    Some(format!(
+        "Whenever {} and/or {} enter",
+        surface.display_text(),
+        one_or_more_subject_description(filter),
+    ))
+}
+
 fn damage_source_description(
     source: &crate::target::ObjectFilter,
     source_surface: &crate::triggers::DamageSourceSurface,
@@ -313,6 +354,9 @@ pub fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::PlayerAttacksOneOrMore { attacker, target } => {
             Trigger::player_attacks_one_or_more(attacker, target)
         }
+        TriggerSpec::PlayerAttacksTargetWithOneOrMore { attacker, target } => {
+            Trigger::player_attacks_target_with_one_or_more(attacker, target)
+        }
         TriggerSpec::AttacksOneOrMoreWithMinTotal {
             filter,
             min_total_attackers,
@@ -341,6 +385,9 @@ pub fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         },
         TriggerSpec::Blocks(filter) => Trigger::blocks(filter),
         TriggerSpec::BlocksOneOrMore(filter) => Trigger::blocks_one_or_more(filter),
+        TriggerSpec::BlocksOrBecomesBlockedByObject { subject, other } => {
+            Trigger::blocks_or_becomes_blocked_by_object(subject, other)
+        }
         TriggerSpec::BlocksObjectWithLesserPower { blocker, blocked } => {
             Trigger::blocks_object_with_lesser_power(blocker, blocked)
         }
@@ -925,11 +972,19 @@ pub fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
                 }
                 Trigger::new(trigger).with_display_label(display)
             } else {
-                let display = format!(
-                    "Whenever {} enters the battlefield{}",
-                    indefinite_subject_description(filter.description()),
-                    during_turn_surface.unwrap_or_default(),
-                );
+                let display = if filter.has_player_puts_onto_battlefield_surface() {
+                    format!(
+                        "Whenever a player puts {} onto the battlefield{}",
+                        indefinite_subject_description(filter.description()),
+                        during_turn_surface.unwrap_or_default(),
+                    )
+                } else {
+                    format!(
+                        "Whenever {} enters the battlefield{}",
+                        indefinite_subject_description(filter.description()),
+                        during_turn_surface.unwrap_or_default(),
+                    )
+                };
                 let mut trigger = crate::triggers::zone_changes::ZoneChangeTrigger::new()
                     .to(crate::zone::Zone::Battlefield)
                     .filter(filter)
@@ -1139,6 +1194,8 @@ pub fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         ),
         TriggerSpec::Either(left, right) => {
             let display = describe_damage_to_object_and_player_union(&left, &right);
+            let source_and_or_other_display =
+                describe_source_and_or_one_or_more_other_enters(&left, &right);
             let repeated_intro_display = repeated_intro_branch_description(&left)
                 .zip(repeated_intro_branch_description(&right))
                 .map(|(left, right)| {
@@ -1155,7 +1212,10 @@ pub fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
                 });
             let trigger =
                 Trigger::either(compile_trigger_spec(*left), compile_trigger_spec(*right));
-            if let Some(display) = display.or(repeated_intro_display) {
+            if let Some(display) = display
+                .or(source_and_or_other_display)
+                .or(repeated_intro_display)
+            {
                 trigger.with_display_label(display)
             } else {
                 trigger
@@ -1350,6 +1410,16 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         TriggerSpec::AttacksYouOrPlaneswalkerYouControl(_)
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_) => {
             Some(PlayerFilter::IteratedPlayer)
+        }
+        TriggerSpec::PlayerAttacksTargetWithOneOrMore { .. } => {
+            // In "an opponent attacks a planeswalker ... with one or more
+            // creatures, ... that player", the discourse antecedent is the
+            // attacking player. The concrete event participant is the
+            // attacking creature, so retain its aliased controller instead of
+            // binding the defending planeswalker's controller.
+            Some(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
+                crate::tag::CompilerReferenceTag::Triggering.key(),
+            )))
         }
         TriggerSpec::BeginningOfUpkeep(player)
         | TriggerSpec::BeginningOfDrawStep(player)

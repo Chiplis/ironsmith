@@ -906,6 +906,11 @@ pub fn parse_consult_match_move_and_bottom_remainder(
         return Ok(None);
     };
     if shape == effect_grammar::ConsultMoveBottomShape::MatchedToBattlefieldAndShuffle {
+        let remainder = TargetAst::Object(
+            ObjectFilter::tagged(parts.all_tag.clone()).not_tagged(parts.match_tag.clone()),
+            None,
+            None,
+        );
         let followups = vec![
             EffectAst::subject_verb_move_to_zone(
                 TargetAst::Tagged(parts.match_tag.clone(), None),
@@ -914,12 +919,9 @@ pub fn parse_consult_match_move_and_bottom_remainder(
                 crate::cards::builders::ReturnControllerAst::Preserve,
                 false,
                 None,
-            ),
-            EffectAst::subject_verb(
-                SubjectVerbRoleAst::LibraryOwner,
-                parts.player,
-                SubjectVerbActionAst::ShuffleLibrary,
-            ),
+            )
+            .with_move_to_zone_plural_surface(),
+            EffectAst::subject_verb_shuffle_objects_into_library(parts.player, remainder),
         ];
         return Ok(Some(wrap_optional_consult_effects(
             parts, optional, followups, false, false,

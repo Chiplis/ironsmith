@@ -3428,7 +3428,18 @@
         if schedule.duration
             == ironsmith_core::DelayedTriggerDuration::UntilControllerNextTurn
         {
-            let scoped_trigger = if schedule.either_of_watched_objects
+            let watched_set_surface = schedule
+                .target_tag
+                .as_ref()
+                .and(schedule.target_filter.as_ref())
+                .and_then(|filter| filter.source_surface.as_ref())
+                .map(crate::target::SourceReferenceSurface::display_text);
+            let scoped_trigger = if let Some(surface) = watched_set_surface
+                && let Some((_, recipient)) =
+                    trigger_text.split_once(" deals combat damage to ")
+            {
+                format!("Whenever {surface} deals combat damage to {recipient}")
+            } else if schedule.either_of_watched_objects
                 && (schedule.target_tag.is_some() || schedule.watch_all_object_targets)
                 && schedule
                     .trigger
@@ -4497,6 +4508,21 @@
         {
             return "Time travel".to_string();
         }
+        if for_each_counter_kind.put_only
+            && for_each_counter_kind.choose_target_per_kind
+            && let Some(counter_source) = &for_each_counter_kind.counter_source
+        {
+            let source = describe_choose_spec(counter_source);
+            let source = source.strip_prefix("all ").unwrap_or(&source);
+            let target = if matches!(for_each_counter_kind.target.base(), ChooseSpec::Tagged(_)) {
+                "either of those tokens".to_string()
+            } else {
+                format!("one of {}", describe_choose_spec(&for_each_counter_kind.target))
+            };
+            return format!(
+                "For each kind of counter among {source}, put a counter of that kind on {target}"
+            );
+        }
         let target = describe_choose_spec(&for_each_counter_kind.target);
         if for_each_counter_kind.all_kinds {
             return format!(
@@ -4594,6 +4620,26 @@
         );
     }
     if let Some(grant) = effect.downcast_ref::<crate::effects::GrantBySpecEffect>() {
+        if grant.duration == crate::grant::GrantDuration::UntilEndOfTurn
+            && grant.spec.zone == Zone::Graveyard
+            && grant.spec.beneficiary == crate::filter::PlayerFilter::You
+            && grant.player == crate::filter::PlayerFilter::You
+            && grant.spec.usage_limit.is_none()
+            && grant.spec.cast_this_way_grants.is_empty()
+            && grant.spec.cast_this_way_filter.is_none()
+            && grant.spec.source_exiled_surface.is_none()
+            && let crate::grant::Grantable::AlternativeCast(method) = &grant.spec.grantable
+        {
+            let mut expected_filter = crate::filter::ObjectFilter::creature()
+                .owned_by(crate::filter::PlayerFilter::You);
+            expected_filter.zone = None;
+            if grant.spec.filter == expected_filter {
+                let ability = describe_alternative_cast_line(method, 0);
+                return format!(
+                    "Until end of turn, each creature card in your graveyard gains \"{ability}.\""
+                );
+            }
+        }
         if matches!(grant.spec.grantable, crate::grant::Grantable::PlayFrom)
             && grant.spec.zone == Zone::Exile
             && !grant.spec.filter.tagged_constraints.is_empty()

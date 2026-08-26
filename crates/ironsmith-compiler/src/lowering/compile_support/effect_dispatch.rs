@@ -242,6 +242,34 @@ fn nested_effect_is_discard(effect: &Effect) -> bool {
     found
 }
 
+fn nested_effect_is_sacrifice(effect: &Effect) -> bool {
+    if effect
+        .downcast_ref::<crate::effects::SacrificeEffect>()
+        .is_some()
+        || effect
+            .downcast_ref::<crate::effects::SacrificePlayerEffect>()
+            .is_some()
+        || effect
+            .downcast_ref::<crate::effects::SacrificeTargetEffect>()
+            .is_some()
+    {
+        return true;
+    }
+    if let Some(with_id) = effect.as_with_id() {
+        return nested_effect_is_sacrifice(&with_id.effect);
+    }
+    if let Some(tagged) = effect.as_tagged() {
+        return nested_effect_is_sacrifice(&tagged.effect);
+    }
+    let mut found = false;
+    effect.visit_child_effects(&mut |child| {
+        if !found && nested_effect_is_sacrifice(child) {
+            found = true;
+        }
+    });
+    found
+}
+
 fn nested_effect_defines_result_id(effect: &Effect, id: EffectId) -> bool {
     if let Some(with_id) = effect.as_with_id()
         && with_id.id == id
@@ -268,6 +296,7 @@ fn nested_effect_can_produce_reference(effect: &Effect, reference: NestedResultR
             effect.contains_mana_production()
                 || nested_effect_is_move_to_zone(effect)
                 || nested_effect_is_discard(effect)
+                || nested_effect_is_sacrifice(effect)
         }
         NestedResultReferenceKind::Metric(ironsmith_core::EffectMetricSource::AffectedObjects) => {
             nested_effect_is_move_to_zone(effect)
@@ -1341,8 +1370,46 @@ fn compile_compiler_control_flow(
                     match &mut subject_verb.action {
                         SubjectVerbActionAst::Pump { duration, .. }
                         | SubjectVerbActionAst::PumpForEach { duration, .. }
-                        | SubjectVerbActionAst::PumpAll { duration, .. } => {
+                        | SubjectVerbActionAst::PumpAll { duration, .. }
+                        | SubjectVerbActionAst::PumpByLastEffect { duration, .. }
+                        | SubjectVerbActionAst::SetBasePowerToughness { duration, .. }
+                        | SubjectVerbActionAst::BecomeBasePtCreature { duration, .. }
+                        | SubjectVerbActionAst::SetBasePower { duration, .. }
+                        | SubjectVerbActionAst::BecomeBasicLandType { duration, .. }
+                        | SubjectVerbActionAst::BecomeBasicLandTypeChoice { duration, .. }
+                        | SubjectVerbActionAst::BecomeCreatureTypeChoice { duration, .. }
+                        | SubjectVerbActionAst::BecomeColorChoice { duration, .. }
+                        | SubjectVerbActionAst::BecomeCopy { duration, .. }
+                        | SubjectVerbActionAst::BecomeAuraEnchantment { duration, .. }
+                        | SubjectVerbActionAst::MakeColorless { duration, .. }
+                        | SubjectVerbActionAst::AddColors { duration, .. }
+                        | SubjectVerbActionAst::AddCardTypes { duration, .. }
+                        | SubjectVerbActionAst::SetCardTypes { duration, .. }
+                        | SubjectVerbActionAst::RemoveCardTypes { duration, .. }
+                        | SubjectVerbActionAst::AddSubtypes { duration, .. }
+                        | SubjectVerbActionAst::RemoveSubtypes { duration, .. }
+                        | SubjectVerbActionAst::SetCreatureSubtypes { duration, .. }
+                        | SubjectVerbActionAst::AddAllSubtypesOfFamily { duration, .. }
+                        | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { duration, .. }
+                        | SubjectVerbActionAst::SetColors { duration, .. }
+                        | SubjectVerbActionAst::GrantAbilitiesToTarget { duration, .. }
+                        | SubjectVerbActionAst::GrantAbilitiesAll { duration, .. }
+                        | SubjectVerbActionAst::RemoveAbilitiesAll { duration, .. }
+                        | SubjectVerbActionAst::GrantAbilitiesChoiceAll { duration, .. }
+                        | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { duration, .. }
+                        | SubjectVerbActionAst::RemoveAbilitiesFromTarget { duration, .. } => {
                             *duration = until.clone();
+                            changed += 1;
+                        }
+                        SubjectVerbActionAst::GrantToTarget { duration, .. }
+                        | SubjectVerbActionAst::GrantBySpec { duration, .. } => {
+                            *duration = match until {
+                                Until::EndOfTurn => crate::grant::GrantDuration::UntilEndOfTurn,
+                                Until::YourNextTurn | Until::YourNextTurnEnd => {
+                                    crate::grant::GrantDuration::UntilYourNextTurnEnd
+                                }
+                                _ => crate::grant::GrantDuration::Forever,
+                            };
                             changed += 1;
                         }
                         SubjectVerbActionAst::Cant {
@@ -1465,7 +1532,15 @@ fn compile_compiler_control_flow(
         }
         ControlFlowNodeAst::Duration { duration, program } => {
             let mut effects = program_effects(*program)?.to_vec();
-            if apply_duration_scope(&mut effects, duration) == 0 {
+            let applied_duration = apply_duration_scope(&mut effects, duration);
+            let has_runtime_sequence_surface = matches!(
+                duration,
+                CompilerDurationAst::ThisTurn
+                    | CompilerDurationAst::UntilEndOfTurn
+                    | CompilerDurationAst::UntilEndOfCombat
+                    | CompilerDurationAst::UntilNextTurn
+            );
+            if applied_duration == 0 && !has_runtime_sequence_surface {
                 return compile_effects(&effects, ctx);
             }
             if let [existing @ EffectAst::Coordinated { .. }] = effects.as_mut_slice() {
@@ -1976,6 +2051,38 @@ mod nested_result_value_link_tests {
             with_id
                 .effect
                 .downcast_ref::<crate::effects::mana::AddScaledManaEffect>()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn sacrifice_keeps_the_result_id_used_by_following_scaled_mana() {
+        let result_id = EffectId(9);
+        let tag = TagKey::from("chosen_lands");
+        let chosen = ObjectFilter::tagged(tag);
+        let mut effects = vec![
+            Effect::new(crate::effects::SacrificePlayerEffect::new(
+                chosen.clone(),
+                Value::Count(chosen),
+                PlayerFilter::You,
+            )),
+            Effect::new(crate::effects::mana::AddScaledManaEffect::new(
+                vec![ManaSymbol::Colorless],
+                Value::EffectValue(result_id),
+                PlayerFilter::You,
+            )),
+        ];
+
+        preserve_nested_result_value_links(&mut effects);
+
+        let with_id = effects[0]
+            .as_with_id()
+            .expect("the sacrifice producer should retain its result ID");
+        assert_eq!(with_id.id, result_id);
+        assert!(
+            with_id
+                .effect
+                .downcast_ref::<crate::effects::SacrificePlayerEffect>()
                 .is_some()
         );
     }

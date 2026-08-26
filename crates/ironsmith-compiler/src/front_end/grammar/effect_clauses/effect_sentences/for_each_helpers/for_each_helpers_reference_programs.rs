@@ -142,6 +142,11 @@ pub fn parse_for_each_player_clause(
     {
         return Ok(Some(wrap_players(&iteration_filter, effects)));
     }
+    if let Some(effects) =
+        parse_participant_creature_type_choice_program(outer.inner_tokens, slot_chooser)?
+    {
+        return Ok(Some(wrap_players(&iteration_filter, effects)));
+    }
     if iteration_filter == PlayerFilter::Any
         && let Some(effect) = parse_for_each_doesnt_control_lose_game(tokens, false)?
     {
@@ -197,6 +202,7 @@ pub fn parse_for_each_player_clause(
             WhoClauseShape::Negated {
                 effect_tokens,
                 tagged_filter_tokens,
+                implicit_player_is_iterated,
             } => {
                 if effect_tokens.is_empty() {
                     return Err(CardTextError::ParseError(format!(
@@ -204,8 +210,12 @@ pub fn parse_for_each_player_clause(
                         clause_text
                     )));
                 }
+                let scoped_effect_tokens =
+                    implicit_player_is_iterated.then(|| prepend_that_player_subject(effect_tokens));
                 return Ok(Some(EffectAst::ForEachPlayerDoesNot {
-                    effects: parse_effect_chain_inner(effect_tokens)?,
+                    effects: parse_effect_chain_inner(
+                        scoped_effect_tokens.as_deref().unwrap_or(effect_tokens),
+                    )?,
                     predicate: tagged_predicate(tagged_filter_tokens),
                 }));
             }

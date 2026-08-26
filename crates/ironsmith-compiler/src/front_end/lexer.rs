@@ -88,6 +88,7 @@ pub enum TokenKind {
     ManaGroup,
     #[regex(r"[0-9]+", priority = 3)]
     Number,
+    #[token("&")]
     #[regex(
         r"(?:\+[0-9xXyY]+|-[0-9xXyY]+|[\p{L}0-9]+)(?:(?:['’‘](?:[\p{L}0-9]+)?)|(?:(?://)|[-−/])(?:\+[0-9xXyY]+|-[0-9xXyY]+|[\p{L}0-9]+))*"
     )]
@@ -1217,15 +1218,7 @@ pub fn split_lexed_sentences(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> 
             if token.kind == TokenKind::Word
                 && matches!(
                     token.parser_text(),
-                    "and"
-                        | "during"
-                        | "for"
-                        | "then"
-                        | "this"
-                        | "until"
-                        | "where"
-                        | "with"
-                        | "without"
+                    "and" | "during" | "for" | "this" | "until" | "where" | "with" | "without"
                 ) =>
         {
             true
@@ -1317,15 +1310,40 @@ mod tests {
     }
 
     #[test]
-    fn split_lexed_sentences_ignores_periods_inside_quotes() {
+    fn lex_line_preserves_ampersand_name_connectors() {
+        let tokens = lex_line("Minsc & Boo deals damage.", 0).expect("card name should lex");
+        assert_eq!(tokens[1].kind, TokenKind::Word);
+        assert_eq!(tokens[1].as_word(), Some("&"));
+        assert_eq!(render_token_slice(&tokens[..3]), "Minsc & Boo");
+
+        assert!(
+            lex_line("Minsc % Boo deals damage.", 0).is_err(),
+            "unrelated symbols must remain unsupported"
+        );
+    }
+
+    #[test]
+    fn split_lexed_sentences_starts_an_outside_then_after_a_closed_quote() {
         let tokens =
             lex_line("Gain \"Draw a card.\" Then scry 1. Untap this creature.", 0).expect("lex");
+        let sentences = split_lexed_sentences(&tokens);
+
+        assert_eq!(sentences.len(), 3);
+        assert_eq!(render_token_slice(sentences[0]), "Gain \"Draw a card.\"");
+        assert_eq!(render_token_slice(sentences[1]), "Then scry 1");
+        assert_eq!(render_token_slice(sentences[2]), "Untap this creature");
+    }
+
+    #[test]
+    fn split_lexed_sentences_keeps_then_inside_an_open_quote() {
+        let tokens =
+            lex_line("Gain \"Draw a card. Then scry 1.\" Untap this creature.", 0).expect("lex");
         let sentences = split_lexed_sentences(&tokens);
 
         assert_eq!(sentences.len(), 2);
         assert_eq!(
             render_token_slice(sentences[0]),
-            "Gain \"Draw a card.\"Then scry 1"
+            "Gain \"Draw a card. Then scry 1.\""
         );
         assert_eq!(render_token_slice(sentences[1]), "Untap this creature");
     }

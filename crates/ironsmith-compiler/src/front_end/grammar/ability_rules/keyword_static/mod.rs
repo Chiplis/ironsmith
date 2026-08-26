@@ -2,6 +2,7 @@ mod costs_replacements_and_permissions;
 mod leading_conditional_sentence_chain;
 pub use costs_replacements_and_permissions::*;
 
+use super::activation_and_restrictions::activation_restriction_clauses::parse_negated_object_restriction_clause;
 use super::activation_and_restrictions::{
     parse_ability_phrase, parse_activated_line, parse_activation_cost,
     parse_choose_land_type_phrase_words, parse_compiler_activation_cost,
@@ -444,6 +445,12 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("if"),
             StaticAbilityLineHeadHint::Pair("if", "this"),
         ],
+        "parse_players_skip_extra_turns_line" => vec![
+            StaticAbilityLineHeadHint::Single("if"),
+            StaticAbilityLineHeadHint::Pair("if", "an"),
+            StaticAbilityLineHeadHint::Pair("if", "a"),
+            StaticAbilityLineHeadHint::Pair("if", "you"),
+        ],
         "parse_prevent_damage_to_source_remove_counter_line"
         | "parse_prevent_damage_to_source_put_counters_line" => vec![
             StaticAbilityLineHeadHint::Single("if"),
@@ -454,6 +461,10 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_conditional_all_creatures_able_to_block_line" => vec![
             StaticAbilityLineHeadHint::Single("as"),
             StaticAbilityLineHeadHint::Pair("as", "long"),
+        ],
+        "parse_attached_all_creatures_able_to_block_line" => vec![
+            StaticAbilityLineHeadHint::Single("all"),
+            StaticAbilityLineHeadHint::Pair("all", "creatures"),
         ],
         "parse_subject_has_keywords_and_cant_be_blocked_line"
         | "parse_subject_has_keywords_and_cant_be_blocked_by_more_than_line" => vec![
@@ -491,6 +502,15 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Pair("this", "spell"),
         ],
         "parse_spell_additional_life_cost_per_target_line" => vec![
+            StaticAbilityLineHeadHint::Single("this"),
+            StaticAbilityLineHeadHint::Pair("this", "spell"),
+        ],
+        // The parser owns both plural-filter subjects ("Creature spells")
+        // and the singular self subject ("This spell").  Deriving only the
+        // word `spells` from its function name made the latter unreachable
+        // through the migrated registry.
+        "parse_spells_cost_modifier_line" => vec![
+            StaticAbilityLineHeadHint::Single("spells"),
             StaticAbilityLineHeadHint::Single("this"),
             StaticAbilityLineHeadHint::Pair("this", "spell"),
         ],
@@ -697,9 +717,28 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("token"),
             StaticAbilityLineHeadHint::Single("tokens"),
         ],
+        // These rule names describe the choice payload, while every accepted
+        // source line begins with the replacement-style `As this ... enters`
+        // subject. Keep the correlated/named choice specialists reachable
+        // before the broad document fallback flattens their alternatives.
+        "parse_choose_basic_land_type_as_enters_line"
+        | "parse_revealed_hand_choose_nonland_card_name_as_enters_line"
+        | "parse_choose_card_name_as_enters_line"
+        | "parse_choose_color_and_creature_type_as_enters_line"
+        | "parse_choose_color_creature_type_pairs_as_enters_line"
+        | "parse_choose_creature_type_as_enters_line"
+        | "parse_choose_named_options_as_enters_line"
+        | "parse_choose_player_as_enters_line"
+        | "parse_note_life_total_as_enters_line"
+        | "parse_discard_hand_as_enters_line" => vec![
+            StaticAbilityLineHeadHint::Single("as"),
+            StaticAbilityLineHeadHint::Pair("as", "this"),
+            StaticAbilityLineHeadHint::Pair("as", "it"),
+        ],
         "parse_copy_activated_abilities_line" => vec![
             StaticAbilityLineHeadHint::Single("this"),
             StaticAbilityLineHeadHint::Single("it"),
+            StaticAbilityLineHeadHint::Single("as"),
         ],
         "parse_attached_has_and_loses_keywords_line"
         | "parse_attached_has_keywords_and_is_goaded_line" => vec![
@@ -784,6 +823,48 @@ mod registry_head_hint_tests {
     }
 
     #[test]
+    fn extra_turn_skip_rule_is_reachable_from_its_if_head() {
+        let tokens = crate::lexer::lex_line(
+            "If an opponent would begin an extra turn, that player skips that turn instead.",
+            0,
+        )
+        .expect("extra-turn skip line should lex");
+        let parsed = recognize_static_ability_ast_line_registry(&tokens)
+            .into_legacy_result_option()
+            .expect("extra-turn skip registry parse should not error")
+            .expect("extra-turn skip registry should claim the line");
+
+        assert!(parsed.iter().any(|ability| {
+            matches!(
+                ability,
+                StaticAbilityAst::Static(static_ability)
+                    if static_ability.id()
+                        == crate::static_abilities::StaticAbilityId::PlayersSkipExtraTurns
+            )
+        }));
+    }
+
+    #[test]
+    fn battlefield_conditioned_copy_activated_rule_is_reachable_from_as_head() {
+        let tokens = crate::lexer::lex_line(
+            "As long as this artifact is on the battlefield, it has all activated abilities of all land cards in all graveyards.",
+            0,
+        )
+        .expect("conditioned copy-ability line should lex");
+        assert!(
+            parse_copy_activated_abilities_line(&tokens)
+                .expect("direct copy-ability parse should not error")
+                .is_some(),
+            "the specialist must own the complete conditioned line"
+        );
+        let parsed = recognize_static_ability_ast_line_registry(&tokens)
+            .into_legacy_result_option()
+            .expect("registry parse should not error")
+            .expect("the `as` head must reach the copy-ability rule");
+        assert!(format!("{parsed:#?}").contains("CopyActivatedAbilities"));
+    }
+
+    #[test]
     fn optional_untap_rule_is_reachable_from_you_may_head() {
         let tokens = crate::lexer::lex_line(
             "You may choose not to untap this artifact during your untap step.",
@@ -829,6 +910,98 @@ mod registry_head_hint_tests {
                         == crate::static_abilities::StaticAbilityId::MayChooseNotToUntapDuringUntapStep
             )
         }));
+    }
+
+    #[test]
+    fn correlated_color_type_choice_is_reachable_from_as_this_head() {
+        let tokens = crate::lexer::lex_line(
+            "As this artifact enters, choose white Citizen, blue Camarid, black Thrull, red Goblin, or green Saproling.",
+            0,
+        )
+        .expect("correlated color/type choice should lex");
+        assert!(
+            parse_choose_color_creature_type_pairs_as_enters_line(&tokens)
+                .expect("direct correlated choice parse should not error")
+                .is_some(),
+            "the correlated-choice specialist must own the complete line"
+        );
+
+        let rule_idx = static_ability_ast_line_rules()
+            .iter()
+            .position(|rule| {
+                rule.id.as_str() == "parse_choose_color_creature_type_pairs_as_enters_line"
+            })
+            .expect("correlated-choice rule should be registered");
+        assert!(
+            STATIC_ABILITY_AST_LINE_RULE_INDEX
+                .candidate_indices("as", Some("this"))
+                .contains(&rule_idx),
+            "correlated-choice rule should be indexed under `as this`"
+        );
+
+        let parsed = recognize_static_ability_ast_line_registry(&tokens)
+            .into_legacy_result_option()
+            .expect("correlated choice registry parse should not error")
+            .expect("the `as this` head should reach the correlated-choice rule");
+        assert!(format!("{parsed:#?}").contains("ChooseNamedOptionAsEnters"));
+
+        let malformed = crate::lexer::lex_line(
+            "As this artifact enters, choose white Citizen, blue Camarid, or black.",
+            0,
+        )
+        .expect("changed-pair near miss should lex");
+        assert!(
+            parse_choose_color_creature_type_pairs_as_enters_line(&malformed)
+                .expect("changed-pair near miss should not error")
+                .is_none(),
+            "an incomplete color/type pair must remain outside the specialist"
+        );
+    }
+
+    #[test]
+    fn attached_must_block_rule_is_reachable_from_all_creatures_head() {
+        let tokens =
+            crate::lexer::lex_line("All creatures able to block enchanted creature do so.", 0)
+                .expect("attached must-block line should lex");
+        assert!(
+            parse_attached_all_creatures_able_to_block_line(&tokens)
+                .expect("direct attached must-block parse should not error")
+                .is_some(),
+            "direct attached must-block parser should claim the line"
+        );
+        let rule_idx = static_ability_ast_line_rules()
+            .iter()
+            .position(|rule| rule.id.as_str() == "parse_attached_all_creatures_able_to_block_line")
+            .expect("attached must-block rule should be registered");
+        assert!(
+            STATIC_ABILITY_AST_LINE_RULE_INDEX
+                .candidate_indices("all", Some("creatures"))
+                .contains(&rule_idx),
+            "attached must-block rule should be indexed under `all creatures`"
+        );
+        assert!(matches!(
+            run_static_ability_ast_line_rule(
+                static_ability_ast_line_rules()[rule_idx].id,
+                static_ability_ast_line_rules()[rule_idx].rule,
+                &tokens,
+            ),
+            ParseOutcome::Match(_)
+        ));
+        let parsed = recognize_static_ability_ast_line_registry(&tokens)
+            .into_legacy_result_option()
+            .expect("attached must-block registry parse should not error")
+            .expect("attached must-block registry should claim the line");
+        assert!(format!("{parsed:#?}").contains("MustBlockSpecificAttacker"));
+
+        let changed_target =
+            crate::lexer::lex_line("All creatures able to block target creature do so.", 0)
+                .expect("changed-target near miss should lex");
+        assert!(
+            parse_attached_all_creatures_able_to_block_line(&changed_target)
+                .expect("changed-target near miss should not error")
+                .is_none(),
+            "the attached rule must not consume a target-creature spell effect"
+        );
     }
 
     #[test]
@@ -1394,6 +1567,10 @@ fn recognize_static_ability_ast_line_registry(
     // intentionally ambiguity-strict, so make those ownership relationships
     // explicit instead of relying on the historical rule order.
     const TYPED_OWNERSHIP: &[(&str, &str)] = &[
+        (
+            "parse_choose_color_creature_type_pairs_as_enters_line",
+            "parse_choose_named_options_as_enters_line",
+        ),
         (
             "parse_as_long_as_condition_can_attack_as_though_no_defender_line",
             "parse_filter_has_granted_ability_line",
@@ -2017,6 +2194,11 @@ fn parse_static_ability_ast_line_lexed_unstacked(
         return Ok(Some(abilities));
     }
     if let Some(abilities) = parse_attached_conditional_keyword_otherwise_line(tokens)? {
+        return Ok(Some(abilities));
+    }
+    if let Some(abilities) =
+        parse_attached_conditional_anthem_otherwise_base_and_restriction_line(tokens)?
+    {
         return Ok(Some(abilities));
     }
     // Keep attachment-relative conditions attached to their affected object.
@@ -5137,6 +5319,39 @@ pub fn parse_no_more_than_creatures_can_attack_or_block_each_combat_line(
     Ok(Some(ability))
 }
 
+pub(crate) fn characteristic_pt_uses_named_subject_surface(tokens: &[OwnedLexToken]) -> bool {
+    let sentence_tokens = trim_edge_punctuation(tokens);
+    let sentence_words = parser_token_word_refs(&sentence_tokens);
+    sentence_words
+        .iter()
+        .enumerate()
+        .filter(|(_, word)| is_characteristic_axis_word(word))
+        .any(|(axis_idx, _)| {
+            if axis_idx == 0
+                || !sentence_words
+                    .get(axis_idx + 1)
+                    .is_some_and(|word| matches!(*word, "is" | "and"))
+            {
+                return false;
+            }
+            // Static-line registry rules do not receive the surrounding card
+            // parse context, so a full nonlegendary name such as "Plague
+            // Rats's" cannot be validated through the usual source-alias
+            // table here. This grammar slot has already proved that the
+            // possessive phrase is the subject of a characteristic-defining
+            // axis. Preserve that source-name surface only when the authored
+            // tokens form a proper name, rejecting ordinary subjects such as
+            // "equipped creature's" even though the possessive suffix can
+            // make that phrase look identifier-like after normalization.
+            static_keyword_shapes::parse_word_token_offset(&sentence_tokens, axis_idx).is_some_and(
+                |subject_end| {
+                    let subject_tokens = &sentence_tokens[..subject_end];
+                    crate::lexer::is_authored_proper_name_phrase(subject_tokens)
+                },
+            )
+        })
+}
+
 pub fn parse_characteristic_defining_pt_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -5145,20 +5360,7 @@ pub fn parse_characteristic_defining_pt_line(
         return Ok(None);
     }
     let sentence_words = parser_token_word_refs(&sentence_tokens);
-    let uses_source_name_subject =
-        crate::slice_primitives::select_position(&sentence_words, |word| {
-            is_characteristic_axis_word(word)
-        })
-        .and_then(|axis_idx| {
-            source_reference_surface_for_possessive_words(&sentence_words[..axis_idx])
-        })
-        .is_some_and(|surface| {
-            matches!(
-                surface,
-                crate::target::SourceReferenceSurface::FullName(_)
-                    | crate::target::SourceReferenceSurface::ShortName(_)
-            )
-        });
+    let uses_source_name_subject = characteristic_pt_uses_named_subject_surface(&sentence_tokens);
     let preserve_subject = |value: Value| {
         if uses_source_name_subject {
             value.with_surface_hint(ironsmith_core::ValueSurfaceHint::SourceNameSubject)

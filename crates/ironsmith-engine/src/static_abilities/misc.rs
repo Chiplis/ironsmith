@@ -36,8 +36,8 @@ use crate::events::traits::{
     EventKind, GameEventType, ReplacementMatcher, ReplacementPriority, downcast_event,
 };
 use crate::events::zones::matchers::{
-    ThisWouldEnterBattlefieldMatcher, WouldDieDamagedBySourceThisTurnMatcher,
-    WouldEnterBattlefieldMatcher,
+    ThisWouldEnterBattlefieldMatcher, WouldDieDamagedByFilteredSourceThisTurnMatcher,
+    WouldDieDamagedBySourceThisTurnMatcher, WouldEnterBattlefieldMatcher,
 };
 use crate::events::zones::{EnterBattlefieldEvent, ZoneChangeEvent};
 use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};

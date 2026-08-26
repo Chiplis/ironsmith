@@ -49,7 +49,7 @@ pub struct ConditionalConsultShape {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConsultBattlefieldGraveyardShape {
-    Combined,
+    Combined { controller_you: bool, tapped: bool },
     RemainderThenMatch { controller_you: bool },
 }
 
@@ -301,10 +301,14 @@ pub fn parse_consult_battlefield_graveyard_shape(
     }
     if matched_to_battlefield(tokens)
         && (contains_sequence_phrase(tokens, &[&["other", "cards"]])
-            || contains_sequence_phrase(tokens, &[&["all", "other"]]))
+            || contains_sequence_phrase(tokens, &[&["all", "other"]])
+            || contains_sequence_word(tokens, "rest"))
         && contains_sequence_word(tokens, "graveyard")
     {
-        Some(ConsultBattlefieldGraveyardShape::Combined)
+        Some(ConsultBattlefieldGraveyardShape::Combined {
+            controller_you: contains_sequence_phrase(tokens, &[&["under", "your", "control"]]),
+            tapped: contains_sequence_phrase(tokens, &[&["battlefield", "tapped"]]),
+        })
     } else {
         None
     }
@@ -340,6 +344,16 @@ mod tests {
                 "Put those cards onto the battlefield, then shuffle the rest of the revealed cards into your library"
             )),
             Some(ConsultMoveBottomShape::MatchedToBattlefieldAndShuffle)
+        );
+
+        assert_eq!(
+            parse_consult_battlefield_graveyard_shape(&lex(
+                "Put that card onto the battlefield tapped under your control and the rest into their graveyard"
+            )),
+            Some(ConsultBattlefieldGraveyardShape::Combined {
+                controller_you: true,
+                tapped: true,
+            })
         );
     }
 }

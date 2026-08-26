@@ -70,6 +70,7 @@ pub(super) fn is_reserved_short_alias(alias: &str) -> bool {
             | "at"
             | "for"
             | "from"
+            | "out"
             | "until"
             | "during"
             | "turn"

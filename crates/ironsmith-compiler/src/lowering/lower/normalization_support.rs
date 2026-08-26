@@ -1,4 +1,5 @@
 use super::*;
+use crate::cards::builders::{GrantedAbilityAst, StaticAbilityAst, TargetAst};
 #[cfg(test)]
 use crate::ir::RewriteSemanticDocument;
 
@@ -233,8 +234,18 @@ fn normalize_rewrite_line_ast(
     state: &mut RewriteNormalizationState,
 ) -> Result<NormalizedLineAst, CardTextError> {
     let mut normalized_chunks = Vec::with_capacity(chunks.len());
+    let source_pronoun_enters_with_counter_surface = semantic_facts
+        .statement
+        .as_enters_effect_program
+        .as_ref()
+        .is_some_and(|facts| facts.source_pronoun_enters_with_counter_surface);
     for chunk in chunks {
-        normalize_rewrite_line_chunk(chunk, state, &mut normalized_chunks)?;
+        normalize_rewrite_line_chunk(
+            chunk,
+            state,
+            &mut normalized_chunks,
+            source_pronoun_enters_with_counter_surface,
+        )?;
     }
 
     Ok(NormalizedLineAst {
@@ -259,10 +270,16 @@ fn normalize_rewrite_line_chunk(
     chunk: LineAst,
     state: &mut RewriteNormalizationState,
     normalized_chunks: &mut Vec<NormalizedLineChunk>,
+    source_pronoun_enters_with_counter_surface: bool,
 ) -> Result<(), CardTextError> {
     if let LineAst::Multiple(chunks) = chunk {
         for chunk in chunks {
-            normalize_rewrite_line_chunk(chunk, state, normalized_chunks)?;
+            normalize_rewrite_line_chunk(
+                chunk,
+                state,
+                normalized_chunks,
+                source_pronoun_enters_with_counter_surface,
+            )?;
         }
         return Ok(());
     }
@@ -293,7 +310,10 @@ fn normalize_rewrite_line_chunk(
                 max_triggers_per_turn,
             }
         }
-        LineAst::Statement { effects } => {
+        LineAst::Statement { mut effects } => {
+            if source_pronoun_enters_with_counter_surface {
+                retarget_as_enters_source_counter_grants(&mut effects);
+            }
             let mut imports = state.statement_reference_imports();
             if let Some(cost_tag) = imports.last_object_tag.as_ref()
                 && cost_tag.as_str().starts_with("tapped_")
@@ -420,6 +440,46 @@ fn normalize_rewrite_line_chunk(
         ),
     });
     Ok(())
+}
+
+/// In an as-enters replacement program, the authored subject of `it enters
+/// with ... counters` is the entering source.  Ordinary cross-sentence
+/// antecedent resolution can otherwise bind `it` to an object sacrificed by
+/// the preceding optional action.  The line fact above proves the pronoun
+/// surface; this traversal then retargets only the matching typed
+/// entry-counter grant.
+fn retarget_as_enters_source_counter_grants(effects: &mut [EffectAst]) {
+    fn retarget(effect: &mut EffectAst) {
+        if let EffectAst::SubjectVerb(subject_verb) = effect
+            && let SubjectVerbActionAst::GrantAbilitiesToTarget {
+                target, abilities, ..
+            } = &mut subject_verb.action
+            && matches!(target, TargetAst::Tagged(_, _))
+            && abilities.iter().any(|ability| {
+                matches!(
+                    ability,
+                    GrantedAbilityAst::StaticAbility(static_ability)
+                        if matches!(
+                            static_ability.as_ref(),
+                            StaticAbilityAst::Static(ability)
+                                if matches!(
+                                    ability.payload,
+                                    ironsmith_core::StaticAbilityPayload::EntersWithCountersValue { .. }
+                                )
+                        )
+                )
+            })
+        {
+            *target = TargetAst::Source(None);
+        }
+        crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+            retarget_as_enters_source_counter_grants(nested);
+        });
+    }
+
+    for effect in effects {
+        retarget(effect);
+    }
 }
 
 fn normalize_rewrite_modal_ast(modal: ParsedModalAst) -> Result<NormalizedModalAst, CardTextError> {

@@ -38,3 +38,23 @@ fn kicked_choose_any_number_lowers_to_typed_conditional_mode_range() {
     assert_eq!(range.min_modes, Value::Fixed(0));
     assert_eq!(range.max_modes, Value::Fixed(3));
 }
+
+#[test]
+fn trailing_instead_condition_lowers_to_typed_presentation_order() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Trailing Instead Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Search your library for a basic land card, reveal it, put it into your hand, then shuffle.\n\
+             You may put that card onto the battlefield instead of putting it into your hand if a creature died this turn.",
+        )
+        .expect("cross-line self-replacement should compile");
+    let branch = definition
+        .spell_effect
+        .as_ref()
+        .and_then(|program| program.segments.first())
+        .and_then(|segment| segment.self_replacements.first())
+        .expect("replacement should attach to the search resolution segment");
+
+    assert!(branch.condition_after_replacement, "{branch:#?}");
+    assert!(branch.starts_new_source_line, "{branch:#?}");
+}

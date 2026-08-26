@@ -815,6 +815,159 @@ pub fn attach_inline_token_granted_abilities_to_last_create(
     false
 }
 
+/// Keep an inline quoted copy exception on the replacement copy only.
+///
+/// A cross-sentence self replacement is parsed jointly so its target can be
+/// shared. During that joint parse, the quoted `except the token has ...`
+/// suffix can be observed once by the initial copy clause and again as a
+/// coordinated set grant. The final authored create sentence proves that the
+/// rule belongs to the replacement copy, so remove only those two exact
+/// duplicates after the replacement copy has retained the typed grant.
+pub fn reconcile_inline_copy_self_replacement_grants(
+    effects: &mut [EffectAst],
+    tokens: &[OwnedLexToken],
+) -> bool {
+    fn copy_has_grants(effect: &EffectAst, expected: &[GrantedAbilityAst]) -> bool {
+        let direct = match effect {
+            EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+                SubjectVerbActionAst::CreateTokenCopy {
+                    granted_abilities, ..
+                }
+                | SubjectVerbActionAst::CreateTokenCopyFromSource {
+                    granted_abilities, ..
+                } => granted_abilities == expected,
+                _ => false,
+            },
+            _ => false,
+        };
+        if direct {
+            return true;
+        }
+        let mut found = false;
+        crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+            found |= nested
+                .iter()
+                .any(|effect| copy_has_grants(effect, expected));
+        });
+        found
+    }
+
+    fn clear_matching_copy_grants(effects: &mut [EffectAst], expected: &[GrantedAbilityAst]) {
+        for effect in effects {
+            if let EffectAst::SubjectVerb(subject_verb) = effect {
+                match &mut subject_verb.action {
+                    SubjectVerbActionAst::CreateTokenCopy {
+                        granted_abilities, ..
+                    }
+                    | SubjectVerbActionAst::CreateTokenCopyFromSource {
+                        granted_abilities, ..
+                    } if granted_abilities == expected => granted_abilities.clear(),
+                    _ => {}
+                }
+            }
+            crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                clear_matching_copy_grants(nested, expected);
+            });
+        }
+    }
+
+    fn is_duplicate_token_set_grant(effect: &EffectAst, expected: &[GrantedAbilityAst]) -> bool {
+        let EffectAst::SubjectVerb(subject_verb) = effect else {
+            return false;
+        };
+        let SubjectVerbActionAst::GrantAbilitiesAll {
+            filter,
+            abilities,
+            duration,
+            condition,
+            set_quantifier_surface,
+            lock_filter_at_resolution,
+        } = &subject_verb.action
+        else {
+            return false;
+        };
+        let mut token_filter = ObjectFilter::default();
+        token_filter.token = true;
+        filter == &token_filter
+            && abilities == expected
+            && *duration == crate::effect::Until::Forever
+            && condition.is_none()
+            && set_quantifier_surface.is_none()
+            && *lock_filter_at_resolution
+    }
+
+    fn remove_duplicate_token_set_grants(
+        effects: &mut Vec<EffectAst>,
+        expected: &[GrantedAbilityAst],
+    ) -> bool {
+        fn remove_from_effect(effect: &mut EffectAst, expected: &[GrantedAbilityAst]) -> bool {
+            let mut changed = false;
+            match effect {
+                EffectAst::Coordination(coordination) => {
+                    for member in &mut coordination.members {
+                        changed |= remove_duplicate_token_set_grants(&mut member.effects, expected);
+                    }
+                    coordination
+                        .members
+                        .retain(|member| !member.effects.is_empty());
+                }
+                _ => crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                    for effect in nested {
+                        changed |= remove_from_effect(effect, expected);
+                    }
+                }),
+            }
+            changed
+        }
+
+        let before = effects.len();
+        effects.retain(|effect| !is_duplicate_token_set_grant(effect, expected));
+        let mut changed = effects.len() != before;
+        for effect in effects {
+            changed |= remove_from_effect(effect, expected);
+        }
+        changed
+    }
+
+    let Some(replacement_sentence) = inline_quoted_token_creation_sentence(tokens) else {
+        return false;
+    };
+    let unquoted_replacement = tokens_outside_double_quoted_rules(replacement_sentence);
+    let replacement_words = token_word_refs(&unquoted_replacement);
+    if !crate::word_primitives::sequence_occurs(&replacement_words, &["instead", "create"])
+        || !crate::word_primitives::sequence_occurs(
+            &replacement_words,
+            &["except", "the", "token", "has"],
+        )
+    {
+        return false;
+    }
+    let expected = parse_inline_copy_granted_abilities(replacement_sentence);
+    if expected.is_empty() {
+        return false;
+    }
+
+    let mut changed = false;
+    for effect in effects {
+        let EffectAst::SelfReplacement {
+            if_true, if_false, ..
+        } = effect
+        else {
+            continue;
+        };
+        if !if_true
+            .iter()
+            .any(|effect| copy_has_grants(effect, &expected))
+        {
+            continue;
+        }
+        clear_matching_copy_grants(if_false, &expected);
+        remove_duplicate_token_set_grants(if_true, &expected);
+        changed = true;
+    }
+    changed
+}
+
 /// Attach a separately authored pronoun sentence whose ability list mixes a
 /// keyword, a quoted rule, and a trailing activation. The caller proves that
 /// this sentence immediately follows one token creation.
@@ -987,6 +1140,7 @@ pub fn parse_create(
         head.count,
         creation_grammar::CreateCountHead::EqualToDynamic
     );
+    let authored_appositive_name = token_definition_grammar::leading_appositive_token_name(tokens);
     let mut definition_tokens = head.name_tokens.to_vec();
     let mut name_words = head.name_words;
     let mut tail_tokens = head.tail_tokens.to_vec();
@@ -1124,11 +1278,17 @@ pub fn parse_create(
     if let Some(for_each_idx) = for_each_idx {
         modifier_tail_words.truncate(for_each_idx);
     }
-    let mut raw_name_override: Option<String> = None;
+    let mut raw_name_override = authored_appositive_name;
     let mut rules_text_range: Option<(usize, usize)> = None;
     if let Some(named) = creation_grammar::parse_named_token_clause_tokens(&tail_tokens) {
         let named_words = token_word_refs(&tail_tokens[named.name.clone()]);
         if !named_words.is_empty() {
+            let authored_name = render_token_slice(&tail_tokens[named.name.clone()])
+                .trim()
+                .to_string();
+            if authored_name.contains(',') {
+                raw_name_override = Some(authored_name);
+            }
             name_words.push("named");
             name_words.extend(named_words);
             definition_tokens.extend_from_slice(&tail_tokens[named.clause]);
@@ -1427,6 +1587,7 @@ pub fn parse_create(
             }
         }
     }
+    let has_raw_name_override = raw_name_override.is_some();
     let name = raw_name_override.unwrap_or_else(|| normalize_token_name(&name_words));
     let mut definition =
         token_definition_grammar::parse_token_definition_shape_tokens(&definition_tokens)
@@ -1437,6 +1598,20 @@ pub fn parse_create(
             .ok_or_else(|| {
                 CardTextError::ParseError(format!("unsupported token definition '{name}'"))
             })?;
+    if has_raw_name_override {
+        match &mut definition {
+            crate::model::token_definition::TokenDefinitionSpec::Vehicle(shape) => {
+                shape.name = name.clone();
+            }
+            crate::model::token_definition::TokenDefinitionSpec::Artifact(shape) => {
+                shape.name = name.clone();
+            }
+            crate::model::token_definition::TokenDefinitionSpec::Creature(shape) => {
+                shape.name = name.clone();
+            }
+            _ => {}
+        }
+    }
     if let Some(postnominal_colors) =
         token_definition_grammar::parse_postnominal_token_colors_tokens(&tail_tokens)
     {
@@ -1848,6 +2023,7 @@ pub fn parse_incubate(
 mod tests {
     use super::super::super::lexer::lex_line;
     use super::*;
+    use crate::cards::builders::SubjectVerbEffectAst;
     use crate::static_abilities::StaticAbilityId;
     use crate::target::{ChooseSpec, SourceReferenceSurface};
     use ironsmith_core::TurnHistoryCount;
@@ -1862,6 +2038,105 @@ mod tests {
             panic!("expected a token creation with modifiers");
         };
         count
+    }
+
+    #[test]
+    fn targeted_token_copy_keeps_pt_type_and_keyword_exception_bundle() {
+        let tokens = lex_line(
+            "Create two tokens that are copies of target noncreature permanent, except they're 3/3 Dragon creatures in addition to their other types, and they have flying.",
+            0,
+        )
+        .expect("targeted copy-token sentence should lex");
+        let effects = crate::effect_sentences::parse_effect_sentence_lexed(&tokens)
+            .expect("the complete copy exception should parse through the public effect route");
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::CreateTokenCopyFromSource {
+                        count,
+                        source: TargetAst::Object(filter, ..),
+                        added_card_types,
+                        added_subtypes,
+                        set_base_power_toughness,
+                        granted_abilities,
+                        ..
+                    },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected one typed targeted copy-token action: {effects:#?}");
+        };
+        assert_eq!(count, &Value::Fixed(2));
+        assert!(filter.excluded_card_types.contains(&CardType::Creature));
+        assert_eq!(added_card_types, &[CardType::Creature]);
+        assert_eq!(added_subtypes, &[Subtype::Dragon]);
+        assert_eq!(set_base_power_toughness, &Some((3, 3)));
+        assert_eq!(granted_abilities.len(), 1, "{granted_abilities:#?}");
+
+        let changed = lex_line(
+            "Create two tokens that are copies of target noncreature permanent, except they're 3/3 Dragon creatures in addition to their other types.",
+            0,
+        )
+        .expect("changed copy-token sentence should lex");
+        let changed = crate::effect_sentences::parse_effect_sentence_lexed(&changed)
+            .expect("the no-keyword variant should remain parseable");
+        let debug = format!("{changed:#?}");
+        assert!(!debug.contains("Flying"), "{debug}");
+    }
+
+    #[test]
+    fn singular_copy_token_keeps_coordinated_characteristic_exception_atomic() {
+        let tokens = lex_line(
+            "Create a token that's a copy of that creature, except it's 1/1 and it's a Nightmare in addition to its other types.",
+            0,
+        )
+        .expect("copy-token exception should lex");
+        let effects = crate::effect_sentences::parse_effect_sentence_lexed(&tokens)
+            .expect("the complete copy-token exception should parse through the public route");
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::CreateTokenCopyFromSource {
+                        set_base_power_toughness,
+                        added_subtypes,
+                        ..
+                    },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected one typed copy-token action: {effects:#?}");
+        };
+        assert_eq!(set_base_power_toughness, &Some((1, 1)));
+        assert_eq!(added_subtypes, &[Subtype::Nightmare]);
+
+        let conditional = lex_line(
+            "If you do, create a token that's a copy of that creature, except it's 1/1 and it's a Nightmare in addition to its other types.",
+            0,
+        )
+        .expect("conditional copy-token exception should lex");
+        let conditional = crate::effect_sentences::parse_effect_sentence_lexed(&conditional)
+            .expect("nested consequence routing should retain the complete copy exception");
+        assert!(
+            format!("{conditional:#?}").contains("CreateTokenCopyFromSource"),
+            "conditional route lost the copy-token action: {conditional:#?}"
+        );
+
+        let ordinary = lex_line("Create a 1/1 Nightmare creature token and draw a card.", 0)
+            .expect("ordinary coordinated creation should lex");
+        let ordinary = crate::effect_sentences::parse_effect_sentence_lexed(&ordinary)
+            .expect("ordinary coordinated creation should keep its separate draw");
+        assert!(
+            ordinary.iter().any(|effect| {
+                matches!(
+                    effect,
+                    EffectAst::Coordination(coordination)
+                        if coordination.members.len() == 2
+                )
+            }) || ordinary.len() == 2,
+            "non-copy coordination must not be absorbed: {ordinary:#?}"
+        );
     }
 
     #[test]

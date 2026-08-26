@@ -374,7 +374,7 @@ pub fn parse_equip_line(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility
     let Some(spec) = keyword_activated_grammar::parse_equip_line_spec_tokens(tokens) else {
         return Ok(None);
     };
-    match spec {
+    let Some(mut parsed) = (match spec {
         EquipLineSpec::MissingCost => Err(CardTextError::ParseError(
             "equip missing activation cost".to_string(),
         )),
@@ -425,7 +425,36 @@ pub fn parse_equip_line(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility
                 ObjectFilter::creature().you_control(),
             )))
         }
+    })?
+    else {
+        return Err(CardTextError::InvariantViolation(
+            "equip grammar matched without producing an ability".to_string(),
+        ));
+    };
+
+    let AbilityKind::Activated(activated) = &mut parsed.ability.kind else {
+        return Err(CardTextError::InvariantViolation(
+            "equip grammar produced a non-activated ability".to_string(),
+        ));
+    };
+    for sentence in crate::lexer::split_lexed_sentences(tokens)
+        .into_iter()
+        .skip(1)
+    {
+        let Some(restriction) =
+            crate::grammar::restriction_facts::parse_activation_restriction_tokens(sentence)
+        else {
+            continue;
+        };
+        if restriction.timing == Some(ActivationTiming::OncePerTurn) {
+            crate::slice_primitives::push_unique(
+                &mut activated.additional_restrictions,
+                restriction.presentation_text,
+            );
+        }
     }
+
+    Ok(Some(parsed))
 }
 
 fn equip_mana_total_cost(

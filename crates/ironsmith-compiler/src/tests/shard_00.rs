@@ -2930,6 +2930,38 @@ pub(super) fn rewrite_statement_lowering_reuses_full_token_slice_for_pact_line()
 }
 
 #[test]
+pub(super) fn rewrite_statement_lowering_chains_prevention_and_pact_programs()
+-> Result<(), CardTextError> {
+    let text = "The next time a source of your choice would deal damage to you this turn, prevent that damage. You gain life equal to the damage prevented this way. At the beginning of your next upkeep, pay {1}{W}{W}. If you don't, you lose the game.";
+    let tokens = lex_line(text, 0).expect("combined prevention and Pact line should lex");
+
+    let parsed_chunks = crate::semantic_line_parsing::parse_statement_token_groups_to_chunks(
+        rewrite_line_info(text),
+        &tokens,
+        &[],
+    )?;
+
+    let [crate::cards::builders::LineAst::Statement { effects }] = parsed_chunks.as_slice() else {
+        panic!("expected one combined statement chunk, got {parsed_chunks:#?}");
+    };
+    assert_eq!(effects.len(), 2, "{effects:#?}");
+    assert!(
+        matches!(
+            effects.last(),
+            Some(crate::cards::builders::EffectAst::SourceSentence { effects, .. })
+                if matches!(effects.as_slice(), [crate::cards::builders::EffectAst::DelayedUntilNextUpkeep { .. }])
+        ),
+        "{effects:#?}"
+    );
+    let debug = format!("{effects:#?}");
+    assert!(debug.contains("PreventNextTimeDamage"), "{debug}");
+    assert!(debug.contains("GainLife"), "{debug}");
+    assert!(debug.contains("LoseGame"), "{debug}");
+
+    Ok(())
+}
+
+#[test]
 pub(super) fn rewrite_statement_keeps_graveyard_card_copy_cast_as_one_typed_sequence()
 -> Result<(), CardTextError> {
     let text = "Exile target instant or sorcery card from a graveyard and copy it. You may cast the copy without paying its mana cost.";

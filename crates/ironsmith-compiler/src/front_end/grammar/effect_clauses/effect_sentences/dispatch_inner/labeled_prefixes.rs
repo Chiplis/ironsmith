@@ -45,9 +45,17 @@ fn parse_player_villainous_choice_statement(
     let first_mode_effects = parse_player_villainous_choice_mode_program(shape.first_mode_program)?;
     let second_mode_effects =
         parse_player_villainous_choice_mode_program(shape.second_mode_program)?;
+    let (player, player_surface) = match shape.iteration {
+        crate::grammar::semantic_lowering::VillainousChoicePlayerIteration::EachOpponent => {
+            (PlayerFilter::IteratedPlayer, "that player")
+        }
+        crate::grammar::semantic_lowering::VillainousChoicePlayerIteration::TargetOpponent => {
+            (PlayerFilter::target_opponent(), "target opponent")
+        }
+    };
     let choice = EffectAst::VillainousChoice {
-        player: PlayerFilter::IteratedPlayer,
-        player_surface: Some("that player".to_string()),
+        player,
+        player_surface: Some(player_surface.to_string()),
         modes: vec![
             crate::cards::builders::ChooseOneModeAst {
                 description: render_token_slice(shape.first_mode_tokens),
@@ -61,9 +69,29 @@ fn parse_player_villainous_choice_statement(
     };
     Ok(Some(match shape.iteration {
         crate::grammar::semantic_lowering::VillainousChoicePlayerIteration::EachOpponent => {
-            vec![EffectAst::ForEachOpponent {
-                effects: vec![choice],
-            }]
+            let body = if let Some(count) = shape.minimum_life_lost_this_turn {
+                vec![EffectAst::Conditional {
+                    predicate: PredicateAst::ValueComparison {
+                        left: Value::LifeLostThisTurn(PlayerFilter::IteratedPlayer),
+                        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                        right: Value::Fixed(count as i32),
+                    },
+                    if_true: vec![choice],
+                    if_false: Vec::new(),
+                }]
+            } else {
+                vec![choice]
+            };
+            vec![EffectAst::ForEachOpponent { effects: body }]
+        }
+        crate::grammar::semantic_lowering::VillainousChoicePlayerIteration::TargetOpponent => {
+            vec![
+                EffectAst::subject_verb_target_only(TargetAst::Player(
+                    PlayerFilter::target_opponent(),
+                    Some(crate::TextSpan::synthetic()),
+                )),
+                choice,
+            ]
         }
     }))
 }
@@ -126,11 +154,7 @@ fn parse_effect_sentence_inner_lexed_unstacked(
         return Ok(result);
     }
 
-    let villainous_tokens = tokens
-        .first()
-        .filter(|token| token.is_word("then"))
-        .map_or(tokens, |_| &tokens[1..]);
-    if let Some(effects) = parse_player_villainous_choice_statement(villainous_tokens)? {
+    if let Some(effects) = parse_player_villainous_choice_statement(tokens)? {
         return Ok(effects);
     }
     if is_activate_only_restriction_sentence_lexed(tokens) {
@@ -300,6 +324,7 @@ fn parse_effect_sentence_inner_lexed_unstacked(
                     allow_land: false,
                     as_copy: false,
                     copy_cast_reminder_surface: false,
+                    copy_instruction_surface: None,
                     without_paying_mana_cost: true,
                     additional_mana_cost: None,
                     cost_reduction: None,
@@ -332,6 +357,7 @@ fn parse_effect_sentence_inner_lexed_unstacked(
                     allow_land: false,
                     as_copy: false,
                     copy_cast_reminder_surface: false,
+                    copy_instruction_surface: None,
                     without_paying_mana_cost: true,
                     additional_mana_cost: None,
                     cost_reduction: None,
@@ -564,8 +590,11 @@ pub use followup_predicates::*;
 
 #[path = "labeled_prefixes/reference_programs.rs"]
 mod reference_programs;
-use reference_programs::{parse_earthbend_subject_verb_sentence, parse_for_each_opponent_doesnt_subject_verb_sentence, parse_gain_ability_subject_verb_sentence, parse_gain_ability_to_source_subject_verb_sentence};
-pub use reference_programs::{parse_subject_verb_extension_sentence};
+pub use reference_programs::parse_subject_verb_extension_sentence;
+use reference_programs::{
+    parse_earthbend_subject_verb_sentence, parse_for_each_opponent_doesnt_subject_verb_sentence,
+    parse_gain_ability_subject_verb_sentence, parse_gain_ability_to_source_subject_verb_sentence,
+};
 #[path = "labeled_prefixes/core_programs.rs"]
 mod labeled_prefixes_core_programs;
 use labeled_prefixes_core_programs::parse_passive_color_type_addition_sentence;

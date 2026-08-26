@@ -45,6 +45,25 @@ fn find_exiled_top_collection_tag(effects: &[EffectAst]) -> Option<TagKey> {
     effects.iter().find_map(exiled_top_collection_tag)
 }
 
+fn explicit_battlefield_controller(tokens: &[OwnedLexToken]) -> Option<ReturnControllerAst> {
+    tokens.iter().enumerate().find_map(|(index, token)| {
+        token
+            .is_word("under")
+            .then(|| {
+                control_copy_attach_shapes::parse_battlefield_controller_prefix(&tokens[index..])
+            })
+            .flatten()
+            .map(|shape| match shape.controller {
+                control_copy_attach_shapes::BattlefieldControllerShape::You => {
+                    ReturnControllerAst::You
+                }
+                control_copy_attach_shapes::BattlefieldControllerShape::Owner => {
+                    ReturnControllerAst::Owner
+                }
+            })
+    })
+}
+
 fn tag_first_exile(effect: &mut EffectAst, tag: &TagKey) -> bool {
     if matches!(
         effect,
@@ -203,7 +222,7 @@ pub fn parse_exile_top_then_put_from_among_tokens(
         mut filter,
         aggregate_constraint,
         destination,
-        controller,
+        mut controller,
         tapped,
         attacking,
         _attack_target_player,
@@ -216,6 +235,15 @@ pub fn parse_exile_top_then_put_from_among_tokens(
     };
     if destination != Zone::Battlefield || aggregate_constraint.is_some() || attacking {
         return Ok(None);
+    }
+    // The leading-action marker parser may stop its payload before an authored
+    // destination-controller suffix. Recover that suffix from the complete
+    // clause so the tagged collection enters under the explicitly named
+    // controller instead of silently falling back to Preserve.
+    if controller == ReturnControllerAst::Preserve
+        && let Some(explicit_controller) = explicit_battlefield_controller(second)
+    {
+        controller = explicit_controller;
     }
     if action.actor != LeadingMayActor::Default && count == ChoiceCount::exactly(1) {
         count = ChoiceCount::up_to(1);

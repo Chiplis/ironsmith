@@ -131,9 +131,7 @@ fn damage_to_embedded_target_controller(
     })
 }
 
-pub fn parse_attach_object_phrase(
-    tokens: &[OwnedLexToken],
-) -> Result<TargetAst, CardTextError> {
+pub fn parse_attach_object_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
     let object_span = span_from_tokens(tokens);
     let shape = combat_grammar::parse_combat_attach_object_shape_lexed(tokens)
         .ok_or_else(|| CardTextError::ParseError("missing object to attach".to_string()))?;
@@ -214,7 +212,10 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
         } => {
             if triggering_object_to_token {
                 return Ok(EffectAst::subject_verb_attach(
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), span_from_tokens(object_tokens)),
+                    TargetAst::Tagged(
+                        crate::tag::CompilerReferenceTag::Triggering.key(),
+                        span_from_tokens(object_tokens),
+                    ),
                     TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(target_tokens)),
                 ));
             }
@@ -226,14 +227,7 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                     &destination_words,
                     &[
                         &["another", "permanent", "with", "same", "controller"],
-                        &[
-                            "another",
-                            "permanent",
-                            "with",
-                            "the",
-                            "same",
-                            "controller",
-                        ],
+                        &["another", "permanent", "with", "the", "same", "controller"],
                     ],
                 ) {
                     let host = parse_target_phrase(host_tokens)?;
@@ -274,11 +268,8 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             };
             if crate::grammar::filters::reference_tag_stage::has_plural_object_head_surface(
                 target_tokens,
-            )
-                && let Some(filter) =
-                crate::effect_sentences::zone_counter_helpers::target_object_filter_mut(
-                    &mut target,
-                )
+            ) && let Some(filter) =
+                crate::effect_sentences::zone_counter_helpers::target_object_filter_mut(&mut target)
             {
                 filter.set_plural_object_noun_surface(true);
             }
@@ -412,15 +403,11 @@ pub fn mark_damage_ast_unpreventable(effect: &mut EffectAst) {
             _ => {}
         }
     }
-    crate::model::visit::for_each_nested_effects_mut(
-        effect,
-        true,
-        |nested| {
-            for nested_effect in nested {
-                mark_damage_ast_unpreventable(nested_effect);
-            }
-        },
-    );
+    crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+        for nested_effect in nested {
+            mark_damage_ast_unpreventable(nested_effect);
+        }
+    });
 }
 
 pub fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
@@ -437,9 +424,40 @@ pub fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
     Ok(effect)
 }
 
+pub fn is_historical_player_object_damage_recipient_clause(tokens: &[OwnedLexToken]) -> bool {
+    let shape = combat_grammar::parse_combat_damage_head_shape_lexed(tokens);
+    let Some((_, amount_used)) = parse_value(shape.body_tokens) else {
+        return false;
+    };
+    matches!(
+        combat_grammar::parse_combat_damage_target_shape_lexed(shape.body_tokens, amount_used),
+        Ok(combat_grammar::CombatDamageTargetShape::HistoricalDamageRecipients { .. })
+    )
+}
+
 fn parse_damage_each_filter(
     filter_tokens: &[OwnedLexToken],
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(shape) = combat_grammar::parse_combat_except_filter_shape_lexed(filter_tokens) {
+        let mut included = parse_object_filter(shape.included_filter_tokens, false)?;
+        let excluded = parse_object_filter(shape.excluded_filter_tokens, false)?;
+        if excluded.controller == Some(PlayerFilter::You)
+            && excluded.static_abilities.len() == 1
+            && excluded.excluded_static_abilities.is_empty()
+        {
+            let mut excluded_basis = excluded.clone();
+            excluded_basis.controller = None;
+            excluded_basis.static_abilities.clear();
+            excluded_basis.union_surface = included.union_surface.clone();
+            if excluded_basis == included {
+                included.any_of = vec![
+                    ObjectFilter::default().controlled_by(PlayerFilter::NotYou),
+                    ObjectFilter::default().without_static_ability(excluded.static_abilities[0]),
+                ];
+                return Ok(included);
+            }
+        }
+    }
     let mut filter = parse_object_filter(filter_tokens, false)?;
     let words = crate::lexer::token_word_refs(filter_tokens);
     if words.first() == Some(&"those")
@@ -531,8 +549,7 @@ fn parse_divided_damage_equal_to_amount(
     let chooser = if crate::word_primitives::sequence_occurs(
         &crate::lexer::token_word_refs(shape.target_tokens),
         &["as", "its", "controller", "chooses"],
-    )
-    {
+    ) {
         PlayerFilter::ControllerOf(crate::target::ObjectRef::Target)
     } else {
         PlayerFilter::You
@@ -564,8 +581,7 @@ fn preserve_optional_single_damage_target(
     target_tokens: &[OwnedLexToken],
 ) -> TargetAst {
     let words = crate::lexer::token_word_refs(target_tokens);
-    if !crate::word_primitives::parse_sequence_prefix(&words, &["up", "to", "one", "target"])
-    {
+    if !crate::word_primitives::parse_sequence_prefix(&words, &["up", "to", "one", "target"]) {
         return target;
     }
 
@@ -641,8 +657,10 @@ mod equal_to_damage_surface_tests;
 
 #[path = "combat_verbs/combat_verbs_object_action_programs.rs"]
 mod combat_verbs_object_action_programs;
-pub use combat_verbs_object_action_programs::{parse_instead_if_control_predicate};
+pub use combat_verbs_object_action_programs::parse_instead_if_control_predicate;
 #[path = "combat_verbs/combat_verbs_combat_programs.rs"]
 mod combat_verbs_combat_programs;
-pub use combat_verbs_combat_programs::{parse_deal_damage_equal_to_clause, parse_deal_damage_with_amount};
+pub use combat_verbs_combat_programs::{
+    parse_deal_damage_equal_to_clause, parse_deal_damage_with_amount,
+};
 use combat_verbs_combat_programs::{parse_divided_damage_target, parse_divided_damage_with_amount};

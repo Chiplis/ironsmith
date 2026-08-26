@@ -62,6 +62,7 @@ pub enum ReturnTargetShape {
         chosen_this_way_excluded: Option<bool>,
         chosen_creature_type: bool,
         excluded_chosen_creature_type: bool,
+        chosen_type_this_way_surface: bool,
         discarded_or_cycled_this_turn_by: Option<PlayerFilter>,
         unsupported_qualifier: bool,
     },

@@ -201,6 +201,24 @@ pub(super) fn ward_keyword_renderer_distinguishes_pure_mana_and_composite_costs(
         describe_keyword_ability(&composite).as_deref(),
         Some("Ward—{2}, Pay 3 life")
     );
+
+    let sacrifice = crate::costs::Cost::try_effect(
+        Effect::sacrifice(
+            ObjectFilter::default()
+                .with_type(CardType::Land)
+                .you_control(),
+            1,
+        )
+        .tag("sacrifice_cost_0"),
+    )
+    .expect("tagged sacrifice must remain cost-executable");
+    let sacrifice_ward = Ability::static_ability(crate::static_abilities::StaticAbility::ward(
+        crate::cost::TotalCost::from_cost(sacrifice),
+    ));
+    assert_eq!(
+        describe_keyword_ability(&sacrifice_ward).as_deref(),
+        Some("Ward—Sacrifice a land")
+    );
 }
 
 #[test]
@@ -977,6 +995,46 @@ pub(super) fn execute_with_source_damage_preserves_amount_surface_hints() {
     assert_eq!(
         describe_effect(&effect),
         "this creature deals damage equal to the number of artifacts they control to that player"
+    );
+}
+
+#[test]
+pub(super) fn execute_with_source_power_fanout_renders_one_other_determiner() {
+    let source_tag = TagKey::from("targeted_source");
+    let mut recipients = ObjectFilter::creature().in_zone(Zone::Battlefield);
+    recipients.other = true;
+    recipients.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Each));
+    recipients
+        .tagged_constraints
+        .push(crate::filter::TaggedObjectConstraint {
+            tag: source_tag.clone(),
+            relation: crate::filter::TaggedOpbjectRelation::IsNotTaggedObject,
+        });
+    let damage = Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+        ChooseSpec::tagged(source_tag.clone()),
+        Effect::deal_damage(
+            Value::PowerOf(Box::new(ChooseSpec::tagged(source_tag.clone()))),
+            ChooseSpec::Object(recipients.clone()),
+        ),
+    ));
+
+    assert_eq!(
+        describe_effect(&damage),
+        "that creature deals damage equal to its power to each other creature"
+    );
+
+    let unrelated_source = TagKey::from("unrelated_source");
+    let near_miss = Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+        ChooseSpec::tagged(unrelated_source.clone()),
+        Effect::deal_damage(
+            Value::PowerOf(Box::new(ChooseSpec::tagged(unrelated_source))),
+            ChooseSpec::Object(recipients),
+        ),
+    ));
+    assert_ne!(
+        describe_effect(&near_miss),
+        "that creature deals damage equal to its power to each other creature",
+        "an unrelated exclusion tag must not be collapsed into the damage source"
     );
 }
 

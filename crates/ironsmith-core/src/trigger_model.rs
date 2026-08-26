@@ -172,6 +172,12 @@ pub enum TriggerKind {
         attacker: PlayerFilter,
         target: AttackTargetRestriction,
     },
+    /// One trigger per matching attacked defender, regardless of how many
+    /// creatures that player assigned to that defender.
+    PlayerAttacksTargetWithOneOrMore {
+        attacker: PlayerFilter,
+        target: AttackTargetRestriction,
+    },
     AttacksOneOrMoreWithMinTotal {
         filter: ObjectFilter,
         min_total_attackers: usize,
@@ -210,6 +216,12 @@ pub enum TriggerKind {
     },
     BlocksOneOrMore {
         filter: ObjectFilter,
+    },
+    /// A per-pair block event where the authored subject may occupy either
+    /// side of combat and the opposite participant must match `other`.
+    BlocksOrBecomesBlockedByObject {
+        subject: ObjectFilter,
+        other: ObjectFilter,
     },
     /// A blocking relationship whose blocked object has strictly less power
     /// than the blocker. Both filters are evaluated against the objects as
@@ -844,6 +856,15 @@ impl Trigger {
             TriggerKind::PlayerAttacksOneOrMore { attacker, target },
         )
     }
+    pub fn player_attacks_target_with_one_or_more(
+        attacker: PlayerFilter,
+        target: AttackTargetRestriction,
+    ) -> Self {
+        Self::typed(
+            "player_attacks_target_with_one_or_more",
+            TriggerKind::PlayerAttacksTargetWithOneOrMore { attacker, target },
+        )
+    }
     pub fn attacks_one_or_more_with_min_total(
         filter: ObjectFilter,
         min_total_attackers: usize,
@@ -925,6 +946,12 @@ impl Trigger {
         Self::typed(
             "blocks_one_or_more",
             TriggerKind::BlocksOneOrMore { filter },
+        )
+    }
+    pub fn blocks_or_becomes_blocked_by_object(subject: ObjectFilter, other: ObjectFilter) -> Self {
+        Self::typed(
+            "blocks_or_becomes_blocked_by_object",
+            TriggerKind::BlocksOrBecomesBlockedByObject { subject, other },
         )
     }
     pub fn blocks_object_with_lesser_power(blocker: ObjectFilter, blocked: ObjectFilter) -> Self {

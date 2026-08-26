@@ -97,6 +97,13 @@ fn parse_where_x_value(tokens: &[OwnedLexToken]) -> Option<Value> {
             .parse_next(input)
     })?;
     let value_tokens = trim_commas(value_tokens);
+    // Keep ordinary counted object scopes typed.  The aggregate helper below
+    // owns surfaces such as "the number of colors among ...", while consult
+    // traversal values also admit the much more common "the number of
+    // creatures you control ..." form.
+    if let Some(value) = super::parse_consult_condition_value_shape(value_tokens) {
+        return Some(value);
+    }
     let value_tokens = primitives::parse_prefix(value_tokens, |input: &mut LexStream<'_>| {
         primitives::phrase(&["the", "number", "of"])
             .void()

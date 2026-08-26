@@ -38,18 +38,18 @@ pub fn parse_sentence_each_player_reveals_top_count_put_permanents_onto_battlefi
             EffectAst::ForEachTagged {
                 tag: revealed_tag_key,
                 effects: vec![EffectAst::Conditional {
-                    predicate: PredicateAst::ItMatches(ObjectFilter::permanent_card()),
+                    predicate: PredicateAst::ItMatches(shape.matching_filter),
                     if_true: vec![EffectAst::subject_verb_move_to_zone(
                         iterated_target.clone(),
                         Zone::Battlefield,
                         false,
                         ReturnControllerAst::Owner,
-                        false,
+                        shape.matching_enters_tapped,
                         None,
                     )],
                     if_false: vec![EffectAst::subject_verb_move_to_zone(
                         iterated_target,
-                        Zone::Graveyard,
+                        shape.remainder_zone,
                         false,
                         ReturnControllerAst::Preserve,
                         false,

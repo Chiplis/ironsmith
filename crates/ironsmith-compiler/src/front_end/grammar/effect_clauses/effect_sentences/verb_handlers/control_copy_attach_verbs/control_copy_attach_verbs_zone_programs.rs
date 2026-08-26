@@ -528,11 +528,6 @@ pub fn parse_put_into_hand(
     }
 
     if let Some(shape) = cca_shapes::parse_library_placement_destination_shape(tokens) {
-        if shape.placement == cca_shapes::LibraryPlacementShape::Bottom
-            && cca_shapes::is_rest_reference(shape.target_tokens)
-        {
-            return Ok(EffectAst::subject_verb_put_rest_on_bottom_of_library());
-        }
         let (target_tokens, source_top_only) = strip_source_top_only_prefix(shape.target_tokens);
         let target = if let Some(target) = parse_counted_card_target_prefix(target_tokens)? {
             target

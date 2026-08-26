@@ -11,8 +11,8 @@ pub fn parse_deal_damage_equal_to_clause(
         &crate::lexer::token_word_refs(shape.amount_tokens),
         &["difference", "between"],
     )
-        .then(|| parse_add_mana_equal_amount_value(shape.amount_tokens))
-        .flatten();
+    .then(|| parse_add_mana_equal_amount_value(shape.amount_tokens))
+    .flatten();
     // Count expressions with a relative controller tail need the typed count
     // parser before the permissive value-expression fallback. Otherwise
     // `nonbasic lands that creature's controller controls` is accepted as a
@@ -245,8 +245,7 @@ pub fn parse_deal_damage_with_amount(
                 && crate::word_primitives::parse_sequence_complete(
                     &crate::lexer::token_word_refs(target_tokens),
                     &["them"],
-                )
-            {
+                ) {
                 amount.with_surface_hint(ironsmith_core::ValueSurfaceHint::DamageRecipientPronoun)
             } else {
                 amount

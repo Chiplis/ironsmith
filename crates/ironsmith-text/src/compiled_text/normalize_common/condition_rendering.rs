@@ -1225,6 +1225,19 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::PlayerControls { player, filter } => {
             let subject = describe_player_filter(player);
+            if matches!(player, PlayerFilter::You) && filter.has_as_you_cast_this_turn_surface() {
+                let mut described_filter = filter.clone();
+                described_filter.set_as_you_cast_this_turn_surface(false);
+                if described_filter.controller == Some(PlayerFilter::You) {
+                    described_filter.controller = None;
+                }
+                return format!(
+                    "you controlled {} as you cast this spell",
+                    with_indefinite_article(strip_indefinite_article(
+                        &described_filter.description()
+                    ))
+                );
+            }
             if let Some(text) =
                 describe_player_controls_other_than_source(player, filter, false)
             {
@@ -2217,20 +2230,13 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             }
             crate::effect::SourceCounterThresholdSurface::SourceHas => {
                 if *count == 1 {
-                    if *counter_type == crate::object::CounterType::Luck {
-                        format!(
-                            "this source has {} on it",
-                            with_indefinite_article(&format!(
-                                "{} counter",
-                                counter_type.description()
-                            ))
-                        )
-                    } else {
-                        format!(
-                            "this source has one or more {} counters on it",
+                    format!(
+                        "this source has {} on it",
+                        with_indefinite_article(&format!(
+                            "{} counter",
                             counter_type.description()
-                        )
-                    }
+                        ))
+                    )
                 } else {
                     format!(
                         "this source has {count} or more {} counters on it",
@@ -2238,6 +2244,10 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     )
                 }
             }
+            crate::effect::SourceCounterThresholdSurface::SourceHasOneOrMore => format!(
+                "this source has one or more {} counters on it",
+                counter_type.description()
+            ),
         },
         Condition::SourceHasCountersAtLeast(count) => {
             let count_text = small_number_word(*count).unwrap_or_else(|| count.to_string());
@@ -2286,6 +2296,13 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 let ability = remainder.ability_markers.remove(0);
                 if remainder == ObjectFilter::default() {
                     return format!("it has {ability}");
+                }
+            }
+            if filter.modified {
+                let mut remainder = filter.clone();
+                remainder.modified = false;
+                if remainder == ObjectFilter::default() {
+                    return "it's modified".to_string();
                 }
             }
             let desc = filter.description();
@@ -2375,6 +2392,11 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             if let Some(surface) = filter.demonstrative_antecedent_surface() {
                 let mut quality = filter.clone();
                 quality.set_demonstrative_antecedent_surface(None);
+                if let Some(property) =
+                    describe_demonstrative_object_property(surface.phrase(), &quality, false)
+                {
+                    return property;
+                }
                 if quality.ability_markers.len() == 1 {
                     let ability = quality.ability_markers.remove(0);
                     let mut expected = ObjectFilter::default();
@@ -2511,6 +2533,17 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     .eq_ignore_ascii_case("permanent")
             {
                 return "a permanent's ability is countered this way".to_string();
+            }
+            // Counter-target tags identify the object chosen for the counter
+            // effect as well as the later result. When a trailing condition
+            // supplies a pure characteristic predicate (`if it's
+            // legendary`), render that state before the generic tag-name
+            // heuristic turns `counters_*` into a historical action clause.
+            if tag.as_str().starts_with("counters_")
+                && let Some(condition) =
+                    describe_implicit_tagged_object_quality_condition("it", filter)
+            {
+                return condition;
             }
             if let Some(action) = this_way_action_from_tag(tag) {
                 let object = describe_player_tagged_object_text(tag, filter);
@@ -3115,6 +3148,14 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             .as_ref()
             .map(|s| s.to_string())
             .unwrap_or_else(|| format!("count is {}", if *even { "even" } else { "odd" })),
+        Condition::ValueIsPrime(value) => {
+            let controlled_lands = ObjectFilter::land().you_control();
+            if matches!(value.unhinted(), Value::Count(filter) if filter == &controlled_lands) {
+                "you control a prime number of lands".to_string()
+            } else {
+                format!("{} is a prime number", describe_value(value))
+            }
+        }
         Condition::ValueComparison {
             left,
             operator,
@@ -3663,6 +3704,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             counter.description()
         ),
         Condition::SourceAttackedThisTurn => "this creature attacked this turn".to_string(),
+        Condition::SourceAttackedBattleThisTurn => {
+            "it attacked a battle this turn".to_string()
+        }
         Condition::SourceSuspected => "this creature is suspected".to_string(),
         Condition::SourceDealtCombatDamageToPlayerThisTurn => {
             "it dealt combat damage to a player this turn".to_string()
@@ -4311,6 +4355,13 @@ fn describe_last_known_tagged_object_condition(tag: &TagKey, filter: &ObjectFilt
         return "that land had a nonbasic land type".to_string();
     }
     if let Some(surface) = filter.demonstrative_antecedent_surface() {
+        let mut quality = filter.clone();
+        quality.set_demonstrative_antecedent_surface(None);
+        if let Some(property) =
+            describe_demonstrative_object_property(surface.phrase(), &quality, true)
+        {
+            return property;
+        }
         if let Some(power) = &filter.power {
             let mut remainder = filter.clone();
             remainder.power = None;
@@ -4385,6 +4436,9 @@ fn describe_last_known_tagged_object_condition(tag: &TagKey, filter: &ObjectFilt
         if bare == ObjectFilter::default() {
             let comparison = describe_filter_comparison_clause(mana_value);
             let comparison = comparison.strip_prefix("is ").unwrap_or(&comparison);
+            if crate::cards::is_sentence_helper_tag(tag.as_str(), "exiled") {
+                return format!("it had mana value {comparison}");
+            }
             return format!("its mana value was {comparison}");
         }
     }
@@ -4433,6 +4487,74 @@ fn describe_last_known_tagged_object_condition(tag: &TagKey, filter: &ObjectFilt
         return format!("it was {rest}");
     }
     current
+}
+
+/// Render a characteristic-only predicate against an explicitly preserved
+/// antecedent noun. These filters describe a property of the referenced
+/// object ("that creature has toughness ..."), not a second classification
+/// of it ("that creature is a permanent with toughness ...").
+fn describe_demonstrative_object_property(
+    subject: &str,
+    filter: &ObjectFilter,
+    past: bool,
+) -> Option<String> {
+    fn comparison_tail(comparison: &ironsmith_core::FilterComparison) -> String {
+        let clause = describe_filter_comparison_clause(comparison);
+        clause.strip_prefix("is ").unwrap_or(&clause).to_string()
+    }
+
+    let verb = if past { "had" } else { "has" };
+
+    if let Some(power) = &filter.power {
+        let mut remainder = filter.clone();
+        remainder.power = None;
+        if remainder == ObjectFilter::default() {
+            let label = match filter.power_reference {
+                ironsmith_core::PtReference::Effective => "power",
+                ironsmith_core::PtReference::Base => "base power",
+            };
+            return Some(format!(
+                "{subject} {verb} {label} {}",
+                comparison_tail(power)
+            ));
+        }
+    }
+    if let Some(toughness) = &filter.toughness {
+        let mut remainder = filter.clone();
+        remainder.toughness = None;
+        if remainder == ObjectFilter::default() {
+            let label = match filter.toughness_reference {
+                ironsmith_core::PtReference::Effective => "toughness",
+                ironsmith_core::PtReference::Base => "base toughness",
+            };
+            return Some(format!(
+                "{subject} {verb} {label} {}",
+                comparison_tail(toughness)
+            ));
+        }
+    }
+    if let Some(mana_value) = &filter.mana_value {
+        let mut remainder = filter.clone();
+        remainder.mana_value = None;
+        if remainder == ObjectFilter::default() {
+            return Some(format!(
+                "{subject} {verb} mana value {}",
+                comparison_tail(mana_value)
+            ));
+        }
+    }
+    if let Some(counter) = filter.with_counter {
+        let mut remainder = filter.clone();
+        remainder.with_counter = None;
+        if remainder == ObjectFilter::default() {
+            return Some(format!(
+                "{subject} {verb} {} on it",
+                describe_counter_constraint_phrase(counter)
+            ));
+        }
+    }
+
+    None
 }
 
 pub(crate) fn describe_implicit_tagged_object_state_condition(
@@ -4615,8 +4737,17 @@ pub(crate) fn describe_implicit_tagged_object_quality_condition(
     base.didnt_enter_battlefield_this_turn = false;
     base.entered_battlefield_this_turn = false;
     base.entered_battlefield_controller = None;
+    base.supertypes.clear();
     if !is_implicit_object_identity_filter(&base) {
         return None;
+    }
+
+    if filter.supertypes.as_slice() == [crate::types::Supertype::Legendary] {
+        return Some(if subject == "it" {
+            "it's legendary".to_string()
+        } else {
+            "that object is legendary".to_string()
+        });
     }
 
     if filter.historic {

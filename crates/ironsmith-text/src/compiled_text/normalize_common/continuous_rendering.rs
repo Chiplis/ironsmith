@@ -835,8 +835,36 @@ pub(crate) fn describe_source_reference_surface_text(
         {
             "this permanent".to_string()
         }
+        crate::target::SourceReferenceSurface::ThisPermanentType(text) => {
+            match text.to_ascii_lowercase().as_str() {
+                "this aura" => "this Aura".to_string(),
+                "this class" => "this Class".to_string(),
+                "this equipment" => "this Equipment".to_string(),
+                "this fortification" => "this Fortification".to_string(),
+                "this saga" => "this Saga".to_string(),
+                "this siege" => "this Siege".to_string(),
+                "this vehicle" => "this Vehicle".to_string(),
+                _ => surface.display_text(),
+            }
+        }
         _ => surface.display_text(),
     }
+}
+
+fn nested_granted_ability_surface(mut text: String) -> String {
+    if text.contains('"') {
+        text = text.replace('"', "'");
+    }
+    text
+}
+
+fn has_terminal_ability_punctuation(text: &str) -> bool {
+    let text = text.trim_end();
+    if text.ends_with(['.', '!', '?']) {
+        return true;
+    }
+    text.strip_suffix(['\'', '"'])
+        .is_some_and(|inner| inner.ends_with(['.', '!', '?']))
 }
 
 pub(crate) fn apply_continuous_source_reference_text(
@@ -993,6 +1021,9 @@ fn describe_those_continuous_noun(filter: &ObjectFilter) -> String {
     // The antecedent filter may retain controller, "other", or other
     // qualifiers from the default branch. A demonstrative set repeats only
     // its grammatical head ("those creatures"), not the full selector.
+    if let Some(card_type) = filter.explicit_card_type_noun() {
+        return card_type.plural_name().to_ascii_lowercase();
+    }
     if filter.card_types.contains(&CardType::Creature) {
         return "creatures".to_string();
     }
@@ -1016,6 +1047,26 @@ fn describe_those_continuous_noun(filter: &ObjectFilter) -> String {
     }
 }
 
+#[cfg(test)]
+mod those_continuous_noun_tests {
+    use super::*;
+
+    #[test]
+    fn demonstrative_union_uses_its_preserved_type_noun() {
+        let mut union = ObjectFilter::default();
+        union.any_of = vec![ObjectFilter::default(), ObjectFilter::default()];
+        union.set_explicit_card_type_noun(Some(CardType::Creature));
+        assert_eq!(describe_those_continuous_noun(&union), "creatures");
+
+        union.set_explicit_card_type_noun(None);
+        assert_eq!(
+            describe_those_continuous_noun(&union),
+            "permanents",
+            "an unsurfaced exact-object union must not guess a creature antecedent"
+        );
+    }
+}
+
 pub(crate) fn describe_apply_continuous_target(
     effect: &crate::effects::ApplyContinuousEffect,
 ) -> (String, bool) {
@@ -1027,13 +1078,23 @@ pub(crate) fn describe_apply_continuous_target(
     if targets_source && let Some(surface) = effect.source_reference_surface.as_ref() {
         return (describe_source_reference_surface_text(surface), false);
     }
-    if let crate::continuous::EffectTarget::Filter(filter) = &effect.target
-        && effect.runtime_modifications.iter().any(|modification| {
-            matches!(
-                modification,
-                crate::effects::continuous::RuntimeModification::CopyOf { .. }
-            )
+    let chosen_complement_filter = effect
+        .target_spec
+        .as_ref()
+        .and_then(|spec| match spec.unhinted() {
+            ChooseSpec::Object(filter) | ChooseSpec::All(filter) => Some(filter),
+            _ => None,
         })
+        .or_else(|| match &effect.target {
+            crate::continuous::EffectTarget::Filter(filter) => Some(filter),
+            _ => None,
+        });
+    if effect.runtime_modifications.iter().any(|modification| {
+        matches!(
+            modification,
+            crate::effects::continuous::RuntimeModification::CopyOf { .. }
+        )
+    }) && let Some(filter) = chosen_complement_filter
         && let Some(chosen) = filter
             .source_surface
             .as_ref()
@@ -1125,7 +1186,18 @@ pub(crate) fn describe_apply_continuous_target(
             if target.to_ascii_lowercase().starts_with("those ") {
                 target = capitalize_first(&target);
                 plural = true;
-            } else if let crate::continuous::EffectTarget::Filter(filter) = &effect.target {
+            } else if let Some(filter) = effect
+                .target_spec
+                .as_ref()
+                .and_then(|spec| match spec.base() {
+                    ChooseSpec::Object(filter) => Some(filter),
+                    _ => None,
+                })
+                .or_else(|| match &effect.target {
+                    crate::continuous::EffectTarget::Filter(filter) => Some(filter),
+                    _ => None,
+                })
+            {
                 target = format!("Those {}", describe_those_continuous_noun(filter));
                 plural = true;
             } else if plural {
@@ -1438,10 +1510,15 @@ fn source_linked_exiled_creature_copy_surface(
     if !matches!(effect.target, crate::continuous::EffectTarget::Source) {
         return None;
     }
-    let ChooseSpec::Target(inner) = source.unhinted() else {
-        return None;
+    let (source, targeted) = match source.unhinted() {
+        ChooseSpec::Target(inner) => (inner.as_ref(), true),
+        source => (source, false),
     };
-    let ChooseSpec::Object(filter) = inner.unhinted() else {
+    let source = match source.unhinted() {
+        ChooseSpec::WithCount(inner, count) if count.is_single() => inner.as_ref(),
+        source => source,
+    };
+    let ChooseSpec::Object(filter) = source.unhinted() else {
         return None;
     };
     if filter.zone != Some(Zone::Exile)
@@ -1462,8 +1539,13 @@ fn source_linked_exiled_creature_copy_surface(
     });
     residual.set_explicit_card_noun(false);
     residual.set_explicit_card_type_noun(None);
-    (residual == ObjectFilter::default())
-        .then_some("target creature card exiled with it".to_string())
+    (residual == ObjectFilter::default()).then(|| {
+        if targeted {
+            "target creature card exiled with it".to_string()
+        } else {
+            "a creature card exiled with it".to_string()
+        }
+    })
 }
 
 pub(crate) fn describe_apply_continuous_clauses(
@@ -1813,10 +1895,8 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
                     ability_text =
                         normalize_temporary_granted_trigger_surface(ability_text, ability);
                 }
-                if !ability_text.ends_with('.')
-                    && !ability_text.ends_with('!')
-                    && !ability_text.ends_with('?')
-                {
+                ability_text = nested_granted_ability_surface(ability_text);
+                if !has_terminal_ability_punctuation(&ability_text) {
                     ability_text.push('.');
                 }
                 let grant_verb = add_ability_verb;
@@ -1902,6 +1982,7 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
                 && matches!(
                     modification,
                     crate::continuous::Modification::RemoveSupertypes(_)
+                        | crate::continuous::Modification::AddColors(_)
                         | crate::continuous::Modification::AddCardTypes(_)
                         | crate::continuous::Modification::SetCardTypes(_)
                         | crate::continuous::Modification::AddSubtypes(_)
@@ -2857,9 +2938,10 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
     } else {
         // Animation duration placement is carried explicitly. In the absence
         // of the authored-leading marker, keep the duration after the quoted
-        // granted ability; `apply_continuous_text_with_tail` will move the
-        // quote's sentence period outside before appending it.
-        apply_continuous_text_with_tail(text, tail, has_quoted_generic_ability)
+        // granted ability. Passing `false` here suppresses the generic grant
+        // renderer's leading-duration fallback; the helper still moves the
+        // quote's final sentence period outside before appending the duration.
+        apply_continuous_text_with_tail(text, tail, false)
     };
     if let Some(where_clause) = pt_where_clause {
         text.push_str(", where X is ");
@@ -2992,6 +3074,9 @@ pub(crate) fn describe_apply_continuous_effect(
     let (mut target, plural_target) = describe_apply_continuous_target(effect);
     if let Some(surface) = source_generic_ability_grant_target_surface(effect) {
         target = surface;
+    }
+    if let Some(text) = describe_entry_counter_ability_grant(effect, &target) {
+        return Some(text);
     }
     if let Some(text) = describe_triggered_creature_entry_replacement_grant(effect) {
         return Some(text);
@@ -3191,6 +3276,26 @@ pub(crate) fn describe_apply_continuous_effect(
     ) && effect.additional_modifications.is_empty()
         && effect.runtime_modifications.is_empty()
     {
+        if let Some(spec) = effect.target_spec.as_ref()
+            && let ChooseSpec::WithCount(inner, count) = spec.unhinted()
+            && matches!(inner.unhinted(), ChooseSpec::Target(_))
+            && count.min == 0
+            && !count.dynamic_x
+            && !count.up_to_x
+            && !count.random
+            && !count.explicit_exactly
+            && count.max.is_none_or(|maximum| maximum > 1)
+        {
+            let mut text = format!(
+                "Switch the power and toughness of each of {}",
+                lowercase_first(&describe_choose_spec(spec))
+            );
+            if !matches!(effect.until, Until::Forever) {
+                text.push(' ');
+                text.push_str(&describe_until(&effect.until));
+            }
+            return Some(text);
+        }
         let mut text = format!(
             "Switch {} power and toughness",
             possessive_runtime_pt_target(&target)
@@ -3264,7 +3369,7 @@ pub(crate) fn describe_apply_continuous_effect(
                 };
                 (power.unhinted() == toughness.unhinted()
                     && power.has_surface_hint(ValueSurfaceHint::WhereXIs))
-                .then(|| describe_value(power))
+                .then(|| describe_where_x_basis(power).unwrap_or_else(|| describe_value(power)))
             })
     {
         text.push_str(", where X is ");
@@ -3300,6 +3405,89 @@ pub(crate) fn describe_apply_continuous_effect(
         ));
     }
     Some(text)
+}
+
+/// Render an executable entry-counter static as the entry event it models.
+///
+/// The runtime represents a resolving sentence such as `This creature enters
+/// with X counters ...` by granting the entering object a typed replacement
+/// ability.  Treating that representation as an ordinary ability grant leaks
+/// both the implementation verb (`gains`) and compact `Value` debug output.
+/// Keep this recognizer deliberately narrow: one permanent grant, no
+/// condition, no sibling/runtime modifications, and the typed entry-counter
+/// payload.  Source grants use `This permanent` so the enclosing ability
+/// renderer can substitute its actual source kind.
+fn describe_entry_counter_ability_grant(
+    effect: &crate::effects::ApplyContinuousEffect,
+    target: &str,
+) -> Option<String> {
+    if effect.condition.is_some()
+        || !effect.additional_modifications.is_empty()
+        || !effect.runtime_modifications.is_empty()
+        || !matches!(effect.until, Until::Forever)
+    {
+        return None;
+    }
+    let crate::continuous::Modification::AddAbility(ability) = effect.modification.as_ref()? else {
+        return None;
+    };
+    let ironsmith_core::StaticAbilityPayload::EntersWithCountersValue { counter, count } =
+        &ability.compiled_model()?.payload
+    else {
+        return None;
+    };
+    let counter_phrase = describe_as_enters_counter_phrase_on_it(count, *counter);
+    let targets_source = effect
+        .target_spec
+        .as_ref()
+        .map(|spec| matches!(spec.unhinted(), ChooseSpec::Source))
+        .unwrap_or_else(|| matches!(effect.target, crate::continuous::EffectTarget::Source));
+    let subject = if targets_source {
+        "This permanent"
+    } else {
+        target
+    };
+    Some(format!("{subject} enters with {counter_phrase}"))
+}
+
+#[cfg(test)]
+mod optional_multi_target_switch_tests {
+    const LINE: &str =
+        "Switch the power and toughness of each of up to two target creatures until end of turn.";
+    const UNBOUNDED_LINE: &str = "Switch the power and toughness of each of any number of target creatures until end of turn.";
+
+    #[test]
+    fn trailing_optional_target_surface_survives_the_public_route() {
+        let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Invert")
+            .card_types(vec![crate::types::CardType::Instant])
+            .parse_text(LINE)
+            .expect("trailing optional switch target should parse");
+        assert_eq!(
+            crate::compiled_text::compiled_text_lines(&definition),
+            [LINE]
+        );
+
+        let definition =
+            crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Unbounded Switch Probe")
+                .card_types(vec![crate::types::CardType::Creature])
+                .parse_text(UNBOUNDED_LINE)
+                .expect("unbounded optional switch targets should parse");
+        assert_eq!(
+            crate::compiled_text::compiled_text_lines(&definition),
+            [UNBOUNDED_LINE]
+        );
+
+        let singular = "Switch target creature's power and toughness until end of turn.";
+        let definition =
+            crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Singular Switch Probe")
+                .card_types(vec![crate::types::CardType::Instant])
+                .parse_text(singular)
+                .expect("ordinary leading switch target should still parse");
+        assert_eq!(
+            crate::compiled_text::compiled_text_lines(&definition),
+            [singular]
+        );
+    }
 }
 
 /// Render the structural shape produced by a turn-long global cost to block.
@@ -5105,7 +5293,10 @@ pub(crate) fn describe_colors_among(filter: &ObjectFilter) -> String {
     if let Some(text) = describe_colors_that_sacrificed_object_was(filter) {
         return text;
     }
-    format!("colors among {}", describe_for_each_filter(filter))
+    format!(
+        "colors among {}",
+        pluralize_noun_phrase(&describe_for_each_filter(filter))
+    )
 }
 
 fn describe_prior_result_active_action(action: crate::effect::PriorEffectAction) -> &'static str {

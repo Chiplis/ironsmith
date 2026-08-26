@@ -12,6 +12,7 @@ pub enum SpecialTriggeredProgram {
     SecondSpellSuspend,
     DifferentNamesLibraryDivvy,
     OpponentCreatureMajorityConsult,
+    PrimeControlledLandCountToken,
     OpponentLandMajoritySearch,
     OpponentGraveyardMinorityReturn,
     RandomDiscardCreatureReturnUnlessLife { life: u32 },
@@ -30,6 +31,7 @@ fn parse_special_triggered_program(input: &mut LexStream<'_>) -> WResult<Special
         parse_second_spell_suspend,
         parse_different_names_library_divvy,
         parse_opponent_creature_majority_consult,
+        parse_prime_controlled_land_count_token,
         parse_opponent_land_majority_search,
         parse_opponent_graveyard_minority_return,
         parse_random_discard_creature_return,
@@ -119,6 +121,42 @@ fn parse_opponent_creature_majority_consult(
         &["puts", "that", "card", "onto", "the", "battlefield"],
     )?;
     Ok(SpecialTriggeredProgram::OpponentCreatureMajorityConsult)
+}
+
+fn parse_prime_controlled_land_count_token(
+    input: &mut LexStream<'_>,
+) -> WResult<SpecialTriggeredProgram> {
+    seek_phrase(
+        input,
+        &["at", "the", "beginning", "of", "your", "end", "step"],
+    )?;
+    seek_phrase(
+        input,
+        &[
+            "a",
+            "land",
+            "entered",
+            "the",
+            "battlefield",
+            "under",
+            "your",
+            "control",
+            "this",
+            "turn",
+        ],
+    )?;
+    seek_phrase(
+        input,
+        &["you", "control", "a", "prime", "number", "of", "lands"],
+    )?;
+    seek_phrase(input, &["create"])?;
+    seek_phrase(
+        input,
+        &[
+            "then", "put", "that", "many", "+1/+1", "counters", "on", "it",
+        ],
+    )?;
+    Ok(SpecialTriggeredProgram::PrimeControlledLandCountToken)
 }
 
 fn parse_opponent_graveyard_minority_return(

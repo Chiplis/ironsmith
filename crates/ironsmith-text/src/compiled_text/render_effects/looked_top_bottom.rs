@@ -1,5 +1,71 @@
 use super::*;
 
+pub(super) fn describe_looked_cloak_selected_rest_bottom(effects: &[Effect]) -> Option<String> {
+    let [look_effect, choose_effect, cloak_effect, remainder_effect] = effects else {
+        return None;
+    };
+    let look = unwrap_basic_tag_wrappers(look_effect)
+        .downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let choose = unwrap_basic_tag_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let cloak = unwrap_basic_tag_wrappers(cloak_effect)
+        .downcast_ref::<crate::effects::ManifestObjectsEffect>()?;
+    let remainder = unwrap_basic_tag_wrappers(remainder_effect)
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+
+    let selected_count = (!choose.count.dynamic_x
+        && !choose.count.up_to_x
+        && !choose.count.random
+        && choose.count.min > 0
+        && choose.count.max == Some(choose.count.min))
+    .then_some(choose.count.min)?;
+    let mut unqualified_pool = choose.filter.clone();
+    unqualified_pool.zone = None;
+    unqualified_pool.tagged_constraints.clear();
+    let exact_looked_pool = choose.filter.tagged_constraints.len() == 1
+        && choose.filter.tagged_constraints[0].tag == look.tag
+        && choose.filter.tagged_constraints[0].relation
+            == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        && unqualified_pool == ObjectFilter::default();
+
+    if look.player != PlayerFilter::You
+        || look.viewer != PlayerFilter::You
+        || look.reveal
+        || choose.chooser != PlayerFilter::You
+        || choose_primary_zone(choose) != Some(Zone::Library)
+        || !choose.additional_zones.is_empty()
+        || choose.count_value.is_some()
+        || choose.aggregate_constraint.is_some()
+        || choose.is_search
+        || choose.reveal
+        || choose.top_only
+        || choose.bottom_only
+        || choose.replace_tagged_objects
+        || !exact_looked_pool
+        || !matches!(cloak.target.unhinted(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+        || cloak.controller != PlayerFilter::You
+        || !cloak.cloak
+        || cloak.tapped
+        || cloak.shuffle
+        || remainder.tag != look.tag
+        || remainder.keep_tagged.as_ref() != Some(&choose.tag)
+        || remainder.player != look.player
+    {
+        return None;
+    }
+
+    let (look_count, noun, where_clause) = describe_top_count_noun_and_where_clause(&look.count);
+    let selected_count =
+        number_word(selected_count as i32).unwrap_or_else(|| selected_count.to_string());
+    let order = match remainder.order {
+        crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
+        crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
+    };
+    Some(format!(
+        "Look at the top {look_count} {noun} of your library{where_clause}, cloak {selected_count} of them, and put the rest on the bottom of your library{order}"
+    ))
+}
+
 fn is_exact_looked_singleton_top_partition(
     look_at_top: &crate::effects::LookAtTopCardsEffect,
     choose: &crate::effects::ChooseObjectsEffect,

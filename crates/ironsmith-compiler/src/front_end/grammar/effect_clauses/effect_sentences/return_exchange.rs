@@ -7,6 +7,11 @@ fn parse_return_back_reference_target(
     if crate::grammar::effects::is_return_back_reference_shape(tokens) {
         let span = span_from_tokens(tokens);
         let words = crate::lexer::token_word_refs(tokens);
+        if words.as_slice() == ["them"] {
+            let mut filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
+            filter.set_plural_pronoun_reference_surface(true);
+            return Ok(TargetAst::Object(filter, None, span));
+        }
         if words.len() == 2
             && crate::word_primitives::first_is_any(&words, &["that", "those"])
             && words

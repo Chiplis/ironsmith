@@ -32,6 +32,22 @@ fn damage_unless_participant_places_counter_stays_one_typed_choice() {
 }
 
 #[test]
+fn public_effect_route_keeps_trailing_unless_payment_on_tap_actions() {
+    for text in [
+        "Tap this creature unless you pay 1 life.",
+        "Tap target creature unless its controller pays {1}.",
+    ] {
+        let tokens = lex_line(text, 0).expect("tap-unless text should lex");
+        let parsed = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
+            .expect("public effect route should parse the complete choice");
+        assert!(
+            matches!(parsed.as_slice(), [EffectAst::UnlessPays { .. }]),
+            "expected one typed unless-payment for {text}: {parsed:#?}"
+        );
+    }
+}
+
+#[test]
 fn multi_target_destroy_keeps_opponent_chooser_on_second_target() {
     let tokens = lex_line(
             "Destroy target nonbasic land you don't control and target nonbasic land of an opponent's choice you don't control.",

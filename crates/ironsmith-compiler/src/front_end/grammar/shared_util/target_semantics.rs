@@ -44,9 +44,22 @@ fn typed_demonstrative_reference_surface(
         return None;
     }
 
-    Some(SourceReferenceSurface::ThisPermanentType(
-        crate::lexer::render_token_slice(tokens).to_ascii_lowercase(),
-    ))
+    // `instead` belongs to the enclosing self-replacement clause, never to
+    // the demonstrative object noun. Target parsing deliberately accepts the
+    // whole remaining clause so it can retain the tagged antecedent, but the
+    // presentation surface must stop before that grammar-control suffix.
+    // Otherwise `counter that spell instead` becomes a source hint of
+    // `that spell instead.` and later renders a second `Instead.` sentence.
+    let surface = if words
+        .last()
+        .is_some_and(|word| word.eq_ignore_ascii_case("instead"))
+    {
+        words[..words.len() - 1].join(" ")
+    } else {
+        crate::lexer::render_token_slice(tokens).to_ascii_lowercase()
+    };
+
+    Some(SourceReferenceSurface::ThisPermanentType(surface))
 }
 
 fn wrap_target_count(target: TargetAst, target_count: Option<ChoiceCount>) -> TargetAst {

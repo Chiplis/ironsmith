@@ -30,6 +30,32 @@
     }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
         if let Some(compact) =
+            super::describe_sacrificed_source_damage_backreference(sequence)
+        {
+            return compact;
+        }
+        if matches!(
+            sequence.surface,
+            ironsmith_core::SequenceSurface::CommaThen
+                | ironsmith_core::SequenceSurface::RepeatedCommaThen
+        ) && let Some(compact) =
+            super::describe_sacrifice_any_number_then_add_that_much_mana(&sequence.effects)
+        {
+            return compact;
+        }
+        if matches!(
+            sequence.surface,
+            ironsmith_core::SequenceSurface::CommaThen
+                | ironsmith_core::SequenceSurface::RepeatedCommaThen
+        ) && let [first, second] = sequence.effects.as_slice()
+            && let Some(tagged) = first.downcast_ref::<crate::effects::TaggedEffect>()
+            && let Some(move_back) = structural_unwrap_render_wrappers(second)
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && let Some(compact) = describe_exile_then_return(tagged, move_back)
+        {
+            return compact;
+        }
+        if let Some(compact) =
             super::describe_delegated_partition_conditional_without_leading_then(sequence)
         {
             return compact;
@@ -38,6 +64,26 @@
             &sequence.effects,
         ) {
             return compact;
+        }
+        if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+            && let [sacrifice_effect, destroy_effect] = sequence.effects.as_slice()
+            && sacrifice_effect
+                .downcast_ref::<crate::effects::SacrificeTargetEffect>()
+                .is_some_and(|sacrifice| matches!(sacrifice.target.base(), ChooseSpec::Source))
+            && destroy_effect
+                .downcast_ref::<crate::effects::DestroyNoRegenerationEffect>()
+                .is_some()
+        {
+            let sacrifice = describe_effect(sacrifice_effect)
+                .trim_end_matches('.')
+                .to_string();
+            let destroy = describe_effect(destroy_effect);
+            if let Some((destroy_action, regeneration_followup)) = destroy.split_once(". ") {
+                return format!(
+                    "{sacrifice} and {}. {regeneration_followup}",
+                    lowercase_first(destroy_action)
+                );
+            }
         }
         if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
             && let Some(compact) = super::describe_fixed_counter_and_counter_choice_same_target(
@@ -81,6 +127,9 @@
             }
         }
         if let Some(compact) = describe_quantified_player_mill_discard_draw(sequence) {
+            return compact;
+        }
+        if let Some(compact) = describe_quantified_life_loss_then_controller_scry(sequence) {
             return compact;
         }
         if let Some(compact) =
@@ -637,6 +686,31 @@
         return "Ascend".to_string();
     }
     if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+        if for_players.filter == PlayerFilter::Opponent
+            && !for_players.starting_with_controller
+            && !for_players.stop_after_first_happened
+            && let [conditional_effect] = for_players.effects.as_slice()
+            && let Some(conditional) =
+                conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()
+            && conditional.if_false.is_empty()
+            && let Condition::ValueComparison {
+                left: Value::LifeLostThisTurn(PlayerFilter::IteratedPlayer),
+                operator: ironsmith_core::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(minimum),
+            } = &conditional.condition
+            && *minimum > 0
+            && let [choice_effect] = conditional.if_true.as_slice()
+            && let Some(choice) =
+                choice_effect.downcast_ref::<crate::effects::VillainousChoiceEffect>()
+            && choice.player == PlayerFilter::IteratedPlayer
+            && let Some(choice_suffix) = describe_villainous_choice(choice)
+                .strip_prefix("that player")
+                .map(str::to_string)
+        {
+            return format!(
+                "Each opponent who lost {minimum} or more life this turn{choice_suffix}"
+            );
+        }
         if matches!(
             for_players.effects.as_slice(),
             [effect]
@@ -768,6 +842,11 @@
         }
         if let Some(compact) =
             describe_for_players_choose_creature_then_destroy_rest(for_players)
+        {
+            return compact;
+        }
+        if let Some(compact) =
+            describe_for_players_choose_graveyard_then_exile_rest(for_players)
         {
             return compact;
         }
@@ -2418,11 +2497,52 @@
                 // back-reference ("That creature deals ...").
                 subject = "that creature".to_string();
             }
-            let mut target = describe_damage_target(&deal_damage.target);
+            let normalized_target = match (
+                with_source.source.base(),
+                deal_damage.target.unhinted(),
+                deal_damage.amount.unhinted(),
+            ) {
+                (
+                    ChooseSpec::Tagged(source_tag),
+                    ChooseSpec::Object(filter),
+                    Value::PowerOf(power_source) | Value::ToughnessOf(power_source),
+                ) if filter.other
+                    && filter.set_quantifier_surface()
+                        == Some(ironsmith_core::SetQuantifierSurface::Each)
+                    && matches!(power_source.base(), ChooseSpec::Tagged(power_tag) if power_tag == source_tag)
+                    && matches!(filter.tagged_constraints.as_slice(), [constraint]
+                        if constraint.tag == *source_tag
+                            && constraint.relation
+                                == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject) =>
+                {
+                    let mut normalized = filter.clone();
+                    // `other` preserves the authored determiner while the
+                    // tagged exclusion carries executable identity. Rendering
+                    // both independently produces "each other other".
+                    normalized.other = false;
+                    Some(ChooseSpec::Object(normalized))
+                }
+                _ => None,
+            };
+            let mut target = describe_damage_target(
+                normalized_target
+                    .as_ref()
+                    .unwrap_or(&deal_damage.target),
+            );
             if target == "this source" {
                 target = "this creature".to_string();
             } else if target == "it" {
                 target = "that creature".to_string();
+            }
+            if subject.eq_ignore_ascii_case(&target) {
+                target = if subject.eq_ignore_ascii_case("you") {
+                    "yourself"
+                } else if choose_spec_is_plural(&with_source.source) {
+                    "themselves"
+                } else {
+                    "itself"
+                }
+                .to_string();
             }
             // Multi-target full damage reads "each of two other target
             // creatures" in oracle.
@@ -2560,6 +2680,14 @@
                 "{}. The damage can't be prevented",
                 base.trim_end_matches('.')
             );
+        }
+        if matches!(deal_damage.target.base(), ChooseSpec::Source) {
+            let (amount, where_x) = describe_damage_amount_clause(&deal_damage.amount);
+            let mut text = format!("This creature deals {amount} to itself");
+            if let Some(where_x) = where_x {
+                text.push_str(&format!(", where X is {where_x}"));
+            }
+            return text;
         }
         if let Some(compact) = describe_same_player_attachment_count_damage(deal_damage, None) {
             return compact;
@@ -2901,6 +3029,9 @@
         );
     }
     if let Some(fight) = effect.downcast_ref::<crate::effects::FightEffect>() {
+        if fight.mutual_surface {
+            return "Those creatures fight each other".to_string();
+        }
         return format!(
             "{} fights {}",
             describe_choose_spec(&fight.creature1),
@@ -2937,6 +3068,11 @@
         return format!("Counter {target_text}");
     }
     if let Some(unless_pays) = effect.downcast_ref::<crate::effects::UnlessPaysEffect>() {
+        if let Some(compact) =
+            describe_destroy_unless_controller_pays_toughness_life(unless_pays)
+        {
+            return compact;
+        }
         if let Some(compact) =
             describe_target_source_damage_unless_referential_sacrifice(unless_pays)
         {
@@ -3953,6 +4089,16 @@
     }
     if let Some(pay) = effect.downcast_ref::<crate::effects::PayLifeEffect>() {
         let player = describe_choose_spec(&pay.player);
+        if let ChooseSpec::Player(player_filter) = pay.player.base()
+            && let Some(amount) =
+                describe_half_life_amount_for_same_player(&pay.amount, player_filter)
+        {
+            return format!(
+                "{} {} {amount}",
+                player,
+                player_verb(&player, "pay", "pays")
+            );
+        }
         return format!(
             "{} {} {}",
             player,
@@ -6009,16 +6155,31 @@
             );
         }
         if conditional.surface == ironsmith_core::ConditionalSurface::TrailingIf {
-            let effect_text = describe_effect_clause_list(&conditional.if_true)
+            // A trailing condition owns the outer `if ...` surface, but its
+            // action branch can still begin with a lowering-only shared target
+            // declaration. Fold that declaration before broader clause-list
+            // compactors expose it as a separate `Choose target player`
+            // sentence.
+            let effect_text = describe_multi_consumer_synthetic_target_declaration(
+                &conditional.if_true,
+            )
+            .map(|text| lowercase_first(&text))
+            .or_else(|| describe_effect_clause_list(&conditional.if_true))
                 .unwrap_or_else(|| describe_effect_list(&conditional.if_true));
             // "Destroy target creature if it has mana value 2 or less" — the
             // condition inspects the pending target of THIS clause's own
             // action, so its tag must read present-tense, not as a
             // "was destroyed this way" back-reference.
-            if let crate::effect::Condition::TaggedObjectMatches(tag, filter) =
-                &conditional.condition
-                && tag.as_str().starts_with("destroyed_")
-            {
+            let local_target_filter = match &conditional.condition {
+                crate::effect::Condition::TaggedObjectMatches(tag, filter)
+                    if tag.as_str().starts_with("destroyed_") =>
+                {
+                    Some(filter)
+                }
+                crate::effect::Condition::TargetMatches(filter) => Some(filter),
+                _ => None,
+            };
+            if let Some(filter) = local_target_filter {
                 let desc = filter.description();
                 if let Some(rest) = desc.strip_prefix("permanent with ") {
                     return format!("{effect_text} if it has {rest}");

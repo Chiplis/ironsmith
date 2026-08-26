@@ -122,6 +122,10 @@ pub(crate) fn parse_effect_sentences_preserving_source_boundaries(
         &mut parsed_together,
         tokens,
     );
+    crate::effect_sentences::reconcile_inline_copy_self_replacement_grants(
+        &mut parsed_together,
+        tokens,
+    );
     if sentences.len() < 2 {
         let Some(sentence) = sentences.first() else {
             return Ok(parsed_together);

@@ -1462,6 +1462,43 @@ pub fn resolve_total_cost_it_tags(
     cost: &crate::cost::TotalCost,
     refs: &ReferenceEnv,
 ) -> Result<crate::cost::TotalCost, CardTextError> {
+    fn resolve_cost_effect(
+        effect: &crate::effect::Effect,
+        refs: &ReferenceEnv,
+    ) -> Result<crate::effect::Effect, CardTextError> {
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            let mut tagged = tagged.clone();
+            tagged.effect = Box::new(resolve_cost_effect(&tagged.effect, refs)?);
+            return Ok(crate::effect::Effect::new(tagged));
+        }
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            let mut with_id = with_id.clone();
+            with_id.effect = Box::new(resolve_cost_effect(&with_id.effect, refs)?);
+            return Ok(crate::effect::Effect::new(with_id));
+        }
+        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            let mut sequence = sequence.clone();
+            sequence.effects = sequence
+                .effects
+                .iter()
+                .map(|effect| resolve_cost_effect(effect, refs))
+                .collect::<Result<Vec<_>, _>>()?;
+            return Ok(crate::effect::Effect::new(sequence));
+        }
+        if let Some(sacrifice) = effect.downcast_ref::<crate::effects::SacrificeTargetEffect>() {
+            let target = resolve_choose_spec_it_tag(&sacrifice.target, refs)?;
+            return Ok(crate::effect::Effect::new(
+                crate::effects::SacrificeTargetEffect::new(target),
+            ));
+        }
+        if let Some(sacrifice) = effect.downcast_ref::<crate::effects::SacrificeEffect>() {
+            let mut sacrifice = sacrifice.clone();
+            sacrifice.filter = resolve_it_tag(&sacrifice.filter, refs)?;
+            return Ok(crate::effect::Effect::new(sacrifice));
+        }
+        Ok(effect.clone())
+    }
+
     fn resolve_component(
         component: &crate::costs::Cost,
         refs: &ReferenceEnv,
@@ -1488,14 +1525,7 @@ pub fn resolve_total_cost_it_tags(
                 *filter = resolve_it_tag(filter, refs)?;
             }
             crate::costs::Cost::Effect(effect) => {
-                if let Some(sacrifice) =
-                    effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()
-                {
-                    let target = resolve_choose_spec_it_tag(&sacrifice.target, refs)?;
-                    *effect = crate::effect::Effect::new(
-                        crate::effects::SacrificeTargetEffect::new(target),
-                    );
-                }
+                *effect = resolve_cost_effect(effect, refs)?;
             }
             _ => {}
         }

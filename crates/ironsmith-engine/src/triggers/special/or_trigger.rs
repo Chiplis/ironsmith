@@ -480,6 +480,7 @@ impl OrTrigger {
             || !both_enter_battlefield(another_enters)
             || !another_enters.object_filter.other
             || this_enters.origin_condition != another_enters.origin_condition
+            || this_enters.count_mode != CountMode::Each
         {
             return None;
         }
@@ -487,6 +488,23 @@ impl OrTrigger {
         let this_subject = this_enters.this_subject_text("creature");
         let mut other_filter = another_enters.object_filter.clone();
         other_filter.other = false;
+        if another_enters.count_mode == CountMode::OneOrMore {
+            if another_enters.object_filter.union_connective()
+                != crate::filter::ObjectFilterUnionConnective::AndOr
+                || another_enters.origin_condition.is_some()
+            {
+                return None;
+            }
+            let mut explicit_other = another_enters.clone();
+            explicit_other.object_filter = other_filter;
+            let display = explicit_other.display();
+            let other_subject = display
+                .strip_prefix("Whenever one or more ")?
+                .strip_suffix(" enter the battlefield")?;
+            return Some(format!(
+                "Whenever {this_subject} and/or one or more other {other_subject} enter"
+            ));
+        }
         let other_description = other_filter.description();
         let other_subject = other_description
             .strip_prefix("a ")
@@ -1661,6 +1679,49 @@ mod tests {
         assert_eq!(
             OrTrigger::two(source, legendary_creature).display(),
             "Whenever this enchantment or a legendary creature you control enters"
+        );
+    }
+
+    #[test]
+    fn display_compacts_named_source_and_or_batched_other_entries() {
+        let source = Trigger::new(
+            ZoneChangeTrigger::new()
+                .from(ZonePattern::Any)
+                .to(Zone::Battlefield)
+                .this()
+                .this_surface(crate::target::SourceReferenceSurface::ShortName(
+                    "Anje".to_string(),
+                )),
+        );
+        let mut other_filter = ObjectFilter::default()
+            .with_subtype(Subtype::Vampire)
+            .controlled_by(PlayerFilter::You)
+            .other();
+        other_filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
+        let others = Trigger::new(
+            ZoneChangeTrigger::new()
+                .from(ZonePattern::Any)
+                .to(Zone::Battlefield)
+                .filter(other_filter.clone())
+                .count(CountMode::OneOrMore),
+        );
+
+        assert_eq!(
+            OrTrigger::two(source.clone(), others).display(),
+            "Whenever Anje and/or one or more other Vampires you control enter"
+        );
+
+        other_filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::Or);
+        let wrong_surface = Trigger::new(
+            ZoneChangeTrigger::new()
+                .from(ZonePattern::Any)
+                .to(Zone::Battlefield)
+                .filter(other_filter)
+                .count(CountMode::OneOrMore),
+        );
+        assert_ne!(
+            OrTrigger::two(source, wrong_surface).display(),
+            "Whenever Anje and/or one or more other Vampires you control enter"
         );
     }
 

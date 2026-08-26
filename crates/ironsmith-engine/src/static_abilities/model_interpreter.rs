@@ -1574,14 +1574,26 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ExileWouldDieInstead {
                 filter,
                 damaged_by,
+                damager_filter,
+                damager_filter_surface,
                 exile_with_counters,
                 follow_up_effects,
-            } => StaticAbility::exile_would_die_instead_with_damage_source_counters_and_follow_up(
-                filter.clone(),
-                *damaged_by,
-                exile_with_counters.clone(),
-                follow_up_effects.clone(),
-            ),
+            } => {
+                if let Some(damager_filter) = damager_filter {
+                    StaticAbility::exile_would_die_instead_with_damage_filter_surface(
+                        filter.clone(),
+                        damager_filter.clone(),
+                        damager_filter_surface.clone(),
+                    )
+                } else {
+                    StaticAbility::exile_would_die_instead_with_damage_source_counters_and_follow_up(
+                        filter.clone(),
+                        *damaged_by,
+                        exile_with_counters.clone(),
+                        follow_up_effects.clone(),
+                    )
+                }
+            }
             ironsmith_core::StaticAbilityPayload::ModifyDamageAmountReplacement {
                 source_filter,
                 target_player_filter,
@@ -1947,19 +1959,28 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     ) -> Option<(
         &crate::target::ObjectFilter,
         Option<ironsmith_core::DamagedBySource>,
+        Option<&crate::target::ObjectFilter>,
         &[(crate::object::CounterType, u32)],
         &[crate::effect::Effect],
     )> {
         let ironsmith_core::StaticAbilityPayload::ExileWouldDieInstead {
             filter,
             damaged_by,
+            damager_filter,
+            damager_filter_surface: _,
             exile_with_counters,
             follow_up_effects,
         } = &self.model.payload
         else {
             return None;
         };
-        Some((filter, *damaged_by, exile_with_counters, follow_up_effects))
+        Some((
+            filter,
+            *damaged_by,
+            damager_filter.as_ref(),
+            exile_with_counters,
+            follow_up_effects,
+        ))
     }
 
     fn prefers_card_name_subject(&self) -> bool {

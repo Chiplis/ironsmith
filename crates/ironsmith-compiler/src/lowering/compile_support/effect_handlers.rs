@@ -232,6 +232,77 @@ pub fn compile_delayed_trigger_spec(
     }
 }
 
+/// Turn an authored entry-time counter on the next creature spell into a
+/// replacement tied to that spell's stable identity. A counter put directly
+/// on the stack object would be cleared by the later zone change and is not
+/// equivalent to "that creature enters with an additional counter."
+fn rewrite_next_cast_entry_counter_body(
+    trigger: &TriggerSpec,
+    one_shot: bool,
+    effects: &mut [Effect],
+) {
+    let TriggerSpec::SpellCast {
+        filter: Some(spell_filter),
+        mana_source_filter: None,
+        caster: PlayerFilter::You,
+        timing: None,
+        during_turn: None,
+        min_spells_this_turn: None,
+        exact_spells_this_turn: None,
+        from_not_hand: false,
+    } = trigger
+    else {
+        return;
+    };
+    if !one_shot
+        || spell_filter.zone != Some(Zone::Stack)
+        || spell_filter.stack_kind != Some(crate::filter::StackObjectKind::Spell)
+        || !spell_filter
+            .card_types
+            .contains(&crate::types::CardType::Creature)
+    {
+        return;
+    }
+    let [tag_effect, counter_effect] = effects else {
+        return;
+    };
+    let Some(tag_triggering) =
+        tag_effect.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+    else {
+        return;
+    };
+    let Some(counter) = counter_effect.downcast_ref::<crate::effects::PutCountersEffect>() else {
+        return;
+    };
+    if counter.distributed
+        || counter.target_count.is_some()
+        || !counter
+            .amount
+            .has_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
+        || !counter
+            .amount
+            .has_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
+        || !matches!(
+            counter.target.base(),
+            ChooseSpec::Tagged(tag) if tag == &tag_triggering.tag
+        )
+    {
+        return;
+    }
+
+    let mut entry_filter = spell_filter.clone();
+    entry_filter.zone = Some(Zone::Battlefield);
+    entry_filter.stack_kind = None;
+    entry_filter.has_mana_cost = false;
+    let replacement = crate::effects::RegisterNextBatchEnterWithCountersEffect::new(
+        entry_filter,
+        counter.counter_type,
+        counter.amount.clone(),
+    )
+    .same_stable_id_as_tag(tag_triggering.tag.clone());
+    *counter_effect = Effect::new(replacement);
+}
+
 fn compile_delayed_effects_preserving_outer_context(
     effects: &[EffectAst],
     ctx: &mut EffectLoweringContext,
@@ -480,6 +551,38 @@ fn compile_duration_scoped_delayed_trigger(
                 }
             }
         }
+        TriggerSpec::DealsCombatDamageToPlayer { source, player } => {
+            let resolved = resolve_it_tag(source, &refs)?;
+            if let Some(tag) = watch_tag_from_filter(&resolved) {
+                watched_tag = Some(tag);
+                watched_filter = Some(resolved);
+                ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayer {
+                    source: ObjectFilter::source(),
+                    player: player.clone(),
+                }
+            } else {
+                ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayer {
+                    source: resolved,
+                    player: player.clone(),
+                }
+            }
+        }
+        TriggerSpec::DealsCombatDamageToPlayerOneOrMore { source, player } => {
+            let resolved = resolve_it_tag(source, &refs)?;
+            if let Some(tag) = watch_tag_from_filter(&resolved) {
+                watched_tag = Some(tag);
+                watched_filter = Some(resolved);
+                ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayerOneOrMore {
+                    source: ObjectFilter::source(),
+                    player: player.clone(),
+                }
+            } else {
+                ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayerOneOrMore {
+                    source: resolved,
+                    player: player.clone(),
+                }
+            }
+        }
         _ => compile_delayed_trigger_spec(trigger)?,
     };
 
@@ -714,8 +817,9 @@ pub(super) fn try_compile_timing_and_control_effect(
             until_end_of_combat,
             attach_to_previous_ability,
         } => {
-            let (delayed_effects, _delayed_choices) =
+            let (mut delayed_effects, _delayed_choices) =
                 compile_trigger_effects(Some(trigger), effects)?;
+            rewrite_next_cast_entry_counter_body(trigger, *one_shot, &mut delayed_effects);
             let choices = Vec::new();
             match trigger {
                 TriggerSpec::Dies(filter)

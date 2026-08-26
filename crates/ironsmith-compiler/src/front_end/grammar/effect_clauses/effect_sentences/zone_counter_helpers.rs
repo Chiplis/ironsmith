@@ -434,7 +434,16 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
             if let Some(dynamic) = parse_create_for_each_dynamic_count(count_filter_tokens) {
                 dynamic
             } else {
-                Value::Count(parse_object_filter(count_filter_tokens, false)?)
+                // Compound count domains are already canonical lexical
+                // filters (`each suspended card ... and each other permanent
+                // ...`). The compatibility filter path can commit to the
+                // first noun arm and report the suspended-card half as a
+                // standalone target. Use the lossless public grammar entry
+                // here so both domains remain one inclusive count.
+                Value::Count(super::super::object_filters::parse_object_filter_lexed(
+                    count_filter_tokens,
+                    false,
+                )?)
             };
         if let Value::Fixed(multiplier) = count_value.clone()
             && multiplier > 1
@@ -795,5 +804,27 @@ mod filtered_prior_action_counter_tests {
                 .map(crate::target::SourceReferenceSurface::display_text),
             Some("this enchantment".to_string())
         );
+    }
+
+    #[test]
+    fn counter_count_preserves_suspended_cards_and_other_permanents() {
+        let count_tokens = lex_line(
+            "suspended card you own and each other permanent you control with a time counter on it",
+            0,
+        )
+        .unwrap();
+        let value = parse_create_for_each_dynamic_count(&count_tokens)
+            .expect("compound suspended/permanent domain should be a dynamic count");
+        let Value::Count(filter) = value else {
+            panic!("expected object count, got {value:#?}");
+        };
+        assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+
+        let put_tokens = lex_line(
+            "a time counter on it for each suspended card you own and each other permanent you control with a time counter on it",
+            0,
+        )
+        .unwrap();
+        parse_put_counters(&put_tokens).expect("compound count should remain one counter action");
     }
 }

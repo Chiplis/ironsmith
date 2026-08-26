@@ -635,6 +635,19 @@ pub fn parse_spell_activity_trigger(
     let timing = activity_facts
         .during_combat
         .then_some(ironsmith_core::TriggerTimingRestriction::DuringCombat);
+    let normalize_cast_count_filter = |mut filter: Option<ObjectFilter>| {
+        if (min_spells_this_turn.is_some() || exact_spells_this_turn.is_some())
+            && let Some(filter) = filter.as_mut()
+        {
+            // In an ordinal cast surface, `other` belongs to the cast-count
+            // qualifier (for example, "other than your first spell"), not
+            // to the triggering stack object's identity. Keeping it on the
+            // ObjectFilter makes the renderer describe "another spell" and
+            // conflates an event-history constraint with source exclusion.
+            filter.other = false;
+        }
+        filter
+    };
 
     if activity_facts.count_all_spells_this_turn
         && cast_idx.is_some()
@@ -754,7 +767,9 @@ pub fn parse_spell_activity_trigger(
         };
         let between_words = crate::lexer::token_word_refs(&tokens[first + 1..second]);
         if trigger_subject_grammar::spell_activity_words_are_or_separator(&between_words) {
-            let filter = parse_filter(tokens.get(second + 1..).unwrap_or_default())?;
+            let filter = normalize_cast_count_filter(parse_filter(
+                tokens.get(second + 1..).unwrap_or_default(),
+            )?);
             let cast_trigger = TriggerSpec::SpellCast {
                 filter: filter.clone(),
                 mana_source_filter: None,
@@ -789,7 +804,7 @@ pub fn parse_spell_activity_trigger(
                 filter_tokens = prefix_tokens;
             }
         }
-        let filter = parse_filter(filter_tokens)?;
+        let filter = normalize_cast_count_filter(parse_filter(filter_tokens)?);
         return Ok(Some(TriggerSpec::SpellCast {
             filter,
             mana_source_filter: None,
@@ -832,6 +847,7 @@ pub struct MayCastTaggedSpec {
     pub verb: MayCastItVerb,
     pub as_copy: bool,
     pub without_paying_mana_cost: bool,
+    pub copy_instruction_surface: Option<ironsmith_core::effect::CopyInstructionSurface>,
     pub predicate: Option<PredicateAst>,
     pub cost_reduction: Option<ManaCost>,
 }
@@ -904,6 +920,7 @@ pub fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<MayCastTag
         verb,
         as_copy,
         without_paying_mana_cost,
+        copy_instruction_surface: None,
         predicate,
         cost_reduction: None,
     })
@@ -929,6 +946,10 @@ pub fn build_may_cast_tagged_effect(spec: &MayCastTaggedSpec) -> EffectAst {
         spec.without_paying_mana_cost,
         spec.cost_reduction.clone(),
     );
+    let cast = spec
+        .copy_instruction_surface
+        .map(|surface| cast.clone().with_copy_instruction_surface(surface))
+        .unwrap_or(cast);
     let may = if matches!(spec.player, PlayerAst::Implicit | PlayerAst::You) {
         EffectAst::May {
             effects: vec![cast],
@@ -1173,6 +1194,41 @@ pub fn strip_embedded_token_rules_text(tokens: &[OwnedLexToken]) -> Vec<OwnedLex
     let opening_quote = crate::slice_primitives::select_position(tokens, |token| {
         token.kind == crate::lexer::TokenKind::Quote
     });
+    if let Some(opening_quote) = opening_quote
+        && crate::slice_primitives::select_position(&tokens[opening_quote + 1..], |token| {
+            token.kind == crate::lexer::TokenKind::Quote
+        })
+        .is_some()
+        && crate::slice_primitives::select_position(&tokens[..opening_quote], |token| {
+            token.is_word("create")
+        })
+        .is_some()
+        && crate::slice_primitives::select_position(&tokens[..opening_quote], |token| {
+            token.is_any_word(&["token", "tokens"])
+        })
+        .is_some()
+        && opening_quote >= 3
+        && tokens[opening_quote - 3].is_word("and")
+        && tokens[opening_quote - 2].is_any_word(&["it", "they"])
+        && tokens[opening_quote - 1].is_any_word(&["has", "have"])
+    {
+        // Copy exceptions can grant an intrinsic quoted ability with
+        // `... except it's TYPE ... and it has "RULE"`.  The outer create
+        // parser owns the characteristic exception while the quoted-rule
+        // parser owns RULE. Remove the complete grant introducer here so the
+        // conjunction splitter cannot expose `except it's TYPE` as a
+        // standalone, verb-less action.
+        let mut prefix_end = opening_quote - 3;
+        while tokens
+            .get(prefix_end.saturating_sub(1))
+            .is_some_and(OwnedLexToken::is_comma)
+        {
+            prefix_end -= 1;
+        }
+        let mut stripped = tokens[..prefix_end].to_vec();
+        append_outer_where_x_tail(&mut stripped);
+        return stripped;
+    }
     if let Some(opening_quote) = opening_quote
         && crate::slice_primitives::select_position(&tokens[opening_quote + 1..], |token| {
             token.kind == crate::lexer::TokenKind::Quote
@@ -1880,6 +1936,39 @@ mod typed_trigger_subject_migration_tests {
         assert!(
             !inner_words.iter().any(|word| word == "where"),
             "an inner token ability binding must not become the create count: {inner_words:?}"
+        );
+    }
+
+    #[test]
+    fn stripping_copy_exception_rule_keeps_the_characteristic_exception() {
+        let tokens = lex_line(
+            "Create a token that's a copy of that creature, except it's a Spirit in addition to its other types and it has \"When this token leaves the battlefield, return the exiled card to its owner's graveyard.\"",
+            0,
+        )
+        .expect("copy exception with an intrinsic rule should lex");
+        let stripped = strip_embedded_token_rules_text(&tokens);
+        let words = crate::lexer::parser_token_word_refs(&stripped);
+
+        assert!(
+            crate::word_primitives::sequence_occurs(
+                &words,
+                &[
+                    "except", "its", "a", "spirit", "in", "addition", "to", "its", "other", "types"
+                ]
+            ),
+            "{words:?}"
+        );
+        assert!(!words.iter().any(|word| *word == "leaves"), "{words:?}");
+
+        let changed = lex_line(
+            "Create a token that's a copy of that creature, except it's a Spirit in addition to its other types and another creature has \"Flying.\"",
+            0,
+        )
+        .expect("changed subject should lex");
+        assert_eq!(
+            strip_embedded_token_rules_text(&changed),
+            changed,
+            "a different ability subject must not be folded into the copy token"
         );
     }
 }

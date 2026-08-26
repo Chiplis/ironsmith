@@ -1274,8 +1274,6 @@ pub(crate) fn describe_reveal_hand_choose_shuffle_into_library_bundle(
     };
     let look = look_effect.downcast_ref::<crate::effects::LookAtHandEffect>()?;
     let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-    let shuffle = unwrap_tag_wrappers(shuffle_effect)
-        .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()?;
 
     if !look.reveal
         || !matches!(
@@ -1285,10 +1283,51 @@ pub(crate) fn describe_reveal_hand_choose_shuffle_into_library_bundle(
         || choose.chooser != PlayerFilter::You
         || choose_exact_count(choose) != Some(1)
         || choose_primary_zone(choose) != Some(Zone::Hand)
-        || choose.filter.owner != Some(PlayerFilter::Target(Box::new(PlayerFilter::Opponent)))
-        || !matches!(shuffle.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
-        || shuffle.player != PlayerFilter::Target(Box::new(PlayerFilter::Opponent))
     {
+        return None;
+    }
+    let looked_player = choose_spec_player_filter(&look.target)?;
+    if !choose
+        .filter
+        .owner
+        .as_ref()
+        .is_some_and(|owner| player_filters_refer_to_same_player(owner, &looked_player))
+    {
+        return None;
+    }
+
+    let shuffle = unwrap_tag_wrappers(shuffle_effect);
+    let is_exact_shuffle = shuffle
+        .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()
+        .is_some_and(|shuffle| {
+            matches!(shuffle.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+                && player_filters_refer_to_same_player(&shuffle.player, &looked_player)
+        });
+    let is_equivalent_move_then_shuffle = shuffle
+        .downcast_ref::<crate::effects::ForEachTaggedEffect>()
+        .is_some_and(|for_each| {
+            let [move_effect, shuffle_effect] = for_each.effects.as_slice() else {
+                return false;
+            };
+            let Some(move_to_zone) =
+                unwrap_tag_wrappers(move_effect).downcast_ref::<crate::effects::MoveToZoneEffect>()
+            else {
+                return false;
+            };
+            let Some(shuffle_library) = unwrap_tag_wrappers(shuffle_effect)
+                .downcast_ref::<crate::effects::ShuffleLibraryEffect>()
+            else {
+                return false;
+            };
+            for_each.tag == choose.tag
+                && matches!(move_to_zone.target.base(), ChooseSpec::Iterated)
+                && move_to_zone.zone == Zone::Library
+                && !move_to_zone.to_top
+                && move_to_zone.library_order.is_none()
+                && shuffle_library.target_spec.is_none()
+                && player_filters_refer_to_same_player(&shuffle_library.player, &looked_player)
+        });
+    if !is_exact_shuffle && !is_equivalent_move_then_shuffle {
         return None;
     }
 
@@ -2689,6 +2728,43 @@ pub(crate) fn describe_target_pump_unblockable_bundle(filtered: &[&Effect]) -> O
         "{target_text} gets {}/{} until end of turn and can't be blocked this turn",
         describe_signed_value(power),
         describe_toughness_delta_with_power_context(power, toughness),
+    ))
+}
+
+pub(crate) fn describe_declared_target_for_each_pump_unblockable_bundle(
+    filtered: &[&Effect],
+) -> Option<String> {
+    let [declaration_effect, pump_effect, cant_effect] = filtered else {
+        return None;
+    };
+    let declaration = declaration_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    if declaration.explicit_declaration {
+        return None;
+    }
+    let tagged_pump = pump_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let pump = tagged_pump
+        .effect
+        .downcast_ref::<crate::effects::ModifyPowerToughnessForEachEffect>()?;
+    if declaration.target != pump.target
+        || pump.duration != Until::EndOfTurn
+        || !describe_choose_spec(&pump.target)
+            .to_ascii_lowercase()
+            .starts_with("target ")
+    {
+        return None;
+    }
+
+    let cant = cant_be_blocked_view(cant_effect)?;
+    let crate::effect::Restriction::BeBlocked(filter) = &cant.restriction else {
+        return None;
+    };
+    if cant.duration != Until::EndOfTurn || !filter_is_tagged_as(filter, tagged_pump.tag.as_str()) {
+        return None;
+    }
+
+    Some(format!(
+        "{} and can't be blocked this turn",
+        describe_effect(&tagged_pump.effect)
     ))
 }
 

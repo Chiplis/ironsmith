@@ -114,6 +114,66 @@ fn trace_cst_line(line: &RewriteLineCst) {
     parse_trace::event(format!("classified as {}", rewrite_line_cst_kind(line)));
 }
 
+/// Join an adjacent prior-token count replacement to the statement that
+/// creates its token blueprint. The followup shape proves the authored
+/// `those tokens` reference, while the joint sentence parser must prove that
+/// the pair becomes one typed self-replacement before either CST is changed.
+fn try_merge_labeled_prior_token_replacement_statement(
+    lines: &mut [RewriteLineCst],
+    dispatch: &LineDispatchResult,
+) -> bool {
+    let [RewriteLineCst::Statement(followup)] = dispatch.lines.as_slice() else {
+        return false;
+    };
+    if effect_grammar::followup_shapes::parse_create_more_prior_tokens(&followup.parse_tokens)
+        .is_none()
+    {
+        return false;
+    }
+    let Some(RewriteLineCst::Statement(previous)) = lines.last_mut() else {
+        return false;
+    };
+
+    let mut sentences = split_lexed_sentences(&previous.parse_tokens)
+        .into_iter()
+        .map(<[OwnedLexToken]>::to_vec)
+        .collect::<Vec<_>>();
+    sentences.extend(
+        split_lexed_sentences(&followup.parse_tokens)
+            .into_iter()
+            .map(<[OwnedLexToken]>::to_vec),
+    );
+    let combined = crate::util::join_sentences_with_period(&sentences);
+    let Ok(effects) = parse_effect_sentences_lexed(&combined) else {
+        return false;
+    };
+    if !matches!(
+        effects.as_slice(),
+        [crate::cards::builders::EffectAst::SelfReplacement { .. }]
+    ) {
+        return false;
+    }
+
+    previous.parse_tokens = combined.clone();
+    previous.parse_groups = vec![combined];
+    previous.text = format!("{} {}", previous.text.trim(), followup.text.trim());
+    previous.info.raw_line = format!(
+        "{}\n{}",
+        previous.info.raw_line.trim(),
+        followup.info.raw_line.trim()
+    );
+    let prior_token_facts = &followup.info.semantic_facts.statement;
+    previous.info.semantic_facts.statement.instead_followup = prior_token_facts.instead_followup;
+    previous
+        .info
+        .semantic_facts
+        .statement
+        .trailing_instead_if_predicate = prior_token_facts.trailing_instead_if_predicate.clone();
+    previous.info.semantic_facts.statement.presentation_label =
+        prior_token_facts.presentation_label.clone();
+    true
+}
+
 fn lexed_tokens(text: &str, line_index: usize) -> Result<Vec<OwnedLexToken>, CardTextError> {
     lex_line(text, line_index)
 }
@@ -2468,7 +2528,7 @@ fn try_parse_labeled_line_dispatch(
         if authored_trigger.is_none() && is_eminence {
             authored_trigger = probe_triggered_line_cst(&body_line);
         }
-        if authored_trigger.is_none() && is_eminence {
+        if authored_trigger.is_none() && looks_like_ability_word_label(label_tokens, false) {
             let authored_body = render_original_text_for_token_slice(line, body_tokens)
                 .unwrap_or_else(|| render_token_slice(body_tokens));
             authored_trigger = try_parse_triggered_line_with_named_source_rewrite(
@@ -2508,6 +2568,40 @@ fn try_parse_labeled_line_dispatch(
                 RewriteLineCst::Triggered(triggered),
                 next_idx,
             )));
+        }
+
+        // Normalization removes ordinary ability-word prefixes before CST
+        // dispatch. Triggered lines above recover that presentation from the
+        // authored token stream, but static lines previously fell through to
+        // the already-stripped stream and silently lost labels such as
+        // `Hellbent`. When the authored body names its source, build the parse
+        // view with card metadata first so a creature does not degrade to the
+        // untyped subject `this` before the static grammar sees it.
+        if looks_like_ability_word_label(label_tokens, false) {
+            let builder_aware_static = render_original_text_for_token_slice(line, body_tokens)
+                .and_then(|body| {
+                    normalize_named_source_sentence_for_builder(&preprocessed.builder, &body)
+                })
+                .map(|body| rewrite_line_normalized(line, &body))
+                .transpose()?
+                .map(|body_line| parse_static_line_cst(&body_line))
+                .transpose()?
+                .flatten();
+            let mut labeled_static = builder_aware_static;
+            if labeled_static.is_none() {
+                labeled_static = parse_static_line_cst(line)?;
+            }
+            if let Some(mut static_line) = labeled_static {
+                static_line
+                    .info
+                    .semantic_facts
+                    .static_ability
+                    .presentation_label = Some(PresentationLabel::from_ability_word(label));
+                return Ok(Some(LineDispatchResult::single(
+                    RewriteLineCst::Static(static_line),
+                    idx + 1,
+                )));
+            }
         }
     }
 
@@ -3025,6 +3119,11 @@ fn try_parse_triggered_line_dispatch(
     if (normalize_comma_bearing_leading_source_trigger(&preprocessed.builder, &line.info.raw_line)
         .is_some()
         || preserve_reciprocal_token_lifecycle
+        || normalize_named_source_trigger_for_builder(
+            &preprocessed.builder,
+            line.info.raw_line.as_str(),
+        )
+        .is_some()
         || normalized_line_mentions_explicit_source_alias(
             &preprocessed.builder,
             line.info.normalized.normalized.as_str(),
@@ -3345,6 +3444,16 @@ pub fn parse_document_cst_with_context(
                         .filter(|(normalized_chapters, _, _)| normalized_chapters == &chapters)
                         .map(|(_, _, normalized_text)| normalized_text)
                         .unwrap_or_else(|| text.clone());
+                    // Saga chapters return before the ordinary line-dispatch
+                    // source-normalization path. Normalize only their parse
+                    // view so named source subjects (for example, "Ifrit
+                    // fights ...") retain the authored display text while
+                    // compiling as the explicitly typed ability source.
+                    let parse_text = normalize_named_source_sentence_for_builder(
+                        &preprocessed.builder,
+                        parse_text.as_str(),
+                    )
+                    .unwrap_or(parse_text);
                     let cst = RewriteLineCst::SagaChapter(parse_saga_chapter_line_cst(
                         line,
                         chapters,
@@ -3535,6 +3644,13 @@ pub fn parse_document_cst_with_context(
                 if let Some(mut dispatch) =
                     try_parse_labeled_line_dispatch(preprocessed, idx, line, allow_unsupported)?
                 {
+                    if try_merge_labeled_prior_token_replacement_statement(&mut lines, &dispatch) {
+                        parse_trace::event(
+                            "joined labeled prior-token replacement to preceding statement",
+                        );
+                        idx = dispatch.next_idx;
+                        continue;
+                    }
                     line_dispatch::attach_compiler_trigger_facts(line_context, &mut dispatch)?;
                     for cst in &dispatch.lines {
                         trace_cst_line(cst);
@@ -3598,6 +3714,13 @@ pub fn parse_document_cst_with_context(
                         allow_unsupported,
                     )?
                 };
+                if try_merge_labeled_prior_token_replacement_statement(&mut lines, &dispatch) {
+                    parse_trace::event(
+                        "joined labeled prior-token replacement to preceding statement",
+                    );
+                    idx = dispatch.next_idx;
+                    continue;
+                }
                 for cst in &dispatch.lines {
                     trace_cst_line(cst);
                 }
@@ -3805,7 +3928,7 @@ mod tests {
     use crate::cards::builders::document_parser::KeywordLineKindCst;
     use crate::cards::builders::{CardDefinitionBuilder, CardTextError};
     use crate::ids::CardId;
-    use crate::types::CardType;
+    use crate::types::{CardType, Subtype};
 
     use super::super::grammar::structure::{
         StatementLineFamily, StaticLineFamily, classify_statement_line_family_lexed,
@@ -5027,6 +5150,55 @@ mod tests {
     }
 
     #[test]
+    fn triggered_split_keeps_producer_before_reflexive_conditional_followup() {
+        let line = single_preprocessed_line(
+            "At the beginning of combat on your turn, mill a card. When you do, if there are four or more creature cards in your graveyard, put a +1/+1 counter on target creature you control and it gains deathtouch until end of turn.",
+        );
+
+        let parsed = parse_triggered_line_cst(&line)
+            .expect("producer and reflexive conditional should remain one trigger body");
+
+        assert_eq!(
+            render_token_slice(&parsed.trigger_parse_tokens),
+            "the beginning of combat on your turn"
+        );
+        assert_eq!(
+            render_token_slice(&parsed.effect_parse_tokens),
+            "mill a card. when you do, if there are four or more creature cards in your graveyard, put a +1/+1 counter on target creature you control and it gains deathtouch until end of turn."
+        );
+    }
+
+    #[test]
+    fn ordinary_reflexive_followup_does_not_claim_conditional_split_override() {
+        let line = single_preprocessed_line(
+            "When this land enters, sacrifice it. When you do, search your library for a basic Forest, Plains, or Island card, put it onto the battlefield tapped, then shuffle and you gain 1 life.",
+        );
+        let (_, effect_tokens) = super::grammar::split_lexed_once_on_comma(&line.tokens)
+            .expect("triggered land line has a trigger/effect comma");
+
+        assert!(
+            !super::line_cst_parsing::contains_reflexive_conditional_followup_sentence(
+                effect_tokens
+            )
+        );
+        let effects = super::parse_effect_sentences_lexed(effect_tokens)
+            .expect("ordinary reflexive trigger body parses");
+        let normalized = crate::effect_ast_normalization::normalize_effects_ast(&effects);
+        let annotated = crate::reference_resolution::annotate_effect_sequence(
+            &normalized,
+            &crate::model::reference_state::ReferenceImports::default(),
+            crate::reference_resolution::EffectReferenceResolutionConfig::default(),
+            crate::cards::builders::IdGenContext::default(),
+        )
+        .expect("ordinary reflexive producer and result annotate together");
+        assert!(annotated.effects[0].assigned_effect_id.is_some());
+        assert!(matches!(
+            annotated.effects.get(1).map(|effect| &effect.effect),
+            Some(crate::cards::builders::EffectAst::ControlFlow(_))
+        ));
+    }
+
+    #[test]
     fn triggered_cst_preserves_linked_token_next_turn_sacrifice_for_semantic_lowering() {
         let line = single_preprocessed_line(
             "When this creature enters, create a Lander token. At the beginning of the end step on your next turn, sacrifice that token.",
@@ -5469,6 +5641,33 @@ mod tests {
     }
 
     #[test]
+    fn named_source_rewrite_preserves_name_override_but_rewrites_later_subject() {
+        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Gogo, Mysterious Mime")
+            .card_types(vec![CardType::Creature]);
+        let text = "At the beginning of combat on your turn, you may have Gogo become a copy of another target creature you control until end of turn, except its name is Gogo, Mysterious Mime. If you do, Gogo and that creature each get +2/+0 and gain haste until end of turn and attack this turn if able.";
+
+        let rewritten = normalize_named_source_trigger_for_builder(&builder, text)
+            .expect("the named source trigger body should be rewritten");
+        assert!(
+            rewritten.contains("except its name is gogo, mysterious mime")
+                && rewritten.contains("if you do, this creature and that creature each get"),
+            "{rewritten}"
+        );
+        let preprocessed = preprocess_document(builder, text).expect("preprocess Gogo trigger");
+        let Some(PreprocessedItem::Line(line)) = preprocessed.items.first() else {
+            panic!("expected one Gogo trigger line");
+        };
+        let rewritten_line =
+            super::rewrite_line_normalized(line, &rewritten).expect("rewrite normalized Gogo line");
+        let (_, effect_tokens) = super::grammar::split_lexed_once_on_comma(&rewritten_line.tokens)
+            .expect("Gogo trigger has an outer trigger comma");
+        super::parse_effect_sentences_lexed(effect_tokens)
+            .expect("Gogo's complete resolution program should parse");
+        super::parse_triggered_line_cst(&rewritten_line)
+            .expect("rewritten Gogo trigger should parse as one ability");
+    }
+
+    #[test]
     fn comma_bearing_full_source_name_is_normalized_before_trigger_split() {
         let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Example, Grim Manipulator")
             .card_types(vec![CardType::Creature]);
@@ -5604,6 +5803,104 @@ mod tests {
     }
 
     #[test]
+    fn labeled_ability_word_dispatch_normalizes_a_named_source_trigger() {
+        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Rose Tyler")
+            .card_types(vec![CardType::Creature]);
+        let text = "Bad Wolf — Whenever Rose Tyler attacks, put a time counter on it for each suspended card you own and each other permanent you control with a time counter on it.";
+        let preprocessed = preprocess_document(builder, text).expect("preprocess labeled trigger");
+        let Some(PreprocessedItem::Line(line)) = preprocessed.items.first() else {
+            panic!("expected one labeled trigger line");
+        };
+        let (label, _, body) = super::split_label_prefix_lexed(&line.info.source_tokens)
+            .unwrap_or_else(|| {
+                panic!(
+                    "expected source label split for '{}'",
+                    render_token_slice(&line.info.source_tokens)
+                )
+            });
+        assert_eq!(label, "Bad Wolf");
+        assert!(
+            render_token_slice(body).starts_with("Whenever Rose Tyler attacks"),
+            "{}",
+            render_token_slice(body)
+        );
+        let rewritten = normalize_named_source_trigger_for_builder(
+            &preprocessed.builder,
+            render_token_slice(body).as_str(),
+        )
+        .expect("named source should normalize inside the labeled body");
+        let rewritten_tokens =
+            crate::lexer::lex_line(&rewritten, 0).expect("rewritten trigger should lex");
+        let (_, rewritten_effect) = super::grammar::split_lexed_once_on_comma(&rewritten_tokens)
+            .expect("rewritten trigger should have an effect comma");
+        crate::effect_sentences::parse_effect_sentence_lexed(rewritten_effect)
+            .expect("compound suspended-card count effect should parse atomically");
+        let rewritten_line = super::rewrite_line_normalized(line, &rewritten)
+            .expect("rewritten labeled body should lex");
+        super::parse_triggered_line_cst(&rewritten_line)
+            .expect("rewritten labeled body should parse as a trigger");
+
+        let dispatch = super::try_parse_labeled_line_dispatch(&preprocessed, 0, line, false)
+            .expect("labeled trigger dispatch should not fail")
+            .expect("ability-word route should claim the labeled trigger");
+        let Some(RewriteLineCst::Triggered(triggered)) = dispatch.lines.first() else {
+            panic!("expected a triggered CST");
+        };
+        assert_eq!(
+            render_token_slice(&triggered.trigger_parse_tokens),
+            "Rose Tyler attacks"
+        );
+        assert_eq!(
+            triggered.presentation,
+            Some(PresentationLabel::AbilityWord("Bad Wolf".to_string()))
+        );
+        assert!(
+            render_token_slice(&triggered.effect_parse_tokens)
+                .starts_with("put a time counter on it for each suspended card"),
+            "{}",
+            render_token_slice(&triggered.effect_parse_tokens)
+        );
+    }
+
+    #[test]
+    fn labeled_static_dispatch_normalizes_a_named_source_with_its_card_type() {
+        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Shao Jun")
+            .card_types(vec![CardType::Creature]);
+        let text = "Leap Strike — During your turn, Shao Jun has flying and first strike.";
+        let preprocessed = preprocess_document(builder, text).expect("preprocess labeled static");
+        let Some(PreprocessedItem::Line(line)) = preprocessed.items.first() else {
+            panic!("expected one labeled static line");
+        };
+
+        let dispatch = super::try_parse_labeled_line_dispatch(&preprocessed, 0, line, false)
+            .expect("labeled static dispatch should not fail")
+            .expect("ability-word route should claim the labeled static line");
+        let Some(RewriteLineCst::Static(static_line)) = dispatch.lines.first() else {
+            panic!("expected a static CST");
+        };
+        assert_eq!(
+            render_token_slice(&static_line.parse_tokens),
+            "during your turn, this creature has flying and first strike."
+        );
+        assert_eq!(
+            static_line
+                .info
+                .semantic_facts
+                .static_ability
+                .presentation_label,
+            Some(PresentationLabel::AbilityWord("Leap Strike".to_string()))
+        );
+
+        let debug = format!(
+            "{:#?}",
+            crate::keyword_static::parse_static_ability_ast_line_lexed(&static_line.parse_tokens)
+                .expect("typed static parse")
+                .expect("labeled static body should remain typed")
+        );
+        assert!(debug.contains("DuringYourTurn"), "{debug}");
+    }
+
+    #[test]
     fn named_source_sentence_rewrite_normalizes_short_legendary_name_in_as_enters_line() {
         let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Shimatsu the Bloodcloaked")
             .card_types(vec![CardType::Creature]);
@@ -5618,6 +5915,23 @@ mod tests {
             rewritten,
             "as this creature enters, sacrifice any number of permanents. this creature enters with that many +1/+1 counters on it."
         );
+    }
+
+    #[test]
+    fn saga_chapter_normalizes_a_named_source_subject_before_effect_parsing() {
+        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Ifrit, Warden of Inferno")
+            .card_types(vec![CardType::Enchantment, CardType::Creature])
+            .subtypes(vec![Subtype::Saga, Subtype::Demon]);
+
+        let (document, _) = parse_text_to_semantic_document(
+            builder,
+            "I — Lunge — Ifrit fights up to one other target creature.".to_string(),
+            false,
+        )
+        .expect("named Saga source should compile through the chapter route");
+        let debug = format!("{document:#?}");
+        assert!(debug.contains("Fight"), "{debug}");
+        assert!(debug.contains("Source"), "{debug}");
     }
 
     #[test]
@@ -6087,6 +6401,16 @@ mod tests {
     }
 
     #[test]
+    fn saga_can_gain_a_quoted_filtered_mana_ability() -> Result<(), CardTextError> {
+        CardDefinitionBuilder::new(CardId::new(), "Quoted Filtered Grant Saga")
+            .card_types(vec![CardType::Enchantment])
+            .parse_text(
+                "II — This Saga gains \"Creatures you control have '{T}: Add {R}, {G}, or {W}.'\"",
+            )?;
+        Ok(())
+    }
+
+    #[test]
     fn reveal_first_draw_line_family_parses_through_document_cst() -> Result<(), CardTextError> {
         let preprocessed = preprocess_document(
             CardDefinitionBuilder::new(CardId::new(), "Reveal First Draw Split Test")
@@ -6338,6 +6662,51 @@ mod tests {
         assert_eq!(
             classify_statement_line_family_lexed(&tokens),
             Some(StatementLineFamily::PactNextUpkeep)
+        );
+    }
+
+    #[test]
+    fn labeled_prior_token_replacement_joins_adjacent_spell_lines() {
+        let text = "Create two 1/1 white Human creature tokens.\nFateful hour — If you have 5 or less life, create five of those tokens instead.";
+        let builder = CardDefinitionBuilder::new(CardId::new(), "Prior Token Replacement")
+            .card_types(vec![CardType::Sorcery]);
+        let preprocessed = preprocess_document(builder.clone(), text)
+            .expect("prior-token replacement should preprocess");
+        let cst = super::parse_document_cst(&preprocessed, false)
+            .expect("prior-token replacement should form a document CST");
+        assert_eq!(cst.lines.len(), 1, "{:#?}", cst.lines);
+
+        let parsed = builder
+            .parse_text(text)
+            .expect("adjacent labeled prior-token replacement should compile");
+        let program = parsed
+            .spell_effect
+            .as_ref()
+            .expect("sorcery should retain one resolution program");
+        let [segment] = program.segments.as_slice() else {
+            panic!("expected one replacement-bearing segment: {program:#?}");
+        };
+        let [branch] = segment.self_replacements.as_slice() else {
+            panic!("expected one typed self-replacement: {segment:#?}");
+        };
+        assert_eq!(
+            branch
+                .presentation_label
+                .as_ref()
+                .and_then(crate::ability::PresentationLabel::display_prefix)
+                .as_deref(),
+            Some("Fateful hour")
+        );
+
+        let changed_reference =
+            CardDefinitionBuilder::new(CardId::new(), "Changed Prior Token Reference")
+                .card_types(vec![CardType::Sorcery])
+                .parse_text(
+                    "Create two 1/1 white Human creature tokens.\nFateful hour — If you have 5 or less life, create five of those cards instead.",
+                );
+        assert!(
+            changed_reference.is_err(),
+            "a changed antecedent noun must not bind to the token creation"
         );
     }
 }

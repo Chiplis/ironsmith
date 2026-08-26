@@ -159,15 +159,23 @@ pub fn parse_escape(
             "escape keyword missing mana cost".to_string(),
         ));
     }
-    let comma = first_kind_after(tokens, 1, TokenKind::Comma).ok_or_else(|| {
+    let cost_start = if tokens
+        .get(1)
+        .is_some_and(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
+    {
+        2
+    } else {
+        1
+    };
+    let comma = first_kind_after(tokens, cost_start, TokenKind::Comma).ok_or_else(|| {
         CardTextError::ParseError("escape keyword missing exile clause separator".to_string())
     })?;
-    if comma <= 1 {
+    if comma <= cost_start {
         return Err(CardTextError::ParseError(
             "escape keyword missing mana cost".to_string(),
         ));
     }
-    let total_cost = parse_activation_cost(&tokens[1..comma])?;
+    let total_cost = parse_activation_cost(&tokens[cost_start..comma])?;
     let mana_cost = total_cost.mana_cost().cloned().ok_or_else(|| {
         CardTextError::ParseError("escape keyword missing mana symbols".to_string())
     })?;

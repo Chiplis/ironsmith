@@ -228,6 +228,20 @@ fn plural_object_filters_preserve_combat_relation_objects() {
 }
 
 #[test]
+fn semantic_phrasing_restores_irregular_creature_type_plurals() {
+    assert_eq!(
+        normalize_common_semantic_phrasing("Whenever you attack with one or more Elfs, populate."),
+        "Whenever you attack with one or more Elves, populate."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Whenever one or more Dwarfs and Wolfs attack, draw a card."
+        ),
+        "Whenever one or more Dwarves and Wolves attack, draw a card."
+    );
+}
+
+#[test]
 fn unscoped_where_x_count_preserves_battlefield_zone() {
     let global_clerics = ObjectFilter::default()
         .with_subtype(Subtype::Cleric)
@@ -566,6 +580,16 @@ fn cast_spell_filter_keeps_flashback_and_graveyard_origin() {
 #[test]
 fn your_turn_condition_uses_oracle_contraction() {
     assert_eq!(describe_condition(&Condition::YourTurn), "it's your turn");
+}
+
+#[test]
+fn target_modified_condition_uses_the_existing_target_pronoun() {
+    let mut modified = ObjectFilter::default();
+    modified.modified = true;
+    assert_eq!(
+        describe_condition(&Condition::TargetMatches(modified)),
+        "it's modified"
+    );
 }
 
 #[test]
@@ -1094,6 +1118,12 @@ fn equal_damage_names_the_recipient_before_the_amount() {
         ),
         "That creature deals damage equal to its power to up to one target creature."
     );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Target enchantment deals damage equal to its mana value to its controller unless that player sacrifices it."
+        ),
+        "Target enchantment deals damage equal to its mana value to its controller unless that player sacrifices it."
+    );
 }
 
 #[test]
@@ -1203,6 +1233,25 @@ fn chosen_creature_power_difference_names_the_selected_set() {
     assert_eq!(
         describe_value(&difference),
         "the difference between the chosen creatures' powers"
+    );
+}
+
+#[test]
+fn explicit_target_outranks_incompatible_source_reference_surface_hint() {
+    let mut filter = ObjectFilter::creature();
+    filter.other = true;
+    filter.source_surface = Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+        "this creature".to_string(),
+    ));
+    let target = ChooseSpec::target(ChooseSpec::Object(filter)).with_surface_hint(
+        crate::target::ChooseSpecSurfaceHint::SourceReference(
+            crate::target::SourceReferenceSurface::ThisPermanentType("this creature".to_string()),
+        ),
+    );
+
+    assert_eq!(
+        describe_choose_spec(&target),
+        "target creature other than this creature"
     );
 }
 
@@ -1402,6 +1451,87 @@ fn describe_countered_permanent_condition_uses_countered_this_way_surface() {
     assert_eq!(
         describe_condition(&condition),
         "a permanent's ability is countered this way"
+    );
+}
+
+#[test]
+fn describe_counter_target_characteristic_condition_uses_pronoun_state() {
+    let condition = Condition::TaggedObjectMatches(
+        TagKey::from("counters_0"),
+        ObjectFilter::default().with_supertype(crate::types::Supertype::Legendary),
+    );
+
+    assert_eq!(describe_condition(&condition), "it's legendary");
+}
+
+#[test]
+fn describe_tagged_demonstrative_characteristics_as_properties() {
+    let mut toughness = ObjectFilter::default();
+    toughness.toughness = Some(ironsmith_core::FilterComparison::GreaterThanOrEqual(6));
+    toughness.set_demonstrative_antecedent_surface(Some(
+        ironsmith_core::DemonstrativeAntecedentSurface::Creature,
+    ));
+    assert_eq!(
+        describe_condition(&Condition::TaggedObjectMatches(
+            TagKey::from("counters_0"),
+            toughness,
+        )),
+        "that creature has toughness 6 or greater"
+    );
+
+    let mut counters = ObjectFilter::default();
+    counters.with_counter = Some(crate::filter::CounterConstraint::AtLeast {
+        counter_type: Some(crate::object::CounterType::PlusOnePlusOne),
+        count: 3,
+    });
+    counters.set_demonstrative_antecedent_surface(Some(
+        ironsmith_core::DemonstrativeAntecedentSurface::Creature,
+    ));
+    assert_eq!(
+        describe_condition(&Condition::TaggedObjectMatches(
+            TagKey::from("counters_0"),
+            counters,
+        )),
+        "that creature has three or more +1/+1 counters on it"
+    );
+
+    let mut mana_value = ObjectFilter::default();
+    mana_value.mana_value = Some(ironsmith_core::FilterComparison::GreaterThanOrEqual(5));
+    mana_value.set_demonstrative_antecedent_surface(Some(
+        ironsmith_core::DemonstrativeAntecedentSurface::Spell,
+    ));
+    assert_eq!(
+        describe_condition(&Condition::TaggedObjectMatches(
+            TagKey::from("triggering"),
+            mana_value,
+        )),
+        "that spell has mana value 5 or greater"
+    );
+}
+
+#[test]
+fn describe_last_known_tagged_mana_value_preserves_antecedent_surface() {
+    let mut permanent = ObjectFilter::default();
+    permanent.mana_value = Some(ironsmith_core::FilterComparison::LessThanOrEqual(3));
+    permanent.set_demonstrative_antecedent_surface(Some(
+        ironsmith_core::DemonstrativeAntecedentSurface::Permanent,
+    ));
+    assert_eq!(
+        describe_condition(&Condition::TaggedObjectMatchedLastKnown(
+            TagKey::from("returned_0"),
+            permanent,
+        )),
+        "that permanent had mana value 3 or less"
+    );
+
+    let mut exiled = ObjectFilter::default();
+    exiled.mana_value = Some(ironsmith_core::FilterComparison::LessThanOrEqual(3));
+    assert_eq!(
+        describe_condition(&Condition::TaggedObjectMatchedLastKnown(
+            TagKey::from("__sentence_helper_exiled_l0_s0_e0"),
+            exiled,
+        )),
+        "it had mana value 3 or less"
     );
 }
 
@@ -1702,6 +1832,77 @@ fn temporary_additional_blocker_grant_uses_action_surface() {
     assert_eq!(
         describe_apply_continuous_effect(&effect).as_deref(),
         Some("this creature can block an additional creature this turn")
+    );
+}
+
+#[test]
+fn typed_entry_counter_grant_renders_as_an_entry_event() {
+    let count = Value::SurfaceHinted {
+        value: Box::new(Value::PriorEffectMetric {
+            effect_id: crate::effect::EffectId(7),
+            query: ironsmith_core::PriorEffectMetricQuery::new(
+                crate::effect::EffectMetricSource::AffectedObjects,
+                crate::effect::EffectMetric::TotalManaValue,
+            )
+            .with_action(ironsmith_core::PriorEffectAction::Revealed),
+        }),
+        hints: vec![ValueSurfaceHint::WhereXIs],
+    };
+    let ability = crate::static_abilities::StaticAbility::from_model(
+        crate::static_abilities::CompiledStaticAbility::enters_with_counters_value(
+            CounterType::PlusOnePlusOne,
+            count,
+        ),
+    );
+    let effect = crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::Source,
+        crate::continuous::Modification::AddAbility(ability),
+        Until::Forever,
+    );
+
+    let rendered = describe_apply_continuous_effect(&effect)
+        .expect("typed source entry-counter grant should render");
+    assert!(
+        rendered.starts_with("This permanent enters with X +1/+1 counters on it"),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("where X is the total mana value"),
+        "{rendered}"
+    );
+    assert!(!rendered.contains("gains"), "{rendered}");
+    assert!(!rendered.contains("SurfaceHinted"), "{rendered}");
+}
+
+#[test]
+fn typed_entry_counter_grant_preserves_per_object_multiplier_surface() {
+    let counted = Value::PriorEffectMetric {
+        effect_id: crate::effect::EffectId(9),
+        query: crate::effect::PriorEffectMetricQuery::new(
+            crate::effect::EffectMetricSource::AffectedObjects,
+            crate::effect::EffectMetric::Count,
+        )
+        .with_filter(ObjectFilter::creature())
+        .with_action(ironsmith_core::PriorEffectAction::Sacrificed),
+    };
+    let count = Value::Scaled(Box::new(counted), 2).with_surface_hint(ValueSurfaceHint::ForEach);
+    let ability = crate::static_abilities::StaticAbility::from_model(
+        crate::static_abilities::CompiledStaticAbility::enters_with_counters_value(
+            CounterType::PlusOnePlusOne,
+            count,
+        ),
+    );
+    let effect = crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::Source,
+        crate::continuous::Modification::AddAbility(ability),
+        Until::Forever,
+    );
+
+    assert_eq!(
+        describe_apply_continuous_effect(&effect).as_deref(),
+        Some(
+            "This permanent enters with two +1/+1 counters on it for each creature sacrificed this way"
+        )
     );
 }
 
@@ -2530,6 +2731,21 @@ fn describe_colors_among_sacrificed_creature_uses_was_surface() {
         .match_tagged("sacrificed_0", TaggedOpbjectRelation::IsTaggedObject);
 
     assert_eq!(describe_colors_among(&filter), "colors that creature was");
+}
+
+#[test]
+fn describe_colors_among_source_exiled_cards_keeps_the_plural_collection() {
+    let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
+    filter.set_explicit_card_noun(true);
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+
+    assert_eq!(
+        describe_colors_among(&filter),
+        "colors among cards exiled with this permanent"
+    );
 }
 
 #[test]
@@ -3499,6 +3715,41 @@ fn demonstrative_set_and_condition_keep_their_antecedent_surfaces() {
         ("Those creatures".to_string(), true)
     );
 
+    let mut exact_union = ObjectFilter::default();
+    exact_union.any_of = vec![
+        ObjectFilter::tagged(TagKey::from("pumped_0")),
+        ObjectFilter::tagged(TagKey::from("pumped_1")),
+        ObjectFilter::tagged(TagKey::from("pumped_2")),
+    ];
+    exact_union.set_explicit_card_type_noun(Some(CardType::Creature));
+    let exact_union_effect = crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::Object(exact_union.clone()),
+        crate::continuous::Modification::AddAbility(
+            crate::static_abilities::StaticAbility::vigilance(),
+        ),
+        Until::EndOfTurn,
+    )
+    .with_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Those));
+    assert_eq!(
+        describe_apply_continuous_target(&exact_union_effect),
+        ("Those creatures".to_string(), true)
+    );
+
+    exact_union.set_explicit_card_type_noun(None);
+    let unsurfaced_union_effect = crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::Object(exact_union),
+        crate::continuous::Modification::AddAbility(
+            crate::static_abilities::StaticAbility::vigilance(),
+        ),
+        Until::EndOfTurn,
+    )
+    .with_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Those));
+    assert_eq!(
+        describe_apply_continuous_target(&unsurfaced_union_effect),
+        ("Those permanents".to_string(), true),
+        "an exact-object union without a preserved type noun must not guess creatures"
+    );
+
     let mut swamp = ObjectFilter::default().with_subtype(Subtype::Swamp);
     swamp.set_demonstrative_antecedent_surface(Some(
         ironsmith_core::DemonstrativeAntecedentSurface::Land,
@@ -3692,6 +3943,46 @@ fn trailing_animation_duration_stays_after_a_quoted_granted_ability() {
         Some(
             "This land becomes a 1/1 Skeleton creature with \"Trample\" until end of turn. It's still a land"
         )
+    );
+}
+
+#[test]
+fn trailing_animation_duration_stays_after_a_quoted_activated_ability() {
+    let granted = Ability::activated(
+        crate::cost::TotalCost::mana(crate::mana::ManaCost::from_symbols(vec![ManaSymbol::Black])),
+        vec![Effect::new(crate::effects::RegenerateEffect::new(
+            ChooseSpec::Source,
+            Until::EndOfTurn,
+        ))],
+    );
+    let mut effect = crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::Source,
+        crate::continuous::Modification::AddCardTypes(vec![CardType::Creature]),
+        Until::EndOfTurn,
+    )
+    .with_source_reference_surface(crate::target::SourceReferenceSurface::ThisPermanentType(
+        "this land".to_string(),
+    ))
+    .with_type_retention_surface(Some(ironsmith_core::TypeRetentionSurface::StillALand))
+    .with_animation_pt_surface(Some(
+        ironsmith_core::AnimationPtSurface::LeadingPowerToughness,
+    ));
+    effect.additional_modifications.extend([
+        crate::continuous::Modification::SetPowerToughness {
+            power: Value::Fixed(1),
+            toughness: Value::Fixed(1),
+            sublayer: crate::continuous::PtSublayer::Setting,
+        },
+        crate::continuous::Modification::AddSubtypes(vec![Subtype::Skeleton]),
+        crate::continuous::Modification::AddAbilityGeneric(granted),
+    ]);
+
+    let (target_text, plural_target) = describe_apply_continuous_target(&effect);
+    let rendered = describe_apply_continuous_animation_effect(&effect, &target_text, plural_target)
+        .expect("activated land animation should render structurally");
+    assert_eq!(
+        rendered,
+        "This land becomes a 1/1 Skeleton creature with \"{B}: Regenerate this creature\" until end of turn. It's still a land"
     );
 }
 

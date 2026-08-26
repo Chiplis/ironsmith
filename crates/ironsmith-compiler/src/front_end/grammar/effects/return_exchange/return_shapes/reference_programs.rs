@@ -59,6 +59,22 @@ pub(super) fn classify_target(
         let (without_chosen, chosen_this_way_excluded) = split_suffix(rest, &chosen_this_way)
             .map(|(head, excluded)| (head.to_vec(), Some(excluded)))
             .unwrap_or_else(|| (rest.to_vec(), None));
+        let mut without_type = without_chosen;
+        let mut chosen_type_flag = None;
+        let mut chosen_type_this_way_surface = false;
+        for phrase in [
+            &["of", "a", "type", "chosen", "this", "way"][..],
+            &["that", "are", "of", "a", "type", "chosen", "this", "way"][..],
+        ] {
+            if let Some((head, tail)) = split_phrase(&without_type, phrase) {
+                let mut retained = head.to_vec();
+                retained.extend_from_slice(tail);
+                without_type = retained;
+                chosen_type_flag = Some(false);
+                chosen_type_this_way_surface = true;
+                break;
+            }
+        }
         let chosen_type = [
             (&["of", "the", "chosen", "type"][..], false),
             (&["that", "are", "of", "the", "chosen", "type"][..], false),
@@ -69,9 +85,12 @@ pub(super) fn classify_target(
                 true,
             ),
         ];
-        let (without_type, chosen_type_flag) = split_suffix(&without_chosen, &chosen_type)
-            .map(|(head, excluded)| (head.to_vec(), Some(excluded)))
-            .unwrap_or((without_chosen, None));
+        if chosen_type_flag.is_none()
+            && let Some((head, excluded)) = split_suffix(&without_type, &chosen_type)
+        {
+            without_type = head.to_vec();
+            chosen_type_flag = Some(excluded);
+        }
         let (filter_tokens, discarded_or_cycled_this_turn_by) =
             match super::super::parse_cycled_or_discarded_this_turn_filter_tail_tokens(
                 &without_type,
@@ -89,6 +108,7 @@ pub(super) fn classify_target(
             chosen_this_way_excluded,
             chosen_creature_type: chosen_type_flag == Some(false),
             excluded_chosen_creature_type: chosen_type_flag == Some(true),
+            chosen_type_this_way_surface,
             discarded_or_cycled_this_turn_by,
             unsupported_qualifier,
         });

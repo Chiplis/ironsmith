@@ -141,7 +141,7 @@ fn parse_damage_multiplier_lexed<'a>(
         peek((
             primitives::phrase(&["it", "deals"]),
             alt((primitives::kw("double"), primitives::kw("triple"))),
-            primitives::phrase(&["that", "damage", "to"]),
+            primitives::phrase(&["that", "damage"]),
         )),
     )
     .map(|((), _)| ())
@@ -153,10 +153,13 @@ fn parse_damage_multiplier_lexed<'a>(
         primitives::kw("triple").value(3),
     ))
     .parse_next(input)?;
-    primitives::phrase(&["that", "damage", "to", "that"]).parse_next(input)?;
-    repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::kw("instead")))
-        .void()
-        .parse_next(input)?;
+    primitives::phrase(&["that", "damage"]).parse_next(input)?;
+    opt((
+        primitives::phrase(&["to", "that"]),
+        repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::kw("instead")))
+            .void(),
+    ))
+    .parse_next(input)?;
     primitives::kw("instead").parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(DamageMultiplierSpec {
@@ -448,6 +451,22 @@ mod tests {
         assert_eq!(spec.factor, 2);
         assert!(!spec.combat_only);
         assert_eq!(spec.source.controller, DamageSourceControllerKind::None);
+
+        let tokens = lex_line(
+            "If a Wizard you control would deal damage to a permanent or player, it deals double that damage instead.",
+            0,
+        )
+        .unwrap();
+        let spec = parse_damage_multiplier_tokens(&tokens).unwrap();
+        assert_eq!(spec.factor, 2);
+        assert_eq!(spec.source.controller, DamageSourceControllerKind::None);
+
+        let tokens = lex_line(
+            "If a Wizard you control would deal damage to a permanent or player, it deals double instead.",
+            0,
+        )
+        .unwrap();
+        assert!(parse_damage_multiplier_tokens(&tokens).is_none());
 
         let tokens = lex_line(
             "If a creature would deal damage to you, it deals that damage to its controller instead.",

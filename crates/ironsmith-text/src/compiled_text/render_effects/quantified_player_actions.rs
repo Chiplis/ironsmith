@@ -126,7 +126,10 @@ pub(super) fn describe_each_player_shuffle_hand_and_graveyard_then_draw(
 pub(super) fn describe_for_players_coordinated_actions(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
-    if for_players.filter != PlayerFilter::Opponent {
+    if !matches!(
+        for_players.filter,
+        PlayerFilter::Opponent | PlayerFilter::Any
+    ) {
         return None;
     }
     if let Some(compact) = describe_opponent_discard_lose_exile_top(for_players) {
@@ -136,7 +139,19 @@ pub(super) fn describe_for_players_coordinated_actions(
         return Some(compact);
     }
 
+    let preserves_every_ordered_boundary = matches!(
+        for_players.effects.as_slice(),
+        [effect]
+            if effect
+                .downcast_ref::<crate::effects::SequenceEffect>()
+                .is_some_and(|sequence| {
+                    sequence.surface == ironsmith_core::SequenceSurface::RepeatedCommaThen
+                })
+    );
     let rendered = describe_for_players_iterated_action_sequence(for_players)?;
+    if preserves_every_ordered_boundary {
+        return Some(rendered);
+    }
     let Some((prefix, last)) = rendered.rsplit_once(", then ") else {
         return Some(rendered);
     };
@@ -366,6 +381,27 @@ mod tests {
     }
 
     #[test]
+    fn coordinates_same_each_player_draw_and_life_loss() {
+        let for_players = crate::effects::ForPlayersEffect::new(
+            PlayerFilter::Any,
+            vec![
+                Effect::new(crate::effects::DrawCardsEffect::new(
+                    1,
+                    PlayerFilter::IteratedPlayer,
+                )),
+                Effect::new(crate::effects::LoseLifeEffect::with_filter(
+                    1,
+                    PlayerFilter::IteratedPlayer,
+                )),
+            ],
+        );
+        assert_eq!(
+            describe_for_players_coordinated_actions(&for_players).as_deref(),
+            Some("Each player draws a card and loses 1 life")
+        );
+    }
+
+    #[test]
     fn coordinates_shared_opponent_actions_inside_one_authored_sequence() {
         let for_players = crate::effects::ForPlayersEffect::new(
             PlayerFilter::Opponent,
@@ -386,6 +422,35 @@ mod tests {
         assert_eq!(
             describe_for_players_coordinated_actions(&for_players).as_deref(),
             Some("Each opponent draws a card and gains 2 life")
+        );
+    }
+
+    #[test]
+    fn preserves_repeated_comma_then_inside_each_player() {
+        let for_players = crate::effects::ForPlayersEffect::new(
+            PlayerFilter::Any,
+            vec![Effect::new(
+                crate::effects::SequenceEffect::repeated_comma_then(vec![
+                    Effect::new(crate::effects::DrawCardsEffect::new(
+                        2,
+                        PlayerFilter::IteratedPlayer,
+                    )),
+                    Effect::new(crate::effects::DiscardEffect::new(
+                        3,
+                        PlayerFilter::IteratedPlayer,
+                        false,
+                    )),
+                    Effect::new(crate::effects::LoseLifeEffect::with_filter(
+                        4,
+                        PlayerFilter::IteratedPlayer,
+                    )),
+                ]),
+            )],
+        );
+
+        assert_eq!(
+            describe_for_players_coordinated_actions(&for_players).as_deref(),
+            Some("Each player draws two cards, then discards three cards, then loses 4 life")
         );
     }
 

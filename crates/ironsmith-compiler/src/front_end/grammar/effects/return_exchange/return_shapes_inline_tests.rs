@@ -35,6 +35,27 @@ fn parses_return_all_surface_facts() {
 }
 
 #[test]
+fn return_all_preserves_a_type_chosen_this_way_as_a_type_reference() {
+    let tokens = lex_line(
+        "all creature cards of a type chosen this way from their graveyard to the battlefield",
+        0,
+    )
+    .unwrap();
+    let shape = parse_return_clause_shape(&tokens).expect("chosen-type return shape");
+    assert!(
+        matches!(
+            &shape.target,
+            ReturnTargetShape::All {
+                chosen_creature_type: true,
+                chosen_type_this_way_surface: true,
+                ..
+            }
+        ),
+        "{shape:#?}"
+    );
+}
+
+#[test]
 fn strips_set_quantifier_from_source_linked_exiled_card_filter() {
     let tokens = lex_line(
             "all cards exiled with this Vehicle except this card to the battlefield tapped under their owners' control",

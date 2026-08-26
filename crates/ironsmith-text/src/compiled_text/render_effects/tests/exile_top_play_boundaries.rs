@@ -359,6 +359,64 @@ fn render_card(name: &str, card_type: CardType, text: &str) -> String {
     crate::compiled_text::compiled_text_lines(&definition).join("\n")
 }
 
+#[test]
+fn pyxis_keeps_the_iterated_owner_source_exile_set() {
+    let text = "{T}: Each player exiles the top card of their library face down.\n{7}, {T}, Sacrifice this artifact: Each player turns face up all cards they own exiled with this artifact, then puts all permanent cards among them onto the battlefield.";
+    let definition =
+        crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Pyxis of Pandemonium")
+            .card_types(vec![CardType::Artifact])
+            .parse_text(text)
+            .expect("source-linked iterated exile set should compile");
+
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&definition).join("\n"),
+        text
+    );
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("owner: Some(\n"), "{debug}");
+    assert!(debug.contains("IteratedPlayer"), "{debug}");
+    assert!(debug.contains("__source_exiled__"), "{debug}");
+    assert!(debug.contains("ReturnAllToBattlefieldEffect"), "{debug}");
+}
+
+#[test]
+fn opponent_library_exile_selection_keeps_authored_controller() {
+    let oracle = "Whenever this creature deals combat damage to a player, exile the top seven cards of that player's library, then put a creature card from among them onto the battlefield under your control.";
+    let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Void Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("opponent-library exile collection should compile");
+
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&definition).join("\n"),
+        oracle
+    );
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("PutOntoBattlefieldEffect"), "{debug}");
+    assert!(debug.contains("controller: You"), "{debug}");
+}
+
+#[test]
+fn triggered_life_loss_and_library_exile_share_the_you_subject() {
+    let text = "At the beginning of your upkeep, you lose 2 life and exile the top card of your library. You may play that card for as long as it remains exiled.\nEach noncreature spell you cast from exile has conspire.";
+    let definition =
+        crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Rassilon, the War President")
+            .card_types(vec![CardType::Creature])
+            .parse_text(text)
+            .expect("coordinated upkeep exile should compile");
+
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&definition).join("\n"),
+        text,
+        "debug={:?}\nunprocessed={:?}\nast={definition:#?}",
+        crate::compiled_text::debug_compiled_lines(&definition),
+        crate::compiled_text::unprocessed_compiled_lines(&definition)
+    );
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("surface: Coordinated"), "{debug}");
+    assert!(debug.contains("LibraryOwnerAsActor"), "{debug}");
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn representative_cards_keep_linked_permission_sentence_boundaries() {

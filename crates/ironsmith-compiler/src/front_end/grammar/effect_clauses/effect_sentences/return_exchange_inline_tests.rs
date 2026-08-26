@@ -5,6 +5,29 @@ use crate::model::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
 use crate::types::CardType;
 
 #[test]
+fn plural_return_back_reference_preserves_its_authored_pronoun() {
+    let tokens = lex_line("them to the battlefield under their owners' control", 0)
+        .expect("lex plural return back-reference");
+    let effect = parse_return(&tokens).expect("parse plural return back-reference");
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::ReturnToBattlefield { target, .. },
+        ..
+    }) = effect
+    else {
+        panic!("expected a battlefield return");
+    };
+    let TargetAst::Object(filter, None, _) = target else {
+        panic!("expected a typed plural back-reference");
+    };
+
+    assert!(filter.has_plural_pronoun_reference_surface());
+    assert!(filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == IT_TAG
+            && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+    }));
+}
+
+#[test]
 fn return_to_hand_can_be_declined_by_target_opponents_life_payment() {
     let tokens = lex_line("it to your hand unless target opponent pays 3 life", 0)
         .expect("lex return-unless clause");

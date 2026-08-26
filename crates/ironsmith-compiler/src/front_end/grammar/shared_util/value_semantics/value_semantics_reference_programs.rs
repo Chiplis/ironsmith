@@ -25,6 +25,26 @@ pub fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option
     let filter_tokens = trim_edge_punctuation(&tokens[filter_range]);
     let filter_word_view = TokenWordView::new(&filter_tokens);
     let filter_words = filter_word_view.to_word_refs();
+    let possessive_filter_words = possessive_normalized_word_refs(&filter_words);
+    if crate::word_primitives::parse_sequence_suffix(
+        &possessive_filter_words,
+        &[
+            "that",
+            "opponent",
+            "or",
+            "that",
+            "planeswalkers",
+            "controller",
+            "controls",
+        ],
+    ) {
+        // This is a coordinated player antecedent, not the narrower
+        // `that OBJECT's controller` relation below. The ordinary typed
+        // object-filter grammar already owns the complete suffix and maps it
+        // to TargetPlayerOrControllerOfTarget; let it retain both arms.
+        let filter = parse_object_filter(&filter_tokens, false).ok()?;
+        return Some(Value::Count(filter).with_surface_hint(ValueSurfaceHint::EqualTo));
+    }
     // A relative controller clause scopes the counted set to the object
     // targeted by this same effect. Parse the set independently from the
     // back-reference so characteristic words in `that creature's controller`

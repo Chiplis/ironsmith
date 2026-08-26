@@ -205,6 +205,9 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::PlayerAttacksOneOrMore { attacker, target } => {
             crate::triggers::Trigger::player_attacks_one_or_more(attacker, target)
         }
+        TriggerKind::PlayerAttacksTargetWithOneOrMore { attacker, target } => {
+            crate::triggers::Trigger::player_attacks_target_with_one_or_more(attacker, target)
+        }
         TriggerKind::AttacksOneOrMoreWithMinTotal {
             filter,
             min_total_attackers,
@@ -245,6 +248,9 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::Blocks { filter } => crate::triggers::Trigger::blocks(filter),
         TriggerKind::BlocksOneOrMore { filter } => {
             crate::triggers::Trigger::blocks_one_or_more(filter)
+        }
+        TriggerKind::BlocksOrBecomesBlockedByObject { subject, other } => {
+            crate::triggers::Trigger::blocks_or_becomes_blocked_by_object(subject, other)
         }
         TriggerKind::BlocksObjectWithLesserPower { blocker, blocked } => {
             crate::triggers::Trigger::blocks_object_with_lesser_power(blocker, blocked)

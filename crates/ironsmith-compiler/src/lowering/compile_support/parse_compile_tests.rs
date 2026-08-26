@@ -961,6 +961,116 @@ fn cross_sentence_conditional_fights_expose_two_stable_target_slots() {
 }
 
 #[test]
+fn cross_sentence_two_target_power_damage_reuses_both_target_slots() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Targeted Power Damage Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Choose target creature you control and target creature an opponent controls.\n\
+             Delirium — If there are four or more card types among cards in your graveyard, put \
+             two +1/+1 counters on the creature you control.\n\
+             The creature you control deals damage equal to its power to the creature an \
+             opponent controls.",
+        )
+        .expect("the correlated target procedure should compile");
+    let effects = definition
+        .spell_effect
+        .as_ref()
+        .expect("expected a spell effect")
+        .flattened_default_effects();
+    let [first_target, second_target, conditional, damage] = effects else {
+        panic!("expected two targets, a conditional modifier, and damage: {effects:#?}");
+    };
+
+    let target_tag = |effect: &Effect| {
+        let mut effect = effect;
+        loop {
+            let tagged = effect
+                .as_tagged()
+                .unwrap_or_else(|| panic!("target declaration should be tagged: {effect:#?}"));
+            if tagged
+                .effect
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                .is_some()
+            {
+                break tagged.tag.clone();
+            }
+            effect = &tagged.effect;
+        }
+    };
+    let first_tag = target_tag(first_target);
+    let second_tag = target_tag(second_target);
+    assert_ne!(first_tag, second_tag);
+
+    let conditional = conditional
+        .downcast_ref::<crate::effects::ConditionalEffect>()
+        .expect("the third effect should remain conditional");
+    let [counter_effect] = conditional.if_true.as_slice() else {
+        panic!("expected one conditional counter effect: {conditional:#?}");
+    };
+    let counters = counter_effect
+        .as_tagged()
+        .and_then(|tagged| {
+            tagged
+                .effect
+                .downcast_ref::<crate::effects::PutCountersEffect>()
+        })
+        .expect("conditional branch should put counters");
+    assert!(
+        matches!(&counters.target, ChooseSpec::Tagged(tag) if tag == &first_tag),
+        "the counters must reuse the controlled target: {counters:#?}"
+    );
+
+    let damage = damage
+        .as_tagged()
+        .expect("the damage recipient should retain its result tag");
+    let with_source = damage
+        .effect
+        .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+        .expect("the controlled target should execute the damage");
+    assert!(
+        matches!(&with_source.source, ChooseSpec::Tagged(tag) if tag == &first_tag),
+        "damage source must reuse the controlled target: {with_source:#?}"
+    );
+    let damage = with_source
+        .effect
+        .downcast_ref::<crate::effects::DealDamageEffect>()
+        .expect("expected power-based damage");
+    assert!(
+        matches!(&damage.target, ChooseSpec::Tagged(tag) if tag == &second_tag)
+            && matches!(
+                damage.amount.unhinted(),
+                Value::PowerOf(spec) if matches!(spec.unhinted(), ChooseSpec::Source)
+            ),
+        "damage must use the first target's power against the second target: {damage:#?}"
+    );
+}
+
+#[test]
+fn inline_kicked_search_replacement_preserves_leading_instead_surface() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Additive Search Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Kicker {2}\n\
+             Search your library for a basic land card. If this spell was kicked, instead search \
+             your library for a basic land card and a Shrine card. Reveal those cards, put them \
+             into your hand, then shuffle.",
+        )
+        .expect("the additive kicked search should compile");
+    let program = definition.spell_effect.expect("expected a spell effect");
+    let [segment] = program.segments.as_slice() else {
+        panic!("expected one search segment: {program:#?}");
+    };
+    let [branch] = segment.self_replacements.as_slice() else {
+        panic!("expected one kicked self replacement: {segment:#?}");
+    };
+    assert_eq!(branch.condition, Condition::ThisSpellWasKicked);
+    assert!(
+        branch.leading_instead_surface,
+        "the explicit `instead search` connective must survive line lowering: {branch:#?}"
+    );
+}
+
+#[test]
 fn compile_seat_relative_control_preserves_the_explicit_right_player() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Control Pass Probe")
         .parse_text(
@@ -3367,5 +3477,90 @@ fn delegated_choice_from_revealed_top_collection_exiles_exact_other_card() {
     assert!(
         !compact.contains("target:Source"),
         "the complement exile must not move the planeswalker source: {debug}"
+    );
+}
+
+#[test]
+fn those_creatures_followup_reuses_every_coordinated_target_result() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Coordinated Pump Set Probe")
+        .parse_text(
+            "Until end of turn, target creature gets +3/+3, up to one other target creature gets +2/+2, and up to one other target creature gets +1/+1. Those creatures gain vigilance until end of turn.",
+        )
+        .expect("coordinated target set should compile");
+    let program = definition.spell_effect.expect("spell effect");
+    let debug = format!("{program:#?}");
+    let compact = debug
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>();
+
+    for tag in ["pumped_0", "pumped_1", "pumped_2"] {
+        assert_eq!(
+            debug.matches(tag).count(),
+            2,
+            "each independently targeted result must occur in its producer and the plural follow-up union: {debug}"
+        );
+    }
+    assert!(
+        compact.contains("set_quantifier_surface:Some(Those,)")
+            && compact.contains("any_of:[")
+            && compact.contains("explicit_card_type_noun:Some(Creature,)"),
+        "the follow-up must retain the authored demonstrative and executable union filter: {debug}"
+    );
+}
+
+#[test]
+fn where_x_possessive_uses_the_introduced_target_not_the_ability_source() {
+    let body = "Target creature you control gains flying and gets +X/+X until end of turn, where X is its power.";
+    let body_tokens = lex_line(body, 0).expect("target-relative body should lex");
+    let parsed_body =
+        crate::semantic_line_parsing::parse_effect_sentences_preserving_source_boundaries(
+            &body_tokens,
+        )
+        .expect("target-relative body should survive semantic sentence parsing");
+    let parsed_body_debug = format!("{parsed_body:#?}");
+    assert!(
+        parsed_body_debug.contains("PowerOf") && parsed_body_debug.contains("\"__it__\""),
+        "semantic sentence parsing must retain the target-relative characteristic: {parsed_body_debug}"
+    );
+    assert!(
+        !parsed_body_debug.contains("SourcePower"),
+        "semantic sentence parsing must not reinterpret the possessive as the source: {parsed_body_debug}"
+    );
+
+    let targeted = CardDefinitionBuilder::new(CardId::new(), "Target Stat Probe")
+        .card_types(vec![CardType::Land])
+        .parse_text(
+            "{1}{G}{U}, {T}: Target creature you control gains flying and gets +X/+X until end of turn, where X is its power.",
+        )
+        .expect("target-relative where-X ability should compile");
+    let targeted_debug = format!("{targeted:#?}");
+    let targeted_compact = targeted_debug
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>();
+    assert!(
+        targeted_compact.contains("value:PowerOf(")
+            && targeted_compact.contains("\"targeted_0\"")
+            && !targeted_compact.contains("value:PowerOf(Source"),
+        "the possessive stat must use the creature target rather than the land source: {targeted_debug}"
+    );
+    assert!(
+        !targeted_compact.contains("value:SourcePower"),
+        "the target-relative stat must not retain the source fallback: {targeted_debug}"
+    );
+
+    let explicit_source = CardDefinitionBuilder::new(CardId::new(), "Source Stat Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{T}: Another target creature you control gains trample and gets +X/+X until end of turn, where X is this creature's power.",
+        )
+        .expect("explicit source-relative where-X ability should compile");
+    let source_debug = format!("{explicit_source:#?}");
+    assert!(
+        source_debug.contains("PowerOf")
+            && source_debug.contains("ThisPermanentType")
+            && source_debug.contains("\"this creature\""),
+        "an explicit `this creature's` stat must remain source-relative: {source_debug}"
     );
 }

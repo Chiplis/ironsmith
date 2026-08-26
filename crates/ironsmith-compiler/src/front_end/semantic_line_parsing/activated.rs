@@ -654,7 +654,7 @@ mod activated_library_programs;
 use activated_library_programs::mark_forecast_reveal_duration;
 #[path = "activated/activated_reference_programs.rs"]
 mod activated_reference_programs;
-use activated_reference_programs::reconcile_named_source_exile_surfaces;
+use activated_reference_programs::reconcile_named_source_action_surfaces;
 #[path = "activated/activated_resource_programs.rs"]
 mod activated_resource_programs;
 use activated_resource_programs::normalize_mana_replacement_effects;

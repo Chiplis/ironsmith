@@ -22,7 +22,8 @@ use super::compile_support::{
     effect_references_event_derived_amount, effects_reference_it_tag,
     effects_reference_its_controller, effects_reference_tag,
     effects_reference_tag_in_object_position, is_sentence_helper_consult_match_tag,
-    is_sentence_helper_exiled_collection_tag, value_references_event_derived_amount,
+    is_sentence_helper_exiled_collection_tag, predicate_references_tag,
+    value_references_event_derived_amount,
 };
 #[cfg(test)]
 use super::effect_ast_traversal::for_each_nested_effects_mut;
@@ -546,9 +547,9 @@ fn propagated_or_generated_object_tag(
 
     match spec.base() {
         ChooseSpec::Tagged(tag) => Some(tag.as_str().to_string()),
-        ChooseSpec::Object(_) | ChooseSpec::SpecificObject(_) => {
-            Some(next_reference_tag(id_gen, prefix))
-        }
+        ChooseSpec::Object(_)
+        | ChooseSpec::ObjectOrPlayer(_, _)
+        | ChooseSpec::SpecificObject(_) => Some(next_reference_tag(id_gen, prefix)),
         ChooseSpec::Source => None,
         _ => None,
     }
@@ -648,6 +649,34 @@ fn advance_reference_frame_for_effect(
                         ))
                     })?;
                     advance_reference_frames(&program.effects, id_gen, frame)?;
+                }
+                crate::model::ControlFlowNodeAst::Condition {
+                    condition,
+                    consequence_program,
+                    alternative_program: None,
+                    ..
+                } if condition.position
+                    == crate::model::control_flow::ConditionPositionAst::Postcondition
+                    && matches!(
+                        &condition.predicate,
+                        crate::model::ControlPredicateAst::State(predicate)
+                            if predicate_references_tag(predicate, IT_TAG)
+                    ) =>
+                {
+                    // Targets named by a trailing condition are announced
+                    // before the spell or ability resolves, even though the
+                    // action itself may not happen. Export that stable target
+                    // tag to a following source sentence (`... if its power
+                    // is 4 or greater. Then that creature ...`) without
+                    // exporting arbitrary branch-only action results.
+                    let program = control.program(*consequence_program).ok_or_else(|| {
+                        CardTextError::InvariantViolation(format!(
+                            "control-flow program {consequence_program} is out of range"
+                        ))
+                    })?;
+                    let mut branch_frame = saved.clone();
+                    advance_reference_frames(&program.effects, id_gen, &mut branch_frame)?;
+                    frame.last_object_tag = branch_frame.last_object_tag;
                 }
                 _ => {
                     for program in &control.programs {
@@ -931,9 +960,18 @@ fn advance_reference_frame_for_effect(
                     maybe_tag_target(target, frame, id_gen, "counters")?;
                 }
                 SubjectVerbActionAst::RemoveUpToAnyCounters { target, .. }
-                | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target, .. }
                 | SubjectVerbActionAst::PutCounterOfChosenKind { target } => {
                     maybe_tag_target(target, frame, id_gen, "counters")?;
+                }
+                SubjectVerbActionAst::ForEachCounterKindPutOrRemove {
+                    target,
+                    counter_source,
+                    ..
+                } => {
+                    maybe_tag_target(target, frame, id_gen, "counters")?;
+                    if let Some(counter_source) = counter_source {
+                        track_target_player(counter_source, frame);
+                    }
                 }
                 SubjectVerbActionAst::MoveAllCounters { from, to }
                 | SubjectVerbActionAst::MoveOneCounter { from, to } => {
@@ -2077,13 +2115,7 @@ fn annotate_effect_sequence_with_env_internal(
         let exports_result_for_fallback =
             result_gate_exports_outcome_to_fallback(&effect, remaining.first());
         if let Some(id) = assigned_effect_id
-            && (!matches!(
-                effect,
-                EffectAst::ResolvedIfResult { .. }
-                    | EffectAst::ResolvedWhenResult { .. }
-                    | EffectAst::IfResult { .. }
-                    | EffectAst::WhenResult { .. }
-            ) || exports_result_for_fallback)
+            && (result_gate_surface(&effect).is_none() || exports_result_for_fallback)
         {
             out_env.last_effect_id = RefState::Known(id);
         }
@@ -2191,13 +2223,7 @@ fn maybe_assign_effect_result_id(
     config: EffectReferenceResolutionConfig,
 ) -> Option<EffectId> {
     let next_is_result_gate = idx + 1 < effects.len()
-        && matches!(
-            effects[idx + 1],
-            EffectAst::IfResult { .. }
-                | EffectAst::WhenResult { .. }
-                | EffectAst::ResolvedIfResult { .. }
-                | EffectAst::ResolvedWhenResult { .. }
-        )
+        && result_gate_surface(&effects[idx + 1]).is_some()
         && result_gate_accepts_producer(&effects[idx + 1], &effects[idx]);
     let next_is_if_result_with_opponent_doesnt = next_is_result_gate
         && idx + 2 < effects.len()
@@ -2263,15 +2289,34 @@ fn maybe_assign_effect_result_id(
 }
 
 fn typed_result_gate_action(effect: &EffectAst) -> Option<PriorEffectAction> {
-    let predicate = match effect {
-        EffectAst::IfResult { predicate, .. }
-        | EffectAst::WhenResult { predicate, .. }
-        | EffectAst::ResolvedIfResult { predicate, .. }
-        | EffectAst::ResolvedWhenResult { predicate, .. } => predicate,
-        _ => return None,
-    };
+    let (predicate, _) = result_gate_surface(effect)?;
     match predicate {
         IfResultPredicate::PriorEffectResult(surface) => Some(surface.action),
+        _ => None,
+    }
+}
+
+fn result_gate_surface(effect: &EffectAst) -> Option<(&IfResultPredicate, bool)> {
+    match effect {
+        EffectAst::IfResult { predicate, .. } | EffectAst::ResolvedIfResult { predicate, .. } => {
+            Some((predicate, false))
+        }
+        EffectAst::WhenResult { predicate, .. }
+        | EffectAst::ResolvedWhenResult { predicate, .. } => Some((predicate, true)),
+        EffectAst::ControlFlow(control) => {
+            let crate::model::ControlFlowNodeAst::Condition {
+                condition,
+                reflexive,
+                ..
+            } = &control.node
+            else {
+                return None;
+            };
+            let crate::model::ControlPredicateAst::Result(predicate) = &condition.predicate else {
+                return None;
+            };
+            Some((predicate, *reflexive))
+        }
         _ => None,
     }
 }
@@ -2290,22 +2335,12 @@ fn result_gate_accepts_producer(gate: &EffectAst, producer: &EffectAst) -> bool 
 /// negative clause such as "you lose the flip" or "if you don't" still
 /// refers to the original producer and must not steal the gate's result ID.
 fn result_gate_exports_outcome_to_fallback(effect: &EffectAst, next: Option<&EffectAst>) -> bool {
-    let is_result_gate = matches!(
-        effect,
-        EffectAst::IfResult { .. } | EffectAst::ResolvedIfResult { .. }
-    );
-    let is_fallback = matches!(
-        next,
-        Some(
-            EffectAst::IfResult {
-                predicate: IfResultPredicate::Otherwise,
-                ..
-            } | EffectAst::ResolvedIfResult {
-                predicate: IfResultPredicate::Otherwise,
-                ..
-            }
-        )
-    );
+    let is_result_gate = result_gate_surface(effect).is_some_and(|(_, reflexive)| !reflexive);
+    let is_fallback = next.is_some_and(|next| {
+        result_gate_surface(next).is_some_and(|(predicate, reflexive)| {
+            !reflexive && *predicate == IfResultPredicate::Otherwise
+        })
+    });
     is_result_gate && is_fallback
 }
 
@@ -2319,12 +2354,8 @@ pub fn if_result_predicate_is_searched_library(predicate: &IfResultPredicate) ->
 }
 
 fn effect_is_searched_library_gate(effect: &EffectAst) -> bool {
-    match effect {
-        EffectAst::IfResult { predicate, .. } | EffectAst::WhenResult { predicate, .. } => {
-            if_result_predicate_is_searched_library(predicate)
-        }
-        _ => false,
-    }
+    result_gate_surface(effect)
+        .is_some_and(|(predicate, _)| if_result_predicate_is_searched_library(predicate))
 }
 
 fn effect_is_library_search(effect: &EffectAst) -> bool {
@@ -3357,13 +3388,7 @@ fn resolve_effect_sequence_references_with_state_in_place(
             .expect("effect index is within the resolution sequence");
         resolve_effect_references_in_effect(effect, id_gen, state)?;
         let _ = effects_reference_it_tag(remaining) || effects_reference_its_controller(remaining);
-        state.last_effect_id = if matches!(
-            effect,
-            EffectAst::ResolvedIfResult { .. }
-                | EffectAst::ResolvedWhenResult { .. }
-                | EffectAst::IfResult { .. }
-                | EffectAst::WhenResult { .. }
-        ) {
+        state.last_effect_id = if result_gate_surface(effect).is_some() {
             if result_gate_exports_outcome_to_fallback(effect, remaining.first()) {
                 assigned_effect_id.or(saved_last_effect_id)
             } else {
@@ -4508,6 +4533,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::Fight {
                 creature1,
                 creature2,
+                ..
             } => {
                 bind_unresolved_it_in_target(creature1, seed_tag)
                     + bind_unresolved_it_in_target(creature2, seed_tag)
@@ -4569,9 +4595,18 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 bind_unresolved_it_in_target(from, seed_tag)
                     + bind_unresolved_it_in_target(to, seed_tag)
             }
-            SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target, .. }
-            | SubjectVerbActionAst::PutCounterOfChosenKind { target } => {
+            SubjectVerbActionAst::PutCounterOfChosenKind { target } => {
                 bind_unresolved_it_in_target(target, seed_tag)
+            }
+            SubjectVerbActionAst::ForEachCounterKindPutOrRemove {
+                target,
+                counter_source,
+                ..
+            } => {
+                bind_unresolved_it_in_target(target, seed_tag)
+                    + counter_source.as_mut().map_or(0, |source| {
+                        bind_unresolved_it_in_target(source, seed_tag)
+                    })
             }
             SubjectVerbActionAst::Discard { count, filter, .. } => {
                 let mut replacements = bind_unresolved_it_in_value(count, seed_tag);
@@ -5377,6 +5412,7 @@ fn bind_unresolved_it_in_predicate(predicate: &mut PredicateAst, seed_tag: &TagK
             bind_unresolved_it_in_value(left, seed_tag)
                 + bind_unresolved_it_in_value(right, seed_tag)
         }
+        PredicateAst::ValueIsPrime(value) => bind_unresolved_it_in_value(value, seed_tag),
         _ => 0,
     }
 }

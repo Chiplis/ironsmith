@@ -39,3 +39,36 @@ fn blitz_cost_modifier_is_not_claimed_as_keyword_payload() {
             .is_none()
     );
 }
+
+#[test]
+fn flashback_uses_the_full_source_line_for_its_qualified_reduction() {
+    let text = "Flashback {8}{B}{B}. This spell costs {X} less to cast this way, where X is the greatest mana value of a commander you own on the battlefield or in the command zone.";
+    let line = line(text);
+    let sentences = split_lexed_sentences(&line.tokens);
+    let payload = parse_flashback(&line, sentences[0], &line.info.source_tokens)
+        .expect("compound flashback parser should succeed")
+        .expect("compound flashback line should match");
+    let KeywordLinePayloadCst::Ast(LineAst::Multiple(chunks)) = payload else {
+        panic!("compound flashback should retain both typed clauses: {payload:#?}");
+    };
+    assert_eq!(chunks.len(), 2, "{chunks:#?}");
+    assert!(matches!(
+        &chunks[0],
+        LineAst::AlternativeCastingMethod(
+            crate::model::compiler_semantic::ParsedAlternativeCastingMethodAst::Compiler(
+                crate::model::CompilerAlternativeCastingMethod::Flashback { .. }
+            )
+        )
+    ));
+    let LineAst::StaticAbility(StaticAbilityAst::Static(ability)) = &chunks[1] else {
+        panic!("qualified reduction should remain a typed static ability: {chunks:#?}");
+    };
+    let ironsmith_core::StaticAbilityPayload::ThisSpellCostReduction(reduction) = &ability.payload
+    else {
+        panic!("expected a typed this-spell reduction: {ability:#?}");
+    };
+    assert_eq!(
+        reduction.alternative_cast,
+        Some(crate::filter::AlternativeCastKind::Flashback)
+    );
+}

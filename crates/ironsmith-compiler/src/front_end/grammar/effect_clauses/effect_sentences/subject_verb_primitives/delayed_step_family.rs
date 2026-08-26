@@ -735,19 +735,32 @@ fn parse_unless_sacrifice_or_pay_cost(
     )))
 }
 
-/// Return whether an `or` inside an `unless` tail joins two ways to pay the
-/// same player-facing cost. The outer action-choice splitter runs before the
-/// ordinary unless primitive, so it uses this fact to avoid turning
-/// `... unless target opponent sacrifices ... or pays 3 life` into a choice
-/// made by the source controller.
-pub fn has_unless_sacrifice_or_pay_choice(tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
+/// Return whether an `or` inside an `unless` tail joins two ways for the same
+/// player to pay the cost. The outer action-choice splitter runs before the
+/// ordinary unless primitive, so it must leave fully typed alternative costs
+/// such as `sacrifices ... or pays 3 life` and `sacrifices ... or discards a
+/// card` under the ownership of `UnlessPays`.
+pub fn has_unless_payment_choice(tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
     let Some(unless_idx) =
         crate::slice_primitives::select_position(tokens, |token| token.is_word("unless"))
     else {
         return Ok(false);
     };
     let after_clause = SubjectVerbPrimitiveClause::new(&tokens[unless_idx + 1..]).trimmed();
-    Ok(parse_unless_sacrifice_or_pay_cost(after_clause)?.is_some())
+    let words = after_clause.words().to_word_refs();
+    let Some((_, action_word_start)) = parse_delayed_player_prefix(&words) else {
+        return Ok(false);
+    };
+    let Some(action_clause) = after_clause.after_words(action_word_start) else {
+        return Ok(false);
+    };
+    let Some(cost) = parse_unless_payment_clause_as_cost(action_clause.trimmed())? else {
+        return Ok(false);
+    };
+    Ok(matches!(
+        cost.kind(),
+        ironsmith_core::TotalCostKind::OneOf(branches) if branches.len() >= 2
+    ))
 }
 
 /// Try to build an UnlessPays or UnlessAction AST from the tokens after "unless".
@@ -1583,5 +1596,36 @@ mod tests {
             panic!("expected one target-opponent UnlessPays branch, got {effects:#?}");
         };
         assert_eq!(cost.as_one_of().map(<[_]>::len), Some(2), "{cost:#?}");
+    }
+
+    #[test]
+    fn effect_chain_keeps_sacrifice_or_discard_inside_the_unless_payment() {
+        let tokens = lex_line(
+            "You lose 3 life unless you sacrifice a nonland permanent of your choice or discard a card.",
+            0,
+        )
+        .expect("unless sacrifice-or-discard text should lex");
+
+        assert!(
+            has_unless_payment_choice(&tokens)
+                .expect("typed alternative payment detection should succeed")
+        );
+        let effects = parse_effect_chain(&tokens).expect("full effect chain should parse");
+        let [
+            EffectAst::UnlessPays {
+                player: PlayerAst::You,
+                cost,
+                ..
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected one UnlessPays branch, got {effects:#?}");
+        };
+        let Some(branches) = cost.as_one_of() else {
+            panic!("expected an alternative total cost, got {cost:#?}");
+        };
+        assert_eq!(branches.len(), 2, "{cost:#?}");
+        assert!(format!("{:#?}", branches[0]).contains("Sacrifice"));
+        assert!(format!("{:#?}", branches[1]).contains("Discard"));
     }
 }

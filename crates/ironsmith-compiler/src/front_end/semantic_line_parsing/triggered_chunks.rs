@@ -63,6 +63,7 @@ pub(super) fn apply_trigger_intro_surface(
         | TriggerSpec::AttacksOneOrMore(_)
         | TriggerSpec::PlayersAttackedOneOrMore(_)
         | TriggerSpec::PlayerAttacksOneOrMore { .. }
+        | TriggerSpec::PlayerAttacksTargetWithOneOrMore { .. }
         | TriggerSpec::AttacksOneOrMoreWithMinTotal { .. }
         | TriggerSpec::AttacksOneOrMoreWithExactTotal { .. }
         | TriggerSpec::AttacksOneOrMoreWithAggregate { .. }

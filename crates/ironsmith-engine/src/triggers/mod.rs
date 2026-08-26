@@ -710,6 +710,17 @@ impl Trigger {
         Self::new(PlayerAttacksOneOrMoreTrigger::new(attacker, target))
     }
 
+    /// Create a grouped trigger that fires once for each matching defender a
+    /// player attacks with one or more creatures.
+    pub fn player_attacks_target_with_one_or_more(
+        attacker: PlayerFilter,
+        target: ironsmith_core::AttackTargetRestriction,
+    ) -> Self {
+        Self::new(PlayerAttacksOneOrMoreTrigger::grouped_by_target(
+            attacker, target,
+        ))
+    }
+
     /// Create a "when N or more [filter] attack" trigger that fires once per declaration.
     pub fn attacks_one_or_more_with_min_total(
         filter: ObjectFilter,
@@ -788,6 +799,12 @@ impl Trigger {
     /// Create a "when one or more [filter] block" trigger.
     pub fn blocks_one_or_more(filter: ObjectFilter) -> Self {
         Self::new(BlocksTrigger::one_or_more(filter))
+    }
+
+    /// Create a per-pair "when [subject] blocks or becomes blocked by
+    /// [other]" trigger.
+    pub fn blocks_or_becomes_blocked_by_object(subject: ObjectFilter, other: ObjectFilter) -> Self {
+        Self::new(BlocksOrBecomesBlockedTrigger::with_other(subject, other))
     }
 
     /// Create a per-pair "when [blocker] blocks [object] with lesser power" trigger.

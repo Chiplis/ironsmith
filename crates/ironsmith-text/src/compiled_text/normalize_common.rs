@@ -2038,6 +2038,7 @@ pub(super) fn normalize_you_verb_phrase(text: &str) -> String {
         ("discards ", "discard "),
         ("sacrifices ", "sacrifice "),
         ("creates ", "create "),
+        ("exiles ", "exile "),
         ("chooses ", "choose "),
         ("mills ", "mill "),
         ("reveals ", "reveal "),

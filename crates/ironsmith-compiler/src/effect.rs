@@ -2213,6 +2213,7 @@ impl Effect {
         allow_land: bool,
         as_copy: bool,
         copy_cast_reminder_surface: bool,
+        copy_instruction_surface: Option<ironsmith_core::effect::CopyInstructionSurface>,
         without_paying_mana_cost: bool,
         additional_mana_cost: Option<crate::mana::ManaCost>,
         cost_reduction: Option<crate::mana::ManaCost>,
@@ -2224,7 +2225,7 @@ impl Effect {
             allow_land,
             as_copy,
             copy_cast_reminder_surface,
-            copy_instruction_surface: None,
+            copy_instruction_surface,
             without_paying_mana_cost,
             additional_mana_cost,
             cost_reduction,
@@ -2543,6 +2544,20 @@ impl Effect {
         Self::new(crate::effects::TagOtherBlockParticipantEffect::new(
             tag, filter,
         ))
+    }
+
+    pub fn tag_other_block_participant_matching_subject(
+        tag: impl Into<crate::tag::TagKey>,
+        subject_filter: crate::target::ObjectFilter,
+        other_filter: crate::target::ObjectFilter,
+    ) -> Self {
+        Self::new(
+            crate::effects::TagOtherBlockParticipantEffect::matching_subject(
+                tag,
+                subject_filter,
+                other_filter,
+            ),
+        )
     }
 
     pub fn tag_triggering_damage_target(tag: impl Into<crate::tag::TagKey>) -> Self {

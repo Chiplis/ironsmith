@@ -179,6 +179,179 @@ pub fn authored_named_source_reference_surface(
     None
 }
 
+/// Restore the authored alias on one unambiguous source-exile action.
+///
+/// Some document forms normalize a card name before their effect parser is
+/// called (Saga chapter bodies are the notable example). The semantic target
+/// remains `Source`, but the authored `FullName`/`ShortName` surface would
+/// otherwise be lost. Requiring exactly one proper-name exile operand and one
+/// plain source-exile action keeps this transport structural and prevents a
+/// name-like ordinary object from being attached to the wrong effect.
+pub fn reconcile_unique_named_source_exile_surface(
+    effects: &mut [crate::cards::builders::EffectAst],
+    authored_tokens: &[OwnedLexToken],
+) {
+    fn authored_surface(tokens: &[OwnedLexToken]) -> Option<SourceReferenceSurface> {
+        let mut surfaces = tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, token)| token.is_word("exile"))
+            .filter_map(|(exile_index, _)| {
+                let start = exile_index + 1;
+                let end = tokens[start..]
+                    .iter()
+                    .position(|token| {
+                        matches!(
+                            token.kind,
+                            TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon
+                        ) || token.is_word("then")
+                    })
+                    .map_or(tokens.len(), |offset| start + offset);
+                let candidate = tokens.get(start..end)?;
+                super::lexer::is_authored_proper_name_phrase(candidate).then(|| {
+                    let text = render_token_slice(candidate).trim().to_string();
+                    if super::lexer::token_word_refs(candidate).len() == 1 {
+                        SourceReferenceSurface::ShortName(text)
+                    } else {
+                        SourceReferenceSurface::FullName(text)
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        surfaces.dedup();
+        let [surface] = surfaces.as_slice() else {
+            return None;
+        };
+        Some(surface.clone())
+    }
+
+    fn plain_source_target(target: &TargetAst) -> bool {
+        match target {
+            TargetAst::Source(_) => true,
+            TargetAst::Object(filter, _, _) if filter.source => {
+                let mut plain = filter.clone();
+                plain.source_surface = None;
+                plain == ObjectFilter::source()
+            }
+            _ => false,
+        }
+    }
+
+    fn source_exile_target(effect: &crate::cards::builders::EffectAst) -> Option<&TargetAst> {
+        let crate::cards::builders::EffectAst::SubjectVerb(subject_verb) = effect else {
+            return None;
+        };
+        match &subject_verb.action {
+            SubjectVerbActionAst::Exile { target, .. }
+            | SubjectVerbActionAst::MoveToZone {
+                target,
+                zone: Zone::Exile,
+                ..
+            } => Some(target),
+            _ => None,
+        }
+    }
+
+    fn candidate_count(effects: &[crate::cards::builders::EffectAst]) -> usize {
+        let mut count = 0;
+        for effect in effects {
+            count += source_exile_target(effect).is_some_and(plain_source_target) as usize;
+            crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+                count += candidate_count(nested)
+            });
+        }
+        count
+    }
+
+    fn apply(effects: &mut [crate::cards::builders::EffectAst], surface: &SourceReferenceSurface) {
+        for effect in effects {
+            if let crate::cards::builders::EffectAst::SubjectVerb(subject_verb) = effect {
+                let target = match &mut subject_verb.action {
+                    SubjectVerbActionAst::Exile { target, .. }
+                    | SubjectVerbActionAst::MoveToZone {
+                        target,
+                        zone: Zone::Exile,
+                        ..
+                    } => Some(target),
+                    _ => None,
+                };
+                if let Some(target) = target
+                    && plain_source_target(target)
+                {
+                    match target {
+                        TargetAst::Source(span) => {
+                            *target = TargetAst::Object(
+                                ObjectFilter::source_with_surface(surface.clone()),
+                                None,
+                                *span,
+                            );
+                        }
+                        TargetAst::Object(filter, _, _) => {
+                            filter.source_surface = Some(surface.clone());
+                        }
+                        _ => unreachable!("plain_source_target accepted a non-source target"),
+                    }
+                }
+            }
+            crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                apply(nested, surface)
+            });
+        }
+    }
+
+    let Some(surface) = authored_surface(authored_tokens) else {
+        return;
+    };
+    if candidate_count(effects) == 1 {
+        apply(effects, &surface);
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn unique_named_source_exile_surface_requires_one_authored_name_and_one_source_action() {
+    let authored = lex_line(
+        "Tap all lands your opponents control. Exile Frost Herald, then return it to the battlefield.",
+        0,
+    )
+    .expect("named source fixture should lex");
+    let source_exile =
+        || crate::cards::builders::EffectAst::subject_verb_exile(TargetAst::Source(None), false);
+
+    let mut effects = vec![source_exile()];
+    reconcile_unique_named_source_exile_surface(&mut effects, &authored);
+    let [crate::cards::builders::EffectAst::SubjectVerb(effect)] = effects.as_slice() else {
+        panic!("expected one source exile: {effects:#?}");
+    };
+    let SubjectVerbActionAst::Exile {
+        target: TargetAst::Object(filter, _, _),
+        ..
+    } = &effect.action
+    else {
+        panic!("expected a surfaced source target: {effect:#?}");
+    };
+    assert_eq!(
+        filter.source_surface,
+        Some(SourceReferenceSurface::FullName("Frost Herald".to_string()))
+    );
+
+    let mut ambiguous = vec![source_exile(), source_exile()];
+    reconcile_unique_named_source_exile_surface(&mut ambiguous, &authored);
+    assert!(ambiguous.iter().all(|effect| {
+        matches!(
+            effect,
+            crate::cards::builders::EffectAst::SubjectVerb(subject_verb)
+                if matches!(
+                    subject_verb.action,
+                    SubjectVerbActionAst::Exile {
+                        target: TargetAst::Source(_),
+                        ..
+                    }
+                )
+        )
+    }));
+}
+
 fn contextual_this_source_words(
     context: crate::parse_context::ParseContextView<'_>,
 ) -> [&'static str; 2] {
@@ -1720,7 +1893,29 @@ mod tests {
         assert!(parse_warp_line(&warp).unwrap().is_some());
 
         let reinforce = lex_line("Reinforce 2 {1}{G}", 0).unwrap();
-        assert!(parse_reinforce_line(&reinforce).unwrap().is_some());
+        let reinforce = parse_reinforce_line(&reinforce)
+            .unwrap()
+            .expect("reinforce should parse");
+        let AbilityKind::Activated(activated) = reinforce.kind() else {
+            panic!("reinforce should lower to an activated ability");
+        };
+        let [segment] = activated.effects.segments.as_slice() else {
+            panic!("reinforce should have one resolution segment");
+        };
+        let [crate::cards::builders::EffectAst::SubjectVerb(effect)] =
+            segment.default_effects.as_slice()
+        else {
+            panic!("reinforce should have one typed counter effect");
+        };
+        let SubjectVerbActionAst::PutCounters { target, .. } = &effect.action else {
+            panic!("reinforce should put counters");
+        };
+        assert!(matches!(
+            target,
+            TargetAst::Object(filter, Some(_), None)
+                if filter.zone == Some(Zone::Battlefield)
+                    && filter.card_types == [CardType::Creature]
+        ));
     }
 
     fn describe_choose_spec_for_test(spec: &ChooseSpec) -> String {
@@ -2672,7 +2867,11 @@ pub fn parse_reinforce_line(
     let effect = crate::cards::builders::EffectAst::subject_verb_put_counters(
         CounterType::PlusOnePlusOne,
         Value::Fixed(amount),
-        TargetAst::Object(creature_filter, None, None),
+        // Reinforce's keyword definition targets a creature even though the
+        // compact keyword line does not spell out the word `target`.  Retain
+        // that semantic choice in the same typed slot used by an explicit
+        // target phrase so lowering produces a real target requirement.
+        TargetAst::Object(creature_filter, span_from_tokens(tokens), None),
         None,
         false,
     );

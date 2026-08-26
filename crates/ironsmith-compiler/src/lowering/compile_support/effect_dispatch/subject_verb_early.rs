@@ -550,6 +550,7 @@ pub(super) fn compile_subject_verb_early(
         SubjectVerbActionAst::Fight {
             creature1,
             creature2,
+            mutual_surface,
         } => {
             let (spec1, mut choices) =
                 resolve_target_spec_with_choices(creature1, &current_reference_env(ctx))?;
@@ -558,7 +559,13 @@ pub(super) fn compile_subject_verb_early(
             for choice in other_choices {
                 push_choice(&mut choices, choice);
             }
-            Ok((vec![Effect::fight(spec1, spec2)], choices))
+            let fight = crate::effects::FightEffect::new(spec1, spec2);
+            let fight = if *mutual_surface {
+                fight.with_mutual_surface()
+            } else {
+                fight
+            };
+            Ok((vec![Effect::new(fight)], choices))
         }
         SubjectVerbActionAst::FightIterated { creature2 } => {
             let (spec2, choices) =

@@ -546,6 +546,49 @@ fn parse_one_or_more_planeswalker_attack_target(
         _ => None,
     }
 }
+
+/// Parse the defender-first grouped surface
+/// `a planeswalker <player> controls with one or more creatures`.
+///
+/// The singular defender matters: the trigger fires once for each attacked
+/// planeswalker, rather than once across every planeswalker that player
+/// protects in the declaration.
+fn parse_planeswalker_attacked_with_one_or_more_creatures_target(
+    tail: &[&str],
+) -> Option<ironsmith_core::AttackTargetRestriction> {
+    match tail {
+        [
+            "a",
+            "planeswalker",
+            "you",
+            "control",
+            "with",
+            "one",
+            "or",
+            "more",
+            "creatures",
+        ] => Some(
+            ironsmith_core::AttackTargetRestriction::PlaneswalkerControlledBy(PlayerFilter::You),
+        ),
+        [
+            "a",
+            "planeswalker",
+            "an",
+            "opponent",
+            "controls",
+            "with",
+            "one",
+            "or",
+            "more",
+            "creatures",
+        ] => Some(
+            ironsmith_core::AttackTargetRestriction::PlaneswalkerControlledBy(
+                PlayerFilter::Opponent,
+            ),
+        ),
+        _ => None,
+    }
+}
 const THIS_BLOCKS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
@@ -2055,12 +2098,18 @@ pub(crate) fn restore_authored_source_trigger_surface(
         | TriggerSpec::ThisTransformsWithSurface {
             surface: current, ..
         } => *current = surface.clone(),
+        TriggerSpec::ThisDies => {
+            *trigger = TriggerSpec::Dies(ObjectFilter::source_with_surface(surface.clone()));
+        }
         TriggerSpec::ThisLeavesBattlefieldWithSurface(current)
         | TriggerSpec::ThisDiesOrIsExiledWithSurface(current) => *current = surface.clone(),
         TriggerSpec::ThisDealsCombatDamageToPlayer {
             source_surface: current,
             ..
         } => *current = Some(surface.clone()),
+        TriggerSpec::ThisAttacks => {
+            *trigger = TriggerSpec::Attacks(ObjectFilter::source_with_surface(surface.clone()));
+        }
         _ => {}
     }
 }
@@ -2105,7 +2154,8 @@ fn try_parse_player_puts_object_onto_battlefield_lexed(
     };
     let subject_tokens =
         trim_edge_punctuation_tokens(&tokens[subject_start_token..subject_end_token]);
-    let filter = parse_object_filter_lexed(subject_tokens, false)?;
+    let mut filter = parse_object_filter_lexed(subject_tokens, false)?;
+    filter.set_player_puts_onto_battlefield_surface(true);
     Ok(Some(apply_leading_trigger_intro_surface(
         TriggerSpec::EntersBattlefield {
             filter,

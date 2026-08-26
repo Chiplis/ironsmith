@@ -3065,6 +3065,31 @@ fn parse_predicate_behold_or_controlled_subtype_uses_capture_parser() -> Result<
 }
 
 #[test]
+fn past_control_predicate_preserves_as_cast_surface() -> Result<(), CardTextError> {
+    let tokens = lex_line("If you controlled a Mount as you cast this spell", 0)?;
+    let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+    let PredicateAst::PlayerControls {
+        player: PlayerAst::You,
+        filter,
+    } = parsed
+    else {
+        panic!("expected a player-control predicate, got {parsed:#?}");
+    };
+    assert_eq!(filter.subtypes, vec![Subtype::Mount]);
+    assert!(filter.has_as_you_cast_this_turn_surface());
+
+    let near_miss = lex_line("If you control a Mount", 0)?;
+    let near_miss = parse_predicate(&predicate_tokens_after_if(&near_miss))?;
+    let filter = match &near_miss {
+        PredicateAst::PlayerControls { filter, .. }
+        | PredicateAst::PlayerControlsExactly { filter, .. } => filter,
+        _ => panic!("expected an ordinary player-control predicate, got {near_miss:#?}"),
+    };
+    assert!(!filter.has_as_you_cast_this_turn_surface());
+    Ok(())
+}
+
+#[test]
 fn parse_predicate_beheld_subtype_preserves_optional_cost_discriminator()
 -> Result<(), CardTextError> {
     for (text, subtype) in [
@@ -3544,7 +3569,7 @@ fn parse_predicate_source_counters_use_shared_capture_parser() -> Result<(), Car
         PredicateAst::SourceHasCounterAtLeast {
             counter_type: CounterType::PlusOnePlusOne,
             count: 1,
-            surface: crate::SourceCounterThresholdSurface::SourceHas,
+            surface: crate::SourceCounterThresholdSurface::SourceHasOneOrMore,
         }
     );
     Ok(())

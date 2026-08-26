@@ -318,6 +318,7 @@ pub(super) fn compile_subject_verb_middle(
             allow_land,
             as_copy,
             copy_cast_reminder_surface,
+            copy_instruction_surface,
             without_paying_mana_cost,
             additional_mana_cost,
             cost_reduction,
@@ -361,6 +362,7 @@ pub(super) fn compile_subject_verb_middle(
                     *allow_land,
                     *as_copy,
                     *copy_cast_reminder_surface,
+                    *copy_instruction_surface,
                     *without_paying_mana_cost,
                     additional_mana_cost.clone(),
                     cost_reduction.clone(),
@@ -674,6 +676,7 @@ pub(super) fn compile_subject_verb_middle(
         }
         SubjectVerbActionAst::ReturnToBattlefield {
             target,
+            target_reference_surface,
             from_graveyard_or_exile,
             tapped,
             transformed,
@@ -800,6 +803,11 @@ pub(super) fn compile_subject_verb_middle(
                     ReturnControllerAst::Preserve => move_back,
                     ReturnControllerAst::Owner => move_back.under_owner_control(),
                     ReturnControllerAst::You => move_back.under_you_control(),
+                };
+                let move_back = if let Some(surface) = target_reference_surface {
+                    move_back.with_target_reference_surface(*surface)
+                } else {
+                    move_back
                 };
                 Effect::new(move_back)
             } else {
@@ -1424,8 +1432,8 @@ pub(super) fn compile_subject_verb_middle(
                 let mut apply = crate::effects::ApplyContinuousEffect::with_spec_runtime(
                     spec,
                     crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
-                        power: resolved_power.clone(),
-                        toughness: resolved_toughness.clone(),
+                        power: resolved_power,
+                        toughness: resolved_toughness,
                     },
                     duration.clone(),
                 )
@@ -1874,6 +1882,7 @@ pub(super) fn compile_subject_verb_middle(
             name_override_surface,
             add_supertypes,
             remove_supertypes,
+            add_colors,
             add_card_types,
             set_card_types,
             add_subtypes,
@@ -1907,6 +1916,11 @@ pub(super) fn compile_subject_verb_middle(
             if !remove_supertypes.is_empty() {
                 apply = apply.with_additional_modification(
                     crate::continuous::Modification::RemoveSupertypes(remove_supertypes.clone()),
+                );
+            }
+            if !add_colors.is_empty() {
+                apply = apply.with_additional_modification(
+                    crate::continuous::Modification::AddColors(*add_colors),
                 );
             }
             if !add_card_types.is_empty() {

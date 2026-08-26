@@ -89,6 +89,12 @@ pub struct CombatDamageEqualShape<'a> {
     pub target_is_each_or_all: bool,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct CombatExceptFilterShape<'a> {
+    pub included_filter_tokens: &'a [OwnedLexToken],
+    pub excluded_filter_tokens: &'a [OwnedLexToken],
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CombatDividedTargetError {
     MissingTargetsAfterAmong,
@@ -579,4 +585,6 @@ mod tests;
 
 #[path = "damage/combat_programs.rs"]
 mod combat_programs;
-pub use combat_programs::parse_combat_damage_target_shape_lexed;
+pub use combat_programs::{
+    parse_combat_damage_target_shape_lexed, parse_combat_except_filter_shape_lexed,
+};

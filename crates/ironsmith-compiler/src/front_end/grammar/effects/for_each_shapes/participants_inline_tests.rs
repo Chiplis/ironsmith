@@ -26,6 +26,42 @@ fn parses_participant_and_who_shapes() {
 }
 
 #[test]
+fn cant_failure_keeps_commas_inside_the_followup_effect() {
+    let clause = lex_line(
+        "each opponent who can't loses half their life, rounded up",
+        0,
+    )
+    .expect("failure clause should lex");
+    let outer = parse_participant_clause_shape(&clause).expect("participant clause should parse");
+    let WhoClauseShape::Negated { effect_tokens, .. } =
+        parse_who_clause_shape(outer.inner_tokens).expect("failure clause should parse")
+    else {
+        panic!("expected negated participant shape");
+    };
+    assert_eq!(
+        TokenWordView::new(effect_tokens).to_word_refs(),
+        vec!["loses", "half", "their", "life", "rounded", "up"]
+    );
+
+    let predicate = lex_line(
+        "for each opponent who doesn't discard a creature card this way, draw a card",
+        0,
+    )
+    .expect("predicate clause should lex");
+    let outer =
+        parse_participant_clause_shape(&predicate).expect("predicate participant should parse");
+    let WhoClauseShape::Negated { effect_tokens, .. } =
+        parse_who_clause_shape(outer.inner_tokens).expect("predicate clause should parse")
+    else {
+        panic!("expected negated predicate shape");
+    };
+    assert_eq!(
+        TokenWordView::new(effect_tokens).to_word_refs(),
+        vec!["draw", "a", "card"]
+    );
+}
+
+#[test]
 fn distinguishes_participant_subjects_from_controller_imperatives() {
     let subject = lex_line("Each opponent chooses a creature", 0).unwrap();
     let imperative = lex_line("For each opponent, choose a creature", 0).unwrap();

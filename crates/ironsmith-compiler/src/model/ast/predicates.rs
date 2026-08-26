@@ -311,6 +311,7 @@ pub enum PredicateAst {
         operator: crate::effect::ValueComparisonOperator,
         right: Value,
     },
+    ValueIsPrime(Value),
     Not(Box<PredicateAst>),
     And(Box<PredicateAst>, Box<PredicateAst>),
     Or(Box<PredicateAst>, Box<PredicateAst>),

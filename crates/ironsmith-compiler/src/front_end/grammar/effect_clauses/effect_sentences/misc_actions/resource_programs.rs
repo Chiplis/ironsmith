@@ -91,6 +91,12 @@ pub fn parse_pay(
         ));
     }
 
+    if let Some(amount) =
+        crate::effect_sentences::verb_handlers::parse_half_life_value(tokens, player)
+    {
+        return Ok(EffectAst::subject_verb_pay_life(player, amount));
+    }
+
     if let Some((amount, used)) = parse_value(tokens)
         && token_slice_at_is(tokens, used, "life")
     {

@@ -47,7 +47,9 @@ pub use triggered_chunks::{
 pub use activated::parse_activated_line;
 pub use lines::{
     dynamic_zone_change_group_token_creation_from_authored_trigger,
+    end_of_combat_destroy_then_next_end_step_counter_program,
     exact_graveyard_card_copy_cast_sequence, exact_looked_hand_optional_cast_bundle,
+    exact_target_graveyard_any_type_may_cast_bundle,
     exact_target_same_name_graveyard_may_cast_bundle,
     has_created_token_reciprocal_lifecycle_surface,
     has_linked_created_token_next_turn_sacrifice_surface,

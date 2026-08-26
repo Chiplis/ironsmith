@@ -1403,6 +1403,9 @@ impl CantAttackUnlessCondition {
             crate::ConditionExpr::SourceAttackedThisTurn => {
                 "this creature attacked this turn".to_string()
             }
+            crate::ConditionExpr::SourceAttackedBattleThisTurn => {
+                "this creature attacked a battle this turn".to_string()
+            }
             crate::ConditionExpr::SourceCameUnderYourControlThisTurn => {
                 "this creature came under your control this turn".to_string()
             }

@@ -33,6 +33,13 @@ pub struct JointSacrificeShape<'a> {
     pub object_tokens: &'a [OwnedLexToken],
 }
 
+#[derive(Debug, Clone)]
+pub struct JointObjectEachActionsShape<'a> {
+    pub source_tokens: &'a [OwnedLexToken],
+    pub tagged_tokens: &'a [OwnedLexToken],
+    pub action_tokens: &'a [OwnedLexToken],
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct AttackingPlayerDrawLoseShape<'a> {
     pub draw_tokens: &'a [OwnedLexToken],
@@ -134,6 +141,39 @@ fn joint_sacrifice<'a>(input: &mut LexStream<'a>) -> WResult<JointSacrificeShape
     })
 }
 
+fn permanent_kind<'a>(input: &mut LexStream<'a>) -> WResult<&'a OwnedLexToken> {
+    alt((
+        primitives::kw("artifact"),
+        primitives::kw("battle"),
+        primitives::kw("creature"),
+        primitives::kw("enchantment"),
+        primitives::kw("land"),
+        primitives::kw("permanent"),
+        primitives::kw("planeswalker"),
+    ))
+    .parse_next(input)
+}
+
+fn joint_object_each_actions<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<JointObjectEachActionsShape<'a>> {
+    let source_tokens = (primitives::kw("this"), permanent_kind)
+        .take()
+        .parse_next(input)?;
+    primitives::kw("and").parse_next(input)?;
+    let tagged_tokens = (primitives::kw("that"), permanent_kind)
+        .take()
+        .parse_next(input)?;
+    primitives::kw("each").parse_next(input)?;
+    let action_tokens = remainder.parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(JointObjectEachActionsShape {
+        source_tokens,
+        tagged_tokens,
+        action_tokens,
+    })
+}
+
 fn attacking_draw_lose<'a>(input: &mut LexStream<'a>) -> WResult<AttackingPlayerDrawLoseShape<'a>> {
     primitives::phrase(&["you", "and"]).parse_next(input)?;
     opt(primitives::kw("the")).parse_next(input)?;
@@ -168,6 +208,22 @@ pub fn parse_joint_create_shape(tokens: &[OwnedLexToken]) -> Option<JointCreateS
 
 pub fn parse_joint_sacrifice_shape(tokens: &[OwnedLexToken]) -> Option<JointSacrificeShape<'_>> {
     primitives::parse_all(tokens, joint_sacrifice, "registry-joint-sacrifice").ok()
+}
+
+pub fn parse_joint_object_each_actions_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<JointObjectEachActionsShape<'_>> {
+    let shape = primitives::parse_all(
+        tokens,
+        joint_object_each_actions,
+        "registry-joint-object-each-actions",
+    )
+    .ok()?;
+    let source_kind = shape.source_tokens.get(1)?.as_word()?;
+    let tagged_kind = shape.tagged_tokens.get(1)?.as_word()?;
+    source_kind
+        .eq_ignore_ascii_case(tagged_kind)
+        .then_some(shape)
 }
 
 pub fn parse_attacking_player_draw_lose_shape(

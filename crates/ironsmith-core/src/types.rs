@@ -716,6 +716,7 @@ impl Subtype {
             Subtype::Crocodile,
             Subtype::Cyclops,
             Subtype::Cyberman,
+            Subtype::Dalek,
             Subtype::Detective,
             Subtype::Doctor,
             Subtype::Demon,

@@ -706,6 +706,23 @@ fn describe_spell_cast_history_filter_subject(filter: &ObjectFilter) -> Option<S
 }
 
 pub(crate) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> String {
+    if filter.zone == Some(Zone::Exile)
+        && filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+        })
+    {
+        let mut source_exiled = filter.clone();
+        source_exiled.zone = None;
+        source_exiled.tagged_constraints.retain(|constraint| {
+            !(constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+        });
+        return format!(
+            "{} exiled with this source",
+            describe_count_filter_value_subject(&source_exiled)
+        );
+    }
     if is_cast_modified_creatures_snapshot_filter(filter) {
         return "modified creatures you controlled as you cast this spell".to_string();
     }
@@ -1270,17 +1287,6 @@ pub(crate) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
         return subject;
     }
 
-    if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok() {
-        eprintln!(
-            "count-subject: excluded={:?} tags={:?}",
-            filter.excluded_card_types,
-            filter
-                .tagged_constraints
-                .iter()
-                .map(|c| c.tag.as_str())
-                .collect::<Vec<_>>()
-        );
-    }
     let tagged_this_way_action = describe_tagged_this_way_action(filter);
     let mut bare = filter.clone();
     if tagged_this_way_action
@@ -2047,6 +2053,14 @@ fn describe_any_target_excluding_subtypes(
 pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
     match spec {
         ChooseSpec::SurfaceHinted { spec, hints } => {
+            // An explicit target declaration owns the rendered subject. A
+            // source-reference hint may survive on its inner filter when the
+            // authored selector excludes the source ("target creature other
+            // than this creature"), but it cannot turn that legal target
+            // into the source object itself.
+            if matches!(spec.unhinted(), ChooseSpec::Target(_)) {
+                return describe_choose_spec(spec);
+            }
             if let Some(kind) = hints.iter().find_map(|hint| match hint {
                 crate::target::ChooseSpecSurfaceHint::SacrificedObject(kind) => Some(*kind),
                 crate::target::ChooseSpecSurfaceHint::SourceReference(_) => None,
@@ -2126,6 +2140,20 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                 && filter.description() == "your commander"
             {
                 return "target commander you own".to_string();
+            }
+            if let ChooseSpec::Object(filter) = inner.as_ref()
+                && filter.other
+                && let Some(source_surface) = &filter.source_surface
+            {
+                let mut base = filter.clone();
+                base.other = false;
+                base.source_surface = None;
+                let base = describe_object_filter_with_fixed_pt_shorthand(&base);
+                return format!(
+                    "target {} other than {}",
+                    strip_indefinite_article(&base),
+                    describe_source_reference_surface_text(source_surface)
+                );
             }
             if let Some(tagged_text) = describe_demonstrative_tagged_object_spec(inner.as_ref()) {
                 return tagged_text;
@@ -5171,6 +5199,11 @@ pub(crate) fn describe_value(value: &Value) -> String {
     }
 
     match value {
+        Value::SurfaceHinted { hints, .. }
+            if hints.contains(&ironsmith_core::ValueSurfaceHint::ThatMany) =>
+        {
+            "that many".to_string()
+        }
         Value::SurfaceHinted { hints, .. }
             if hints.contains(&ironsmith_core::ValueSurfaceHint::Difference) =>
         {

@@ -96,9 +96,7 @@ fn generic_mana_amount_from_symbol(symbol: ManaSymbol) -> Option<i32> {
     }
 }
 
-pub fn parse_counter_target_phrase(
-    tokens: &[OwnedLexToken],
-) -> Result<TargetAst, CardTextError> {
+pub fn parse_counter_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
     let words = crate::lexer::token_word_refs(tokens);
     if crate::word_primitives::parse_sequence_complete(
         &words,
@@ -113,7 +111,7 @@ pub fn parse_counter_target_phrase(
             "abilities",
             "your",
             "opponents",
-            "control"
+            "control",
         ],
     ) {
         let mut spells = ObjectFilter::spell();
@@ -360,9 +358,7 @@ fn parse_counter_ability_target_phrase(
             let filter_start = idx + if targets_only { 3 } else { 2 };
             let filter_tokens: Vec<OwnedLexToken> = clause_tokens[filter_start..].to_vec();
             if let Ok((target_player, target_object, targets_any_of)) =
-                crate::keyword_static::parse_cost_modifier_target_spec(
-                    &filter_tokens,
-                )
+                crate::keyword_static::parse_cost_modifier_target_spec(&filter_tokens)
             {
                 for (filter, _) in &mut term_filters {
                     if targets_only {
@@ -418,9 +414,9 @@ fn parse_counter_ability_target_phrase(
         }
         if counter_prefix_at(&clause_words, idx, COUNTER_OPPONENTS_CONTROL_PREFIXES) {
             controller_filter = Some(PlayerFilter::Opponent);
-            idx += if clause_tokens.get(idx).is_some_and(|token| {
-                matches!(token.as_word(), Some("your" | "an"))
-            })
+            idx += if clause_tokens
+                .get(idx)
+                .is_some_and(|token| matches!(token.as_word(), Some("your" | "an")))
             {
                 3
             } else {
@@ -442,9 +438,7 @@ fn parse_counter_ability_target_phrase(
             let filter_start = idx + if targets_only { 3 } else { 2 };
             let filter_tokens = clause_tokens[filter_start..].to_vec();
             let Ok((target_player, target_object, targets_any_of)) =
-                crate::keyword_static::parse_cost_modifier_target_spec(
-                    &filter_tokens,
-                )
+                crate::keyword_static::parse_cost_modifier_target_spec(&filter_tokens)
             else {
                 return Ok(None);
             };
@@ -626,8 +620,7 @@ pub fn parse_reveal(
             &["the", "cards", "in", "your", "library"],
             &["reveal", "the", "cards", "in", "your", "library"],
         ],
-    )
-    {
+    ) {
         let tag = crate::tag::CompilerReferenceTag::RevealedLibrary.key();
         let filter = ObjectFilter::default()
             .in_zone(Zone::Library)
@@ -849,9 +842,7 @@ pub fn parse_life_amount(
     })
 }
 
-pub fn parse_life_equal_to_value(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Value>, CardTextError> {
+pub fn parse_life_equal_to_value(tokens: &[OwnedLexToken]) -> Result<Option<Value>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
     if counter_grammar::parse_prefix(&clause_words, &[LIFE_EQUAL_TO_PREFIX]).is_none() {
         return Ok(None);
@@ -967,10 +958,7 @@ pub fn parse_life_equal_to_value(
             if counter_grammar::parse_prefix(&value_words, &[prefix]).is_some() {
                 let mut reordered = value_words[prefix.len()..].to_vec();
                 reordered.extend_from_slice(stat_words);
-                if let Some((value, used)) =
-                    crate::util::parse_value_expr_words(
-                        &reordered,
-                    )
+                if let Some((value, used)) = crate::util::parse_value_expr_words(&reordered)
                     && used == reordered.len()
                 {
                     return Ok(Some(value));
@@ -993,8 +981,7 @@ fn parse_possessive_target_stat_value(tokens: &[OwnedLexToken]) -> Option<Value>
         counter_grammar::TargetStatKind::ManaValue => Value::ManaValueOf,
     };
     let target = parse_target_phrase(&shape.target_tokens).ok()?;
-    let spec =
-        crate::reference_helpers::choose_spec_for_target(&target);
+    let spec = crate::reference_helpers::choose_spec_for_target(&target);
     Some(constructor(Box::new(spec)))
 }
 
@@ -1063,9 +1050,7 @@ pub fn parse_life_amount_from_trailing(
     // IT_TAG placeholder to the prior action's affected-object snapshots.
     let trailing_words = crate::lexer::token_word_refs(trailing);
     if let Some((value, used)) =
-        crate::grammar::shared_util::count_shapes::parse_for_each_count_value_words(
-            &trailing_words,
-        )
+        crate::grammar::shared_util::count_shapes::parse_for_each_count_value_words(&trailing_words)
         && used == trailing_words.len()
         && let Some(multiplier) = match base_amount {
             Value::Fixed(value) => Some(*value),
@@ -1097,9 +1082,10 @@ pub fn parse_life_amount_from_trailing(
             Value::Fixed(value) => Some(*value),
             Value::X => Some(1),
             _ => None,
-        } {
-            return Ok(Some(scale_value_multiplier(dynamic, multiplier)));
         }
+    {
+        return Ok(Some(scale_value_multiplier(dynamic, multiplier)));
+    }
 
     if let Some(where_value) = parse_value_binding_clause(trailing) {
         if value_contains_unbound_x(base_amount) {
@@ -1201,10 +1187,25 @@ fn player_filter_for_life_reference(player: PlayerAst) -> Option<PlayerFilter> {
     }
 }
 
-fn parse_half_life_value(tokens: &[OwnedLexToken], player: PlayerAst) -> Option<Value> {
+pub(super) fn parse_half_life_value(tokens: &[OwnedLexToken], player: PlayerAst) -> Option<Value> {
     let clause_words = crate::lexer::token_word_refs(tokens);
     let shape = counter_grammar::parse_half_life(&clause_words)?;
-    let player_filter = player_filter_for_life_reference(player)?;
+    let life_idx = clause_words.iter().position(|word| *word == "life")?;
+    if life_idx != 2
+        || !matches!(clause_words[1], "your" | "their" | "his" | "her")
+        || !matches!(
+            &clause_words[life_idx + 1..],
+            [] | ["rounded", "up"] | ["rounded", "down"]
+        )
+    {
+        return None;
+    }
+    let reference_player = if clause_words[1] == "your" {
+        PlayerAst::You
+    } else {
+        player
+    };
+    let player_filter = player_filter_for_life_reference(reference_player)?;
     if shape.rounded_down {
         Some(Value::HalfLifeTotalRoundedDown(player_filter))
     } else {

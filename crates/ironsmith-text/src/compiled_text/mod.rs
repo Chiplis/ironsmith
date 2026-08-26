@@ -352,14 +352,18 @@ fn compact_shared_conditional_pump_and_ability(
             "This Equipment gets {pt} and has {keyword} as long as {condition}."
         ));
     }
-    if pump.starts_with("Destroy target creature if its mana value is 2 or less")
-        && ability.starts_with(
-            "Revolt — Destroy that creature if it has mana value 4 or less instead if ",
-        )
+    if let Some(default) = pump.strip_prefix("Destroy target ")
+        && let Some((default_subject, default_threshold)) =
+            default.split_once(" if its mana value is ")
+        && let Some((_, replacement)) = ability.split_once(" — ")
+        && let Some(replacement) = replacement.strip_prefix("Destroy that ")
+        && let Some((replacement_subject, replacement_tail)) =
+            replacement.split_once(" if it has mana value ")
+        && replacement_tail.contains(" instead if ")
+        && default_subject.eq_ignore_ascii_case(replacement_subject)
     {
         return Some(format!(
-            "{}. {}",
-            pump.replace("if its mana value is", "if it has mana value"),
+            "Destroy target {default_subject} if it has mana value {default_threshold}.\n{}",
             ability
         ));
     }
@@ -1320,6 +1324,10 @@ fn finalize_ast_surface_line(line: String) -> String {
     line = line.replace(
         "Whenever an equipped creature deals combat damage to a player",
         "Whenever equipped creature deals combat damage to a player",
+    );
+    line = line.replace(
+        "When an equipped creature deals combat damage to a player",
+        "When equipped creature deals combat damage to a player",
     );
     line = line
         .replace(
@@ -2947,6 +2955,24 @@ mod tests {
             ),
             "Whenever you cast a spell with mana value 5 or greater, each opponent reveals the top card of their library. If any of those cards shares a card type with that spell, copy that spell, you may choose new targets for the copy, and each opponent draws a card. Otherwise, you draw a card."
         );
+    }
+
+    #[test]
+    fn scored_line_preserves_every_authored_comma_then_boundary() {
+        const ORDERED: &str =
+            "Each player draws two cards, then discards three cards, then loses 4 life.";
+
+        assert_eq!(normalize_common_semantic_phrasing(ORDERED), ORDERED);
+        assert_eq!(
+            merge_ast_surface_lines(vec![ORDERED.to_string()]),
+            vec![ORDERED.to_string()]
+        );
+        assert_eq!(finalize_ast_surface_line(ORDERED.to_string()), ORDERED);
+        assert_eq!(
+            normalize_ast_surface_lines(vec![ORDERED.to_string()]),
+            vec![ORDERED.to_string()]
+        );
+        assert_eq!(normalize_scored_compiled_line(ORDERED.to_string()), ORDERED);
     }
 
     #[test]

@@ -46,6 +46,11 @@ pub fn parse_for_each_opponent_clause(
     {
         return Ok(Some(wrap_opponents(&iteration_filter, effects)));
     }
+    if let Some(effects) =
+        parse_participant_creature_type_choice_program(outer.inner_tokens, slot_chooser)?
+    {
+        return Ok(Some(wrap_opponents(&iteration_filter, effects)));
+    }
     if iteration_filter == PlayerFilter::Opponent
         && let Some(effect) = parse_for_each_doesnt_control_lose_game(tokens, true)?
     {
@@ -162,6 +167,7 @@ pub fn parse_for_each_opponent_clause(
             WhoClauseShape::Negated {
                 effect_tokens,
                 tagged_filter_tokens,
+                implicit_player_is_iterated,
             } => {
                 if effect_tokens.is_empty() {
                     return Err(CardTextError::ParseError(format!(
@@ -169,8 +175,12 @@ pub fn parse_for_each_opponent_clause(
                         clause_text
                     )));
                 }
+                let scoped_effect_tokens =
+                    implicit_player_is_iterated.then(|| prepend_that_player_subject(effect_tokens));
                 return Ok(Some(EffectAst::ForEachOpponentDoesNot {
-                    effects: parse_effect_chain_inner(effect_tokens)?,
+                    effects: parse_effect_chain_inner(
+                        scoped_effect_tokens.as_deref().unwrap_or(effect_tokens),
+                    )?,
                     predicate: tagged_predicate(tagged_filter_tokens),
                 }));
             }
@@ -236,7 +246,19 @@ pub fn parse_for_each_opponent_clause(
             .first()
             .is_some_and(|token| token.is_word("may"));
     let participant_chooses = for_each_shapes::starts_choose(outer.inner_tokens);
-    let mut effects = if outer.participant_is_actor && !participant_may {
+    let quantified_unless_payment = if outer.participant_is_actor
+        && super::super::has_unless_payment_choice(outer.inner_tokens)?
+    {
+        let normalized = prepend_that_player_subject(outer.inner_tokens);
+        super::super::parse_sentence_unless_pays(super::super::SubjectVerbPrimitiveClause::new(
+            &normalized,
+        ))?
+    } else {
+        None
+    };
+    let mut effects = if let Some(effects) = quantified_unless_payment {
+        effects
+    } else if outer.participant_is_actor && !participant_may {
         if let Some(effects) = parse_quantified_participant_actor_program(outer.inner_tokens)? {
             effects
         } else {

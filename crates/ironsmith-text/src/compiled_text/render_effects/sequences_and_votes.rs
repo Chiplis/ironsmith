@@ -174,6 +174,100 @@ pub(super) fn is_time_travel_object_set(spec: &ChooseSpec) -> bool {
         && filter.any_of.iter().any(|arm| arm == &suspended)
 }
 
+/// Rejoin the implicit object-choice scaffold used by “Sacrifice any number
+/// of ..., then add that much ...”. The sacrifice result ID is the executable
+/// proof that the mana amount counts the chosen set actually sacrificed.
+pub(super) fn describe_sacrifice_any_number_then_add_that_much_mana(
+    effects: &[Effect],
+) -> Option<String> {
+    let [choose_effect, sacrifice_effect, mana_effect] = effects else {
+        return None;
+    };
+    let choose = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let sacrifice_with_id = sacrifice_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let sacrifice = sacrifice_view(&sacrifice_with_id.effect)?;
+    let mana = structural_unwrap_render_wrappers(mana_effect)
+        .downcast_ref::<crate::effects::AddScaledManaEffect>()?;
+    let [symbol] = mana.mana.as_slice() else {
+        return None;
+    };
+    if choose.chooser != PlayerFilter::You
+        || sacrifice.player != &PlayerFilter::You
+        || mana.player != PlayerFilter::You
+        || !matches!(
+            mana.amount.unhinted(),
+            Value::EffectValue(id) if *id == sacrifice_with_id.id
+        )
+    {
+        return None;
+    }
+    let sacrifice_text = describe_choose_then_sacrifice(choose, sacrifice)?;
+    if !sacrifice_text
+        .to_ascii_lowercase()
+        .contains("sacrifice any number of")
+    {
+        return None;
+    }
+    Some(format!(
+        "{}, then add that much {}",
+        capitalize_first(&sacrifice_text),
+        describe_mana_symbol(*symbol)
+    ))
+}
+
+#[cfg(test)]
+mod sacrifice_any_number_then_add_mana_tests {
+    use super::*;
+
+    fn effects(result_id: crate::effect::EffectId) -> Vec<Effect> {
+        let tag = TagKey::from("chosen_lands");
+        let choose = Effect::new(
+            crate::effects::ChooseObjectsEffect::new(
+                ObjectFilter::land()
+                    .you_control()
+                    .in_zone(Zone::Battlefield),
+                ChoiceCount::any_number(),
+                PlayerFilter::You,
+                tag.clone(),
+            )
+            .in_zone(Zone::Battlefield),
+        );
+        let chosen = ObjectFilter::tagged(tag);
+        let sacrifice = Effect::with_id(
+            7,
+            Effect::new(crate::effects::zones::SacrificePlayerEffect::new(
+                chosen.clone(),
+                Value::Count(chosen),
+                PlayerFilter::You,
+            )),
+        );
+        let mana = Effect::new(crate::effects::AddScaledManaEffect::new(
+            vec![ManaSymbol::Colorless],
+            Value::EffectValue(result_id),
+            PlayerFilter::You,
+        ));
+        vec![choose, sacrifice, mana]
+    }
+
+    #[test]
+    fn sacrifice_result_identity_controls_that_much_mana_surface() {
+        assert_eq!(
+            describe_sacrifice_any_number_then_add_that_much_mana(&effects(
+                crate::effect::EffectId(7)
+            )),
+            Some("You sacrifice any number of lands, then add that much {C}".to_string())
+        );
+        assert!(
+            describe_sacrifice_any_number_then_add_that_much_mana(&effects(
+                crate::effect::EffectId(8)
+            ))
+            .is_none(),
+            "an unrelated result ID must not acquire the 'that much' surface"
+        );
+    }
+}
+
 pub(in crate::compiled_text) fn describe_discard_hand_add_mana_draw_sequence(
     effects: &[&Effect],
 ) -> Option<String> {
@@ -5252,6 +5346,14 @@ pub(super) fn has_vote_winners_tag(filter: &ObjectFilter) -> bool {
 pub(super) fn describe_return_all_to_battlefield_effect(
     return_all: &crate::effects::ReturnAllToBattlefieldEffect,
 ) -> String {
+    let helper_exile_tag = |tag: &str| {
+        crate::cards::is_sentence_helper_tag(tag, "exiled")
+            || tag
+                .strip_prefix("__sentence_helper_exiled_aggregate_")
+                .is_some_and(|suffix| {
+                    !suffix.is_empty() && suffix.bytes().all(|byte| byte.is_ascii_digit())
+                })
+    };
     let source_linked_exile = return_all.filter.zone == Some(Zone::Exile)
         && return_all
             .filter
@@ -5266,7 +5368,7 @@ pub(super) fn describe_return_all_to_battlefield_effect(
         base.zone = None;
         base.tagged_constraints.retain(|constraint| {
             !(constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
-                && crate::cards::is_sentence_helper_tag(constraint.tag.as_str(), "exiled"))
+                && helper_exile_tag(constraint.tag.as_str()))
         });
         base == ObjectFilter::default()
             && return_all
@@ -5275,27 +5377,30 @@ pub(super) fn describe_return_all_to_battlefield_effect(
                 .iter()
                 .any(|constraint| {
                     constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
-                        && crate::cards::is_sentence_helper_tag(constraint.tag.as_str(), "exiled")
+                        && helper_exile_tag(constraint.tag.as_str())
                 })
     } else {
         false
     };
-    let mut filter_text = if helper_linked_exile {
-        "the exiled cards".to_string()
-    } else if source_linked_exile
-        && return_all.filter.card_types.len() == 1
-        && return_all.filter.card_types[0] == CardType::Creature
-        && return_all.filter.subtypes.is_empty()
-    {
-        // The source-linked exile tag is shared by creatures, artifacts,
-        // enchantments, and other permanents. The effect itself has no source
-        // type context, so claiming a specific permanent type here can change
-        // the meaning (for example, a creature source rendered as an
-        // enchantment). Keep the reference type-neutral.
-        "creature cards exiled with this card".to_string()
-    } else {
-        describe_for_each_filter(&return_all.filter)
-    };
+    let mut filter_text =
+        if helper_linked_exile && return_all.filter.has_plural_pronoun_reference_surface() {
+            "them".to_string()
+        } else if helper_linked_exile {
+            "the exiled cards".to_string()
+        } else if source_linked_exile
+            && return_all.filter.card_types.len() == 1
+            && return_all.filter.card_types[0] == CardType::Creature
+            && return_all.filter.subtypes.is_empty()
+        {
+            // The source-linked exile tag is shared by creatures, artifacts,
+            // enchantments, and other permanents. The effect itself has no source
+            // type context, so claiming a specific permanent type here can change
+            // the meaning (for example, a creature source rendered as an
+            // enchantment). Keep the reference type-neutral.
+            "creature cards exiled with this card".to_string()
+        } else {
+            describe_for_each_filter(&return_all.filter)
+        };
     filter_text = filter_text
         .replace("permanent card exiled", "permanent cards exiled")
         .replace("card exiled", "cards exiled")
@@ -5332,6 +5437,33 @@ pub(super) fn describe_return_all_to_battlefield_effect(
         face_down_suffix,
         controller_suffix,
     )
+}
+
+#[cfg(test)]
+mod helper_linked_return_pronoun_tests {
+    use super::*;
+
+    #[test]
+    fn exact_plural_surface_renders_them_and_plain_reference_keeps_the_noun() {
+        let mut filter = ObjectFilter::tagged(TagKey::from("__sentence_helper_exiled_aggregate_7"))
+            .in_zone(Zone::Exile);
+        filter.set_plural_pronoun_reference_surface(true);
+        let returned = crate::effects::ReturnAllToBattlefieldEffect::new(filter.clone(), false)
+            .under_owner_control();
+
+        assert_eq!(
+            describe_return_all_to_battlefield_effect(&returned),
+            "Return them to the battlefield under their owners' control"
+        );
+
+        filter.set_plural_pronoun_reference_surface(false);
+        let plain =
+            crate::effects::ReturnAllToBattlefieldEffect::new(filter, false).under_owner_control();
+        assert_eq!(
+            describe_return_all_to_battlefield_effect(&plain),
+            "Return the exiled cards to the battlefield under their owners' control"
+        );
+    }
 }
 
 pub(super) fn effect_exiles_triggering_object(effect: &Effect) -> bool {
@@ -6839,7 +6971,9 @@ pub(super) fn hand_choice_from_it_text(
     filter.owner = None;
     filter.controller = None;
     filter.tagged_constraints.clear();
-    let mut choice = if filter == ObjectFilter::default() {
+    let mut choice = if choose_card_name_excludes_only_basic_lands(&filter) {
+        "card other than a basic land card".to_string()
+    } else if filter == ObjectFilter::default() {
         "card".to_string()
     } else if filter.card_types.is_empty()
         && filter.excluded_card_types == vec![CardType::Land]

@@ -101,6 +101,23 @@ fn targeted_discard_for_each_suffix_does_not_claim_target_player_iteration() {
 }
 
 #[test]
+fn full_sentence_dispatch_preserves_bounded_target_player_iteration() {
+    let tokens = lex_line("Two target players each draw a card.", 0)
+        .expect("bounded target-player fanout should lex");
+    let effects = crate::effect_sentences::parse_effect_sentence_lexed(&tokens)
+        .expect("bounded target-player fanout should parse");
+
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [EffectAst::ForEachTargetPlayers { count, .. }]
+                if *count == ChoiceCount::exactly(2)
+        ),
+        "{effects:#?}"
+    );
+}
+
+#[test]
 fn targeted_life_gain_for_each_suffix_does_not_claim_target_player_iteration() {
     let tokens = lex_line(
         "Target player gains 2 life for each creature on the battlefield.",

@@ -470,6 +470,14 @@ fn parse_maybe_effects(
 fn parse_quantified_participant_actor_program(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // An `or` inside a trailing unless payment belongs to the payer, not to
+    // the quantified participant's outer action program. Leave the complete
+    // body to the unless parser so it can materialize `TotalCost::OneOf`
+    // instead of repeating the second payment arm after the consequence.
+    if super::has_unless_payment_choice(tokens)? {
+        return Ok(None);
+    }
+
     fn starts_object_domain_list_arm(words: &[&str]) -> bool {
         let words = if crate::word_primitives::first_is_any(words, &["and", "or", "and/or"]) {
             &words[1..]
@@ -533,6 +541,7 @@ fn parse_quantified_participant_actor_program(
     if segments.len() < 2 {
         return Ok(None);
     }
+    let member_count = segments.len();
 
     let mut effects = Vec::new();
     for segment in segments {
@@ -542,6 +551,11 @@ fn parse_quantified_participant_actor_program(
             bind_quantified_participant_actor(&mut segment_effects);
         }
         effects.extend(segment_effects);
+    }
+    if effects.len() == member_count
+        && let Some(coordination) = plan.into_ast(effects.clone())
+    {
+        return Ok(Some(vec![EffectAst::Coordination(coordination)]));
     }
     Ok(Some(effects))
 }
@@ -669,4 +683,6 @@ mod for_each_helpers_trigger_programs;
 use for_each_helpers_trigger_programs::effect_copies_triggering_stack_object;
 #[path = "for_each_helpers/for_each_helpers_choice_programs.rs"]
 mod for_each_helpers_choice_programs;
-use for_each_helpers_choice_programs::parse_participant_choice_complement_effects;
+use for_each_helpers_choice_programs::{
+    parse_participant_choice_complement_effects, parse_participant_creature_type_choice_program,
+};

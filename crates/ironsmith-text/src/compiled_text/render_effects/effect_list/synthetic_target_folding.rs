@@ -308,6 +308,15 @@ fn effect_references_identity(effect: &Effect, identity: &SyntheticTargetIdentit
     {
         return true;
     }
+    if let Some(apply) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        && matches!(
+            &apply.target,
+            crate::continuous::EffectTarget::Filter(filter)
+                if object_filter_references_identity(filter, identity)
+        )
+    {
+        return true;
+    }
     if let Some(gain) = effect.downcast_ref::<crate::effects::GainLifeEffect>() {
         return value_references_identity(&gain.amount, identity)
             || choose_spec_references_identity(&gain.player, identity);
@@ -517,7 +526,7 @@ pub(super) fn target_only_pair_can_fold(effects: &[Effect], target_effect: &Effe
 /// loop, so merely retaining it in the filtered list is insufficient. Render
 /// its unwrapped declaration explicitly, then let the ordinary list renderer
 /// compact the consumers without the producer.
-pub(super) fn describe_multi_consumer_synthetic_target_declaration(
+pub(in crate::compiled_text) fn describe_multi_consumer_synthetic_target_declaration(
     effects: &[Effect],
 ) -> Option<String> {
     let (target_index, target_effect, identity) = sole_synthetic_target_entry(effects)?;
@@ -570,6 +579,45 @@ pub(super) fn describe_multi_consumer_synthetic_target_declaration(
         return Some(capitalize_first(
             rendered_consumers.trim().trim_end_matches('.'),
         ));
+    }
+
+    // A coordinated continuous-change clause often lowers one target
+    // declaration followed by two anaphoric consumers, for example
+    // `Target creature gains flying and gets +X/+X`.  The declaration is
+    // lowering bookkeeping, while the leading `It` already proves that the
+    // rendered consumer list has preserved one shared identity.  Reattach
+    // the complete typed target phrase to that subject instead of exposing
+    // the synthetic `Choose ..., then ...` surface.
+    if consumers.len() + 1 == effects.len()
+        && let Some(predicate) = rendered_consumers
+            .strip_prefix("It ")
+            .or_else(|| rendered_consumers.strip_prefix("it "))
+    {
+        return Some(format!(
+            "{} {}",
+            capitalize_first(&target_surface),
+            predicate.trim_end_matches('.')
+        ));
+    }
+
+    // Player-filter consumers naturally render their correlated controller as
+    // "that player".  When every effect after the sole synthetic player
+    // target consumes that same identity, the anaphor is the authored target
+    // declaration rather than a reason to expose lowering bookkeeping as a
+    // separate "Choose target player" sentence.  Reattach the typed target
+    // phrase at the first correlated controller reference.  Keep this narrow
+    // to the exact player surface; object anaphors have additional ownership
+    // and attachment meanings handled by the branches above.
+    if consumers.len() + 1 == effects.len()
+        && target_surface.eq_ignore_ascii_case("target player")
+        && let Some(anaphor_start) = rendered_consumers.to_ascii_lowercase().find("that player")
+    {
+        let mut folded = rendered_consumers.clone();
+        folded.replace_range(
+            anaphor_start..anaphor_start + "that player".len(),
+            &target_surface,
+        );
+        return Some(capitalize_first(folded.trim().trim_end_matches('.')));
     }
 
     Some(format!(
@@ -803,6 +851,10 @@ pub(super) fn describe_single_consumer_synthetic_target_fold(effects: &[Effect])
             .downcast_ref::<crate::effects::DrawCardsEffect>()
         && draw.player == PlayerFilter::You
     {
+        if let Some(for_each) = describe_draw_for_each(draw) {
+            let imperative = for_each.strip_prefix("you draw ").unwrap_or(&for_each);
+            return Some(format!("Draw {imperative}"));
+        }
         return Some(format!(
             "Draw cards equal to {}",
             describe_value(&draw.count)

@@ -19,6 +19,41 @@ fn equal_to_parser_returns_typed_word_boundaries() {
 }
 
 #[test]
+fn prior_effect_aggregate_partitions_objects_the_iterated_player_controlled() {
+    let value = parse_prior_effect_aggregate_metric_value(
+        ironsmith_core::EffectMetric::TotalPower,
+        &[
+            "creatures",
+            "they",
+            "controlled",
+            "that",
+            "were",
+            "exiled",
+            "this",
+            "way",
+        ],
+    )
+    .expect("participant-relative prior-effect aggregate should parse");
+    let Value::PendingPriorEffectMetric(query) = value else {
+        panic!("expected a typed prior-effect query: {value:#?}");
+    };
+
+    assert_eq!(query.player, Some(PlayerFilter::IteratedPlayer));
+    assert_eq!(
+        query.action,
+        Some(ironsmith_core::PriorEffectAction::Exiled)
+    );
+    assert_eq!(query.metric, ironsmith_core::EffectMetric::TotalPower);
+    assert_eq!(
+        query
+            .filter
+            .as_ref()
+            .map(|filter| filter.card_types.as_slice()),
+        Some([CardType::Creature].as_slice())
+    );
+}
+
+#[test]
 fn counted_set_keeps_the_same_effect_target_controller_relation() {
     let value = parse_equal_to_number_of_filter_value(&lex_words(
         "equal to the number of nonbasic lands that creature's controller controls",

@@ -804,13 +804,40 @@ pub(super) fn rewrite_grammar_named_source_characteristic_pt_probe_matches_stati
     )
     .expect("rewrite lexer should classify named-source characteristic P/T static line");
 
-    let parsed = super::super::keyword_static::parse_characteristic_defining_pt_line(&tokens)
-        .expect("named-source characteristic P/T static line should parse");
-    assert!(matches!(
-        parsed,
-        Some(ability)
-            if ability.id() == crate::static_abilities::StaticAbilityId::CharacteristicDefiningPT
-    ));
+    let ability = super::super::keyword_static::parse_characteristic_defining_pt_line(&tokens)
+        .expect("named-source characteristic P/T static line should parse")
+        .expect("named-source characteristic P/T should be typed");
+    assert_eq!(
+        ability.id(),
+        crate::static_abilities::StaticAbilityId::CharacteristicDefiningPT
+    );
+    let crate::model::CompilerStaticAbilityPayloadCore::CharacteristicDefiningPt {
+        power,
+        toughness,
+    } = &ability.payload
+    else {
+        panic!("expected named characteristic P/T payload: {ability:#?}");
+    };
+    assert!(power.has_surface_hint(ironsmith_core::ValueSurfaceHint::SourceNameSubject));
+    assert!(toughness.has_surface_hint(ironsmith_core::ValueSurfaceHint::SourceNameSubject));
+
+    let ordinary = lex_line(
+        "Equipped creature's power and toughness are each equal to the number of creatures you control.",
+        0,
+    )
+    .expect("ordinary possessive characteristic fixture should lex");
+    let ordinary = super::super::keyword_static::parse_characteristic_defining_pt_line(&ordinary)
+        .expect("ordinary possessive characteristic line should parse")
+        .expect("ordinary possessive characteristic line should be typed");
+    let crate::model::CompilerStaticAbilityPayloadCore::CharacteristicDefiningPt {
+        power,
+        toughness,
+    } = &ordinary.payload
+    else {
+        panic!("expected ordinary characteristic P/T payload: {ordinary:#?}");
+    };
+    assert!(!power.has_surface_hint(ironsmith_core::ValueSurfaceHint::SourceNameSubject));
+    assert!(!toughness.has_surface_hint(ironsmith_core::ValueSurfaceHint::SourceNameSubject));
 }
 
 #[test]

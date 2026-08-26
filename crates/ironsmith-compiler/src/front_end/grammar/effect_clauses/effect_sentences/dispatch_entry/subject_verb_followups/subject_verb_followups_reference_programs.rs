@@ -332,6 +332,106 @@ pub(super) fn bind_self_replacement_condition_to_previous_target(
     rebind_source_match_to_target(predicate)
 }
 
+/// Rebind the characteristic gate inside a replacement action when the
+/// authored clause repeats the action target with a local `if it ...`.
+///
+/// In `destroy that creature if it has mana value ... instead if ...`, the
+/// final condition is the self-replacement gate while the earlier `if it`
+/// remains nested around the replacement action. The ordinary predicate
+/// parser conservatively emits `SourceMatches`; once the prior announced
+/// target and the local pronoun are both proven, move only that nested gate to
+/// `TargetMatches` alongside the action-target rebinding.
+pub(super) fn bind_nested_self_replacement_condition_to_previous_target(
+    effects: &mut [EffectAst],
+    sentence_tokens: &[OwnedLexToken],
+    previous_target: Option<&TargetAst>,
+) {
+    let words = LexedClause::new(sentence_tokens).word_refs();
+    let has_local_it_condition = crate::word_primitives::any_sequence_occurs(
+        &words,
+        &[&["if", "it"], &["if", "its"], &["if", "it's"]],
+    );
+    if !has_local_it_condition || !previous_target.is_some_and(target_is_explicitly_chosen) {
+        return;
+    }
+
+    fn rebind_first(effects: &mut [EffectAst]) -> bool {
+        for effect in effects {
+            match effect {
+                EffectAst::Conditional {
+                    predicate,
+                    if_true,
+                    if_false,
+                } => {
+                    if matches!(
+                        predicate,
+                        PredicateAst::SourceMatches(_) | PredicateAst::ItMatches(_)
+                    ) && !if_true.is_empty()
+                    {
+                        *predicate = rebind_source_match_to_target(predicate.clone());
+                        return true;
+                    }
+                    if rebind_first(if_true) || rebind_first(if_false) {
+                        return true;
+                    }
+                }
+                EffectAst::TrailingIf { predicate, effects } => {
+                    if matches!(
+                        predicate,
+                        PredicateAst::SourceMatches(_) | PredicateAst::ItMatches(_)
+                    ) && !effects.is_empty()
+                    {
+                        *predicate = rebind_source_match_to_target(predicate.clone());
+                        return true;
+                    }
+                    if rebind_first(effects) {
+                        return true;
+                    }
+                }
+                EffectAst::ControlFlow(control) => {
+                    if let crate::model::control_flow::ControlFlowNodeAst::Condition {
+                        condition,
+                        ..
+                    } = &mut control.node
+                        && let crate::model::control_flow::ControlPredicateAst::State(predicate) =
+                            &mut condition.predicate
+                        && matches!(
+                            predicate,
+                            PredicateAst::SourceMatches(_) | PredicateAst::ItMatches(_)
+                        )
+                    {
+                        *predicate = rebind_source_match_to_target(predicate.clone());
+                        return true;
+                    }
+                    let mut changed = false;
+                    crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                        if !changed {
+                            changed = rebind_first(nested);
+                        }
+                    });
+                    if changed {
+                        return true;
+                    }
+                }
+                _ => {
+                    let mut changed = false;
+                    crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                        if !changed {
+                            changed = rebind_first(nested);
+                        }
+                    });
+                    if changed {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    let _ = rebind_first(effects);
+}
+
 /// Correlate a physical coin face with the player who flipped it. A called
 /// coin flip models win/loss and is not equivalent: a player may call tails.
 /// Rewriting the antecedent to the face-only producer makes its per-player

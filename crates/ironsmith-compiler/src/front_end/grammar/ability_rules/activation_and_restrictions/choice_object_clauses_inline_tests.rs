@@ -154,6 +154,32 @@ fn parse_you_choose_objects_clause_container_reference_overrides_permanent_defau
 }
 
 #[test]
+fn parse_you_choose_objects_clause_supports_serial_card_type_union_from_it() {
+    let tokens = tokenize_line(
+        "You choose an artifact, instant, or sorcery card from it.",
+        0,
+    );
+
+    let (_chooser, filter, count) = parse_you_choose_objects_clause(&tokens)
+        .expect("parse serial card-type choice")
+        .expect("expected an object choice rather than a card-type declaration");
+
+    assert_eq!(count, ChoiceCount::exactly(1));
+    assert_eq!(
+        filter.card_types,
+        [CardType::Artifact, CardType::Instant, CardType::Sorcery]
+    );
+    assert_eq!(filter.zone, Some(Zone::Hand));
+    assert!(
+        filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.tag.as_str() == IT_TAG),
+        "the serial choice must remain tied to the revealed hand: {filter:?}"
+    );
+}
+
+#[test]
 fn parse_you_choose_objects_clause_supports_one_of_them() {
     let tokens = tokenize_line("You choose one of them.", 0);
 

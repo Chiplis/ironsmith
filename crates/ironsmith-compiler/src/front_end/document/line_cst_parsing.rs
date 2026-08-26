@@ -13,6 +13,43 @@ fn comma_split_tail_starts_with_filter_list_continuation(tokens: &[OwnedLexToken
     line_families::parse_filter_list_continuation(tokens).is_some()
 }
 
+pub(super) fn contains_reflexive_conditional_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
+    tokens.iter().enumerate().any(|(index, token)| {
+        token.kind == TokenKind::Period
+            && tokens.get(index + 1..).is_some_and(|tail| {
+                let words = crate::lexer::parser_token_word_refs(tail);
+                words.starts_with(&["when", "you", "do", "if"])
+            })
+    })
+}
+
+/// A delayed action can establish the exact object consumed by a later
+/// delayed result check in the same triggered ability:
+/// `... at end of combat. At the beginning of the next end step, if that
+/// creature was destroyed this way, ...`. The later `if` comma is internal to
+/// the resolution program and must not become the outer trigger/effect split.
+fn has_end_of_combat_action_then_next_end_step_result_followup(tokens: &[OwnedLexToken]) -> bool {
+    let sentences = split_lexed_sentences(tokens);
+    let [action, followup] = sentences.as_slice() else {
+        return false;
+    };
+    let action_words = crate::lexer::parser_token_word_refs(action);
+    let followup_words = crate::lexer::parser_token_word_refs(followup);
+    crate::word_primitives::sequence_occurs(&action_words, &["at", "end", "of", "combat"])
+        && followup_words.starts_with(&[
+            "at",
+            "the",
+            "beginning",
+            "of",
+            "the",
+            "next",
+            "end",
+            "step",
+        ])
+        && crate::word_primitives::contains_word(&followup_words, "if")
+        && crate::word_primitives::sequence_occurs(&followup_words, &["this", "way"])
+}
+
 fn rewrite_count_that_number_life_total_trigger_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<OwnedLexToken>> {
@@ -128,7 +165,8 @@ fn parse_triggered_line_cst_inner(
             )
             || crate::semantic_line_parsing::has_linked_created_token_next_turn_sacrifice_surface(
                 effect_tokens,
-            ))
+            )
+            || has_end_of_combat_action_then_next_end_step_result_followup(effect_tokens))
         && let Some(candidate) = render_triggered_split_candidate(
             &leading_tokens[1..],
             effect_tokens,
@@ -154,7 +192,8 @@ fn parse_triggered_line_cst_inner(
             )
             || crate::semantic_line_parsing::has_linked_created_token_next_turn_sacrifice_surface(
                 effect_tokens,
-            ))
+            )
+            || has_end_of_combat_action_then_next_end_step_result_followup(effect_tokens))
         && let Some(candidate) = render_triggered_split_candidate(
             &leading_tokens[1..],
             effect_tokens,
@@ -197,6 +236,29 @@ fn parse_triggered_line_cst_inner(
     let mut typed_conditional_fallback = None;
     let moved_or_cast_origin_split =
         moved_or_cast_origin_trigger_split_index(tokens_without_cap, 1);
+
+    // A later reflexive sentence can itself begin with an `if` condition:
+    // "At ..., mill a card. When you do, if ..., ...". The broad triggered
+    // conditional splitter otherwise selects the comma after "When you do"
+    // and absorbs the producer into the trigger header. Commit the grammar-
+    // proven first trigger comma when the complete tail parses as one effect
+    // program, preserving both the producer and its reflexive result.
+    if moved_or_cast_origin_split.is_none()
+        && let Some((leading_tokens, effect_tokens)) =
+            grammar::split_lexed_once_on_comma(tokens_without_cap)
+        && leading_tokens.len() > 1
+        && contains_reflexive_conditional_followup_sentence(effect_tokens)
+        && parse_trigger_clause_lexed(trim_lexed_commas(&leading_tokens[1..])).is_ok()
+        && let Some(candidate) = render_triggered_split_candidate(
+            &leading_tokens[1..],
+            effect_tokens,
+            None,
+            trailing_cap,
+        )
+    {
+        parse_trace::event("trigger split: producer with reflexive followup sentence");
+        return Ok(candidate.into_cst(line, tokens_without_cap));
+    }
 
     // Once a triggered ability explicitly starts its post-trigger clause with
     // `if`, that condition is semantic: it is an intervening-if check, not
@@ -740,7 +802,10 @@ pub(super) fn parse_level_item_cst(
     Ok(None)
 }
 
-pub(super) fn parse_modal_mode_cst(line: &PreprocessedLine) -> Result<ModalModeCst, CardTextError> {
+pub(super) fn parse_modal_mode_cst(
+    line: &PreprocessedLine,
+    allow_bare_target: bool,
+) -> Result<ModalModeCst, CardTextError> {
     let spree_prefix = parse_spree_mode_prefix(&line.tokens);
     let tiered_prefix = parse_tiered_mode_prefix(&line.tokens);
     let point_cost = spree_prefix
@@ -763,7 +828,16 @@ pub(super) fn parse_modal_mode_cst(line: &PreprocessedLine) -> Result<ModalModeC
         .unwrap_or_else(|| render_token_slice(surface_tokens))
         .trim()
         .to_string();
-    let effects_ast = parse_effect_sentences_lexed(parse_tokens)?;
+    let effects_ast = match parse_effect_sentences_lexed(parse_tokens) {
+        Ok(effects) => effects,
+        Err(original_error) if allow_bare_target => {
+            let target_tokens = crate::util::trim_edge_punctuation_tokens(parse_tokens);
+            let target =
+                crate::util::parse_target_phrase(target_tokens).map_err(|_| original_error)?;
+            vec![crate::model::ast::EffectAst::subject_verb_explicit_target_only(target)]
+        }
+        Err(error) => return Err(error),
+    };
     Ok(ModalModeCst {
         info: line.info.clone(),
         text: mode_text,
@@ -837,7 +911,11 @@ pub(super) fn parse_saga_chapter_line_cst(
     parse_text: &str,
 ) -> Result<SagaChapterLineCst, CardTextError> {
     let parse_tokens = lexed_tokens(parse_text, line.info.line_index)?;
-    let effects_ast = parse_effect_sentences_lexed(&parse_tokens)?;
+    let mut effects_ast = parse_effect_sentences_lexed(&parse_tokens)?;
+    crate::util::reconcile_unique_named_source_exile_surface(
+        &mut effects_ast,
+        &line.info.source_tokens,
+    );
     Ok(SagaChapterLineCst {
         info: line.info.clone(),
         chapters,

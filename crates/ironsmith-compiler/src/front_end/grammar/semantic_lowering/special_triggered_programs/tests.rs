@@ -34,6 +34,18 @@ fn parses_all_special_triggered_programs() {
     );
     assert_eq!(
         parse(
+            "At the beginning of each player's upkeep, that player chooses target player who controls more creatures than they do and is their opponent. The first player may reveal cards from the top of their library until they reveal a creature card. If the first player does, that player puts that card onto the battlefield and all other cards revealed this way into their graveyard."
+        ),
+        Some(SpecialTriggeredProgram::OpponentCreatureMajorityConsult)
+    );
+    assert_eq!(
+        parse(
+            "At the beginning of your end step, if a land entered the battlefield under your control this turn and you control a prime number of lands, create Primo, the Indivisible, a legendary 0/0 green and blue Fractal creature token, then put that many +1/+1 counters on it."
+        ),
+        Some(SpecialTriggeredProgram::PrimeControlledLandCountToken)
+    );
+    assert_eq!(
+        parse(
             "At the beginning of each player's upkeep, that player chooses target player who controls more lands than they do and is their opponent. The first player may search their library for a basic land card, put that card onto the battlefield, then shuffle."
         ),
         Some(SpecialTriggeredProgram::OpponentLandMajoritySearch)

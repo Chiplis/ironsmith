@@ -1,5 +1,26 @@
 use super::*;
 
+fn contains_compound_pump_and_grant(effects: &[EffectAst]) -> bool {
+    let mut pump = false;
+    let mut grant = false;
+    fn inspect(effects: &[EffectAst], pump: &mut bool, grant: &mut bool) {
+        for effect in effects {
+            if let EffectAst::SubjectVerb(subject_verb) = effect {
+                *pump |= matches!(subject_verb.action, SubjectVerbActionAst::Pump { .. });
+                *grant |= matches!(
+                    subject_verb.action,
+                    SubjectVerbActionAst::GrantAbilitiesToTarget { .. }
+                );
+            }
+            crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+                inspect(nested, pump, grant)
+            });
+        }
+    }
+    inspect(effects, &mut pump, &mut grant);
+    pump && grant
+}
+
 pub(super) fn parse_activated_effects_lexed(
     _effect_text: &str,
     tokens: &[OwnedLexToken],
@@ -31,35 +52,17 @@ pub(super) fn parse_activated_effects_lexed(
         return Ok(effects);
     }
     let words = token_word_refs(tokens);
-    if crate::grammar::effects::gain_ability_shapes::parse_leading_gain_duration_shape(&words)
+    if (crate::grammar::effects::gain_ability_shapes::parse_leading_gain_duration_shape(&words)
         .is_some()
+        || crate::grammar::effects::gain_ability_shapes::parse_get_then_ability_shape(tokens)
+            .is_some())
         && let Some(effects) = crate::effect_sentences::parse_gain_ability_sentence(tokens)?
     {
-        fn contains_compound_members(effects: &[EffectAst]) -> bool {
-            let mut pump = false;
-            let mut grant = false;
-            fn inspect(effects: &[EffectAst], pump: &mut bool, grant: &mut bool) {
-                for effect in effects {
-                    if let EffectAst::SubjectVerb(subject_verb) = effect {
-                        *pump |= matches!(subject_verb.action, SubjectVerbActionAst::Pump { .. });
-                        *grant |= matches!(
-                            subject_verb.action,
-                            SubjectVerbActionAst::GrantAbilitiesToTarget { .. }
-                        );
-                    }
-                    crate::model::visit::for_each_nested_effects(effect, true, |nested| {
-                        inspect(nested, pump, grant)
-                    });
-                }
-            }
-            inspect(effects, &mut pump, &mut grant);
-            pump && grant
-        }
         // Activated bodies such as "Until end of turn, this creature gets
-        // +1/+1 ... and gains menace" are one coordinated modifier.  The
-        // generic source-boundary path can otherwise claim the leading
-        // `gets` as an unrelated counter-gain action.
-        if contains_compound_members(&effects) {
+        // +1/+1 ... and gains menace", or the same shape with a trailing
+        // duration, are one coordinated modifier. The generic
+        // source-boundary path can otherwise claim only the leading `gets`.
+        if contains_compound_pump_and_grant(&effects) {
             return Ok(effects);
         }
     }
@@ -341,7 +344,7 @@ pub(super) fn parse_activated_line_impl(
         &effect_parse_tokens,
         line.info.line_index,
     )?;
-    reconcile_named_source_exile_surfaces(&line.info, &mut effects_ast);
+    reconcile_named_source_action_surfaces(&line.info, &mut effects_ast);
     if activation_cost_sets_x_from_counter_removal(&normalized_cost) {
         bind_event_amounts_to_cost_x(&mut effects_ast);
     }

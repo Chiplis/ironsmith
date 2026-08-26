@@ -88,6 +88,31 @@ pub(super) fn try_parse_modal_bullet_block(
 
     let normalized_header = line.info.raw_line.trim_start().to_ascii_lowercase();
     let spree_header = crate::string_primitives::starts_with(&normalized_header, "spree");
+    let next_line_is_mode = preprocessed
+        .items
+        .get(idx + 1)
+        .is_some_and(|item| match item {
+            PreprocessedItem::Line(next_line) => {
+                is_bullet_line(next_line)
+                    || (spree_header
+                        && next_line
+                            .tokens
+                            .first()
+                            .is_some_and(|token| token.kind == TokenKind::Plus))
+            }
+            PreprocessedItem::Metadata(_) => false,
+        });
+    if !next_line_is_mode {
+        return Ok(None);
+    }
+
+    // Parsing a modal header can probe a common action suffix. Only perform
+    // that work after the following physical line proves this is a modal
+    // block; ordinary multi-sentence abilities may contain the same choice
+    // words and internal commas but have no bullet modes to inherit a suffix.
+    let header_has_common_target_suffix =
+        super::super::modal_support::parse_modal_header(&line.info, &line.tokens)?
+            .is_some_and(|header| !header.common_suffix_effects_ast.is_empty());
     let mut bullet_modes = Vec::new();
     let mut probe_idx = idx + 1;
     while let Some(PreprocessedItem::Line(next_line)) = preprocessed.items.get(probe_idx) {
@@ -99,7 +124,10 @@ pub(super) fn try_parse_modal_bullet_block(
         if !is_bullet_line(next_line) && !is_spree_mode {
             break;
         }
-        bullet_modes.push(parse_modal_mode_cst(next_line)?);
+        bullet_modes.push(parse_modal_mode_cst(
+            next_line,
+            header_has_common_target_suffix,
+        )?);
         probe_idx += 1;
     }
 

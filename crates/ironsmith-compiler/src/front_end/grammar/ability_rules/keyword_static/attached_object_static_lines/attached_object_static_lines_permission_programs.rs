@@ -1,6 +1,5 @@
 use super::*;
 
-
 pub fn parse_enchanted_has_activated_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {

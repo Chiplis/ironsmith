@@ -16,6 +16,29 @@ fn parses_create_head_and_delays() {
 }
 
 #[test]
+fn appositive_legendary_token_name_keeps_internal_punctuation() {
+    let tokens = lex_line(
+        "Create Primo, the Indivisible, a legendary 0/0 green and blue Fractal creature token.",
+        0,
+    )
+    .unwrap();
+    assert_eq!(
+        crate::grammar::token_definitions::leading_appositive_token_name(creation_body_tokens(
+            &tokens
+        )),
+        Some("Primo, the Indivisible".to_string())
+    );
+
+    let ordinary = lex_line("Create a legendary 0/0 green Fractal creature token.", 0).unwrap();
+    assert!(
+        crate::grammar::token_definitions::leading_appositive_token_name(creation_body_tokens(
+            &ordinary
+        ))
+        .is_none()
+    );
+}
+
+#[test]
 fn named_token_clause_ignores_names_inside_quoted_rules() {
     let named = lex_line("named Twin with flying", 0).unwrap();
     let shape = parse_named_token_clause_tokens(&named).unwrap();

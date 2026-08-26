@@ -17,8 +17,18 @@ pub(super) fn tapped_land_shape(tokens: &[OwnedLexToken]) -> Option<WhoClauseSha
 
 pub(super) fn negated_shape(tokens: &[OwnedLexToken]) -> Option<WhoClauseShape<'_>> {
     let (_, after_who) = primitives::parse_prefix(trim(tokens), primitives::kw("who"))?;
+    let negation_words = crate::lexer::token_word_refs(after_who);
+    let is_cant_failure = negation_words
+        .first()
+        .is_some_and(|word| matches!(*word, "can't" | "cant" | "cannot"))
+        || matches!(negation_words.as_slice(), ["can", "not", ..]);
     let (_, after_negation) = primitives::parse_prefix(after_who, negated_auxiliary)?;
-    let effect_tokens = if let Some((_, _, rest)) =
+    let effect_tokens = if is_cant_failure {
+        // `can't` refers back to the preceding per-player action; everything
+        // after it is the failure effect. Preserve commas inside that effect,
+        // notably `loses half their life, rounded up`.
+        trim(after_negation)
+    } else if let Some((_, _, rest)) =
         primitives::find_prefix(tokens, || primitives::comma().void())
     {
         trim(rest)
@@ -32,6 +42,7 @@ pub(super) fn negated_shape(tokens: &[OwnedLexToken]) -> Option<WhoClauseShape<'
     Some(WhoClauseShape::Negated {
         effect_tokens,
         tagged_filter_tokens: tagged_filter_after_negation(tokens),
+        implicit_player_is_iterated: is_cant_failure,
     })
 }
 

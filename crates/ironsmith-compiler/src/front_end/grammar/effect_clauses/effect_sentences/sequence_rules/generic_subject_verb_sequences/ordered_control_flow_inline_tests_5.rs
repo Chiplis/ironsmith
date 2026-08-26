@@ -82,6 +82,59 @@ fn opponent_revealed_choice_tags_the_filtered_selection_and_exact_remainder() {
     }));
     assert_ne!(selected, remainder_tag);
 }
+
+#[test]
+fn opponent_exile_partition_reuses_one_explicit_player_choice_for_cast_permission() {
+    let tokens = lex_line(
+        "Reveal the top six cards of your library. An opponent exiles a nonland card from among them, then you put the rest into your hand. That opponent may cast the exiled card without paying its mana cost.",
+        0,
+    )
+    .expect("opponent exile partition should lex");
+    let split = split_lexed_sentences(&tokens);
+    let sentences = split
+        .iter()
+        .map(|sentence| SentenceInput::from_lexed(sentence))
+        .collect::<Vec<_>>();
+    let effects = parse_reveal_top_opponent_exiles_one_put_rest_hand_then_may_cast(&sentences, 0)
+        .expect("opponent exile partition should parse")
+        .expect("opponent exile partition should match");
+
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [
+                _,
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::ChoosePlayer {
+                        filter: PlayerFilter::Opponent,
+                        ..
+                    },
+                    ..
+                }),
+                EffectAst::ChooseTaggedObjectsInZone {
+                    player: PlayerAst::That,
+                    ..
+                },
+                _,
+                _,
+                EffectAst::MayByPlayer {
+                    player: PlayerAst::That,
+                    effects
+                }
+            ] if matches!(
+                effects.as_slice(),
+                [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::CastTagged {
+                        player: PlayerAst::That,
+                        ..
+                    },
+                    ..
+                })]
+            )
+        ),
+        "the selection and permission must share one chosen opponent: {effects:#?}"
+    );
+}
 use crate::types::Subtype;
 
 #[test]
@@ -474,10 +527,17 @@ fn composes_compound_looked_exile_remainder_and_cast_sequence() {
             ..
         })
     ));
-    let EffectAst::ChooseTaggedObjectsInZone { filter, count, .. } = &effects[1] else {
+    let EffectAst::ChooseTaggedObjectsInZone {
+        filter, count, tag, ..
+    } = &effects[1]
+    else {
         panic!("expected typed looked-card choice: {:#?}", effects[1]);
     };
     assert_eq!(*count, ChoiceCount::up_to(1));
+    assert!(
+        tag.as_str().starts_with("__sentence_helper_exiled_up_to_"),
+        "the compound up-to surface must survive lowering: {tag:?}"
+    );
     assert!(filter.excluded_card_types.contains(&CardType::Land));
     assert!(matches!(
         &effects[3],

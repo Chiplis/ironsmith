@@ -263,6 +263,60 @@
     }
 
     #[test]
+    fn public_effect_sequence_keeps_suffix_this_turn_delayed_trigger() {
+        let tokens = crate::lexer::lex_line(
+            "Whenever you cast a creature spell this turn, draw a card.",
+            0,
+        )
+        .expect("duration-scoped cast trigger should lex");
+
+        let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
+            .expect("public effect sequence should parse");
+        let [EffectAst::DelayedTriggerThisTurn {
+            trigger: TriggerSpec::SpellCast { .. },
+            effects: delayed,
+            ..
+        }] = effects.as_slice()
+        else {
+            panic!("expected intact delayed spell trigger: {effects:#?}");
+        };
+
+        assert!(
+            delayed
+                .iter()
+                .any(|effect| format!("{effect:?}").contains("Draw")),
+            "{delayed:#?}"
+        );
+    }
+
+    #[test]
+    fn public_effect_sequence_keeps_coordinated_delayed_trigger_payload() {
+        let tokens = crate::lexer::lex_line(
+            "Whenever a creature you control enters this turn, each opponent loses 1 life and you gain 1 life.",
+            0,
+        )
+        .expect("coordinated duration-scoped trigger should lex");
+
+        let shape = delayed_shapes::parse_delayed_this_turn_shape(&tokens)
+            .expect("the complete duration-scoped sentence should retain its payload");
+        assert_eq!(
+            crate::lexer::render_token_slice(shape.trigger_tokens).trim(),
+            "a creature you control enters"
+        );
+
+        let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
+            .expect("public effect sequence should keep the delayed schedule");
+        let [EffectAst::DelayedTriggerThisTurn { effects: delayed, .. }] = effects.as_slice()
+        else {
+            panic!("expected one delayed trigger: {effects:#?}");
+        };
+
+        let debug = format!("{delayed:#?}");
+        assert!(debug.contains("LoseLife"), "{debug}");
+        assert!(debug.contains("GainLife"), "{debug}");
+    }
+
+    #[test]
     fn next_single_opponent_or_permanent_copy_keeps_each_other_opponent_choice() {
         let tokens = crate::lexer::lex_line(
             "When you next cast an instant or sorcery spell that targets only a single opponent or a single permanent an opponent controls this turn, for each other opponent, choose that player or a permanent they control, copy that spell, and the copy targets the chosen player or permanent.",

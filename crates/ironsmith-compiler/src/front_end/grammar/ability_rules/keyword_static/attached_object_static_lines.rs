@@ -30,6 +30,17 @@ fn explicit_attached_subject_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedL
         // `enchanted|equipped creature|permanent|land|artifact|equipment`.
         return tokens.get(..2);
     }
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if matches!(
+        words.get(..3),
+        Some([
+            "enchanted" | "equipped" | "fortified",
+            "artifact" | "creature" | "land" | "permanent",
+            "get" | "gets"
+        ])
+    ) {
+        return tokens.get(..2);
+    }
     None
 }
 
@@ -66,9 +77,11 @@ fn parse_attached_combat_restriction_and_loses_all_abilities_line(
     else {
         return Ok(None);
     };
-    let Some(and_idx) = crate::slice_primitives::select_last_position(&tokens[..loss_idx], |token| {
-        token.is_word("and")
-    }) else {
+    let Some(and_idx) =
+        crate::slice_primitives::select_last_position(&tokens[..loss_idx], |token| {
+            token.is_word("and")
+        })
+    else {
         return Ok(None);
     };
     if !crate::word_primitives::parse_sequence_complete(
@@ -90,11 +103,67 @@ fn parse_attached_combat_restriction_and_loses_all_abilities_line(
     ]))
 }
 
+/// Parse a carried attached-object clause such as `It has defender and loses
+/// all other abilities.` The grant and the removal remain separate typed
+/// layer-6 operations; `other` is a presentation relationship between those
+/// operations, not permission to discard either one.
+fn parse_attached_keyword_grant_and_loses_all_other_abilities_line(
+    tokens: &[OwnedLexToken],
+    subject_tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let words = crate::lexer::token_word_refs(tokens);
+    if !matches!(words.first().copied(), Some("has" | "have")) {
+        return Ok(None);
+    }
+    let Some(loss_idx) = tokens.windows(5).position(|window| {
+        crate::word_primitives::parse_sequence_complete(
+            &crate::lexer::token_word_refs(window),
+            &["and", "loses", "all", "other", "abilities"],
+        ) || crate::word_primitives::parse_sequence_complete(
+            &crate::lexer::token_word_refs(window),
+            &["and", "lose", "all", "other", "abilities"],
+        )
+    }) else {
+        return Ok(None);
+    };
+    if loss_idx == 0 || !trim_edge_punctuation(&tokens[loss_idx + 5..]).is_empty() {
+        return Ok(None);
+    }
+
+    let grant_tokens = trim_edge_punctuation(&tokens[1..loss_idx]);
+    let Some(actions) = parse_ability_line(&grant_tokens) else {
+        return Ok(None);
+    };
+    if actions.is_empty() {
+        return Ok(None);
+    }
+    let clause_text = crate::lexer::render_token_slice(tokens);
+    let filter = parse_object_filter(subject_tokens, false)?;
+    let subject = crate::lexer::token_word_refs(subject_tokens).join(" ");
+    let mut abilities = Vec::with_capacity(actions.len() + 1);
+    for action in actions {
+        reject_unimplemented_keyword_actions(std::slice::from_ref(&action), &clause_text)?;
+        if !action.lowers_to_static_ability() {
+            return Ok(None);
+        }
+        abilities.push(StaticAbilityAst::AttachedKeywordActionGrant {
+            display: format!(
+                "{subject} has {}",
+                action.display_text().to_ascii_lowercase()
+            ),
+            action,
+            condition: None,
+            protection_does_not_remove_controlled_attachments: false,
+        });
+    }
+    abilities.push(StaticAbility::remove_all_abilities(filter).into());
+    Ok(Some(abilities))
+}
+
 pub fn parse_attached_conditional_loses_all_abilities_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let Some(comma_idx) =
-        crate::slice_primitives::select_position(tokens, OwnedLexToken::is_comma)
+    let Some(comma_idx) = crate::slice_primitives::select_position(tokens, OwnedLexToken::is_comma)
     else {
         return Ok(None);
     };
@@ -105,8 +174,7 @@ pub fn parse_attached_conditional_loses_all_abilities_line(
             &["as", "long", "as", "enchanted"],
             &["as", "long", "as", "equipped"],
         ],
-    )
-    {
+    ) {
         return Ok(None);
     }
     let tail_words = crate::lexer::parser_token_word_refs(&tokens[comma_idx + 1..]);
@@ -144,10 +212,52 @@ pub fn parse_carried_attached_subject_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let sentences = crate::lexer::split_lexed_sentences(tokens);
-    let [first, second] = sentences.as_slice() else {
+    let [first, trailing @ ..] = sentences.as_slice() else {
         return Ok(None);
     };
+    if trailing.is_empty() {
+        return Ok(None);
+    }
     let Some(subject_tokens) = explicit_attached_subject_tokens(first) else {
+        return Ok(None);
+    };
+    let Some(mut abilities) = parse_static_ability_ast_line_lexed_single(first)? else {
+        return Ok(None);
+    };
+
+    // Carry the explicit attached-object subject through one or more leading
+    // `As long as ..., it ...` continuations. Reorder each continuation into
+    // the equivalent explicit-subject trailing-condition form before the
+    // ordinary single-sentence static parser runs. This keeps both the
+    // affected-object filter and its target-relative predicate typed; without
+    // the carry, `it` silently denotes the Aura or Equipment source.
+    if trailing.iter().all(|sentence| {
+        split_as_long_as_condition_prefix_lexed(sentence).is_some_and(|split| {
+            split
+                .remainder_tokens
+                .first()
+                .is_some_and(|token| token.is_word("it"))
+        })
+    }) {
+        for sentence in trailing {
+            let split = split_as_long_as_condition_prefix_lexed(sentence)
+                .expect("validated leading as-long-as continuation");
+            let mut explicit = subject_tokens.to_vec();
+            explicit.extend_from_slice(&split.remainder_tokens[1..]);
+            explicit.extend_from_slice(&sentence[..3]);
+            explicit.extend_from_slice(split.condition_tokens);
+            let Some(mut parsed) = parse_static_ability_ast_line_lexed_single(&explicit)? else {
+                return Ok(None);
+            };
+            if parsed.is_empty() {
+                return Ok(None);
+            }
+            abilities.append(&mut parsed);
+        }
+        return Ok(Some(abilities));
+    }
+
+    let [second] = trailing else {
         return Ok(None);
     };
     let Some((pronoun, continuation)) = second.split_first() else {
@@ -157,13 +267,14 @@ pub fn parse_carried_attached_subject_line(
         return Ok(None);
     }
     let continuation = trim_edge_punctuation(continuation);
-    let Some(mut abilities) = parse_static_ability_ast_line_lexed_single(first)? else {
-        return Ok(None);
-    };
-
     let parsed_continuation = if let Some(parsed) =
         parse_attached_loses_all_abilities_and_has_line(&continuation, subject_tokens)?
     {
+        Some(parsed)
+    } else if let Some(parsed) = parse_attached_keyword_grant_and_loses_all_other_abilities_line(
+        &continuation,
+        subject_tokens,
+    )? {
         Some(parsed)
     } else {
         parse_attached_combat_restriction_and_loses_all_abilities_line(
@@ -295,10 +406,7 @@ fn parse_attached_otherwise_has_keyword_sentence(
     subject: &str,
     condition: crate::ConditionExpr,
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let Some(clause) =
-        crate::grammar::static_line_support::parse_otherwise_ability_clause(
-            tokens,
-        )
+    let Some(clause) = crate::grammar::static_line_support::parse_otherwise_ability_clause(tokens)
     else {
         return Ok(None);
     };
@@ -330,13 +438,116 @@ pub fn parse_attached_conditional_keyword_otherwise_line(
         return Ok(None);
     };
     let otherwise_condition = negate_attached_keyword_condition(condition);
-    let Some(mut otherwise_grants) =
-        parse_attached_otherwise_has_keyword_sentence(second, &subject, otherwise_condition)?
+    if let Some(mut otherwise_grants) = parse_attached_otherwise_has_keyword_sentence(
+        second,
+        &subject,
+        otherwise_condition.clone(),
+    )? {
+        grants.append(&mut otherwise_grants);
+        return Ok(Some(grants));
+    }
+
+    let second_words = crate::lexer::token_word_refs(second);
+    if second_words.first().copied() != Some("otherwise") {
+        return Ok(None);
+    }
+    let prevention_tokens = trim_edge_punctuation(&second[1..]);
+    let Some(mut prevention) =
+        parse_attached_prevent_all_damage_dealt_by_attached_line(&prevention_tokens)?
     else {
         return Ok(None);
     };
-    grants.append(&mut otherwise_grants);
+    let StaticAbilityAst::AttachedStaticAbilityGrant { condition, .. } = &mut prevention else {
+        return Ok(None);
+    };
+    *condition = Some(otherwise_condition);
+    grants.push(prevention);
     Ok(Some(grants))
+}
+
+/// Parse a conditional attached anthem whose `Otherwise` branch sets base
+/// power/toughness and imposes a blocking restriction on the same attached
+/// object.
+///
+/// The ordinary conditional-anthem family owns `Otherwise, it gets P/T` and
+/// the ordinary base-P/T family owns `Subject has base power and toughness`.
+/// This shape crosses both ownership boundaries, so it must be recognized as
+/// one typed static program before either broad family can absorb the second
+/// sentence into the first condition's object descriptor.
+pub fn parse_attached_conditional_anthem_otherwise_base_and_restriction_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let sentences = crate::lexer::split_lexed_sentences(tokens);
+    let [first, second] = sentences.as_slice() else {
+        return Ok(None);
+    };
+    let Some(subject_tokens) = explicit_attached_subject_tokens(first) else {
+        return Ok(None);
+    };
+    let Some(true_ability) = parse_anthem_line(first)? else {
+        return Ok(None);
+    };
+    let ironsmith_core::StaticAbilityPayload::Anthem(anthem) = &true_ability.payload else {
+        return Ok(None);
+    };
+    let (Some(filter), Some(condition)) = (anthem.filter.clone(), anthem.condition.clone()) else {
+        return Ok(None);
+    };
+
+    let Some(otherwise) =
+        crate::grammar::static_line_support::parse_otherwise_ability_clause(second)
+    else {
+        return Ok(None);
+    };
+    let body = trim_edge_punctuation(otherwise.ability_tokens);
+    if body.len() < 8
+        || !body[0].is_word("base")
+        || !body[1].is_word("power")
+        || !body[2].is_word("and")
+        || !body[3].is_word("toughness")
+        || !body[5].is_word("and")
+    {
+        return Ok(None);
+    }
+    let Some(modifier) = body[4].as_word() else {
+        return Ok(None);
+    };
+    let Ok((power, toughness)) = parse_pt_modifier_values(modifier) else {
+        return Ok(None);
+    };
+    let (Value::Fixed(power), Value::Fixed(toughness)) = (power, toughness) else {
+        return Ok(None);
+    };
+
+    let restriction_tail = trim_edge_punctuation(&body[6..]);
+    let mut restriction_tokens = subject_tokens.to_vec();
+    restriction_tokens.extend_from_slice(&restriction_tail);
+    let Some(parsed_restriction) = parse_negated_object_restriction_clause(&restriction_tokens)?
+    else {
+        return Ok(None);
+    };
+    if parsed_restriction.target.is_some()
+        || !matches!(
+            &parsed_restriction.restriction,
+            crate::effect::Restriction::BlockSpecificAttacker { .. }
+        )
+    {
+        return Ok(None);
+    }
+
+    let otherwise_condition = crate::ConditionExpr::Not(Box::new(condition));
+    let set_base = StaticAbility::set_base_power_toughness(filter, power, toughness)
+        .with_condition(otherwise_condition.clone());
+    let restriction_display = display_text_for_tokens(&restriction_tokens, true);
+    let restriction =
+        StaticAbility::restriction(parsed_restriction.restriction, restriction_display)
+            .with_condition(otherwise_condition);
+
+    Ok(Some(vec![
+        StaticAbilityAst::Static(true_ability),
+        StaticAbilityAst::Static(set_base),
+        StaticAbilityAst::Static(restriction),
+    ]))
 }
 
 pub fn annihilator_granted_ability(amount: u32) -> Ability {
@@ -368,10 +579,7 @@ fn parse_attached_with_base_power_toughness_clause(
     )
 }
 
-pub fn display_text_for_tokens(
-    tokens: &[OwnedLexToken],
-    capitalize_effect_start: bool,
-) -> String {
+pub fn display_text_for_tokens(tokens: &[OwnedLexToken], capitalize_effect_start: bool) -> String {
     let mut text = String::new();
     let mut needs_space = false;
     let mut in_effect_text = false;
@@ -405,9 +613,10 @@ pub fn display_text_for_tokens(
                     word,
                     "sacrifice" | "discard" | "exile" | "remove" | "reveal" | "pay"
                 )
-                && let Some(first) = rendered.get_mut(0..1) {
-                    first.make_ascii_uppercase();
-                }
+                && let Some(first) = rendered.get_mut(0..1)
+            {
+                first.make_ascii_uppercase();
+            }
             if capitalize_next_effect_word {
                 if let Some(first) = rendered.get_mut(0..1) {
                     first.make_ascii_uppercase();
@@ -418,10 +627,7 @@ pub fn display_text_for_tokens(
             needs_space = true;
             capitalize_next_cost_action = false;
             last_rendered_as_mana_symbol = rendered_as_mana_symbol;
-        } else if matches!(
-            token.kind,
-            crate::lexer::TokenKind::ManaGroup
-        ) {
+        } else if matches!(token.kind, crate::lexer::TokenKind::ManaGroup) {
             if needs_space && !text.is_empty() && !last_rendered_as_mana_symbol {
                 text.push(' ');
             }
@@ -488,7 +694,9 @@ mod attached_static_line_migration_tests;
 fn parse_attached_granted_activated_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
-    let trimmed = trim_edge_punctuation(tokens);
+    let edge_trimmed = trim_edge_punctuation(tokens);
+    let trimmed = trim_outer_quotes(&edge_trimmed);
+    let trimmed = trim_edge_punctuation(trimmed);
     parse_activated_line(&trimmed)
 }
 
@@ -534,11 +742,8 @@ fn parse_nonstatic_keyword_action_as_object_ability(
             timing,
             additional_restrictions,
         } => {
-            let cost = ironsmith_core::TotalCost::from_cost(
-                crate::model::CompilerCost::Crew {
-                    amount,
-                },
-            );
+            let cost =
+                ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::Crew { amount });
             let animate = EffectAst::subject_verb(
                 SubjectVerbRoleAst::Actor,
                 PlayerAst::Implicit,
@@ -552,16 +757,16 @@ fn parse_nonstatic_keyword_action_as_object_ability(
                 ability: Ability {
                     kind: AbilityKind::Activated(
                         crate::model::compiler_semantic::CompilerActivatedAbilityCore {
-                        mana_cost: cost,
-                        effects: ironsmith_core::ResolutionProgram::from_effects(vec![animate]),
-                        choices: Vec::new(),
-                        timing,
-                        additional_restrictions,
-                        activation_restrictions: vec![],
-                        mana_output: None,
-                        activation_condition: None,
-                        mana_usage_restrictions: vec![],
-                        is_loyalty_ability: false,
+                            mana_cost: cost,
+                            effects: ironsmith_core::ResolutionProgram::from_effects(vec![animate]),
+                            choices: Vec::new(),
+                            timing,
+                            additional_restrictions,
+                            activation_restrictions: vec![],
+                            mana_output: None,
+                            activation_condition: None,
+                            mana_usage_restrictions: vec![],
+                            is_loyalty_ability: false,
                         },
                     ),
                     functional_zones: vec![Zone::Battlefield],
@@ -931,8 +1136,7 @@ pub fn parse_attached_restrictions_with_ignore_special_action_line(
         return Ok(None);
     };
 
-    let special_action_words =
-        crate::lexer::parser_token_word_refs(special_action);
+    let special_action_words = crate::lexer::parser_token_word_refs(special_action);
     let expected_special_action = [
         "that",
         match attached_noun {
@@ -1196,8 +1400,7 @@ pub fn parse_attached_gets_and_cant_block_line(
             if crate::word_primitives::parse_sequence_complete(
                 &crate::lexer::token_word_refs(&ability_tokens),
                 &["all", "abilities"],
-            )
-            {
+            ) {
                 let filter = match &clause.subject {
                     AnthemSubjectAst::Source => ObjectFilter::source(),
                     AnthemSubjectAst::Filter(filter) => filter.clone(),
@@ -1439,13 +1642,24 @@ pub fn parse_prevent_damage_to_source_remove_counter_line(
 
 #[path = "attached_object_static_lines/attached_object_static_lines_permission_programs.rs"]
 mod attached_object_static_lines_permission_programs;
-pub use attached_object_static_lines_permission_programs::{parse_enchanted_has_activated_ability_line};
+pub use attached_object_static_lines_permission_programs::parse_enchanted_has_activated_ability_line;
 #[path = "attached_object_static_lines/attached_object_static_lines_object_action_programs.rs"]
 mod attached_object_static_lines_object_action_programs;
-pub use attached_object_static_lines_object_action_programs::{parse_attached_gets_and_has_ability_line, parse_attached_is_legendary_gets_and_has_keywords_line, parse_equipped_gets_and_has_activated_ability_line};
+pub use attached_object_static_lines_object_action_programs::{
+    parse_attached_gets_and_has_ability_line,
+    parse_attached_is_legendary_gets_and_has_keywords_line,
+    parse_equipped_gets_and_has_activated_ability_line,
+};
 #[path = "attached_object_static_lines/attached_object_static_lines_trigger_programs.rs"]
 mod attached_object_static_lines_trigger_programs;
-pub use attached_object_static_lines_trigger_programs::{parse_attached_has_keywords_and_triggered_ability_line};
+pub use attached_object_static_lines_trigger_programs::parse_attached_has_keywords_and_triggered_ability_line;
 #[path = "attached_object_static_lines/attached_object_static_lines_combat_programs.rs"]
 mod attached_object_static_lines_combat_programs;
-pub use attached_object_static_lines_combat_programs::{lower_remove_counter_prevention_spec, parse_attached_prevent_all_combat_damage_dealt_by_attached_line, parse_attached_prevent_all_damage_dealt_by_attached_line, parse_attached_prevent_all_damage_dealt_to_and_by_attached_line, parse_attached_prevent_all_damage_dealt_to_attached_line, parse_prevent_damage_to_source_put_counters_line};
+pub use attached_object_static_lines_combat_programs::{
+    lower_remove_counter_prevention_spec,
+    parse_attached_prevent_all_combat_damage_dealt_by_attached_line,
+    parse_attached_prevent_all_damage_dealt_by_attached_line,
+    parse_attached_prevent_all_damage_dealt_to_and_by_attached_line,
+    parse_attached_prevent_all_damage_dealt_to_attached_line,
+    parse_prevent_damage_to_source_put_counters_line,
+};

@@ -4328,6 +4328,39 @@ pub fn parse_exile_would_die_instead_line(
             };
             StaticAbility::exile_would_die_instead_with_damage_source(victim, Some(damaged_by))
         }
+        keyword_static_lines::ExileWouldDieSpec::DamagedByFilter {
+            victim,
+            damager_filter_tokens,
+        } => {
+            let victim = match victim {
+                keyword_static_lines::ExileWouldDieVictimKind::Creature => ObjectFilter::creature(),
+                keyword_static_lines::ExileWouldDieVictimKind::Permanent => {
+                    ObjectFilter::permanent()
+                }
+            };
+            let damager_words = crate::lexer::token_word_refs(&damager_filter_tokens);
+            let damager_filter = if matches!(
+                damager_words.as_slice(),
+                ["a", "source", "you", "controlled"]
+                    | ["source", "you", "controlled"]
+                    | ["a", "source", "you", "control"]
+                    | ["source", "you", "control"]
+            ) {
+                ObjectFilter::default().controlled_by(PlayerFilter::You)
+            } else {
+                parse_object_filter_lexed(&damager_filter_tokens, false).map_err(|_| {
+                    CardTextError::ParseError(format!(
+                        "unsupported filtered damage source in would-die replacement (clause: '{}')",
+                        damager_words.join(" ")
+                    ))
+                })?
+            };
+            StaticAbility::exile_would_die_instead_with_damage_filter_surface(
+                victim,
+                damager_filter,
+                Some(render_token_slice(&damager_filter_tokens)),
+            )
+        }
         keyword_static_lines::ExileWouldDieSpec::SimpleSource(kind) => {
             let filter = match kind {
                 keyword_static_lines::SimpleSourceReplacementKind::Any => ObjectFilter::source(),
@@ -5658,6 +5691,40 @@ mod tests {
                 .expect("near miss should not error")
                 .is_none(),
             "a granted keyword is not the authored cast-as-though permission"
+        );
+    }
+
+    #[test]
+    fn would_die_replacement_keeps_filtered_damage_source_history() {
+        let tokens = lex_line(
+            "If a creature dealt damage this turn by a source you controlled would die, exile it instead.",
+            0,
+        )
+        .expect("filtered-damager replacement should lex");
+        let ability = parse_exile_would_die_instead_line(&tokens)
+            .expect("filtered-damager replacement should not error")
+            .expect("filtered-damager replacement should parse");
+        let ironsmith_core::StaticAbilityPayload::ExileWouldDieInstead {
+            filter,
+            damaged_by,
+            damager_filter,
+            damager_filter_surface,
+            ..
+        } = &ability.payload
+        else {
+            panic!("expected typed would-die replacement: {ability:#?}");
+        };
+        assert_eq!(filter.card_types, [CardType::Creature]);
+        assert_eq!(*damaged_by, None);
+        assert_eq!(
+            damager_filter
+                .as_ref()
+                .and_then(|filter| filter.controller.clone()),
+            Some(PlayerFilter::You)
+        );
+        assert_eq!(
+            damager_filter_surface.as_deref(),
+            Some("a source you controlled")
         );
     }
 }

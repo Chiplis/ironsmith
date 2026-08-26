@@ -71,6 +71,25 @@ fn parses_trailing_unless_before_the_damage_target_fallback() {
 }
 
 #[test]
+fn splits_complete_damage_filter_exclusions_without_accepting_empty_arms() {
+    let tokens = lex_line("creature except for creatures you control with flying", 0).unwrap();
+    let shape = parse_combat_except_filter_shape_lexed(&tokens).expect("complete exclusion");
+    assert_eq!(
+        parser_token_word_refs(shape.included_filter_tokens),
+        ["creature"]
+    );
+    assert_eq!(
+        parser_token_word_refs(shape.excluded_filter_tokens),
+        ["creatures", "you", "control", "with", "flying"]
+    );
+
+    for near_miss in ["creature except for", "except for creatures with flying"] {
+        let tokens = lex_line(near_miss, 0).unwrap();
+        assert!(parse_combat_except_filter_shape_lexed(&tokens).is_none());
+    }
+}
+
+#[test]
 fn parses_player_object_union_with_full_game_source_damage_history() {
     let tokens = lex_line(
         "1 damage to each opponent and planeswalker it has dealt damage to this game",

@@ -1054,7 +1054,15 @@ pub fn preprocess_document_with_provenance(
         let tokens = lex_line(normalized.normalized.as_str(), line_index)?;
         let source_tokens =
             lex_line(raw_line.trim(), line_index).unwrap_or_else(|_| tokens.clone());
-        let semantic_facts = line_semantic_facts::parse_line_semantic_facts_tokens(&tokens);
+        let mut semantic_facts = line_semantic_facts::parse_line_semantic_facts_tokens(&tokens);
+        // The normalized parse stream removes the trigger header's leading
+        // `unless` clause before later lowering consumes line facts. Retain
+        // only this grammar-proven punctuation fact from the authored stream;
+        // all semantic parsing continues to use normalized tokens.
+        semantic_facts.triggered_ability.leading_unless_surface =
+            line_semantic_facts::parse_line_semantic_facts_tokens(&source_tokens)
+                .triggered_ability
+                .leading_unless_surface;
         Ok(Some(PreprocessedLine {
             info: LineInfo {
                 line_index,

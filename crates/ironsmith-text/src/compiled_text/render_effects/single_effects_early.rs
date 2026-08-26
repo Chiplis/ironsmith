@@ -524,7 +524,8 @@ pub(crate) fn describe_where_x_basis(value: &Value) -> Option<String> {
     }
     match value.unhinted() {
         Value::Count(filter) => {
-            let mut subject = pluralize_noun_phrase(&describe_for_each_count_filter(filter));
+            let mut subject = describe_domain_union_count_filter_subject(filter)
+                .unwrap_or_else(|| pluralize_noun_phrase(&describe_for_each_count_filter(filter)));
             if value.has_surface_hint(ValueSurfaceHint::ExplicitAbilityNoun)
                 && filter.ability_markers.len() == 1
             {
@@ -1096,7 +1097,7 @@ fn describe_bounded_x_payment_draw_branch(
     Some("Draw X cards".to_string())
 }
 
-fn describe_unless_payer_tap_controlled_set_and_empty_mana(
+pub(crate) fn describe_unless_payer_tap_controlled_set_and_empty_mana(
     with_id: &crate::effects::WithIdEffect,
     if_effect: &crate::effects::IfEffect,
 ) -> Option<String> {
@@ -1128,6 +1129,7 @@ fn describe_unless_payer_tap_controlled_set_and_empty_mana(
     if !matches!(
         sequence.surface,
         ironsmith_core::SequenceSurface::ResultConjunction { .. }
+            | ironsmith_core::SequenceSurface::Coordinated
     ) {
         return None;
     }
@@ -1823,12 +1825,16 @@ pub(super) fn describe_for_each_iterated_damage(
     };
     let (inner_source, damage) = damage_with_source_view(inner_effect)?;
     let source = compatible_damage_sources(outer_source, inner_source)?;
-    if damage.unpreventable || !matches!(damage.target.base(), ChooseSpec::Iterated) {
+    let source_is_iterated =
+        source.is_some_and(|source| matches!(source.base(), ChooseSpec::Iterated));
+    let target_is_iterated = matches!(damage.target.base(), ChooseSpec::Iterated)
+        || (source_is_iterated && matches!(damage.target.base(), ChooseSpec::Source));
+    if damage.unpreventable || !target_is_iterated {
         return None;
     }
 
     let filter = describe_damage_fanout_filter(&for_each.filter)?;
-    if source.is_some_and(|source| matches!(source.base(), ChooseSpec::Iterated)) {
+    if source_is_iterated {
         let stat = match damage.amount.unhinted() {
             Value::PowerOf(spec) if matches!(spec.base(), ChooseSpec::Iterated) => "power",
             Value::ToughnessOf(spec) if matches!(spec.base(), ChooseSpec::Iterated) => "toughness",
@@ -1891,6 +1897,35 @@ pub(super) fn describe_for_each_iterated_damage(
     Some(rendered)
 }
 
+#[cfg(test)]
+mod iterated_self_damage_surface_tests {
+    use super::*;
+
+    fn iterated_self_damage(target: ChooseSpec) -> crate::effects::ForEachObject {
+        let damage = Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+            ChooseSpec::Iterated,
+            Effect::deal_damage(Value::PowerOf(Box::new(ChooseSpec::Iterated)), target),
+        ));
+        crate::effects::ForEachObject::new(
+            ObjectFilter::creature().in_zone(Zone::Battlefield),
+            vec![damage],
+        )
+    }
+
+    #[test]
+    fn iterated_source_target_is_the_same_iterated_creature() {
+        let effect = iterated_self_damage(ChooseSpec::Source);
+        assert_eq!(
+            describe_for_each_iterated_damage(&effect, None).as_deref(),
+            Some("Each creature deals damage to itself equal to its power")
+        );
+        assert_eq!(describe_for_each_iterated_source_damage(&effect), None);
+
+        let unrelated = iterated_self_damage(ChooseSpec::SourceController);
+        assert_eq!(describe_for_each_iterated_damage(&unrelated, None), None);
+    }
+}
+
 /// Render a per-object source loop as authored: "Each creature ... deals
 /// damage equal to its power to that permanent." The typed source wrapper and
 /// iterated value must agree, while the recipient must remain outside the
@@ -1906,7 +1941,10 @@ pub(super) fn describe_for_each_iterated_source_damage(
     };
     if damage.unpreventable
         || !matches!(source.base(), ChooseSpec::Iterated)
-        || matches!(damage.target.base(), ChooseSpec::Iterated)
+        || matches!(
+            damage.target.base(),
+            ChooseSpec::Iterated | ChooseSpec::Source
+        )
     {
         return None;
     }

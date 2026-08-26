@@ -6,7 +6,7 @@ use winnow::token::{any, rest};
 use crate::cards::builders::CardTextError;
 use crate::effect::ChoiceCount;
 use crate::target::ObjectFilter;
-use crate::types::{CardType, Supertype};
+use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
 use super::super::super::lexer::{LexStream, OwnedLexToken, render_token_slice};
@@ -72,6 +72,7 @@ enum DiscardCostShape {
         other: bool,
         card_types: Vec<CardType>,
         supertypes: Vec<Supertype>,
+        subtypes: Vec<Subtype>,
         random: bool,
     },
 }
@@ -173,9 +174,10 @@ pub fn parse_discard_segment_tokens(
             count,
             card_types,
             supertypes,
+            subtypes,
             random,
             ..
-        } if card_types.is_empty() && supertypes.is_empty() && !random => {
+        } if card_types.is_empty() && supertypes.is_empty() && subtypes.is_empty() && !random => {
             ActivationCostSegmentCst::DiscardCard(count)
         }
         DiscardCostShape::Cards {
@@ -183,12 +185,17 @@ pub fn parse_discard_segment_tokens(
             other,
             card_types,
             supertypes,
+            subtypes,
             random,
         } => ActivationCostSegmentCst::DiscardFiltered {
             count,
             card_types,
             supertypes,
-            filter: None,
+            filter: (!subtypes.is_empty()).then_some(ObjectFilter {
+                zone: Some(Zone::Hand),
+                subtypes,
+                ..ObjectFilter::default()
+            }),
             random,
             name: None,
             other,
@@ -381,7 +388,7 @@ fn parse_discard_selected<'a>(
         });
     }
 
-    let (card_types, supertypes) = parse_discard_type_descriptors(input)?;
+    let (card_types, supertypes, subtypes) = parse_discard_type_descriptors(input)?;
     alt((primitives::kw("card"), primitives::kw("cards"))).parse_next(input)?;
     let random = primitives::phrase(&["at", "random"])
         .parse_next(input)
@@ -392,6 +399,7 @@ fn parse_discard_selected<'a>(
         other,
         card_types,
         supertypes,
+        subtypes,
         random,
     })
 }
@@ -452,9 +460,10 @@ fn parse_discard_disjunction<'a>(
 
 fn parse_discard_type_descriptors<'a>(
     input: &mut LexStream<'a>,
-) -> WResult<(Vec<CardType>, Vec<Supertype>)> {
+) -> WResult<(Vec<CardType>, Vec<Supertype>, Vec<Subtype>)> {
     let mut card_types = Vec::new();
     let mut supertypes = Vec::new();
+    let mut subtypes = Vec::new();
     loop {
         let mut noun = input.clone();
         if alt((primitives::kw("card"), primitives::kw("cards")))
@@ -471,15 +480,19 @@ fn parse_discard_type_descriptors<'a>(
             crate::slice_primitives::push_unique(&mut supertypes, supertype);
             continue;
         }
-        let card_type = leaf::parse_leaf_card_type_complete(word).map_err(|_| {
+        if let Ok(card_type) = leaf::parse_leaf_card_type_complete(word) {
+            crate::slice_primitives::push_unique(&mut card_types, card_type);
+            continue;
+        }
+        let subtype = leaf::parse_leaf_subtype_flexible_complete(word).map_err(|_| {
             primitives::backtrack_err(
                 "discard card descriptor",
-                "card type, supertype, or card noun",
+                "card type, supertype, subtype, or card noun",
             )
         })?;
-        crate::slice_primitives::push_unique(&mut card_types, card_type);
+        crate::slice_primitives::push_unique(&mut subtypes, subtype);
     }
-    Ok((card_types, supertypes))
+    Ok((card_types, supertypes, subtypes))
 }
 
 fn parse_sacrifice_cost_shape_lexed<'a>(input: &mut LexStream<'a>) -> WResult<SacrificeCostShape> {

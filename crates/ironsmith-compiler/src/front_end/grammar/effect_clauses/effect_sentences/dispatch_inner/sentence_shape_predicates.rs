@@ -3,6 +3,7 @@ use crate::effect_sentences::{
     parse_sentence_delayed_timing_suffix,
     parse_sentence_each_player_return_with_additional_counter,
     parse_sentence_each_player_reveals_top_count_put_permanents_onto_battlefield_rest_graveyard,
+    parse_sentence_unless_pays,
 };
 
 macro_rules! sentence_unsupported_adapters_lexed {

@@ -885,6 +885,7 @@ pub use branching_selection_library_programs::{
     parse_look_at_top_may_exile_match_rest_bottom_cast_exiled,
     parse_look_at_top_may_put_match_onto_battlefield_then_if_not_put_into_hand_rest_bottom,
     parse_look_at_top_may_reveal_match_bargain_battlefield_else_hand_then_shuffle,
+    parse_look_at_top_optional_battlefield_conditional_entry_counters_then_rest_bottom,
     parse_look_at_top_optional_battlefield_then_conditional_remainder,
     parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_override,
     parse_look_may_reveal_then_your_turn_battlefield_else_hand_rest_bottom,

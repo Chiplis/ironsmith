@@ -21,6 +21,21 @@ fn source_is_face_down_or_alternate_face(game: &GameState, source: ObjectId) -> 
     game.is_face_down(source) || game.transform_count(source) % 2 == 1
 }
 
+#[cfg(test)]
+mod prime_value_tests {
+    use super::is_prime_integer;
+
+    #[test]
+    fn primality_rejects_nonpositive_units_and_composites() {
+        for value in [-7, 0, 1, 4, 9, 25, 49] {
+            assert!(!is_prime_integer(value), "{value} must not be prime");
+        }
+        for value in [2, 3, 5, 31, 97] {
+            assert!(is_prime_integer(value), "{value} must be prime");
+        }
+    }
+}
+
 fn attachment_count_condition_matches(
     game: &GameState,
     source: ObjectId,
@@ -1606,6 +1621,68 @@ fn evaluate_value_comparison(
     operator.evaluate(left_value, right_value)
 }
 
+fn evaluate_value_is_prime(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    value: &Value,
+    triggering_event: Option<&TriggerEvent>,
+) -> bool {
+    let mut ctx = ExecutionContext::new_default(source, controller);
+    if let Some(event) = triggering_event {
+        ctx = ctx.with_triggering_event(event.clone());
+        if let Some(snapshot) = event.snapshot() {
+            ctx.set_tagged_objects("triggering", vec![snapshot.clone()]);
+        }
+        if let Some(cast) = event.downcast::<crate::events::SpellCastEvent>()
+            && let Some(spell) = game.object(cast.spell)
+            && let Some(snapshots) = spell
+                .cast_tagged_objects
+                .get(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG)
+        {
+            ctx.set_tagged_objects(
+                ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG,
+                snapshots.clone(),
+            );
+        }
+    }
+    let source_exiled = game
+        .get_exiled_with_source_links(source)
+        .iter()
+        .filter_map(|id| {
+            game.object(*id).map(|obj| {
+                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                    obj, game,
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    if !source_exiled.is_empty() {
+        ctx.set_tagged_objects(crate::tag::SOURCE_EXILED_TAG, source_exiled);
+    }
+    let Ok(value) = resolve_value(game, value, &ctx) else {
+        return false;
+    };
+    is_prime_integer(value)
+}
+
+fn is_prime_integer(value: i32) -> bool {
+    if value < 2 {
+        return false;
+    }
+    if value % 2 == 0 {
+        return value == 2;
+    }
+    let mut divisor = 3;
+    while divisor <= value / divisor {
+        if value % divisor == 0 {
+            return false;
+        }
+        divisor += 2;
+    }
+    true
+}
+
 fn condition_count_for_player(
     game: &GameState,
     source: ObjectId,
@@ -3061,6 +3138,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::CountParity { .. } => {}
         Condition::OwnsCardExiledWithCounter(..) => {}
         Condition::SourceAttackedThisTurn => {}
+        Condition::SourceAttackedBattleThisTurn => {}
         Condition::SourceSuspected => {}
         Condition::SourceCameUnderYourControlThisTurn => {}
         Condition::SourceIsUntapped => {}
@@ -3079,6 +3157,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::PlayerHadLandEnterBattlefieldThisTurn { .. } => {}
         Condition::PlayerDescendedThisTurn { .. } => {}
         Condition::ValueComparison { .. } => {}
+        Condition::ValueIsPrime(..) => {}
         Condition::PlayerCardsInHandOrMore { .. } => {}
         Condition::PlayerCardsInHandOrFewer { .. } => {}
         Condition::PlayerCardsInHandAtTurnStartOrMore { .. } => {}
@@ -3204,6 +3283,15 @@ pub fn evaluate_condition_external(
             left,
             *operator,
             right,
+            ctx.triggering_event,
+        );
+    }
+    if let Condition::ValueIsPrime(value) = condition {
+        return evaluate_value_is_prime(
+            game,
+            ctx.controller,
+            ctx.source,
+            value,
             ctx.triggering_event,
         );
     }
@@ -3902,6 +3990,9 @@ pub fn evaluate_condition_external(
         }),
 
         Condition::SourceAttackedThisTurn => game.creature_attacked_this_turn(ctx.source),
+        Condition::SourceAttackedBattleThisTurn => {
+            game.creature_attacked_battle_this_turn(ctx.source)
+        }
         Condition::SourceSuspected => game.is_suspected(ctx.source),
         Condition::SourceDealtCombatDamageToPlayerThisTurn => {
             game.source_dealt_combat_damage_to_player_this_turn(ctx.source)
@@ -4078,6 +4169,7 @@ pub fn evaluate_condition_external(
         | Condition::PlayerRingTemptedThisGameOrMore { .. }
         | Condition::PlayerRemovedDraftCardMatching { .. }
         | Condition::ValueComparison { .. }
+        | Condition::ValueIsPrime(..)
         | Condition::YouControlCommander
         | Condition::ThisAbilityResolvedThisTurnExactly(_)
         | Condition::Not(_)
@@ -4293,6 +4385,9 @@ fn evaluate_condition_simple(
     } = condition
     {
         return evaluate_value_comparison(game, controller, source, left, *operator, right, None);
+    }
+    if let Condition::ValueIsPrime(value) = condition {
+        return evaluate_value_is_prime(game, controller, source, value, None);
     }
 
     match condition {
@@ -4823,6 +4918,7 @@ fn evaluate_condition_simple(
         | Condition::CountParity { .. }
         | Condition::OwnsCardExiledWithCounter(_)
         | Condition::SourceAttackedThisTurn
+        | Condition::SourceAttackedBattleThisTurn
         | Condition::SourceSuspected
         | Condition::SourceDealtCombatDamageToPlayerThisTurn
         | Condition::SourceCameUnderYourControlThisTurn
@@ -4925,6 +5021,7 @@ fn evaluate_condition_simple(
         | Condition::PlayerRingTemptedThisGameOrMore { .. }
         | Condition::PlayerRemovedDraftCardMatching { .. }
         | Condition::ValueComparison { .. }
+        | Condition::ValueIsPrime(..)
         | Condition::YouControlCommander
         | Condition::ThisAbilityResolvedThisTurnExactly(_)
         | Condition::Not(_)
@@ -6169,12 +6266,16 @@ fn evaluate_condition(
             resolve_value(game, left, ctx)?,
             resolve_value(game, right, ctx)?,
         )),
+        Condition::ValueIsPrime(value) => Ok(is_prime_integer(resolve_value(game, value, ctx)?)),
         Condition::OwnsCardExiledWithCounter(counter) => Ok(game.exile.iter().any(|&id| {
             game.object(id).is_some_and(|obj| {
                 obj.owner == ctx.controller && obj.counters.get(counter).copied().unwrap_or(0) > 0
             })
         })),
         Condition::SourceAttackedThisTurn => Ok(game.creature_attacked_this_turn(ctx.source)),
+        Condition::SourceAttackedBattleThisTurn => {
+            Ok(game.creature_attacked_battle_this_turn(ctx.source))
+        }
         Condition::SourceSuspected => Ok(game.is_suspected(ctx.source)),
         Condition::SourceDealtCombatDamageToPlayerThisTurn => {
             Ok(game.source_dealt_combat_damage_to_player_this_turn(ctx.source))

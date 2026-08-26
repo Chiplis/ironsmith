@@ -727,6 +727,15 @@ fn parse_damage_part(
 ) -> Result<Option<CompoundDamagePart>, CardTextError> {
     let reference_tokens = trim_edge_punctuation(tokens);
     let reference_words = non_article_token_word_refs(&reference_tokens);
+    if crate::word_primitives::parse_sequence_complete(&reference_words, &["itself"]) {
+        // In a repeated damage head (`... deals N damage to X and M damage
+        // to itself`), `itself` denotes the same explicit damage source.  It
+        // is not a target-selection phrase, so preserve it before the generic
+        // target grammar rejects the otherwise complete paired fanout.
+        return Ok(Some(CompoundDamagePart::Target(TargetAst::Source(
+            span_from_tokens(&reference_tokens),
+        ))));
+    }
     if crate::word_primitives::parse_sequence_complete(
         &reference_words,
         &["that", "player", "or", "planeswalker"],
@@ -745,6 +754,19 @@ fn parse_damage_part(
     ) {
         return Ok(Some(CompoundDamagePart::Target(TargetAst::Tagged(
             TagKey::from(IT_TAG),
+            None,
+        ))));
+    }
+    if reference_words.len() == 3
+        && reference_words[0] == "that"
+        && reference_words[2] == "controller"
+        && (crate::util::is_demonstrative_object_head(reference_words[1])
+            || reference_words[1]
+                .strip_suffix('s')
+                .is_some_and(crate::util::is_demonstrative_object_head))
+    {
+        return Ok(Some(CompoundDamagePart::Target(TargetAst::Player(
+            PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged(IT_TAG)),
             None,
         ))));
     }
@@ -1297,6 +1319,35 @@ mod coordinated_target_tests {
     }
 
     #[test]
+    fn paired_damage_head_can_refer_back_to_its_source() {
+        let tokens = lex_line(
+            "This creature deals 2 damage to any target and 3 damage to itself.",
+            0,
+        )
+        .unwrap();
+        let parsed = parse_compound_damage_fanout_sentence(&tokens)
+            .unwrap()
+            .expect("paired source-damage fanout");
+        let debug = format!("{parsed:#?}");
+
+        assert_eq!(parsed.len(), 1, "{debug}");
+        assert_eq!(debug.matches("DealDamage").count(), 2, "{debug}");
+        assert!(debug.contains("Source("), "{debug}");
+
+        let changed = lex_line(
+            "This creature deals 2 damage to any target and 3 damage to those creatures.",
+            0,
+        )
+        .unwrap();
+        assert!(
+            parse_compound_damage_fanout_sentence(&changed)
+                .unwrap()
+                .is_none(),
+            "an unbound plural reference must not acquire source semantics"
+        );
+    }
+
+    #[test]
     fn removal_damage_fanout_shares_one_typed_removed_count() {
         let tokens = lex_line(
             "Remove all +1/+1 counters from this creature, and it deals that much damage to each creature and each player.",
@@ -1479,6 +1530,46 @@ mod coordinated_target_tests {
         assert_eq!(
             filter.controller,
             Some(PlayerFilter::TargetPlayerOrControllerOfTarget)
+        );
+    }
+
+    #[test]
+    fn paired_damage_carries_the_first_object_into_its_controller_recipient() {
+        let tokens = lex_line(
+            "This creature deals 3 damage to that creature and 3 damage to that creature's controller.",
+            0,
+        )
+        .unwrap();
+        let parsed = super::super::parse_effect_sentence_lexed(&tokens)
+            .expect("paired object/controller damage should use the typed fanout route");
+        let [EffectAst::Coordinated { effects, .. }] = parsed.as_slice() else {
+            panic!("expected coordinated damage pair: {parsed:#?}");
+        };
+        let [
+            _,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::DealDamage { target, .. },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected two damage effects: {effects:#?}");
+        };
+        assert!(matches!(
+            target,
+            TargetAst::Player(PlayerFilter::ControllerOf(reference), None)
+                if matches!(reference, crate::target::ObjectRef::Tagged(tag) if tag.as_str() == IT_TAG)
+        ));
+
+        let owner = lex_line(
+            "This creature deals 3 damage to that creature and 3 damage to that creature's owner.",
+            0,
+        )
+        .unwrap();
+        assert!(
+            parse_compound_damage_fanout_sentence(&owner)
+                .unwrap()
+                .is_none()
         );
     }
 

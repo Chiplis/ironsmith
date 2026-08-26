@@ -1347,6 +1347,9 @@ mod returned_permanent_enters_followup_tests;
 mod conditional_target_self_replacement_followup_tests;
 
 #[cfg(test)]
+#[path = "subject_verb_followups_inline_definite_damage_recipient_tests_21.rs"]
+mod definite_damage_recipient_tests;
+#[cfg(test)]
 #[path = "subject_verb_followups_inline_targeted_search_self_replacement_followup_tests_20.rs"]
 mod targeted_search_self_replacement_followup_tests;
 
@@ -1356,6 +1359,7 @@ pub(super) use subject_verb_followups_reference_programs::transport_copy_retarge
 use subject_verb_followups_reference_programs::{
     append_copy_retarget_to_trailing_optional_copy,
     append_moved_object_entry_followup_to_optional_move,
+    bind_nested_self_replacement_condition_to_previous_target,
     bind_self_replacement_condition_to_previous_target, bind_targeted_leaves_filter,
     bind_that_player_subjects, bind_that_player_subjects_in_effects, carried_player_from_effect,
     effect_has_that_player_subject, effects_are_copy_retarget_followup,

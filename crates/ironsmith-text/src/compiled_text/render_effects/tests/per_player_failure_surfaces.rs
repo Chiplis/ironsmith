@@ -77,3 +77,21 @@ fn explicit_iterated_decider_is_the_same_per_player_may_subject() {
         )
     );
 }
+
+#[test]
+fn skull_storm_keeps_rounded_half_life_failure_followup() {
+    let oracle = "When you cast this spell, copy it for each time you've cast your commander from the command zone this game.\nEach opponent sacrifices a creature of their choice. Each opponent who can't loses half their life, rounded up.";
+    let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Skull Storm")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(oracle)
+        .expect("Skull Storm should compile");
+
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&definition).join("\n"),
+        oracle
+    );
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("DidNotHappen"), "{debug}");
+    assert!(debug.contains("HalfLifeTotalRoundedUp(\n"), "{debug}");
+    assert!(debug.contains("IteratedPlayer"), "{debug}");
+}

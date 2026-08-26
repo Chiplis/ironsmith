@@ -24,6 +24,7 @@ pub enum FixedStaticConditionKind {
     SourceDevouredCreature,
     SourceIsSoulbondPaired,
     SourceAttackedThisTurn,
+    SourceAttackedBattleThisTurn,
     YouAttackedThisTurn,
     SourceEnteredThisTurn,
     YourTurn,
@@ -479,6 +480,25 @@ fn parse_fixed_group_two(input: &mut LexStream<'_>) -> WResult<FixedStaticCondit
             &["it", "is", "paired", "with", "another", "creature"],
         ])
         .value(FixedStaticConditionKind::SourceIsSoulbondPaired),
+        primitives::any_phrase(&[
+            &["it", "attacked", "a", "battle", "this", "turn"],
+            &[
+                "this", "creature", "attacked", "a", "battle", "this", "turn",
+            ],
+            &[
+                "this",
+                "permanent",
+                "attacked",
+                "a",
+                "battle",
+                "this",
+                "turn",
+            ],
+            &[
+                "that", "creature", "attacked", "a", "battle", "this", "turn",
+            ],
+        ])
+        .value(FixedStaticConditionKind::SourceAttackedBattleThisTurn),
         primitives::any_phrase(&[
             &["it", "attacked", "this", "turn"],
             &["this", "creature", "attacked", "this", "turn"],

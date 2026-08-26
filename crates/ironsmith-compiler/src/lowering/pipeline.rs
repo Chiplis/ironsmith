@@ -206,6 +206,87 @@ mod tests {
     }
 
     #[test]
+    fn as_enters_statement_materializes_in_authored_ability_order() -> Result<(), CardTextError> {
+        let builder = CardDefinitionBuilder::new(CardId::new(), "Entry Choice Variant")
+            .card_types(vec![CardType::Creature]);
+        let (definition, _) = parse_text_with_annotations_lowered(
+            builder,
+            "As this creature enters, choose a nonland card name.\nSpells with the chosen name can't be cast."
+                .to_string(),
+            false,
+        )?;
+
+        assert!(
+            definition.spell_effect.is_none(),
+            "an as-enters action on a permanent is not a spell-resolution program"
+        );
+        let [entry_choice, restriction] = definition.abilities.as_slice() else {
+            panic!(
+                "expected the authored two abilities, got {:#?}",
+                definition.abilities
+            );
+        };
+        let AbilityKind::Static(entry_choice) = &entry_choice.kind else {
+            panic!("expected a typed as-enters static ability")
+        };
+        assert!(matches!(
+            &entry_choice.payload,
+            ironsmith_core::StaticAbilityPayload::AsEntersEffectProgram { .. }
+        ));
+        let AbilityKind::Static(restriction) = &restriction.kind else {
+            panic!("expected the cast restriction to remain second")
+        };
+        assert!(matches!(
+            &restriction.payload,
+            ironsmith_core::StaticAbilityPayload::RuleRestriction { .. }
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn flash_cleanup_statement_survives_the_static_line_chunk() -> Result<(), CardTextError> {
+        let builder = CardDefinitionBuilder::new(CardId::new(), "Flash Cleanup Aura")
+            .card_types(vec![CardType::Enchantment]);
+        let (definition, _) = parse_text_with_annotations_lowered(
+            builder,
+            "You may cast this spell as though it had flash. If you cast it any time a sorcery couldn't have been cast, the controller of the permanent it becomes sacrifices it at the beginning of the next cleanup step."
+                .to_string(),
+            false,
+        )?;
+
+        let spell_effect = definition
+            .spell_effect
+            .expect("cleanup condition must remain a spell-resolution program");
+        let debug = format!("{spell_effect:#?}");
+        assert!(debug.contains("ConditionalEffect"), "{debug}");
+        assert!(debug.contains("ScheduleDelayedTriggerEffect"), "{debug}");
+        assert!(debug.contains("BeginningOfNextCleanupStep"), "{debug}");
+        Ok(())
+    }
+
+    #[test]
+    fn aura_attachment_preserves_prior_flash_cleanup_program() -> Result<(), CardTextError> {
+        let builder = CardDefinitionBuilder::new(CardId::new(), "Flash Cleanup Aura")
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![crate::types::Subtype::Aura]);
+        let (definition, _) = parse_text_with_annotations_lowered(
+            builder,
+            "You may cast this spell as though it had flash. If you cast it any time a sorcery couldn't have been cast, the controller of the permanent it becomes sacrifices it at the beginning of the next cleanup step.\nEnchant creature"
+                .to_string(),
+            false,
+        )?;
+
+        let spell_effect = definition
+            .spell_effect
+            .expect("Aura should retain attachment and cleanup effects");
+        let debug = format!("{spell_effect:#?}");
+        assert!(debug.contains("AttachToEffect"), "{debug}");
+        assert!(debug.contains("ConditionalEffect"), "{debug}");
+        assert!(debug.contains("ScheduleDelayedTriggerEffect"), "{debug}");
+        Ok(())
+    }
+
+    #[test]
     fn kicked_counter_replacement_is_typed_before_lowering_finishes() -> Result<(), CardTextError> {
         let builder = CardDefinitionBuilder::new(CardId::new(), "Typed Kicked Counter")
             .card_types(vec![CardType::Instant]);

@@ -1194,6 +1194,12 @@ fn object_matches_filter_with_chars(
         }
     }
 
+    if let Some(required_cost) = &filter.exact_mana_cost
+        && object.mana_cost.as_deref() != Some(required_cost)
+    {
+        return false;
+    }
+
     if filter.has_mana_cost {
         match &object.mana_cost {
             Some(mc) if !mc.is_empty() => {}

@@ -274,6 +274,458 @@ fn triggered_program_from_line_ast(
     }
 }
 
+fn authored_named_source_surface_after(
+    context: ParseContextView<'_>,
+    source: &[OwnedLexToken],
+    action_word: &str,
+) -> Option<crate::target::SourceReferenceSurface> {
+    let mut surfaces = source
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.is_word(action_word))
+        .filter_map(|(action_index, _)| {
+            let start = action_index + 1;
+            let end = source[start..]
+                .iter()
+                .position(|token| {
+                    matches!(token.kind, TokenKind::Comma | TokenKind::Period)
+                        || token.is_word("then")
+                })
+                .map_or(source.len(), |offset| start + offset);
+            let candidate = source.get(start..end)?;
+            if let Some(surface) =
+                crate::util::authored_named_source_reference_surface(context, candidate)
+            {
+                return Some(surface);
+            }
+            crate::lexer::is_authored_proper_name_phrase(candidate).then(|| {
+                let text = render_token_slice(candidate).trim().to_string();
+                if token_word_refs(candidate).len() == 1 {
+                    crate::target::SourceReferenceSurface::ShortName(text)
+                } else {
+                    crate::target::SourceReferenceSurface::FullName(text)
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    surfaces.dedup();
+    let [surface] = surfaces.as_slice() else {
+        return None;
+    };
+    Some(surface.clone())
+}
+
+fn authored_source_surface_after(
+    context: ParseContextView<'_>,
+    source: &[OwnedLexToken],
+    action_word: &str,
+) -> Option<crate::target::SourceReferenceSurface> {
+    let mut surfaces = source
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.is_word(action_word))
+        .filter_map(|(action_index, _)| {
+            let start = action_index + 1;
+            let end = source[start..]
+                .iter()
+                .position(|token| {
+                    matches!(token.kind, TokenKind::Comma | TokenKind::Period)
+                        || token.is_word("then")
+                })
+                .map_or(source.len(), |offset| start + offset);
+            let candidate = source.get(start..end)?;
+            let words = token_word_refs(candidate);
+            let authored_pronoun = (candidate.len() == 1
+                && matches!(
+                    candidate[0].slice.to_ascii_lowercase().as_str(),
+                    "it" | "him" | "her"
+                ))
+            .then(|| {
+                crate::target::SourceReferenceSurface::ThisPermanentType(candidate[0].slice.clone())
+            });
+            authored_pronoun
+                .or_else(|| crate::util::this_source_surface_for_words(&words))
+                .or_else(|| {
+                    crate::util::authored_named_source_reference_surface(context, candidate)
+                })
+                .or_else(|| {
+                    crate::lexer::is_authored_proper_name_phrase(candidate).then(|| {
+                        let text = render_token_slice(candidate).trim().to_string();
+                        if words.len() == 1 {
+                            crate::target::SourceReferenceSurface::ShortName(text)
+                        } else {
+                            crate::target::SourceReferenceSurface::FullName(text)
+                        }
+                    })
+                })
+        })
+        .collect::<Vec<_>>();
+    surfaces.dedup();
+    let [surface] = surfaces.as_slice() else {
+        return None;
+    };
+    Some(surface.clone())
+}
+
+fn plain_source_target(target: &crate::cards::builders::TargetAst) -> bool {
+    match target {
+        crate::cards::builders::TargetAst::Source(_) => true,
+        crate::cards::builders::TargetAst::Object(filter, _, _) if filter.source => {
+            let mut plain = filter.clone();
+            plain.source_surface = None;
+            plain == crate::target::ObjectFilter::source()
+        }
+        _ => false,
+    }
+}
+
+fn apply_named_source_surface(
+    target: &mut crate::cards::builders::TargetAst,
+    surface: &crate::target::SourceReferenceSurface,
+) {
+    match target {
+        crate::cards::builders::TargetAst::Source(span) => {
+            *target = crate::cards::builders::TargetAst::Object(
+                crate::target::ObjectFilter::source_with_surface(surface.clone()),
+                None,
+                *span,
+            );
+        }
+        crate::cards::builders::TargetAst::Object(filter, _, _) => {
+            filter.source_surface = Some(surface.clone());
+        }
+        _ => unreachable!("plain_source_target accepted a non-source target"),
+    }
+}
+
+fn preserve_named_source_exile_surface(
+    context: ParseContextView<'_>,
+    source: &[OwnedLexToken],
+    effects: &mut [crate::model::ast::EffectAst],
+) {
+    fn candidate_count(effects: &[crate::model::ast::EffectAst]) -> usize {
+        let mut count = 0;
+        for effect in effects {
+            if let crate::model::ast::EffectAst::SubjectVerb(subject_verb) = effect {
+                let target = match &subject_verb.action {
+                    crate::cards::builders::SubjectVerbActionAst::Exile { target, .. }
+                    | crate::cards::builders::SubjectVerbActionAst::MoveToZone {
+                        target,
+                        zone: crate::zone::Zone::Exile,
+                        ..
+                    } => Some(target),
+                    _ => None,
+                };
+                count += target.is_some_and(plain_source_target) as usize;
+            }
+            crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+                count += candidate_count(nested)
+            });
+        }
+        count
+    }
+
+    fn apply(
+        effects: &mut [crate::model::ast::EffectAst],
+        surface: &crate::target::SourceReferenceSurface,
+    ) {
+        for effect in effects {
+            if let crate::model::ast::EffectAst::SubjectVerb(subject_verb) = effect {
+                let target = match &mut subject_verb.action {
+                    crate::cards::builders::SubjectVerbActionAst::Exile { target, .. }
+                    | crate::cards::builders::SubjectVerbActionAst::MoveToZone {
+                        target,
+                        zone: crate::zone::Zone::Exile,
+                        ..
+                    } => Some(target),
+                    _ => None,
+                };
+                if let Some(target) = target
+                    && plain_source_target(target)
+                {
+                    apply_named_source_surface(target, surface);
+                }
+            }
+            crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                apply(nested, surface)
+            });
+        }
+    }
+
+    let Some(surface) = authored_named_source_surface_after(context, source, "exile") else {
+        return;
+    };
+    let count = candidate_count(effects);
+    if count == 1 {
+        apply(effects, &surface);
+    }
+}
+
+fn preserve_named_source_transform_surface(
+    context: ParseContextView<'_>,
+    source: &[OwnedLexToken],
+    effects: &mut [crate::model::ast::EffectAst],
+) {
+    fn candidate_count(effects: &[crate::model::ast::EffectAst]) -> usize {
+        let mut count = 0;
+        for effect in effects {
+            if let crate::model::ast::EffectAst::SubjectVerb(subject_verb) = effect
+                && let crate::cards::builders::SubjectVerbActionAst::Transform { target } =
+                    &subject_verb.action
+            {
+                count += plain_source_target(target) as usize;
+            }
+            crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+                count += candidate_count(nested)
+            });
+        }
+        count
+    }
+
+    fn apply(
+        effects: &mut [crate::model::ast::EffectAst],
+        surface: &crate::target::SourceReferenceSurface,
+    ) {
+        for effect in effects {
+            if let crate::model::ast::EffectAst::SubjectVerb(subject_verb) = effect
+                && let crate::cards::builders::SubjectVerbActionAst::Transform { target } =
+                    &mut subject_verb.action
+                && plain_source_target(target)
+            {
+                apply_named_source_surface(target, surface);
+            }
+            crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                apply(nested, surface)
+            });
+        }
+    }
+
+    let Some(surface) = authored_source_surface_after(context, source, "transform") else {
+        return;
+    };
+    if candidate_count(effects) == 1 {
+        apply(effects, &surface);
+    }
+}
+
+fn preserve_named_source_unattach_surface(
+    context: ParseContextView<'_>,
+    source: &[OwnedLexToken],
+    effects: &mut [crate::model::ast::EffectAst],
+) {
+    fn candidate_count(effects: &[crate::model::ast::EffectAst]) -> usize {
+        let mut count = 0;
+        for effect in effects {
+            if let crate::model::ast::EffectAst::SubjectVerb(subject_verb) = effect
+                && let crate::cards::builders::SubjectVerbActionAst::Unattach { object } =
+                    &subject_verb.action
+            {
+                count += plain_source_target(object) as usize;
+            }
+            crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+                count += candidate_count(nested)
+            });
+        }
+        count
+    }
+
+    fn apply(
+        effects: &mut [crate::model::ast::EffectAst],
+        surface: &crate::target::SourceReferenceSurface,
+    ) {
+        for effect in effects {
+            if let crate::model::ast::EffectAst::SubjectVerb(subject_verb) = effect
+                && let crate::cards::builders::SubjectVerbActionAst::Unattach { object } =
+                    &mut subject_verb.action
+                && plain_source_target(object)
+            {
+                apply_named_source_surface(object, surface);
+            }
+            crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                apply(nested, surface)
+            });
+        }
+    }
+
+    let Some(surface) = authored_named_source_surface_after(context, source, "unattach") else {
+        return;
+    };
+    if candidate_count(effects) == 1 {
+        apply(effects, &surface);
+    }
+}
+
+fn preserve_named_source_put_counters_surface(
+    context: ParseContextView<'_>,
+    source: &[OwnedLexToken],
+    effects: &mut [crate::model::ast::EffectAst],
+) {
+    fn candidate_count(effects: &[crate::model::ast::EffectAst]) -> usize {
+        let mut count = 0;
+        for effect in effects {
+            if let crate::model::ast::EffectAst::SubjectVerb(subject_verb) = effect
+                && let crate::cards::builders::SubjectVerbActionAst::PutCounters { target, .. } =
+                    &subject_verb.action
+            {
+                count += plain_source_target(target) as usize;
+            }
+            crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+                count += candidate_count(nested)
+            });
+        }
+        count
+    }
+
+    fn apply(
+        effects: &mut [crate::model::ast::EffectAst],
+        surface: &crate::target::SourceReferenceSurface,
+    ) {
+        for effect in effects {
+            if let crate::model::ast::EffectAst::SubjectVerb(subject_verb) = effect
+                && let crate::cards::builders::SubjectVerbActionAst::PutCounters { target, .. } =
+                    &mut subject_verb.action
+                && plain_source_target(target)
+            {
+                apply_named_source_surface(target, surface);
+            }
+            crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                apply(nested, surface)
+            });
+        }
+    }
+
+    let Some(surface) = authored_named_source_surface_after(context, source, "on") else {
+        return;
+    };
+    if candidate_count(effects) == 1 {
+        apply(effects, &surface);
+    }
+}
+
+fn preserve_named_source_chosen_complement_surface(
+    context: ParseContextView<'_>,
+    source: &[OwnedLexToken],
+    effects: &mut [crate::model::ast::EffectAst],
+) {
+    let words = token_word_refs(source);
+    if !crate::word_primitives::sequence_occurs(&words, &["creatures", "other", "than"])
+        || !crate::word_primitives::sequence_occurs(&words, &["and", "the", "chosen", "creature"])
+    {
+        return;
+    }
+    let Some(surface) = crate::util::authored_named_source_reference_surface(context, source)
+    else {
+        return;
+    };
+
+    fn matching_filter(
+        effect: &crate::model::ast::EffectAst,
+    ) -> Option<&crate::target::ObjectFilter> {
+        let crate::model::ast::EffectAst::SubjectVerb(subject_verb) = effect else {
+            return None;
+        };
+        let crate::cards::builders::SubjectVerbActionAst::PumpAll { filter, .. } =
+            &subject_verb.action
+        else {
+            return None;
+        };
+        let [chosen_exclusion] = filter.tagged_constraints.as_slice() else {
+            return None;
+        };
+        (filter.card_types.as_slice() == [crate::types::CardType::Creature]
+            && filter.other
+            && matches!(
+                filter.source_surface,
+                Some(crate::target::SourceReferenceSurface::ThisPermanentType(_))
+            )
+            && chosen_exclusion.relation == crate::target::TaggedOpbjectRelation::IsNotTaggedObject)
+            .then_some(filter)
+    }
+
+    fn candidate_count(effects: &[crate::model::ast::EffectAst]) -> usize {
+        let mut count = 0;
+        for effect in effects {
+            count += matching_filter(effect).is_some() as usize;
+            crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+                count += candidate_count(nested)
+            });
+        }
+        count
+    }
+
+    fn apply(
+        effects: &mut [crate::model::ast::EffectAst],
+        surface: &crate::target::SourceReferenceSurface,
+    ) {
+        for effect in effects {
+            if matching_filter(effect).is_some()
+                && let crate::model::ast::EffectAst::SubjectVerb(subject_verb) = effect
+                && let crate::cards::builders::SubjectVerbActionAst::PumpAll { filter, .. } =
+                    &mut subject_verb.action
+            {
+                filter.source_surface = Some(surface.clone());
+            }
+            crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                apply(nested, surface)
+            });
+        }
+    }
+
+    if candidate_count(effects) == 1 {
+        apply(effects, &surface);
+    }
+}
+
+fn preserve_split_participant_order_surface(
+    trigger_tokens: &[OwnedLexToken],
+    effect_tokens: &[OwnedLexToken],
+    full_tokens: &[OwnedLexToken],
+    effects: &mut Vec<crate::model::ast::EffectAst>,
+) {
+    fn first_effect_is_each_player_loop(effects: &[crate::model::ast::EffectAst]) -> bool {
+        let Some(first) = effects.first() else {
+            return false;
+        };
+        match first {
+            crate::model::ast::EffectAst::ForEachPlayer { .. } => true,
+            crate::model::ast::EffectAst::Sequence { effects }
+            | crate::model::ast::EffectAst::CommaThen { effects }
+            | crate::model::ast::EffectAst::Coordinated { effects, .. }
+            | crate::model::ast::EffectAst::SourceSentence { effects, .. } => {
+                first_effect_is_each_player_loop(effects)
+            }
+            _ => false,
+        }
+    }
+
+    let full_words = token_word_refs(full_tokens);
+    let trigger_words = token_word_refs(trigger_tokens);
+    let effect_words = token_word_refs(effect_tokens);
+    let authored_order = crate::word_primitives::sequence_occurs(
+        &full_words,
+        &["starting", "with", "you", "each", "player"],
+    ) || (trigger_words.ends_with(&["starting", "with", "you"])
+        && effect_words.starts_with(&["each", "player"]));
+    if !authored_order || !first_effect_is_each_player_loop(effects) {
+        return;
+    }
+
+    if let Some(crate::model::ast::EffectAst::SourceSentence {
+        starting_with_controller,
+        ..
+    }) = effects.first_mut()
+    {
+        *starting_with_controller = true;
+    } else {
+        let ordered = std::mem::take(effects);
+        effects.push(crate::model::ast::EffectAst::SourceSentence {
+            effects: ordered,
+            leading_then: false,
+            starting_with_controller: true,
+        });
+    }
+}
+
 pub(super) fn attach_compiler_trigger_facts(
     context: ParseContextView<'_>,
     dispatch: &mut LineDispatchResult,
@@ -325,7 +777,183 @@ pub(super) fn attach_compiler_trigger_facts(
                 cost,
             )))
         })()?;
-        let direct = if let Some(cost) = nested_combat_cost {
+        let recognized_special =
+            semantic_grammar::parse_special_triggered_program_tokens(&triggered.full_parse_tokens);
+        let special_triggered_program = match recognized_special {
+            Some(semantic_grammar::SpecialTriggeredProgram::OpponentCreatureMajorityConsult) => {
+                let trigger = super::super::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
+                    context,
+                    &triggered.trigger_parse_tokens,
+                )?;
+                let revealed_tag = crate::tag::CompilerReferenceTag::OathRevealed.key();
+                let creature_tag = crate::tag::CompilerReferenceTag::OathCreature.key();
+                let mut creature_card_filter = crate::ObjectFilter::creature();
+                creature_card_filter.zone = None;
+                let membership_filter = crate::ObjectFilter::default()
+                    .same_stable_id_as_tagged(crate::TagKey::from(crate::host::IT_TAG));
+                Some((
+                    trigger,
+                    vec![
+                        crate::host::EffectAst::subject_verb_explicit_target_only_for_chooser(
+                            crate::TargetAst::Player(
+                                crate::PlayerFilter::OpponentWithMoreControlledObjectsThan {
+                                    player: Box::new(crate::PlayerFilter::Active),
+                                    filter: Box::new(crate::ObjectFilter::creature()),
+                                },
+                                Some(crate::TextSpan::synthetic()),
+                            ),
+                            crate::PlayerAst::Active,
+                        ),
+                        crate::host::EffectAst::MayByPlayer {
+                            player: crate::PlayerAst::Active,
+                            effects: vec![
+                                crate::host::EffectAst::subject_verb_consult_top_of_library(
+                                    crate::PlayerAst::Active,
+                                    crate::cards::builders::LibraryConsultModeAst::Reveal,
+                                    creature_card_filter,
+                                    crate::cards::builders::LibraryConsultStopRuleAst::FirstMatch,
+                                    revealed_tag.clone(),
+                                    creature_tag.clone(),
+                                ),
+                                crate::host::EffectAst::subject_verb_move_to_zone(
+                                    crate::TargetAst::Tagged(creature_tag.clone(), None),
+                                    crate::Zone::Battlefield,
+                                    false,
+                                    crate::ReturnControllerAst::Preserve,
+                                    false,
+                                    None,
+                                ),
+                                crate::host::EffectAst::ForEachTagged {
+                                    tag: revealed_tag,
+                                    effects: vec![crate::host::EffectAst::Conditional {
+                                        predicate: crate::host::PredicateAst::TaggedMatches(
+                                            creature_tag,
+                                            membership_filter,
+                                        ),
+                                        if_true: Vec::new(),
+                                        if_false: vec![
+                                            crate::host::EffectAst::subject_verb_move_to_zone(
+                                                crate::TargetAst::Tagged(
+                                                    crate::TagKey::from(crate::host::IT_TAG),
+                                                    None,
+                                                ),
+                                                crate::Zone::Graveyard,
+                                                false,
+                                                crate::ReturnControllerAst::Preserve,
+                                                false,
+                                                None,
+                                            ),
+                                        ],
+                                    }],
+                                },
+                            ],
+                        },
+                    ],
+                ))
+            }
+            Some(semantic_grammar::SpecialTriggeredProgram::PrimeControlledLandCountToken) => {
+                use crate::model::ast::{EffectAst, SubjectVerbActionAst};
+
+                let trigger = super::super::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
+                    context,
+                    &triggered.trigger_parse_tokens,
+                )?;
+                let segments =
+                    crate::grammar::effects::chain_splitting::split_segments_on_comma_then_tokens(
+                        vec![triggered.effect_parse_tokens.as_slice()],
+                        |_| false,
+                    );
+                let [create_tokens, counter_tokens] = segments.as_slice() else {
+                    return Err(CardTextError::InvariantViolation(
+                        "prime-count token program lost its create/counter boundary".to_string(),
+                    ));
+                };
+                let mut create_effects = parse_effect_sentences_lexed(create_tokens)?;
+                let [create_effect] = create_effects.as_mut_slice() else {
+                    return Err(CardTextError::InvariantViolation(
+                        "prime-count token program did not produce one creation effect".to_string(),
+                    ));
+                };
+                let created_tag = crate::util::helper_tag_for_tokens(
+                    &triggered.effect_parse_tokens,
+                    "prime_count_token",
+                );
+                let tagged_create = EffectAst::TagAffected {
+                    effect: Box::new(create_effect.clone()),
+                    tag: created_tag.clone(),
+                };
+
+                let mut counter_effects = parse_effect_sentences_lexed(counter_tokens)?;
+                let [counter_effect] = counter_effects.as_mut_slice() else {
+                    return Err(CardTextError::InvariantViolation(
+                        "prime-count token program did not produce one counter effect".to_string(),
+                    ));
+                };
+                let EffectAst::SubjectVerb(counter_verb) = counter_effect else {
+                    return Err(CardTextError::InvariantViolation(
+                        "prime-count token follow-up was not a subject/verb counter effect"
+                            .to_string(),
+                    ));
+                };
+                let SubjectVerbActionAst::PutCounters { count, target, .. } =
+                    &mut counter_verb.action
+                else {
+                    return Err(CardTextError::InvariantViolation(
+                        "prime-count token follow-up did not put counters".to_string(),
+                    ));
+                };
+                let controlled_lands = crate::ObjectFilter::land().you_control();
+                *count = crate::Value::Count(controlled_lands.clone())
+                    .with_surface_hint(ironsmith_core::ValueSurfaceHint::ThatMany);
+                *target = crate::TargetAst::Tagged(created_tag, Some(crate::TextSpan::synthetic()));
+                triggered.intervening_if = Some(crate::host::PredicateAst::And(
+                    Box::new(crate::host::PredicateAst::ObjectEnteredBattlefieldThisTurn(
+                        controlled_lands.clone(),
+                    )),
+                    Box::new(crate::host::PredicateAst::ValueIsPrime(
+                        crate::Value::Count(controlled_lands),
+                    )),
+                ));
+                Some((
+                    trigger,
+                    vec![EffectAst::CommaThen {
+                        effects: vec![tagged_create, counter_effect.clone()],
+                    }],
+                ))
+            }
+            Some(semantic_grammar::SpecialTriggeredProgram::OpponentGraveyardMinorityReturn) => {
+                let trigger = super::super::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
+                    context,
+                    &triggered.trigger_parse_tokens,
+                )?;
+                let mut graveyard_creatures = crate::ObjectFilter::creature();
+                graveyard_creatures.zone = Some(crate::Zone::Graveyard);
+
+                let mut return_filter = graveyard_creatures.clone();
+                return_filter.owner = Some(crate::PlayerFilter::IteratedPlayer);
+                Some((
+                    trigger,
+                    vec![crate::host::EffectAst::Conditional {
+                        predicate: crate::host::PredicateAst::AnOpponentHasFewerThanPlayer {
+                            player: crate::PlayerAst::That,
+                            filter: graveyard_creatures,
+                        },
+                        if_true: vec![crate::host::EffectAst::MayByPlayer {
+                            player: crate::PlayerAst::That,
+                            effects: vec![crate::host::EffectAst::subject_verb_return_to_hand(
+                                crate::TargetAst::Object(return_filter, None, None),
+                                false,
+                            )],
+                        }],
+                        if_false: Vec::new(),
+                    }],
+                ))
+            }
+            _ => None,
+        };
+        let direct = if let Some(program) = special_triggered_program {
+            Ok(Some(program))
+        } else if let Some(cost) = nested_combat_cost {
             super::super::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
                 context,
                 &triggered.trigger_parse_tokens,
@@ -368,9 +996,19 @@ pub(super) fn attach_compiler_trigger_facts(
                 &triggered.trigger_parse_tokens,
             )
             .and_then(|trigger| {
-                crate::semantic_line_parsing::parse_effect_sentences_preserving_source_boundaries(
+                let effects = crate::semantic_line_parsing::end_of_combat_destroy_then_next_end_step_counter_program(
                     &triggered.effect_parse_tokens,
                 )
+                .or_else(|| crate::semantic_line_parsing::exact_target_graveyard_any_type_may_cast_bundle(
+                    &triggered.effect_parse_tokens,
+                ))
+                .map(Ok)
+                .unwrap_or_else(|| {
+                    crate::semantic_line_parsing::parse_effect_sentences_preserving_source_boundaries(
+                        &triggered.effect_parse_tokens,
+                    )
+                });
+                effects
                 .map(|effects| (trigger, effects))
             })
             .map(Some)
@@ -385,7 +1023,7 @@ pub(super) fn attach_compiler_trigger_facts(
                 )
             })
         };
-        let (trigger, effects) = match direct {
+        let (trigger, mut effects) = match direct {
             Ok(Some(program)) => program,
             Ok(None) => fallback()?,
             Err(direct_error) => match fallback() {
@@ -393,6 +1031,33 @@ pub(super) fn attach_compiler_trigger_facts(
                 Err(_) => return Err(direct_error),
             },
         };
+        preserve_split_participant_order_surface(
+            &triggered.trigger_parse_tokens,
+            &triggered.effect_parse_tokens,
+            &triggered.full_parse_tokens,
+            &mut effects,
+        );
+        preserve_named_source_exile_surface(context, &triggered.info.source_tokens, &mut effects);
+        preserve_named_source_transform_surface(
+            context,
+            &triggered.info.source_tokens,
+            &mut effects,
+        );
+        preserve_named_source_unattach_surface(
+            context,
+            &triggered.info.source_tokens,
+            &mut effects,
+        );
+        preserve_named_source_put_counters_surface(
+            context,
+            &triggered.info.source_tokens,
+            &mut effects,
+        );
+        preserve_named_source_chosen_complement_surface(
+            context,
+            &triggered.info.source_tokens,
+            &mut effects,
+        );
         let functional_zones =
             super::super::semantic_line_parsing::infer_triggered_ability_functional_zones_from_facts(
                 &trigger,

@@ -296,6 +296,14 @@ pub fn parse_prior_effect_aggregate_metric_value(
                 }
                 query = query.with_filter(filter);
             }
+            if crate::word_primitives::sequence_occurs(filter_words, &["they", "controlled"]) {
+                // Inside a quantified-player program, `they controlled`
+                // partitions the producer's remembered objects by the
+                // current participant. Store that ownership on the metric
+                // query rather than relying on a live object-filter
+                // controller after the objects have left the battlefield.
+                query = query.with_player(PlayerFilter::IteratedPlayer);
+            }
             return Some(Value::PendingPriorEffectMetric(query));
         }
     }

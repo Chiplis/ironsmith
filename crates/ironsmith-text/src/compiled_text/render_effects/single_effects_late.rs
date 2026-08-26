@@ -1553,10 +1553,7 @@ pub(super) fn describe_mana_usage_restriction(
                     }
                     _ => return None,
                 }
-            } else if effect
-                .downcast_ref::<crate::effects::CopySpellEffect>()
-                .is_some()
-            {
+            } else if copy_spell_from_effect(effect).is_some() {
                 "copy that spell and you may choose new targets for the copy".to_string()
             } else {
                 return None;
@@ -2675,16 +2672,25 @@ pub(super) fn describe_structural_craft_keyword(
         return None;
     }
 
-    let material = activated
-        .mana_cost
-        .costs()
+    let costs = activated.mana_cost.costs();
+    let material = costs
         .iter()
-        .find_map(craft_material_cost)?;
+        .find_map(craft_material_cost)
+        .or_else(|| craft_material_from_tagged_costs(costs))?;
     let effects = activated.effects.flattened_default_effects();
-    if effects.len() != 2 {
-        return None;
-    }
-    let returns_source = effects[0]
+    let (return_effect, transform_effect) = match effects {
+        [return_effect, transform_effect] => (return_effect, transform_effect),
+        [sequence_effect] => {
+            let sequence = structural_unwrap_render_wrappers(sequence_effect)
+                .downcast_ref::<crate::effects::SequenceEffect>()?;
+            let [return_effect, transform_effect] = sequence.effects.as_slice() else {
+                return None;
+            };
+            (return_effect, transform_effect)
+        }
+        _ => return None,
+    };
+    let returns_source = return_effect
         .downcast_ref::<crate::effects::MoveToZoneEffect>()
         .is_some_and(|move_to_zone| {
             matches!(move_to_zone.target, ChooseSpec::Source)
@@ -2695,19 +2701,30 @@ pub(super) fn describe_structural_craft_keyword(
                 )
                 && move_to_zone.transfer_exiled_with_source_links
         });
-    let transforms_source = effects[1]
+    let transforms_source = transform_effect
         .downcast_ref::<crate::effects::TransformEffect>()
         .is_some_and(|transform| matches!(transform.target, ChooseSpec::Source));
     if !returns_source || !transforms_source {
         return None;
     }
 
-    let cost_text = keyword_base_cost_text(activated.mana_cost.costs(), |cost| {
-        is_exile_source_cost(cost)
-            || is_craft_event_cost(cost)
-            || craft_material_cost(cost).is_some()
-    })?;
+    let cost_text = keyword_base_cost_text(costs, |cost| cost.mana_cost_ref().is_none())?;
     Some(format!("Craft with {material} {cost_text}"))
+}
+
+fn craft_material_from_tagged_costs(costs: &[crate::costs::Cost]) -> Option<String> {
+    costs.windows(2).find_map(|pair| {
+        let choose = pair[0]
+            .effect_ref()?
+            .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+        let exile = pair[1]
+            .effect_ref()?
+            .downcast_ref::<crate::effects::ExileEffect>()?;
+        if !matches!(&exile.spec, ChooseSpec::Tagged(tag) if tag == &choose.tag) {
+            return None;
+        }
+        describe_craft_material_filter(&choose.filter, choose.count)
+    })
 }
 
 pub(super) fn craft_material_cost(cost: &crate::costs::Cost) -> Option<String> {
@@ -2825,7 +2842,7 @@ pub(super) fn describe_structural_transmute_keyword(
     let search = effect.downcast_ref::<crate::effects::SearchLibraryEffect>()?;
     if search.destination != Zone::Hand
         || search.player != PlayerFilter::You
-        || search.reveal
+        || !search.reveal
         || search.library_position_from_top.is_some()
     {
         return None;
@@ -2858,15 +2875,59 @@ pub(super) fn describe_structural_transfigure_keyword(
     let [effect] = activated.effects.flattened_default_effects() else {
         return None;
     };
-    let search = effect.downcast_ref::<crate::effects::SearchLibraryEffect>()?;
-    if search.destination != Zone::Battlefield
-        || search.player != PlayerFilter::You
-        || search.chooser != PlayerFilter::You
-        || search.reveal
-        || search.library_position_from_top.is_some()
-        || search.filter.card_types != vec![CardType::Creature]
+    let search_filter = if let Some(search) =
+        effect.downcast_ref::<crate::effects::SearchLibraryEffect>()
+    {
+        if search.destination != Zone::Battlefield
+            || search.player != PlayerFilter::You
+            || search.chooser != PlayerFilter::You
+            || search.reveal
+            || search.library_position_from_top.is_some()
+        {
+            return None;
+        }
+        &search.filter
+    } else {
+        // Canonical library lowering keeps selection, consumption, and
+        // shuffle as separate executable members. Recognize the same typed
+        // Transfigure contract without depending on the retired aggregate
+        // SearchLibraryEffect representation.
+        let sequence = effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+        let [choose_effect, consume_effect, shuffle_effect] = sequence.effects.as_slice() else {
+            return None;
+        };
+        let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+        let consume = consume_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+        let shuffle = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+        let [move_effect] = consume.effects.as_slice() else {
+            return None;
+        };
+        let move_to_battlefield =
+            move_effect.downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()?;
+        if !choose.is_search
+            || choose.reveal
+            || choose.chooser != PlayerFilter::You
+            || choose.zone != Some(Zone::Library)
+            || !choose.additional_zones.is_empty()
+            || !choose.count.is_single()
+            || choose.count_value.is_some()
+            || choose.aggregate_constraint.is_some()
+            || choose.tag != consume.tag
+            || consume.controller_at_last_blocked_by.is_some()
+            || !matches!(move_to_battlefield.target.base(), ChooseSpec::Iterated)
+            || move_to_battlefield.tapped
+            || move_to_battlefield.controller != PlayerFilter::You
+            || !move_to_battlefield.enters_with_counters.is_empty()
+            || shuffle.player != PlayerFilter::You
+            || shuffle.target_spec.is_some()
+        {
+            return None;
+        }
+        &choose.filter
+    };
+    if search_filter.card_types != vec![CardType::Creature]
         || !matches!(
-            search.filter.mana_value.as_ref(),
+            search_filter.mana_value.as_ref(),
             Some(crate::filter::Comparison::EqualExpr(value))
                 if matches!(value.unhinted(), Value::ManaValueOf(spec)
                     if matches!(spec.base(), ChooseSpec::Source))

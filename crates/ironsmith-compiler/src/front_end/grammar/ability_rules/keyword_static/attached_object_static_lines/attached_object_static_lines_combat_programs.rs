@@ -1,6 +1,5 @@
 use super::*;
 
-
 pub fn lower_remove_counter_prevention_spec(
     spec: attached_grammar::RemoveCounterPreventionSpec<'_>,
 ) -> Result<StaticAbilityAst, CardTextError> {
@@ -41,7 +40,6 @@ pub fn lower_remove_counter_prevention_spec(
     })
 }
 
-
 pub fn parse_prevent_damage_to_source_put_counters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
@@ -56,10 +54,8 @@ pub fn parse_prevent_damage_to_source_put_counters_line(
             effect_tokens,
         } => {
             let display = if condition_tokens.is_some() {
-                let prefix =
-                    crate::lexer::token_word_refs(display_prefix_tokens).join(" ");
-                let effect =
-                    crate::lexer::token_word_refs(effect_tokens).join(" ");
+                let prefix = crate::lexer::token_word_refs(display_prefix_tokens).join(" ");
+                let effect = crate::lexer::token_word_refs(effect_tokens).join(" ");
                 let mut text = format!("{prefix}, {effect}");
                 if let Some(first) = text.get_mut(0..1) {
                     first.make_ascii_uppercase();
@@ -101,7 +97,6 @@ pub fn parse_prevent_damage_to_source_put_counters_line(
     }))
 }
 
-
 pub fn parse_attached_prevent_all_damage_dealt_by_attached_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
@@ -119,7 +114,6 @@ pub fn parse_attached_prevent_all_damage_dealt_by_attached_line(
         condition: None,
     }))
 }
-
 
 pub fn parse_attached_prevent_all_damage_dealt_to_and_by_attached_line(
     tokens: &[OwnedLexToken],
@@ -140,7 +134,6 @@ pub fn parse_attached_prevent_all_damage_dealt_to_and_by_attached_line(
     }))
 }
 
-
 pub fn parse_attached_prevent_all_combat_damage_dealt_by_attached_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
@@ -158,7 +151,6 @@ pub fn parse_attached_prevent_all_combat_damage_dealt_by_attached_line(
         condition: None,
     }))
 }
-
 
 pub fn parse_attached_prevent_all_damage_dealt_to_attached_line(
     tokens: &[OwnedLexToken],

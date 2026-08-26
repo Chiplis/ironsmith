@@ -181,7 +181,9 @@ fn draw_clause_keeps_coordinated_controller_subject(tail: &str) -> bool {
     tail.split(['.', '\n', ';', '—'])
         .next()
         .is_some_and(|clause| {
-            clause.contains(" and you lose ") || clause.contains(" and you create ")
+            clause.contains(" and you lose ")
+                || clause.contains(" and you create ")
+                || (clause.contains(", gain ") && clause.contains(", and create "))
         })
 }
 
@@ -218,6 +220,20 @@ fn returned_set_control_gate_keeps_explicit_draw_subject(
             })
 }
 
+fn conditional_draw_keeps_explicit_subject(prefix: &str, explicit: &str) -> bool {
+    if !matches!(explicit, ", You draw " | ", you draw ") {
+        return false;
+    }
+    let sentence_prefix = prefix
+        .rsplit(['.', '\n', ';', '—'])
+        .next()
+        .unwrap_or(prefix)
+        .trim_start();
+    sentence_prefix
+        .get(..3)
+        .is_some_and(|head| head.eq_ignore_ascii_case("if "))
+}
+
 fn replace_imperative_draw_subject(segment: &str, explicit: &str, imperative: &str) -> String {
     let mut output = String::with_capacity(segment.len());
     let mut remainder = segment;
@@ -227,6 +243,7 @@ fn replace_imperative_draw_subject(segment: &str, explicit: &str, imperative: &s
         if draw_clause_keeps_coordinated_controller_subject(tail)
             || revealed_hand_union_keeps_explicit_draw_subject(&output, explicit, tail)
             || returned_set_control_gate_keeps_explicit_draw_subject(&output, explicit, tail)
+            || conditional_draw_keeps_explicit_subject(&output, explicit)
         {
             output.push_str(explicit);
         } else {
@@ -660,6 +677,19 @@ mod tests {
                 "For each opponent who does, you draw a card and you create a Rabbit token."
             ),
             "For each opponent who does, you draw a card and you create a Rabbit token."
+        );
+        assert_eq!(
+            normalize_debug_safe_spelling_surface(
+                "When this enchantment enters, you draw three cards, gain 6 life, and create three Bat tokens."
+            ),
+            "When this enchantment enters, you draw three cards, gain 6 life, and create three Bat tokens."
+        );
+        assert_eq!(
+            normalize_debug_safe_spelling_surface(
+                "When this enchantment enters, you draw three cards, gain 6 life. Create three Bat tokens."
+            ),
+            "When this enchantment enters, draw three cards, gain 6 life. Create three Bat tokens.",
+            "a separate token instruction must not retain the draw subject"
         );
     }
 

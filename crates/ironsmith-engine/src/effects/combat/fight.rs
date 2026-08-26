@@ -34,6 +34,9 @@ pub struct FightEffect {
     pub creature1: ChooseSpec,
     /// Second creature specification.
     pub creature2: ChooseSpec,
+    /// The authored clause referred to one chosen collection fighting
+    /// pairwise ("those creatures fight each other").
+    pub mutual_surface: bool,
 }
 
 impl FightEffect {
@@ -42,7 +45,13 @@ impl FightEffect {
         Self {
             creature1,
             creature2,
+            mutual_surface: false,
         }
+    }
+
+    pub fn with_mutual_surface(mut self) -> Self {
+        self.mutual_surface = true;
+        self
     }
 
     /// Create a fight between a creature you control and one you don't.

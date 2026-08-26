@@ -211,6 +211,79 @@ mod tests {
     }
 
     #[test]
+    fn counter_then_destroy_tagged_ability_source_works_with_resolving_source_gone() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let artifact = CardBuilder::new(CardId::new(), "Artifact Ability Source")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let artifact_source = game.create_object_from_card(&artifact, bob, Zone::Battlefield);
+        let artifact_stable = game.object(artifact_source).unwrap().stable_id;
+        game.push_to_stack(StackEntry::ability(
+            artifact_source,
+            bob,
+            vec![Effect::draw(1)],
+        ));
+
+        let sacrificed_source = CardBuilder::new(CardId::new(), "Sacrificed Source")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let resolving_source =
+            game.create_object_from_card(&sacrificed_source, alice, Zone::Graveyard);
+
+        let mut counter_filter = ObjectFilter::default().in_zone(Zone::Stack);
+        counter_filter.stack_kind = Some(crate::filter::StackObjectKind::ActivatedAbility);
+        counter_filter.card_types = vec![CardType::Artifact];
+        let counter_tag = crate::tag::TagKey::from("countered_0");
+        let counter = Effect::new(CounterEffect::new(ChooseSpec::target(ChooseSpec::Object(
+            counter_filter,
+        ))))
+        .tag(counter_tag.clone());
+        let destroy_filter = ObjectFilter::artifact()
+            .in_zone(Zone::Battlefield)
+            .match_tagged(
+                counter_tag,
+                crate::target::TaggedOpbjectRelation::IsTaggedObject,
+            );
+        let sequence = Effect::new(crate::effects::SequenceEffect::coordinated(vec![
+            counter,
+            Effect::destroy(ChooseSpec::Object(destroy_filter)),
+        ]));
+
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(resolving_source, alice, &mut dm).with_targets(vec![
+            crate::effects::ResolvedTarget::Object(artifact_source),
+        ]);
+        execute_effect(&mut game, &sequence, &mut ctx)
+            .expect("counter/destroy sequence should resolve after its source was sacrificed");
+
+        assert!(
+            !game
+                .stack
+                .iter()
+                .any(|entry| entry.object_id == artifact_source),
+            "the activated ability should be countered"
+        );
+        let artifact_after = game
+            .find_object_by_stable_id(artifact_stable)
+            .expect("artifact source remains tracked");
+        assert_eq!(
+            game.object(artifact_after)
+                .expect("artifact after sequence")
+                .zone,
+            Zone::Graveyard,
+            "the tagged source of the countered ability should be destroyed"
+        );
+        assert_eq!(
+            game.object(resolving_source)
+                .expect("sacrificed resolving source")
+                .zone,
+            Zone::Graveyard,
+        );
+    }
+
+    #[test]
     fn counter_spell_honors_registered_stack_to_graveyard_replacement() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

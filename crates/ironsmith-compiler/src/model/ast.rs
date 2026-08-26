@@ -195,6 +195,13 @@ pub enum TriggerSpec {
         attacker: PlayerFilter,
         target: ironsmith_core::AttackTargetRestriction,
     },
+    /// A matching player attacks one matching defender with one or more
+    /// creatures. Unlike `PlayerAttacksOneOrMore`, grouping is scoped to the
+    /// attacked defender rather than the whole attack declaration.
+    PlayerAttacksTargetWithOneOrMore {
+        attacker: PlayerFilter,
+        target: ironsmith_core::AttackTargetRestriction,
+    },
     AttacksOneOrMoreWithMinTotal {
         filter: ObjectFilter,
         min_total_attackers: u32,
@@ -220,6 +227,15 @@ pub enum TriggerSpec {
     },
     Blocks(ObjectFilter),
     BlocksOneOrMore(ObjectFilter),
+    /// One per blocking pair where `subject` is either the blocker or the
+    /// blocked creature and the participant on the other side matches
+    /// `other`. This preserves authored tagged subjects such as "enchanted
+    /// creature blocks or becomes blocked by a creature ..." without
+    /// pretending that the Aura source is itself in combat.
+    BlocksOrBecomesBlockedByObject {
+        subject: ObjectFilter,
+        other: ObjectFilter,
+    },
     BlocksObjectWithLesserPower {
         blocker: ObjectFilter,
         blocked: ObjectFilter,

@@ -1,5 +1,6 @@
 use crate::lexer::lex_line;
 
+use super::super::parse_base_power_toughness_subject_tokens;
 use super::*;
 
 fn lex(text: &str) -> Vec<OwnedLexToken> {
@@ -44,5 +45,31 @@ fn classifies_typed_target_subjects_and_duration_recovery() {
     assert_eq!(
         parse_become_target_subject_shape_with_context(context.view(), &named_source, &body),
         BecomeTargetSubjectShape::Source(SourceReferenceSurface::ShortName("Sarkhan".to_string()))
+    );
+}
+
+#[test]
+fn base_power_toughness_of_surface_exports_the_postnominal_target() {
+    let inverse = lex("the base power and toughness of other creatures you control");
+    assert_eq!(
+        parse_base_power_toughness_subject_tokens(&inverse)
+            .map(|shape| parser_token_word_refs(shape.target_tokens))
+            .unwrap(),
+        ["other", "creatures", "you", "control"]
+    );
+
+    let possessive = lex("target creature's base power and toughness");
+    assert_eq!(
+        parse_base_power_toughness_subject_tokens(&possessive)
+            .map(|shape| parser_token_word_refs(shape.target_tokens))
+            .unwrap(),
+        ["target", "creatures"]
+    );
+
+    assert!(
+        parse_base_power_toughness_subject_tokens(&lex(
+            "the power and toughness of other creatures you control"
+        ))
+        .is_none()
     );
 }

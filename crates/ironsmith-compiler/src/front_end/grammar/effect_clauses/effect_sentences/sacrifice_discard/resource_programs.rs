@@ -139,7 +139,18 @@ pub fn parse_sacrifice(
         crate::util::parse_choice_count_token_prefix_consumed(tokens)
         && !choice_count.is_single()
     {
-        let filter_tokens = &tokens[used..];
+        let choice_body = &tokens[used..];
+        let comma_then = choice_body
+            .windows(2)
+            .position(|window| window[0].is_comma() && window[1].is_word("then"));
+        let (filter_tokens, followup_tokens) = comma_then.map_or((choice_body, None), |split| {
+            (
+                crate::util::trim_edge_punctuation_tokens(&choice_body[..split]),
+                Some(crate::util::trim_edge_punctuation_tokens(
+                    &choice_body[split + 2..],
+                )),
+            )
+        });
         if filter_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing sacrifice object after choice count (clause: '{}')",
@@ -148,22 +159,34 @@ pub fn parse_sacrifice(
         }
         let filter = parse_object_filter_lexed(filter_tokens, false)?;
         let tag = crate::util::helper_tag_for_tokens(tokens, "sacrificed");
-        return Ok(wrap_unless_escaped(
-            EffectAst::Sequence {
-                effects: vec![
-                    EffectAst::ChooseObjects {
-                        filter,
-                        count: choice_count,
-                        count_value: None,
-                        player,
-                        tag: tag.clone(),
-                    },
-                    EffectAst::subject_verb_sacrifice_all(
-                        PlayerAst::That,
-                        ObjectFilter::tagged(tag),
-                    ),
-                ],
+        let mut effects = vec![
+            EffectAst::ChooseObjects {
+                filter,
+                count: choice_count,
+                count_value: None,
+                player,
+                tag: tag.clone(),
             },
+            EffectAst::subject_verb_sacrifice_all(PlayerAst::That, ObjectFilter::tagged(tag)),
+        ];
+        if let Some(followup_tokens) = followup_tokens {
+            if followup_tokens.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "missing effect after sacrifice comma-then (clause: '{}')",
+                    normalized_words.join(" ")
+                )));
+            }
+            let mut followup = crate::effect_sentences::parse_effect_chain(followup_tokens)?;
+            if followup.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported effect after sacrifice comma-then (clause: '{}')",
+                    normalized_words.join(" ")
+                )));
+            }
+            effects.append(&mut followup);
+        }
+        return Ok(wrap_unless_escaped(
+            EffectAst::Sequence { effects },
             unless_escaped,
         ));
     }

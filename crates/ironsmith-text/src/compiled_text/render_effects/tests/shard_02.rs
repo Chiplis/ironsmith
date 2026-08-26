@@ -1140,6 +1140,38 @@ fn modal_common_return_suffix_renders_once_before_target_modes() {
 }
 
 #[test]
+fn modal_common_return_suffix_parses_bare_target_bullets_through_public_route() {
+    let oracle = "Choose up to two. Return those cards from your graveyard to your hand.\n\
+• Target artifact card.\n\
+• Target creature card.\n\
+• Target enchantment card.\n\
+• Target land card.";
+    let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(),
+        "Common Modal Target Suffix Probe",
+    )
+    .card_types(vec![CardType::Sorcery])
+    .parse_text(oracle)
+    .expect("a common return suffix should specialize every bare target bullet");
+
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&definition).join("\n"),
+        oracle
+    );
+
+    let unsupported = crate::compiler_test_support::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(),
+        "Bare Modal Target Near Miss",
+    )
+    .card_types(vec![CardType::Sorcery])
+    .parse_text("Choose up to two.\n• Target artifact card.\n• Target creature card.");
+    assert!(
+        unsupported.is_err(),
+        "bare targets without a typed common action must remain unsupported"
+    );
+}
+
+#[test]
 fn repeated_modal_choices_keep_each_mode_on_a_bullet_line() {
     let choose = ironsmith_core::ChooseModeEffect::choose_exactly(
         Value::Fixed(4),

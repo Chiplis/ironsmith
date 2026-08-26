@@ -793,6 +793,31 @@ impl ZoneChangeTrigger {
         if let Some(display) = spell_or_ability_you_control_exiles_display(self) {
             return display;
         }
+        if self.from == ZonePattern::Any
+            && self.to == ZonePattern::Specific(Zone::Battlefield)
+            && self.player == PlayerRelation::Any
+            && self.count_mode == CountMode::Each
+            && !self.this_object
+            && self
+                .object_filter
+                .has_player_puts_onto_battlefield_surface()
+        {
+            let filter_desc = subject_description_for_zone_change(&self.object_filter);
+            let has_article = filter_desc.starts_with("a ")
+                || filter_desc.starts_with("an ")
+                || filter_desc.starts_with("another ");
+            let article = if has_article {
+                ""
+            } else if matches!(
+                filter_desc.chars().next().map(|c| c.to_ascii_lowercase()),
+                Some('a' | 'e' | 'i' | 'o' | 'u')
+            ) {
+                "an "
+            } else {
+                "a "
+            };
+            return format!("Whenever a player puts {article}{filter_desc} onto the battlefield");
+        }
         if self.this_object {
             let battlefield_subject = self.this_subject_text("permanent");
             let card_subject = self.this_subject_text("card");

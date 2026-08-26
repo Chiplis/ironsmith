@@ -763,6 +763,7 @@ pub(super) fn rewrite_finalize_lowered_card(
     builder = rewrite_apply_pending_backup_abilities(builder, state);
     builder = rewrite_apply_pending_cipher_effect(builder, state);
     if let Some(spell_effect) = &mut builder.spell_effect {
+        crate::compile_support::normalize_correlated_two_target_characteristic_damage(spell_effect);
         normalize_ordered_revealed_partition_tags(spell_effect);
         preserve_looked_collection_self_replacement_preludes(spell_effect);
         bind_quantified_player_damage_values(spell_effect);

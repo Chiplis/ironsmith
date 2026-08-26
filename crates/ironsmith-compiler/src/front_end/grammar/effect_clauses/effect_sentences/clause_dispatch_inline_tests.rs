@@ -83,6 +83,30 @@ fn only_authored_choose_target_clauses_are_explicit_declarations() {
 }
 
 #[test]
+fn explicit_they_control_return_keeps_relative_player_surface() {
+    let parsed = parse_effect_clause(&lex_tail(
+        "That player returns a land they control to its owner's hand.",
+    ))
+    .expect("correlated player return should parse");
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::ReturnToHand { target, .. },
+        ..
+    }) = parsed
+    else {
+        panic!("expected a player-owned hand return: {parsed:#?}");
+    };
+    let target = match target {
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => *inner,
+        target => target,
+    };
+    let TargetAst::Object(filter, _, _) = target else {
+        panic!("expected an object return target: {target:#?}");
+    };
+
+    assert!(filter.has_iterated_actor_pronoun_surface(), "{filter:#?}");
+}
+
+#[test]
 fn explicit_opponent_creature_type_choice_keeps_typed_chooser() {
     let parsed = parse_effect_clause(&lex_tail("An opponent chooses a creature type."))
         .expect("parse opponent creature-type choice");
@@ -282,6 +306,30 @@ fn any_opponent_sacrifice_offer_keeps_filtered_sequential_semantics() {
                 ..
             },
             action: SubjectVerbActionAst::Sacrifice { count: 1, .. },
+        })]
+    ));
+}
+
+#[test]
+fn any_player_half_life_payment_keeps_sequential_payer_relative_semantics() {
+    let tokens = lex_line("Any player may pay half their life, rounded up.", 0)
+        .expect("lex any-player half-life offer");
+    let effect = parse_effect_clause(&tokens).expect("parse any-player half-life offer");
+
+    let EffectAst::AnyPlayerMay { players, effects } = effect else {
+        panic!("expected typed any-player offer, got {effect:#?}");
+    };
+    assert_eq!(players, PlayerFilter::Any);
+    assert!(matches!(
+        effects.as_slice(),
+        [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject: crate::model::ast::SubjectVerbSubjectAst {
+                player: PlayerAst::That,
+                ..
+            },
+            action: SubjectVerbActionAst::PayLife {
+                amount: Value::HalfLifeTotalRoundedUp(PlayerFilter::IteratedPlayer),
+            },
         })]
     ));
 }

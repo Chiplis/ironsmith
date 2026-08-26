@@ -216,7 +216,21 @@ pub fn parse_become_clause(
             )));
         }
         become_grammar::BecomeCopySourceShape::Source(source_tokens) => {
-            let source = parse_target_phrase(source_tokens)?;
+            let mut source = parse_target_phrase(source_tokens)?;
+            if !crate::lexer::parser_token_word_refs(source_tokens).contains(&"target") {
+                fn clear_explicit_target_span(target: &mut TargetAst) {
+                    match target {
+                        TargetAst::Object(_, explicit_target_span, _) => {
+                            *explicit_target_span = None;
+                        }
+                        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) => {
+                            clear_explicit_target_span(inner);
+                        }
+                        _ => {}
+                    }
+                }
+                clear_explicit_target_span(&mut source);
+            }
             let granted_abilities = if let Some(ability_tokens) = copy_exception
                 .as_ref()
                 .and_then(|exception| exception.granted_ability_tokens.as_deref())
@@ -253,6 +267,10 @@ pub fn parse_become_clause(
                 copy_exception
                     .as_ref()
                     .map(|exception| exception.remove_supertypes.clone())
+                    .unwrap_or_default(),
+                copy_exception
+                    .as_ref()
+                    .map(|exception| exception.add_colors)
                     .unwrap_or_default(),
                 copy_exception
                     .as_ref()

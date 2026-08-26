@@ -93,6 +93,7 @@ pub use conditionals::*;
 pub use creation_handlers::{
     attach_inline_token_granted_abilities_to_last_create,
     attach_mixed_pronoun_token_rules_to_last_create, mixed_pronoun_token_rule_list, parse_create,
+    reconcile_inline_copy_self_replacement_grants,
 };
 pub use dispatch_entry::SentenceInput;
 pub use dispatch_entry::*;

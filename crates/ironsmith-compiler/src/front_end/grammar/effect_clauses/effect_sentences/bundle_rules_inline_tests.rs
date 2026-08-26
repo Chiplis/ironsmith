@@ -426,7 +426,10 @@ fn inline_exile_top_then_put_binds_the_exact_exiled_collection() {
             zone,
             ..
         },
-        EffectAst::ForEachTagged { tag: loop_tag, .. },
+        EffectAst::ForEachTagged {
+            tag: loop_tag,
+            effects: put_effects,
+        },
     ] = effects.as_slice()
     else {
         panic!("expected exile/choose/put typed bundle, got {effects:#?}");
@@ -435,6 +438,16 @@ fn inline_exile_top_then_put_binds_the_exact_exiled_collection() {
     assert_eq!(choice_count, &ChoiceCount::exactly(1));
     assert_eq!(zone, &Zone::Exile);
     assert_eq!(chosen_tag, loop_tag);
+    assert!(matches!(
+        put_effects.as_slice(),
+        [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::PutOntoBattlefield {
+                controller: ReturnControllerAst::You,
+                ..
+            },
+            ..
+        })]
+    ));
     assert!(filter.card_types.contains(&CardType::Creature));
     assert!(filter.tagged_constraints.iter().any(|constraint| {
         tags.first() == Some(&constraint.tag)

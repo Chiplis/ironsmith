@@ -62,6 +62,10 @@ pub enum ExileWouldDieSpec {
         victim: ExileWouldDieVictimKind,
         damaged_by: DamagedBySource,
     },
+    DamagedByFilter {
+        victim: ExileWouldDieVictimKind,
+        damager_filter_tokens: Vec<OwnedLexToken>,
+    },
     SimpleSource(SimpleSourceReplacementKind),
     SimpleCreature(ReplacementPlayerKind),
 }
@@ -308,21 +312,46 @@ fn parse_damaged_by_exile_would_die_lexed<'a>(
         primitives::kw("permanent").value(ExileWouldDieVictimKind::Permanent),
     ))
     .parse_next(input)?;
-    primitives::phrase(&["dealt", "damage", "by"]).parse_next(input)?;
-    let source_tokens = repeat_till::<_, _, (), _, _, _, _>(
-        1..,
-        any.void(),
-        peek(primitives::phrase(&["this", "turn", "would", "die"])),
-    )
-    .map(|((), _)| ())
-    .take()
-    .parse_next(input)?;
-    primitives::phrase(&["this", "turn", "would", "die"]).parse_next(input)?;
+    primitives::phrase(&["dealt", "damage"]).parse_next(input)?;
+    let source_tokens = if primitives::phrase(&["this", "turn", "by"])
+        .parse_next(&mut input.clone())
+        .is_ok()
+    {
+        primitives::phrase(&["this", "turn", "by"]).parse_next(input)?;
+        let source_tokens = repeat_till::<_, _, (), _, _, _, _>(
+            1..,
+            any.void(),
+            peek(primitives::phrase(&["would", "die"])),
+        )
+        .map(|((), _)| ())
+        .take()
+        .parse_next(input)?;
+        primitives::phrase(&["would", "die"]).parse_next(input)?;
+        source_tokens
+    } else {
+        primitives::kw("by").parse_next(input)?;
+        let source_tokens = repeat_till::<_, _, (), _, _, _, _>(
+            1..,
+            any.void(),
+            peek(primitives::phrase(&["this", "turn", "would", "die"])),
+        )
+        .map(|((), _)| ())
+        .take()
+        .parse_next(input)?;
+        primitives::phrase(&["this", "turn", "would", "die"]).parse_next(input)?;
+        source_tokens
+    };
     opt(primitives::comma()).parse_next(input)?;
     primitives::phrase(&["exile", "it", "instead"]).parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
-    let damaged_by = classify_damage_source(trim_lexed_commas(source_tokens))?;
-    Ok(ExileWouldDieSpec::DamagedBy { victim, damaged_by })
+    let source_tokens = trim_lexed_commas(source_tokens);
+    Ok(match classify_damage_source(source_tokens) {
+        Ok(damaged_by) => ExileWouldDieSpec::DamagedBy { victim, damaged_by },
+        Err(_) => ExileWouldDieSpec::DamagedByFilter {
+            victim,
+            damager_filter_tokens: source_tokens.to_vec(),
+        },
+    })
 }
 
 fn classify_damage_source(tokens: &[OwnedLexToken]) -> WResult<DamagedBySource> {
@@ -488,6 +517,23 @@ mod tests {
             Some(ExileWouldDieSpec::SimpleSource(
                 SimpleSourceReplacementKind::Creature
             ))
+        );
+
+        let tokens = lex_line(
+            "If a creature dealt damage this turn by a source you controlled would die, exile it instead.",
+            0,
+        )
+        .unwrap();
+        let Some(ExileWouldDieSpec::DamagedByFilter {
+            victim: ExileWouldDieVictimKind::Creature,
+            damager_filter_tokens,
+        }) = parse_exile_would_die_tokens(&tokens)
+        else {
+            panic!("expected a typed filtered-damager replacement")
+        };
+        assert_eq!(
+            TokenWordView::new(&damager_filter_tokens).word_refs(),
+            ["a", "source", "you", "controlled"]
         );
     }
 }

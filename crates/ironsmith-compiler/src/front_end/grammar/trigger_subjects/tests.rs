@@ -22,15 +22,60 @@ fn typed_trigger_shapes_find_connectors_and_spell_activity() {
         parse_source_or_another_shape(&["this", "creature", "or", "another", "artifact"]),
         Some(SourceOrAnotherShape {
             source_word_end: 2,
+            connector_word: 2,
+            connector_words: 1,
             other_word: 3,
+            one_or_more: false,
         })
+    );
+    assert_eq!(
+        parse_source_or_another_shape(&[
+            "Satoru",
+            "and/or",
+            "one",
+            "or",
+            "more",
+            "other",
+            "creatures",
+        ]),
+        Some(SourceOrAnotherShape {
+            source_word_end: 1,
+            connector_word: 1,
+            connector_words: 1,
+            other_word: 5,
+            one_or_more: true,
+        })
+    );
+    assert_eq!(
+        parse_source_or_another_shape(&["Satoru", "and/or", "one", "or", "more", "creatures",]),
+        None
     );
     assert_eq!(
         parse_source_or_filter_shape(&["this", "or", "an", "instant", "or", "sorcery", "spell",]),
         Some(SourceOrFilterShape {
             source_word_end: 1,
             connector_word: 1,
+            connector_words: 1,
             filter_word: 2,
+        })
+    );
+    assert_eq!(
+        parse_source_or_filter_shape(&[
+            "this",
+            "creature",
+            "and",
+            "or",
+            "one",
+            "or",
+            "more",
+            "other",
+            "creatures",
+        ]),
+        Some(SourceOrFilterShape {
+            source_word_end: 2,
+            connector_word: 2,
+            connector_words: 2,
+            filter_word: 4,
         })
     );
     let tokens = lex_line("you cast or copy a spell", 0).unwrap();

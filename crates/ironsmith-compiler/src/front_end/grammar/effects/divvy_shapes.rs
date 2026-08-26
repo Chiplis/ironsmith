@@ -37,6 +37,7 @@ pub enum DivvySequenceShape {
         chooser: DivvyChooserShape,
         rest: DivvyRestDestinationShape,
     },
+    SearchFourDifferentPowers,
     TargetOpponentChoosesOne,
 }
 
@@ -650,6 +651,36 @@ pub fn parse_divvy_sequence_shape(sentences: &[&[OwnedLexToken]]) -> Option<Divv
             return None;
         };
         return Some(DivvySequenceShape::SearchFourDifferentNames { chooser, rest });
+    }
+
+    if exact_sequence(
+        &sentence_words,
+        &[
+            &[
+                "search",
+                "your",
+                "library",
+                "for",
+                "up",
+                "to",
+                "four",
+                "creature",
+                "cards",
+                "with",
+                "different",
+                "powers",
+                "and",
+                "reveal",
+                "them",
+            ],
+            &["an", "opponent", "chooses", "two", "of", "those", "cards"],
+            &[
+                "shuffle", "the", "chosen", "cards", "into", "your", "library", "and", "put",
+                "the", "rest", "into", "your", "hand",
+            ],
+        ],
+    ) {
+        return Some(DivvySequenceShape::SearchFourDifferentPowers);
     }
 
     if sequence_has_phrase(&sentence_words, &["target", "opponent", "chooses", "one"])

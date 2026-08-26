@@ -299,6 +299,7 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             chosen_this_way_excluded,
             chosen_creature_type,
             excluded_chosen_creature_type,
+            chosen_type_this_way_surface,
             discarded_or_cycled_this_turn_by,
             unsupported_qualifier,
         } => {
@@ -349,6 +350,9 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             filter.set_return_destination_first_surface(destination_first);
             filter.chosen_creature_type |= chosen_creature_type;
             filter.excluded_chosen_creature_type |= excluded_chosen_creature_type;
+            if chosen_type_this_way_surface {
+                filter.set_chosen_type_this_way_surface(true);
+            }
             filter.discarded_or_cycled_this_turn_by = discarded_or_cycled_this_turn_by;
             for subtype in &destination.excluded_subtypes {
                 if filter

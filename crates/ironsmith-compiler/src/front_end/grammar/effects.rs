@@ -925,22 +925,31 @@ fn split_for_each_doesnt_clause_lexed<'a>(
         return None;
     }
     let (negation_idx, negation_len) = negated_action_word_index(&inner_words)?;
-    let effect_token_start =
-        if let Some((_, after_comma)) = primitives::split_lexed_once_on_comma(inner_tokens) {
-            inner_tokens.len() - after_comma.len()
-        } else if let Some(this_way) =
-            primitives::parse_word_sequence_span(&inner_words, THIS_WAY_PHRASE)
-        {
-            inner_clause
-                .after_words(this_way.start + this_way.len)
-                .map(|tail| inner_tokens.len() - tail.tokens().len())
-                .unwrap_or(inner_tokens.len())
-        } else {
-            inner_clause
-                .after_words(negation_idx + negation_len)
-                .map(|tail| inner_tokens.len() - tail.tokens().len())
-                .unwrap_or(inner_tokens.len())
-        };
+    // In `who can't <effect>`, `can't` refers to the preceding per-player
+    // action, so the effect begins immediately after it. A later comma can
+    // belong to that effect's value surface (`half their life, rounded up`)
+    // and must not be mistaken for the predicate/effect boundary used by
+    // `who doesn't <predicate>, <effect>` clauses.
+    let effect_token_start = if is_cant_negation_word(inner_words[negation_idx]) {
+        inner_clause
+            .after_words(negation_idx + negation_len)
+            .map(|tail| inner_tokens.len() - tail.tokens().len())
+            .unwrap_or(inner_tokens.len())
+    } else if let Some((_, after_comma)) = primitives::split_lexed_once_on_comma(inner_tokens) {
+        inner_tokens.len() - after_comma.len()
+    } else if let Some(this_way) =
+        primitives::parse_word_sequence_span(&inner_words, THIS_WAY_PHRASE)
+    {
+        inner_clause
+            .after_words(this_way.start + this_way.len)
+            .map(|tail| inner_tokens.len() - tail.tokens().len())
+            .unwrap_or(inner_tokens.len())
+    } else {
+        inner_clause
+            .after_words(negation_idx + negation_len)
+            .map(|tail| inner_tokens.len() - tail.tokens().len())
+            .unwrap_or(inner_tokens.len())
+    };
     let effect_tokens = trim_lexed_commas(&inner_tokens[effect_token_start..]);
     (!effect_tokens.is_empty()).then_some(ForEachDoesntClauseSplit {
         inner_tokens,

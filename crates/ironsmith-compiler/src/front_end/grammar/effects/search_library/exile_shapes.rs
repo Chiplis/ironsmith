@@ -75,6 +75,22 @@ fn zone_word(input: &mut primitives::WordSliceInput<'_>) -> WResult<Zone> {
 fn zone_pair_owner(input: &mut primitives::WordSliceInput<'_>) -> WResult<PlayerFilter> {
     alt((
         (
+            primitives::word_slice_exact("all"),
+            alt((
+                primitives::word_slice_exact("opponent"),
+                primitives::word_slice_exact("opponents"),
+            )),
+        )
+            .value(PlayerFilter::Opponent),
+        (
+            primitives::word_slice_exact("all"),
+            alt((
+                primitives::word_slice_exact("player"),
+                primitives::word_slice_exact("players"),
+            )),
+        )
+            .value(PlayerFilter::Any),
+        (
             primitives::word_slice_exact("target"),
             alt((
                 primitives::word_slice_exact("player"),

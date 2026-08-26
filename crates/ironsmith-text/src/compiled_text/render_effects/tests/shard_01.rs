@@ -1434,17 +1434,23 @@ pub(super) fn describe_destroy_random_countered_permanent_uses_those_permanents(
 
 #[test]
 pub(super) fn describe_for_players_choose_then_exile_compacts_iterated_move_targets() {
+    let mut creature = ObjectFilter::creature()
+        .controlled_by(PlayerFilter::IteratedPlayer)
+        .in_zone(Zone::Battlefield);
+    creature.set_explicit_card_type_noun(Some(CardType::Creature));
     let choose = crate::effects::ChooseObjectsEffect::new(
-        ObjectFilter::creature()
-            .controlled_by(PlayerFilter::IteratedPlayer)
-            .in_zone(Zone::Battlefield),
+        creature,
         ChoiceCount::exactly(1),
         PlayerFilter::IteratedPlayer,
         TagKey::from("__it__"),
     )
     .in_zone(Zone::Battlefield);
-    let move_to_zone =
-        crate::effects::MoveToZoneEffect::new(ChooseSpec::Iterated, Zone::Exile, true);
+    let move_to_zone = crate::effects::MoveToZoneEffect::new(
+        ChooseSpec::Tagged(TagKey::from("__it__")),
+        Zone::Exile,
+        true,
+    )
+    .with_actor_surface(PlayerFilter::IteratedPlayer);
     let for_players = crate::effects::ForPlayersEffect::new(
         PlayerFilter::Opponent,
         vec![Effect::new(choose), Effect::new(move_to_zone)],
@@ -1456,6 +1462,71 @@ pub(super) fn describe_for_players_choose_then_exile_compacts_iterated_move_targ
         compact,
         "Each opponent chooses a creature they control and exiles it"
     );
+    let for_players = Effect::new(for_players);
+    assert_eq!(
+        describe_effect(&for_players),
+        "Each opponent chooses a creature they control and exiles it"
+    );
+    let effects = vec![
+        Effect::new(crate::effects::TagTriggeringObjectEffect::new("triggering")),
+        for_players,
+    ];
+    assert_eq!(
+        describe_effect_list(&effects),
+        "Each opponent chooses a creature they control and exiles it"
+    );
+    assert_eq!(
+        crate::compiled_text::ast_render::describe_resolution_program(
+            &crate::resolution::ResolutionProgram::from_effects(effects)
+        ),
+        "Each opponent chooses a creature they control and exiles it"
+    );
+}
+
+#[test]
+pub(super) fn describe_for_players_choose_then_exile_compacts_direct_exile_targets() {
+    let tag = TagKey::from("chosen_creature");
+    let choose = crate::effects::ChooseObjectsEffect::new(
+        ObjectFilter::creature()
+            .controlled_by(PlayerFilter::IteratedPlayer)
+            .in_zone(Zone::Battlefield),
+        ChoiceCount::exactly(1),
+        PlayerFilter::IteratedPlayer,
+        tag.clone(),
+    )
+    .in_zone(Zone::Battlefield);
+    let exile = crate::effects::ExileEffect::with_spec(ChooseSpec::Tagged(tag));
+    let for_players = crate::effects::ForPlayersEffect::new(
+        PlayerFilter::Opponent,
+        vec![Effect::new(choose), Effect::new(exile)],
+    );
+
+    assert_eq!(
+        describe_for_players_choose_then_exile(&for_players).as_deref(),
+        Some("Each opponent chooses a creature they control and exiles it")
+    );
+}
+
+#[test]
+pub(super) fn describe_for_players_choose_then_exile_rejects_a_different_exile_tag() {
+    let choose = crate::effects::ChooseObjectsEffect::new(
+        ObjectFilter::creature()
+            .controlled_by(PlayerFilter::IteratedPlayer)
+            .in_zone(Zone::Battlefield),
+        ChoiceCount::exactly(1),
+        PlayerFilter::IteratedPlayer,
+        TagKey::from("chosen_creature"),
+    )
+    .in_zone(Zone::Battlefield);
+    let exile = crate::effects::ExileEffect::with_spec(ChooseSpec::Tagged(TagKey::from(
+        "different_creature",
+    )));
+    let for_players = crate::effects::ForPlayersEffect::new(
+        PlayerFilter::Opponent,
+        vec![Effect::new(choose), Effect::new(exile)],
+    );
+
+    assert_eq!(describe_for_players_choose_then_exile(&for_players), None);
 }
 
 #[test]
@@ -2770,6 +2841,19 @@ pub(super) fn describe_revealed_hand_same_name_extraction_keeps_card_reference()
     assert_eq!(
         super::super::ast_render::describe_resolution_program(&program),
         expected
+    );
+}
+
+#[test]
+pub(super) fn lobotomy_public_route_hides_the_deterministic_reference_alias() {
+    let oracle = "Target player reveals their hand, then you choose a card other than a basic land card from it. Search that player's graveyard, hand, and library for all cards with the same name as the chosen card and exile them. Then that player shuffles.";
+    let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Lobotomy")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(oracle)
+        .expect("the three-zone same-name extraction should compile");
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&definition).join("\n"),
+        oracle
     );
 }
 

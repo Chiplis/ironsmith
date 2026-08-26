@@ -286,7 +286,13 @@ fn plural_result_reference_tag(effect: &Effect) -> Option<&TagKey> {
         return plural_result_reference_tag(&tagged.effect);
     }
     let apply = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
-    if apply.set_quantifier_surface != Some(ironsmith_core::SetQuantifierSurface::They) {
+    if !matches!(
+        apply.set_quantifier_surface,
+        Some(
+            ironsmith_core::SetQuantifierSurface::They
+                | ironsmith_core::SetQuantifierSurface::Those
+        )
+    ) {
         return None;
     }
     match apply.target_spec.as_ref()?.base() {
@@ -295,13 +301,41 @@ fn plural_result_reference_tag(effect: &Effect) -> Option<&TagKey> {
     }
 }
 
-fn coordinated_result_tags(effect: &Effect, final_tag: &TagKey) -> Option<Vec<TagKey>> {
+fn coordinated_result_type_noun(effect: &Effect) -> Option<crate::types::CardType> {
+    let mut current = effect;
+    while let Some(tagged) = current.downcast_ref::<crate::effects::TaggedEffect>() {
+        current = &tagged.effect;
+    }
+    let apply = current.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    let ChooseSpec::Object(filter) = apply.target_spec.as_ref()?.base() else {
+        return None;
+    };
+    filter.explicit_card_type_noun().or_else(|| {
+        let [card_type] = filter.card_types.as_slice() else {
+            return None;
+        };
+        Some(*card_type)
+    })
+}
+
+fn coordinated_result_tags(
+    effect: &Effect,
+    final_tag: &TagKey,
+) -> Option<(Vec<TagKey>, Option<crate::types::CardType>)> {
     let sequence = effect.downcast_ref::<crate::effects::SequenceEffect>()?;
     if !sequence.surface.is_coordinated() {
         return None;
     }
-    let tags = sequence
+    let tagged_effects = sequence
         .effects
+        .iter()
+        .filter(|effect| {
+            effect
+                .downcast_ref::<crate::effects::TaggedEffect>()
+                .is_some()
+        })
+        .collect::<Vec<_>>();
+    let tags = tagged_effects
         .iter()
         .filter_map(|effect| {
             effect
@@ -309,14 +343,29 @@ fn coordinated_result_tags(effect: &Effect, final_tag: &TagKey) -> Option<Vec<Ta
                 .map(|tagged| tagged.tag.clone())
         })
         .collect::<Vec<_>>();
-    (tags.len() > 1 && tags.last() == Some(final_tag)).then_some(tags)
+    if tags.len() <= 1 || tags.last() != Some(final_tag) {
+        return None;
+    }
+    let type_noun = tagged_effects
+        .first()
+        .and_then(|effect| coordinated_result_type_noun(effect));
+    let type_noun = type_noun.filter(|noun| {
+        tagged_effects
+            .iter()
+            .all(|effect| coordinated_result_type_noun(effect) == Some(*noun))
+    });
+    Some((tags, type_noun))
 }
 
-fn rewrite_plural_result_reference(effect: &Effect, tags: &[TagKey]) -> Effect {
+fn rewrite_plural_result_reference(
+    effect: &Effect,
+    tags: &[TagKey],
+    type_noun: Option<crate::types::CardType>,
+) -> Effect {
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         return Effect::new(crate::effects::TaggedEffect::new(
             tagged.tag.clone(),
-            rewrite_plural_result_reference(&tagged.effect, tags),
+            rewrite_plural_result_reference(&tagged.effect, tags, type_noun),
         ));
     }
     let Some(apply) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>() else {
@@ -325,6 +374,7 @@ fn rewrite_plural_result_reference(effect: &Effect, tags: &[TagKey]) -> Effect {
     let mut apply = apply.clone();
     let mut result_filter = ObjectFilter::default();
     result_filter.any_of = tags.iter().cloned().map(ObjectFilter::tagged).collect();
+    result_filter.set_explicit_card_type_noun(type_noun);
     apply.target_spec = Some(ChooseSpec::Object(result_filter));
     Effect::new(apply)
 }
@@ -338,10 +388,11 @@ fn normalize_plural_coordinated_result_references(mut effects: Vec<Effect>) -> V
         let Some(final_tag) = plural_result_reference_tag(&effects[index]).cloned() else {
             continue;
         };
-        let Some(tags) = coordinated_result_tags(&effects[index - 1], &final_tag) else {
+        let Some((tags, type_noun)) = coordinated_result_tags(&effects[index - 1], &final_tag)
+        else {
             continue;
         };
-        effects[index] = rewrite_plural_result_reference(&effects[index], &tags);
+        effects[index] = rewrite_plural_result_reference(&effects[index], &tags, type_noun);
     }
     effects
 }
@@ -363,10 +414,10 @@ fn normalize_cross_segment_plural_coordinated_result_references(
         let Some(final_tag) = plural_result_reference_tag(followup).cloned() else {
             continue;
         };
-        let Some(tags) = coordinated_result_tags(producer, &final_tag) else {
+        let Some((tags, type_noun)) = coordinated_result_tags(producer, &final_tag) else {
             continue;
         };
-        *followup = rewrite_plural_result_reference(followup, &tags);
+        *followup = rewrite_plural_result_reference(followup, &tags, type_noun);
     }
 }
 
@@ -787,6 +838,156 @@ fn normalize_cross_segment_fight_sequences(segments: &mut [crate::resolution::Re
     for (segment, repaired) in segments.iter_mut().zip(repaired_by_segment) {
         segment.default_effects = repaired;
     }
+}
+
+fn tagged_direct_damage(effect: &Effect) -> Option<(&TagKey, &crate::effects::DealDamageEffect)> {
+    let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let damage = tagged
+        .effect
+        .downcast_ref::<crate::effects::DealDamageEffect>()?;
+    Some((&tagged.tag, damage))
+}
+
+fn rebind_authored_its_characteristic_to_source(value: &Value) -> Option<Value> {
+    match value {
+        Value::SurfaceHinted { value, hints } => Some(Value::SurfaceHinted {
+            value: Box::new(rebind_authored_its_characteristic_to_source(value)?),
+            hints: hints.clone(),
+        }),
+        Value::PowerOf(spec)
+            if spec
+                .source_reference_surface()
+                .is_some_and(|surface| surface.display_text().eq_ignore_ascii_case("it")) =>
+        {
+            Some(Value::PowerOf(Box::new(
+                ChooseSpec::Source.with_surface_hints(spec.surface_hints().iter().cloned()),
+            )))
+        }
+        Value::ToughnessOf(spec)
+            if spec
+                .source_reference_surface()
+                .is_some_and(|surface| surface.display_text().eq_ignore_ascii_case("it")) =>
+        {
+            Some(Value::ToughnessOf(Box::new(
+                ChooseSpec::Source.with_surface_hints(spec.surface_hints().iter().cloned()),
+            )))
+        }
+        _ => None,
+    }
+}
+
+/// Rebind a three-sentence, two-target power-damage procedure to the two
+/// target slots declared by its first sentence:
+///
+/// `Choose target A and target B. If ..., modify A. A deals damage equal to
+/// its power to B.`
+///
+/// Source-sentence reference exports ordinarily retain only the most recent
+/// object, so the two descriptive definite references can otherwise degrade
+/// into fresh object filters and the resolving spell can become the damage
+/// source. The shared chosen-object wrapper, two distinct target slots,
+/// controller-opposed creature filters, matching conditional action, and an
+/// authored `its power` source make this window unambiguous without relying
+/// on card names or renderer text.
+fn normalize_cross_segment_two_target_characteristic_damage(
+    segments: &mut [crate::resolution::ResolutionSegment],
+) {
+    for idx in 0..segments.len().saturating_sub(2) {
+        let [first_target_effect, second_target_effect] = segments[idx].default_effects.as_slice()
+        else {
+            continue;
+        };
+        let [conditional_effect] = segments[idx + 1].default_effects.as_slice() else {
+            continue;
+        };
+        let [damage_effect] = segments[idx + 2].default_effects.as_slice() else {
+            continue;
+        };
+        if !segments[idx].self_replacements.is_empty()
+            || !segments[idx + 1].self_replacements.is_empty()
+            || !segments[idx + 2].self_replacements.is_empty()
+        {
+            continue;
+        }
+
+        let (Some(first_collection), Some(second_collection)) = (
+            first_target_effect.downcast_ref::<crate::effects::TaggedEffect>(),
+            second_target_effect.downcast_ref::<crate::effects::TaggedEffect>(),
+        ) else {
+            continue;
+        };
+        if first_collection.tag.as_str() != CHOSEN_OBJECTS_TAG
+            || second_collection.tag.as_str() != CHOSEN_OBJECTS_TAG
+        {
+            continue;
+        }
+        let (Some((first_tag, first_spec)), Some((second_tag, second_spec))) = (
+            tagged_target_only(first_target_effect),
+            tagged_target_only(second_target_effect),
+        ) else {
+            continue;
+        };
+        let (Some(first_filter), Some(second_filter)) = (
+            explicit_target_object_filter(first_spec),
+            explicit_target_object_filter(second_spec),
+        ) else {
+            continue;
+        };
+        if first_tag == second_tag
+            || !is_controlled_creature_fight_pair(first_filter, second_filter)
+        {
+            continue;
+        }
+
+        let Some(conditional) =
+            conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()
+        else {
+            continue;
+        };
+        if !conditional.if_false.is_empty() {
+            continue;
+        }
+        let Some(fixed_branch) =
+            normalize_conditional_branch_target(&conditional.if_true, first_tag, first_filter)
+        else {
+            continue;
+        };
+
+        let Some((damage_tag, damage)) = tagged_direct_damage(damage_effect) else {
+            continue;
+        };
+        if damage.source_is_combat
+            || damage.unpreventable
+            || !choose_spec_is_first_target(&damage.target, second_tag, second_filter)
+        {
+            continue;
+        }
+        let Some(fixed_amount) = rebind_authored_its_characteristic_to_source(&damage.amount)
+        else {
+            continue;
+        };
+
+        let mut fixed_conditional = conditional.clone();
+        fixed_conditional.if_true = fixed_branch;
+        let mut fixed_damage = damage.clone();
+        fixed_damage.amount = fixed_amount;
+        fixed_damage.target = ChooseSpec::Tagged(second_tag.clone());
+        let fixed_damage = Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+            ChooseSpec::Tagged(first_tag.clone()),
+            Effect::new(fixed_damage),
+        ))
+        .tag(damage_tag.clone());
+
+        segments[idx + 1].default_effects[0] = Effect::new(fixed_conditional);
+        segments[idx + 2].default_effects[0] = fixed_damage;
+    }
+}
+
+pub(crate) fn normalize_correlated_two_target_characteristic_damage(
+    program: &mut crate::resolution::ResolutionProgram,
+) {
+    normalize_cross_segment_two_target_characteristic_damage(&mut program.segments);
+    *program = crate::resolution::ResolutionProgram::new(program.segments.clone());
 }
 
 fn single_is_tagged_constraint(filter: &ObjectFilter, expected: &TagKey) -> bool {
@@ -1441,7 +1642,9 @@ fn materialize_source_sentence_segments(
         };
         merge_compiled_choices(&mut choices, &compiled, sentence_choices);
         if !compiled.is_empty() {
-            segments.push(crate::resolution::ResolutionSegment::from_effects(compiled));
+            let mut segment = crate::resolution::ResolutionSegment::from_effects(compiled);
+            segment.starts_new_source_line = !segments.is_empty();
+            segments.push(segment);
         }
         start = end;
     }
@@ -1450,6 +1653,7 @@ fn materialize_source_sentence_segments(
     normalize_cross_segment_iterated_consult_exile_collections(&mut segments);
     normalize_cross_segment_correlated_created_result_fights(&mut segments);
     normalize_cross_segment_fight_sequences(&mut segments);
+    normalize_cross_segment_two_target_characteristic_damage(&mut segments);
     retarget_death_replacement_from_exiled_attachment(&mut segments);
     rebind_returned_attachment_history_to_triggering_object(&mut segments);
     fold_cross_segment_counter_rewrites(&mut segments);
@@ -1831,7 +2035,9 @@ fn materialize_trailing_self_replacement(
     Ok(None)
 }
 
-fn last_tagged_default_target(default_effects: &[Effect]) -> Option<(TagKey, ChooseSpec)> {
+pub(super) fn last_tagged_default_target(
+    default_effects: &[Effect],
+) -> Option<(TagKey, ChooseSpec)> {
     default_effects
         .iter()
         .rev()
@@ -1840,6 +2046,12 @@ fn last_tagged_default_target(default_effects: &[Effect]) -> Option<(TagKey, Cho
 
 fn last_tagged_target_in_effect(effect: &Effect) -> Option<(TagKey, ChooseSpec)> {
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        if let Some(target_only) = tagged
+            .effect
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()
+        {
+            return Some((tagged.tag.clone(), target_only.target.clone()));
+        }
         if let Some(target) = tagged.effect.target_spec() {
             return Some((tagged.tag.clone(), target.clone()));
         }
@@ -2537,7 +2749,10 @@ fn is_controlled_creature_fight_pair(first: &ObjectFilter, second: &ObjectFilter
             [crate::types::CardType::Creature]
         )
         && first.controller == Some(crate::target::PlayerFilter::You)
-        && second.controller == Some(crate::target::PlayerFilter::NotYou)
+        && matches!(
+            second.controller,
+            Some(crate::target::PlayerFilter::NotYou | crate::target::PlayerFilter::Opponent)
+        )
 }
 
 fn is_opposing_then_friendly_creature_pair(
@@ -2879,6 +3094,15 @@ pub fn compile_effect_prelude_tags(prelude: &[EffectPreludeTag]) -> Vec<Effect> 
             EffectPreludeTag::OtherBlockParticipant(tag, filter) => {
                 Effect::tag_other_block_participant(tag.as_str(), Some(filter.clone()))
             }
+            EffectPreludeTag::OtherBlockParticipantMatchingSubject {
+                tag,
+                subject,
+                other,
+            } => Effect::tag_other_block_participant_matching_subject(
+                tag.as_str(),
+                subject.clone(),
+                other.clone(),
+            ),
             EffectPreludeTag::TriggeringSource(tag) => Effect::tag_triggering_source(tag.as_str()),
             EffectPreludeTag::TriggeringDamageTarget(tag) => {
                 Effect::tag_triggering_damage_target(tag.as_str())

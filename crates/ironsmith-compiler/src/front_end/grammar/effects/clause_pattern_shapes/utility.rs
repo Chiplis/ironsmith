@@ -311,6 +311,9 @@ fn zone_markers<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 
 fn parse_win_game_lexed<'a>(input: &mut LexStream<'a>) -> WResult<WinGameShape<'a>> {
     primitives::phrase(&["you", "win", "the", "game"]).parse_next(input)?;
+    if input.as_ref().is_empty() {
+        return Ok(WinGameShape::Simple);
+    }
     if primitives::sentence_end()
         .parse_next(&mut input.clone())
         .is_ok()
@@ -352,6 +355,24 @@ fn parse_win_game_lexed<'a>(input: &mut LexStream<'a>) -> WResult<WinGameShape<'
 
 pub fn parse_win_game_shape_tokens(tokens: &[OwnedLexToken]) -> Option<WinGameShape<'_>> {
     primitives::parse_all(tokens, parse_win_game_lexed, "win the game").ok()
+}
+
+#[cfg(test)]
+mod win_game_tests {
+    use crate::lexer::lex_line;
+
+    use super::*;
+
+    #[test]
+    fn simple_win_game_accepts_sentence_and_trigger_tail_surfaces() {
+        for text in ["You win the game.", "You win the game"] {
+            let tokens = lex_line(text, 0).expect("lex win-game surface");
+            assert!(matches!(
+                parse_win_game_shape_tokens(&tokens),
+                Some(WinGameShape::Simple)
+            ));
+        }
+    }
 }
 
 fn canonical_target_words(tokens: &[OwnedLexToken]) -> Vec<&str> {

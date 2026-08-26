@@ -2190,6 +2190,64 @@ pub(super) fn describe_look_at_top_choose_battlefield_rest_graveyard(
     ))
 }
 
+/// Preserve the revealed collection when an optional selection leaves the
+/// unselected cards in the library and the final action shuffles that exact
+/// library. A bare `ShuffleLibraryEffect` is executable, but rendering it in
+/// isolation loses the authored "the rest" reference.
+pub(super) fn describe_reveal_top_choose_battlefield_shuffle_remainder(
+    effects: &[Effect],
+) -> Option<String> {
+    let [look_effect, choose_effect, move_effect, shuffle_effect] = effects else {
+        return None;
+    };
+    let look = structural_unwrap_render_wrappers(look_effect)
+        .downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let choose = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let for_each = structural_unwrap_render_wrappers(move_effect)
+        .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let [move_one] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let move_one = structural_unwrap_render_wrappers(move_one)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let shuffle = structural_unwrap_render_wrappers(shuffle_effect)
+        .downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+
+    if !look.reveal
+        || look.player != PlayerFilter::You
+        || !exact_looked_library_choice(choose, &look.tag)
+        || choose.count.min != 0
+        || choose.count.max != Some(1)
+        || choose.count.dynamic_x
+        || choose.count.up_to_x
+        || choose.count.random
+        || for_each.tag != choose.tag
+        || !matches!(move_one.target.base(), ChooseSpec::Iterated)
+        || move_one.zone != Zone::Battlefield
+        || move_one.to_top
+        || move_one.library_order.is_some()
+        || move_one.verb_surface != ironsmith_core::MoveToZoneVerbSurface::Put
+        || move_one.battlefield_controller != crate::effects::BattlefieldController::Preserve
+        || move_one.enters_tapped
+        || move_one.enters_attacking
+        || move_one.enters_face_down
+        || move_one.enters_transformed
+        || shuffle.player != look.player
+        || shuffle.target_spec.is_some()
+    {
+        return None;
+    }
+
+    let selection = describe_looked_battlefield_selection(choose)?;
+    let selection = selection.strip_prefix("up to one ")?;
+    let selection = with_indefinite_article(selection);
+    let (count, noun, where_clause) = describe_top_count_noun_and_where_clause(&look.count);
+    Some(format!(
+        "Reveal the top {count} {noun} of your library{where_clause}. You may put {selection} from among them onto the battlefield. Then shuffle the rest into your library"
+    ))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LookedCountReplacementRemainder {
     LibraryBottom(crate::effects::consult_helpers::LibraryBottomOrder),
@@ -2466,16 +2524,20 @@ pub(in crate::compiled_text) fn describe_looked_count_self_replacement(
             !label.is_empty() && !label.starts_with("__ironsmith_")
         });
 
-    if visible_label
-        && replacement.leading_instead_surface
+    if replacement.leading_instead_surface
         && default.reveals_selected
         && matches!(
             default.remainder,
             LookedCountReplacementRemainder::LibraryBottom(_)
         )
     {
-        let label = replacement.presentation_label.as_ref()?.display_prefix()?;
-        let label = label.trim();
+        let label = replacement
+            .presentation_label
+            .as_ref()
+            .and_then(PresentationLabel::display_prefix)
+            .map(|label| label.trim().to_string())
+            .filter(|label| !label.is_empty() && !label.starts_with("__ironsmith_"))
+            .map_or_else(String::new, |label| format!("{label} — "));
         let default_selection = looked_count_replacement_hand_clause(&default)?;
         let alternate_selection = looked_count_replacement_hand_clause(&alternate)?;
         let alternate_selection = if let Some(action) = alternate_selection.strip_prefix("You may ")
@@ -2486,7 +2548,7 @@ pub(in crate::compiled_text) fn describe_looked_count_self_replacement(
         };
         let remainder = looked_count_replacement_remainder_clause(default.remainder);
         return Some(format!(
-            "{label} — {opener}. {default_selection}. If {condition}, {alternate_selection}. Put {remainder}"
+            "{label}{opener}. {default_selection}. If {condition}, {alternate_selection}. Put {remainder}"
         ));
     }
 
@@ -2578,6 +2640,71 @@ pub(super) fn describe_look_exile_face_down_rest_graveyard_then_cast(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn reveal_choose_battlefield_shuffle_effects(shuffle_player: PlayerFilter) -> Vec<Effect> {
+        let revealed = crate::TagKey::from("revealed_pool");
+        let selected = crate::TagKey::from("selected_permanent");
+        let mut filter = ObjectFilter::permanent_card()
+            .in_zone(Zone::Library)
+            .match_tagged(
+                revealed.clone(),
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            );
+        filter.excluded_card_types.push(CardType::Land);
+        filter.mana_value = Some(crate::filter::Comparison::LessThanOrEqualExpr(Box::new(
+            Value::X,
+        )));
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            filter,
+            ChoiceCount::up_to(1),
+            PlayerFilter::You,
+            selected.clone(),
+        )
+        .in_zone(Zone::Library);
+        let move_selected = Effect::for_each_tagged(
+            selected,
+            vec![Effect::new(
+                crate::effects::MoveToZoneEffect::new(
+                    ChooseSpec::Iterated,
+                    Zone::Battlefield,
+                    false,
+                )
+                .with_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Put),
+            )],
+        );
+
+        vec![
+            Effect::new(crate::effects::LookAtTopCardsEffect::revealing(
+                PlayerFilter::You,
+                Value::X,
+                revealed,
+            )),
+            Effect::new(choose),
+            move_selected,
+            Effect::new(crate::effects::ShuffleLibraryEffect::new(shuffle_player)),
+        ]
+    }
+
+    #[test]
+    fn revealed_optional_selection_preserves_correlated_shuffle_remainder() {
+        let effects = reveal_choose_battlefield_shuffle_effects(PlayerFilter::You);
+        assert_eq!(
+            describe_reveal_top_choose_battlefield_shuffle_remainder(&effects).as_deref(),
+            Some(
+                "Reveal the top X cards of your library. You may put a nonland permanent card with mana value X or less from among them onto the battlefield. Then shuffle the rest into your library"
+            )
+        );
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Reveal the top X cards of your library. You may put a nonland permanent card with mana value X or less from among them onto the battlefield. Then shuffle the rest into your library"
+        );
+
+        let changed_library =
+            reveal_choose_battlefield_shuffle_effects(PlayerFilter::target_opponent());
+        assert!(
+            describe_reveal_top_choose_battlefield_shuffle_remainder(&changed_library).is_none()
+        );
+    }
 
     #[test]
     fn shared_destination_choice_accepts_explicit_controller_chooser() {
@@ -2851,10 +2978,12 @@ mod tests {
         looked: crate::TagKey,
         selected: crate::TagKey,
         count: usize,
+        connective: crate::filter::ObjectFilterUnionConnective,
     ) -> Vec<Effect> {
         let mut filter = ObjectFilter::tagged(looked.clone()).in_zone(Zone::Library);
         filter.card_types = vec![CardType::Creature, CardType::Land];
         filter.type_or_subtype_union = true;
+        filter.set_union_connective(connective);
         let choose = Effect::new(
             crate::effects::ChooseObjectsEffect::new(
                 filter,
@@ -2990,11 +3119,13 @@ mod tests {
             looked.clone(),
             crate::TagKey::from("infusion_one"),
             1,
+            crate::filter::ObjectFilterUnionConnective::Or,
         );
         let replacement_effects = optional_revealed_count_replacement_partition(
             looked,
             crate::TagKey::from("infusion_two"),
             2,
+            crate::filter::ObjectFilterUnionConnective::AndOr,
         );
         let mut branch = crate::resolution::SelfReplacementBranch::new(
             Condition::PlayerGainedLifeThisTurnOrMore {
@@ -3016,6 +3147,42 @@ mod tests {
         assert_eq!(
             super::super::super::ast_render::describe_resolution_program(&program),
             "Infusion — Look at the top four cards of your library. You may reveal a creature or land card from among them and put it into your hand. If you gained life this turn, you may instead reveal two creature and/or land cards from among them and put them into your hand. Put the rest on the bottom of your library in a random order"
+        );
+    }
+
+    #[test]
+    fn unlabeled_leading_instead_reveal_count_still_shares_the_exact_remainder() {
+        let looked = crate::TagKey::from("unlabeled_infusion_looked");
+        let default_effects = optional_revealed_count_replacement_partition(
+            looked.clone(),
+            crate::TagKey::from("unlabeled_infusion_one"),
+            1,
+            crate::filter::ObjectFilterUnionConnective::Or,
+        );
+        let replacement_effects = optional_revealed_count_replacement_partition(
+            looked,
+            crate::TagKey::from("unlabeled_infusion_two"),
+            2,
+            crate::filter::ObjectFilterUnionConnective::AndOr,
+        );
+        let mut branch = crate::resolution::SelfReplacementBranch::new(
+            Condition::PlayerGainedLifeThisTurnOrMore {
+                player: PlayerFilter::You,
+                count: 1,
+            },
+            replacement_effects,
+        );
+        branch.leading_instead_surface = true;
+        let program =
+            crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+                default_effects,
+                self_replacements: vec![branch],
+                starts_new_source_line: false,
+            }]);
+
+        assert_eq!(
+            super::super::super::ast_render::describe_resolution_program(&program),
+            "Look at the top four cards of your library. You may reveal a creature or land card from among them and put it into your hand. If you gained life this turn, you may instead reveal two creature and/or land cards from among them and put them into your hand. Put the rest on the bottom of your library in a random order"
         );
     }
 

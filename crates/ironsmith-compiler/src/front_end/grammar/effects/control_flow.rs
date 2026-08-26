@@ -383,7 +383,28 @@ fn recognize_trailing_condition(
     {
         return None;
     }
+    // `return ... face down if C, then turn it face up` is an ordered
+    // conditional procedure, not one action followed by a predicate whose
+    // words happen to contain `face up`. Clause dispatch owns this shape: it
+    // keeps both the return and turn inside one trailing-if branch and binds
+    // the pronoun to the returned object. Let that specialist see the intact
+    // token stream before generic trailing-condition recognition can absorb
+    // the `, then turn ...` suffix into C.
+    if is_face_down_return_if_then_turn_procedure(tokens) {
+        return None;
+    }
     if let Some(split) = split_trailing_if_clause_lexed(tokens) {
+        // A terminal anaphoric destroy guard is part of the destroy target's
+        // zone constraint, not a condition on the complete coordinated
+        // procedure. For example, in `counter ... and destroy that artifact
+        // if it's on the battlefield`, countering still happens when the
+        // referenced artifact has left the battlefield. Leave this exact
+        // grammar-owned shape to coordination/destroy lowering, which keeps
+        // the counter unconditional and represents the guard with the
+        // referenced object's battlefield filter.
+        if is_anaphoric_destroy_battlefield_guard(tokens) {
+            return None;
+        }
         // In `A, then B if C`, the postcondition belongs to B rather than to
         // the complete ordered procedure. Leave the intact clause to the
         // coordination grammar so it can split the authored boundary first;
@@ -429,6 +450,80 @@ fn recognize_trailing_condition(
         },
         token_span(tokens),
     ))
+}
+
+fn is_face_down_return_if_then_turn_procedure(tokens: &[OwnedLexToken]) -> bool {
+    let Some(if_index) = last_top_level_word(tokens, "if") else {
+        return false;
+    };
+    let return_tokens = trim_lexed_commas(&tokens[..if_index]);
+    if !return_tokens
+        .first()
+        .is_some_and(|token| token.is_word("return"))
+        || !return_tokens
+            .iter()
+            .any(|token| token.is_word("battlefield"))
+        || !return_tokens
+            .windows(2)
+            .any(|window| window[0].is_word("face") && window[1].is_word("down"))
+    {
+        return false;
+    }
+
+    let condition_and_followup = &tokens[if_index + 1..];
+    let Some(comma_index) = first_top_level_comma(condition_and_followup) else {
+        return false;
+    };
+    if trim_lexed_commas(&condition_and_followup[..comma_index]).is_empty() {
+        return false;
+    }
+    let followup = trim_lexed_commas(&condition_and_followup[comma_index + 1..]);
+    followup.len() == 5
+        && followup[0].is_word("then")
+        && followup[1].is_word("turn")
+        && (followup[2].is_word("it") || followup[2].is_word("them"))
+        && followup[3].is_word("face")
+        && followup[4].is_word("up")
+}
+
+pub fn is_anaphoric_destroy_battlefield_guard(tokens: &[OwnedLexToken]) -> bool {
+    let Some(split) = split_trailing_if_clause_lexed(tokens) else {
+        return false;
+    };
+    if !matches!(
+        split.predicate,
+        crate::cards::builders::PredicateAst::SourceIsInZone(crate::zone::Zone::Battlefield)
+    ) {
+        return false;
+    }
+    let Some(if_index) = last_top_level_word(tokens, "if") else {
+        return false;
+    };
+    let predicate_tokens = trim_lexed_commas(&tokens[if_index + 1..]);
+    if !predicate_tokens
+        .first()
+        .is_some_and(|token| token.is_word("it") || token.is_word("it's"))
+    {
+        return false;
+    }
+
+    let terminal_tokens = match super::coordination::recognize_coordination(split.leading_tokens) {
+        ParseOutcome::Match(matched) => matched
+            .value
+            .members
+            .last()
+            .map(|member| trim_lexed_commas(member.tokens))
+            .unwrap_or(split.leading_tokens),
+        ParseOutcome::NoMatch | ParseOutcome::Error(_) => split.leading_tokens,
+    };
+    let terminal_head = match classify_typed_clause_head(terminal_tokens) {
+        ParseOutcome::Match(matched) => matched.value,
+        ParseOutcome::NoMatch | ParseOutcome::Error(_) => return false,
+    };
+    matches!(
+        terminal_head.form,
+        ClauseHeadFormAst::Action(ClauseVerbAst::Destroy)
+    ) && terminal_tokens.iter().any(|token| token.is_word("that"))
 }
 
 fn wrap_body_semantics(
@@ -590,4 +685,38 @@ fn malformed<T>(span: Option<TextSpan>, expected: &'static str) -> ParseOutcome<
         [ParseExpectation::new(expected)],
         "control-flow introducer has no complete scoped program",
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexer::lex_line;
+
+    #[test]
+    fn face_down_return_then_turn_defers_to_ordered_clause_dispatch() {
+        let tokens = lex_line(
+            "Return it to the battlefield face down under its owner's control if it's a permanent card, then turn it face up.",
+            0,
+        )
+        .expect("conditional return procedure should lex");
+
+        assert!(matches!(
+            recognize_control_flow(&tokens),
+            ParseOutcome::NoMatch
+        ));
+    }
+
+    #[test]
+    fn ordinary_face_down_return_condition_remains_control_flow_owned() {
+        let tokens = lex_line(
+            "Return it to the battlefield face down under its owner's control if it's a permanent card.",
+            0,
+        )
+        .expect("conditional return should lex");
+
+        assert!(matches!(
+            recognize_control_flow(&tokens),
+            ParseOutcome::Match(_)
+        ));
+    }
 }

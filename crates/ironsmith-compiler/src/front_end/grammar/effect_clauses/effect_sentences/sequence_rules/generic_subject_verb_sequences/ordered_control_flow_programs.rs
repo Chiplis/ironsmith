@@ -1124,6 +1124,7 @@ pub fn parse_reveal_top_opponent_exiles_one_put_rest_hand_then_may_cast(
     };
 
     let revealed_tag = helper_tag_for_tokens(&first, "revealed");
+    let opponent_tag = helper_tag_for_tokens(&second, "choosing_opponent");
     let exiled_tag = helper_tag_for_tokens(&first, "exiled");
     let mut exile_filter =
         if let Some(filter) = parse_looked_card_choice_filter(&second[shape.exile_filter]) {
@@ -1141,10 +1142,17 @@ pub fn parse_reveal_top_opponent_exiles_one_put_rest_hand_then_may_cast(
 
     Ok(Some(vec![
         EffectAst::subject_verb_reveal_top_cards(PlayerAst::You, count, revealed_tag),
+        EffectAst::subject_verb_choose_player(
+            PlayerAst::You,
+            PlayerFilter::Opponent,
+            opponent_tag,
+            false,
+            0,
+        ),
         EffectAst::ChooseTaggedObjectsInZone {
             filter: exile_filter,
             count: ChoiceCount::exactly(1),
-            player: PlayerAst::Opponent,
+            player: PlayerAst::That,
             tag: exiled_tag.clone(),
             zone: Zone::Library,
         },
@@ -2936,6 +2944,7 @@ pub fn parse_top_cards_may_cast_match_rest_bottom(
             allow_land: false,
             as_copy: false,
             copy_cast_reminder_surface: false,
+            copy_instruction_surface: None,
             without_paying_mana_cost: true,
             additional_mana_cost: None,
             cost_reduction: None,
@@ -2987,7 +2996,11 @@ pub fn parse_look_at_top_exile_match_and_rest_bottom_then_cast_exiled(
     };
 
     let looked_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "looked");
-    let exiled_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "exiled");
+    // This compound sentence authored an explicit "up to one" selection,
+    // unlike the otherwise equivalent four-sentence "you may exile" shape.
+    // Retain that surface on the internal result role while keeping the
+    // conventional `exiled` prefix used by reference resolution.
+    let exiled_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "exiled_up_to");
     let permission_effect = match permission {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:

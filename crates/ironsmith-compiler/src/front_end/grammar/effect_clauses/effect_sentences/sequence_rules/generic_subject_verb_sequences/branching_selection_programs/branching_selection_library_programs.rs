@@ -127,6 +127,22 @@ pub fn parse_look_at_top_optional_battlefield_then_conditional_remainder(
     // in Nine-Fingers Keene), and the normalized view would otherwise turn
     // the threshold and look count into a source reference.
     let conditional_tokens = trim_commas(sentences[sentence_idx + 2].lexed());
+    // This specialist owns only the authored remainder branch.  Merely
+    // recognizing a conditional here is not enough: conditional entry
+    // modifiers such as Turntimber Symbiosis also follow an optional
+    // looked-card move, and used to be rewritten into an invented
+    // "put the rest into your hand" branch.
+    let has_remainder_to_hand = conditional_tokens.windows(6).any(|tokens| {
+        tokens[0].is_word("put")
+            && tokens[1].is_word("the")
+            && tokens[2].is_word("rest")
+            && tokens[3].is_word("into")
+            && tokens[4].is_word("your")
+            && tokens[5].is_word("hand")
+    });
+    if !has_remainder_to_hand {
+        return Ok(None);
+    }
     let Ok(parsed_conditional) = effect_sentences::parse_effect_sentence_lexed(&conditional_tokens)
     else {
         return Ok(None);
@@ -137,6 +153,12 @@ pub fn parse_look_at_top_optional_battlefield_then_conditional_remainder(
     let predicate = predicate.clone();
 
     let otherwise_tokens = trim_commas(sentences[sentence_idx + 3].lexed());
+    if !otherwise_tokens
+        .first()
+        .is_some_and(|token| token.is_word("otherwise"))
+    {
+        return Ok(None);
+    }
     let bottom_tokens = strip_leading_token_words_any(&otherwise_tokens, &["otherwise"]);
     let partition_sentences = [
         SentenceInput::from_lexed(sentences[sentence_idx].lexed()),
@@ -204,6 +226,76 @@ pub fn parse_look_at_top_optional_battlefield_then_conditional_remainder(
         if_true: vec![hand_remainder],
         if_false: vec![bottom_remainder],
     });
+    Ok(Some(partition))
+}
+
+/// Preserves the selected looked card, its conditional entry-time counters,
+/// and the exact looked-minus-selected remainder across four sentences:
+///
+/// "Look at ... . You may put ... onto the battlefield. If that card ...,
+/// it enters with ... counters. Put the rest on the bottom ... ."
+///
+/// The three-sentence looked partition already owns the producer, selected
+/// tag, and complement.  Insert only a grammar-proven conditional entry
+/// counter between its move and remainder; lowering can then fuse that typed
+/// modifier into the battlefield entry without inventing a remainder branch.
+pub fn parse_look_at_top_optional_battlefield_conditional_entry_counters_then_rest_bottom(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let conditional_tokens = trim_commas(sentences[sentence_idx + 2].lexed());
+    let Ok(parsed_conditional) = effect_sentences::parse_effect_sentence_lexed(&conditional_tokens)
+    else {
+        return Ok(None);
+    };
+    let [
+        conditional @ EffectAst::Conditional {
+            if_true, if_false, ..
+        },
+    ] = parsed_conditional.as_slice()
+    else {
+        return Ok(None);
+    };
+    if !if_false.is_empty()
+        || !matches!(
+            if_true.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::PutCounters { count, .. },
+                ..
+            })] if count.has_surface_hint(
+                ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter
+            )
+        )
+    {
+        return Ok(None);
+    }
+
+    let partition_sentences = [
+        SentenceInput::from_lexed(sentences[sentence_idx].lexed()),
+        SentenceInput::from_lexed(sentences[sentence_idx + 1].lexed()),
+        SentenceInput::from_lexed(sentences[sentence_idx + 3].lexed()),
+    ];
+    let Some(mut partition) = super::super::ordered_control_flow_programs::parse_top_cards_put_any_matching_to_zone_rest_bottom(
+        &partition_sentences,
+        0,
+    )?
+    else {
+        return Ok(None);
+    };
+    let Some(remainder) = partition.pop() else {
+        return Ok(None);
+    };
+    if !matches!(
+        remainder,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary { .. },
+            ..
+        })
+    ) {
+        return Ok(None);
+    }
+    partition.push(conditional.clone());
+    partition.push(remainder);
     Ok(Some(partition))
 }
 

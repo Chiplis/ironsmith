@@ -78,3 +78,18 @@ fn phase_out_and_shared_next_turn_protection_keep_authored_coordination() {
         None
     );
 }
+
+#[test]
+fn complete_protection_program_keeps_authored_sentence_and_line_boundaries() {
+    let oracle = "Until your next turn, your life total can't change and you gain protection from everything. All permanents you control phase out.\nExile Teferi's Protection.";
+    let definition =
+        crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Teferi's Protection")
+            .card_types(vec![CardType::Instant])
+            .parse_text(oracle)
+            .expect("Teferi's Protection should compile");
+
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&definition).join("\n"),
+        oracle
+    );
+}

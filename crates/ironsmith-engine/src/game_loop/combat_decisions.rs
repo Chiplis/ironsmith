@@ -979,6 +979,11 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
         for prepared_decl in &surviving_declarations {
             let creature = prepared_decl.declaration.creature;
             history.creatures_attacked_this_turn.insert(creature);
+            if matches!(prepared_decl.declaration.target, AttackTarget::Battle(_)) {
+                history
+                    .creatures_attacked_battles_this_turn
+                    .insert(creature);
+            }
             *history
                 .creature_attack_counts_this_turn
                 .entry(creature)

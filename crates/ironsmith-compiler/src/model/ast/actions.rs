@@ -157,6 +157,7 @@ pub enum SubjectVerbActionAst {
     Fight {
         creature1: TargetAst,
         creature2: TargetAst,
+        mutual_surface: bool,
     },
     FightIterated {
         creature2: TargetAst,
@@ -569,6 +570,7 @@ pub enum SubjectVerbActionAst {
         allow_land: bool,
         as_copy: bool,
         copy_cast_reminder_surface: bool,
+        copy_instruction_surface: Option<ironsmith_core::effect::CopyInstructionSurface>,
         without_paying_mana_cost: bool,
         additional_mana_cost: Option<ManaCost>,
         cost_reduction: Option<ManaCost>,
@@ -626,6 +628,7 @@ pub enum SubjectVerbActionAst {
     },
     ReturnToBattlefield {
         target: TargetAst,
+        target_reference_surface: Option<ironsmith_core::SearchResultReferenceSurface>,
         from_graveyard_or_exile: bool,
         tapped: bool,
         transformed: bool,
@@ -840,6 +843,7 @@ pub enum SubjectVerbActionAst {
         name_override_surface: Option<SourceReferenceSurface>,
         add_supertypes: Vec<Supertype>,
         remove_supertypes: Vec<Supertype>,
+        add_colors: ColorSet,
         add_card_types: Vec<CardType>,
         set_card_types: Vec<CardType>,
         add_subtypes: Vec<Subtype>,
@@ -1238,9 +1242,12 @@ pub enum SubjectVerbActionAst {
     },
     ForEachCounterKindPutOrRemove {
         target: TargetAst,
+        counter_source: Option<TargetAst>,
         all_kinds: bool,
         fixed_counter_type: Option<CounterType>,
         optional_action: bool,
+        put_only: bool,
+        choose_target_per_kind: bool,
     },
     PutCounterOfChosenKind {
         target: TargetAst,
@@ -1532,10 +1539,12 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::Fight {
                 creature1,
                 creature2,
+                mutual_surface,
             } => f
                 .debug_struct("Fight")
                 .field("creature1", creature1)
                 .field("creature2", creature2)
+                .field("mutual_surface", mutual_surface)
                 .finish(),
             Self::FightIterated { creature2 } => {
                 f.debug_tuple("FightIterated").field(creature2).finish()
@@ -2178,6 +2187,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 allow_land,
                 as_copy,
                 copy_cast_reminder_surface,
+                copy_instruction_surface,
                 without_paying_mana_cost,
                 additional_mana_cost,
                 cost_reduction,
@@ -2189,6 +2199,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("allow_land", allow_land)
                 .field("as_copy", as_copy)
                 .field("copy_cast_reminder_surface", copy_cast_reminder_surface)
+                .field("copy_instruction_surface", copy_instruction_surface)
                 .field("without_paying_mana_cost", without_paying_mana_cost)
                 .field("additional_mana_cost", additional_mana_cost)
                 .field("cost_reduction", cost_reduction)
@@ -2283,6 +2294,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::ReturnToBattlefield {
                 target,
+                target_reference_surface,
                 from_graveyard_or_exile,
                 tapped,
                 transformed,
@@ -2294,6 +2306,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             } => f
                 .debug_struct("ReturnToBattlefield")
                 .field("target", target)
+                .field("target_reference_surface", target_reference_surface)
                 .field("from_graveyard_or_exile", from_graveyard_or_exile)
                 .field("tapped", tapped)
                 .field("transformed", transformed)
@@ -2692,6 +2705,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 name_override_surface,
                 add_supertypes,
                 remove_supertypes,
+                add_colors,
                 add_card_types,
                 set_card_types,
                 add_subtypes,
@@ -2709,6 +2723,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("name_override_surface", name_override_surface)
                 .field("add_supertypes", add_supertypes)
                 .field("remove_supertypes", remove_supertypes)
+                .field("add_colors", add_colors)
                 .field("add_card_types", add_card_types)
                 .field("set_card_types", set_card_types)
                 .field("add_subtypes", add_subtypes)
@@ -3224,15 +3239,21 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::ForEachCounterKindPutOrRemove {
                 target,
+                counter_source,
                 all_kinds,
                 fixed_counter_type,
                 optional_action,
+                put_only,
+                choose_target_per_kind,
             } => f
                 .debug_struct("ForEachCounterKindPutOrRemove")
                 .field("target", target)
+                .field("counter_source", counter_source)
                 .field("all_kinds", all_kinds)
                 .field("fixed_counter_type", fixed_counter_type)
                 .field("optional_action", optional_action)
+                .field("put_only", put_only)
+                .field("choose_target_per_kind", choose_target_per_kind)
                 .finish(),
             Self::PutCounterOfChosenKind { target } => f
                 .debug_struct("PutCounterOfChosenKind")

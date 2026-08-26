@@ -371,3 +371,29 @@
             }) if tag.as_str() == "__last_revealed__"
         ));
     }
+
+    #[test]
+    fn bare_remainder_library_move_retains_its_order_for_typed_collection_binding() {
+        let tokens = crate::lexer::lex_line(
+            "Put the rest on the bottom of your library in a random order.",
+            0,
+        )
+        .expect("lex remainder move");
+        let effect = parse_put_into_hand(&tokens, None).expect("parse remainder move");
+
+        assert!(matches!(
+            &effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::MoveToZone {
+                    target: TargetAst::Tagged(tag, _),
+                    zone: Zone::Library,
+                    to_top: false,
+                    library_order: Some(
+                        crate::cards::builders::LibraryBottomOrderAst::Random
+                    ),
+                    ..
+                },
+                ..
+            }) if tag == &crate::tag::CompilerReferenceTag::Rest.key()
+        ), "{effect:#?}");
+    }

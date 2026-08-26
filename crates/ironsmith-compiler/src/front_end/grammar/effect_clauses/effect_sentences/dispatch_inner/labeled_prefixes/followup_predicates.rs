@@ -49,8 +49,7 @@ fn token_copy_reference_surface_at(
             &["the", "token", "created", "this", "way"],
             &["token", "created", "this", "way"],
         ],
-    )
-    {
+    ) {
         return Some(Surface::TokenCreatedThisWay);
     }
     if crate::word_primitives::parse_any_sequence_prefix(
@@ -59,8 +58,7 @@ fn token_copy_reference_surface_at(
             &["the", "tokens", "created", "this", "way"],
             &["tokens", "created", "this", "way"],
         ],
-    )
-    {
+    ) {
         return Some(Surface::TokensCreatedThisWay);
     }
     if crate::word_primitives::parse_sequence_prefix(words, &["that", "token"]) {
@@ -72,16 +70,11 @@ fn token_copy_reference_surface_at(
     ) {
         return Some(Surface::ThoseTokens);
     }
-    if crate::word_primitives::parse_any_sequence_prefix(
-        words,
-        &[&["the", "token"], &["token"]],
-    ) {
+    if crate::word_primitives::parse_any_sequence_prefix(words, &[&["the", "token"], &["token"]]) {
         return Some(Surface::TheToken);
     }
-    if crate::word_primitives::parse_any_sequence_prefix(
-        words,
-        &[&["the", "tokens"], &["tokens"]],
-    ) {
+    if crate::word_primitives::parse_any_sequence_prefix(words, &[&["the", "tokens"], &["tokens"]])
+    {
         return Some(Surface::TheTokens);
     }
     match words.first().copied()? {

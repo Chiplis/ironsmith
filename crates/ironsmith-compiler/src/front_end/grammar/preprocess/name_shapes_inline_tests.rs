@@ -69,6 +69,7 @@ fn parses_keyword_and_short_name_surfaces() {
         "Additional Cost Probe",
         "Then If Probe",
         "Nonhistoric Probe",
+        "Out of Time",
     ] {
         assert_eq!(
             parse_short_self_reference_name(name),

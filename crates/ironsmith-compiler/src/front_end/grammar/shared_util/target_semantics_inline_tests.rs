@@ -191,6 +191,46 @@ fn battle_or_opponent_preserves_both_target_domains_and_source_exclusion() {
 }
 
 #[test]
+fn attacking_or_blocking_target_preserves_both_combat_roles() {
+    let TargetAst::Object(filter, explicit_target, _) =
+        parse("target attacking or blocking creature")
+    else {
+        panic!("expected object target");
+    };
+    assert!(explicit_target.is_some());
+    assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+    assert!(
+        filter.any_of.iter().any(|branch| {
+            branch.attacking && !branch.blocking && branch.card_types == [CardType::Creature]
+        }),
+        "{filter:#?}"
+    );
+    assert!(
+        filter.any_of.iter().any(|branch| {
+            branch.blocking && !branch.attacking && branch.card_types == [CardType::Creature]
+        }),
+        "{filter:#?}"
+    );
+}
+
+#[test]
+fn opponent_target_unions_preserve_every_legal_recipient_domain() {
+    assert!(matches!(
+        parse("target opponent or planeswalker"),
+        TargetAst::PlayerOrPlaneswalker(PlayerFilter::Opponent, Some(_))
+    ));
+
+    let TargetAst::ObjectOrPlayer(filter, player, explicit_target) =
+        parse("target opponent or battle")
+    else {
+        panic!("expected opponent/battle union target");
+    };
+    assert!(explicit_target.is_some());
+    assert_eq!(player, PlayerFilter::Opponent);
+    assert_eq!(filter.card_types, [CardType::Battle]);
+}
+
+#[test]
 fn object_type_list_or_opponent_preserves_every_target_domain() {
     let TargetAst::ObjectOrPlayer(filter, player, explicit_target) =
         parse("target artifact, creature, planeswalker, or opponent")

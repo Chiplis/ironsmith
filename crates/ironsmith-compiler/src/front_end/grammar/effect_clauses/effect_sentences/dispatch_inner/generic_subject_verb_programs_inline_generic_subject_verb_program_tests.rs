@@ -136,6 +136,39 @@
     }
 
     #[test]
+    fn looked_cloak_partition_keeps_selected_and_remainder_tags_disjoint() {
+        let tokens = crate::lexer::lex_line(
+            "Look at the top five cards of your library, cloak two of them, and put the rest on the bottom of your library in a random order.",
+            0,
+        )
+        .expect("looked-card cloak partition should lex");
+        let effects = parse_generic_top_cards_cloak_counted_rest_bottom_subject_verb(&tokens)
+            .expect("looked-card cloak partition should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("LookAtTopCards"), "{debug}");
+        assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
+        assert!(debug.contains("cloak: true"), "{debug}");
+        assert!(
+            debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+            "{debug}"
+        );
+        assert!(debug.contains("Random"), "{debug}");
+        assert!(!debug.contains("Unsupported"), "{debug}");
+
+        let routed = crate::effect_sentences::parse_effect_sentence_lexed(&tokens)
+            .expect("public sentence route should parse the complete cloak partition");
+        let routed_debug = format!("{routed:#?}");
+        assert!(routed_debug.contains("LookAtTopCards"), "{routed_debug}");
+        assert!(routed_debug.contains("cloak: true"), "{routed_debug}");
+        assert!(
+            routed_debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+            "{routed_debug}"
+        );
+        assert!(!routed_debug.contains("Unsupported"), "{routed_debug}");
+    }
+
+    #[test]
     fn source_exiled_counted_return_keeps_original_set_for_the_remainder() {
         let tokens = crate::lexer::lex_line(
             "Return two cards exiled with this Saga to the battlefield under their owners' control and put the rest on the bottom of their owners' libraries.",
@@ -927,6 +960,24 @@
     }
 
     #[test]
+    fn explicit_source_entry_where_x_keeps_source_and_dynamic_counter_value() {
+        let tokens = crate::lexer::lex_line(
+            "This creature enters with X +1/+1 counters on it, where X is the total mana value of all cards revealed this way.",
+            0,
+        )
+        .expect("source entry-counter text should lex");
+        let effects = parse_effect_sentence_with_where_x_lexed(&tokens)
+            .expect("source entry-counter text should parse");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("target: Source"), "{debug}");
+        assert!(debug.contains("EntersWithCountersValue"), "{debug}");
+        assert!(!debug.contains("count: X"), "{debug}");
+        assert!(debug.contains("WhereXIs"), "{debug}");
+        assert!(debug.contains("ManaValue"), "{debug}");
+    }
+
+    #[test]
     fn where_x_value_binding_accepts_quoted_token_abilities() {
         for text in [
             "Create X 1/1 black Fungus creature tokens with \"This token can't block,\" where X is the number of times you descended this turn.",
@@ -1150,6 +1201,22 @@
         assert!(debug.contains("Creature"), "{debug}");
         assert!(debug.contains("Enchantment"), "{debug}");
         assert!(debug.contains("Land"), "{debug}");
+        assert!(debug.contains("Sacrifice"), "{debug}");
+    }
+
+    #[test]
+    fn each_opponent_choice_complement_uses_opponent_scope() {
+        let tokens = crate::lexer::lex_line(
+            "Each opponent chooses an artifact, a creature, an enchantment, and a planeswalker from among the nonland permanents they control, then sacrifices the rest.",
+            0,
+        )
+        .expect("opponent choice-complement text should lex");
+        let effects = crate::effect_sentences::parse_effect_sentence_lexed(&tokens)
+            .expect("opponent choice-complement should parse");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("ForEachOpponent"), "{debug}");
+        assert_eq!(debug.matches("ChooseObjects").count(), 4, "{debug}");
         assert!(debug.contains("Sacrifice"), "{debug}");
     }
 

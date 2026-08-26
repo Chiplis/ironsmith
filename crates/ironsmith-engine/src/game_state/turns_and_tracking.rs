@@ -1644,6 +1644,14 @@ impl GameState {
             .contains(&creature)
     }
 
+    /// Check whether a creature attacked a Battle this turn.
+    pub fn creature_attacked_battle_this_turn(&self, creature: ObjectId) -> bool {
+        self.turn_store
+            .turn_history
+            .creatures_attacked_battles_this_turn
+            .contains(&creature)
+    }
+
     /// Count how many times a creature has attacked this turn.
     pub fn creature_attack_count_this_turn(&self, creature: ObjectId) -> u32 {
         self.turn_store

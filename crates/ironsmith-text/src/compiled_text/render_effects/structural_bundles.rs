@@ -1504,6 +1504,79 @@ fn plain_exile_all_filter(effect: &Effect) -> Option<&ObjectFilter> {
     Some(filter)
 }
 
+/// Preserve the aggregate owner that scopes a complete hand/graveyard pair.
+/// Rendering the two typed exile effects independently turns `all opponents'`
+/// into an arbitrary opponent for the hand and treats the graveyard itself as
+/// the exiled object. Claim only two otherwise-plain filters with the same
+/// aggregate player owner.
+pub(super) fn describe_aggregate_hand_graveyard_exile_pair(effects: &[Effect]) -> Option<String> {
+    let [first, second] = effects else {
+        return None;
+    };
+    let first = plain_exile_all_filter(first)?;
+    let second = plain_exile_all_filter(second)?;
+    let (hand, graveyard) = match (first.zone, second.zone) {
+        (Some(Zone::Hand), Some(Zone::Graveyard)) => (first, second),
+        (Some(Zone::Graveyard), Some(Zone::Hand)) => (second, first),
+        _ => return None,
+    };
+    if hand.owner != graveyard.owner {
+        return None;
+    }
+
+    let mut plain_hand = hand.clone();
+    plain_hand.zone = None;
+    let owner = plain_hand.owner.take()?;
+    let mut plain_graveyard = graveyard.clone();
+    plain_graveyard.zone = None;
+    plain_graveyard.owner = None;
+    if plain_hand != ObjectFilter::default() || plain_graveyard != ObjectFilter::default() {
+        return None;
+    }
+
+    let players = match owner {
+        PlayerFilter::Opponent => "all opponents' hands and graveyards",
+        PlayerFilter::Any => "all players' hands and graveyards",
+        _ => return None,
+    };
+    Some(format!("Exile all cards from {players}"))
+}
+
+#[cfg(test)]
+mod aggregate_hand_graveyard_exile_tests {
+    use super::*;
+
+    fn exile_zone(zone: Zone, owner: PlayerFilter) -> Effect {
+        let mut filter = ObjectFilter::default().in_zone(zone);
+        filter.owner = Some(owner);
+        Effect::new(crate::effects::ExileEffect::with_spec(ChooseSpec::All(
+            filter,
+        )))
+    }
+
+    #[test]
+    fn renders_same_aggregate_owner_and_rejects_changed_owner() {
+        let effects = vec![
+            exile_zone(Zone::Hand, PlayerFilter::Opponent),
+            exile_zone(Zone::Graveyard, PlayerFilter::Opponent),
+        ];
+        assert_eq!(
+            describe_aggregate_hand_graveyard_exile_pair(&effects),
+            Some("Exile all cards from all opponents' hands and graveyards".to_string())
+        );
+
+        let changed = vec![
+            exile_zone(Zone::Hand, PlayerFilter::Opponent),
+            exile_zone(Zone::Graveyard, PlayerFilter::Any),
+        ];
+        assert_eq!(
+            describe_aggregate_hand_graveyard_exile_pair(&changed),
+            None,
+            "different owner domains must remain separate effects"
+        );
+    }
+}
+
 /// A battlefield/graveyard exile pair needs both provenance phrases; neither
 /// clause can rely on the other domain's default object-filter wording.
 pub(super) fn describe_battlefield_graveyard_exile_pair(effects: &[Effect]) -> Option<String> {
@@ -5082,6 +5155,36 @@ pub(super) fn describe_choose_copy_spell_and_retarget_copy_to_chosen(
 /// token must be the exact sets consumed by the retarget effect.  This keeps a
 /// superficially similar copy/retarget pair from inventing the token clause or
 /// the "that token" reference.
+fn fixed_spec_is_exact_created_token_reference(spec: &ChooseSpec, created_tag: &TagKey) -> bool {
+    match spec {
+        ChooseSpec::Tagged(tag) => tag == created_tag,
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            if !filter.token || filter.tagged_constraints.len() != 1 {
+                return false;
+            }
+            let constraint = &filter.tagged_constraints[0];
+            if constraint.tag != *created_tag
+                || constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            {
+                return false;
+            }
+
+            // Reference resolution may retain the lexical "token" noun and
+            // its authored source surface around the exact result tag. Those
+            // are presentation facts, not an additional selection predicate.
+            let mut bare = filter.clone();
+            bare.token = false;
+            bare.tagged_constraints.clear();
+            bare.source_surface = None;
+            bare == ObjectFilter::default()
+        }
+        ChooseSpec::Target(inner) | ChooseSpec::SurfaceHinted { spec: inner, .. } => {
+            fixed_spec_is_exact_created_token_reference(inner, created_tag)
+        }
+        _ => false,
+    }
+}
+
 pub(in crate::compiled_text) fn describe_create_token_then_copy_retarget_to_created_token(
     effects: &[&Effect],
 ) -> Option<String> {
@@ -5120,7 +5223,7 @@ pub(in crate::compiled_text) fn describe_create_token_then_copy_retarget_to_crea
     let crate::effects::RetargetMode::OneToFixed(fixed) = &retarget.mode else {
         return None;
     };
-    if !matches!(fixed.base(), ChooseSpec::Tagged(tag) if tag == &tagged_create.tag) {
+    if !fixed_spec_is_exact_created_token_reference(fixed, &tagged_create.tag) {
         return None;
     }
 
@@ -7458,6 +7561,31 @@ fn source_exiled_tag(tag: &TagKey) -> bool {
     tag.as_str() == crate::tag::SOURCE_EXILED_TAG
 }
 
+fn choose_spec_is_source_exiled_card(spec: &ChooseSpec) -> bool {
+    match spec.base() {
+        ChooseSpec::Tagged(tag) => source_exiled_tag(tag),
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            let matching_constraints = filter
+                .tagged_constraints
+                .iter()
+                .filter(|constraint| {
+                    source_exiled_tag(&constraint.tag)
+                        && constraint.relation
+                            == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                })
+                .count();
+            let mut remainder = filter.clone();
+            remainder.tagged_constraints.clear();
+            remainder.set_explicit_card_noun(false);
+            remainder.source_surface = None;
+            matching_constraints == 1
+                && filter.tagged_constraints.len() == 1
+                && remainder == ObjectFilter::default()
+        }
+        _ => false,
+    }
+}
+
 fn plain_creature_card_condition(filter: &ObjectFilter) -> bool {
     if filter.card_types.as_slice() != [CardType::Creature] {
         return false;
@@ -7571,9 +7699,6 @@ pub(in crate::compiled_text) fn describe_target_player_draw_exile_then_copy_resu
         return None;
     };
     let copy = copy_effect.downcast_ref::<crate::effects::CreateTokenCopyEffect>()?;
-    let ChooseSpec::Tagged(copy_source_tag) = copy.target.base() else {
-        return None;
-    };
 
     let mut plain_hand_card = choose.filter.clone();
     plain_hand_card.zone = None;
@@ -7610,7 +7735,7 @@ pub(in crate::compiled_text) fn describe_target_player_draw_exile_then_copy_resu
         || result_surface.quantifier != crate::effect::PriorEffectResultQuantifier::One
         || !plain_creature_card_result_condition(&result_surface.filter)
         || !conditional.else_.is_empty()
-        || copy_source_tag.as_str() != crate::tag::SOURCE_EXILED_TAG
+        || !choose_spec_is_source_exiled_card(&copy.target)
         || copy.count != Value::Fixed(1)
         || !player_filters_refer_to_same_player(&copy.controller, &draw.player)
         || copy.enters_tapped
@@ -8234,7 +8359,10 @@ fn describe_chosen_type_consult_move_matches_shuffle_remainder(
     let move_to_zone = structural_unwrap_render_wrappers(move_effect)
         .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     let shuffle = structural_unwrap_render_wrappers(shuffle_effect)
-        .downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+        .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()?;
+    let ChooseSpec::Object(remainder_filter) = shuffle.target.unhinted() else {
+        return None;
+    };
     let crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) = &consult.stop_rule else {
         return None;
     };
@@ -8259,6 +8387,9 @@ fn describe_chosen_type_consult_move_matches_shuffle_remainder(
         || move_to_zone.enters_attacking
         || move_to_zone.battlefield_controller != crate::effects::BattlefieldController::Preserve
         || shuffle.player != PlayerFilter::You
+        || shuffle.owner_library_destination
+        || shuffle.possessive_owner_subject
+        || !is_tagged_only_filter_except_tag(remainder_filter, &consult.all_tag, &consult.match_tag)
     {
         return None;
     }
@@ -8888,7 +9019,7 @@ fn describe_each_player_turn_source_exiled_then_put_permanents(
     };
     let turn = structural_unwrap_render_wrappers(turn_effect)
         .downcast_ref::<crate::effects::TurnFaceUpEffect>()?;
-    let ChooseSpec::Object(turn_filter) = &turn.target else {
+    let ChooseSpec::Object(turn_filter) = turn.target.base() else {
         return None;
     };
     let source_surface = iterated_owner_source_exiled_filter(turn_filter, false)?;
@@ -11365,6 +11496,64 @@ fn describe_create_token_then_grant_same_tag_with_boundary(
 
 pub(super) fn describe_create_token_then_grant_same_tag(effects: &[Effect]) -> Option<String> {
     describe_create_token_then_grant_same_tag_with_boundary(effects, true)
+}
+
+/// A copied token can carry its delayed cleanup as an executable creation
+/// modifier while a following permanent grant carries the authored middle
+/// sentence. Render the shared result tag in source order: create, grant, then
+/// cleanup. Rendering each effect independently would place the embedded
+/// cleanup before the following grant.
+pub(super) fn describe_created_copy_grant_before_embedded_cleanup(
+    effects: &[Effect],
+) -> Option<String> {
+    let [create_effect, grant_effect] = effects else {
+        return None;
+    };
+    let tagged_create = create_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let created_tag = &tagged_create.tag;
+    let create = structural_unwrap_render_wrappers(&tagged_create.effect)
+        .downcast_ref::<crate::effects::CreateTokenCopyEffect>()?;
+    let has_sacrifice_cleanup = create.sacrifice_at_next_end_step;
+    let has_exile_cleanup = create.exile_at_next_end_step;
+    if has_sacrifice_cleanup == has_exile_cleanup
+        || create.exile_at_end_of_combat
+        || create.sacrifice_at_next_end_step_ability_text.is_some()
+    {
+        return None;
+    }
+
+    let grant = unwrap_basic_tag_wrappers(grant_effect)
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if grant.condition.is_some()
+        || !grant.runtime_modifications.is_empty()
+        || grant.until != Until::Forever
+        || !grant
+            .target_spec
+            .as_ref()
+            .is_some_and(|spec| choose_spec_references_exact_tag(spec, created_tag))
+    {
+        return None;
+    }
+    if grant.modification.is_none() && grant.additional_modifications.is_empty() {
+        return None;
+    }
+
+    let rendered_create = describe_effect(create_effect)
+        .trim_end_matches('.')
+        .to_string();
+    let cleanup_marker = if has_sacrifice_cleanup {
+        ". Sacrifice "
+    } else {
+        ". Exile "
+    };
+    let (creation, cleanup_tail) = rendered_create.split_once(cleanup_marker)?;
+    let grant_text = capitalize_first(describe_effect(grant_effect).trim().trim_end_matches('.'));
+    if grant_text.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "{creation}. {grant_text}{cleanup_marker}{cleanup_tail}"
+    ))
 }
 
 pub(super) fn describe_coordinated_create_token_then_grant_same_tag(

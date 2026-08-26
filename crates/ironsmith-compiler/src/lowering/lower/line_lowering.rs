@@ -38,7 +38,9 @@ pub(super) fn rewrite_apply_line_ast(
         NormalizedLineChunk::StaticAbilities(abilities) => {
             materialize_static_abilities(builder, abilities, semantic_facts)
         }
-        NormalizedLineChunk::Ability(ability) => materialize_ability(builder, ability),
+        NormalizedLineChunk::Ability(ability) => {
+            materialize_ability(builder, ability, semantic_facts)
+        }
         NormalizedLineChunk::Triggered {
             trigger,
             prepared,
@@ -90,6 +92,17 @@ fn materialize_keyword_actions(
     state: &mut RewriteLoweredCardState,
     actions: Vec<KeywordAction>,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
+    // Preserve that a comma-separated keyword list was authored on one
+    // source line. This marker is inert at runtime; compiled-text rendering
+    // consumes it to distinguish `Flying, soulbond` from two independently
+    // authored keyword lines. Only install the marker when every action adds
+    // exactly one ability. Cost/permission mechanics and deferred mechanics
+    // such as backup or cipher do not have that adjacency guarantee.
+    if keyword_actions_materialize_one_ability_each(&builder, &actions) {
+        builder = builder.with_ability(Ability::static_ability(
+            crate::static_abilities::StaticAbility::source_line_keyword_group(actions.len()),
+        ));
+    }
     for action in actions {
         match action {
             KeywordAction::Backup(amount) => state.pending_backups.push(PendingBackup {
@@ -101,6 +114,76 @@ fn materialize_keyword_actions(
         }
     }
     Ok(builder)
+}
+
+fn keyword_actions_materialize_one_ability_each(
+    builder: &CardDefinitionBuilder,
+    actions: &[KeywordAction],
+) -> bool {
+    if actions.len() < 2
+        || actions
+            .iter()
+            .any(|action| matches!(action, KeywordAction::Backup(_) | KeywordAction::Cipher))
+    {
+        return false;
+    }
+
+    let mut probe = builder.clone();
+    for action in actions {
+        let abilities_before = probe.abilities.len();
+        probe = probe.apply_keyword_action(action.clone());
+        if probe.abilities.len() != abilities_before + 1 {
+            return false;
+        }
+    }
+    true
+}
+
+#[cfg(test)]
+mod source_line_keyword_group_tests {
+    use super::*;
+
+    fn marker_payloads(builder: &CardDefinitionBuilder) -> Vec<String> {
+        builder
+            .abilities
+            .iter()
+            .filter_map(|ability| {
+                let AbilityKind::Static(static_ability) = &ability.kind else {
+                    return None;
+                };
+                let debug = format!("{static_ability:#?}");
+                debug.contains("SourceLineKeywordGroup").then_some(debug)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn grouped_keyword_actions_keep_source_line_provenance() {
+        let builder = CardDefinitionBuilder::new(crate::ids::CardId::new(), "Keyword probe");
+        let lowered = materialize_keyword_actions(
+            builder,
+            &mut RewriteLoweredCardState::default(),
+            vec![KeywordAction::Flying, KeywordAction::Soulbond],
+        )
+        .expect("intrinsic keyword list should materialize");
+
+        let markers = marker_payloads(&lowered);
+        assert_eq!(markers.len(), 1, "{markers:#?}");
+        assert!(markers[0].contains("keyword_count: 2"), "{markers:#?}");
+    }
+
+    #[test]
+    fn nonability_keyword_action_does_not_claim_adjacent_ability_group() {
+        let builder = CardDefinitionBuilder::new(crate::ids::CardId::new(), "Keyword probe");
+        let lowered = materialize_keyword_actions(
+            builder,
+            &mut RewriteLoweredCardState::default(),
+            vec![KeywordAction::Flying, KeywordAction::Fuse],
+        )
+        .expect("mixed keyword list should materialize");
+
+        assert!(marker_payloads(&lowered).is_empty());
+    }
 }
 
 fn materialize_static_abilities(
@@ -135,6 +218,8 @@ fn materialize_static_abilities(
         }
         builder = builder.with_ability(Ability::static_ability(marker));
     }
+
+    let mut lowered_abilities = Vec::with_capacity(member_count);
     for ability in abilities {
         match ability {
             StaticAbilityAst::AttachmentRestriction { filter, .. } => {
@@ -147,14 +232,82 @@ fn materialize_static_abilities(
                 let ability = rewrite_lower_static_ability_ast(ability)?;
                 let ability =
                     materialize_self_spell_cost_facts(ability, &semantic_facts.static_ability);
-                builder = builder.with_ability(materialize_static_zones(
-                    ability,
-                    &semantic_facts.static_ability,
-                ));
+                lowered_abilities.push(ability);
             }
         }
     }
+    let shared_spell_protection =
+        is_conditional_spell_counter_and_damage_prevention_group(&lowered_abilities);
+    for ability in lowered_abilities {
+        let mut materialized = materialize_static_zones(ability, &semantic_facts.static_ability);
+        if shared_spell_protection {
+            materialized = materialized.in_zones(spell_only_functional_zones());
+        }
+        builder = builder.with_ability(materialized);
+    }
     Ok(builder)
+}
+
+fn spell_only_functional_zones() -> Vec<Zone> {
+    vec![
+        Zone::Hand,
+        Zone::Stack,
+        Zone::Graveyard,
+        Zone::Exile,
+        Zone::Library,
+        Zone::Command,
+    ]
+}
+
+/// Both halves of "this spell can't be countered and the damage can't be
+/// prevented" are properties of the spell on the stack. The generic
+/// uncounterable leaf already carries spell-only zones, while the generic
+/// rule-restriction leaf defaults to the battlefield. Source-line provenance,
+/// an identical typed condition, and the exact complementary payloads prove
+/// when the restriction belongs to the same spell-protection clause.
+fn is_conditional_spell_counter_and_damage_prevention_group(
+    abilities: &[crate::static_abilities::StaticAbility],
+) -> bool {
+    let [first, second] = abilities else {
+        return false;
+    };
+    fn unwrap_conditional(
+        ability: &crate::static_abilities::StaticAbility,
+    ) -> Option<(
+        &crate::static_abilities::StaticAbility,
+        &crate::ConditionExpr,
+    )> {
+        let ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } =
+            &ability.payload
+        else {
+            return None;
+        };
+        Some((ability.as_ref(), condition))
+    }
+    let Some((first, first_condition)) = unwrap_conditional(first) else {
+        return false;
+    };
+    let Some((second, second_condition)) = unwrap_conditional(second) else {
+        return false;
+    };
+    if first_condition != second_condition {
+        return false;
+    }
+    let is_uncounterable = |ability: &crate::static_abilities::StaticAbility| {
+        ability.id == Some(crate::static_abilities::StaticAbilityId::CantBeCountered)
+    };
+    let is_unpreventable = |ability: &crate::static_abilities::StaticAbility| {
+        matches!(
+            &ability.payload,
+            ironsmith_core::StaticAbilityPayload::RuleRestriction {
+                restriction: crate::effect::Restriction::PreventDamage,
+                additional_restrictions,
+                ..
+            } if additional_restrictions.is_empty()
+        )
+    };
+    (is_uncounterable(first) && is_unpreventable(second))
+        || (is_uncounterable(second) && is_unpreventable(first))
 }
 
 fn materialize_self_spell_cost_facts(
@@ -199,14 +352,7 @@ fn materialize_static_zones(
 ) -> Ability {
     let mut materialized = Ability::static_ability(ability.clone());
     if uses_spell_only_functional_zones(&ability) {
-        materialized = materialized.in_zones(vec![
-            Zone::Hand,
-            Zone::Stack,
-            Zone::Graveyard,
-            Zone::Exile,
-            Zone::Library,
-            Zone::Command,
-        ]);
+        materialized = materialized.in_zones(spell_only_functional_zones());
     }
     if uses_all_zone_functional_zones(&ability) {
         materialized = materialized.in_zones(vec![
@@ -241,8 +387,13 @@ fn materialize_static_zones(
 fn materialize_ability(
     builder: CardDefinitionBuilder,
     ability: NormalizedParsedAbility,
+    semantic_facts: &LineSemanticFacts,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
-    let ability = rewrite_lower_prepared_ability(ability)?;
+    let mut ability = rewrite_lower_prepared_ability(ability)?;
+    preserve_triggered_leading_unless_surface(
+        &mut ability,
+        semantic_facts.triggered_ability.leading_unless_surface,
+    );
     Ok(builder.with_ability(ability))
 }
 
@@ -270,11 +421,55 @@ fn materialize_triggered(
         semantic_facts.triggered_ability.presentation_label.as_ref(),
         prepared.prepared.imports.clone(),
     );
-    let parsed = rewrite_lower_prepared_ability(NormalizedParsedAbility {
+    let mut parsed = rewrite_lower_prepared_ability(NormalizedParsedAbility {
         parsed,
         prepared: Some(NormalizedPreparedAbility::Triggered { trigger, prepared }),
     })?;
+    preserve_triggered_leading_unless_surface(
+        &mut parsed,
+        semantic_facts.triggered_ability.leading_unless_surface,
+    );
     Ok(builder.with_ability(parsed))
+}
+
+/// The leading/trailing `unless` distinction is line-level punctuation
+/// provenance collected before the trigger header is removed. Apply it only
+/// when lowering produced exactly one direct payment wrapper in the trigger
+/// body; an ambiguous or nested program retains its ordinary typed surface.
+fn preserve_triggered_leading_unless_surface(ability: &mut Ability, leading_surface: bool) {
+    if !leading_surface {
+        return;
+    }
+    let AbilityKind::Triggered(triggered) = &mut ability.kind else {
+        return;
+    };
+    let matches =
+        triggered
+            .effects
+            .segments
+            .iter()
+            .enumerate()
+            .flat_map(|(segment_index, segment)| {
+                segment.default_effects.iter().enumerate().filter_map(
+                    move |(effect_index, effect)| {
+                        effect
+                        .downcast_ref::<crate::effects::UnlessPaysEffect<crate::effect::Effect>>()
+                        .map(|_| (segment_index, effect_index))
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+    let [(segment_index, effect_index)] = matches.as_slice() else {
+        return;
+    };
+    let effect = &triggered.effects.segments[*segment_index].default_effects[*effect_index];
+    let mut unless = effect
+        .downcast_ref::<crate::effects::UnlessPaysEffect<crate::effect::Effect>>()
+        .expect("the unique payment wrapper was just identified")
+        .clone();
+    unless.leading_surface = true;
+    triggered.effects.segments[*segment_index].default_effects[*effect_index] =
+        crate::effect::Effect::new(unless);
 }
 
 fn trigger_frequency_condition(
@@ -294,6 +489,68 @@ fn trigger_frequency_condition(
     })
 }
 
+fn is_nested_anaphoric_target_condition(effect: &crate::cards::builders::EffectAst) -> bool {
+    let crate::cards::builders::EffectAst::ControlFlow(control) = effect else {
+        return false;
+    };
+    let crate::model::control_flow::ControlFlowNodeAst::Condition {
+        condition,
+        consequence_program,
+        alternative_program: None,
+        reflexive: false,
+    } = &control.node
+    else {
+        return false;
+    };
+    if condition.position != crate::model::control_flow::ConditionPositionAst::Postcondition
+        || !matches!(
+            &condition.predicate,
+            crate::model::control_flow::ControlPredicateAst::State(
+                crate::cards::builders::PredicateAst::ItMatches(_)
+            )
+        )
+    {
+        return false;
+    }
+    let Some(program) = control.program(*consequence_program) else {
+        return false;
+    };
+    effects_reference_tag_in_object_position(&program.effects, IT_TAG)
+}
+
+fn count_nested_anaphoric_target_conditions(
+    effects: &[crate::cards::builders::EffectAst],
+) -> usize {
+    effects
+        .iter()
+        .map(|effect| {
+            let mut count = usize::from(is_nested_anaphoric_target_condition(effect));
+            crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+                count += count_nested_anaphoric_target_conditions(nested);
+            });
+            count
+        })
+        .sum()
+}
+
+/// A separately authored self-replacement line can contain two postconditions:
+/// the final `instead if` gate and an earlier `if it ...` qualification on the
+/// replacement action. Reference preparation must bind that earlier pronoun
+/// to the action's authored `that ...` target, not to the spell source. Only a
+/// unique nested `ItMatches` whose own consequence consumes the `__it__` tag
+/// in target position satisfies this typed relationship.
+fn has_unique_cross_line_self_replacement_target_condition(
+    prepared: &PreparedEffectsForLowering,
+    facts: &crate::model::facts::StatementLineSemanticFacts,
+) -> bool {
+    if facts.instead_followup.semantics != crate::cards::builders::InsteadSemantics::SelfReplacement
+        || facts.trailing_instead_if_predicate.is_none()
+    {
+        return false;
+    }
+    count_nested_anaphoric_target_conditions(&prepared.effects) == 1
+}
+
 fn materialize_statement(
     mut builder: CardDefinitionBuilder,
     state: &mut RewriteLoweredCardState,
@@ -306,7 +563,10 @@ fn materialize_statement(
             "normalized statement contains no effects".to_string(),
         ));
     }
+    let rebind_cross_line_target_condition =
+        has_unique_cross_line_self_replacement_target_condition(&prepared, statement_facts);
     let mut lowered = rewrite_lower_prepared_statement_effects(&prepared)?;
+    preserve_single_statement_self_replacement_surface(&mut lowered.effects, statement_facts);
     fuse_repeatable_mana_payment_prevention_until_end_of_turn(
         &mut lowered.effects,
         statement_facts.repeatable_instant_timing_payment_until_end_of_turn,
@@ -317,10 +577,38 @@ fn materialize_statement(
         "spell text effects",
     )?;
     state.latest_spell_exports = lowered.exports;
+    if let Some(as_enters) = &statement_facts.as_enters_effect_program {
+        let static_ability = if as_enters.turns_face_up_only {
+            crate::static_abilities::StaticAbility::as_turns_face_up_effect_program(
+                lowered.effects,
+                as_enters.subject.clone(),
+                statement_facts.presentation_label.clone(),
+            )
+        } else {
+            crate::static_abilities::StaticAbility::as_enters_effect_program(
+                lowered.effects,
+                as_enters.subject.clone(),
+                as_enters.also_turns_face_up,
+                as_enters.uses_enters_with_counter_surface,
+                statement_facts.presentation_label.clone(),
+            )
+        };
+        return Ok(builder.with_ability(Ability::static_ability(static_ability)));
+    }
+    if let Some(as_transforms) = &statement_facts.as_transforms_effect_program {
+        let static_ability = crate::static_abilities::StaticAbility::as_transforms_effect_program(
+            lowered.effects,
+            as_transforms.subject.clone(),
+            as_transforms.destination.clone(),
+            statement_facts.presentation_label.clone(),
+        );
+        return Ok(builder.with_ability(Ability::static_ability(static_ability)));
+    }
     if attach_cross_line_self_replacement(
         builder.spell_effect.as_mut(),
         &lowered.effects,
         statement_facts,
+        rebind_cross_line_target_condition,
     ) {
         return Ok(builder);
     }
@@ -333,6 +621,36 @@ fn materialize_statement(
         builder.spell_effect = Some(lowered.effects);
     }
     Ok(builder)
+}
+
+/// A self replacement parsed inside one statement is materialized before the
+/// line-level presentation facts are applied. Reattach an authored leading
+/// `instead` only when the statement produced exactly one replacement branch;
+/// with multiple branches the single line-level bit cannot identify an owner.
+fn preserve_single_statement_self_replacement_surface(
+    program: &mut crate::resolution::ResolutionProgram,
+    facts: &crate::model::facts::StatementLineSemanticFacts,
+) {
+    if !facts.instead_followup.leading_instead_surface && facts.presentation_label.is_none() {
+        return;
+    }
+    let branch_count = program
+        .segments
+        .iter()
+        .map(|segment| segment.self_replacements.len())
+        .sum::<usize>();
+    if branch_count != 1 {
+        return;
+    }
+    let branch = program
+        .segments
+        .iter_mut()
+        .find_map(|segment| segment.self_replacements.first_mut())
+        .expect("one replacement branch was counted");
+    branch.leading_instead_surface |= facts.instead_followup.leading_instead_surface;
+    if branch.presentation_label.is_none() {
+        branch.presentation_label = facts.presentation_label.clone();
+    }
 }
 
 fn is_exact_permanent_or_player_object_filter(filter: &ObjectFilter) -> bool {
@@ -406,9 +724,20 @@ fn fuse_repeatable_mana_payment_prevention_until_end_of_turn(
     let Some(with_id) = payment_effect.downcast_ref::<crate::effects::WithIdEffect>() else {
         return false;
     };
-    let Some(may) = with_id
+    // The authored leading duration is presentation provenance, not an
+    // executable loop.  The generic sequence lowering retains it around the
+    // one optional payment, so unwrap that exact one-child shell before
+    // recognizing the repeatable special action.
+    let payment_body = with_id
         .effect
-        .downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>()
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .filter(|sequence| {
+            sequence.surface == ironsmith_core::SequenceSurface::CoordinatedLeadingDuration
+                && sequence.result_label.is_none()
+                && sequence.effects.len() == 1
+        })
+        .map_or(with_id.effect.as_ref(), |sequence| &sequence.effects[0]);
+    let Some(may) = payment_body.downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>()
     else {
         return false;
     };
@@ -730,7 +1059,7 @@ fn replace_search_limit(
 fn attach_cross_line_search_limit_replacement(
     existing: &mut crate::resolution::ResolutionProgram,
     conditional: &crate::effects::ConditionalEffect,
-    presentation_label: Option<crate::ability::PresentationLabel>,
+    facts: &crate::model::facts::StatementLineSemanticFacts,
 ) -> bool {
     let Some((filter, zones, replacement_count)) = sole_search_limit_shape(&conditional.if_true)
     else {
@@ -762,18 +1091,75 @@ fn attach_cross_line_search_limit_replacement(
         let Some((index, replacement)) = matched else {
             continue;
         };
-        segment.self_replacements.push(
-            crate::resolution::SelfReplacementBranch::new(
-                conditional.condition.clone(),
-                vec![replacement],
-            )
-            .with_presentation_label(presentation_label)
-            .with_starts_new_source_line(true),
-        );
+        let mut branch = crate::resolution::SelfReplacementBranch::new(
+            conditional.condition.clone(),
+            vec![replacement],
+        )
+        .with_presentation_label(facts.presentation_label.clone())
+        .with_leading_instead_surface(facts.instead_followup.leading_instead_surface)
+        .with_starts_new_source_line(true);
+        branch.condition_after_replacement = facts.trailing_instead_if_predicate.is_some();
+        segment.self_replacements.push(branch);
         debug_assert!(index < segment.default_effects.len());
         return true;
     }
     false
+}
+
+fn exact_single_replacement_action_target(effect: &crate::effect::Effect) -> Option<ChooseSpec> {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return exact_single_replacement_action_target(with_id.effect.as_ref());
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return exact_single_replacement_action_target(tagged.effect.as_ref());
+    }
+    if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
+        let [effect] = conditional.if_true.as_slice() else {
+            return None;
+        };
+        if !conditional.if_false.is_empty() {
+            return None;
+        }
+        return exact_single_replacement_action_target(effect);
+    }
+    extract_previous_replacement_target(effect)
+}
+
+fn rebind_runtime_cross_line_target_condition(
+    default_effect: &crate::effect::Effect,
+    replacement_effects: &[crate::effect::Effect],
+) -> Option<Vec<crate::effect::Effect>> {
+    let default_target = exact_single_replacement_action_target(default_effect)?;
+    let [replacement] = replacement_effects else {
+        return None;
+    };
+    let conditional = replacement.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let crate::ConditionExpr::SourceMatches(filter) = &conditional.condition else {
+        return None;
+    };
+    if conditional.surface != ironsmith_core::ConditionalSurface::TrailingIf
+        || !conditional.if_false.is_empty()
+    {
+        return None;
+    }
+    let replacement_target = exact_single_replacement_action_target(replacement)?;
+    let same_target_domain = match (default_target.base(), replacement_target.base()) {
+        (ChooseSpec::Object(default), ChooseSpec::Object(replacement)) => {
+            let mut default = default.clone();
+            let mut replacement = replacement.clone();
+            default.source_surface = None;
+            replacement.source_surface = None;
+            default == replacement
+        }
+        (default, replacement) => default == replacement,
+    };
+    if !same_target_domain {
+        return None;
+    }
+
+    let mut conditional = conditional.clone();
+    conditional.condition = crate::ConditionExpr::TargetMatches(filter.clone());
+    Some(vec![crate::effect::Effect::new(conditional)])
 }
 
 /// A separately authored `... instead` line is already classified by the
@@ -785,6 +1171,7 @@ fn attach_cross_line_self_replacement(
     existing: Option<&mut crate::resolution::ResolutionProgram>,
     followup: &crate::resolution::ResolutionProgram,
     facts: &crate::model::facts::StatementLineSemanticFacts,
+    rebind_local_target_condition: bool,
 ) -> bool {
     if facts.instead_followup.semantics != crate::cards::builders::InsteadSemantics::SelfReplacement
     {
@@ -816,11 +1203,7 @@ fn attach_cross_line_self_replacement(
     if !conditional.if_false.is_empty() {
         return false;
     }
-    if attach_cross_line_search_limit_replacement(
-        existing,
-        conditional,
-        facts.presentation_label.clone(),
-    ) {
+    if attach_cross_line_search_limit_replacement(existing, conditional, facts) {
         return true;
     }
     let Some(existing_segment) = existing.last_segment_mut() else {
@@ -831,14 +1214,21 @@ fn attach_cross_line_self_replacement(
     };
     let replacement_effects = retarget_amount_replacement(default_effect, &conditional.if_true)
         .unwrap_or_else(|| conditional.if_true.clone());
-    existing_segment.self_replacements.push(
-        crate::resolution::SelfReplacementBranch::new(
-            conditional.condition.clone(),
-            replacement_effects,
-        )
-        .with_presentation_label(facts.presentation_label.clone())
-        .with_starts_new_source_line(true),
-    );
+    let replacement_effects = if rebind_local_target_condition {
+        rebind_runtime_cross_line_target_condition(default_effect, &replacement_effects)
+            .unwrap_or(replacement_effects)
+    } else {
+        replacement_effects
+    };
+    let mut branch = crate::resolution::SelfReplacementBranch::new(
+        conditional.condition.clone(),
+        replacement_effects,
+    )
+    .with_presentation_label(facts.presentation_label.clone())
+    .with_leading_instead_surface(facts.instead_followup.leading_instead_surface)
+    .with_starts_new_source_line(true);
+    branch.condition_after_replacement = facts.trailing_instead_if_predicate.is_some();
+    existing_segment.self_replacements.push(branch);
     true
 }
 
@@ -1104,5 +1494,33 @@ fn public_two_line_damage_replacement_reuses_both_announced_targets() {
     assert!(matches!(
         branch.presentation_label,
         Some(crate::cards::builders::PresentationLabel::AbilityWord(ref label)) if label == "Landfall"
+    ));
+}
+
+#[cfg(test)]
+#[test]
+fn trigger_line_facts_preserve_only_a_grammar_proven_leading_unless() {
+    fn leading_surface(text: &str) -> bool {
+        let definition = CardDefinitionBuilder::new(crate::CardId::from_raw(1), "Unless Probe")
+            .card_types(vec![crate::types::CardType::Creature])
+            .parse_text(text)
+            .expect("unless trigger should compile");
+        let AbilityKind::Triggered(triggered) = &definition.abilities[0].kind else {
+            panic!("expected a triggered ability")
+        };
+        let [effect] = triggered.effects.flattened_default_effects() else {
+            panic!("expected one payment wrapper: {:#?}", triggered.effects)
+        };
+        effect
+            .downcast_ref::<crate::effects::UnlessPaysEffect<crate::effect::Effect>>()
+            .expect("typed payment wrapper")
+            .leading_surface
+    }
+
+    assert!(leading_surface(
+        "At the beginning of your upkeep, unless you sacrifice an Island, sacrifice this creature."
+    ));
+    assert!(!leading_surface(
+        "At the beginning of your upkeep, sacrifice this creature unless you sacrifice an Island."
     ));
 }

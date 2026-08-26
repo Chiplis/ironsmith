@@ -201,9 +201,14 @@ impl CardDefinitionBuilder {
     }
 
     pub fn enchants(mut self, filter: AuraAttachmentFilter) -> Self {
-        self.spell_effect = Some(ResolutionProgram::from_effects(vec![
-            crate::effect::Effect::attach_to(filter.target_spec()),
-        ]));
+        let mut attachment =
+            ResolutionProgram::from_effects(vec![crate::effect::Effect::attach_to(
+                filter.target_spec(),
+            )]);
+        if let Some(existing) = self.spell_effect.take() {
+            attachment.extend(existing);
+        }
+        self.spell_effect = Some(attachment);
         self.aura_attach_filter = Some(filter);
         self
     }

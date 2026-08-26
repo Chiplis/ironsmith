@@ -119,6 +119,7 @@ pub use player_effect_helpers::{
     LoweredSubject, SubjectRole, compile_player_effect_from_resolved_filter,
     compile_player_role_effect,
 };
+pub(crate) use prepared_effects::normalize_correlated_two_target_characteristic_damage;
 pub use prepared_effects::{
     compile_condition_from_predicate_ast_with_env,
     materialize_prepared_effects_with_trigger_context, materialize_prepared_statement_effects,
@@ -133,8 +134,9 @@ pub use tag_support::{
     choose_spec_references_exiled_tag, collect_tag_spans_from_effects_with_context,
     effect_references_it_tag, effect_references_its_controller, effect_references_tag,
     effects_have_cross_arm_tag_dependency, effects_reference_it_tag,
-    effects_reference_its_controller, effects_reference_tag, filter_references_tag,
-    is_exile_cost_collection_tag, is_revealed_collection_tag, is_searched_collection_tag,
+    effects_reference_its_controller, effects_reference_tag,
+    effects_reference_tag_in_object_position, filter_references_tag, is_exile_cost_collection_tag,
+    is_revealed_collection_tag, is_searched_collection_tag,
     is_sentence_helper_exiled_collection_tag, predicate_references_tag,
 };
 pub use trigger_support::{
@@ -936,6 +938,9 @@ pub fn compile_condition_from_predicate_ast(
                 }
             }
         }
+        PredicateAst::ValueIsPrime(value) => {
+            Condition::ValueIsPrime(resolve_value_it_tag(value, &refs)?)
+        }
         PredicateAst::Not(inner) => {
             let inner = compile_condition_from_predicate_ast(inner, ctx, saved_last_tag)?;
             Condition::Not(Box::new(inner))
@@ -986,7 +991,7 @@ pub fn compile_annotated_effects_with_context(
 
     while idx < annotated.effects.len() {
         let current = &annotated.effects[idx];
-        apply_local_reference_env(ctx, &current.in_env);
+        apply_local_reference_env_for_effect(ctx, &current.in_env, &current.effect);
         let suppress_force_for_power_self_damage =
             preserves_existing_it_for_power_self_damage_followup(
                 &current.effect,
@@ -1094,7 +1099,17 @@ pub fn compile_annotated_effects_with_context(
         let effect_list_is_empty = effect_list.is_empty();
         merge_compiled_choices(&mut choices, &effect_list, effect_choices);
         compiled.extend(effect_list);
+        let concrete_runtime_player = ctx.last_player_filter.clone();
         let mut frame_out = current.out_env.to_lowering_frame(false, false);
+        if annotated
+            .effects
+            .get(idx + 1)
+            .is_some_and(|next| effect_has_anaphoric_player_subject(&next.effect))
+            && current.out_env.known_last_player_filter() == Some(&PlayerFilter::Opponent)
+            && matches!(concrete_runtime_player, Some(PlayerFilter::TaggedPlayer(_)))
+        {
+            frame_out.last_player_filter = concrete_runtime_player;
+        }
         if current.assigned_effect_id.is_some() && effect_list_is_empty {
             frame_out.last_effect_id = None;
         }
@@ -2381,6 +2396,40 @@ fn current_reference_env(ctx: &EffectLoweringContext) -> ReferenceEnv {
 fn apply_local_reference_env(ctx: &mut EffectLoweringContext, env: &ReferenceEnv) {
     let reference_env: crate::cards::builders::ReferenceEnv = env.clone();
     ctx.apply_reference_env(&reference_env);
+}
+
+fn apply_local_reference_env_for_effect(
+    ctx: &mut EffectLoweringContext,
+    env: &ReferenceEnv,
+    effect: &EffectAst,
+) {
+    let concrete_runtime_player = ctx.last_player_filter.clone();
+    apply_local_reference_env(ctx, env);
+
+    let anaphoric_player_subject = effect_has_anaphoric_player_subject(effect);
+    let annotation_only_knows_opponent_class =
+        env.known_last_player_filter() == Some(&PlayerFilter::Opponent);
+    if anaphoric_player_subject
+        && annotation_only_knows_opponent_class
+        && matches!(concrete_runtime_player, Some(PlayerFilter::TaggedPlayer(_)))
+    {
+        // A singular authored `an opponent` is selected while the preceding
+        // effect resolves.  Its compiler AST necessarily carries the broad
+        // Opponent class, while materialization exports the exact selected
+        // player as a tag.  Do not let the next annotation frame widen that
+        // concrete export before an authored `that player`/`they` consumes
+        // it.  Explicit Opponent subjects are intentionally unaffected and
+        // still establish their own selection.
+        ctx.last_player_filter = concrete_runtime_player;
+    }
+}
+
+fn effect_has_anaphoric_player_subject(effect: &EffectAst) -> bool {
+    matches!(
+        effect,
+        EffectAst::SubjectVerb(subject_verb)
+            if subject_verb.subject.player == PlayerAst::That
+    )
 }
 
 fn lower_granted_ability_grant_modifications(

@@ -86,6 +86,23 @@ pub(super) fn take_self_replacement_condition(
     }
 }
 
+fn explicit_self_replacement_result_tag(effect: &EffectAst) -> Option<TagKey> {
+    match effect {
+        EffectAst::TagAffected { tag, .. } if tag.as_str() != IT_TAG => Some(tag.clone()),
+        EffectAst::Sequence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::SourceSentence { effects, .. }
+        | EffectAst::Coordinated { effects, .. }
+        | EffectAst::May { effects }
+        | EffectAst::MayByPlayer { effects, .. }
+            if effects.len() == 1 =>
+        {
+            explicit_self_replacement_result_tag(&effects[0])
+        }
+        _ => None,
+    }
+}
+
 pub(super) fn predicate_explicitly_says_that_land(predicate: &PredicateAst) -> bool {
     match predicate {
         PredicateAst::SourceMatches(filter)
@@ -204,16 +221,39 @@ pub(in super::super) fn post_rule_future_zone_and_self_replacement(
                 consumed_sentences: 1,
             }));
         }
-        let Some(previous) = state.effects.pop() else {
+        let Some(mut previous) = state.effects.pop() else {
             return Err(CardTextError::InvariantViolation(
                 "expected previous effect for 'instead' conditional rewrite".to_string(),
             ));
         };
         let previous_target = primary_target_from_effect(&previous);
+        let mut previous_result_tag = explicit_self_replacement_result_tag(&previous);
+        let replacement_qualifies_antecedent = if_true
+            .iter()
+            .find_map(primary_target_from_effect)
+            .as_ref()
+            .is_some_and(target_has_authored_it_qualification);
+        if previous_result_tag.is_none()
+            && previous_target.is_some()
+            && replacement_qualifies_antecedent
+        {
+            let tag =
+                crate::util::helper_tag_for_tokens(sentence_tokens, "self_replacement_antecedent");
+            previous = EffectAst::TagAffected {
+                effect: Box::new(previous),
+                tag: tag.clone(),
+            };
+            previous_result_tag = Some(tag);
+        }
         let previous_damage_target = primary_damage_target_from_effect(&previous);
         let previous_damage_source = primary_damage_source_from_effect(&previous);
         let predicate = bind_self_replacement_condition_to_previous_target(
             predicate,
+            sentence_tokens,
+            previous_target.as_ref(),
+        );
+        bind_nested_self_replacement_condition_to_previous_target(
+            &mut if_true,
             sentence_tokens,
             previous_target.as_ref(),
         );
@@ -242,7 +282,12 @@ pub(in super::super) fn post_rule_future_zone_and_self_replacement(
         if let Some(owner) = first_search_library_owner(&default_effects) {
             bind_self_replacement_search_owner(&mut if_true, &owner);
         }
-        if let Some(target) = previous_target.as_ref() {
+        if let Some(target) = previous_result_tag
+            .as_ref()
+            .map(|tag| TargetAst::Tagged(tag.clone(), None))
+            .as_ref()
+            .or(previous_target.as_ref())
+        {
             replace_it_target_in_effects(&mut if_true, target);
         }
         if let Some(target) = previous_damage_target.as_ref() {

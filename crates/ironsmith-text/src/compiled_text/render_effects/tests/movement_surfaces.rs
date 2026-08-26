@@ -265,6 +265,38 @@ fn plural_hand_choice_moves_render_as_one_typed_battlefield_move() {
 }
 
 #[test]
+fn plural_hand_choice_preserves_face_down_battlefield_entry() {
+    let tag = TagKey::from("chosen");
+    let choose = crate::effects::ChooseObjectsEffect::new(
+        ObjectFilter::creature()
+            .in_zone(Zone::Hand)
+            .owned_by(PlayerFilter::You),
+        ChoiceCount::any_number(),
+        PlayerFilter::You,
+        tag.clone(),
+    );
+    let face_down = crate::effects::MoveToZoneEffect::new(
+        ChooseSpec::Tagged(tag.clone()),
+        Zone::Battlefield,
+        false,
+    )
+    .face_down()
+    .with_actor_surface(PlayerFilter::You);
+    let face_up =
+        crate::effects::MoveToZoneEffect::new(ChooseSpec::Tagged(tag), Zone::Battlefield, false)
+            .with_actor_surface(PlayerFilter::You);
+
+    assert_eq!(
+        describe_effect_list(&[Effect::new(choose.clone()), Effect::new(face_down)]),
+        "you put any number of creature cards from your hand onto the battlefield face down"
+    );
+    assert_eq!(
+        describe_effect_list(&[Effect::new(choose), Effect::new(face_up)]),
+        "you put any number of creature cards from your hand onto the battlefield"
+    );
+}
+
+#[test]
 fn comma_then_preserves_a_trailing_plural_hand_choice_move() {
     let tag = TagKey::from("chosen");
     let choose = crate::effects::ChooseObjectsEffect::new(

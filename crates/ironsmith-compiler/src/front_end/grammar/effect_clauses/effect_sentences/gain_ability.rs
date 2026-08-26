@@ -45,7 +45,7 @@ use crate::model::CompilerStaticAbilityCore as StaticAbility;
 use crate::model::compiler_semantic::CompilerAbilityCore as Ability;
 use crate::model::token_definition::TokenDefinitionSpec;
 use crate::static_abilities::StaticAbilityId;
-use crate::target::{ObjectFilter, PlayerFilter, SourceReferenceSurface};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, SourceReferenceSurface};
 use crate::types::CardType;
 use crate::zone::Zone;
 
@@ -203,6 +203,49 @@ fn append_shared_subject_pump_to_target(
             condition.clone(),
         ));
     }
+}
+
+fn bind_shared_subject_characteristic_fallback(value: &Value) -> Value {
+    let shared_target = || Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)));
+    match value {
+        Value::SourcePower => Value::PowerOf(shared_target()),
+        Value::SourceToughness => Value::ToughnessOf(shared_target()),
+        Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
+            value: Box::new(bind_shared_subject_characteristic_fallback(value)),
+            hints: hints.clone(),
+        },
+        Value::Add(left, right) => Value::Add(
+            Box::new(bind_shared_subject_characteristic_fallback(left)),
+            Box::new(bind_shared_subject_characteristic_fallback(right)),
+        ),
+        Value::Scaled(value, multiplier) => Value::Scaled(
+            Box::new(bind_shared_subject_characteristic_fallback(value)),
+            *multiplier,
+        ),
+        Value::DividedRoundedDown(value, divisor) => Value::DividedRoundedDown(
+            Box::new(bind_shared_subject_characteristic_fallback(value)),
+            *divisor,
+        ),
+        Value::HalfRoundedDown(value) => {
+            Value::HalfRoundedDown(Box::new(bind_shared_subject_characteristic_fallback(value)))
+        }
+        Value::Min(left, right) => Value::Min(
+            Box::new(bind_shared_subject_characteristic_fallback(left)),
+            Box::new(bind_shared_subject_characteristic_fallback(right)),
+        ),
+        _ => value.clone(),
+    }
+}
+
+/// Bind a bare possessive characteristic in a shared target clause to that
+/// clause's declared target. Explicit source references already parse as
+/// `PowerOf(Source)`/`ToughnessOf(Source)` and therefore remain unchanged.
+fn bind_shared_subject_pump_characteristics(pump: &mut Option<SharedSubjectPump>) {
+    let Some((power, toughness, ..)) = pump else {
+        return;
+    };
+    *power = bind_shared_subject_characteristic_fallback(power);
+    *toughness = bind_shared_subject_characteristic_fallback(toughness);
 }
 
 fn append_shared_subject_base_pt_to_target(
@@ -556,6 +599,16 @@ fn parse_granted_ability_component_for_gain(
         return Ok(None);
     }
     let ability_words = crate::lexer::token_word_refs(&ability_tokens);
+    let top_level_activated_ability = authored_as_quoted_ability
+        && ability_tokens
+            .iter()
+            .position(|token| token.kind == TokenKind::Colon)
+            .is_some_and(|colon| {
+                ability_tokens
+                    .iter()
+                    .position(|token| token.kind == TokenKind::Apostrophe)
+                    .is_none_or(|inner_quote| colon < inner_quote)
+            });
     if crate::word_primitives::parse_any_sequence_complete(
         &ability_words,
         &[
@@ -600,6 +653,30 @@ fn parse_granted_ability_component_for_gain(
             }
         }
         gain_shapes::GrantedAbilitySurface::Other => {}
+    }
+
+    // A quoted ability can itself be a filtered static grant, for example
+    // `"Creatures you control have '{T}: Add {R}, {G}, or {W}.'"`. The colon
+    // belongs to the nested activated ability, not to the complete quoted
+    // rule. Let the typed static-line grammar preserve that outer subject
+    // before the ordinary activated-ability probe sees the colon.
+    // An outer quoted activation may contain its own apostrophe-quoted token
+    // rule. Its colon precedes that inner quote; parse the activation before
+    // the static-rule probe can claim the nested token anthem as the whole
+    // granted ability. A filtered static grant has its colon inside the
+    // apostrophes and keeps the existing static-first route below.
+    if top_level_activated_ability
+        && let Some(granted) =
+            parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, clause_words)?
+    {
+        return Ok(Some(vec![granted]));
+    }
+
+    if authored_as_quoted_ability
+        && let Some(static_abilities) = parse_static_ability_ast_line_lexed(&ability_tokens)?
+        && !static_abilities.is_empty()
+    {
+        return parsed_static_granted_abilities(&ability_tokens, static_abilities).map(Some);
     }
 
     if let Some(granted) =
@@ -1029,6 +1106,41 @@ fn parse_ability_duration_with_condition(
         Some((shape.start, shape.len, shape.duration)),
         shape.condition,
     )
+}
+
+fn parse_temporary_escape_grant(
+    subject_tokens: &[OwnedLexToken],
+    ability_tokens: &[OwnedLexToken],
+    duration: &Until,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let Some(method) = crate::util::parse_escape_line_lexed(ability_tokens)? else {
+        return Ok(None);
+    };
+    let grant_duration = match duration {
+        Until::Forever => crate::grant::GrantDuration::Forever,
+        Until::EndOfTurn => crate::grant::GrantDuration::UntilEndOfTurn,
+        Until::YourNextTurn | Until::YourNextTurnEnd => {
+            crate::grant::GrantDuration::UntilYourNextTurnEnd
+        }
+        _ => return Ok(None),
+    };
+    let mut filter = parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported subject in escape-grant clause (clause: '{}')",
+            crate::lexer::token_word_refs(subject_tokens).join(" ")
+        ))
+    })?;
+    let zone = filter.zone.take().unwrap_or(Zone::Graveyard);
+    let spec = crate::model::CompilerGrantSpecCore::new(
+        crate::model::CompilerGrantableCore::AlternativeCast(method),
+        filter,
+        zone,
+    );
+    Ok(Some(EffectAst::subject_verb_grant_by_spec(
+        spec,
+        PlayerAst::You,
+        grant_duration,
+    )))
 }
 
 fn player_filter_for_gain_condition(player: PlayerAst) -> Option<PlayerFilter> {
@@ -1471,6 +1583,13 @@ fn parse_simple_ability_modifier_clause_lexed(
     ));
     if ability_tokens.is_empty() {
         return Ok(None);
+    }
+
+    if !losing
+        && let Some(grant) =
+            parse_temporary_escape_grant(subject_tokens, &ability_tokens, &duration)?
+    {
+        return Ok(Some(grant));
     }
 
     let ability_word_refs = GainAbilityWordView::new(&ability_tokens).to_word_refs();

@@ -103,8 +103,22 @@ pub fn parse_switch_power_toughness_tokens(
 ) -> Option<SwitchPowerToughnessShape<'_>> {
     let (power, _, after_power) =
         primitives::find_prefix(tokens, || primitives::kw("power").void())?;
-    primitives::find_prefix(after_power, || primitives::kw("toughness").void())?;
-    let target_tokens = trim_lexed_commas(tokens.get(..power)?);
+    let (_, _, after_toughness) =
+        primitives::find_prefix(after_power, || primitives::kw("toughness").void())?;
+    let leading_target = trim_lexed_commas(tokens.get(..power)?);
+    let target_tokens = if permission_shapes::exact_tokens(leading_target, &["the"])
+        && let Some(((), trailing_target)) =
+            primitives::parse_prefix(after_toughness, primitives::kw("of").void())
+        && !trailing_target.is_empty()
+    {
+        let trailing_target =
+            primitives::parse_prefix(trailing_target, primitives::phrase(&["each", "of"]).void())
+                .map(|(_, remainder)| remainder)
+                .unwrap_or(trailing_target);
+        trim_lexed_commas(trailing_target)
+    } else {
+        leading_target
+    };
     let target = if target_tokens.is_empty()
         || [
             &["this"][..],
@@ -513,6 +527,20 @@ mod tests {
     fn parses_switch_skip_flip_and_roll_shapes() {
         let switch = lex_line("target creature's power and toughness", 0).expect("lex");
         assert!(parse_switch_power_toughness_tokens(&switch).is_some());
+
+        let trailing_target = lex_line(
+            "the power and toughness of each of up to two target creatures",
+            0,
+        )
+        .expect("lex trailing switch target");
+        let parsed = parse_switch_power_toughness_tokens(&trailing_target)
+            .expect("trailing switch target should parse");
+        assert!(matches!(
+            parsed.target,
+            SwitchTargetSurface::Explicit(tokens)
+                if crate::lexer::token_word_refs(tokens)
+                    == ["up", "to", "two", "target", "creatures"]
+        ));
 
         let skip = lex_line("your next combat phase this turn", 0).expect("lex");
         assert_eq!(

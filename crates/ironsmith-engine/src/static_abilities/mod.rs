@@ -328,6 +328,7 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     ) -> Option<(
         &crate::target::ObjectFilter,
         Option<ironsmith_core::DamagedBySource>,
+        Option<&crate::target::ObjectFilter>,
         &[(crate::object::CounterType, u32)],
         &[crate::effect::Effect],
     )> {
@@ -1547,6 +1548,7 @@ impl StaticAbility {
     ) -> Option<(
         &crate::target::ObjectFilter,
         Option<ironsmith_core::DamagedBySource>,
+        Option<&crate::target::ObjectFilter>,
         &[(crate::object::CounterType, u32)],
         &[crate::effect::Effect],
     )> {
@@ -3958,6 +3960,25 @@ impl StaticAbility {
         damaged_by: ironsmith_core::DamagedBySource,
     ) -> Self {
         Self::new(ExileWouldDieInstead::damaged_by(filter, damaged_by))
+    }
+
+    pub fn exile_would_die_instead_with_damage_filter(
+        filter: crate::target::ObjectFilter,
+        damager_filter: crate::target::ObjectFilter,
+    ) -> Self {
+        Self::exile_would_die_instead_with_damage_filter_surface(filter, damager_filter, None)
+    }
+
+    pub fn exile_would_die_instead_with_damage_filter_surface(
+        filter: crate::target::ObjectFilter,
+        damager_filter: crate::target::ObjectFilter,
+        damager_filter_surface: Option<String>,
+    ) -> Self {
+        Self::new(ExileWouldDieInstead::damaged_by_filter_with_surface(
+            filter,
+            damager_filter,
+            damager_filter_surface,
+        ))
     }
 
     pub fn exile_would_die_instead_with_damage_source_and_follow_up(

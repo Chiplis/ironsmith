@@ -1,6 +1,5 @@
 use super::*;
 
-
 pub fn parse_attached_is_legendary_gets_and_has_keywords_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -47,7 +46,6 @@ pub fn parse_attached_is_legendary_gets_and_has_keywords_line(
 
     Ok(Some(out))
 }
-
 
 pub fn parse_attached_gets_and_has_ability_line(
     tokens: &[OwnedLexToken],
@@ -176,7 +174,6 @@ pub fn parse_attached_gets_and_has_ability_line(
         line_text
     )))
 }
-
 
 pub fn parse_equipped_gets_and_has_activated_ability_line(
     tokens: &[OwnedLexToken],

@@ -3817,6 +3817,11 @@ fn filter_matches_layered_fast(
             return Some(false);
         }
     }
+    if let Some(required_cost) = &filter.exact_mana_cost
+        && object.mana_cost.as_deref() != Some(required_cost)
+    {
+        return Some(false);
+    }
     if filter.has_mana_cost {
         match &object.mana_cost {
             Some(cost) if !cost.is_empty() => {}

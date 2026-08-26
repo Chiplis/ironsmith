@@ -117,6 +117,28 @@ fn parses_counter_choice_and_counter_kind_shapes() {
         .unwrap();
     let shape = parse_for_each_counter_kind_tokens(&each).unwrap();
     assert_eq!(render_token_slice(shape.target_tokens), "target permanent");
+
+    let distribution = lex_line(
+        "Then for each kind of counter among creatures you control, put a counter of that kind on either of those tokens.",
+        0,
+    )
+    .unwrap();
+    let distribution = parse_counter_kind_distribution_tokens(&distribution).unwrap();
+    assert_eq!(
+        render_token_slice(distribution.counter_source_tokens),
+        "creatures you control"
+    );
+    assert_eq!(
+        render_token_slice(distribution.target_tokens),
+        "either of those tokens"
+    );
+
+    let wrong_relation = lex_line(
+        "Then for each kind of counter on creatures you control, put a counter of that kind on either of those tokens.",
+        0,
+    )
+    .unwrap();
+    assert!(parse_counter_kind_distribution_tokens(&wrong_relation).is_none());
 }
 
 #[test]

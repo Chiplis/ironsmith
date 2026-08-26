@@ -602,6 +602,41 @@ fn parse_explicit_card_filter_disjunction(
     Ok(Some(union))
 }
 
+/// Preserve a subtype-or-colored-permanent selector as a real disjunction.
+///
+/// A shared terminal noun normally lets the characteristic grammar flatten
+/// forms such as `instant or sorcery spell`. That is not valid for
+/// `an Island or blue permanent`: the subtype belongs to one arm while the
+/// color and permanent domain belong to the other. Reuse the branch-scoped
+/// union parser, but claim only this mixed selector shape so ordinary shared
+/// terminal type lists keep their established representation.
+fn parse_subtype_or_colored_permanent_disjunction(
+    tokens: &[OwnedLexToken],
+    other: bool,
+) -> Option<ObjectFilter> {
+    let words = parser_token_word_refs(tokens);
+    if !words
+        .iter()
+        .any(|word| matches!(*word, "permanent" | "permanents"))
+        || words.iter().filter(|word| **word == "or").count() != 1
+    {
+        return None;
+    }
+
+    let union = parse_branch_scoped_object_filter_union_lexed(tokens, other)?;
+    let has_subtype_arm = union.any_of.iter().any(|branch| {
+        !branch.subtypes.is_empty()
+            && branch.colors.is_none()
+            && branch.card_types.is_empty()
+            && branch.all_card_types.is_empty()
+    });
+    let has_colored_permanent_arm = union.any_of.iter().any(|branch| {
+        branch.colors.is_some()
+            && (!branch.card_types.is_empty() || !branch.all_card_types.is_empty())
+    });
+    (has_subtype_arm && has_colored_permanent_arm).then_some(union)
+}
+
 pub(super) fn slice_has<T: PartialEq>(items: &[T], expected: &T) -> bool {
     crate::slice_primitives::contains(items, expected)
 }
@@ -831,9 +866,55 @@ fn finalize_public_object_filter(
 ) -> ObjectFilter {
     apply_phyrexian_mana_cost_predicate(&mut filter, tokens);
     super::grammar::filters::apply_supertype_or_mana_capability_union(&mut filter, tokens);
+    preserve_combat_role_disjunction(&mut filter, tokens);
     preserve_public_spell_filter_facts(&mut filter, tokens);
     preserve_terminal_characteristic_union_domain(&mut filter, tokens);
     deduplicate_tagged_constraints(filter)
+}
+
+/// Preserve a shared-terminal combat-role union as alternatives rather than
+/// an impossible intersection. The ordinary atom parser intentionally
+/// carries the terminal noun backward across `attacking or blocking
+/// creature`, but its flat boolean representation would otherwise require a
+/// candidate to be both attacking and blocking at once.
+fn preserve_combat_role_disjunction(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
+    if !filter.any_of.is_empty() || !filter.attacking || !filter.blocking {
+        return;
+    }
+    let words = parser_token_word_refs(tokens);
+    let attacking_first =
+        crate::word_primitives::sequence_occurs(&words, &["attacking", "or", "blocking"]);
+    let blocking_first =
+        crate::word_primitives::sequence_occurs(&words, &["blocking", "or", "attacking"]);
+    if !attacking_first && !blocking_first {
+        return;
+    }
+
+    filter.attacking = false;
+    filter.blocking = false;
+    let card_types = std::mem::take(&mut filter.card_types);
+    let all_card_types = std::mem::take(&mut filter.all_card_types);
+    let explicit_card_type_noun = filter.explicit_card_type_noun();
+    filter.set_explicit_card_type_noun(None);
+    let mut attacking = ObjectFilter {
+        attacking: true,
+        ..ObjectFilter::default()
+    };
+    let mut blocking = ObjectFilter {
+        blocking: true,
+        ..ObjectFilter::default()
+    };
+    for branch in [&mut attacking, &mut blocking] {
+        branch.card_types = card_types.clone();
+        branch.all_card_types = all_card_types.clone();
+        branch.set_explicit_card_type_noun(explicit_card_type_noun);
+    }
+    filter.any_of = if attacking_first {
+        vec![attacking, blocking]
+    } else {
+        vec![blocking, attacking]
+    };
+    filter.set_union_connective(ObjectFilterUnionConnective::Or);
 }
 
 pub fn parse_object_filter(
@@ -899,6 +980,9 @@ fn parse_object_filter_inner(
         return parse_object_filter(base_tokens, other);
     }
     if let Some(filter) = parse_explicit_card_filter_disjunction(tokens, other)? {
+        return Ok(filter);
+    }
+    if let Some(filter) = parse_subtype_or_colored_permanent_disjunction(tokens, other) {
         return Ok(filter);
     }
     let has_shared_terminal_noun = has_shared_terminal_object_noun(tokens);
@@ -1080,6 +1164,9 @@ fn parse_object_filter_lexed_inner(
         return Ok(filter);
     }
     if let Some(filter) = parse_explicit_card_filter_disjunction(tokens, other)? {
+        return Ok(filter);
+    }
+    if let Some(filter) = parse_subtype_or_colored_permanent_disjunction(tokens, other) {
         return Ok(filter);
     }
     let has_shared_terminal_noun = has_shared_terminal_object_noun(tokens);
@@ -2615,6 +2702,51 @@ mod tests {
             filter.description(),
             "creature with power 2 or less and/or Wall"
         );
+    }
+
+    #[test]
+    fn subtype_or_colored_permanent_keeps_independent_union_arms() {
+        for (text, subtype, color) in [
+            (
+                "an Island or blue permanent",
+                Subtype::Island,
+                ColorSet::BLUE,
+            ),
+            (
+                "a Swamp or black permanent",
+                Subtype::Swamp,
+                ColorSet::BLACK,
+            ),
+        ] {
+            let tokens = tokenize_line(text, 0);
+            let filter = parse_object_filter_lexed(&tokens, false)
+                .expect("mixed permanent selector should parse");
+
+            assert_eq!(filter.any_of.len(), 2, "{text}: {filter:#?}");
+            assert!(
+                filter.any_of.iter().any(|arm| arm.subtypes == [subtype]
+                    && arm.colors.is_none()
+                    && arm.card_types.is_empty()),
+                "{text}: {filter:#?}"
+            );
+            assert!(
+                filter.any_of.iter().any(|arm| arm.colors == Some(color)
+                    && !arm.card_types.is_empty()
+                    && arm.subtypes.is_empty()),
+                "{text}: {filter:#?}"
+            );
+        }
+    }
+
+    #[test]
+    fn ordinary_shared_terminal_type_union_is_not_claimed_as_mixed_permanents() {
+        let tokens = tokenize_line("an artifact or creature permanent", 0);
+        let filter = parse_object_filter_lexed(&tokens, false)
+            .expect("shared-terminal type union should parse");
+
+        assert!(filter.any_of.is_empty(), "{filter:#?}");
+        assert!(filter.card_types.contains(&CardType::Artifact));
+        assert!(filter.card_types.contains(&CardType::Creature));
     }
 
     #[test]

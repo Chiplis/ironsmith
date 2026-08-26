@@ -3732,6 +3732,7 @@ impl ModifyPowerToughnessEffect {
 pub struct FightEffect {
     pub creature1: ChooseSpec,
     pub creature2: ChooseSpec,
+    pub mutual_surface: bool,
 }
 
 impl FightEffect {
@@ -3739,7 +3740,13 @@ impl FightEffect {
         Self {
             creature1,
             creature2,
+            mutual_surface: false,
         }
+    }
+
+    pub fn with_mutual_surface(mut self) -> Self {
+        self.mutual_surface = true;
+        self
     }
 
     pub fn you_vs_opponent() -> Self {

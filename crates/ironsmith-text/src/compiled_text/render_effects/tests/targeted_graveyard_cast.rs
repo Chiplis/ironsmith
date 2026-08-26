@@ -86,6 +86,67 @@ fn duration_scoped_targeted_graveyard_cast(without_paying_mana_cost: bool) -> Ve
     effects
 }
 
+fn immediate_damaged_player_nonland_permanent_cast() -> Vec<Effect> {
+    let target_tag = TagKey::from("targeted_damaged_player_graveyard_card");
+    let mut filter = ObjectFilter::default().in_zone(Zone::Graveyard);
+    filter.owner = Some(PlayerFilter::DamagedPlayer);
+    filter.card_types = vec![
+        CardType::Artifact,
+        CardType::Creature,
+        CardType::Enchantment,
+        CardType::Land,
+        CardType::Planeswalker,
+        CardType::Battle,
+    ];
+    filter.excluded_card_types = vec![CardType::Land];
+    filter.set_explicit_card_noun(true);
+    vec![
+        Effect::new(crate::effects::TargetOnlyEffect::new(ChooseSpec::target(
+            ChooseSpec::Object(filter),
+        )))
+        .tag(target_tag.clone()),
+        Effect::may(vec![Effect::new(
+            crate::effects::CastTaggedEffect::new(target_tag, PlayerFilter::You)
+                .mana_spend_mode(ironsmith_core::value_model::ManaSpendMode::AnyType),
+        )]),
+    ]
+}
+
+#[test]
+fn immediate_damaged_player_graveyard_cast_keeps_target_and_mana_mode() {
+    let effects = immediate_damaged_player_nonland_permanent_cast();
+    assert_eq!(
+        describe_effect_list(&effects),
+        "You may cast target nonland permanent card from that player's graveyard, and mana of any type can be spent to cast that spell"
+    );
+
+    let mut wrong_mode = effects.clone();
+    let may = wrong_mode[1]
+        .downcast_ref::<crate::effects::MayEffect>()
+        .expect("second effect should be optional")
+        .clone();
+    let cast = may.effects[0]
+        .downcast_ref::<crate::effects::CastTaggedEffect>()
+        .expect("optional effect should cast the tagged target")
+        .clone()
+        .mana_spend_mode(ironsmith_core::value_model::ManaSpendMode::Normal);
+    wrong_mode[1] = Effect::may(vec![Effect::new(cast)]);
+    assert_ne!(
+        describe_effect_list(&wrong_mode),
+        "You may cast target nonland permanent card from that player's graveyard, and mana of any type can be spent to cast that spell"
+    );
+
+    let mut wrong_tag = effects.clone();
+    wrong_tag[1] = Effect::may(vec![Effect::new(
+        crate::effects::CastTaggedEffect::new("another_target", PlayerFilter::You)
+            .mana_spend_mode(ironsmith_core::value_model::ManaSpendMode::AnyType),
+    )]);
+    assert_ne!(
+        describe_effect_list(&wrong_tag),
+        "You may cast target nonland permanent card from that player's graveyard, and mana of any type can be spent to cast that spell"
+    );
+}
+
 #[test]
 fn single_type_targeted_cast_from_your_graveyard_keeps_target_surface() {
     assert_eq!(

@@ -21,6 +21,8 @@ pub enum SearchLibraryManaConstraint {
     LessThanOrEqual(u32),
     GreaterThanOrEqual(u32),
     OneOf(Vec<u32>),
+    ExactCost(crate::mana::ManaCost),
+    OneOfExactCosts(Vec<crate::mana::ManaCost>),
 }
 
 pub fn word_slice_mentions_nth_from_top(words: &[&str]) -> bool {
@@ -173,10 +175,23 @@ pub fn extract_search_library_mana_constraint(
     }
 
     let parse_single_u32_clause = |tokens: &[OwnedLexToken]| -> Option<u32> {
-        let (value, used) = parse_number(tokens)?;
-        (used == tokens.len()).then_some(value)
+        if let Some((value, used)) = parse_number(tokens)
+            && used == tokens.len()
+        {
+            return Some(value);
+        }
+        None
     };
-    let constraint = if let Some(value) = parse_single_u32_clause(clause_tokens) {
+    let parse_exact_mana_cost_clause = |tokens: &[OwnedLexToken]| -> Option<crate::mana::ManaCost> {
+        let mana = super::grammar::leaf::parse_leaf_mana_cost_prefix_tokens(tokens)?;
+        if mana.consumed != tokens.len() {
+            return None;
+        }
+        Some(mana.cost)
+    };
+    let constraint = if let Some(cost) = parse_exact_mana_cost_clause(clause_tokens) {
+        SearchLibraryManaConstraint::ExactCost(cost)
+    } else if let Some(value) = parse_single_u32_clause(clause_tokens) {
         SearchLibraryManaConstraint::Equal(value)
     } else if let Some((operator, value_tokens)) = parse_value_comparison_tokens(clause_tokens) {
         let value = parse_single_u32_clause(value_tokens)?;
@@ -196,10 +211,21 @@ pub fn extract_search_library_mana_constraint(
         if !middle.is_word("or") {
             return None;
         }
-        SearchLibraryManaConstraint::OneOf(vec![
-            parse_single_u32_clause(std::slice::from_ref(left))?,
-            parse_single_u32_clause(std::slice::from_ref(right))?,
-        ])
+        let left = std::slice::from_ref(left);
+        let right = std::slice::from_ref(right);
+        match (
+            parse_exact_mana_cost_clause(left),
+            parse_exact_mana_cost_clause(right),
+        ) {
+            (Some(left), Some(right)) => {
+                SearchLibraryManaConstraint::OneOfExactCosts(vec![left, right])
+            }
+            (None, None) => SearchLibraryManaConstraint::OneOf(vec![
+                parse_single_u32_clause(left)?,
+                parse_single_u32_clause(right)?,
+            ]),
+            _ => return None,
+        }
     };
 
     Some((base_filter_tokens, constraint))
@@ -246,6 +272,21 @@ pub fn apply_search_library_mana_constraint(
             filter.any_of = values
                 .into_iter()
                 .map(|value| build_branch(&base, crate::filter::Comparison::Equal(value as i32)))
+                .collect();
+        }
+        SearchLibraryManaConstraint::ExactCost(cost) => {
+            filter.exact_mana_cost = Some(cost);
+        }
+        SearchLibraryManaConstraint::OneOfExactCosts(costs) => {
+            let base = filter.clone();
+            *filter = ObjectFilter::default();
+            filter.any_of = costs
+                .into_iter()
+                .map(|cost| {
+                    let mut branch = base.clone();
+                    branch.exact_mana_cost = Some(cost);
+                    branch
+                })
                 .collect();
         }
     }

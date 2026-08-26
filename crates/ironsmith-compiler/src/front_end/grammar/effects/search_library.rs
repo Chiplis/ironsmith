@@ -551,6 +551,7 @@ pub fn conditional_label_phrase<'a>(
         "delirium" => primitives::phrase(&["delirium"]),
         "domain" => primitives::phrase(&["domain"]),
         "ferocious" => primitives::phrase(&["ferocious"]),
+        "fateful" => primitives::phrase(&["fateful", "hour"]),
         "formidable" => primitives::phrase(&["formidable"]),
         "hellbent" => primitives::phrase(&["hellbent"]),
         "metalcraft" => primitives::phrase(&["metalcraft"]),

@@ -143,6 +143,12 @@ pub(super) fn parse_effect_clause_unstacked(
         }
     }
 
+    if effect_grammar::control_flow::is_anaphoric_destroy_battlefield_guard(tokens)
+        && tokens.first().is_some_and(|token| token.is_word("destroy"))
+    {
+        return crate::effect_sentences::parse_destroy(&tokens[1..]);
+    }
+
     if let Some(trailing_if) = split_trailing_if_clause_lexed(tokens)
         && let Ok(base_effect) = parse_effect_clause(trailing_if.leading_tokens)
     {
@@ -672,6 +678,7 @@ pub(super) fn parse_effect_clause_unstacked(
                     allow_land: false,
                     as_copy: false,
                     copy_cast_reminder_surface: false,
+                    copy_instruction_surface: None,
                     without_paying_mana_cost: true,
                     additional_mana_cost: None,
                     cost_reduction: None,
@@ -1037,8 +1044,13 @@ pub(super) fn parse_effect_clause_unstacked(
             parse_effect_with_verb(verb, Some(subject), rest)?
         }
     };
+    let authored_control_pronoun = {
+        let rest_words = ClauseDispatchCompatWords::new(rest).to_word_refs();
+        crate::word_primitives::sequence_occurs(&rest_words, &["they", "control"])
+    };
     if matches!(verb, Verb::Return)
-        && crate::word_primitives::parse_sequence_complete(&subject_words, &["they"])
+        && (crate::word_primitives::parse_sequence_complete(&subject_words, &["they"])
+            || authored_control_pronoun)
         && let EffectAst::SubjectVerb(subject_verb) = &mut effect
         && let SubjectVerbActionAst::ReturnToHand { target, .. } = &mut subject_verb.action
     {

@@ -581,12 +581,14 @@ fn classify_boundary<'a>(
         CoordinationOperatorAst::Comma | CoordinationOperatorAst::And
     ) && before.last().is_some_and(token_is_card_type_noun)
         && starts_card_type_list_arm(after)
-        && find_chain_verb_tokens(before).is_some_and(|verb| {
+        && (find_chain_verb_tokens(before).is_some_and(|verb| {
             matches!(
                 verb.kind,
                 ChainVerbKind::Destroy | ChainVerbKind::Exile | ChainVerbKind::Sacrifice
             )
-        })
+        }) || before
+            .iter()
+            .any(|token| token.is_word("choose") || token.is_word("chooses")))
     {
         // Serial card-type domains remain one operand of the action even
         // when an arm carries a qualifier: `all artifacts, enchantments, and
@@ -660,6 +662,9 @@ fn classify_boundary<'a>(
     if candidate.operator == CoordinationOperatorAst::Or {
         let before_words = crate::lexer::parser_token_word_refs(before);
         let after_words = crate::lexer::parser_token_word_refs(after);
+        if or_continues_explicit_target_domain(&before_words, &after_words) {
+            return None;
+        }
         if crate::word_primitives::sequence_occurs(&before_words, &["protection", "from"])
             && crate::word_primitives::parse_sequence_prefix(&after_words, &["from"])
         {
@@ -777,16 +782,21 @@ fn classify_boundary<'a>(
     if candidate.operator == CoordinationOperatorAst::Or
         && ((crate::word_primitives::parse_sequence_suffix(&before_words, &["target", "player"])
             && crate::word_primitives::parse_sequence_prefix(&after_words, &["planeswalker"]))
-            || (crate::word_primitives::parse_sequence_suffix(&before_words, &["that", "player"])
-                && crate::word_primitives::parse_any_sequence_prefix(
-                    &after_words,
-                    &[
-                        &["planeswalker"],
-                        &["planeswalkers"],
-                        &["that", "planeswalker"],
-                        &["that", "planeswalkers"],
-                    ],
-                )))
+            || ((crate::word_primitives::parse_sequence_suffix(
+                &before_words,
+                &["that", "player"],
+            ) || crate::word_primitives::parse_sequence_suffix(
+                &before_words,
+                &["that", "opponent"],
+            )) && crate::word_primitives::parse_any_sequence_prefix(
+                &after_words,
+                &[
+                    &["planeswalker"],
+                    &["planeswalkers"],
+                    &["that", "planeswalker"],
+                    &["that", "planeswalkers"],
+                ],
+            )))
     {
         // Player-or-planeswalker is one target/controller operand. The
         // second noun is not an alternative executable action.
@@ -988,6 +998,31 @@ fn starts_card_type_list_arm(tokens: &[OwnedLexToken]) -> bool {
         tokens
     };
     tokens.first().is_some_and(token_is_card_type_noun)
+}
+
+fn or_continues_explicit_target_domain(before_words: &[&str], after_words: &[&str]) -> bool {
+    let before_ends_with =
+        |suffix: &[&str]| crate::word_primitives::parse_sequence_suffix(before_words, suffix);
+    let after_starts_with =
+        |prefix: &[&str]| crate::word_primitives::parse_sequence_prefix(after_words, prefix);
+
+    // Player/permanent target unions remain one legality domain even when a
+    // later explicit action gives the second noun a plausible clause head.
+    ((before_ends_with(&["target", "player"])
+        || before_ends_with(&["target", "opponent"]))
+        && (after_starts_with(&["planeswalker"])
+            || after_starts_with(&["battle"])))
+        || ((before_ends_with(&["target", "planeswalker"])
+            || before_ends_with(&["target", "battle"]))
+            && (after_starts_with(&["player"])
+                || after_starts_with(&["opponent"])))
+        // A shared terminal creature noun scopes both combat-role
+        // adjectives. Splitting here both invents a modal choice and drops
+        // one half of the target's legal combat-state domain.
+        || (before_ends_with(&["target", "attacking"])
+            && after_starts_with(&["blocking", "creature"]))
+        || (before_ends_with(&["target", "blocking"])
+            && after_starts_with(&["attacking", "creature"]))
 }
 
 fn coordination_kind(boundaries: &[RecognizedCoordinationBoundary]) -> CoordinationKindAst {

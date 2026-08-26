@@ -60,6 +60,53 @@ pub(in crate::compiled_text) fn describe_quantified_player_mill_discard_draw(
     ))
 }
 
+pub(in crate::compiled_text) fn describe_quantified_life_loss_then_controller_scry(
+    sequence: &crate::effects::SequenceEffect,
+) -> Option<String> {
+    if sequence.surface != ironsmith_core::SequenceSurface::Coordinated {
+        return None;
+    }
+    let [life_players, scry_controller] = sequence.effects.as_slice() else {
+        return None;
+    };
+    let life = single_for_players_effect(life_players, PlayerFilter::Opponent)?
+        .downcast_ref::<crate::effects::LoseLifeEffect>()?;
+    if life.player != ChooseSpec::Player(PlayerFilter::IteratedPlayer) {
+        return None;
+    }
+    let scry = structural_unwrap_render_wrappers(scry_controller)
+        .downcast_ref::<crate::effects::ScryEffect>()?;
+    if scry.player != PlayerFilter::You || scry.count != life.amount {
+        return None;
+    }
+
+    let value = describe_value(&life.amount);
+    let where_x_basis = life
+        .amount
+        .has_surface_hint(ValueSurfaceHint::WhereXIs)
+        .then(|| describe_where_x_basis(&life.amount))
+        .flatten();
+    let (amount, definition) = if let Some(basis) = where_x_basis.as_deref() {
+        ("X", Some(basis))
+    } else {
+        value
+            .split_once(", where ")
+            .map_or((value.as_str(), None), |(amount, definition)| {
+                (amount, Some(definition))
+            })
+    };
+    let subject = describe_for_players_subject(&PlayerFilter::Opponent)?;
+    let mut rendered = format!("{subject} loses {amount} life and you scry {amount}");
+    if let Some(definition) = definition {
+        rendered.push_str(", where ");
+        if amount == "X" {
+            rendered.push_str("X is ");
+        }
+        rendered.push_str(definition);
+    }
+    Some(rendered)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -120,5 +167,36 @@ mod tests {
             PlayerFilter::IteratedPlayer,
         ));
         assert!(describe_quantified_player_mill_discard_draw(&wrong_actor).is_none());
+    }
+
+    #[test]
+    fn renders_opponent_life_loss_and_controller_scry_once_with_shared_x() {
+        let zombies = ObjectFilter::default()
+            .with_subtype(Subtype::Zombie)
+            .you_control();
+        let amount = Value::Count(zombies).with_surface_hint(ValueSurfaceHint::WhereXIs);
+        let sequence = crate::effects::SequenceEffect::coordinated(vec![
+            Effect::for_players(
+                PlayerFilter::Opponent,
+                vec![Effect::new(crate::effects::LoseLifeEffect::with_filter(
+                    amount.clone(),
+                    PlayerFilter::IteratedPlayer,
+                ))],
+            ),
+            Effect::new(crate::effects::ScryEffect::you(amount.clone())),
+        ]);
+        assert_eq!(
+            describe_quantified_life_loss_then_controller_scry(&sequence).as_deref(),
+            Some(
+                "Each opponent loses X life and you scry X, where X is the number of Zombies you control"
+            )
+        );
+
+        let mut wrong_actor = sequence;
+        wrong_actor.effects[1] = Effect::new(crate::effects::ScryEffect::new(
+            amount,
+            PlayerFilter::IteratedPlayer,
+        ));
+        assert!(describe_quantified_life_loss_then_controller_scry(&wrong_actor).is_none());
     }
 }

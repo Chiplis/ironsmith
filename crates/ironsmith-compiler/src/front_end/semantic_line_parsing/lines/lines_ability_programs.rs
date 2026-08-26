@@ -365,6 +365,7 @@ pub(super) fn parse_static_line_impl(
     match parse_static_ability_ast_line_lexed(lexed) {
         Ok(Some(mut abilities)) => {
             restore_copy_static_variant_source_display(&mut abilities, &line.info.raw_line);
+            restore_named_characteristic_subject_surface(&mut abilities, &line.info.source_tokens);
             return wrap_chosen_option_static_chunk(
                 LineAst::StaticAbilities(abilities),
                 chosen_option,

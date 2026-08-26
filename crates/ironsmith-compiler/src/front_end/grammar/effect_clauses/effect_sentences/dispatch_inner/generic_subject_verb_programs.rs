@@ -280,6 +280,7 @@ impl GenericChoiceComplementProgram {
             self.base_filter.not_tagged(self.keep_tag),
         ));
         match self.chooser_scope {
+            PlayerAst::Opponent => EffectAst::ForEachOpponent { effects },
             PlayerAst::Any | PlayerAst::Implicit => EffectAst::ForEachPlayer { effects },
             _ => EffectAst::ForEachPlayer { effects },
         }
@@ -774,7 +775,7 @@ const EXILE_THAT_CARD_INSTEAD_PATTERN: effect_grammar::EffectSequence<'static> =
     effect_grammar::EffectSequence::new(&[effect_grammar::EffectSequence::phrase(
         EXILE_THAT_CARD_INSTEAD_PHRASE,
     )]);
-const EACH_PLAYER_PHRASES: &[&[&str]] = &[&["each", "player"]];
+const EACH_PLAYER_PHRASES: &[&[&str]] = &[&["each", "player"], &["each", "opponent"]];
 const CHOICE_COMPLEMENT_PATTERN: effect_grammar::EffectSequence<'static> =
     effect_grammar::EffectSequence::new(&[
         effect_grammar::EffectSequence::subject(
@@ -1442,6 +1443,10 @@ pub fn parse_top_level_subject_verb_recognition(
         Some(GenericTopLevelProgram::ControlCombatChoices { effect })
     } else if let Some(effect) = parse_generic_damage_replacement_counters_subject_verb(tokens)? {
         Some(GenericTopLevelProgram::PreventDamageAndPutCounters { effect })
+    } else if let Some(effects) =
+        parse_generic_top_cards_cloak_counted_rest_bottom_subject_verb(tokens)
+    {
+        Some(GenericTopLevelProgram::LookedCardsCountedRemainder { effects })
     } else if let Some(effects) =
         parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(tokens)
     {
@@ -3006,6 +3011,14 @@ pub fn parse_choice_complement_subject_verb(
         ));
     }
     let clause = LexedClause::new(tokens).trimmed();
+    let chooser_scope = if crate::word_primitives::parse_sequence_prefix(
+        &clause.word_refs(),
+        &["each", "opponent"],
+    ) {
+        PlayerAst::Opponent
+    } else {
+        PlayerAst::Any
+    };
     let choice_clause =
         if let Some(choice_clause) = choice_complement_choice_clause_from_word_order(clause) {
             choice_clause
@@ -3043,7 +3056,7 @@ pub fn parse_choice_complement_subject_verb(
             }
             return Ok(Some(
                 GenericChoiceComplementProgram {
-                    chooser_scope: PlayerAst::Any,
+                    chooser_scope,
                     base_filter,
                     keep_tag: crate::tag::CompilerReferenceTag::Keep.key(),
                     keep_filters: vec![ObjectFilter::default()],
@@ -3123,7 +3136,7 @@ pub fn parse_choice_complement_subject_verb(
 
     Ok(Some(
         GenericChoiceComplementProgram {
-            chooser_scope: PlayerAst::Any,
+            chooser_scope,
             base_filter,
             keep_tag: crate::tag::CompilerReferenceTag::Keep.key(),
             keep_filters,
@@ -3498,7 +3511,10 @@ mod generic_subject_verb_program_tests;
 
 #[path = "generic_subject_verb_programs/library_programs.rs"]
 mod library_programs;
-pub use library_programs::{parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb};
+pub use library_programs::{
+    parse_generic_top_cards_cloak_counted_rest_bottom_subject_verb,
+    parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb,
+};
 #[path = "generic_subject_verb_programs/choice_programs.rs"]
 mod choice_programs;
 use choice_programs::{parse_generic_extra_vote, parse_generic_player_vote_received_effects, parse_generic_vote_option_effects, parse_generic_vote_start};

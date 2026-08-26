@@ -3633,6 +3633,11 @@ pub(crate) fn describe_may_search_reveal_shuffle_then_conditional_move(
         let mut bare = filter.clone();
         bare.tagged_constraints.clear();
         bare.set_explicit_card_noun(false);
+        // The migrated reference resolver preserves the authored "that
+        // card" noun on the exact searched-object filter. It is presentation
+        // metadata, not an additional selection constraint; the shared tag
+        // above remains the executable identity proof.
+        bare.source_surface = None;
         bare == ObjectFilter::default()
     }
 

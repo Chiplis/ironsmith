@@ -115,6 +115,22 @@ fn counter_followup(effect: &Effect) -> Option<CounterFollowup> {
         if condition_tag != &tag {
             return None;
         }
+        // "if it's a creature" is an object-kind qualifier and keeps the
+        // compact object-conditional entry surface.  A value predicate such
+        // as "if that card has mana value 3 or less" is an executable
+        // condition on the selected object; preserving it as a condition is
+        // what lets entry-counter fusion retain both the gate and the authored
+        // leading-if sentence.
+        let kind_only = characteristic_filter_from_choose_spec(&ChooseSpec::Object(filter.clone()))
+            .is_some_and(|characteristics| characteristics == *filter);
+        if !kind_only {
+            return Some(CounterFollowup::Conditional {
+                tag,
+                counter_type,
+                amount,
+                condition: conditional.condition.clone(),
+            });
+        }
         return Some(CounterFollowup::ObjectConditional {
             tag,
             counter_type,
@@ -192,6 +208,23 @@ fn is_entry_producer(effect: &Effect) -> bool {
 }
 
 fn entry_producer_tag(effect: &Effect) -> Option<TagKey> {
+    if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect<Effect>>() {
+        return may.effects.iter().find_map(entry_producer_tag);
+    }
+    if let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachTaggedEffect<Effect>>() {
+        let moves_iterated_object_to_battlefield = for_each.effects.iter().any(|nested| {
+            nested
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+                .is_some_and(|move_effect| {
+                    move_effect.zone == Zone::Battlefield
+                        && matches!(move_effect.target.base(), ChooseSpec::Iterated)
+                })
+        });
+        if moves_iterated_object_to_battlefield {
+            return Some(for_each.tag.clone());
+        }
+        return for_each.effects.iter().find_map(entry_producer_tag);
+    }
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         if is_entry_producer(&tagged.effect) {
             return Some(tagged.tag.clone());
@@ -376,6 +409,37 @@ fn attach_counter_to_producer(
     tag: &TagKey,
     counter: &BattlefieldEntryCounterSpec,
 ) -> Option<Effect> {
+    if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect<Effect>>() {
+        let mut replacement = may.clone();
+        for nested in &mut replacement.effects {
+            if let Some(attached) = attach_counter_to_producer(nested, tag, counter) {
+                *nested = attached;
+                return Some(Effect::new(replacement));
+            }
+        }
+        return None;
+    }
+    if let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachTaggedEffect<Effect>>() {
+        let mut replacement = for_each.clone();
+        for nested in &mut replacement.effects {
+            if &for_each.tag == tag
+                && let Some(move_effect) = nested
+                    .downcast_ref::<crate::effects::MoveToZoneEffect>()
+                    .filter(|move_effect| {
+                        move_effect.zone == Zone::Battlefield
+                            && matches!(move_effect.target.base(), ChooseSpec::Iterated)
+                    })
+            {
+                *nested = Effect::new(move_effect.clone().with_entry_counter(counter.clone()));
+                return Some(Effect::new(replacement));
+            }
+            if let Some(attached) = attach_counter_to_producer(nested, tag, counter) {
+                *nested = attached;
+                return Some(Effect::new(replacement));
+            }
+        }
+        return None;
+    }
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         if &tagged.tag == tag {
             if let Some(return_effect) = tagged
@@ -629,6 +693,11 @@ fn rewrite_nested_effect(effect: &Effect) -> Effect {
         fuse_effect_list(&mut replacement.effects);
         return Effect::new(replacement);
     }
+    if let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachTaggedEffect<Effect>>() {
+        let mut replacement = for_each.clone();
+        fuse_effect_list(&mut replacement.effects);
+        return Effect::new(replacement);
+    }
     effect.clone()
 }
 
@@ -695,12 +764,72 @@ fn fuse_source_zone_move_entry_counters(effects: &mut Vec<Effect>) {
     }
 }
 
+/// Fuse a typed battlefield-entry counter back into an untagged move when an
+/// ambient source antecedent captured the parser's `it` placeholder.
+///
+/// A clause such as "put a creature card exiled with it onto the battlefield
+/// ... with two additional counters on it" is parsed as a move followed by a
+/// put-counters action carrying `InlineBattlefieldEntryCounter`. Ordinarily
+/// the move receives a result tag and the generic tag-matched fusion below
+/// joins them. If an earlier action made the source the current antecedent
+/// (notably "sacrifice this, then put ..."), reference resolution can instead
+/// lower the counter target as `Source` while leaving the move untagged. The
+/// typed inline marker still proves that the counters are part of the entry
+/// event, so attach them directly to the immediately preceding battlefield
+/// move. Unmarked later counter sentences remain separate.
+fn fuse_source_bound_battlefield_entry_counters(effects: &mut Vec<Effect>) {
+    let mut index = 0usize;
+    while index + 1 < effects.len() {
+        let Some(move_effect) = effects[index]
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            .cloned()
+        else {
+            index += 1;
+            continue;
+        };
+        if move_effect.zone != Zone::Battlefield
+            || matches!(move_effect.target.base(), ChooseSpec::Source)
+        {
+            index += 1;
+            continue;
+        }
+        let Some((counter_type, amount)) = source_put_counters(&effects[index + 1]) else {
+            index += 1;
+            continue;
+        };
+        if !amount.has_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
+        {
+            index += 1;
+            continue;
+        }
+
+        let mut fused = move_effect;
+        fused
+            .enters_with_counters
+            .push(BattlefieldEntryCounterSpec::new(
+                counter_type,
+                amount
+                    .without_surface_hint(
+                        ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter,
+                    )
+                    .without_surface_hint(
+                        ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence,
+                    )
+                    .without_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupThen),
+                BattlefieldEntryCounterSurface::Inline,
+            ));
+        effects[index] = Effect::new(fused);
+        effects.remove(index + 1);
+    }
+}
+
 fn fuse_effect_list(effects: &mut Vec<Effect>) {
     for effect in effects.iter_mut() {
         *effect = rewrite_nested_effect(effect);
     }
 
     fuse_source_zone_move_entry_counters(effects);
+    fuse_source_bound_battlefield_entry_counters(effects);
 
     let mut index = 0usize;
     while index + 1 < effects.len() {
@@ -826,4 +955,138 @@ pub fn fuse_program(program: &mut ResolutionProgram) {
     }
     fuse_across_segment_boundaries(&mut segments);
     *program = ResolutionProgram::new(segments);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::filter::{TaggedObjectConstraint, TaggedOpbjectRelation};
+
+    fn source_linked_battlefield_move() -> Effect {
+        let mut filter = ObjectFilter::creature().in_zone(Zone::Exile);
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        Effect::new(crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Object(filter).with_count(crate::effect::ChoiceCount::exactly(1)),
+            Zone::Battlefield,
+            false,
+        ))
+    }
+
+    fn source_counters(amount: crate::effect::Value) -> Effect {
+        Effect::put_counters(
+            crate::object::CounterType::PlusOnePlusOne,
+            amount,
+            ChooseSpec::Source,
+        )
+    }
+
+    #[test]
+    fn inline_entry_counter_uses_the_untagged_battlefield_move_not_ambient_source() {
+        let amount = crate::effect::Value::Fixed(2)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter);
+        let mut effects = vec![
+            Effect::sacrifice_source(),
+            source_linked_battlefield_move(),
+            source_counters(amount),
+        ];
+
+        fuse_effect_list(&mut effects);
+
+        assert_eq!(effects.len(), 2, "{effects:#?}");
+        let moved = effects[1]
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            .expect("the source-linked battlefield move should remain");
+        let [counter] = moved.enters_with_counters.as_slice() else {
+            panic!("expected one fused entry counter: {moved:#?}");
+        };
+        assert_eq!(
+            counter.counter_type,
+            crate::object::CounterType::PlusOnePlusOne
+        );
+        assert_eq!(counter.amount.unhinted(), &crate::effect::Value::Fixed(2));
+        assert!(
+            counter
+                .amount
+                .has_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
+        );
+    }
+
+    #[test]
+    fn ordinary_source_counter_after_battlefield_move_stays_separate() {
+        let mut effects = vec![
+            source_linked_battlefield_move(),
+            source_counters(crate::effect::Value::Fixed(2)),
+        ];
+
+        fuse_effect_list(&mut effects);
+
+        assert_eq!(effects.len(), 2, "{effects:#?}");
+        let moved = effects[0]
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            .expect("the source-linked battlefield move should remain");
+        assert!(moved.enters_with_counters.is_empty(), "{moved:#?}");
+    }
+
+    #[test]
+    fn conditional_entry_counter_fuses_through_may_and_tagged_iteration() {
+        let tag = TagKey::from("chosen_card");
+        let move_effect = Effect::new(crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Iterated,
+            Zone::Battlefield,
+            false,
+        ));
+        let producer = Effect::new(crate::effects::MayEffect {
+            decider: Some(crate::target::PlayerFilter::You),
+            effects: vec![Effect::new(crate::effects::ForEachTaggedEffect {
+                tag: tag.clone(),
+                effects: vec![move_effect],
+                controller_at_last_blocked_by: None,
+            })],
+        });
+        let amount = crate::effect::Value::Fixed(3)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence);
+        let counter = Effect::put_counters(
+            crate::object::CounterType::PlusOnePlusOne,
+            amount,
+            ChooseSpec::Tagged(tag.clone()),
+        );
+        let condition = Condition::TaggedObjectMatches(
+            tag.clone(),
+            ObjectFilter {
+                mana_value: Some(crate::filter::Comparison::LessThanOrEqual(3)),
+                ..Default::default()
+            },
+        );
+        let mut effects = vec![
+            producer,
+            Effect::conditional_only(condition.clone(), vec![counter]),
+        ];
+
+        fuse_effect_list(&mut effects);
+
+        assert_eq!(effects.len(), 1, "{effects:#?}");
+        let may = effects[0]
+            .downcast_ref::<crate::effects::MayEffect<Effect>>()
+            .expect("optional selection should remain");
+        let for_each = may.effects[0]
+            .downcast_ref::<crate::effects::ForEachTaggedEffect<Effect>>()
+            .expect("tagged iteration should remain");
+        let moved = for_each.effects[0]
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            .expect("battlefield move should remain");
+        let [entry_counter] = moved.enters_with_counters.as_slice() else {
+            panic!("expected one fused conditional entry counter: {moved:#?}");
+        };
+        assert_eq!(entry_counter.condition.as_ref(), Some(&condition));
+        assert_eq!(
+            entry_counter.surface,
+            BattlefieldEntryCounterSurface::ThatObjectEntersIfCondition
+        );
+    }
 }

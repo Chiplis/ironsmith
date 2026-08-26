@@ -87,8 +87,12 @@ pub(super) fn parse_triggered_line_impl(
     ) {
         apply_spell_cast_single_target_source_exclusion(&mut parsed, &source_surface);
     }
-    let mut parsed =
-        preserve_triggered_effect_surfaces(parsed, effect_parse_tokens, full_parse_tokens);
+    let mut parsed = preserve_triggered_effect_surfaces(
+        parsed,
+        trigger_parse_tokens,
+        effect_parse_tokens,
+        full_parse_tokens,
+    );
     // Surface preservation reparses the effect body and can replace the raw
     // effect vector. Reapply the idempotent typed transport so neither public
     // trigger route can leave a copied-object retarget on the outer program.
@@ -132,6 +136,7 @@ pub(super) fn parse_triggered_line_impl(
     ) {
         apply_spell_cast_single_target_source_exclusion(&mut parsed, &source_surface);
     }
+    reconcile_named_source_exile_surface(&mut parsed, &authored_source_tokens);
     // Effect-surface reconciliation may rebuild a triggered chunk from its
     // body. Reapply the introduction from this exact authored sentence so a
     // physical `When` chunk split from a preceding static sentence cannot
@@ -336,6 +341,7 @@ pub fn is_exact_correlated_trigger_effect_bundle(effect_parse_tokens: &[OwnedLex
 
 pub(super) fn preserve_triggered_effect_surfaces(
     mut parsed: LineAst,
+    trigger_parse_tokens: &[OwnedLexToken],
     effect_parse_tokens: &[OwnedLexToken],
     full_parse_tokens: &[OwnedLexToken],
 ) -> LineAst {
@@ -347,7 +353,17 @@ pub(super) fn preserve_triggered_effect_surfaces(
     let explicit_participant_order = crate::word_primitives::sequence_occurs(
         &full_words,
         &["starting", "with", "you", "each", "player"],
-    );
+    ) || {
+        // The migrated document route owns the comma after `starting with
+        // you` as part of the trigger head.  Its effect slice therefore
+        // begins at `each player`, and neither slice alone contains the full
+        // participant-order phrase.  Prove the same typed boundary using the
+        // two adjacent parser slices instead of falling back to source text.
+        let trigger_words = crate::lexer::token_word_refs(trigger_parse_tokens);
+        let effect_words = crate::lexer::token_word_refs(effect_parse_tokens);
+        trigger_words.ends_with(&["starting", "with", "you"])
+            && effect_words.starts_with(&["each", "player"])
+    };
     if explicit_participant_order
         && let Some(EffectAst::SourceSentence {
             starting_with_controller,
@@ -2002,10 +2018,23 @@ pub(super) fn lower_special_rewrite_triggered_head(
         return Ok(Some(chunk));
     }
 
-    if matches!(
-        semantic_grammar::parse_special_triggered_program_tokens(full_parse_tokens),
-        Some(semantic_grammar::SpecialTriggeredProgram::SecondSpellSuspend)
-    ) {
+    let authored_tokens =
+        crate::lexer::lex_line(&line.info.raw_line, line.info.line_index).unwrap_or_default();
+    let full_authored_tokens =
+        crate::lexer::lex_line(&line.full_text, line.info.line_index).unwrap_or_default();
+    if [
+        full_parse_tokens,
+        line.info.source_tokens.as_slice(),
+        authored_tokens.as_slice(),
+        full_authored_tokens.as_slice(),
+    ]
+    .into_iter()
+    .any(|tokens| {
+        matches!(
+            semantic_grammar::parse_special_triggered_program_tokens(tokens),
+            Some(semantic_grammar::SpecialTriggeredProgram::SecondSpellSuspend)
+        )
+    }) {
         let trigger = parse_trigger_clause_lexed(trigger_parse_tokens)?;
         let triggering_tag = crate::tag::CompilerReferenceTag::Triggering.key();
         let triggering_spell = TargetAst::Tagged(triggering_tag.clone(), None);

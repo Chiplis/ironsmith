@@ -1649,15 +1649,33 @@ fn describe_attached_subject_static_condition(
     condition: &crate::ConditionExpr,
     subject: &str,
 ) -> Option<String> {
-    let (filter, negative) = match condition {
-        crate::ConditionExpr::AttachedToSourceMatches(filter) => (filter, false),
+    let attached_subject = matches!(
+        subject,
+        "enchanted artifact"
+            | "enchanted creature"
+            | "enchanted land"
+            | "enchanted permanent"
+            | "equipped creature"
+            | "fortified land"
+    );
+    let (filter, negative, use_pronoun) = match condition {
+        crate::ConditionExpr::AttachedToSourceMatches(filter) => (filter, false, false),
+        crate::ConditionExpr::TargetMatches(filter) if attached_subject => (filter, false, true),
         crate::ConditionExpr::Not(inner) => match inner.as_ref() {
-            crate::ConditionExpr::AttachedToSourceMatches(filter) => (filter, true),
+            crate::ConditionExpr::AttachedToSourceMatches(filter) => (filter, true, false),
+            crate::ConditionExpr::TargetMatches(filter) if attached_subject => (filter, true, true),
             _ => return None,
         },
         _ => return None,
     };
-    let verb = if negative { "isn't" } else { "is" };
+    let subject = if use_pronoun { "it" } else { subject };
+    let verb = if negative {
+        "isn't"
+    } else if use_pronoun {
+        "'s"
+    } else {
+        "is"
+    };
     // A bare color (or supertype) is an adjective predicate in oracle ("as
     // long as enchanted creature is white"), not a classified noun.
     if let Some(colors) = filter.colors {
@@ -1670,17 +1688,30 @@ fn describe_attached_subject_static_condition(
                 .map(|color| color.name().to_ascii_lowercase())
                 .collect::<Vec<_>>();
             if !color_words.is_empty() {
+                let separator = if use_pronoun && !negative { "" } else { " " };
                 return Some(format!(
-                    "as long as {subject} {verb} {}",
+                    "as long as {subject}{separator}{verb} {}",
                     color_words.join(" and ")
                 ));
             }
         }
     }
+    if let [supertype] = filter.supertypes.as_slice() {
+        let mut bare = filter.clone();
+        bare.supertypes.clear();
+        if bare == ObjectFilter::default() {
+            let separator = if use_pronoun && !negative { "" } else { " " };
+            return Some(format!(
+                "as long as {subject}{separator}{verb} {}",
+                supertype.name().to_ascii_lowercase()
+            ));
+        }
+    }
     let descriptor = strip_article(filter.description());
     let article = indefinite_article_for(&descriptor);
+    let separator = if use_pronoun && !negative { "" } else { " " };
     Some(format!(
-        "as long as {subject} {verb} {article} {descriptor}"
+        "as long as {subject}{separator}{verb} {article} {descriptor}"
     ))
 }
 
@@ -1835,6 +1866,9 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
         }
         crate::ConditionExpr::SourceAttackedThisTurn => {
             "as long as this creature attacked this turn".to_string()
+        }
+        crate::ConditionExpr::SourceAttackedBattleThisTurn => {
+            "as long as this creature attacked a battle this turn".to_string()
         }
         crate::ConditionExpr::OpponentLostLifeThisTurn => {
             "as long as an opponent lost life this turn".to_string()
@@ -6270,7 +6304,23 @@ impl StaticAbilityKind for AttachedAbilityGrant {
         let mut text = self.display.clone();
         if let Some(condition) = &self.condition {
             text.push(' ');
-            text.push_str(&describe_static_condition(condition));
+            let attached_subject = self
+                .display
+                .trim()
+                .trim_end_matches('.')
+                .split_once(" has ")
+                .map(|(subject, _)| subject)
+                .or_else(|| {
+                    self.display
+                        .trim()
+                        .trim_end_matches('.')
+                        .split_once(" have ")
+                        .map(|(subject, _)| subject)
+                });
+            let condition_text = attached_subject
+                .and_then(|subject| describe_attached_subject_static_condition(condition, subject))
+                .unwrap_or_else(|| describe_static_condition(condition));
+            text.push_str(&condition_text);
         }
         text
     }

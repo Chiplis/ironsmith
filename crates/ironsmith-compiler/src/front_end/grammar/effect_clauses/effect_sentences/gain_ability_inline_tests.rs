@@ -565,6 +565,76 @@ fn pump_then_gain_is_preserved_as_one_coordinated_typed_clause() {
 }
 
 #[test]
+fn pump_then_serial_keyword_grant_keeps_every_keyword() {
+    for (text, expected) in [
+        (
+            "Target creature gets +1/+1 and gains flying, first strike, and trample until end of turn.",
+            &["Flying", "FirstStrike", "Trample"][..],
+        ),
+        (
+            "Target creature you control gets +3/+3 and gains trample, hexproof, and indestructible until end of turn.",
+            &["Trample", "Hexproof", "Indestructible"][..],
+        ),
+    ] {
+        let tokens = tokenize_line(text, 0);
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("serial pump-and-grant sentence should parse")
+            .expect("serial pump-and-grant sentence should produce effects");
+
+        let debug = format!("{:#?}", sole_typed_coordination(&effects));
+        for keyword in expected {
+            assert!(
+                debug.contains(keyword),
+                "missing {keyword} for {text}: {debug}"
+            );
+        }
+    }
+}
+
+#[test]
+fn shared_target_where_x_possessive_binds_only_the_bare_pronoun() {
+    fn parsed_pump_power(text: &str) -> Value {
+        let tokens = tokenize_line(text, 0);
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("shared target gain/pump sentence should parse")
+            .expect("shared target gain/pump sentence should produce effects");
+        sole_typed_coordination(&effects)
+            .effects()
+            .find_map(|effect| match effect {
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::Pump { power, .. },
+                    ..
+                }) => Some(power.clone()),
+                _ => None,
+            })
+            .expect("shared target clause should retain its pump")
+    }
+
+    let target_relative = parsed_pump_power(
+        "Target creature you control gains flying and gets +X/+X until end of turn, where X is its power.",
+    );
+    assert!(
+        matches!(
+            target_relative.unhinted(),
+            Value::PowerOf(spec)
+                if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG)
+        ),
+        "a bare possessive must use the shared target: {target_relative:#?}"
+    );
+
+    let source_relative = parsed_pump_power(
+        "Another target creature you control gains trample and gets +X/+X until end of turn, where X is this creature's power.",
+    );
+    assert!(
+        matches!(
+            source_relative.unhinted(),
+            Value::PowerOf(spec) if matches!(spec.base(), ChooseSpec::Source)
+        ),
+        "an explicit source reference must remain source-relative: {source_relative:#?}"
+    );
+}
+
+#[test]
 fn leading_become_lose_then_gain_keeps_the_trailing_keyword() {
     let tokens = tokenize_line(
         "Until end of turn, target creature you control becomes a blue Dragon Illusion with base power and toughness 4/4, loses all abilities, and gains flying.",

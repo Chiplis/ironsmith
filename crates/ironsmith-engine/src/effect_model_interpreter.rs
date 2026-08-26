@@ -250,6 +250,8 @@ where
         converted.disallow_previously_chosen_modes_this_turn =
             payload.disallow_previously_chosen_modes_this_turn;
         converted.distinct_player_targets_per_mode = payload.distinct_player_targets_per_mode;
+        converted.conditional_mode_range = payload.conditional_mode_range.clone();
+        converted.presentation_label = payload.presentation_label.clone();
         return Ok(Effect::new(converted));
     }
     if let Some(payload) =
@@ -1471,7 +1473,15 @@ where
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ForEachCounterKindPutOrRemoveEffect>(&effect)
     {
-        let effect = if let Some(counter_type) = payload.fixed_counter_type {
+        let effect = if payload.put_only
+            && payload.choose_target_per_kind
+            && let Some(counter_source) = &payload.counter_source
+        {
+            crate::effects::ForEachCounterKindPutOrRemoveEffect::put_each_kind_from(
+                counter_source.clone(),
+                payload.target.clone(),
+            )
+        } else if let Some(counter_type) = payload.fixed_counter_type {
             crate::effects::ForEachCounterKindPutOrRemoveEffect::fixed_counter_type(
                 payload.target.clone(),
                 counter_type,
@@ -2043,10 +2053,14 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::FightEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::FightEffect::new(
-            payload.creature1.clone(),
-            payload.creature2.clone(),
-        )));
+        let runtime =
+            crate::effects::FightEffect::new(payload.creature1.clone(), payload.creature2.clone());
+        let runtime = if payload.mutual_surface {
+            runtime.with_mutual_surface()
+        } else {
+            runtime
+        };
+        return Ok(Effect::new(runtime));
     }
     if M::downcast_ref::<ironsmith_core::BecomeSaddledUntilEotEffect>(&effect).is_some() {
         return Ok(Effect::new(

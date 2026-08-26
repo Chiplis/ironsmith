@@ -276,6 +276,9 @@ pub enum ValueSurfaceHint {
     /// Preserve an authored "that many cards" reference after the numeric
     /// value has been bound to the preceding effect's outcome.
     ThatManyCards,
+    /// Preserve the generic authored "that many" surface after semantic
+    /// lowering has bound it to an explicit reusable value.
+    ThatMany,
     /// Preserve an authored "as many cards as ... this way" reference after
     /// the numeric value has been bound to the preceding effect's outcome.
     AsManyCardsThisWay,
@@ -1323,6 +1326,9 @@ impl Restriction {
 pub enum SourceCounterThresholdSurface {
     #[default]
     SourceHas,
+    /// The source text explicitly used "one or more ... counters" rather
+    /// than the semantically equivalent indefinite singular "a ... counter".
+    SourceHasOneOrMore,
     ThereAreOn(SourceReferenceSurface),
 }
 
@@ -1626,6 +1632,10 @@ pub enum Condition {
         operator: ValueComparisonOperator,
         right: Value,
     },
+    /// The resolved integer value is a prime number. This stays value-based
+    /// so control counts, hand sizes, counters, and future numeric sources can
+    /// share one rules-correct predicate.
+    ValueIsPrime(Value),
     NoSpellsWereCastLastTurn,
     SpellsWereCastLastTurnOrMore(u32),
     PlayerHasCardTypesInGraveyardOrMore {
@@ -1806,6 +1816,8 @@ pub enum Condition {
     },
     OwnsCardExiledWithCounter(CounterType),
     SourceAttackedThisTurn,
+    /// The resolving ability's source attacked a Battle during the current turn.
+    SourceAttackedBattleThisTurn,
     /// "this creature is suspected"
     SourceSuspected,
     SourceCameUnderYourControlThisTurn,

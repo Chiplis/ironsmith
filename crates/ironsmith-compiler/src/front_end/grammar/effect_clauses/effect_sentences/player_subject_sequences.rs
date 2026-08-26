@@ -380,6 +380,52 @@ mod tests {
     }
 
     #[test]
+    fn splits_quantified_life_loss_from_controller_scry_with_shared_value_tail() {
+        let tokens = lex_line(
+            "Each opponent loses X life and you scry X, where X is the number of Zombies you control.",
+            0,
+        )
+        .expect("mixed-actor value sentence should lex");
+        let clauses = split_explicit_player_subject_clauses(&tokens)
+            .expect("the explicit controller subject must leave the opponent fanout");
+        assert_eq!(clauses.len(), 2);
+        assert_eq!(
+            super::token_word_refs(clauses[0]),
+            ["Each", "opponent", "loses", "X", "life"]
+        );
+        assert_eq!(
+            super::token_word_refs(clauses[1]),
+            [
+                "you", "scry", "X", "where", "X", "is", "the", "number", "of", "Zombies", "you",
+                "control"
+            ]
+        );
+
+        let effects =
+            parse_effect_sentence_lexed(&tokens).expect("mixed-actor value sentence should parse");
+        let [EffectAst::Coordination(coordination)] = effects.as_slice() else {
+            panic!("expected mixed-actor coordination, got {effects:#?}");
+        };
+        let coordinated = coordination.effects().collect::<Vec<_>>();
+        assert!(
+            matches!(
+                coordinated.as_slice(),
+                [
+                    EffectAst::ForEachOpponent { effects: opponent_effects },
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        subject: crate::cards::builders::SubjectVerbSubjectAst {
+                            player: crate::cards::builders::PlayerAst::You,
+                            ..
+                        },
+                        action: SubjectVerbActionAst::Scry { .. },
+                    })
+                ] if opponent_effects.len() == 1
+            ),
+            "the controller scry must remain outside the opponent loop: {effects:#?}"
+        );
+    }
+
+    #[test]
     fn splits_each_player_then_each_opponent_then_controller_actions() {
         let tokens = lex_line(
             "Each player mills three cards, then each opponent discards a card and you draw a card.",

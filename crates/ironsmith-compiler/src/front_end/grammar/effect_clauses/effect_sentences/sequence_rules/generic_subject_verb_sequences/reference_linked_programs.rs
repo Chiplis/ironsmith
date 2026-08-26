@@ -2668,6 +2668,10 @@ mod mill_result_cast_tests;
 #[path = "reference_linked_inline_looked_partition_tests_17.rs"]
 mod looked_partition_tests;
 
+#[cfg(test)]
+#[path = "reference_linked_inline_consult_shuffle_remainder_tests_18.rs"]
+mod consult_shuffle_remainder_tests;
+
 #[path = "reference_linked_programs/reference_linked_zone_programs.rs"]
 mod reference_linked_zone_programs;
 pub use reference_linked_zone_programs::{

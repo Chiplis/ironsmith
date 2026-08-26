@@ -9,6 +9,26 @@ fn parses_zone_pair_and_for_each_shapes() {
     assert_eq!(pair.first_zone, Zone::Hand);
     assert_eq!(pair.second_zone, Zone::Graveyard);
 
+    let opponents = lex_line(
+        "Exile all cards from all opponents' hands and graveyards",
+        0,
+    )
+    .unwrap();
+    let pair = parse_search_exile_zone_pair_shape_lexed(&opponents).unwrap();
+    assert_eq!(pair.owner, PlayerFilter::Opponent);
+    assert_eq!(pair.first_zone, Zone::Hand);
+    assert_eq!(pair.second_zone, Zone::Graveyard);
+
+    let changed = lex_line(
+        "Exile all cards from all creatures' hands and graveyards",
+        0,
+    )
+    .unwrap();
+    assert!(
+        parse_search_exile_zone_pair_shape_lexed(&changed).is_none(),
+        "a non-player possessor must not acquire the all-opponents route"
+    );
+
     let tokens = lex_line(
         "For each permanent destroyed this way, its controller draws a card",
         0,

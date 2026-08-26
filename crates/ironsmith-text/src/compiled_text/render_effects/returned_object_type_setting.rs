@@ -140,7 +140,9 @@ pub(super) fn describe_milled_creatures_returned_then_animated(
 /// old graveyard snapshot. A following creature-type removal is accepted only
 /// when it consumes that same result and is therefore redundant with setting
 /// the complete card-type list to `Enchantment`.
-pub(super) fn describe_returned_object_set_to_enchantment(effects: &[Effect]) -> Option<String> {
+pub(in crate::compiled_text) fn describe_returned_object_set_to_enchantment(
+    effects: &[Effect],
+) -> Option<String> {
     let [
         tag_triggering,
         return_effect,
@@ -398,5 +400,33 @@ mod tests {
         ]));
 
         assert_eq!(describe_returned_object_set_to_enchantment(&effects), None);
+    }
+
+    #[test]
+    fn enduring_cycle_public_route_keeps_the_exact_type_sentence() {
+        for name in [
+            "Enduring Courage",
+            "Enduring Curiosity",
+            "Enduring Innocence",
+            "Enduring Tenacity",
+            "Enduring Vitality",
+        ] {
+            let oracle = format!(
+                "When {name} dies, if it was a creature, return it to the battlefield under its owner's control. It's an enchantment."
+            );
+            let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+                crate::ids::CardId::new(),
+                name,
+            )
+            .card_types(vec![CardType::Enchantment, CardType::Creature])
+            .parse_text(&oracle)
+            .expect("Enduring-cycle return should compile");
+
+            assert_eq!(
+                crate::compiled_text::compiled_text_lines(&definition),
+                [oracle],
+                "{name}"
+            );
+        }
     }
 }

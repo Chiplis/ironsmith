@@ -23,7 +23,31 @@ impl EffectExecutor for TagOtherBlockParticipantEffect {
         let block_context = ctx.block_event_context(game).ok_or_else(|| {
             ExecutionError::UnresolvableValue("missing block event context".to_string())
         })?;
-        let candidates = if block_context.attacker == ctx.source {
+        let candidates = if let Some(subject_filter) = &self.subject_filter {
+            let filter_ctx = ctx.filter_context(game);
+            let attacker_matches_subject =
+                block_context
+                    .attacker_snapshot
+                    .as_ref()
+                    .is_some_and(|snapshot| {
+                        subject_filter.matches_snapshot(snapshot, &filter_ctx, game)
+                    });
+            let matching_blockers = block_context
+                .blocker_snapshots
+                .iter()
+                .filter(|snapshot| subject_filter.matches_snapshot(snapshot, &filter_ctx, game))
+                .cloned()
+                .collect::<Vec<_>>();
+            if attacker_matches_subject {
+                block_context.blocker_snapshots
+            } else if !matching_blockers.is_empty() {
+                block_context.attacker_snapshot.into_iter().collect()
+            } else {
+                return Err(ExecutionError::UnresolvableValue(
+                    "no block participant matches the authored subject filter".to_string(),
+                ));
+            }
+        } else if block_context.attacker == ctx.source {
             block_context.blocker_snapshots
         } else if block_context.blockers.contains(&ctx.source) {
             block_context.attacker_snapshot.into_iter().collect()

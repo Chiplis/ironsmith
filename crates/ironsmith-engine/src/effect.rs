@@ -1827,6 +1827,20 @@ impl Effect {
         Self::new(TagOtherBlockParticipantEffect::new(tag.into(), filter))
     }
 
+    /// Tag the participant opposite a filter-selected combat subject.
+    pub fn tag_other_block_participant_matching_subject(
+        tag: impl Into<TagKey>,
+        subject_filter: ObjectFilter,
+        other_filter: ObjectFilter,
+    ) -> Self {
+        use crate::effects::TagOtherBlockParticipantEffect;
+        Self::new(TagOtherBlockParticipantEffect::matching_subject(
+            tag.into(),
+            subject_filter,
+            other_filter,
+        ))
+    }
+
     /// Tag the damaged object from the triggering damage event.
     pub fn tag_triggering_damage_target(tag: impl Into<TagKey>) -> Self {
         use crate::effects::TagTriggeringDamageTargetEffect;

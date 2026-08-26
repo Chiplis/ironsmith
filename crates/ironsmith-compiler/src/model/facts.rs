@@ -58,6 +58,10 @@ pub struct AsEntersEffectProgramFacts {
     pub also_turns_face_up: bool,
     pub turns_face_up_only: bool,
     pub uses_enters_with_counter_surface: bool,
+    /// The program contains the source-relative follow-up `it enters with`.
+    /// This distinguishes the entering source from an object selected by an
+    /// earlier optional cost in the same replacement program.
+    pub source_pronoun_enters_with_counter_surface: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

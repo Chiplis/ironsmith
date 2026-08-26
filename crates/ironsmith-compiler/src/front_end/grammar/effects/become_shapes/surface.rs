@@ -75,6 +75,7 @@ pub struct BecomeCopyExceptionShape {
     pub name_override_surface: Option<SourceReferenceSurface>,
     pub add_supertypes: Vec<Supertype>,
     pub remove_supertypes: Vec<Supertype>,
+    pub add_colors: ColorSet,
     pub add_card_types: Vec<CardType>,
     pub set_card_types: Vec<CardType>,
     pub add_subtypes: Vec<Subtype>,
@@ -186,7 +187,7 @@ fn find_copy_exception_followup(
         }
     }
     for phrase in COPULA_PHRASES {
-        if !include_bare_copula && phrase.len() == 1 {
+        if !include_bare_copula {
             continue;
         }
         if let Some((start, end)) = find_word_phrase_token_span(tokens, phrase) {

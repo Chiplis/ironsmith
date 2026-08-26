@@ -64,6 +64,10 @@ fn predicate_random_count_object_filter_antecedent(
                 _ => None,
             }
         }
+        PredicateAst::ValueIsPrime(value) => match value.unhinted() {
+            Value::Count(filter) => Some(filter.clone()),
+            _ => None,
+        },
         PredicateAst::PlayerHasAtLeast { filter, .. }
         | PredicateAst::PlayerControlsExactly { filter, .. }
         | PredicateAst::PlayerHasAtLeastWithDifferentPowers { filter, .. } => Some(filter.clone()),
@@ -375,6 +379,10 @@ pub fn bind_condition_collection_antecedent_in_effects(
                     _ => None,
                 }
             }
+            PredicateAst::ValueIsPrime(value) => match value.unhinted() {
+                Value::Count(filter) if is_source_exiled_collection(filter) => Some(filter.clone()),
+                _ => None,
+            },
             PredicateAst::And(left, right) => {
                 match (collection_filter(left), collection_filter(right)) {
                     (Some(left), Some(right)) if left == right => Some(left),

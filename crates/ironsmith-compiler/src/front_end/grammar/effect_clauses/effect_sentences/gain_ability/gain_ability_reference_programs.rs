@@ -127,7 +127,7 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
     } else {
         None
     };
-    let following_pump_effect = if let Some(shared_idx) = shared_get_tail_word_idx {
+    let mut following_pump_effect = if let Some(shared_idx) = shared_get_tail_word_idx {
         let get_word_idx = gain_idx + 1 + shared_idx + 1;
         parse_shared_subject_pump_from_get_tail(
             tokens,
@@ -339,7 +339,7 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         gain_idx,
         &duration,
     )?;
-    let pump_effect = if let Some(gi) = get_idx {
+    let mut pump_effect = if let Some(gi) = get_idx {
         let modifier_start_word_idx = subject_start_word_idx + gi + 1;
         let Some(modifier_start_token_idx) =
             word_view.map_word_or_end_to_token_boundary(modifier_start_word_idx)
@@ -522,10 +522,16 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
     // explicit target before considering references embedded inside that target
     // (for example, "other than this creature" or "with a sticker on it").
     if real_subject_shape.target && !target_word_qualifies_controller {
-        let has_preceding_target_effect = pump_effect.is_some() || leading_become_effect.is_some();
+        let has_preceding_target_effect = pump_effect.is_some()
+            || leading_base_pt_effect.is_some()
+            || leading_become_effect.is_some();
         let declares_shared_target =
             !has_preceding_target_effect && following_pump_effect.is_some();
         let target = parse_target_phrase(real_subject_tokens)?;
+        if has_preceding_target_effect || declares_shared_target {
+            bind_shared_subject_pump_characteristics(&mut pump_effect);
+            bind_shared_subject_pump_characteristics(&mut following_pump_effect);
+        }
         if declares_shared_target {
             // A gain-then-get clause has one authored target shared by both
             // continuous actions. Declare that target once, then compile both

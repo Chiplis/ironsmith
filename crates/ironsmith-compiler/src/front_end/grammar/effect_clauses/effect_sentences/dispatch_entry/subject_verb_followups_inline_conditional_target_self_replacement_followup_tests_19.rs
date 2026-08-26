@@ -21,7 +21,7 @@ fn assert_it_characteristic_threshold(predicate: &PredicateAst, toughness: bool)
                 "the threshold must remain linked to the targeted object: {predicate:#?}"
             );
         }
-        PredicateAst::ItMatches(filter)
+        PredicateAst::ItMatches(filter) | PredicateAst::TargetMatches(filter)
             if matches!(
                 (&filter.toughness, &filter.mana_value, toughness),
                 (Some(crate::filter::Comparison::LessThanOrEqual(_)), _, true)
@@ -33,6 +33,38 @@ fn assert_it_characteristic_threshold(predicate: &PredicateAst, toughness: bool)
             ) => {}
         _ => panic!("expected a typed at-most threshold: {predicate:#?}"),
     }
+}
+
+#[test]
+fn trailing_instead_if_rebinds_the_nested_it_threshold_but_not_the_revolt_gate() {
+    let lexed = crate::lexer::lex_line(
+        "Destroy target creature if it has mana value 2 or less. Destroy that creature if it has mana value 4 or less instead if a permanent left the battlefield under your control this turn.",
+        0,
+    )
+    .expect("nested target threshold replacement should lex");
+    let parsed = parse_effect_sentences_lexed(&lexed)
+        .expect("nested target threshold replacement should parse");
+
+    let [
+        EffectAst::SelfReplacement {
+            predicate,
+            if_true,
+            if_false,
+            attach_to_previous_ability: false,
+        },
+    ] = parsed.as_slice()
+    else {
+        panic!("expected one target self-replacement: {parsed:#?}");
+    };
+    assert!(
+        matches!(
+            predicate,
+            PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn { .. }
+        ),
+        "the outer replacement gate must remain the turn-history predicate: {predicate:#?}"
+    );
+    trailing_threshold(if_false, false);
+    trailing_threshold(if_true, false);
 }
 
 fn trailing_threshold(effects: &[EffectAst], toughness: bool) {

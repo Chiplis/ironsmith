@@ -2,6 +2,23 @@ use super::*;
 
 const EXPECTED: &str = "Starting with you, each player chooses up to five permanents they control. All permanents other than this creature that weren't chosen this way phase out";
 
+#[test]
+fn public_trigger_route_preserves_participant_order_across_the_split_boundary() {
+    let oracle = "When this creature enters, starting with you, each player chooses up to five permanents they control. All permanents other than this creature that weren't chosen this way phase out.\nPermanents can't phase in.";
+    let definition = crate::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(),
+        "Participant Choice Phase-Out Probe",
+    )
+    .card_types(vec![CardType::Creature])
+    .parse_text(oracle)
+    .expect("participant choice phase-out trigger should compile");
+
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&definition).join("\n"),
+        oracle
+    );
+}
+
 fn program(
     starting_with_controller: bool,
     phase_tag: TagKey,

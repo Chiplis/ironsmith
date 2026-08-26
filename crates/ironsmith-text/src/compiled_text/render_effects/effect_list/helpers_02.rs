@@ -953,6 +953,15 @@ pub(crate) fn render_consult_reveal_put_battlefield_rest_graveyard(
         let move_to_zone = consult_match_move_to_zone(move_effect, consult, Zone::Battlefield)?;
         (move_to_zone, Some(followups))
     };
+    if !move_to_zone.enters_with_counters.is_empty()
+        || move_to_zone.enters_attacking
+        || move_to_zone.attack_target_mode.is_some()
+        || move_to_zone.enters_face_down
+        || move_to_zone.enters_transformed
+        || move_to_zone.transfer_exiled_with_source_links
+    {
+        return None;
+    }
 
     let remainder =
         unwrap_render_wrappers(effects[2]).downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
@@ -966,7 +975,11 @@ pub(crate) fn render_consult_reveal_put_battlefield_rest_graveyard(
     }
 
     let player = describe_player_filter(&consult.player);
-    let library_owner = describe_possessive_player_filter(&consult.player);
+    let library_owner = if matches!(consult.player, PlayerFilter::Target(_)) {
+        "their".to_string()
+    } else {
+        describe_possessive_player_filter(&consult.player)
+    };
     let reveal_verb = player_verb(&player, "reveal", "reveals");
     let put_verb = player_verb(&player, "put", "puts");
     let pronoun = if player == "you" { "you" } else { "they" };
@@ -977,9 +990,11 @@ pub(crate) fn render_consult_reveal_put_battlefield_rest_graveyard(
     };
     let selection = describe_library_consult_selection_with_cards(&consult.filter);
     let stop_text = match &consult.stop_rule {
-        crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection.clone(),
+        crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => {
+            with_indefinite_article(&selection)
+        }
         crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
-            selection.clone()
+            with_indefinite_article(&selection)
         }
         crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => {
             describe_counted_consult_stop(count, &selection)
@@ -990,6 +1005,11 @@ pub(crate) fn render_consult_reveal_put_battlefield_rest_graveyard(
         crate::effects::BattlefieldController::Preserve => "",
         crate::effects::BattlefieldController::Owner => " under its owner's control",
         crate::effects::BattlefieldController::You => " under your control",
+    };
+    let tapped_suffix = if move_to_zone.enters_tapped {
+        " tapped"
+    } else {
+        ""
     };
 
     if let Some(followups) = conditional_followups {
@@ -1017,21 +1037,21 @@ pub(crate) fn render_consult_reveal_put_battlefield_rest_graveyard(
             describe_possessive_player_filter(&consult.player)
         };
         return Some(format!(
-            "{consult_text}. If {selection} is revealed this way, put it onto the battlefield{control_suffix}{followup_suffix}. Put the rest of the revealed cards into {graveyard_owner} graveyard"
+            "{consult_text}. If {selection} is revealed this way, put it onto the battlefield{tapped_suffix}{control_suffix}{followup_suffix}. Put the rest of the revealed cards into {graveyard_owner} graveyard"
         ));
     }
 
     if player == "you" {
         Some(format!(
-            "Reveal cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}. Put that card onto the battlefield{control_suffix} and put all other cards revealed this way into your graveyard"
+            "Reveal cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}. Put that card onto the battlefield{tapped_suffix}{control_suffix} and put all other cards revealed this way into your graveyard"
         ))
     } else if move_to_zone.battlefield_controller == crate::effects::BattlefieldController::You {
         Some(format!(
-            "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}. Put that card onto the battlefield{control_suffix}. {player} {put_verb} the rest of the revealed cards into their graveyard"
+            "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}. Put that card onto the battlefield{tapped_suffix}{control_suffix} and the rest into their graveyard"
         ))
     } else {
         Some(format!(
-            "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}, then {player} {put_verb} that card onto the battlefield{control_suffix} and {put_verb} all other cards revealed this way into their graveyard"
+            "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}, then {player} {put_verb} that card onto the battlefield{tapped_suffix}{control_suffix} and {put_verb} all other cards revealed this way into their graveyard"
         ))
     }
 }
@@ -2647,33 +2667,52 @@ pub(crate) fn describe_look_may_exile_from_among_rest_bottom_cast(
     } else {
         permission_text.to_string()
     };
-    let exile_action = if choose.count.min == 0 {
+    let explicit_up_to_surface = choose
+        .tag
+        .as_str()
+        .starts_with("__sentence_helper_exiled_up_to_");
+    let exile_action = if explicit_up_to_surface {
+        "Exile up to one"
+    } else if choose.count.min == 0 {
         "You may exile"
     } else {
         "Exile"
     };
     let exile_clause = if filter == ObjectFilter::default() {
-        format!("{exile_action} one of those cards")
+        if explicit_up_to_surface {
+            format!("{exile_action} of those cards")
+        } else {
+            format!("{exile_action} one of those cards")
+        }
     } else {
         let mut selection =
             normalize_looked_card_filter_description(&filter, &filter.description());
         if !selection.contains("card") {
             selection.push_str(" card");
         }
-        let selection = with_indefinite_article(&selection);
+        let selection = if explicit_up_to_surface {
+            strip_leading_article(&selection).to_string()
+        } else {
+            with_indefinite_article(&selection)
+        };
         format!("{exile_action} {selection} from among them")
     };
     let order_text = match rest.order {
         crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
         crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
     };
-    Some((
+    let rendered = if explicit_up_to_surface {
+        format!(
+            "{}. {exile_clause} and put the rest on the bottom of your library{order_text}. {permission_text}",
+            describe_effect(effects[0])
+        )
+    } else {
         format!(
             "{}. {exile_clause}. Put the rest on the bottom of your library{order_text}. {permission_text}",
             describe_effect(effects[0])
-        ),
-        5,
-    ))
+        )
+    };
+    Some((rendered, 5))
 }
 
 pub(crate) fn describe_look_may_move_one_rest_bottom(

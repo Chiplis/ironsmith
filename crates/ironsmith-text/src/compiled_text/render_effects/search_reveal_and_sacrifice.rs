@@ -562,25 +562,15 @@ pub(super) fn describe_counter_artifact_ability_destroy_source(
         return describe_counter_artifact_ability_destroy_source(&nested);
     }
 
-    let [counter_effect, conditional_effect] = effects else {
+    let [counter_effect, followup_effect] = effects else {
         return None;
     };
     let counter = structural_unwrap_render_wrappers(counter_effect)
         .downcast_ref::<crate::effects::CounterEffect>()?;
-    let conditional = structural_unwrap_render_wrappers(conditional_effect)
-        .downcast_ref::<crate::effects::ConditionalEffect>()?;
     let ChooseSpec::Target(target) = &counter.target else {
         return None;
     };
     let ChooseSpec::Object(counter_filter) = target.as_ref() else {
-        return None;
-    };
-    let [destroy_effect] = conditional.if_true.as_slice() else {
-        return None;
-    };
-    let destroy = structural_unwrap_render_wrappers(destroy_effect)
-        .downcast_ref::<crate::effects::DestroyEffect>()?;
-    let ChooseSpec::Object(destroy_filter) = destroy.spec.base() else {
         return None;
     };
     if let [first, second] = counter_filter.any_of.as_slice()
@@ -600,23 +590,34 @@ pub(super) fn describe_counter_artifact_ability_destroy_source(
                         && land.controller == Some(PlayerFilter::You)
                 })
         })
+        && let Some(conditional) = structural_unwrap_render_wrappers(followup_effect)
+            .downcast_ref::<crate::effects::ConditionalEffect>()
         && conditional.if_false.is_empty()
         && describe_condition(&conditional.condition)
             == "a permanent's ability is countered this way"
-        && describe_effect(destroy_effect).trim_end_matches('.') == "Destroy that permanent"
+        && matches!(conditional.if_true.as_slice(), [destroy_effect]
+            if describe_effect(destroy_effect).trim_end_matches('.') == "Destroy that permanent")
     {
         return Some(
             "Counter target spell or ability an opponent controls that targets a land you control. If a permanent's ability is countered this way, destroy that permanent"
                 .to_string(),
         );
     }
+    let destroy = structural_unwrap_render_wrappers(followup_effect)
+        .downcast_ref::<crate::effects::DestroyEffect>()?;
+    let ChooseSpec::Object(destroy_filter) = destroy.spec.base() else {
+        return None;
+    };
+    let counter_tag = structural_effect_tag(counter_effect)?;
     if counter_filter.stack_kind != Some(StackObjectKind::ActivatedAbility)
         || counter_filter.card_types != vec![CardType::Artifact]
         || counter_filter.zone != Some(Zone::Stack)
-        || !conditional.if_false.is_empty()
         || destroy_filter.zone != Some(Zone::Battlefield)
         || destroy_filter.card_types != vec![CardType::Artifact]
-        || destroy_filter.tagged_constraints.is_empty()
+        || !destroy_filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == *counter_tag
+                && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+        })
     {
         return None;
     }
@@ -624,6 +625,45 @@ pub(super) fn describe_counter_artifact_ability_destroy_source(
         "Counter target activated ability from an artifact source and destroy that artifact if it's on the battlefield"
             .to_string(),
     )
+}
+
+#[cfg(test)]
+mod counter_artifact_ability_destroy_source_tests {
+    use super::*;
+
+    fn fixture(destroy_tag: &str) -> Vec<Effect> {
+        let mut counter_filter = ObjectFilter::default().in_zone(Zone::Stack);
+        counter_filter.stack_kind = Some(StackObjectKind::ActivatedAbility);
+        counter_filter.card_types = vec![CardType::Artifact];
+        let counter = Effect::new(crate::effects::CounterEffect::new(ChooseSpec::target(
+            ChooseSpec::Object(counter_filter),
+        )))
+        .tag("countered_0");
+
+        let destroy_filter = ObjectFilter::artifact()
+            .in_zone(Zone::Battlefield)
+            .match_tagged(
+                TagKey::from(destroy_tag),
+                crate::target::TaggedOpbjectRelation::IsTaggedObject,
+            );
+        vec![counter, Effect::destroy(ChooseSpec::Object(destroy_filter))]
+    }
+
+    #[test]
+    fn direct_battlefield_filtered_destroy_reconstructs_the_authored_guard() {
+        let exact = fixture("countered_0");
+        let exact_refs = exact.iter().collect::<Vec<_>>();
+        assert_eq!(
+            describe_counter_artifact_ability_destroy_source(&exact_refs).as_deref(),
+            Some(
+                "Counter target activated ability from an artifact source and destroy that artifact if it's on the battlefield"
+            )
+        );
+
+        let wrong_tag = fixture("other");
+        let wrong_tag_refs = wrong_tag.iter().collect::<Vec<_>>();
+        assert!(describe_counter_artifact_ability_destroy_source(&wrong_tag_refs).is_none());
+    }
 }
 
 pub(super) fn greatest_commander_mana_value_owned_by(
@@ -1580,7 +1620,7 @@ pub(super) fn described_counter_put_on_the_other(
     ))
 }
 
-pub(super) fn describe_choose_two_move_one_put_counters_on_other(
+pub(in crate::compiled_text) fn describe_choose_two_move_one_put_counters_on_other(
     effects: &[Effect],
 ) -> Option<String> {
     let [target_effect, move_effect, put_effect] = effects else {
@@ -1602,6 +1642,11 @@ pub(super) fn describe_choose_two_move_one_put_counters_on_other(
     let ChooseSpec::Object(target_filter) = target_inner.as_ref() else {
         return None;
     };
+    if target_filter.target_set_different_controllers
+        || target_filter.target_set_aggregate_constraint.is_some()
+    {
+        return None;
+    }
 
     let move_to_zone = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     if move_to_zone.zone != Zone::Exile
@@ -1618,8 +1663,12 @@ pub(super) fn describe_choose_two_move_one_put_counters_on_other(
     let put = put_effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
     let put_text = described_counter_put_on_the_other(put)?;
     let plural_noun = simple_filter_plural_noun(target_filter)?;
+    let controller_qualifier = target_filter
+        .target_set_same_controller
+        .then_some(" controlled by the same player")
+        .unwrap_or_default();
     Some(format!(
-        "Choose two target {plural_noun}. Exile one of those {plural_noun} and {put_text}"
+        "Choose two target {plural_noun}{controller_qualifier}. Exile one of those {plural_noun} and {put_text}"
     ))
 }
 
@@ -2438,17 +2487,36 @@ pub(super) fn destroy_random_one_of_tagged_groups(
         })
 }
 
-pub(super) fn describe_target_groups_then_random_destroy(effects: &[&Effect]) -> Option<String> {
-    let [first_target, second_target, destroy_effect] = effects else {
+pub(crate) fn describe_target_groups_then_random_destroy(effects: &[&Effect]) -> Option<String> {
+    let [first_effect, second_effect, destroy_effect] = effects else {
         return None;
     };
-    let (first_tag, first_target) = tagged_target_only_effect(first_target)?;
-    let (second_tag, second_target) = tagged_target_only_effect(second_target)?;
+    let (first_tag, first_target) = tagged_target_only_effect(first_effect)?;
+    let (second_tag, second_target) = tagged_target_only_effect(second_effect)?;
     if first_tag == second_tag {
         return None;
     }
     let destroy = destroy_effect.downcast_ref::<crate::effects::DestroyEffect>()?;
-    if !destroy_random_one_of_tagged_groups(destroy, &[first_tag, second_tag]) {
+    let destroys_individual_tags =
+        destroy_random_one_of_tagged_groups(destroy, &[first_tag, second_tag]);
+    let shared_collection_tag = first_effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .zip(second_effect.downcast_ref::<crate::effects::TaggedEffect>())
+        .and_then(|(first_outer, second_outer)| {
+            (first_outer.tag == second_outer.tag
+                && first_outer.tag != *first_tag
+                && second_outer.tag != *second_tag)
+                .then_some(&first_outer.tag)
+        });
+    let destroys_shared_collection = shared_collection_tag.is_some_and(|collection_tag| {
+        let ChooseSpec::WithCount(inner, count) = &destroy.spec else {
+            return false;
+        };
+        count.is_single()
+            && count.is_random()
+            && matches!(inner.unhinted(), ChooseSpec::Tagged(tag) if tag == collection_tag)
+    });
+    if !destroys_individual_tags && !destroys_shared_collection {
         return None;
     }
 
@@ -2457,6 +2525,67 @@ pub(super) fn describe_target_groups_then_random_destroy(effects: &[&Effect]) ->
         describe_choose_spec(&first_target.target),
         describe_choose_spec(&second_target.target)
     ))
+}
+
+#[cfg(test)]
+mod target_groups_random_destroy_tests {
+    use super::*;
+
+    fn tagged_target(collection: &str, tag: &str, filter: ObjectFilter) -> Effect {
+        Effect::new(crate::effects::TaggedEffect::new(
+            collection,
+            Effect::new(crate::effects::TaggedEffect::new(
+                tag,
+                Effect::new(crate::effects::TargetOnlyEffect::explicit(
+                    ChooseSpec::target(ChooseSpec::Object(filter)),
+                )),
+            )),
+        ))
+    }
+
+    fn fixture(destroy_collection: &str) -> Vec<Effect> {
+        let first = tagged_target(
+            "chosen",
+            "targeted_0",
+            ObjectFilter::permanent()
+                .controlled_by(PlayerFilter::You)
+                .in_zone(Zone::Battlefield),
+        );
+        let second_target = ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::permanent()
+                .controlled_by(PlayerFilter::NotYou)
+                .in_zone(Zone::Battlefield),
+        ))
+        .with_count(ChoiceCount::up_to(2));
+        let second = Effect::new(crate::effects::TaggedEffect::new(
+            "chosen",
+            Effect::new(crate::effects::TaggedEffect::new(
+                "targeted_1",
+                Effect::new(crate::effects::TargetOnlyEffect::explicit(second_target)),
+            )),
+        ));
+        let destroy = Effect::new(crate::effects::DestroyEffect::with_spec(
+            ChooseSpec::Tagged(TagKey::from(destroy_collection))
+                .with_count(ChoiceCount::exactly(1).at_random()),
+        ));
+        vec![first, second, destroy]
+    }
+
+    #[test]
+    fn shared_target_collection_rejoins_across_random_destroy() {
+        let exact = fixture("chosen");
+        let exact_refs = exact.iter().collect::<Vec<_>>();
+        assert_eq!(
+            describe_target_groups_then_random_destroy(&exact_refs).as_deref(),
+            Some(
+                "Choose target permanent you control and up to two target permanents you don't control. Destroy one of them at random"
+            )
+        );
+
+        let wrong_collection = fixture("other");
+        let wrong_refs = wrong_collection.iter().collect::<Vec<_>>();
+        assert!(describe_target_groups_then_random_destroy(&wrong_refs).is_none());
+    }
 }
 
 pub(super) fn is_tagged_only_filter(filter: &ObjectFilter, tag: &crate::TagKey) -> bool {
@@ -2617,6 +2746,10 @@ pub(super) fn describe_search_name_conditional_put_then_shuffle(
 pub(super) fn describe_may_cast_target_graveyard_spell_then_exile_replacement(
     effects: &[&Effect],
 ) -> Option<String> {
+    if let Some(text) = describe_immediate_targeted_graveyard_any_type_cast(effects) {
+        return Some(text);
+    }
+
     if let Some((prefix, consumed)) =
         describe_duration_scoped_targeted_graveyard_cast_replacement(effects)
     {
@@ -3065,6 +3198,67 @@ fn describe_targeted_graveyard_cast_with_gated_replacement(effects: &[&Effect]) 
     Some(format!(
         "You may cast target {color_text}{card_types_text} card{mana_value_text} from {graveyard_text}{payment_text}{mana_spend_text}. If that spell would be put into {graveyard_text}, exile it instead"
     ))
+}
+
+/// Render an immediate target declaration followed by an optional cast of the
+/// exact tagged graveyard card. This is deliberately narrower than the durable
+/// permission renderers: the damaged-player owner, nonland-permanent filter,
+/// tag identity, and AnyType mana mode must all agree.
+fn describe_immediate_targeted_graveyard_any_type_cast(effects: &[&Effect]) -> Option<String> {
+    let [target_effect, may_effect] = effects else {
+        return None;
+    };
+    let target_tag = wrapped_effect_tag(target_effect)?;
+    let target_only = structural_unwrap_render_wrappers(target_effect)
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    if !target_only.target.is_target() {
+        return None;
+    }
+    let ChooseSpec::Object(filter) = target_only.target.base() else {
+        return None;
+    };
+    let mut expected = ObjectFilter::default();
+    expected.zone = Some(Zone::Graveyard);
+    expected.owner = Some(PlayerFilter::DamagedPlayer);
+    expected.card_types = vec![
+        CardType::Artifact,
+        CardType::Creature,
+        CardType::Enchantment,
+        CardType::Land,
+        CardType::Planeswalker,
+        CardType::Battle,
+    ];
+    expected.excluded_card_types = vec![CardType::Land];
+    expected.set_explicit_card_noun(true);
+    if filter != &expected {
+        return None;
+    }
+
+    let may = structural_unwrap_render_wrappers(may_effect)
+        .downcast_ref::<crate::effects::MayEffect>()?;
+    if !matches!(may.decider, None | Some(PlayerFilter::You)) {
+        return None;
+    }
+    let [cast_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let cast = structural_unwrap_render_wrappers(cast_effect)
+        .downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    if &cast.tag != target_tag
+        || cast.player != PlayerFilter::You
+        || cast.allow_land
+        || cast.as_copy
+        || cast.copy_cast_reminder_surface
+        || cast.copy_instruction_surface.is_some()
+        || cast.without_paying_mana_cost
+        || cast.additional_mana_cost.is_some()
+        || cast.cost_reduction.is_some()
+        || cast.mana_spend_mode != ironsmith_core::value_model::ManaSpendMode::AnyType
+    {
+        return None;
+    }
+
+    Some("You may cast target nonland permanent card from that player's graveyard, and mana of any type can be spent to cast that spell".to_string())
 }
 
 pub(super) fn is_chosen_spell_graveyard_exile_replacement(effect: &Effect, tag: &TagKey) -> bool {
@@ -4295,19 +4489,73 @@ pub(super) fn value_is_total_power_of_effect_affected_objects(
     )
 }
 
-pub(super) fn describe_exile_all_creatures_each_player_fractal_power_counters(
+pub(super) fn value_is_iterated_players_total_power_of_effect_affected_creatures(
+    value: &Value,
+    effect_id: crate::effect::EffectId,
+) -> bool {
+    let Value::PriorEffectMetric {
+        effect_id: candidate,
+        query,
+    } = value.unhinted()
+    else {
+        return false;
+    };
+    let Some(filter) = query.filter.as_ref() else {
+        return false;
+    };
+    let mut expected = ObjectFilter::creature().in_zone(Zone::Battlefield);
+    expected.set_explicit_card_type_noun(Some(CardType::Creature));
+    *candidate == effect_id
+        && query.source == crate::effect::EffectMetricSource::AffectedObjects
+        && query.metric == crate::effect::EffectMetric::TotalPower
+        && query.action == Some(crate::effect::PriorEffectAction::Exiled)
+        && query.player == Some(PlayerFilter::IteratedPlayer)
+        && (*filter == expected || *filter == ObjectFilter::creature().in_zone(Zone::Battlefield))
+}
+
+pub(in crate::compiled_text) fn describe_exile_all_creatures_each_player_fractal_power_counters(
     effects: &[Effect],
 ) -> Option<String> {
-    let [exile_effect, create_effect, counters_effect] = effects else {
+    let (exile_effect, for_players, create_effect, counters_effect, migrated_player_body) =
+        match effects {
+            [exile_effect, create_effect, counters_effect] => (
+                exile_effect,
+                structural_unwrap_render_wrappers(create_effect)
+                    .downcast_ref::<crate::effects::ForPlayersEffect>()?,
+                create_effect,
+                counters_effect,
+                false,
+            ),
+            [exile_effect, player_effect] => {
+                let for_players = structural_unwrap_render_wrappers(player_effect)
+                    .downcast_ref::<crate::effects::ForPlayersEffect>()?;
+                let [create_effect, counters_effect] = for_players.effects.as_slice() else {
+                    return None;
+                };
+                (
+                    exile_effect,
+                    for_players,
+                    create_effect,
+                    counters_effect,
+                    true,
+                )
+            }
+            _ => return None,
+        };
+    if for_players.filter != PlayerFilter::Any {
         return None;
     };
     let exile_id = exiled_all_creatures_effect_id(exile_effect)?;
 
-    let for_players = create_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
-    if for_players.filter != PlayerFilter::Any || for_players.effects.len() != 1 {
+    if !migrated_player_body && for_players.effects.len() != 1 {
         return None;
     }
-    let (created_tag, create) = tagged_create_token_effect(&for_players.effects[0])?;
+    let create_effect = if migrated_player_body {
+        create_effect
+    } else {
+        &for_players.effects[0]
+    };
+    let (created_tag, create) = tagged_create_token_effect(create_effect)?;
     if create.count != Value::Fixed(1)
         || create.controller != PlayerFilter::IteratedPlayer
         || create.enters_tapped
@@ -4323,7 +4571,12 @@ pub(super) fn describe_exile_all_creatures_each_player_fractal_power_counters(
         || put.distributed
         || put.target_count.is_some()
         || !matches!(put.target, ChooseSpec::Tagged(ref tag) if tag == created_tag)
-        || !value_is_total_power_of_effect_affected_objects(&put.amount, exile_id)
+        || !(value_is_total_power_of_effect_affected_objects(&put.amount, exile_id)
+            || (migrated_player_body
+                && value_is_iterated_players_total_power_of_effect_affected_creatures(
+                    &put.amount,
+                    exile_id,
+                )))
     {
         return None;
     }
@@ -5039,6 +5292,22 @@ mod repeated_quantified_action_tests {
         assert_eq!(
             describe_for_players_iterated_action_sequence(&for_players).as_deref(),
             Some("Each player draws two cards, then discards three cards, then loses 4 life")
+        );
+
+        let definition = crate::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Repeated Comma Then Probe",
+        )
+        .card_types(vec![CardType::Sorcery])
+        .with_spell_effect(vec![Effect::new(for_players)])
+        .build();
+        assert_eq!(
+            crate::compiled_text::debug_compiled_lines(&definition),
+            vec!["Each player draws two cards, then discards three cards, then loses 4 life."]
+        );
+        assert_eq!(
+            crate::compiled_text::compiled_text_lines(&definition),
+            vec!["Each player draws two cards, then discards three cards, then loses 4 life."]
         );
     }
 }

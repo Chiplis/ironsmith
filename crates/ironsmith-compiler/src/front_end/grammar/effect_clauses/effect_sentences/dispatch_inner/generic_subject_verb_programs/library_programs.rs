@@ -1,5 +1,47 @@
 use super::*;
 
+pub fn parse_generic_top_cards_cloak_counted_rest_bottom_subject_verb(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let sentence_tokens = trim_commas(tokens);
+    let shape = effect_grammar::parse_look_cloak_partition_shape(&sentence_tokens)?;
+    let look_tokens = trim_commas(&sentence_tokens[shape.look]);
+    let (player, count, reveal) =
+        super::super::dispatch_entry::parse_top_cards_view_sentence(&look_tokens)?;
+    if reveal {
+        return None;
+    }
+
+    let looked_tag = crate::util::helper_tag_for_tokens(tokens, "looked_cloak");
+    let selected_tag = crate::util::helper_tag_for_tokens(tokens, "cloaked_selection");
+    let mut selected_filter = ObjectFilter::tagged(looked_tag.clone());
+    selected_filter.zone = Some(Zone::Library);
+
+    Some(vec![
+        EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag.clone()),
+        EffectAst::ChooseTaggedObjectsInZone {
+            filter: selected_filter,
+            count: shape.selected_count,
+            player: PlayerAst::You,
+            tag: selected_tag.clone(),
+            zone: Zone::Library,
+        },
+        EffectAst::subject_verb_cloak_onto_battlefield(
+            PlayerAst::You,
+            TargetAst::Tagged(selected_tag.clone(), None),
+            false,
+            ReturnControllerAst::You,
+            false,
+        ),
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            looked_tag,
+            Some(selected_tag),
+            shape.remainder_order,
+            player,
+        ),
+    ])
+}
+
 
 pub fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
     tokens: &[OwnedLexToken],

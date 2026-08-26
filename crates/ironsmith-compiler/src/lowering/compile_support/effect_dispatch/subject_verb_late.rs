@@ -1103,19 +1103,52 @@ pub(super) fn compile_subject_verb_late(
         }
         SubjectVerbActionAst::ForEachCounterKindPutOrRemove {
             target,
+            counter_source,
             all_kinds,
             fixed_counter_type,
             optional_action,
+            put_only,
+            choose_target_per_kind,
         } => {
-            let (mut spec, choices) =
+            let (mut spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let counter_source_spec = if let Some(counter_source) = counter_source {
+                let (source_spec, source_choices) =
+                    if let TargetAst::Object(filter, explicit_target_span, _) = counter_source
+                        && explicit_target_span.is_none()
+                    {
+                        (
+                            ChooseSpec::All(resolve_it_tag(filter, &current_reference_env(ctx))?),
+                            Vec::new(),
+                        )
+                    } else {
+                        resolve_target_spec_with_choices(
+                            counter_source,
+                            &current_reference_env(ctx),
+                        )?
+                    };
+                for choice in source_choices {
+                    push_choice(&mut choices, choice);
+                }
+                Some(source_spec)
+            } else {
+                None
+            };
             if fixed_counter_type.is_some()
                 && let TargetAst::Object(filter, explicit_target_span, _) = target
                 && explicit_target_span.is_none()
             {
                 spec = ChooseSpec::All(resolve_it_tag(filter, &current_reference_env(ctx))?);
             }
-            let effect = if let Some(counter_type) = fixed_counter_type {
+            let effect = if *put_only
+                && *choose_target_per_kind
+                && let Some(counter_source_spec) = counter_source_spec
+            {
+                crate::effects::ForEachCounterKindPutOrRemoveEffect::put_each_kind_from(
+                    counter_source_spec,
+                    spec,
+                )
+            } else if let Some(counter_type) = fixed_counter_type {
                 crate::effects::ForEachCounterKindPutOrRemoveEffect::fixed_counter_type(
                     spec,
                     *counter_type,

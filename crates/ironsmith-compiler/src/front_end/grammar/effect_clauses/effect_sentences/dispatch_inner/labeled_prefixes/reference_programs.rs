@@ -1,6 +1,5 @@
 use super::*;
 
-
 pub fn parse_subject_verb_extension_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -115,7 +114,6 @@ pub fn parse_subject_verb_extension_sentence(
     Ok(None)
 }
 
-
 pub(super) fn parse_earthbend_subject_verb_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -145,7 +143,6 @@ pub(super) fn parse_earthbend_subject_verb_sentence(
     Ok(Some(effects))
 }
 
-
 pub(super) fn parse_gain_ability_to_source_subject_verb_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -155,16 +152,17 @@ pub(super) fn parse_gain_ability_to_source_subject_verb_sentence(
     )
 }
 
-
 pub(super) fn parse_gain_ability_subject_verb_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     super::super::gain_ability::parse_gain_ability_sentence(tokens)
 }
 
-
 pub(super) fn parse_for_each_opponent_doesnt_subject_verb_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    Ok(super::super::conditionals::parse_for_each_opponent_doesnt(tokens)?.map(|effect| vec![effect]))
+    Ok(
+        super::super::conditionals::parse_for_each_opponent_doesnt(tokens)?
+            .map(|effect| vec![effect]),
+    )
 }

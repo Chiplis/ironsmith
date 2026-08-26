@@ -183,6 +183,18 @@ pub fn parse_exile_then_return_same_object_sentence(
         return Ok(None);
     }
     let source_exiled_tag = TagKey::from(crate::tag::SOURCE_EXILED_TAG);
+    let return_words = crate::lexer::token_word_refs(shape.return_tokens);
+    let return_reference_surface = match return_words.as_slice() {
+        ["return", "it", ..] => Some(ironsmith_core::SearchResultReferenceSurface::It),
+        ["return", "that", "card", ..] => {
+            Some(ironsmith_core::SearchResultReferenceSurface::ThatCard)
+        }
+        ["return", "them", ..] => Some(ironsmith_core::SearchResultReferenceSurface::Them),
+        ["return", "those", "cards", ..] => {
+            Some(ironsmith_core::SearchResultReferenceSurface::ThoseCards)
+        }
+        _ => None,
+    };
     for effect in &mut first_effects {
         if matches!(
             effect,
@@ -237,7 +249,12 @@ pub fn parse_exile_then_return_same_object_sentence(
     for effect in &mut second_effects {
         match effect {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ReturnToBattlefield { target, .. },
+                action:
+                    SubjectVerbActionAst::ReturnToBattlefield {
+                        target,
+                        target_reference_surface,
+                        ..
+                    },
                 ..
             }) if target_references_it_tag(target)
                 || target_references_source_exiled_tag(target) =>
@@ -245,6 +262,7 @@ pub fn parse_exile_then_return_same_object_sentence(
                 if target_references_it_tag(target) {
                     *target = TargetAst::Tagged(source_exiled_tag.clone(), None);
                 }
+                *target_reference_surface = return_reference_surface;
                 rewrote_return = true;
             }
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -252,6 +270,7 @@ pub fn parse_exile_then_return_same_object_sentence(
                     SubjectVerbActionAst::MoveToZone {
                         target,
                         zone: Zone::Battlefield,
+                        target_reference_surface,
                         ..
                     },
                 ..
@@ -265,6 +284,7 @@ pub fn parse_exile_then_return_same_object_sentence(
                 if target_references_it_tag(target) {
                     *target = TargetAst::Tagged(source_exiled_tag.clone(), None);
                 }
+                *target_reference_surface = return_reference_surface;
                 rewrote_return = true;
             }
             EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {

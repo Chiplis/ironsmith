@@ -233,7 +233,10 @@ pub(super) fn parse_create_more_of_prior_tokens(
     prior_effects: &[EffectAst],
 ) -> Option<PriorTokenCreateFollowup> {
     let shape = followup_shapes::parse_create_more_prior_tokens(sentence_tokens)?;
-    let predicate = parse_trailing_if_predicate_lexed(shape.predicate_tokens)?;
+    let predicate_tokens =
+        crate::grammar::effects::split_labeled_effect_prefix_lexed(shape.predicate_tokens)
+            .unwrap_or(shape.predicate_tokens);
+    let predicate = parse_trailing_if_predicate_lexed(predicate_tokens)?;
     let mut create = prior_effects.last()?.clone();
     let EffectAst::SubjectVerb(subject_verb) = &mut create else {
         return None;

@@ -218,13 +218,25 @@ pub fn parse_consult_match_into_battlefield_others_graveyard(
         )));
     }
 
+    let effect_grammar::ConsultBattlefieldGraveyardShape::Combined {
+        controller_you,
+        tapped,
+    } = shape
+    else {
+        unreachable!("remainder-first consult shape returned above")
+    };
+    let controller = if controller_you {
+        crate::cards::builders::ReturnControllerAst::You
+    } else {
+        crate::cards::builders::ReturnControllerAst::Preserve
+    };
     let followups = vec![
         EffectAst::subject_verb_move_to_zone(
             TargetAst::Tagged(parts.match_tag.clone(), None),
             Zone::Battlefield,
             false,
-            crate::cards::builders::ReturnControllerAst::Preserve,
-            false,
+            controller,
+            tapped,
             None,
         ),
         EffectAst::ForEachTagged {

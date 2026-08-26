@@ -851,6 +851,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     ExileWouldDieInstead {
         filter: ObjectFilter,
         damaged_by: Option<DamagedBySource>,
+        #[cfg_attr(feature = "serde", serde(default))]
+        damager_filter: Option<ObjectFilter>,
+        #[cfg_attr(feature = "serde", serde(default))]
+        damager_filter_surface: Option<String>,
         exile_with_counters: Vec<(CounterType, u32)>,
         follow_up_effects: Vec<E>,
     },
@@ -2042,11 +2046,15 @@ where
             StaticAbilityPayload::ExileWouldDieInstead {
                 filter,
                 damaged_by,
+                damager_filter,
+                damager_filter_surface,
                 exile_with_counters,
                 follow_up_effects,
             } => StaticAbilityPayload::ExileWouldDieInstead {
                 filter,
                 damaged_by,
+                damager_filter,
+                damager_filter_surface,
                 exile_with_counters,
                 follow_up_effects: follow_up_effects
                     .into_iter()
@@ -5360,6 +5368,32 @@ impl<
         Self::exile_would_die_instead_with_damage_source_and_follow_up(filter, damaged_by, vec![])
     }
 
+    pub fn exile_would_die_instead_with_damage_filter(
+        filter: ObjectFilter,
+        damager_filter: ObjectFilter,
+    ) -> Self {
+        Self::exile_would_die_instead_with_damage_filter_surface(filter, damager_filter, None)
+    }
+
+    pub fn exile_would_die_instead_with_damage_filter_surface(
+        filter: ObjectFilter,
+        damager_filter: ObjectFilter,
+        damager_filter_surface: Option<String>,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::ExileWouldDieInstead),
+            label: "exile would die instead".into(),
+            payload: StaticAbilityPayload::ExileWouldDieInstead {
+                filter,
+                damaged_by: None,
+                damager_filter: Some(damager_filter),
+                damager_filter_surface,
+                exile_with_counters: Vec::new(),
+                follow_up_effects: Vec::new(),
+            },
+        }
+    }
+
     pub fn exile_would_die_instead_with_damage_source_and_follow_up(
         filter: ObjectFilter,
         damaged_by: Option<DamagedBySource>,
@@ -5385,6 +5419,8 @@ impl<
             payload: StaticAbilityPayload::ExileWouldDieInstead {
                 filter,
                 damaged_by,
+                damager_filter: None,
+                damager_filter_surface: None,
                 exile_with_counters,
                 follow_up_effects,
             },

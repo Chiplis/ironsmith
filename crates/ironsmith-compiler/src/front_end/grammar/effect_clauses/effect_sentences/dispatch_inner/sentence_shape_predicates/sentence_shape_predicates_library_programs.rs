@@ -113,3 +113,35 @@ pub(super) fn parse_put_cards_from_single_graveyard_on_bottom_owner_library_sent
         None,
     ))
 }
+
+#[cfg(test)]
+mod source_and_blocked_creatures_library_shuffle_tests {
+    use super::*;
+    use crate::util::tokenize_line;
+
+    #[test]
+    fn strict_joint_object_route_preempts_partial_put_and_rejects_changed_relation() {
+        let tokens = tokenize_line(
+            "Put this creature and each creature it's blocking on top of their owners' libraries, then those players shuffle.",
+            0,
+        );
+        assert!(
+            parse_source_and_blocked_creatures_top_library_shuffle_sentence(&tokens).is_some()
+        );
+        let routed = crate::effect_sentences::parse_effect_sentence_lexed(&tokens)
+            .expect("public sentence route should parse");
+        let debug = format!("{routed:#?}");
+        assert!(debug.contains("ForEachObject"), "{debug}");
+        assert!(debug.contains("blocked_by_source: true"), "{debug}");
+        assert!(debug.contains("MoveToZone"), "{debug}");
+        assert!(debug.contains("ShuffleLibrary"), "{debug}");
+
+        let changed = tokenize_line(
+            "Put this creature and each creature it's blocked by on top of their owners' libraries, then those players shuffle.",
+            0,
+        );
+        assert!(
+            parse_source_and_blocked_creatures_top_library_shuffle_sentence(&changed).is_none()
+        );
+    }
+}

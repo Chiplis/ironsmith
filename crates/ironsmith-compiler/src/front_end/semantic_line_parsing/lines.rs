@@ -91,6 +91,31 @@ fn restore_copy_static_variant_source_display(
     }
 }
 
+fn restore_named_characteristic_subject_surface(
+    abilities: &mut [crate::cards::builders::StaticAbilityAst],
+    source_tokens: &[OwnedLexToken],
+) {
+    if !crate::keyword_static::characteristic_pt_uses_named_subject_surface(source_tokens) {
+        return;
+    }
+    for ability in abilities {
+        let crate::cards::builders::StaticAbilityAst::Static(ability) = ability else {
+            continue;
+        };
+        let ironsmith_core::StaticAbilityPayload::CharacteristicDefiningPt { power, toughness } =
+            &mut ability.payload
+        else {
+            continue;
+        };
+        *power = power
+            .clone()
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::SourceNameSubject);
+        *toughness = toughness
+            .clone()
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::SourceNameSubject);
+    }
+}
+
 fn full_parse_tokens_have_triggered_intervening_if_clause(tokens: &[OwnedLexToken]) -> bool {
     let start_idx =
         if super::super::grammar::trigger_surface::parse_trigger_intro_prefix_tokens(tokens)
@@ -334,14 +359,94 @@ fn is_gate_partition_word_program(words: &[&str]) -> bool {
         )
 }
 
+pub fn end_of_combat_destroy_then_next_end_step_counter_program(
+    effect_tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let sentences = split_lexed_sentences(effect_tokens);
+    let [destroy_sentence, counter_sentence] = sentences.as_slice() else {
+        return None;
+    };
+    let destroy_words = crate::lexer::parser_token_word_refs(destroy_sentence);
+    let counter_words = crate::lexer::parser_token_word_refs(counter_sentence);
+    let exact_destroy = crate::word_primitives::first_is(&destroy_words, "destroy")
+        && crate::word_primitives::sequence_occurs(
+            &destroy_words,
+            &["the", "other", "creature", "at", "end", "of", "combat"],
+        );
+    let exact_counter_followup = crate::word_primitives::sequence_occurs(
+        &counter_words,
+        &["at", "the", "beginning", "of", "the", "next", "end", "step"],
+    ) && crate::word_primitives::sequence_occurs(
+        &counter_words,
+        &["if", "that", "creature", "was", "destroyed", "this", "way"],
+    ) && crate::word_primitives::sequence_occurs(
+        &counter_words,
+        &["counter", "on", "the", "first", "creature"],
+    );
+    if !exact_destroy || !exact_counter_followup {
+        return None;
+    }
+
+    let destroyed = ironsmith_core::PriorEffectResultSurface::new(
+        ironsmith_core::PriorEffectAction::Destroyed,
+        ObjectFilter::creature(),
+        ironsmith_core::PriorEffectResultActor::Passive,
+        ironsmith_core::PriorEffectResultQuantifier::One,
+    );
+    let destroy_other = EffectAst::subject_verb_destroy(TargetAst::Tagged(
+        crate::tag::CompilerReferenceTag::Blocking.key(),
+        None,
+    ));
+    let counter_first = EffectAst::subject_verb_put_counters(
+        crate::object::CounterType::PlusOnePlusOne,
+        Value::Fixed(1),
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::Enchanted.key(), None),
+        None,
+        false,
+    );
+    Some(vec![EffectAst::DelayedUntilEndOfCombat {
+        effects: vec![
+            destroy_other,
+            EffectAst::IfResult {
+                predicate: crate::cards::builders::IfResultPredicate::PriorEffectResult(destroyed),
+                effects: vec![EffectAst::DelayedUntilNextEndStep {
+                    player: PlayerFilter::Any,
+                    effects: vec![counter_first],
+                }],
+            },
+        ],
+    }])
+}
+
 fn reconcile_authored_correlated_trigger_programs(
     line: &mut LineAst,
     source_tokens: &[OwnedLexToken],
 ) -> Result<(), CardTextError> {
+    // `parse_comma_split_tokens` intentionally permits a greedy left side,
+    // which is useful for ordinary clauses but can choose the comma inside a
+    // later `if ...,` sentence. This grammar-proven two-sentence program owns
+    // the first physical comma after its trigger header.
+    if let Some(first_comma) = source_tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::Comma)
+    {
+        let physical_tail = trim_lexed_commas(&source_tokens[first_comma + 1..]);
+        if let Some(effects) =
+            end_of_combat_destroy_then_next_end_step_counter_program(physical_tail)
+        {
+            replace_triggered_effects(line, &effects)?;
+            return Ok(());
+        }
+    }
     let Some(split) = semantic_grammar::parse_comma_split_tokens(source_tokens) else {
         return Ok(());
     };
     let words = crate::lexer::parser_token_word_refs(split.after);
+
+    if let Some(effects) = end_of_combat_destroy_then_next_end_step_counter_program(split.after) {
+        replace_triggered_effects(line, &effects)?;
+        return Ok(());
+    }
 
     let parley = is_parley_word_program(&words);
     if parley {
@@ -1077,6 +1182,146 @@ fn reconcile_named_explore_source_surface(
     apply_to_line(chunk, &surface)
 }
 
+fn reconcile_named_source_exile_surface(chunk: &mut LineAst, source: &[OwnedLexToken]) {
+    fn authored_surface(source: &[OwnedLexToken]) -> Option<crate::target::SourceReferenceSurface> {
+        let mut surfaces = source
+            .iter()
+            .enumerate()
+            .filter(|(_, token)| token.is_word("exile"))
+            .filter_map(|(exile_index, _)| {
+                let start = exile_index + 1;
+                let end = source[start..]
+                    .iter()
+                    .position(|token| {
+                        matches!(token.kind, TokenKind::Comma | TokenKind::Period)
+                            || token.is_word("then")
+                    })
+                    .map_or(source.len(), |offset| start + offset);
+                let candidate = source.get(start..end)?;
+                crate::lexer::is_authored_proper_name_phrase(candidate).then(|| {
+                    let text = render_token_slice(candidate).trim().to_string();
+                    if token_word_refs(candidate).len() == 1 {
+                        crate::target::SourceReferenceSurface::ShortName(text)
+                    } else {
+                        crate::target::SourceReferenceSurface::FullName(text)
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        surfaces.dedup();
+        let [surface] = surfaces.as_slice() else {
+            return None;
+        };
+        Some(surface.clone())
+    }
+
+    fn plain_source_target(target: &TargetAst) -> bool {
+        match target {
+            TargetAst::Source(_) => true,
+            TargetAst::Object(filter, _, _) if filter.source => {
+                let mut plain = filter.clone();
+                plain.source_surface = None;
+                plain == ObjectFilter::source()
+            }
+            _ => false,
+        }
+    }
+
+    fn candidate_count(effects: &[EffectAst]) -> usize {
+        let mut count = 0;
+        for effect in effects {
+            if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect {
+                let target = match action {
+                    SubjectVerbActionAst::Exile { target, .. }
+                    | SubjectVerbActionAst::MoveToZone {
+                        target,
+                        zone: Zone::Exile,
+                        ..
+                    } => Some(target),
+                    _ => None,
+                };
+                count += target.is_some_and(plain_source_target) as usize;
+            }
+            crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+                count += candidate_count(nested)
+            });
+        }
+        count
+    }
+
+    fn apply(effects: &mut [EffectAst], surface: &crate::target::SourceReferenceSurface) -> bool {
+        let mut changed = false;
+        for effect in effects {
+            if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect {
+                let target = match action {
+                    SubjectVerbActionAst::Exile { target, .. }
+                    | SubjectVerbActionAst::MoveToZone {
+                        target,
+                        zone: Zone::Exile,
+                        ..
+                    } => Some(target),
+                    _ => None,
+                };
+                if let Some(target) = target
+                    && plain_source_target(target)
+                {
+                    match target {
+                        TargetAst::Source(span) => {
+                            *target = TargetAst::Object(
+                                ObjectFilter::source_with_surface(surface.clone()),
+                                None,
+                                *span,
+                            );
+                        }
+                        TargetAst::Object(filter, _, _) => {
+                            filter.source_surface = Some(surface.clone());
+                        }
+                        _ => unreachable!("plain_source_target accepted a non-source target"),
+                    }
+                    changed = true;
+                }
+            }
+            crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                changed |= apply(nested, surface)
+            });
+        }
+        changed
+    }
+
+    let Some(surface) = authored_surface(source) else {
+        return;
+    };
+    match chunk {
+        LineAst::Multiple(chunks) => {
+            for chunk in chunks {
+                reconcile_named_source_exile_surface(chunk, source);
+            }
+        }
+        LineAst::Triggered { effects, .. } if candidate_count(effects) == 1 => {
+            let _ = apply(effects, &surface);
+        }
+        LineAst::Ability(parsed)
+            if parsed
+                .effects_ast
+                .as_deref()
+                .is_some_and(|effects| candidate_count(effects) == 1) =>
+        {
+            let changed = parsed
+                .effects_ast
+                .as_mut()
+                .is_some_and(|effects| apply(effects, &surface));
+            if changed {
+                let updated = parsed.effects_ast.clone().unwrap_or_default();
+                if let AbilityKind::Triggered(triggered) = parsed.kind_mut() {
+                    triggered.effects = ironsmith_core::ResolutionProgram::from_effects(updated);
+                    triggered.choices.clear();
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 fn triggered_line_source_text(line: &RewriteTriggeredLine) -> String {
     let raw = line.info.raw_line.trim();
     let full = line.full_text.trim();
@@ -1164,14 +1409,89 @@ pub fn parse_statement_token_groups_to_chunks(
     parse_tokens: &[OwnedLexToken],
     parse_groups: &[Vec<OwnedLexToken>],
 ) -> Result<Vec<LineAst>, CardTextError> {
-    parse_statement_to_chunks_impl(
+    let source_tokens = info.source_tokens.clone();
+    let mut chunks = parse_statement_to_chunks_impl(
         &RewriteStatementLine {
             info,
             parse_tokens: parse_tokens.to_vec(),
         },
         parse_tokens,
         parse_groups,
-    )
+    )?;
+    reconcile_as_transforms_copy_exception_surface(&mut chunks, &source_tokens);
+    Ok(chunks)
+}
+
+fn reconcile_as_transforms_copy_exception_surface(
+    chunks: &mut [LineAst],
+    source_tokens: &[OwnedLexToken],
+) {
+    let Some(destination) =
+        crate::grammar::line_semantic_facts::parse_line_semantic_facts_tokens(source_tokens)
+            .statement
+            .as_transforms_effect_program
+            .map(|facts| facts.destination)
+    else {
+        return;
+    };
+    let Some(first_sentence) = split_lexed_sentences(source_tokens).first().copied() else {
+        return;
+    };
+    let Some(become_idx) = crate::slice_primitives::select_position(first_sentence, |token| {
+        token.is_word("become") || token.is_word("becomes")
+    }) else {
+        return;
+    };
+    let Some(authored_exception) =
+        effect_grammar::become_shapes::parse_become_rest_shape(&first_sentence[become_idx..])
+            .copy_exception
+    else {
+        return;
+    };
+    let Some(authored_name) = authored_exception.name_override.clone() else {
+        return;
+    };
+    if !authored_name.eq_ignore_ascii_case(&destination) {
+        return;
+    }
+
+    fn reconcile(
+        effects: &mut [EffectAst],
+        authored_name: &str,
+        authored_surface: &Option<String>,
+    ) {
+        for effect in effects {
+            if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::BecomeCopy {
+                        name_override,
+                        name_override_surface,
+                        copy_exception_surface,
+                        ..
+                    },
+                ..
+            }) = effect
+                && name_override
+                    .as_deref()
+                    .is_some_and(|name| name.eq_ignore_ascii_case("this"))
+            {
+                *name_override = Some(authored_name.to_string());
+                *name_override_surface = Some(crate::target::SourceReferenceSurface::FullName(
+                    authored_name.to_string(),
+                ));
+                *copy_exception_surface = authored_surface.clone();
+            }
+            crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                reconcile(nested, authored_name, authored_surface);
+            });
+        }
+    }
+
+    for chunk in chunks {
+        if let LineAst::Statement { effects } = chunk {
+            reconcile(effects, &authored_name, &authored_exception.surface);
+        }
+    }
 }
 
 fn exact_destroy_no_regeneration_statement(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
@@ -1270,6 +1590,36 @@ fn exact_registered_statement_sequence(tokens: &[OwnedLexToken]) -> Option<Vec<E
         Ok(None) | Err(_) => return None,
     };
     (matched.consumed_sentences == sentences.len()).then_some(matched.effects)
+}
+
+fn exact_registered_statement_program_chain(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let sentences = split_lexed_sentences(tokens)
+        .into_iter()
+        .map(crate::effect_sentences::SentenceInput::from_lexed)
+        .collect::<Vec<_>>();
+    if sentences.len() < 4 {
+        return None;
+    }
+
+    let mut sentence_idx = 0usize;
+    let mut matched_programs = 0usize;
+    let mut effects = Vec::new();
+    while sentence_idx < sentences.len() {
+        let matched =
+            match crate::effect_sentences::try_parse_document_program(&sentences, sentence_idx) {
+                Ok(Some(matched)) if matched.consumed_sentences > 0 => matched,
+                Ok(Some(_)) | Ok(None) | Err(_) => return None,
+            };
+        sentence_idx += matched.consumed_sentences;
+        matched_programs += 1;
+        effects.push(EffectAst::SourceSentence {
+            effects: matched.effects,
+            leading_then: false,
+            starting_with_controller: false,
+        });
+    }
+
+    (matched_programs >= 2 && sentence_idx == sentences.len()).then_some(effects)
 }
 
 fn typed_selected_hand_reveal_token_creation_statement(
@@ -1424,6 +1774,19 @@ fn parse_statement_to_chunks_impl(
     {
         return Ok(vec![LineAst::Statement { effects }]);
     }
+    // An attached-object transform with a quoted activated ability still owns
+    // one static rule. The generic statement probe can see executable verbs
+    // inside the quote (`Sacrifice ...: Add ...`) and must not reclassify them
+    // as one-shot effects of the Aura spell.
+    let attached_transform =
+        crate::keyword_static::parse_attached_type_transform_line(&line.info.source_tokens)?;
+    let attached_transform = match attached_transform {
+        Some(abilities) => Some(abilities),
+        None => crate::keyword_static::parse_attached_type_transform_line(parse_tokens)?,
+    };
+    if let Some(abilities) = attached_transform {
+        return Ok(vec![LineAst::StaticAbilities(abilities)]);
+    }
     // Rewrites may replace the selected hand collection in the first
     // sentence with its later pronoun before the token-count followup is
     // grouped. Give the grammar-proven source sequence first refusal so the
@@ -1440,9 +1803,11 @@ fn parse_statement_to_chunks_impl(
     if let Some(effects) = exact_destroy_no_regeneration_statement(&line.info.source_tokens)
         .or_else(|| exact_hidden_partition_permission_statement(&line.info.source_tokens))
         .or_else(|| exact_historical_target_return_statement(&line.info.source_tokens))
+        .or_else(|| exact_registered_statement_program_chain(&line.info.source_tokens))
         .or_else(|| exact_destroy_no_regeneration_statement(parse_tokens))
         .or_else(|| exact_hidden_partition_permission_statement(parse_tokens))
         .or_else(|| exact_historical_target_return_statement(parse_tokens))
+        .or_else(|| exact_registered_statement_program_chain(parse_tokens))
         .or_else(|| exact_registered_statement_sequence(&line.info.source_tokens))
         .or_else(|| exact_registered_statement_sequence(parse_tokens))
     {
@@ -1648,6 +2013,109 @@ fn render_statement_source_tokens(
 fn parse_villainous_choice_statement_chunk(
     line: &RewriteStatementLine,
 ) -> Result<Option<LineAst>, CardTextError> {
+    let source_sentences = split_lexed_sentences(&line.info.source_tokens);
+    let player_statement = source_sentences
+        .iter()
+        .enumerate()
+        .find_map(|(index, sentence)| {
+            semantic_grammar::parse_villainous_choice_player_statement_tokens(sentence)
+                .map(|shape| (index, shape))
+        });
+    let (player_statement, mut preceding_effects) = if let Some((index, shape)) = player_statement {
+        let preceding_effects = if index == 0 {
+            Vec::new()
+        } else {
+            let preceding_sentences = source_sentences[..index]
+                .iter()
+                .map(|sentence| sentence.to_vec())
+                .collect::<Vec<_>>();
+            let preceding_tokens = join_sentences_with_period(&preceding_sentences);
+            let preceding = parse_effect_sentences_preserving_source_boundaries(&preceding_tokens)?;
+            if preceding
+                .iter()
+                .all(|effect| matches!(effect, EffectAst::SourceSentence { .. }))
+            {
+                preceding
+            } else {
+                vec![EffectAst::SourceSentence {
+                    effects: preceding,
+                    leading_then: false,
+                    starting_with_controller: false,
+                }]
+            }
+        };
+        (Some(shape), preceding_effects)
+    } else {
+        (
+            semantic_grammar::parse_villainous_choice_player_statement_tokens(&line.parse_tokens),
+            Vec::new(),
+        )
+    };
+    if let Some(shape) = player_statement {
+        let first_mode_effects = parse_villainous_choice_mode_program(shape.first_mode_program)?;
+        let second_mode_effects = parse_villainous_choice_mode_program(shape.second_mode_program)?;
+        let (player, player_surface) = match shape.iteration {
+            semantic_grammar::VillainousChoicePlayerIteration::EachOpponent => {
+                (PlayerFilter::IteratedPlayer, "that player")
+            }
+            semantic_grammar::VillainousChoicePlayerIteration::TargetOpponent => {
+                (PlayerFilter::target_opponent(), "target opponent")
+            }
+        };
+        let choice = EffectAst::VillainousChoice {
+            player,
+            player_surface: Some(player_surface.to_string()),
+            modes: vec![
+                ChooseOneModeAst {
+                    description: render_statement_source_tokens(line, shape.first_mode_tokens),
+                    effects: first_mode_effects,
+                },
+                ChooseOneModeAst {
+                    description: render_statement_source_tokens(line, shape.second_mode_tokens),
+                    effects: second_mode_effects,
+                },
+            ],
+        };
+        let effects = match shape.iteration {
+            semantic_grammar::VillainousChoicePlayerIteration::EachOpponent => {
+                let body = if let Some(count) = shape.minimum_life_lost_this_turn {
+                    vec![EffectAst::Conditional {
+                        predicate: PredicateAst::ValueComparison {
+                            left: Value::LifeLostThisTurn(PlayerFilter::IteratedPlayer),
+                            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                            right: Value::Fixed(count as i32),
+                        },
+                        if_true: vec![choice],
+                        if_false: Vec::new(),
+                    }]
+                } else {
+                    vec![choice]
+                };
+                vec![EffectAst::ForEachOpponent { effects: body }]
+            }
+            semantic_grammar::VillainousChoicePlayerIteration::TargetOpponent => vec![
+                EffectAst::subject_verb_target_only(TargetAst::Player(
+                    PlayerFilter::target_opponent(),
+                    Some(crate::TextSpan::synthetic()),
+                )),
+                choice,
+            ],
+        };
+        let effects = if shape.leading_then {
+            vec![EffectAst::SourceSentence {
+                effects,
+                leading_then: true,
+                starting_with_controller: false,
+            }]
+        } else {
+            effects
+        };
+        preceding_effects.extend(effects);
+        return Ok(Some(LineAst::Statement {
+            effects: preceding_effects,
+        }));
+    }
+
     let Some(shape) =
         semantic_grammar::parse_villainous_choice_statement_tokens(&line.info.source_tokens)
             .or_else(|| {
@@ -1775,6 +2243,8 @@ fn sentences_have_token_creation_followup_after_first<S: AsRef<[OwnedLexToken]>>
         || sentences.iter().skip(1).any(|sentence| {
             let sentence = sentence.as_ref();
             semantic_grammar::parse_token_characteristic_followup_tokens(sentence).is_some()
+                || effect_grammar::followup_shapes::parse_create_more_prior_tokens(sentence)
+                    .is_some()
                 || effect_grammar::parse_create_head_tokens(strip_leading_if_you_do_lexed(sentence))
                     .is_some()
         })
@@ -2524,6 +2994,7 @@ use lines_reference_programs::{
     targeted_same_name_graveyard_cast_keeps_target_and_optional_normal_payment,
 };
 pub use lines_reference_programs::{
+    exact_target_graveyard_any_type_may_cast_bundle,
     exact_target_same_name_graveyard_may_cast_bundle,
     normalize_exert_followup_source_reference_tokens,
 };

@@ -66,18 +66,98 @@ pub(super) fn describe_for_players_choose_each_graveyard_then_owner_shuffle(
     ))
 }
 
-pub(super) fn describe_for_players_unless_pays(
+pub(in crate::compiled_text) fn describe_for_players_unless_pays(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
     if for_players.starting_with_controller || for_players.stop_after_first_happened {
         return None;
     }
-    let [effect] = for_players.effects.as_slice() else {
+    let [effect_root] = for_players.effects.as_slice() else {
         return None;
     };
+    let effect = effect_root
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .filter(|sequence| {
+            sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+                && sequence.result_label.is_none()
+                && sequence.effects.len() == 1
+        })
+        .map_or(effect_root, |sequence| &sequence.effects[0]);
     let unless_pays = effect.downcast_ref::<crate::effects::UnlessPaysEffect>()?;
     if unless_pays.player != PlayerFilter::IteratedPlayer {
         return None;
+    }
+
+    if !for_players.starting_with_controller
+        && !for_players.stop_after_first_happened
+        && matches!(
+            for_players.filter,
+            PlayerFilter::Any | PlayerFilter::Opponent
+        )
+        && let [consequence_effect] = unless_pays.effects.as_slice()
+        && let Some(lose_life) = consequence_effect.downcast_ref::<crate::effects::LoseLifeEffect>()
+        && lose_life.player == ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+        && let ironsmith_core::TotalCostKind::OneOf(branches) = unless_pays.cost.kind()
+        && branches.len() == 2
+    {
+        fn participant_payment_branch(
+            branch: &crate::cost::TotalCost,
+        ) -> Option<(&'static str, String)> {
+            let [cost] = branch.as_all()? else {
+                return None;
+            };
+            let effect = structural_unwrap_render_wrappers(cost.effect_ref()?);
+            if let Some(sacrifice) = sacrifice_view(effect)
+                && sacrifice.player == &PlayerFilter::You
+                && *sacrifice.count == Value::Fixed(1)
+            {
+                let display = describe_total_cost_payment(branch);
+                let object = display.strip_prefix("Sacrifice ")?;
+                return Some(("sacrifice", format!("sacrifices {object} of their choice")));
+            }
+            let discard = effect.downcast_ref::<crate::effects::DiscardEffect>()?;
+            if discard.player != PlayerFilter::You
+                || discard.count != Value::Fixed(1)
+                || discard.random
+                || discard.any_number
+                || discard.card_filter.is_some()
+            {
+                return None;
+            }
+            Some(("discard", "discards a card".to_string()))
+        }
+
+        let payments = branches
+            .iter()
+            .map(participant_payment_branch)
+            .collect::<Option<Vec<_>>>()?;
+        let kinds = payments.iter().map(|(kind, _)| *kind).collect::<Vec<_>>();
+        if kinds.contains(&"sacrifice") && kinds.contains(&"discard") {
+            let subject = if for_players.filter == PlayerFilter::Opponent {
+                "Each opponent"
+            } else {
+                "Each player"
+            };
+            let consequence = describe_effect_list(&unless_pays.effects);
+            let consequence = consequence
+                .trim()
+                .trim_end_matches('.')
+                .strip_prefix("that player ")
+                .or_else(|| {
+                    consequence
+                        .trim()
+                        .trim_end_matches('.')
+                        .strip_prefix("That player ")
+                })?;
+            return Some(format!(
+                "{subject} {consequence} unless that player {}",
+                payments
+                    .into_iter()
+                    .map(|(_, text)| text)
+                    .collect::<Vec<_>>()
+                    .join(" or ")
+            ));
+        }
     }
 
     if for_players.filter == PlayerFilter::Opponent
@@ -89,6 +169,7 @@ pub(super) fn describe_for_players_unless_pays(
         && let Some([cost]) = unless_pays.cost.as_all()
         && let Some(sacrifice) = cost
             .effect_ref()
+            .map(structural_unwrap_render_wrappers)
             .and_then(|effect| effect.downcast_ref::<crate::effects::SacrificeEffect>())
         && sacrifice.player == PlayerFilter::You
         && sacrifice.count == Value::Fixed(1)
@@ -3172,7 +3253,7 @@ fn battlefield_entry_object_noun(filter: Option<&ObjectFilter>) -> String {
         .unwrap_or_else(|| "permanent".to_string())
 }
 
-fn battlefield_entry_counter_phrase(
+pub(super) fn battlefield_entry_counter_phrase(
     counter: &ironsmith_core::BattlefieldEntryCounterSpec,
     additional: bool,
 ) -> String {
@@ -3473,6 +3554,16 @@ pub(crate) fn describe_choose_then_move_to_battlefield(
     } else {
         ""
     };
+    let face_down = if move_to_zone.enters_face_down {
+        " face down"
+    } else {
+        ""
+    };
+    let transformed = if move_to_zone.enters_transformed {
+        " transformed"
+    } else {
+        ""
+    };
     let control_suffix = match move_to_zone.battlefield_controller {
         crate::effects::BattlefieldController::Preserve => String::new(),
         crate::effects::BattlefieldController::Owner => " under its owner's control".to_string(),
@@ -3541,14 +3632,14 @@ pub(crate) fn describe_choose_then_move_to_battlefield(
         };
         let put_verb = player_verb(&chooser, "put", "puts");
         return Some(format!(
-            "{} {put_verb} {chosen} of their choice {origin} onto the battlefield{tapped}{attacking}{control_suffix}{where_x_clause}",
+            "{} {put_verb} {chosen} of their choice {origin} onto the battlefield{tapped}{attacking}{face_down}{transformed}{control_suffix}{where_x_clause}",
             capitalize_first(&chooser)
         ));
     }
 
     let put_verb = player_verb(&chooser, "put", "puts");
     Some(format!(
-        "{chooser} {put_verb} {chosen} {origin} onto the battlefield{tapped}{attacking}{control_suffix}{where_x_clause}"
+        "{chooser} {put_verb} {chosen} {origin} onto the battlefield{tapped}{attacking}{face_down}{transformed}{control_suffix}{where_x_clause}"
     ))
 }
 

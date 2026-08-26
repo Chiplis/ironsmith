@@ -1,6 +1,5 @@
 use super::*;
 
-
 pub(super) fn parse_passive_color_type_addition_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

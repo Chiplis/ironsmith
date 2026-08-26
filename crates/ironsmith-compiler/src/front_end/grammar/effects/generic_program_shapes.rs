@@ -122,7 +122,7 @@ pub fn parse_source_damage_to_decider(
 
 pub fn parse_choice_complement_clause(tokens: &[OwnedLexToken]) -> Option<LexedClause<'_>> {
     let then_atoms = [
-        PermissionSequence::phrase(&["each", "player"]),
+        PermissionSequence::any_phrase(&[&["each", "player"], &["each", "opponent"]]),
         PermissionSequence::action(
             "choose",
             PermissionCaptureKind::OneOf(&["choose", "chooses"]),
@@ -150,7 +150,7 @@ pub fn parse_choice_complement_clause(tokens: &[OwnedLexToken]) -> Option<LexedC
         return None;
     }
     let and_atoms = [
-        PermissionSequence::phrase(&["each", "player"]),
+        PermissionSequence::any_phrase(&[&["each", "player"], &["each", "opponent"]]),
         PermissionSequence::action(
             "choose",
             PermissionCaptureKind::OneOf(&["choose", "chooses"]),

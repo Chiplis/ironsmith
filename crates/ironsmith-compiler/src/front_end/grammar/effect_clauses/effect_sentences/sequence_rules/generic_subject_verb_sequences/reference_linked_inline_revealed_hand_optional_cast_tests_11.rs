@@ -36,6 +36,7 @@ fn optional_cast_chooses_from_the_exact_target_opponents_revealed_hand() {
                     allow_land: false,
                     as_copy: false,
                     copy_cast_reminder_surface: false,
+                    copy_instruction_surface: None,
                     without_paying_mana_cost: true,
                     additional_mana_cost: None,
                     cost_reduction: None,

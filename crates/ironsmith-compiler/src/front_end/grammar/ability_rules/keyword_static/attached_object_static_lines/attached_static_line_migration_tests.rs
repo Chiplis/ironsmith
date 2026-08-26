@@ -20,21 +20,80 @@ fn otherwise_keyword_grant_uses_typed_clause_boundary() {
 }
 
 #[test]
+fn otherwise_attached_damage_prevention_keeps_the_negated_typed_condition() {
+    let tokens = crate::lexer::lex_line(
+        "Enchanted creature has double strike as long as it's an enchantment. Otherwise, prevent all damage that would be dealt by enchanted creature.",
+        0,
+    )
+    .expect("lex conditional attachment rule");
+    let abilities = parse_attached_conditional_keyword_otherwise_line(&tokens)
+        .expect("parse conditional attachment rule")
+        .expect("conditional prevention should be recognized");
+    assert_eq!(abilities.len(), 2, "{abilities:#?}");
+    let debug = format!("{abilities:#?}");
+    assert!(debug.contains("DoubleStrike"), "{debug}");
+    assert!(
+        debug.contains("PreventAllDamageDealtByThisPermanent"),
+        "{debug}"
+    );
+    assert!(debug.contains("Not("), "{debug}");
+    assert!(debug.contains("AttachedToSourceMatches"), "{debug}");
+
+    let changed_direction = crate::lexer::lex_line(
+        "Enchanted creature has double strike as long as it's an enchantment. Otherwise, prevent all damage that would be dealt to enchanted creature.",
+        0,
+    )
+    .expect("lex changed prevention direction");
+    assert!(
+        parse_attached_conditional_keyword_otherwise_line(&changed_direction)
+            .expect("parse changed prevention direction")
+            .is_none(),
+        "the dealt-by family must not consume a dealt-to near miss"
+    );
+}
+
+#[test]
+fn attached_anthem_otherwise_base_and_block_restriction_stays_one_static_program() {
+    let tokens = crate::lexer::lex_line(
+        "Enchanted creature gets +2/+2 as long as it's a Detective you control. Otherwise, it has base power and toughness 1/1 and can't block Detectives.",
+        0,
+    )
+    .expect("lex conditional attached anthem");
+    let abilities = parse_attached_conditional_anthem_otherwise_base_and_restriction_line(&tokens)
+        .expect("parse conditional attached anthem")
+        .expect("conditional attached anthem should be recognized");
+    let debug = format!("{abilities:#?}");
+    assert_eq!(abilities.len(), 3, "{debug}");
+    assert!(debug.contains("Anthem"), "{debug}");
+    assert!(debug.contains("SetBasePowerToughness"), "{debug}");
+    assert!(debug.contains("BlockSpecificAttacker"), "{debug}");
+    assert_eq!(debug.matches("Not(").count(), 2, "{debug}");
+    assert!(debug.contains("Detective"), "{debug}");
+
+    let changed_subject = crate::lexer::lex_line(
+        "Enchanted creature gets +2/+2 as long as it's a Detective you control. Otherwise, target creature has base power and toughness 1/1 and can't block Detectives.",
+        0,
+    )
+    .expect("lex changed-subject near miss");
+    assert!(
+        parse_attached_conditional_anthem_otherwise_base_and_restriction_line(&changed_subject)
+            .expect("changed-subject near miss should not error")
+            .is_none(),
+        "only the exact carried `it` branch belongs to this static program"
+    );
+}
+
+#[test]
 fn typed_attached_restriction_shapes_preserve_static_semantics() {
-    let tokens =
-        crate::lexer::lex_line("Enchanted creature can't attack or block.", 0)
-            .unwrap();
+    let tokens = crate::lexer::lex_line("Enchanted creature can't attack or block.", 0).unwrap();
     assert!(
         parse_attached_cant_attack_or_block_line(&tokens)
             .unwrap()
             .is_some()
     );
 
-    let tokens = crate::lexer::lex_line(
-        "All creatures able to block equipped creature do so.",
-        0,
-    )
-    .unwrap();
+    let tokens =
+        crate::lexer::lex_line("All creatures able to block equipped creature do so.", 0).unwrap();
     assert!(
         parse_attached_all_creatures_able_to_block_line(&tokens)
             .unwrap()
@@ -132,12 +191,121 @@ fn attached_transform_subject_carries_into_combat_and_ability_loss_sentence() {
 }
 
 #[test]
-fn attached_keyword_and_goaded_clause_keeps_both_continuous_abilities() {
+fn attached_transform_subject_carries_into_keyword_and_all_other_ability_loss() {
     let tokens = crate::lexer::lex_line(
-        "Enchanted creature has indestructible and is goaded.",
+        "Enchanted creature is a Citizen with base power and toughness 1/1. It has defender and loses all other abilities.",
         0,
     )
     .unwrap();
+    let abilities = parse_carried_attached_subject_line(&tokens)
+        .unwrap()
+        .expect("transform subject should carry into the keyword/loss sentence");
+    let debug = format!("{abilities:#?}");
+    assert_eq!(abilities.len(), 5, "{debug}");
+    assert!(debug.contains("SetCardTypes"), "{debug}");
+    assert!(debug.contains("SetCreatureSubtypes"), "{debug}");
+    assert!(debug.contains("SetBasePowerToughness"), "{debug}");
+    assert!(debug.contains("Defender"), "{debug}");
+    assert!(debug.contains("RemoveAllAbilities"), "{debug}");
+}
+
+#[test]
+fn attached_anthem_subject_carries_through_leading_condition_chain() {
+    let tokens = crate::lexer::lex_line(
+        "Equipped creature gets +1/+1. As long as it's legendary, it gets an additional +2/+2. As long as it's red, it has trample.",
+        0,
+    )
+    .unwrap();
+    let abilities = parse_carried_attached_subject_line(&tokens)
+        .unwrap()
+        .expect("attached anthem subject should carry through both continuations");
+    let debug = format!("{abilities:#?}");
+    assert_eq!(abilities.len(), 3, "{debug}");
+    assert_eq!(debug.matches("equipped").count(), 3, "{debug}");
+    assert!(debug.contains("additional_surface: true"), "{debug}");
+    assert!(debug.contains("Legendary"), "{debug}");
+    assert!(debug.contains("Red"), "{debug}");
+    assert!(debug.contains("Trample"), "{debug}");
+
+    let changed_pronoun = crate::lexer::lex_line(
+        "Equipped creature gets +1/+1. As long as it's legendary, this creature gets an additional +2/+2.",
+        0,
+    )
+    .unwrap();
+    assert!(
+        parse_carried_attached_subject_line(&changed_pronoun)
+            .unwrap()
+            .is_none(),
+        "only an exact carried `it` consequence belongs to this chain"
+    );
+}
+
+#[test]
+fn attached_object_controller_control_condition_binds_affected_target() {
+    let tokens = crate::lexer::lex_line("its controller controls another creature", 0).unwrap();
+    let condition = parse_static_condition_clause(&tokens)
+        .expect("affected controller control condition should parse");
+    let crate::ConditionExpr::CountComparison {
+        count: AnthemCountExpression::MatchingFilter(filter),
+        comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+        ..
+    } = condition
+    else {
+        panic!("expected affected-controller count condition: {condition:#?}");
+    };
+    assert_eq!(
+        filter.controller,
+        Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target))
+    );
+    assert!(
+        filter.other,
+        "another must remain an other-object constraint"
+    );
+
+    let changed_actor = crate::lexer::lex_line("an opponent controls another creature", 0).unwrap();
+    let changed = parse_static_condition_clause(&changed_actor)
+        .expect("ordinary opponent condition should keep its existing route");
+    assert!(
+        !format!("{changed:#?}").contains("ControllerOf"),
+        "only the affected-object possessive binds the target controller"
+    );
+}
+
+#[test]
+fn attached_treasure_transform_keeps_quoted_mana_ability_and_ability_loss() {
+    let tokens = crate::lexer::lex_line(
+        "Enchanted permanent is a Treasure artifact with \"{T}, Sacrifice this artifact: Add one mana of any color,\" and it loses all other abilities.",
+        0,
+    )
+    .unwrap();
+    let abilities = parse_attached_type_transform_line(&tokens)
+        .unwrap()
+        .expect("quoted activated ability transform should remain a static line");
+    let debug = format!("{abilities:#?}");
+    assert_eq!(abilities.len(), 4, "{debug}");
+    assert!(debug.contains("SetCardTypes"), "{debug}");
+    assert!(debug.contains("AddSubtypes"), "{debug}");
+    assert!(debug.contains("AttachedObjectAbilityGrant"), "{debug}");
+    assert!(debug.contains("RemoveAllAbilities"), "{debug}");
+
+    let no_loss = crate::lexer::lex_line(
+        "Enchanted permanent is a Treasure artifact with \"{T}: Add one mana of any color.\"",
+        0,
+    )
+    .unwrap();
+    let abilities = parse_attached_type_transform_line(&no_loss)
+        .unwrap()
+        .expect("ordinary quoted transform remains supported");
+    assert!(
+        !format!("{abilities:#?}").contains("RemoveAllAbilities"),
+        "loss must require the explicit trailing clause: {abilities:#?}"
+    );
+}
+
+#[test]
+fn attached_keyword_and_goaded_clause_keeps_both_continuous_abilities() {
+    let tokens =
+        crate::lexer::lex_line("Enchanted creature has indestructible and is goaded.", 0).unwrap();
     let abilities = parse_attached_has_keywords_and_is_goaded_line(&tokens)
         .unwrap()
         .expect("attached keyword-plus-goaded clause should parse");
@@ -154,9 +322,7 @@ fn attached_keyword_and_goaded_clause_keeps_both_continuous_abilities() {
         .expect("the static line dispatcher should retain both continuous abilities");
     assert_eq!(dispatched.len(), 2, "{dispatched:#?}");
 
-    let ordinary =
-        crate::lexer::lex_line("Enchanted creature has indestructible.", 0)
-            .unwrap();
+    let ordinary = crate::lexer::lex_line("Enchanted creature has indestructible.", 0).unwrap();
     assert!(
         parse_attached_has_keywords_and_is_goaded_line(&ordinary)
             .unwrap()
@@ -167,11 +333,8 @@ fn attached_keyword_and_goaded_clause_keeps_both_continuous_abilities() {
 
 #[test]
 fn attached_keyword_grant_and_loss_dispatches_before_subject_filter_loss() {
-    let tokens = crate::lexer::lex_line(
-        "Enchanted creature has defender and loses flying.",
-        0,
-    )
-    .unwrap();
+    let tokens =
+        crate::lexer::lex_line("Enchanted creature has defender and loses flying.", 0).unwrap();
     let routed = parse_static_ability_ast_line_lexed(&tokens)
         .unwrap()
         .expect("attached grant-and-loss clause should be claimed");
@@ -196,11 +359,8 @@ fn attached_keyword_grant_and_loss_dispatches_before_subject_filter_loss() {
         "the granted keyword must not become an affected-object prerequisite: {grant_filter:#?}"
     );
 
-    let filtered = crate::lexer::lex_line(
-        "Enchanted creature with defender loses flying.",
-        0,
-    )
-    .unwrap();
+    let filtered =
+        crate::lexer::lex_line("Enchanted creature with defender loses flying.", 0).unwrap();
     let routed = parse_static_ability_ast_line_lexed(&filtered)
         .unwrap()
         .expect("ordinary qualified loss should remain supported");
@@ -317,11 +477,8 @@ fn attached_pt_compounds_preserve_both_characteristic_effects() {
         );
     }
 
-    let standalone = crate::lexer::lex_line(
-        "Creatures your opponents control lose all abilities.",
-        0,
-    )
-    .unwrap();
+    let standalone =
+        crate::lexer::lex_line("Creatures your opponents control lose all abilities.", 0).unwrap();
     let standalone = parse_static_ability_ast_line_lexed(&standalone)
         .unwrap()
         .expect("broad standalone ability loss should still route");
@@ -361,11 +518,8 @@ fn typed_attached_transform_and_prevention_shapes_lower() {
 
 #[test]
 fn attached_land_type_setting_replaces_the_land_subtype_family() {
-    let lush = crate::lexer::lex_line(
-        "Enchanted land is a Mountain, Forest, and Plains.",
-        0,
-    )
-    .unwrap();
+    let lush =
+        crate::lexer::lex_line("Enchanted land is a Mountain, Forest, and Plains.", 0).unwrap();
     let lush = parse_attached_type_transform_line(&lush)
         .unwrap()
         .expect("land subtype setting should parse");
@@ -373,11 +527,8 @@ fn attached_land_type_setting_replaces_the_land_subtype_family() {
     assert!(lush_debug.contains("SetLandSubtypes"), "{lush_debug}");
     assert!(!lush_debug.contains("AddSubtypes"), "{lush_debug}");
 
-    let song = crate::lexer::lex_line(
-        "Enchanted permanent is a colorless Forest land.",
-        0,
-    )
-    .unwrap();
+    let song =
+        crate::lexer::lex_line("Enchanted permanent is a colorless Forest land.", 0).unwrap();
     let song = parse_attached_type_transform_line(&song)
         .unwrap()
         .expect("card-type and land-subtype setting should parse");

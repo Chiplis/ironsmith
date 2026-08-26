@@ -3093,23 +3093,33 @@ pub(crate) fn describe_targeted_conditional_action_then_fight(
     effects: &[&Effect],
 ) -> Option<String> {
     let [
-        opposing_target_effect,
-        friendly_target_effect,
+        first_target_effect,
+        second_target_effect,
         conditional_effect,
         fight_effect,
     ] = effects
     else {
         return None;
     };
-    let (opposing_tag, opposing_target) = tagged_target_only_effect(opposing_target_effect)?;
-    let (friendly_tag, friendly_target) = tagged_target_only_effect(friendly_target_effect)?;
-    if opposing_tag == friendly_tag
-        || (!explicit_controlled_creature_target(opposing_target, PlayerFilter::Opponent)
-            && !explicit_controlled_creature_target(opposing_target, PlayerFilter::NotYou))
-        || !explicit_controlled_creature_target(friendly_target, PlayerFilter::You)
-    {
+    let (first_tag, first_target) = tagged_target_only_effect(first_target_effect)?;
+    let (second_tag, second_target) = tagged_target_only_effect(second_target_effect)?;
+    if first_tag == second_tag {
         return None;
     }
+    let (friendly_tag, friendly_target, opposing_tag, opposing_target) =
+        if explicit_controlled_creature_target(first_target, PlayerFilter::You)
+            && (explicit_controlled_creature_target(second_target, PlayerFilter::Opponent)
+                || explicit_controlled_creature_target(second_target, PlayerFilter::NotYou))
+        {
+            (first_tag, first_target, second_tag, second_target)
+        } else if explicit_controlled_creature_target(second_target, PlayerFilter::You)
+            && (explicit_controlled_creature_target(first_target, PlayerFilter::Opponent)
+                || explicit_controlled_creature_target(first_target, PlayerFilter::NotYou))
+        {
+            (second_tag, second_target, first_tag, first_target)
+        } else {
+            return None;
+        };
 
     let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
     if !conditional.if_false.is_empty() {
@@ -3245,28 +3255,11 @@ pub(crate) fn describe_reveal_hand_choose_move(effects: &[&Effect]) -> Option<St
 /// cost." — the copy lives at the tail of the exile sentence's sequence, and
 /// the standalone may-cast render would re-emit a spurious "Copy it."
 pub(crate) fn describe_sequence_copy_then_may_cast(effects: &[&Effect]) -> Option<String> {
-    if std::env::var("IRONSMITH_COPY_TRACE").is_ok() {
-        eprintln!("seq-copy-may window: len={}", effects.len());
-    }
     let [sequence_effect, may_effect] = effects else {
         return None;
     };
-    if std::env::var("IRONSMITH_COPY_TRACE").is_ok() {
-        eprintln!(
-            "seq-copy-may pair: seq={} may={}",
-            sequence_effect
-                .downcast_ref::<crate::effects::SequenceEffect>()
-                .is_some(),
-            may_effect
-                .downcast_ref::<crate::effects::MayEffect>()
-                .is_some()
-        );
-    }
     let sequence = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
     let copy_spell = copy_spell_from_effect(sequence.effects.last()?);
-    if std::env::var("IRONSMITH_COPY_TRACE").is_ok() {
-        eprintln!("seq-copy-may copy: {copy_spell:?}");
-    }
     let copy_spell = copy_spell?;
     if copy_spell.count.unhinted() != &Value::Fixed(1)
         || !copy_spell.removed_supertypes.is_empty()
@@ -3280,12 +3273,6 @@ pub(crate) fn describe_sequence_copy_then_may_cast(effects: &[&Effect]) -> Optio
     };
     let cast =
         unwrap_wrapped_effect(cast_effect).downcast_ref::<crate::effects::CastTaggedEffect>()?;
-    if std::env::var("IRONSMITH_COPY_TRACE").is_ok() {
-        eprintln!(
-            "seq-copy-may cast: as_copy={} tag={:?} reduction={:?}",
-            cast.as_copy, cast.tag, cast.cost_reduction
-        );
-    }
     if !cast.as_copy
         || cast.cost_reduction.is_some()
         || !matches!(&copy_spell.target, ChooseSpec::Tagged(tag) if *tag == cast.tag)

@@ -55,6 +55,13 @@ pub struct LookedCardPartitionShape {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LookedCloakPartitionShape {
+    pub look: Range<usize>,
+    pub selected_count: ChoiceCount,
+    pub remainder_order: LibraryBottomOrderAst,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LookedCardIntoHandShape {
     pub filter: Range<usize>,
 }
@@ -263,6 +270,46 @@ fn looked_partition_library_destination(
         LookedPartitionDestination::LibraryTop(order)
     } else {
         LookedPartitionDestination::LibraryBottom(order)
+    })
+}
+
+fn looked_cloak_partition_tail(
+    input: &mut LexStream<'_>,
+) -> WResult<(ChoiceCount, LibraryBottomOrderAst)> {
+    primitives::kw("cloak").parse_next(input)?;
+    let selected_count = leaf::parse_leaf_choice_count_prefix_lexed.parse_next(input)?;
+    sequence_any_phrase(&[&["of", "them"], &["of", "those", "cards"]]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::kw("and").parse_next(input)?;
+    primitives::kw("put").parse_next(input)?;
+    opt(primitives::kw("the")).parse_next(input)?;
+    primitives::kw("rest").parse_next(input)?;
+    let LookedPartitionDestination::LibraryBottom(remainder_order) =
+        looked_partition_library_destination.parse_next(input)?
+    else {
+        return Err(primitives::backtrack_err(
+            "looked-card cloak partition",
+            "the exact unselected remainder on the bottom of the library",
+        ));
+    };
+    primitives::sentence_end().parse_next(input)?;
+    Ok((selected_count, remainder_order))
+}
+
+pub fn parse_look_cloak_partition_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<LookedCloakPartitionShape> {
+    let cloak_at = tokens.iter().position(|token| token.is_word("cloak"))?;
+    if cloak_at == 0 {
+        return None;
+    }
+    let mut tail = LexStream::new(&tokens[cloak_at..]);
+    let (selected_count, remainder_order) =
+        looked_cloak_partition_tail.parse_next(&mut tail).ok()?;
+    tail.is_empty().then_some(LookedCloakPartitionShape {
+        look: 0..cloak_at,
+        selected_count,
+        remainder_order,
     })
 }
 

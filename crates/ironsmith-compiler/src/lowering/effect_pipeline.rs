@@ -24,6 +24,11 @@ pub enum EffectPreludeTag {
     TriggeringAttacker(TagKey, crate::target::ObjectFilter),
     TriggeringBlockers(TagKey, crate::target::ObjectFilter),
     OtherBlockParticipant(TagKey, crate::target::ObjectFilter),
+    OtherBlockParticipantMatchingSubject {
+        tag: TagKey,
+        subject: crate::target::ObjectFilter,
+        other: crate::target::ObjectFilter,
+    },
     TriggeringSource(TagKey),
     TriggeringDamageTarget(TagKey),
 }

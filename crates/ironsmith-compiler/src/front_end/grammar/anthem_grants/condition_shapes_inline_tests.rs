@@ -37,6 +37,11 @@ fn classifies_fixed_condition_surfaces() {
         parse_fixed_static_condition_kind(&equipment_attached),
         Some(FixedStaticConditionKind::SourceEquipmentAttachedToCreature)
     );
+    let attacked_battle = lex("This creature attacked a battle this turn.");
+    assert_eq!(
+        parse_fixed_static_condition_kind(&attacked_battle),
+        Some(FixedStaticConditionKind::SourceAttackedBattleThisTurn)
+    );
 }
 
 #[test]

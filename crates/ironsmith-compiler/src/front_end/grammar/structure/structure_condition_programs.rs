@@ -28,20 +28,13 @@ pub(super) fn split_trailing_predicate_clause_lexed<'a>(
 
 pub fn parse_trailing_instead_if_predicate_lexed(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let trimmed = trim_lexed_commas(tokens);
-    if !trimmed
-        .first()
-        .is_some_and(|token| structure_token_is(token, "instead"))
-        || !trimmed
-            .get(1)
-            .is_some_and(|token| structure_token_is(token, "if"))
+    let trailing = split_trailing_predicate_clause_lexed(trimmed, "if")?;
+    if !trailing
+        .leading_tokens
+        .iter()
+        .any(|token| structure_token_is(token, "instead"))
     {
         return None;
     }
-
-    let predicate_tokens = trim_lexed_commas(&trimmed[2..]);
-    if predicate_tokens.is_empty() {
-        return None;
-    }
-
-    parse_predicate_with_grammar_entrypoint_lexed(predicate_tokens).ok()
+    Some(trailing.predicate)
 }

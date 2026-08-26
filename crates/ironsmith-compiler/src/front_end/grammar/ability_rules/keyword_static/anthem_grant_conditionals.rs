@@ -1541,6 +1541,16 @@ pub fn parse_heterogeneous_granted_tail(
             continue;
         }
 
+        // The complete static-line dispatcher intentionally does not index
+        // the broad spell-cost modifier parser: document classification owns
+        // that top-level family. Inside a grammar-proven quoted grant, though,
+        // the same typed modifier is the ability being granted and must stay
+        // nested under the outer affected-object filter.
+        if let Some(ability) = parse_spells_cost_modifier_line(&segment)? {
+            parsed.granted_static.push(ability.into());
+            continue;
+        }
+
         if let Some(abilities) = parse_static_ability_ast_line_lexed(&segment)? {
             parsed.granted_static.extend(abilities);
             continue;
@@ -3530,6 +3540,81 @@ fn quoted_filtered_subject_cost_tax_routes_as_a_granted_static_ability() {
     assert!(
         target.source,
         "\"this creature\" must refer to each object receiving the ability"
+    );
+}
+
+#[test]
+fn quoted_commander_cost_reduction_stays_owned_by_the_granted_ability() {
+    let tokens = crate::lexer::lex_line(
+        "Commander creatures you own have \"The first Dragon spell you cast each turn costs {2} less to cast.\"",
+        0,
+    )
+    .expect("lex quoted commander cost reduction");
+
+    let candidates = anthem_grant_grammar::parse_granted_ability_candidates(&tokens);
+    assert_eq!(candidates.len(), 1, "{tokens:#?}");
+    let has_token = candidates[0].has_token;
+    let subject_tokens = trim_commas(&tokens[..has_token]);
+    let subject = parse_anthem_subject(&subject_tokens).expect("commander creature subject");
+    assert!(matches!(subject, AnthemSubjectAst::Filter(_)), "{subject:#?}");
+    let tail_tokens = trim_commas(&tokens[has_token + 1..]);
+    let tail = parse_heterogeneous_granted_tail(
+        &tail_tokens,
+        &crate::lexer::token_word_refs(&tokens),
+        false,
+    )
+    .expect("quoted reduction tail parser")
+    .expect("quoted reduction tail");
+    assert_eq!(tail.granted_static.len(), 1, "{tail:#?}");
+
+    let direct = parse_filter_has_granted_ability_line(&tokens)
+        .expect("direct filtered grant parser")
+        .expect("quoted reduction should be a filtered grant");
+    let routed = parse_static_ability_ast_line_lexed(&tokens)
+        .expect("static line route")
+        .expect("quoted reduction should be recognized");
+    assert_eq!(routed, direct);
+
+    let [StaticAbilityAst::GrantStaticAbility {
+        filter,
+        ability,
+        condition,
+    }] = routed.as_slice()
+    else {
+        panic!("expected one filtered static grant: {routed:#?}");
+    };
+    assert!(filter.is_commander, "{filter:#?}");
+    assert_eq!(filter.owner, Some(PlayerFilter::You));
+    assert_eq!(filter.card_types, [CardType::Creature]);
+    assert!(condition.is_none());
+    assert!(
+        matches!(
+            ability.as_ref(),
+            StaticAbilityAst::Static(ability)
+                if matches!(
+                    ability.payload,
+                    ironsmith_core::StaticAbilityPayload::CostReduction(_)
+                )
+        ),
+        "{ability:#?}"
+    );
+
+    let ordinary = crate::lexer::lex_line(
+        "The first Dragon spell you cast each turn costs {2} less to cast.",
+        0,
+    )
+    .expect("lex ordinary cost reduction");
+    assert!(
+        parse_spells_cost_modifier_line(&ordinary)
+            .expect("ordinary cost modifier parser")
+            .is_some(),
+        "the unquoted line must retain its ordinary top-level cost-modifier route"
+    );
+    assert!(
+        parse_filter_has_granted_ability_line(&ordinary)
+            .expect("ordinary filtered-grant near miss")
+            .is_none(),
+        "an unquoted cost reduction must not acquire an outer grant owner"
     );
 }
 

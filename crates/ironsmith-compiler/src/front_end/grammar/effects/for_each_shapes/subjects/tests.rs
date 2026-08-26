@@ -93,6 +93,69 @@ fn captures_object_filter_and_effect_around_comma() {
 }
 
 #[test]
+fn iterated_graveyard_card_can_feed_a_modified_token_copy() {
+    let tokens = lex_line(
+        "For each creature card in your graveyard, create a token that's a copy of it, except it's a 1/1 black and green Insect.",
+        0,
+    )
+    .unwrap();
+    let effects = crate::effect_sentences::parse_effect_sentence_lexed(&tokens)
+        .expect("iterated modified token copy should parse");
+    let debug = format!("{effects:#?}");
+
+    assert!(debug.contains("ForEachObject"), "{debug}");
+    assert!(debug.contains("CreateTokenCopy"), "{debug}");
+    crate::compile_support::compile_effects(
+        &effects,
+        &mut crate::model::facts::EffectLoweringContext::new(),
+    )
+    .expect("iterated modified token copy should lower");
+
+    let counter_tokens = lex_line(
+        "Create a 1/1 black and green Insect creature token, then mill two cards. Put a deathtouch counter on the token if a black card was milled this way.",
+        0,
+    )
+    .unwrap();
+    let counter_effects = crate::effect_sentences::parse_effect_sentences_lexed(&counter_tokens)
+        .expect("created-token mill follow-up should parse");
+    crate::compile_support::compile_effects(
+        &counter_effects,
+        &mut crate::model::facts::EffectLoweringContext::new(),
+    )
+    .expect("created-token mill follow-up should lower");
+
+    crate::cards::builders::CardDefinitionBuilder::new(
+        crate::CardId::new(),
+        "Iterated Copy Walker",
+    )
+    .card_types(vec![crate::types::CardType::Planeswalker])
+    .parse_text(
+        "−6: For each creature card in your graveyard, create a token that's a copy of it, except it's a 1/1 black and green Insect.",
+    )
+    .expect("iterated modified token copy should parse through the document route");
+
+    crate::cards::builders::CardDefinitionBuilder::new(
+        crate::CardId::new(),
+        "Token Counter Walker",
+    )
+    .card_types(vec![crate::types::CardType::Planeswalker])
+    .parse_text(
+        "+1: Create a 1/1 black and green Insect creature token, then mill two cards. Put a deathtouch counter on the token if a black card was milled this way.",
+    )
+    .expect("the preceding token-counter loyalty ability should parse independently");
+
+    crate::cards::builders::CardDefinitionBuilder::new(
+        crate::CardId::new(),
+        "Iterated Copy Walker",
+    )
+    .card_types(vec![crate::types::CardType::Planeswalker])
+    .parse_text(
+        "+1: Create a 1/1 black and green Insect creature token, then mill two cards. Put a deathtouch counter on the token if a black card was milled this way.\n−2: Destroy target artifact or enchantment.\n−6: For each creature card in your graveyard, create a token that's a copy of it, except it's a 1/1 black and green Insect.",
+    )
+    .expect("preceding loyalty abilities must not invalidate the iterated copy");
+}
+
+#[test]
 fn in_exile_zone_noun_remains_inside_for_each_object_filter() {
     for leading in ["", "Then "] {
         let tokens = lex_line(
