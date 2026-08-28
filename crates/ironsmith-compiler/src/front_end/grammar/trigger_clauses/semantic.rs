@@ -2088,6 +2088,9 @@ pub(crate) fn restore_authored_source_trigger_surface(
                 restore_authored_source_trigger_surface(branch, surface);
             }
         }
+        TriggerSpec::Either(left, right)
+            if matches!(left.as_ref(), TriggerSpec::ThisDies)
+                && matches!(right.as_ref(), TriggerSpec::Dies(filter) if filter.other) => {}
         TriggerSpec::Either(left, right) => {
             restore_authored_source_trigger_surface(left, surface);
             restore_authored_source_trigger_surface(right, surface);

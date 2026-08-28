@@ -10,7 +10,8 @@ fn loyal_inventor_rejoins_search_and_correlated_destinations() {
 
     assert_eq!(
         crate::compiled_text::compiled_text_lines(&definition).join("\n"),
-        oracle
+        oracle,
+        "{definition:#?}",
     );
     let debug = format!("{definition:#?}");
     assert!(debug.contains("RevealTaggedEffect"), "{debug}");

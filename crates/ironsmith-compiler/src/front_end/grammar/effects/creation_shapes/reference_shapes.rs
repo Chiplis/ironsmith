@@ -38,14 +38,13 @@ pub fn parse_atomic_token_copy_exception_shape(tokens: &[OwnedLexToken]) -> bool
     {
         return false;
     }
-    [
-        &["token", "tokens"][..],
-        &["copy", "copies"][..],
-        &["except"][..],
-    ]
-    .into_iter()
-    .all(|words| {
-        let alternatives = [words];
-        primitives::find_prefix(tokens, || primitives::any_phrase(&alternatives).void()).is_some()
+    primitives::find_prefix(tokens, || {
+        alt((primitives::kw("token"), primitives::kw("tokens"))).void()
     })
+    .is_some()
+        && primitives::find_prefix(tokens, || {
+            alt((primitives::kw("copy"), primitives::kw("copies"))).void()
+        })
+        .is_some()
+        && primitives::find_prefix(tokens, || primitives::kw("except").void()).is_some()
 }

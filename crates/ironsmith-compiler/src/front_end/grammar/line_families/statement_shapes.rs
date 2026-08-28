@@ -36,12 +36,17 @@ pub struct EndCombatNextEndStepFollowupShape;
 pub fn parse_reflexive_conditional_followup(
     tokens: &[OwnedLexToken],
 ) -> Option<ReflexiveConditionalFollowupShape> {
-    primitives::find_prefix(tokens, || {
-        (
-            primitives::token_kind(TokenKind::Period),
-            primitives::phrase(&["when", "you", "do", "if"]),
+    let sentences = structure::split_lexed_sentences(tokens);
+    crate::slice_primitives::select_position(&sentences, |sentence| {
+        primitives::parse_prefix(
+            sentence,
+            (
+                primitives::phrase(&["when", "you", "do"]),
+                opt(primitives::comma()),
+                primitives::kw("if"),
+            ),
         )
-            .void()
+        .is_some()
     })?;
     Some(ReflexiveConditionalFollowupShape)
 }

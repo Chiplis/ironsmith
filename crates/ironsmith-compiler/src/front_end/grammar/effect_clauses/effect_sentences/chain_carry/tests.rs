@@ -4174,21 +4174,24 @@ fn quantified_shared_subject_chain_stays_in_one_fanout() {
         panic!("expected one opponent fanout, got {effects:#?}");
     };
     let nested = match nested.as_slice() {
-        [EffectAst::Coordinated { effects, .. }] => effects.as_slice(),
-        effects => effects,
+        [EffectAst::Coordinated { effects, .. }] => effects.iter().collect::<Vec<_>>(),
+        [EffectAst::Coordination(coordination)] => coordination.effects().collect::<Vec<_>>(),
+        effects => effects.iter().collect::<Vec<_>>(),
     };
+    assert_eq!(nested.len(), 2, "{nested:#?}");
     assert!(matches!(
-        nested,
-        [
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Draw { .. },
-                ..
-            }),
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::GainLife { .. },
-                ..
-            })
-        ]
+        nested[0],
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Draw { .. },
+            ..
+        })
+    ));
+    assert!(matches!(
+        nested[1],
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::GainLife { .. },
+            ..
+        })
     ));
 }
 

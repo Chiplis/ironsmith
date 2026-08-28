@@ -76,6 +76,17 @@ fn with_indefinite_article(description: String) -> String {
     format!("{article} {trimmed}")
 }
 
+fn combat_creature_description(filter: &ObjectFilter) -> String {
+    let description = filter.description();
+    if description == "permanent" {
+        return "creature".to_string();
+    }
+    description
+        .strip_suffix(" permanent")
+        .map(|prefix| format!("{prefix} creature"))
+        .unwrap_or(description)
+}
+
 impl TriggerMatcher for BlocksOrBecomesBlockedTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         if let Some(other_filter) = &self.other_filter {
@@ -129,7 +140,7 @@ impl TriggerMatcher for BlocksOrBecomesBlockedTrigger {
         if let Some(other_filter) = &self.other_filter {
             return format!(
                 "Whenever {} blocks or becomes blocked by {}",
-                self.filter.description(),
+                combat_creature_description(&self.filter),
                 with_indefinite_article(other_filter.description())
             );
         }

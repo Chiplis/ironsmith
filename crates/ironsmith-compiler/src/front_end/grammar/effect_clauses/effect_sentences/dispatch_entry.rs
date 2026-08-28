@@ -3430,12 +3430,27 @@ pub fn parse_effect_sentences_lexed(
         }
         return Ok(effects);
     }
+    let has_later_delayed_this_turn = sentences.iter().skip(1).any(|sentence| {
+        effect_grammar::delayed_sentence_shapes::parse_delayed_this_turn_shape(sentence).is_some()
+    });
     if sentences.len() > 1
+        && !has_later_delayed_this_turn
         && let Some(effects) = super::bundle_rules::parse_typed_effect_bundle_lexed(tokens)
     {
         return Ok(effects);
     }
     let source_words = crate::lexer::parser_token_word_refs(tokens);
+    // Two peer counter placements may share the leading `put` verb.  Claim
+    // that complete coordination at the public sentence boundary as well as
+    // in chain parsing: triggered and activated line lowering can enter this
+    // dispatcher directly, before the ordinary chain route has a chance to
+    // separate the implicit second action from the first target filter.
+    if sentences.len() == 1
+        && let Some(effects) =
+            super::chain_carry::parse_repeated_counter_placement_coordination(tokens)?
+    {
+        return Ok(effects);
+    }
     // The full each-player return owns its additional-entry-counter suffix.
     // Complete effect-body parsing otherwise reaches the tolerant return
     // route first, which accepts the movement prefix and silently drops the
@@ -3519,9 +3534,11 @@ pub fn parse_effect_sentences_lexed(
     // ability. Route the complete sentence through effect dispatch before
     // the public trigger-text convenience path strips the timing header and
     // returns only its payload.
-    if effect_grammar::delayed_sentence_shapes::parse_delayed_schedule_sentence_shape(tokens)
-        .is_some()
-        || effect_grammar::delayed_sentence_shapes::parse_delayed_this_turn_shape(tokens).is_some()
+    if sentences.len() == 1
+        && (effect_grammar::delayed_sentence_shapes::parse_delayed_schedule_sentence_shape(tokens)
+            .is_some()
+            || effect_grammar::delayed_sentence_shapes::parse_delayed_this_turn_shape(tokens)
+                .is_some())
     {
         return super::parse_effect_sentence_lexed(tokens);
     }
@@ -3779,6 +3796,7 @@ pub fn parse_effect_sentences_lexed(
     transport_copy_retarget_into_trailing_delayed_trigger(&mut effects);
     preserve_linked_target_fanout_group(tokens, &mut effects);
     preserve_tapped_this_way_group_for_later_distribution(tokens, &mut effects);
+    super::chain_carry::preserve_independent_target_player_coordination(&mut effects, tokens);
     let instead_shape = effect_grammar::parse_instead_followup_shape_tokens(tokens);
     if instead_shape.conditional_intro
         && instead_shape.semantics == InsteadSemantics::SelfReplacement
@@ -4171,12 +4189,22 @@ fn parse_quoted_token_rule_then_coin_flip_outcomes(
         return Ok(None);
     }
     let trailing = trim_edge_punctuation(&producer[closing_quote + 1..]);
-    if !crate::word_primitives::parse_sequence_complete(
+    let inline_flip = crate::word_primitives::parse_sequence_complete(
         &crate::lexer::parser_token_word_refs(&trailing),
         &["then", "flip", "a", "coin"],
-    ) {
+    );
+    let outcome_start = if inline_flip {
+        0
+    } else if outcomes.first().is_some_and(|sentence| {
+        crate::word_primitives::parse_sequence_complete(
+            &crate::lexer::parser_token_word_refs(sentence),
+            &["then", "flip", "a", "coin"],
+        )
+    }) {
+        1
+    } else {
         return Ok(None);
-    }
+    };
 
     let mut create_effects = parse_effect_sentence_lexed(&producer[..=closing_quote])?;
     let [create] = create_effects.as_mut_slice() else {
@@ -4204,7 +4232,7 @@ fn parse_quoted_token_rule_then_coin_flip_outcomes(
             starting_with_controller: false,
         },
     ];
-    for outcome in outcomes {
+    for outcome in &outcomes[outcome_start..] {
         let Some((predicate, rest_tokens)) =
             effect_grammar::dispatch_entry_shapes::parse_flip_result_shape_tokens(outcome)
         else {

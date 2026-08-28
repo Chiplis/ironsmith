@@ -2577,7 +2577,9 @@ fn try_parse_labeled_line_dispatch(
         // `Hellbent`. When the authored body names its source, build the parse
         // view with card metadata first so a creature does not degrade to the
         // untyped subject `this` before the static grammar sees it.
-        if looks_like_ability_word_label(label_tokens, false) {
+        if looks_like_ability_word_label(label_tokens, false)
+            && !looks_like_leading_conditional_self_replacement(&body_line.tokens)
+        {
             let builder_aware_static = render_original_text_for_token_slice(line, body_tokens)
                 .and_then(|body| {
                     normalize_named_source_sentence_for_builder(&preprocessed.builder, &body)

@@ -22,6 +22,9 @@ pub struct TrailingGrantSegmentShape<'a> {
     pub body_tokens: &'a [OwnedLexToken],
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AdditionalEntryCounterSurface;
+
 pub fn parse_keyword_if_color_shape(tokens: &[OwnedLexToken]) -> Option<KeywordIfColorShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
     let (keyword_tokens, color_tail_tokens) =
@@ -131,6 +134,20 @@ pub fn parse_trailing_grant_segment(
         body_tokens = trim_grant_segment_edges(rest);
     }
     (!body_tokens.is_empty()).then_some(TrailingGrantSegmentShape { body_tokens })
+}
+
+pub fn parse_additional_entry_counter_surface(
+    tokens: &[OwnedLexToken],
+) -> Option<AdditionalEntryCounterSurface> {
+    let (_, _, _) = primitives::find_prefix(tokens, || {
+        alt((
+            primitives::phrase(&["enters", "with", "additional"]),
+            primitives::phrase(&["enters", "with", "a", "additional"]),
+            primitives::phrase(&["enters", "with", "an", "additional"]),
+        ))
+        .void()
+    })?;
+    Some(AdditionalEntryCounterSurface)
 }
 
 fn strip_metalcraft_label(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {

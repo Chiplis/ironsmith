@@ -4530,8 +4530,22 @@ pub(in crate::compiled_text) fn describe_exile_all_creatures_each_player_fractal
             [exile_effect, player_effect] => {
                 let for_players = structural_unwrap_render_wrappers(player_effect)
                     .downcast_ref::<crate::effects::ForPlayersEffect>()?;
-                let [create_effect, counters_effect] = for_players.effects.as_slice() else {
-                    return None;
+                let (create_effect, counters_effect) = match for_players.effects.as_slice() {
+                    [create_effect, counters_effect] => (create_effect, counters_effect),
+                    [sequence_effect] => {
+                        let sequence =
+                            sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+                        if sequence.surface != ironsmith_core::SequenceSurface::Coordinated
+                            || sequence.result_label.is_some()
+                        {
+                            return None;
+                        }
+                        let [create_effect, counters_effect] = sequence.effects.as_slice() else {
+                            return None;
+                        };
+                        (create_effect, counters_effect)
+                    }
+                    _ => return None,
                 };
                 (
                     exile_effect,

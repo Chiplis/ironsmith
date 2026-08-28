@@ -367,6 +367,38 @@ pub(super) fn is_atomic_put_counter_for_each_sentence(tokens: &[OwnedLexToken]) 
     )
 }
 
+/// Expand two peer counter-placement clauses when the second carries the
+/// shared leading `put` implicitly (`put A counter on each X and B counter on
+/// each Y`). Object-filter parsing must not absorb the second descriptor as a
+/// union arm of the first target.
+pub(super) fn parse_repeated_counter_placement_coordination(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(shape) =
+        super::super::grammar::effects::zone_counter_shapes::parse_repeated_counter_placement_shape(
+            tokens,
+        )
+    else {
+        return Ok(None);
+    };
+    let mut second = shape.second_tokens.to_vec();
+    if !second.first().is_some_and(|token| token.is_word("put")) {
+        second.insert(0, synthetic_lexed_word("put"));
+    }
+    let effects = vec![
+        super::zone_counter_helpers::parse_put_counters(shape.first_tokens)?,
+        super::zone_counter_helpers::parse_put_counters(&second)?,
+    ];
+    let coordination = crate::grammar::effects::coordination::coordination_from_effects(
+        crate::model::CoordinationKindAst::SharedSubject,
+        crate::model::CoordinationOperatorAst::And,
+        crate::model::EffectOrderingAst::Unordered,
+        effects,
+    )
+    .expect("repeated counter placement contains two effects");
+    Ok(Some(vec![EffectAst::Coordination(coordination)]))
+}
+
 fn parse_atomic_token_copy_exception(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -387,7 +419,7 @@ fn parse_atomic_token_copy_exception(
 }
 
 pub(super) fn has_target_player_resource_coordination(tokens: &[OwnedLexToken]) -> bool {
-    let words = token_word_refs(tokens);
+    let words = crate::lexer::parser_token_word_refs(tokens);
     let starts_with_target_player = words.get(..2).is_some_and(|prefix| {
         prefix[0].eq_ignore_ascii_case("target")
             && (prefix[1].eq_ignore_ascii_case("player")
@@ -433,6 +465,25 @@ fn parse_independent_explicit_may_coordination(
 fn parse_effect_chain_lexed_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // Action-first delayed-step sentences expose an ordinary resource verb
+    // before their schedule. Claim the complete typed schedule/payment shape
+    // before broad resource dispatch tries to consume the timing suffix as
+    // part of the life-loss operand.
+    if let Some(effects) =
+        super::subject_verb_primitives::parse_sentence_delayed_next_step_unless_pays(
+            SubjectVerbPrimitiveClause::new(tokens),
+        )?
+    {
+        return Ok(effects);
+    }
+    if let Some(effects) =
+        super::subject_verb_primitives::parse_sentence_shuffle_object_into_library(
+            SubjectVerbPrimitiveClause::new(tokens),
+        )?
+    {
+        return Ok(effects);
+    }
+
     // A joint object subject owns every conjunction in its shared action
     // tail (`this creature and that creature each get ... and gain ...`).
     // Claim the grammar-proven subject before generic chain splitting can
@@ -442,6 +493,10 @@ fn parse_effect_chain_lexed_inner(
             SubjectVerbPrimitiveClause::new(tokens),
         )?
     {
+        return Ok(effects);
+    }
+
+    if let Some(effects) = parse_repeated_counter_placement_coordination(tokens)? {
         return Ok(effects);
     }
 
@@ -532,6 +587,7 @@ fn parse_effect_chain_lexed_inner(
         )?;
         ensure_explicit_target_player_subject_declarations(&mut effects, leading_tokens);
         dedupe_shared_target_player_draw_lose_x(&mut effects, tokens);
+        preserve_independent_target_player_coordination(&mut effects, leading_tokens);
         return Ok(effects);
     }
     if let Some(effect) = super::clause_primitives::parse_until_duration_triggered_clause(tokens)? {
@@ -545,7 +601,9 @@ fn parse_effect_chain_lexed_inner(
         // The final prevention rider belongs to the damage action. Preserve
         // object-or-player recipient unions before generic coordination can
         // split their `or` arm into a standalone restriction clause.
-        return Ok(vec![parse_effect_clause_lexed(tokens)?]);
+        let damage_tokens =
+            super::lex_chain_helpers::strip_leading_instead_prefix_lexed(tokens).unwrap_or(tokens);
+        return Ok(vec![parse_effect_clause_lexed(damage_tokens)?]);
     }
     // A spell-copy characteristic exception is one typed action even though
     // its authored comma resembles a coordination boundary. Claim only a
@@ -623,6 +681,18 @@ fn parse_effect_chain_lexed_inner(
     if let Some(effect) = parse_leading_action_then_shared_damage_fanout(tokens)? {
         return Ok(vec![effect]);
     }
+    // In `A, then B unless C`, the payment gates only the final authored
+    // action. A complete trailing-unless primitive is also a valid parse of
+    // the unsplit token stream, so establish the ordered sentence boundary
+    // before that broad primitive can wrap both A and B.
+    let comma_then_segments = split_segments_on_comma_then_lexed(vec![tokens]);
+    if comma_then_segments.len() > 1
+        && comma_then_segments
+            .last()
+            .is_some_and(|segment| segment.iter().any(|token| token.is_word("unless")))
+    {
+        return parse_effect_chain_inner_lexed_unstacked(tokens, false);
+    }
     let effects = parse_effect_chain_uncoordinated_lexed(tokens)?;
     if effects.len() > 1 && has_authored_comma_then_surface_lexed(tokens) {
         return Ok(vec![EffectAst::CommaThen { effects }]);
@@ -634,7 +704,7 @@ fn ensure_explicit_target_player_subject_declarations(
     effects: &mut Vec<EffectAst>,
     tokens: &[OwnedLexToken],
 ) {
-    let words = token_word_refs(tokens);
+    let words = crate::lexer::parser_token_word_refs(tokens);
     let authored_targets = words
         .iter()
         .zip(words.iter().skip(1))
@@ -676,6 +746,30 @@ fn ensure_explicit_target_player_subject_declarations(
                 span_from_tokens(tokens),
             )),
         );
+    }
+}
+
+pub(super) fn preserve_independent_target_player_coordination(
+    effects: &mut Vec<EffectAst>,
+    tokens: &[OwnedLexToken],
+) {
+    let authored_targets =
+        super::super::grammar::effects::chain_carry::explicit_target_player_count(tokens);
+    if authored_targets < 2
+        || effects.len() < 2
+        || matches!(effects.as_slice(), [EffectAst::Coordination(_)])
+    {
+        return;
+    }
+
+    let members = std::mem::take(effects);
+    if let Some(coordination) = crate::grammar::effects::coordination::coordination_from_effects(
+        crate::model::CoordinationKindAst::Conjunction,
+        crate::model::CoordinationOperatorAst::And,
+        crate::model::EffectOrderingAst::Unordered,
+        members,
+    ) {
+        effects.push(EffectAst::Coordination(coordination));
     }
 }
 
@@ -1255,6 +1349,14 @@ fn parse_effect_chain_uncoordinated_lexed(
         return Ok(vec![super::zone_handlers::parse_tap(&action_tokens)?]);
     }
 
+    // An `or` inside a grammar-proven trailing payment is cost structure,
+    // not effect coordination. Route the complete clause through the typed
+    // trailing-unless builder before the generic chain splitter sees either
+    // alternative as a sibling action.
+    if has_unless_payment_choice(tokens)? {
+        return Ok(vec![parse_effect_clause_lexed(tokens)?]);
+    }
+
     if let Some(unless_action) = parse_or_action_clause_lexed(tokens)? {
         return Ok(vec![unless_action]);
     }
@@ -1710,6 +1812,24 @@ fn parse_effect_chain_inner_lexed_unstacked(
     tokens: &[OwnedLexToken],
     recognize_control_flow: bool,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if recognize_control_flow {
+        let comma_then_segments = split_segments_on_comma_then_lexed(vec![tokens]);
+        if comma_then_segments.len() > 1
+            && comma_then_segments
+                .last()
+                .is_some_and(|segment| segment.iter().any(|token| token.is_word("unless")))
+        {
+            return parse_effect_chain_inner_lexed_unstacked(tokens, false);
+        }
+    }
+    if (!recognize_control_flow || split_trailing_if_clause_lexed(tokens).is_none())
+        && let Some(effects) =
+            super::subject_verb_primitives::parse_sentence_sacrifice_it_next_end_step(
+                SubjectVerbPrimitiveClause::new(tokens),
+            )?
+    {
+        return Ok(effects);
+    }
     // Nested consequence parsing enters this inner materializer directly.
     // Preserve the same typed copy-token exception ownership as the public
     // chain entrypoint before coordination exposes an `and` inside the

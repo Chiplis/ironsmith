@@ -224,8 +224,16 @@ fn attached_anthem_subject_carries_through_leading_condition_chain() {
     assert_eq!(debug.matches("equipped").count(), 3, "{debug}");
     assert!(debug.contains("additional_surface: true"), "{debug}");
     assert!(debug.contains("Legendary"), "{debug}");
-    assert!(debug.contains("Red"), "{debug}");
     assert!(debug.contains("Trample"), "{debug}");
+    let Some(StaticAbilityAst::AttachedKeywordActionGrant {
+        action: KeywordAction::Trample,
+        condition: Some(crate::ConditionExpr::AttachedToSourceMatches(filter)),
+        ..
+    }) = abilities.last()
+    else {
+        panic!("the carried trample condition must stay attached-object-relative: {abilities:#?}");
+    };
+    assert_eq!(filter.colors, Some(crate::color::ColorSet::RED));
 
     let changed_pronoun = crate::lexer::lex_line(
         "Equipped creature gets +1/+1. As long as it's legendary, this creature gets an additional +2/+2.",

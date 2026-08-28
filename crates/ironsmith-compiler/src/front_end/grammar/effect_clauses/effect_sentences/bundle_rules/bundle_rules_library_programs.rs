@@ -24,7 +24,7 @@ pub(super) fn parse_look_hand_optional_exile_play_tax_bundle(
         return None;
     };
 
-    let mut look_effects = effect_sentences::parse_effect_sentence_lexed(look_sentence).ok()?;
+    let mut look_effects = effect_sentences::parse_look_at_hand_sentence(look_sentence).ok()??;
     let [look_effect] = look_effects.as_mut_slice() else {
         return None;
     };

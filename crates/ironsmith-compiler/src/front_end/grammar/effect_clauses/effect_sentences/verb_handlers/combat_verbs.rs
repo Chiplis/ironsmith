@@ -356,41 +356,17 @@ pub fn parse_unattach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErr
 }
 
 pub fn damage_clause_has_terminal_unpreventable_rider(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::lexer::token_word_refs(tokens);
-    const RIDERS: &[&[&str]] = &[
-        &["and", "the", "damage", "cant", "be", "prevented"],
-        &["and", "the", "damage", "can't", "be", "prevented"],
-        &["and", "that", "damage", "cant", "be", "prevented"],
-        &["and", "that", "damage", "can't", "be", "prevented"],
-    ];
-    RIDERS.iter().any(|rider| {
-        words
-            .get(words.len().saturating_sub(rider.len())..)
-            .is_some_and(|tail| tail == *rider)
-    })
+    crate::grammar::effects::clause_dispatch_shapes::split_terminal_unpreventable_damage_rider(
+        tokens,
+    )
+    .is_some()
 }
 
 fn strip_terminal_unpreventable_damage_rider(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    for (index, token) in tokens.iter().enumerate() {
-        if !token.is_word("and") {
-            continue;
-        }
-        let words = crate::lexer::token_word_refs(&tokens[index..]);
-        if crate::word_primitives::parse_choice_sequence_complete(
-            &words,
-            &[
-                &["and"],
-                &["the", "that"],
-                &["damage"],
-                &["cant", "can't"],
-                &["be"],
-                &["prevented"],
-            ],
-        ) {
-            return crate::util::trim_edge_punctuation_tokens(&tokens[..index]);
-        }
-    }
-    tokens
+    crate::grammar::effects::clause_dispatch_shapes::split_terminal_unpreventable_damage_rider(
+        tokens,
+    )
+    .unwrap_or(tokens)
 }
 
 pub fn mark_damage_ast_unpreventable(effect: &mut EffectAst) {

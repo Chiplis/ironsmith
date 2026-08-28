@@ -4193,6 +4193,7 @@ fn animation_quotes_a_nested_conditional_source_ability() {
             crate::ability::ActivationTiming::DuringYourTurn,
         ))
         .expect("source grant supports a runtime condition");
+    let conditioned_debug = format!("{conditional_first_strike:#?}");
     let mut effect = crate::effects::ApplyContinuousEffect::with_spec(
         ChooseSpec::Source,
         crate::continuous::Modification::AddCardTypes(vec![CardType::Creature]),
@@ -4221,7 +4222,7 @@ fn animation_quotes_a_nested_conditional_source_ability() {
 
     assert!(
         rendered.contains("\"During your turn, this creature has first strike.\""),
-        "{rendered}"
+        "{rendered}\n{conditioned_debug}"
     );
     assert!(rendered.ends_with("It's still a land"), "{rendered}");
 }

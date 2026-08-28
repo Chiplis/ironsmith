@@ -243,6 +243,46 @@ pub fn parse_direct_clause_shape(tokens: &[OwnedLexToken]) -> Option<DirectClaus
     }
 }
 
+/// Returns the damage body before a terminal unpreventable rider. Both the
+/// explicit repeated subject (`and that damage can't be prevented`) and the
+/// normalized elided subject are recognized by typed token grammar here.
+pub fn split_terminal_unpreventable_damage_rider(
+    tokens: &[OwnedLexToken],
+) -> Option<&[OwnedLexToken]> {
+    if let Some((head, ())) = primitives::split_lexed_once_before_suffix(tokens, 1, || {
+        (
+            primitives::kw("and"),
+            alt((primitives::kw("the"), primitives::kw("that"))),
+            primitives::kw("damage"),
+            alt((primitives::kw("cant"), primitives::kw("can't"))),
+            primitives::phrase(&["be", "prevented"]),
+            primitives::sentence_end(),
+        )
+            .void()
+    }) {
+        return Some(trim_lexed_commas(head));
+    }
+
+    let (head, ()) = primitives::split_lexed_once_before_suffix(tokens, 1, || {
+        (
+            alt((primitives::kw("cant"), primitives::kw("can't"))),
+            primitives::phrase(&["be", "prevented"]),
+            primitives::sentence_end(),
+        )
+            .void()
+    })?;
+    let deals_damage = primitives::find_prefix(head, || {
+        (
+            alt((primitives::kw("deal"), primitives::kw("deals"))),
+            repeat_till(0.., any.void(), peek(primitives::kw("damage"))).map(|((), _)| ()),
+            primitives::kw("damage"),
+        )
+            .void()
+    })
+    .is_some();
+    deals_damage.then(|| trim_lexed_commas(head))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TurnTargetFaceUpShape<'a> {
     pub target_tokens: &'a [OwnedLexToken],

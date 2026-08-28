@@ -325,6 +325,9 @@ pub(super) fn parse_reveal_repeated_disposition_bundle(
 
     let shape = bundle_grammar::parse_reveal_repeated_disposition_sequence_shape(tokens)?;
     let mut effects = effect_sentences::parse_effect_chain(&shape.reveal_tokens).ok()?;
+    if effects.len() > 1 {
+        effects = vec![EffectAst::CommaThen { effects }];
+    }
     // Repeated disposition filters and the final remainder must consume the
     // exact collection populated by the preceding reveal. A synthetic
     // SnapshotLastObjectTag alias cannot cross the public sentence-boundary

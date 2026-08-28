@@ -334,8 +334,10 @@ fn keyword_static_marker(tokens: &[OwnedLexToken]) -> StaticAbility {
 }
 
 fn parse_companion_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
-    let text = keyword_static_clause_text(tokens);
     let condition = keyword_static_lines::parse_companion_deck_condition_tokens(tokens)?;
+    let text = split_em_dash_label_prefix_tokens(tokens)
+        .map(|(_, condition_tokens)| keyword_static_clause_text(condition_tokens))
+        .unwrap_or_else(|| keyword_static_clause_text(tokens));
 
     Some(StaticAbility::companion(condition, text))
 }

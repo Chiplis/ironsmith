@@ -894,6 +894,9 @@ pub(super) fn each_player_exiles_hand_and_draws_keeps_draw_on_iterated_player() 
             | crate::cards::builders::EffectAst::Coordinated { effects, .. } => {
                 effects.iter().any(has_iterated_draw)
             }
+            crate::cards::builders::EffectAst::Coordination(coordination) => {
+                coordination.effects().any(has_iterated_draw)
+            }
             _ => false,
         }
     }
@@ -930,6 +933,9 @@ pub(super) fn each_player_exiles_hand_and_draws_keeps_draw_on_iterated_player_in
             crate::cards::builders::EffectAst::ForEachPlayer { effects }
             | crate::cards::builders::EffectAst::Coordinated { effects, .. } => {
                 effects.iter().any(has_iterated_draw)
+            }
+            crate::cards::builders::EffectAst::Coordination(coordination) => {
+                coordination.effects().any(has_iterated_draw)
             }
             _ => false,
         }

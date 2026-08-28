@@ -663,12 +663,12 @@ pub(super) fn attach_compiler_trigger_facts(
             continue;
         };
 
-        let nested_combat_cost = (|| -> Result<
+        let parse_nested_combat_cost = |tokens: &[crate::lexer::OwnedLexToken]| -> Result<
             Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>,
             CardTextError,
         > {
             let Some((_, after_intro)) = crate::grammar::primitives::parse_prefix(
-                &triggered.full_parse_tokens,
+                tokens,
                 crate::grammar::primitives::phrase(&[
                     "at",
                     "the",
@@ -701,10 +701,20 @@ pub(super) fn attach_compiler_trigger_facts(
             let cost = crate::grammar::leaf::parse_leaf_mana_cost_tokens(
                 crate::lexer::trim_lexed_commas(cost_tokens),
             )?;
-            Ok(Some(ironsmith_core::TotalCost::<crate::model::CompilerCost>::mana(
-                cost,
-            )))
-        })()?;
+            Ok(Some(
+                ironsmith_core::TotalCost::<crate::model::CompilerCost>::mana(cost),
+            ))
+        };
+        let mut nested_combat_cost = parse_nested_combat_cost(&triggered.full_parse_tokens)?;
+        if nested_combat_cost.is_none() {
+            nested_combat_cost = parse_nested_combat_cost(&triggered.info.source_tokens)?;
+        }
+        if nested_combat_cost.is_none()
+            && let Ok(tokens) =
+                crate::lexer::lex_line(&triggered.info.raw_line, triggered.info.line_index)
+        {
+            nested_combat_cost = parse_nested_combat_cost(&tokens)?;
+        }
         let recognized_special =
             semantic_grammar::parse_special_triggered_program_tokens(&triggered.full_parse_tokens);
         let special_triggered_program = match recognized_special {

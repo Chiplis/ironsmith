@@ -668,6 +668,22 @@ fn parse_granted_ability_component_for_gain(
         && let Some(static_abilities) = parse_static_ability_ast_line_lexed(&ability_tokens)?
         && !static_abilities.is_empty()
     {
+        if matches!(
+            static_abilities.as_slice(),
+            [StaticAbilityAst::Static(ability)]
+                if ability.id() == StaticAbilityId::Unblockable
+        ) {
+            let restriction = crate::effect::Restriction::block_specific_attacker(
+                ObjectFilter::creature(),
+                ObjectFilter::source(),
+            );
+            return Ok(Some(vec![GrantedAbilityAst::StaticAbility(Box::new(
+                StaticAbilityAst::Static(StaticAbility::restriction(
+                    restriction,
+                    "This creature can't be blocked.".to_string(),
+                )),
+            ))]));
+        }
         return parsed_static_granted_abilities(&ability_tokens, static_abilities).map(Some);
     }
 

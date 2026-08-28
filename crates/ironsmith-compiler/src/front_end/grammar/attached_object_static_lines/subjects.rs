@@ -60,6 +60,20 @@ pub enum AttachedConditionSuffix<'a> {
     },
 }
 
+/// Removes the grammatical subject/copula at the start of an attached-object
+/// condition. The returned tail can be prefixed with the explicit attached
+/// subject without reinterpreting a word slice in the semantic caller.
+pub fn strip_attached_condition_pronoun(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let (_, tail) = primitives::parse_prefix(
+        tokens,
+        alt((
+            semantic_phrase(&["it", "is"]),
+            semantic_phrase(&["it", "s"]),
+        )),
+    )?;
+    Some(tail)
+}
+
 impl<'a> AttachedConditionSuffix<'a> {
     pub fn ability_tokens(self) -> &'a [OwnedLexToken] {
         match self {

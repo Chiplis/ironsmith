@@ -145,13 +145,13 @@ pub fn parse_unique_pronoun_operand_after(
         if !token.is_word(action_word) {
             continue;
         }
-        let candidate = operand_after(tokens, action_index)?;
-        if candidate.len() != 1 || !matches!(candidate[0].parser_text(), "it" | "him" | "her") {
+        let candidate = tokens.get(action_index + 1)?;
+        if !matches!(candidate.parser_text(), "it" | "him" | "her") {
             continue;
         }
         push_unique_surface(
             &mut surfaces,
-            SourceReferenceSurface::ThisPermanentType(candidate[0].slice.clone()),
+            SourceReferenceSurface::ThisPermanentType(candidate.slice.clone()),
         );
     }
     unique_surface(surfaces)

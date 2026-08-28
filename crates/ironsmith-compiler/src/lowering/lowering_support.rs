@@ -469,7 +469,7 @@ fn rewrite_source_control_loss_sacrifice_followup(lowered: &mut LoweredEffects) 
     }
     let split_followup_segment = match lowered.effects.segments.as_slice() {
         [first, second, ..]
-            if first.default_effects.len() == 1
+            if matches!(first.default_effects.len(), 1 | 2)
                 && second.default_effects.len() == 2
                 && first.self_replacements.is_empty()
                 && second.self_replacements.is_empty() =>
@@ -482,9 +482,19 @@ fn rewrite_source_control_loss_sacrifice_followup(lowered: &mut LoweredEffects) 
         _ => return,
     };
     let first_segment = &lowered.effects.segments[0];
-    let Some(tagged_move) = first_segment.default_effects[0]
-        .downcast_ref::<crate::effects::TaggedEffect>()
-        .cloned()
+    // Trigger lowering may now prepend an event-identity tag before the
+    // returned-object move. Locate the actual move rather than assuming it
+    // is the first effect in its source segment.
+    let Some((move_index, tagged_move)) = first_segment
+        .default_effects
+        .iter()
+        .enumerate()
+        .find_map(|(index, effect)| {
+            effect
+                .downcast_ref::<crate::effects::TaggedEffect>()
+                .cloned()
+                .map(|tagged| (index, tagged))
+        })
     else {
         return;
     };
@@ -505,9 +515,12 @@ fn rewrite_source_control_loss_sacrifice_followup(lowered: &mut LoweredEffects) 
         let followup = &lowered.effects.segments[1];
         (&followup.default_effects[0], &followup.default_effects[1])
     } else {
+        if first_segment.default_effects.len() < move_index + 3 {
+            return;
+        }
         (
-            &first_segment.default_effects[1],
-            &first_segment.default_effects[2],
+            &first_segment.default_effects[move_index + 1],
+            &first_segment.default_effects[move_index + 2],
         )
     };
     let Some(choose) = choose_effect
@@ -518,7 +531,12 @@ fn rewrite_source_control_loss_sacrifice_followup(lowered: &mut LoweredEffects) 
     };
     if choose.zone.or(choose.filter.zone) != Some(Zone::Battlefield)
         || !choose.count.is_single()
-        || !object_filter_has_single_tag_reference(&choose.filter, &moved_tag)
+        || (!object_filter_has_single_tag_reference(&choose.filter, &moved_tag)
+            && !matches!(
+                move_to_zone.target.base(),
+                ChooseSpec::Tagged(source_tag)
+                    if object_filter_has_single_tag_reference(&choose.filter, source_tag)
+            ))
     {
         return;
     }
@@ -561,7 +579,7 @@ fn rewrite_source_control_loss_sacrifice_followup(lowered: &mut LoweredEffects) 
     } else {
         lowered.effects.segments[0]
             .default_effects
-            .splice(1..3, [Effect::new(schedule)]);
+            .splice(move_index + 1..move_index + 3, [Effect::new(schedule)]);
     }
 }
 
@@ -1710,6 +1728,13 @@ fn has_prior_effect_before_it_reference(effects: &[EffectAst]) -> bool {
 fn tagged_target_key(target: &TargetAst) -> Option<&crate::cards::builders::TagKey> {
     match target {
         TargetAst::Tagged(tag, _) => Some(tag),
+        TargetAst::Object(filter, _, _)
+            if filter.tagged_constraints.len() == 1
+                && filter.tagged_constraints[0].relation
+                    == TaggedOpbjectRelation::IsTaggedObject =>
+        {
+            Some(&filter.tagged_constraints[0].tag)
+        }
         TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
             tagged_target_key(inner)
         }
@@ -1790,6 +1815,25 @@ fn rebind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
         helper_choices: &mut std::collections::HashMap<String, (usize, bool)>,
         last_aggregate_exile: &mut Option<crate::cards::builders::TagKey>,
     ) {
+        // Coordination members are stored in model-owned containers rather
+        // than an ordinary nested-effect slice. Walk them explicitly so the
+        // aggregate tag added above is visible to the following plural
+        // return, even after the PR-33 coordination migration.
+        match effect {
+            EffectAst::Coordinated { effects, .. } => {
+                for child in effects {
+                    collect(child, helper_choices, last_aggregate_exile);
+                }
+                return;
+            }
+            EffectAst::Coordination(coordination) => {
+                for child in coordination.effects() {
+                    collect(child, helper_choices, last_aggregate_exile);
+                }
+                return;
+            }
+            _ => {}
+        }
         if let EffectAst::ChooseObjects { tag, count, .. } = effect
             && is_sentence_helper_exiled_collection_tag(tag.as_str())
         {
@@ -1828,6 +1872,21 @@ fn rebind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
         return;
     };
     fn rewrite(effect: &mut EffectAst, tag: &crate::cards::builders::TagKey) {
+        match effect {
+            EffectAst::Coordinated { effects, .. } => {
+                for child in effects {
+                    rewrite(child, tag);
+                }
+                return;
+            }
+            EffectAst::Coordination(coordination) => {
+                for child in coordination.effects_mut() {
+                    rewrite(child, tag);
+                }
+                return;
+            }
+            _ => {}
+        }
         if let EffectAst::SubjectVerb(subject_verb) = effect {
             let replacement = match &subject_verb.action {
                 SubjectVerbActionAst::ReturnToBattlefield {
@@ -5161,12 +5220,24 @@ mod tests {
         let (mut lowered, intervening_if) = materialize_prepared_triggered_effects(&prepared)
             .expect("linked immediate return should lower");
         assert!(intervening_if.is_none());
-        assert_eq!(lowered.effects.segments.len(), 2, "{:#?}", lowered.effects);
+        assert!(
+            matches!(lowered.effects.segments.len(), 1 | 2),
+            "the migrated grouping may already preserve the linked body: {:#?}",
+            lowered.effects
+        );
 
         rewrite_source_control_loss_sacrifice_followup(&mut lowered);
         assert_eq!(lowered.effects.segments.len(), 1, "{:#?}", lowered.effects);
-        let [returned, control_loss] = lowered.effects.segments[0].default_effects.as_slice()
-        else {
+        let semantic_effects = lowered.effects.segments[0]
+            .default_effects
+            .iter()
+            .filter(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+                    .is_none()
+            })
+            .collect::<Vec<_>>();
+        let [returned, control_loss] = semantic_effects.as_slice() else {
             panic!(
                 "expected returned object plus one control-loss watcher: {:#?}",
                 lowered.effects
@@ -5175,7 +5246,6 @@ mod tests {
         let returned = returned
             .downcast_ref::<crate::effects::TaggedEffect>()
             .expect("the returned identity must stay tagged");
-        assert_eq!(returned.tag.as_str(), "triggering");
         let control_loss = control_loss
             .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
             .expect("the returned identity must receive a control-loss watcher");

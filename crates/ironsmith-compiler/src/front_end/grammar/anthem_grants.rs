@@ -69,8 +69,9 @@ pub use granted_tail_shapes::{
     split_type_addition_subject,
 };
 pub use misc_shapes::{
-    parse_equipment_equip_shape, parse_keyword_if_color_shape, parse_trailing_grant_segment,
-    split_keyword_if_color_segments, split_trailing_grant_segments,
+    parse_additional_entry_counter_surface, parse_equipment_equip_shape,
+    parse_keyword_if_color_shape, parse_trailing_grant_segment, split_keyword_if_color_segments,
+    split_trailing_grant_segments,
 };
 pub use soulbond_shapes::{SoulbondSharedEffect, parse_soulbond_shared_shape};
 pub use special_grant_shapes::{

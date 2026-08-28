@@ -2534,6 +2534,7 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
     let mut subtypes = Vec::new();
     let mut ability_text = Vec::new();
     let mut has_quoted_generic_ability = false;
+    let mut has_conditioned_quoted_ability = false;
     for modification in &effect.additional_modifications {
         match modification {
             crate::continuous::Modification::SetPowerToughness {
@@ -2564,6 +2565,17 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
                     && !ability.source_granted_inline_abilities().is_empty() =>
             {
                 has_quoted_generic_ability = true;
+                has_conditioned_quoted_ability = ability.granted_inline_condition().is_some()
+                    || ability.compiled_model().is_some_and(|model| {
+                        matches!(
+                            &model.payload,
+                            ironsmith_core::StaticAbilityPayload::Conditional { .. }
+                        ) || matches!(
+                            &model.payload,
+                            ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant)
+                                if grant.condition.is_some()
+                        )
+                    });
                 let mut rendered = capitalize_first(&describe_static_ability_with_subject(
                     ability,
                     "this creature",
@@ -2575,7 +2587,33 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
                 ability_text.push(format!("\"{rendered}\""));
             }
             crate::continuous::Modification::AddAbility(ability) => {
-                ability_text.push(lowercase_first(&ability.display()));
+                let is_conditioned = ability.granted_inline_condition().is_some()
+                    || ability
+                        .compiled_model()
+                        .is_some_and(|model| match &model.payload {
+                            ironsmith_core::StaticAbilityPayload::Conditional { .. } => true,
+                            ironsmith_core::StaticAbilityPayload::GrantAbility(grant) => {
+                                grant.condition.is_some()
+                            }
+                            ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(
+                                grant,
+                            ) => grant.condition.is_some(),
+                            _ => false,
+                        });
+                if ability.is_keyword() && !is_conditioned {
+                    ability_text.push(lowercase_first(&ability.display()));
+                } else {
+                    has_quoted_generic_ability = true;
+                    has_conditioned_quoted_ability |= is_conditioned;
+                    let mut rendered = capitalize_first(ability.display().trim());
+                    if !rendered.ends_with('.')
+                        && !rendered.ends_with('!')
+                        && !rendered.ends_with('?')
+                    {
+                        rendered.push('.');
+                    }
+                    ability_text.push(format!("\"{rendered}\""));
+                }
             }
             crate::continuous::Modification::AddAbilityGeneric(ability) => {
                 // A bare keyword is quoted only because it travels through the
@@ -2941,7 +2979,7 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
         // granted ability. Passing `false` here suppresses the generic grant
         // renderer's leading-duration fallback; the helper still moves the
         // quote's final sentence period outside before appending the duration.
-        apply_continuous_text_with_tail(text, tail, false)
+        apply_continuous_text_with_tail(text, tail, has_conditioned_quoted_ability)
     };
     if let Some(where_clause) = pt_where_clause {
         text.push_str(", where X is ");

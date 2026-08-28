@@ -3,6 +3,11 @@ use super::*;
 pub fn parse_effect_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) =
+        super::super::chain_carry::parse_repeated_counter_placement_coordination(tokens)?
+    {
+        return Ok(effects);
+    }
     if super::super::chain_carry::is_atomic_put_counter_for_each_sentence(tokens) {
         return Ok(vec![
             super::super::zone_counter_helpers::parse_put_counters(tokens)?,
@@ -45,6 +50,13 @@ pub fn parse_effect_sentence_lexed(
     {
         return Ok(effects);
     }
+    if let Some(effects) =
+        super::super::subject_verb_primitives::parse_sentence_delayed_next_step_unless_pays(
+            SubjectVerbPrimitiveClause::new(tokens),
+        )?
+    {
+        return Ok(effects);
+    }
     // A trailing `unless` owns the complete action/payment choice. Claim it
     // before broad tap, damage, exile, and other subject/verb recognizers can
     // accept only the action prefix and silently discard the alternative.
@@ -56,10 +68,32 @@ pub fn parse_effect_sentence_lexed(
     if crate::lexer::split_lexed_sentences(tokens).len() == 1
         && !contains_quantified_opponent
         && !tokens.first().is_some_and(|token| token.is_word("if"))
+        && !effect_grammar::chain_splitting::has_authored_comma_then_surface_tokens(tokens)
         && effect_grammar::choice_damage_shapes::parse_unless_sentence_shape(tokens).is_some()
         && let Some(effects) = parse_sentence_unless_pays(SubjectVerbPrimitiveClause::new(tokens))?
     {
         return Ok(effects);
+    }
+    if let Some(effects) = super::super::subject_verb_primitives::
+        parse_sentence_damage_to_that_player_unless_enchanted_attacked(
+            SubjectVerbPrimitiveClause::new(tokens),
+        )?
+    {
+        return Ok(effects);
+    }
+    // Predicate-form trailing `unless` clauses (for example, "unless that
+    // creature attacked this turn") are control flow rather than a payment
+    // alternative. Route a grammar-proven control-flow plan before the broad
+    // damage and target primitives can accept only the leading action and
+    // silently discard its postcondition.
+    if tokens.iter().any(|token| token.is_word("unless"))
+        && !effect_grammar::chain_splitting::has_authored_comma_then_surface_tokens(tokens)
+        && matches!(
+            effect_grammar::control_flow::recognize_control_flow(tokens),
+            crate::recognition::ParseOutcome::Match(_)
+        )
+    {
+        return super::super::parse_effect_chain_inner_lexed(tokens);
     }
     if effect_grammar::sentence_predicate_shapes::parse_where_x_sentence_tokens(tokens).is_some_and(
         |shape| shape.has_trailing_segment() && tokens.iter().any(OwnedLexToken::is_semicolon),
@@ -2063,16 +2097,27 @@ pub(super) fn parse_effect_sentence_with_where_x_lexed(
                         | "source"
                 )
             });
-        parse_enters_with_additional_counter_for_filter_line(&stripped)?.map(|ability| {
+        let entry_abilities = if explicit_source_subject {
+            crate::keyword_static::parse_enters_with_counters_line(&stripped)?
+        } else {
+            parse_enters_with_additional_counter_for_filter_line(&stripped)?
+                .map(|ability| vec![ability])
+        };
+        entry_abilities.filter(|abilities| !abilities.is_empty()).map(|abilities| {
             EffectAst::subject_verb_grant_abilities_to_target(
                 if explicit_source_subject {
                     TargetAst::Source(None)
                 } else {
                     TargetAst::Tagged(TagKey::from(IT_TAG), None)
                 },
-                vec![GrantedAbilityAst::StaticAbility(Box::new(
-                    crate::cards::builders::StaticAbilityAst::Static(ability),
-                ))],
+                abilities
+                    .into_iter()
+                    .map(|ability| {
+                        GrantedAbilityAst::StaticAbility(Box::new(
+                            crate::cards::builders::StaticAbilityAst::Static(ability),
+                        ))
+                    })
+                    .collect(),
                 Until::Forever,
             )
         })

@@ -30,6 +30,18 @@ pub enum ChainPlayerScope {
     EachPlayer,
 }
 
+pub fn explicit_target_player_count(tokens: &[OwnedLexToken]) -> usize {
+    let mut count = 0usize;
+    let mut remaining = tokens;
+    while let Some((_, (), tail)) = primitives::find_prefix(remaining, || {
+        primitives::phrase(&["target", "player"]).void()
+    }) {
+        count += 1;
+        remaining = tail;
+    }
+    count
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OrActionSplit<'a> {
     pub first_tokens: &'a [OwnedLexToken],

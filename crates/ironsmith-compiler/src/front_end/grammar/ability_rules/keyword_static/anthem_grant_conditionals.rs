@@ -1527,7 +1527,22 @@ pub fn parse_heterogeneous_granted_tail(
             continue;
         }
 
-        if let Some(marker) = parse_static_text_marker_line(&segment) {
+        let authored_additional_entry =
+            anthem_grant_grammar::parse_additional_entry_counter_surface(&segment).is_some();
+        if let Some(mut marker) = parse_static_text_marker_line(&segment) {
+            if authored_additional_entry
+                && let ironsmith_core::StaticAbilityPayload::EntersWithCountersValue {
+                    count,
+                    ..
+                } = &mut marker.payload
+                && !count.has_surface_hint(
+                    ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter,
+                )
+            {
+                *count = count.clone().with_surface_hint(
+                    ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter,
+                );
+            }
             parsed.granted_static.push(marker.into());
             continue;
         }
@@ -1536,7 +1551,20 @@ pub fn parse_heterogeneous_granted_tail(
         segment_with_period.push(OwnedLexToken::period(
             crate::cards::builders::TextSpan::synthetic(),
         ));
-        if let Some(marker) = parse_static_text_marker_line(&segment_with_period) {
+        if let Some(mut marker) = parse_static_text_marker_line(&segment_with_period) {
+            if authored_additional_entry
+                && let ironsmith_core::StaticAbilityPayload::EntersWithCountersValue {
+                    count,
+                    ..
+                } = &mut marker.payload
+                && !count.has_surface_hint(
+                    ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter,
+                )
+            {
+                *count = count.clone().with_surface_hint(
+                    ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter,
+                );
+            }
             parsed.granted_static.push(marker.into());
             continue;
         }
@@ -1551,7 +1579,39 @@ pub fn parse_heterogeneous_granted_tail(
             continue;
         }
 
-        if let Some(abilities) = parse_static_ability_ast_line_lexed(&segment)? {
+        if let Some(mut abilities) = parse_static_ability_ast_line_lexed(&segment)? {
+            if authored_additional_entry {
+                fn mark_additional_entry_counter(ability: &mut StaticAbilityAst) {
+                    match ability {
+                        StaticAbilityAst::Static(static_ability) => {
+                            if let ironsmith_core::StaticAbilityPayload::EntersWithCountersValue {
+                                count,
+                                ..
+                            } = &mut static_ability.payload
+                                && !count.has_surface_hint(
+                                    ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter,
+                                )
+                            {
+                                *count = count.clone().with_surface_hint(
+                                    ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter,
+                                );
+                            }
+                        }
+                        StaticAbilityAst::ConditionalStaticAbility { ability, .. }
+                        | StaticAbilityAst::LabeledConditionalStaticAbility { ability, .. }
+                        | StaticAbilityAst::WithSetQuantifierSurface { ability, .. }
+                        | StaticAbilityAst::GrantStaticAbility { ability, .. }
+                        | StaticAbilityAst::RemoveStaticAbility { ability, .. }
+                        | StaticAbilityAst::AttachedStaticAbilityGrant { ability, .. } => {
+                            mark_additional_entry_counter(ability);
+                        }
+                        _ => {}
+                    }
+                }
+                for ability in &mut abilities {
+                    mark_additional_entry_counter(ability);
+                }
+            }
             parsed.granted_static.extend(abilities);
             continue;
         }

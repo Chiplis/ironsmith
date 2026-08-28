@@ -2927,7 +2927,8 @@ mod quoted_static_grant_bundle_tests {
             vec![
                 "Commander creatures you own have \"This creature enters with an additional +1/+1 counter on it\" and \"Other creatures you control enter with an additional +1/+1 counter on them.\""
                     .to_string()
-            ]
+            ],
+            "{definition:#?}",
         );
     }
 
@@ -6900,9 +6901,7 @@ fn describe_cross_segment_damage_and_die_replacement_program(
         if [damage_segment, attachment_segment, replacement_segment]
             .iter()
             .any(|segment| {
-                !segment.self_replacements.is_empty()
-                    || segment.starts_new_source_line
-                    || segment.default_effects.len() != 1
+                !segment.self_replacements.is_empty() || segment.default_effects.len() != 1
             })
         {
             return None;
@@ -8729,8 +8728,6 @@ fn describe_cross_segment_reciprocal_characteristic_damage_window(
         if let Some([choice_segment, damage_segment]) = segments.get(start..start + 2) {
             if !choice_segment.self_replacements.is_empty()
                 || !damage_segment.self_replacements.is_empty()
-                || choice_segment.starts_new_source_line
-                || damage_segment.starts_new_source_line
             {
                 return None;
             }
@@ -12522,7 +12519,6 @@ fn describe_cross_segment_treasure_look_exile_permission_window(
     if !producer_segment.self_replacements.is_empty()
         || !permission_segment.self_replacements.is_empty()
         || producer_segment.starts_new_source_line
-        || permission_segment.starts_new_source_line
     {
         return None;
     }
@@ -16479,7 +16475,7 @@ fn describe_chosen_creatures_sacrifice_then_return_tapped_program(
     };
     if [target_segment, sacrifice_segment, return_segment]
         .iter()
-        .any(|segment| !segment.self_replacements.is_empty() || segment.starts_new_source_line)
+        .any(|segment| !segment.self_replacements.is_empty())
     {
         return None;
     }
@@ -16595,12 +16591,13 @@ mod chosen_creatures_sacrifice_return_tests {
 
     #[test]
     fn renders_the_exact_chosen_set_and_sacrifice_result() {
+        let program = exact_program();
         assert_eq!(
-            describe_chosen_creatures_sacrifice_then_return_tapped_program(&exact_program())
-                .as_deref(),
+            describe_chosen_creatures_sacrifice_then_return_tapped_program(&program).as_deref(),
             Some(
                 "Choose two target creature cards in your graveyard. Sacrifice a creature. If you do, return the chosen cards to the battlefield tapped"
-            )
+            ),
+            "{program:#?}",
         );
     }
 
@@ -17861,7 +17858,7 @@ fn describe_cross_segment_reveal_optional_cast_decline_bottom_window(
     };
     if [reveal_segment, cast_segment, decline_segment]
         .iter()
-        .any(|segment| segment.starts_new_source_line || !segment.self_replacements.is_empty())
+        .any(|segment| !segment.self_replacements.is_empty())
     {
         return None;
     }
@@ -18123,37 +18120,72 @@ mod wave5_structural_and_winter_surface_tests {
 fn describe_reveal_may_put_grant_then_bottom_program(
     program: &crate::resolution::ResolutionProgram,
 ) -> Option<String> {
-    let [reveal_segment, choice_segment, followup_segment] = program.segments.as_slice() else {
-        return None;
+    let (
+        reveal_effect,
+        choose_effect,
+        move_each_effect,
+        grant_effect,
+        remainder_effect,
+        optional_choice_count,
+    ) = match program.segments.as_slice() {
+        [segment] if segment.self_replacements.is_empty() && !segment.starts_new_source_line => {
+            let [reveal, choose, move_each, grant, remainder] = segment.default_effects.as_slice()
+            else {
+                return None;
+            };
+            (reveal, choose, move_each, grant, remainder, true)
+        }
+        [reveal_segment, choice_segment, followup_segment]
+            if [reveal_segment, choice_segment, followup_segment]
+                .iter()
+                .all(|segment| segment.self_replacements.is_empty()) =>
+        {
+            let [reveal] = reveal_segment.default_effects.as_slice() else {
+                return None;
+            };
+            let [may_effect] = choice_segment.default_effects.as_slice() else {
+                return None;
+            };
+            let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+            if may.decider.as_ref() != Some(&PlayerFilter::You) {
+                return None;
+            }
+            let [choose, move_each] = may.effects.as_slice() else {
+                return None;
+            };
+            let [sequence_effect] = followup_segment.default_effects.as_slice() else {
+                return None;
+            };
+            let sequence = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+            if sequence.surface != ironsmith_core::SequenceSurface::Coordinated {
+                return None;
+            }
+            let [grant, remainder] = sequence.effects.as_slice() else {
+                return None;
+            };
+            (reveal, choose, move_each, grant, remainder, false)
+        }
+        _ => return None,
     };
-    if [reveal_segment, choice_segment, followup_segment]
-        .iter()
-        .any(|segment| !segment.self_replacements.is_empty() || segment.starts_new_source_line)
-    {
-        return None;
-    }
 
-    let [reveal_effect] = reveal_segment.default_effects.as_slice() else {
-        return None;
-    };
     let reveal = reveal_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
     if !reveal.reveal || reveal.player != PlayerFilter::You || reveal.viewer != PlayerFilter::You {
         return None;
     }
 
-    let [may_effect] = choice_segment.default_effects.as_slice() else {
-        return None;
-    };
-    let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
-    if may.decider.as_ref() != Some(&PlayerFilter::You) {
-        return None;
-    }
-    let [choose_effect, move_each_effect] = may.effects.as_slice() else {
-        return None;
-    };
     let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let exact_optional_choice_count = choose.count.min == 0
+        && choose.count.max == Some(1)
+        && !choose.count.dynamic_x
+        && !choose.count.up_to_x
+        && !choose.count.random
+        && !choose.count.explicit_exactly;
     if choose.chooser != PlayerFilter::You
-        || choose.count != ChoiceCount::exactly(1)
+        || if optional_choice_count {
+            !exact_optional_choice_count
+        } else {
+            choose.count != ChoiceCount::exactly(1)
+        }
         || choose.count_value.is_some()
         || choose.is_search
         || choose.reveal
@@ -18170,27 +18202,13 @@ fn describe_reveal_may_put_grant_then_bottom_program(
         return None;
     };
     let moved = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-    if move_each.tag != choose.tag
-        || moved
-            != &crate::effects::MoveToZoneEffect::new(
-                ChooseSpec::Iterated,
-                Zone::Battlefield,
-                false,
-            )
-    {
+    let mut expected_move =
+        crate::effects::MoveToZoneEffect::new(ChooseSpec::Iterated, Zone::Battlefield, false);
+    expected_move.verb_surface = ironsmith_core::MoveToZoneVerbSurface::Put;
+    if move_each.tag != choose.tag || moved != &expected_move {
         return None;
     }
 
-    let [sequence_effect] = followup_segment.default_effects.as_slice() else {
-        return None;
-    };
-    let sequence = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
-    if sequence.surface != ironsmith_core::SequenceSurface::Coordinated {
-        return None;
-    }
-    let [grant_effect, remainder_effect] = sequence.effects.as_slice() else {
-        return None;
-    };
     let grant = structural_unwrap_render_wrappers(grant_effect)
         .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
     if grant.target != crate::continuous::EffectTarget::Source
@@ -18263,7 +18281,8 @@ mod reveal_may_put_grant_then_bottom_tests {
         let program = program();
         assert_eq!(
             describe_reveal_may_put_grant_then_bottom_program(&program).as_deref(),
-            Some(TEXT.trim_end_matches('.'))
+            Some(TEXT.trim_end_matches('.')),
+            "{program:#?}",
         );
         let definition =
             crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Aethermage's Touch")
@@ -18279,18 +18298,12 @@ mod reveal_may_put_grant_then_bottom_tests {
     #[test]
     fn changed_remainder_selection_tag_is_not_claimed() {
         let mut program = program();
-        let sequence = program.segments[2].default_effects[0]
-            .downcast_ref::<crate::effects::SequenceEffect>()
-            .expect("coordinated grant and remainder")
-            .clone();
-        let mut changed_sequence = sequence;
-        let mut remainder = changed_sequence.effects[1]
+        let mut remainder = program.segments[0].default_effects[4]
             .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
             .expect("typed remainder")
             .clone();
         remainder.keep_tagged = Some(TagKey::from("different_selection"));
-        changed_sequence.effects[1] = Effect::new(remainder);
-        program.segments[2].default_effects[0] = Effect::new(changed_sequence);
+        program.segments[0].default_effects[4] = Effect::new(remainder);
 
         assert!(describe_reveal_may_put_grant_then_bottom_program(&program).is_none());
     }
@@ -25635,6 +25648,137 @@ fn split_rendered_damage(text: &str) -> Option<(&str, &str)> {
     Some((amount.trim(), target.trim()))
 }
 
+fn describe_sentence_leading_then_program(
+    program: &crate::resolution::ResolutionProgram,
+) -> Option<String> {
+    let [setup_segment, then_segment] = program.segments.as_slice() else {
+        return None;
+    };
+    if !setup_segment.self_replacements.is_empty()
+        || !then_segment.self_replacements.is_empty()
+        || setup_segment.starts_new_source_line
+        || !then_segment.starts_new_source_line
+    {
+        return None;
+    }
+    let [then_effect] = then_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let sequence = then_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    if sequence.surface != ironsmith_core::SequenceSurface::SentenceLeadingThen
+        || sequence.result_label.is_some()
+        || sequence.effects.is_empty()
+        || !sequence.effects.iter().any(|effect| {
+            structural_unwrap_render_wrappers(effect)
+                .downcast_ref::<crate::effects::VillainousChoiceEffect>()
+                .is_some()
+        })
+    {
+        return None;
+    }
+    let setup = describe_effect_list(&setup_segment.default_effects);
+    let then = describe_effect(then_effect);
+    if setup.trim().is_empty() || !then.trim_start().starts_with("Then ") {
+        return None;
+    }
+    Some(format!(
+        "{}. {}",
+        setup.trim().trim_end_matches('.'),
+        then.trim().trim_end_matches('.')
+    ))
+}
+
+fn describe_cross_segment_search_conditional_destination_program(
+    program: &crate::resolution::ResolutionProgram,
+) -> Option<String> {
+    let (search_segment, destination_segment, fallback_segment) = match program.segments.as_slice()
+    {
+        [search, destination] => (search, destination, None),
+        [search, destination, fallback] => (search, destination, Some(fallback)),
+        _ => return None,
+    };
+    if !search_segment.self_replacements.is_empty()
+        || !destination_segment.self_replacements.is_empty()
+        || fallback_segment.is_some_and(|segment| !segment.self_replacements.is_empty())
+    {
+        return None;
+    }
+    let [search_effect] = search_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [destination_effect] = destination_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let may = structural_unwrap_render_wrappers(search_effect)
+        .downcast_ref::<crate::effects::MayEffect>()?;
+    let mut conditional = structural_unwrap_render_wrappers(destination_effect)
+        .downcast_ref::<crate::effects::ConditionalEffect>()?
+        .clone();
+    if let Some(fallback_segment) = fallback_segment {
+        let destination_id = destination_effect
+            .downcast_ref::<crate::effects::WithIdEffect>()?
+            .id;
+        let [fallback_effect] = fallback_segment.default_effects.as_slice() else {
+            return None;
+        };
+        let fallback = fallback_effect.downcast_ref::<crate::effects::IfEffect>()?;
+        if fallback.condition != destination_id
+            || fallback.predicate != EffectPredicate::DidNotHappen
+            || !fallback.else_.is_empty()
+            || !conditional.if_false.is_empty()
+        {
+            return None;
+        }
+        conditional.if_false = fallback.then.clone();
+    }
+    super::render_effects::describe_may_search_reveal_shuffle_then_conditional_move(
+        may,
+        &conditional,
+    )
+}
+
+/// A few migrated procedures already have complete tag/ID-aware structural
+/// rendering in `describe_resolution_program`; only the source-sentence
+/// splitter obscures that proof. Rejoin those narrowly identifiable surfaces
+/// before splitting. Each phrase below can be emitted only after the existing
+/// effect-list renderer has validated the correlated result tag or prior
+/// effect metric.
+fn describe_correlated_authored_sentence_program(
+    program: &crate::resolution::ResolutionProgram,
+) -> Option<String> {
+    if program.segments.len() < 2
+        || program
+            .segments
+            .iter()
+            .any(|segment| !segment.self_replacements.is_empty())
+    {
+        return None;
+    }
+    compact_correlated_authored_sentence_surface(&describe_resolution_program(program))
+}
+
+fn compact_correlated_authored_sentence_surface(rendered: &str) -> Option<String> {
+    let rendered = rendered
+        .lines()
+        .map(|line| line.trim().trim_end_matches('.'))
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join(". ");
+    let reveal_offer_remainder = rendered.starts_with("Reveal the top ")
+        && rendered.contains(". For each of those cards, ")
+        && rendered.contains(". Then exile the rest");
+    let scaled_discard_payment = rendered.starts_with("You discard any number of cards. ")
+        && rendered.contains("unless its controller pays ")
+        && rendered.contains(" for each card discarded this way");
+    let delegated_graveyard_partition = rendered
+        .starts_with("Choose up to two target creature cards in your graveyard. ")
+        && rendered.contains("An opponent chooses one of them. Return that card to your hand. ")
+        && rendered.contains("Return the other to the battlefield under your control. ")
+        && rendered.contains("It gains haste. Exile it at the beginning of the next end step");
+    (reveal_offer_remainder || scaled_discard_payment || delegated_graveyard_partition)
+        .then_some(rendered)
+}
+
 fn describe_resolution_program_preserving_source_lines(
     program: &crate::resolution::ResolutionProgram,
 ) -> String {
@@ -25802,6 +25946,46 @@ fn describe_resolution_program_preserving_source_lines(
     {
         return rendered;
     }
+    if let Some(rendered) = describe_sentence_leading_then_program(program) {
+        return rendered;
+    }
+    if let Some(rendered) = describe_cross_segment_search_conditional_destination_program(program) {
+        return rendered;
+    }
+    if let Some(rendered) = describe_cross_segment_two_target_creature_fight_program(program) {
+        return rendered;
+    }
+    if let Some(rendered) = describe_correlated_authored_sentence_program(program) {
+        return rendered;
+    }
+    if let Some(rendered) = describe_chosen_creatures_sacrifice_then_return_tapped_program(program)
+    {
+        return rendered;
+    }
+    if let Some(rendered) = describe_reveal_may_put_grant_then_bottom_program(program) {
+        return rendered;
+    }
+    if let Some(rendered) = describe_cross_segment_damage_and_die_replacement_program(program) {
+        return rendered;
+    }
+    if let Some((rendered, consumed)) =
+        describe_cross_segment_reveal_optional_cast_decline_bottom_window(&program.segments, 0)
+        && consumed == program.segments.len()
+    {
+        return rendered;
+    }
+    if let Some((rendered, consumed)) =
+        describe_cross_segment_treasure_look_exile_permission_window(&program.segments, 0)
+        && consumed == program.segments.len()
+    {
+        return rendered;
+    }
+    if let Some((rendered, consumed)) =
+        describe_cross_segment_reciprocal_characteristic_damage_window(&program.segments, 0)
+        && consumed == program.segments.len()
+    {
+        return rendered;
+    }
     let has_typed_boundary = program.segments.iter().any(|segment| {
         segment.starts_new_source_line
             || segment
@@ -25871,12 +26055,13 @@ fn describe_resolution_program_preserving_source_lines(
             line_segments,
         ));
     }
-    source_lines
+    let rendered = source_lines
         .into_iter()
         .filter(|line| !line.trim().is_empty())
         .map(|line| capitalize_first(&line))
         .collect::<Vec<_>>()
-        .join("\n")
+        .join("\n");
+    compact_correlated_authored_sentence_surface(&rendered).unwrap_or(rendered)
 }
 
 /// Rejoin a chosen creature's power fanout with the adjacent cast-origin
@@ -27177,6 +27362,13 @@ pub(super) fn substitute_legendary_source_reference(
     };
 
     let lower = line.to_ascii_lowercase();
+    let named_attack_characteristic_reference = lower
+        .strip_prefix("whenever ")
+        .and_then(|rest| rest.strip_prefix(&self_name.to_ascii_lowercase()))
+        .is_some_and(|rest| rest.starts_with(" attacks"))
+        && ["this creature's power", "this creature's toughness"]
+            .iter()
+            .any(|reference| lower.contains(reference));
     let authored_body_lower = lower
         .split_once('—')
         .map(|(_, body)| body.trim_start())
@@ -27236,6 +27428,8 @@ pub(super) fn substitute_legendary_source_reference(
         || authored_body_lower.starts_with("this planeswalker has ")
         || authored_body_lower.starts_with("this planeswalker deals ")
         || lower.contains(": this planeswalker deals ");
+    let uses_named_source_surface =
+        uses_named_source_surface || named_attack_characteristic_reference;
     if card.supertypes.contains(&Supertype::Legendary)
         && lower.starts_with("soulshift ")
         && !self_name.is_empty()
@@ -30192,7 +30386,7 @@ fn describe_triggering_card_type_exile_then_cast_permission(ability: &Ability) -
     };
     if [exile_segment, permission_segment]
         .iter()
-        .any(|segment| segment.starts_new_source_line || !segment.self_replacements.is_empty())
+        .any(|segment| !segment.self_replacements.is_empty())
     {
         return None;
     }
@@ -30933,7 +31127,6 @@ fn describe_structural_equipped_draw_reveal_mana_value_pump(ability: &Ability) -
     if !draw_segment.self_replacements.is_empty()
         || draw_segment.starts_new_source_line
         || !result_segment.self_replacements.is_empty()
-        || result_segment.starts_new_source_line
     {
         return None;
     }
@@ -31729,14 +31922,14 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 continue;
             }
             if let Some((text, consumed)) =
-                describe_structural_matching_keyword_grant_ladder(&def.abilities[ability_idx..])
+                describe_structural_each_combat_keyword_grant_ladder(&def.abilities[ability_idx..])
             {
                 output.push(format!("Triggered ability {}: {text}", ability_idx + 1));
                 ability_idx += consumed;
                 continue;
             }
             if let Some((text, consumed)) =
-                describe_structural_each_combat_keyword_grant_ladder(&def.abilities[ability_idx..])
+                describe_structural_matching_keyword_grant_ladder(&def.abilities[ability_idx..])
             {
                 output.push(format!("Triggered ability {}: {text}", ability_idx + 1));
                 ability_idx += consumed;
@@ -31929,6 +32122,15 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
             {
                 output.push(format!("Static ability {}: {text}", ability_idx + 1));
                 ability_idx += consumed;
+                continue;
+            }
+            if let Some(text) = describe_source_line_attached_keyword_otherwise_prevention_group(
+                def.abilities
+                    .get(ability_idx..ability_idx + 2)
+                    .unwrap_or_default(),
+            ) {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                ability_idx += 2;
                 continue;
             }
             if let Some((text, consumed)) =
@@ -32341,6 +32543,24 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
         for (idx, ability) in def.abilities.iter().enumerate() {
             if source_line_repeated_cascade_group_consumed(&def.abilities[idx..]).is_some() {
                 out.push(source_line_keyword_group_sentinel(2));
+                continue;
+            }
+            let belongs_to_renderable_static_group =
+                def.abilities[..idx]
+                    .iter()
+                    .enumerate()
+                    .any(|(marker_idx, marker)| {
+                        source_line_static_group_count(marker).is_some_and(|member_count| {
+                            idx <= marker_idx + member_count
+                                && describe_source_line_static_group(
+                                    &def.abilities[marker_idx + 1..],
+                                    member_count,
+                                    subject,
+                                )
+                                .is_some()
+                        })
+                    });
+            if belongs_to_renderable_static_group {
                 continue;
             }
             if !ability_precedes_spell_resolution(ability) {
@@ -33294,13 +33514,13 @@ fn describe_source_line_static_group(
                 .and_then(|(text, consumed)| (consumed == member_count).then_some(text))
         })
         .or_else(|| describe_source_line_attached_keyword_otherwise_prevention_group(members))
+        .or_else(|| describe_source_line_conditional_spell_protection_group(members))
         .or_else(|| describe_source_line_cast_activation_restriction_group(members))
         .or_else(|| describe_source_line_spell_cost_reduction_counter_protection_group(members))
         .or_else(|| describe_source_line_base_pt_grant_loss_group(members))
         .or_else(|| describe_source_line_grant_then_all_other_loss_group(members))
         .or_else(|| describe_source_line_conditional_type_addition_activated_grant_group(members))
         .or_else(|| describe_source_line_type_addition_grant_group(members))
-        .or_else(|| describe_source_line_conditional_spell_protection_group(members))
         .or_else(|| describe_source_line_conditioned_source_mixed_grants_group(members, subject))
         .or_else(|| describe_source_line_conditioned_source_anthem_trait_group(members, subject))
         .or_else(|| {
@@ -34640,8 +34860,9 @@ mod conditional_spell_protection_source_group_tests {
             assert_eq!(
                 crate::compiled_text::compiled_text_lines(&definition),
                 [line],
-                "{:#?}",
-                definition.abilities
+                "abilities={:#?}\ndebug={:#?}",
+                definition.abilities,
+                crate::compiled_text::debug_compiled_lines(&definition),
             );
             let members = protection_members(&definition);
             assert_eq!(members.len(), 2, "{members:#?}");
@@ -36116,6 +36337,36 @@ fn describe_simple_attached_match(filter: &ObjectFilter) -> Option<String> {
     None
 }
 
+fn describe_simple_attached_match_for_subject(
+    filter: &ObjectFilter,
+    subject: &str,
+) -> Option<String> {
+    let expected_tag = match subject {
+        "Enchanted creature" => "enchanted",
+        "Equipped creature" => "equipped",
+        _ => return None,
+    };
+    let mut normalized = filter.clone();
+    if let [constraint] = normalized.tagged_constraints.as_slice() {
+        if constraint.tag.as_str() != expected_tag
+            || constraint.relation != crate::target::TaggedOpbjectRelation::IsTaggedObject
+        {
+            return None;
+        }
+        normalized.tagged_constraints.clear();
+    }
+    describe_simple_attached_match(&normalized)
+}
+
+fn attached_match_filter(condition: &Condition) -> Option<&ObjectFilter> {
+    match condition {
+        Condition::TargetMatches(filter) | Condition::AttachedToSourceMatches(filter) => {
+            Some(filter)
+        }
+        _ => None,
+    }
+}
+
 fn exact_attached_creature_subject(filter: &ObjectFilter) -> Option<&'static str> {
     let mut normalized = filter.clone();
     if normalized.zone == Some(Zone::Battlefield) {
@@ -36152,8 +36403,8 @@ fn describe_structural_attached_anthem_condition_chain_bundle(
     let [base_ability, additional_ability, keyword_ability, ..] = abilities else {
         return None;
     };
-    if abilities
-        .iter()
+    if [base_ability, additional_ability, keyword_ability]
+        .into_iter()
         .any(|ability| ability.functional_zones.as_slice() != [Zone::Battlefield])
     {
         return None;
@@ -36181,10 +36432,9 @@ fn describe_structural_attached_anthem_condition_chain_bundle(
     {
         return None;
     }
-    let Condition::TargetMatches(additional_match) = additional.condition.as_ref()? else {
-        return None;
-    };
-    let additional_condition = describe_simple_attached_match(additional_match)?;
+    let additional_match = attached_match_filter(additional.condition.as_ref()?)?;
+    let additional_condition =
+        describe_simple_attached_match_for_subject(additional_match, subject)?;
 
     let AbilityKind::Static(keyword_static) = &keyword_ability.kind else {
         return None;
@@ -36199,10 +36449,8 @@ fn describe_structural_attached_anthem_condition_chain_bundle(
     {
         return None;
     }
-    let Condition::TargetMatches(keyword_match) = grant.condition.as_ref()? else {
-        return None;
-    };
-    let keyword_condition = describe_simple_attached_match(keyword_match)?;
+    let keyword_match = attached_match_filter(grant.condition.as_ref()?)?;
+    let keyword_condition = describe_simple_attached_match_for_subject(keyword_match, subject)?;
     let ironsmith_core::AbilityKind::Static(granted_model) = &grant.ability.kind else {
         return None;
     };
@@ -36281,10 +36529,8 @@ fn describe_structural_attached_anthem_otherwise_base_block_bundle(
     {
         return None;
     }
-    let Condition::TargetMatches(match_filter) = anthem.condition.as_ref()? else {
-        return None;
-    };
-    let predicate = describe_simple_attached_match(match_filter)?;
+    let match_filter = attached_match_filter(anthem.condition.as_ref()?)?;
+    let predicate = describe_simple_attached_match_for_subject(match_filter, subject)?;
     let inverse = Condition::Not(Box::new(anthem.condition.clone()?));
 
     let AbilityKind::Static(base_static) = &base_ability.kind else {
@@ -36441,6 +36687,18 @@ mod attached_anthem_condition_chain_tests {
     #[test]
     fn public_surface_rejoins_exact_attached_condition_chain() {
         let definition = definition();
+        let members = definition
+            .abilities
+            .iter()
+            .filter(|ability| source_line_static_group_count(ability).is_none())
+            .take(3)
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(
+            describe_structural_attached_anthem_condition_chain_bundle(&members),
+            Some((LINE.trim_end_matches('.').to_string(), 3)),
+            "{members:#?}",
+        );
         assert_eq!(
             crate::compiled_text::compiled_text_lines(&definition),
             [LINE.to_string(), "Equip {1}".to_string()]
@@ -36587,22 +36845,16 @@ fn describe_source_line_attached_keyword_otherwise_prevention_group(
         return None;
     }
 
-    let Condition::TargetMatches(match_filter) = keyword_condition.as_ref()? else {
-        return None;
-    };
+    let match_filter = attached_match_filter(keyword_condition.as_ref()?)?;
     let Some(Condition::Not(prevention_inner)) = prevention_condition.as_ref() else {
         return None;
     };
     if prevention_inner.as_ref() != keyword_condition.as_ref()? {
         return None;
     }
-    let mut remainder = match_filter.clone();
-    if remainder.card_types.as_slice() != [CardType::Enchantment] {
-        return None;
-    }
-    remainder.card_types.clear();
-    remainder.set_explicit_card_type_noun(None);
-    if remainder != ObjectFilter::default() {
+    if describe_simple_attached_match_for_subject(match_filter, "Enchanted creature").as_deref()
+        != Some("an enchantment")
+    {
         return None;
     }
 
@@ -36646,6 +36898,18 @@ mod attached_keyword_otherwise_prevention_tests {
     #[test]
     fn public_surface_rejoins_exact_inverse_attached_grants() {
         let definition = definition();
+        let members = definition
+            .abilities
+            .iter()
+            .filter(|ability| source_line_static_group_count(ability).is_none())
+            .take(2)
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(
+            describe_source_line_attached_keyword_otherwise_prevention_group(&members).as_deref(),
+            Some(LINE.trim_end_matches('.')),
+            "{members:#?}",
+        );
         assert_eq!(
             crate::compiled_text::compiled_text_lines(&definition),
             ["Enchant creature", LINE]

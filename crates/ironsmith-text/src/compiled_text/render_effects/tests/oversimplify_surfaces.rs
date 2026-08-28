@@ -36,8 +36,22 @@ fn per_player_created_token_counter_followup_keeps_the_player_partition() {
     let players = structural_unwrap_render_wrappers(player_root)
         .downcast_ref::<crate::effects::ForPlayersEffect>()
         .expect("the second segment should retain its player loop");
-    let [create_root, counters_root] = players.effects.as_slice() else {
-        panic!("expected create/counters player body: {players:#?}");
+    let (create_root, counters_root) = match players.effects.as_slice() {
+        [create_root, counters_root] => (create_root, counters_root),
+        [sequence_root] => {
+            let sequence = sequence_root
+                .downcast_ref::<crate::effects::SequenceEffect>()
+                .unwrap_or_else(|| panic!("expected coordinated player body: {players:#?}"));
+            assert_eq!(
+                sequence.surface,
+                ironsmith_core::SequenceSurface::Coordinated
+            );
+            let [create_root, counters_root] = sequence.effects.as_slice() else {
+                panic!("expected create/counters coordination: {players:#?}");
+            };
+            (create_root, counters_root)
+        }
+        _ => panic!("expected create/counters player body: {players:#?}"),
     };
     let (created_tag, _) = tagged_create_token_effect(create_root).expect("tagged token producer");
     let put = unwrap_structural_effect_tag(counters_root)

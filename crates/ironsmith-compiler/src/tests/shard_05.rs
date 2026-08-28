@@ -2707,19 +2707,27 @@ pub(super) fn nested_combat_payment_keeps_blocks_union_and_end_of_combat_lifetim
         "{trigger_debug}"
     );
     assert!(effects_debug.contains("UnlessPays"), "{effects_debug}");
-    assert!(
-        effects_debug.contains("DelayedTriggerForDuration"),
-        "{effects_debug}"
-    );
-    assert!(effects_debug.contains("EndOfCombat"), "{effects_debug}");
-    assert!(
-        effects_debug.contains("ThisBlocksObject"),
-        "{effects_debug}"
-    );
-    assert!(
-        effects_debug.contains("ThisBecomesBlockedByObject"),
-        "{effects_debug}"
-    );
+    let [
+        EffectAst::UnlessPays {
+            effects: delayed, ..
+        },
+    ] = effects
+    else {
+        panic!("expected the payment gate to own the delayed trigger: {effects_debug}");
+    };
+    let [
+        EffectAst::DelayedTriggerForDuration {
+            trigger: TriggerSpec::BlocksOrBecomesBlockedByObject { subject, other },
+            duration,
+            ..
+        },
+    ] = delayed.as_slice()
+    else {
+        panic!("expected one canonical block-or-blocked trigger: {effects_debug}");
+    };
+    assert_eq!(*duration, crate::effect::Until::EndOfCombat);
+    assert_eq!(subject.card_types, vec![CardType::Creature]);
+    assert_eq!(other.card_types, vec![CardType::Creature]);
     assert!(effects_debug.contains("FirstStrike"), "{effects_debug}");
     Ok(())
 }

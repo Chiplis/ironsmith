@@ -1192,6 +1192,9 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         normalized = format!("{prefix}. If it's blocking, instead {action}.");
     }
+    if let Some((prefix, action)) = normalized.split_once(". If it was blocking, instead ") {
+        normalized = format!("{prefix}. If it's blocking, instead {action}");
+    }
     if normalized == "Flash, cascade, reach." {
         return "Flash\nCascade\nReach".to_string();
     }

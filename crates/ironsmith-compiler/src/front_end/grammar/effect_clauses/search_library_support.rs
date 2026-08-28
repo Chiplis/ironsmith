@@ -214,16 +214,19 @@ pub fn extract_search_library_mana_constraint(
         let left = std::slice::from_ref(left);
         let right = std::slice::from_ref(right);
         match (
-            parse_exact_mana_cost_clause(left),
-            parse_exact_mana_cost_clause(right),
+            parse_single_u32_clause(left),
+            parse_single_u32_clause(right),
         ) {
-            (Some(left), Some(right)) => {
-                SearchLibraryManaConstraint::OneOfExactCosts(vec![left, right])
-            }
-            (None, None) => SearchLibraryManaConstraint::OneOf(vec![
-                parse_single_u32_clause(left)?,
-                parse_single_u32_clause(right)?,
-            ]),
+            (Some(left), Some(right)) => SearchLibraryManaConstraint::OneOf(vec![left, right]),
+            (None, None) => match (
+                parse_exact_mana_cost_clause(left),
+                parse_exact_mana_cost_clause(right),
+            ) {
+                (Some(left), Some(right)) => {
+                    SearchLibraryManaConstraint::OneOfExactCosts(vec![left, right])
+                }
+                _ => return None,
+            },
             _ => return None,
         }
     };

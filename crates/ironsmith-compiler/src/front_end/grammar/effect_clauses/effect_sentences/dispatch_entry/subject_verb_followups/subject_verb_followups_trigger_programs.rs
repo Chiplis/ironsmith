@@ -94,7 +94,7 @@ pub(super) fn post_rule_targeted_object_delayed_leave(
     sentence_tokens: &[OwnedLexToken],
     sentence_effects: &mut Vec<EffectAst>,
 ) -> Result<Option<PostParseFollowupResult>, CardTextError> {
-    let words = crate::lexer::token_word_refs(sentence_tokens);
+    let words = crate::lexer::parser_token_word_refs(sentence_tokens);
     if !crate::word_primitives::parse_any_sequence_prefix(
         &words,
         &[

@@ -828,6 +828,12 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Returns the condition governing an inline granted ability, when the
+    /// runtime-native static ability carries one directly.
+    fn granted_inline_condition(&self) -> Option<&crate::ConditionExpr> {
+        None
+    }
+
     /// Returns object abilities carried by a source-filtered grant. This is
     /// used by schemas such as level tiers that can store only static ability
     /// carriers even when the granted keyword is triggered or activated.
@@ -1460,6 +1466,10 @@ impl StaticAbility {
 
     pub fn granted_inline_ability(&self) -> Option<&crate::ability::Ability> {
         self.0.granted_inline_ability()
+    }
+
+    pub fn granted_inline_condition(&self) -> Option<&crate::ConditionExpr> {
+        self.0.granted_inline_condition()
     }
 
     pub fn source_granted_inline_abilities(&self) -> Vec<&crate::ability::Ability> {

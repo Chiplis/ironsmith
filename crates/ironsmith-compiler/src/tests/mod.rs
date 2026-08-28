@@ -66,6 +66,21 @@ fn find_nested_effect<T: 'static>(effect: &crate::effect::Effect) -> Option<&T> 
     unsafe { found.map(|pointer| &*pointer) }
 }
 
+fn find_all_nested_effects<T: 'static>(effect: &crate::effect::Effect) -> Vec<&T> {
+    fn collect<T: 'static>(effect: &crate::effect::Effect, found: &mut Vec<*const T>) {
+        if let Some(value) = effect.downcast_ref::<T>() {
+            found.push(value as *const T);
+        }
+        effect.visit_child_effects(&mut |child| collect::<T>(child, found));
+    }
+
+    let mut found = Vec::new();
+    collect::<T>(effect, &mut found);
+    // Every pointer refers to an effect owned by `effect`, so each remains
+    // valid for the lifetime of the returned borrow collection.
+    unsafe { found.into_iter().map(|pointer| &*pointer).collect() }
+}
+
 fn rewrite_parsed_line(item: &RewriteSemanticItem) -> Option<&ParsedLineAst> {
     match item {
         RewriteSemanticItem::ParsedLine(line) => Some(line),

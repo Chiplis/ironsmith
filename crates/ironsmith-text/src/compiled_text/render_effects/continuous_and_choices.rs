@@ -3564,6 +3564,16 @@ pub(crate) fn describe_may_search_reveal_shuffle_then_conditional_move(
     may: &crate::effects::MayEffect,
     conditional: &crate::effects::ConditionalEffect,
 ) -> Option<String> {
+    fn downcast_search_choose(effect: &Effect) -> Option<&crate::effects::ChooseObjectsEffect> {
+        if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
+            return Some(choose);
+        }
+        effect
+            .downcast_ref::<crate::effects::WithIdEffect>()?
+            .effect
+            .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+    }
+
     fn downcast_move_to_zone(effect: &Effect) -> Option<&crate::effects::MoveToZoneEffect> {
         if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
             return Some(move_to_zone);
@@ -3651,7 +3661,7 @@ pub(crate) fn describe_may_search_reveal_shuffle_then_conditional_move(
     let [choose_effect, reveal_effect, shuffle_effect] = search_effects else {
         return None;
     };
-    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let choose = downcast_search_choose(choose_effect)?;
     let reveal = downcast_search_reveal(reveal_effect)?;
     let shuffle_player = conditional_search_shuffle_player(shuffle_effect)?;
 

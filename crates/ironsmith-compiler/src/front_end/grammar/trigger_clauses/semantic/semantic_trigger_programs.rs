@@ -4125,11 +4125,11 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             // and the "another" subject as distinct matcher branches: folding
             // both into one ObjectFilter makes `source` an AND constraint and
             // silently stops the trigger from seeing every other object.
-            if let Some((source_filter, other_filter)) =
+            if let Some((_source_filter, other_filter)) =
                 parse_source_or_another_trigger_subject_filters(subject_tokens)
             {
                 return Ok(TriggerSpec::Either(
-                    Box::new(TriggerSpec::Dies(source_filter)),
+                    Box::new(TriggerSpec::ThisDies),
                     Box::new(TriggerSpec::Dies(other_filter)),
                 ));
             }

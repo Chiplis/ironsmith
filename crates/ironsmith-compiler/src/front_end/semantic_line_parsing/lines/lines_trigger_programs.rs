@@ -44,9 +44,9 @@ pub(super) fn parse_triggered_line_impl(
         // resolving delayed schedule rather than a recurring ability.
         parse_delayed_schedule_sentence_shape(&line.info.source_tokens)
     });
-    let nested_combat_payment = (|| {
+    let parse_nested_combat_payment = |tokens: &[OwnedLexToken]| {
         let (_, after_intro) = crate::grammar::primitives::parse_prefix(
-            full_parse_tokens,
+            tokens,
             crate::grammar::primitives::phrase(&["at", "the", "beginning", "of", "each", "combat"]),
         )?;
         let after_intro = trim_lexed_commas(after_intro);
@@ -66,7 +66,14 @@ pub(super) fn parse_triggered_line_impl(
             crate::grammar::leaf::parse_leaf_mana_cost_tokens(trim_lexed_commas(cost_tokens))
                 .ok()?;
         Some(ironsmith_core::TotalCost::<crate::model::CompilerCost>::mana(cost))
-    })();
+    };
+    let nested_combat_payment = parse_nested_combat_payment(full_parse_tokens)
+        .or_else(|| parse_nested_combat_payment(&line.info.source_tokens))
+        .or_else(|| {
+            crate::lexer::lex_line(&line.info.raw_line, line.info.line_index)
+                .ok()
+                .and_then(|tokens| parse_nested_combat_payment(&tokens))
+        });
     let mut parsed = parse_triggered_ability_line_impl(
         line,
         full_parse_tokens,
@@ -2506,18 +2513,36 @@ pub fn try_parse_optional_cost_with_cast_trigger(
         return Ok(None);
     }
 
-    let Some(shape) =
+    // Prefer the untouched authored token program.  The AdditionalCost CST
+    // may expose a normalized parse slice in which the reflexive follow-up
+    // has already been folded into the cost body; accepting that shorter
+    // view first would try to materialize the reflexive trigger as an
+    // executable casting cost.
+    let Some(shape) = keyword_special_grammar::parse_optional_cost_with_cast_trigger_tokens(
+        &line.full_parse_tokens,
+    )
+    .or_else(|| {
         keyword_special_grammar::parse_optional_cost_with_cast_trigger_tokens(parse_tokens)
-    else {
+    }) else {
         return Ok(None);
     };
 
     let head_effects = parse_effect_sentences_lexed(shape.optional_cost_effect_tokens)?;
+    let head_effects = match head_effects.as_slice() {
+        [EffectAst::Coordination(coordination)] => {
+            coordination.effects().cloned().collect::<Vec<_>>()
+        }
+        [EffectAst::Coordinated { effects, .. } | EffectAst::Sequence { effects }] => {
+            effects.clone()
+        }
+        _ => head_effects,
+    };
     let [
         EffectAst::ChooseObjects {
             filter,
             count,
             player,
+            tag,
             ..
         },
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -2535,11 +2560,20 @@ pub fn try_parse_optional_cost_with_cast_trigger(
     else {
         return Ok(None);
     };
-    if *player != crate::cards::builders::PlayerAst::Implicit
-        || *sacrificed_player != crate::cards::builders::PlayerAst::Implicit
+    let actors_are_cost_payer = matches!(
+        (*player, *sacrificed_player),
+        (
+            crate::cards::builders::PlayerAst::Implicit,
+            crate::cards::builders::PlayerAst::Implicit
+        ) | (
+            crate::cards::builders::PlayerAst::You,
+            crate::cards::builders::PlayerAst::That | crate::cards::builders::PlayerAst::You
+        )
+    );
+    if !actors_are_cost_payer
         || count.min != 1
         || count.max.is_some()
-        || !matches!(sacrificed_filter, crate::target::ObjectFilter { tagged_constraints, .. } if tagged_constraints.iter().any(|constraint| constraint.tag.as_str() == IT_TAG))
+        || !matches!(sacrificed_filter, crate::target::ObjectFilter { tagged_constraints, .. } if tagged_constraints.iter().any(|constraint| constraint.tag == *tag))
     {
         return Ok(None);
     }

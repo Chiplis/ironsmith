@@ -107,7 +107,8 @@
     "excluded_path_fragments": [
       "/tests/",
       "/tests.rs",
-      "_tests.rs"
+      "_tests.rs",
+      "_tests_"
     ],
     "forbidden_imports": [
       {
@@ -125,11 +126,16 @@
           "crates/ironsmith-compiler/src/front_end"
         ],
         "fragments": [
-          "crate::ability::",
+          "crate::ability::Ability",
+          "crate::ability::ActivatedAbility",
+          "crate::ability::TriggeredAbility",
+          "crate::ability::{Ability",
           "crate::effect::Effect",
           "crate::effects::",
-          "crate::static_abilities::",
-          "crate::triggers::"
+          "crate::static_abilities::StaticAbility",
+          "crate::static_abilities::{StaticAbility",
+          "crate::triggers::Trigger",
+          "crate::triggers::{Trigger"
         ]
       },
       {
@@ -175,7 +181,8 @@
         "id": "discarded-recognizer-errors",
         "kind": "discarded_error",
         "roots": [
-          "crates/ironsmith-compiler/src/front_end"
+          "crates/ironsmith-compiler/src/front_end",
+          "crates/ironsmith-compiler/src/registry.rs"
         ],
         "patterns": [
           ".ok()"
@@ -191,6 +198,19 @@
           "run_first",
           "first_match",
           "best_match"
+        ]
+      },
+      {
+        "id": "expired-legacy-registries",
+        "kind": "legacy_path",
+        "roots": [
+          "crates/ironsmith-compiler/src"
+        ],
+        "patterns": [
+          "LegacyCompatibilityRule",
+          "LegacyOrderRank",
+          "legacy_compatibility_registry",
+          "BRIDGE-LEGACY-REGISTRY"
         ]
       },
       {
@@ -224,7 +244,8 @@
           "crates/ironsmith-runtime/src/cards/builders.rs"
         ],
         "patterns": [
-          "stacker::maybe_grow"
+          "stacker::maybe_grow",
+          "stack::run_inline"
         ]
       }
     ],

@@ -23,11 +23,11 @@ fn it_deals_to_that_creature_ignores_prior_cost_object_provenance() {
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action: SubjectVerbActionAst::DealDamageEqualToPower {
                     source: TargetAst::Source(_),
-                    target: TargetAst::Object(_, Some(_), _),
+                    target: TargetAst::Object(filter, None, Some(_)),
                     ..
                 },
                 ..
-            })]
+            })] if !filter.tagged_constraints.is_empty()
         ),
         "the replacement should directly reuse the default spell source and target: {if_true:#?}"
     );

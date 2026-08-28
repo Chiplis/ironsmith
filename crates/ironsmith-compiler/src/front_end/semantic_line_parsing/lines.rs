@@ -18,6 +18,19 @@ const STANDARD_FLANKING_REMINDER: &str = "Flanking (Whenever a creature without 
 const STANDARD_OPEN_ATTRACTION_REMINDER: &str =
     "(Put the top card of your Attraction deck onto the battlefield.)";
 
+fn coalesce_adjacent_static_ability_chunks(chunks: Vec<LineAst>) -> Vec<LineAst> {
+    let mut coalesced = Vec::with_capacity(chunks.len());
+    for chunk in chunks {
+        match (coalesced.last_mut(), chunk) {
+            (Some(LineAst::StaticAbilities(existing)), LineAst::StaticAbilities(mut following)) => {
+                existing.append(&mut following)
+            }
+            (_, chunk) => coalesced.push(chunk),
+        }
+    }
+    coalesced
+}
+
 fn has_standard_menace_reminder(tokens: &[OwnedLexToken]) -> bool {
     matches!(
         crate::lexer::parser_token_word_refs(tokens).as_slice(),
@@ -1481,7 +1494,7 @@ fn parse_statement_to_chunks_impl(
                 chunks.push(LineAst::Statement { effects });
             }
         }
-        return Ok(chunks);
+        return Ok(coalesce_adjacent_static_ability_chunks(chunks));
     }
     if !parse_tokens.is_empty() {
         let statement_grouping =
@@ -1520,7 +1533,7 @@ fn parse_statement_to_chunks_impl(
                     chunks.push(LineAst::Statement { effects });
                 }
             }
-            return Ok(chunks);
+            return Ok(coalesce_adjacent_static_ability_chunks(chunks));
         }
         if !grouped_tokens.is_empty() {
             let mut chunks = Vec::with_capacity(grouped_tokens.len());
@@ -1550,7 +1563,7 @@ fn parse_statement_to_chunks_impl(
                     chunks.push(LineAst::Statement { effects });
                 }
             }
-            return Ok(chunks);
+            return Ok(coalesce_adjacent_static_ability_chunks(chunks));
         }
     }
     Err(CardTextError::ParseError(format!(

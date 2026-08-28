@@ -4336,7 +4336,6 @@ pub fn parse_exile_would_die_instead_line(
                     ObjectFilter::permanent()
                 }
             };
-            let damager_words = crate::lexer::token_word_refs(&damager_filter_tokens);
             let damager_filter = if keyword_static_lines::parse_you_controlled_source_filter_tokens(
                 &damager_filter_tokens,
             ) {
@@ -4345,7 +4344,7 @@ pub fn parse_exile_would_die_instead_line(
                 parse_object_filter_lexed(&damager_filter_tokens, false).map_err(|_| {
                     CardTextError::ParseError(format!(
                         "unsupported filtered damage source in would-die replacement (clause: '{}')",
-                        damager_words.join(" ")
+                        render_token_slice(&damager_filter_tokens)
                     ))
                 })?
             };

@@ -67,7 +67,9 @@ fn repeated_counter_placements_preserve_each_any_number_target_cardinality() {
     let flattened = triggered.effects.flattened_default_effects();
     let puts = flattened
         .iter()
-        .filter_map(|effect| super::find_nested_effect::<crate::effects::PutCountersEffect>(effect))
+        .flat_map(|effect| {
+            super::find_all_nested_effects::<crate::effects::PutCountersEffect>(effect)
+        })
         .collect::<Vec<_>>();
 
     assert_eq!(puts.len(), 2, "{:#?}", triggered.effects);
@@ -101,7 +103,7 @@ fn repeated_each_counter_placements_apply_to_both_complete_sets() {
     let effects = activated.effects.flattened_default_effects();
     let fanouts = effects
         .iter()
-        .filter_map(|effect| super::find_nested_effect::<crate::effects::ForEachObject>(effect))
+        .flat_map(|effect| super::find_all_nested_effects::<crate::effects::ForEachObject>(effect))
         .collect::<Vec<_>>();
 
     assert_eq!(fanouts.len(), 2, "{:#?}", activated.effects);

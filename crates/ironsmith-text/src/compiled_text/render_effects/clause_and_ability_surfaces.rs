@@ -8567,6 +8567,18 @@ pub(crate) fn describe_as_enters_counter_phrase_on_it(
     amount: &Value,
     counter_type: CounterType,
 ) -> String {
+    if amount.has_surface_hint(ValueSurfaceHint::AdditionalEntryCounter) {
+        let amount = amount
+            .clone()
+            .without_surface_hint(ValueSurfaceHint::AdditionalEntryCounter);
+        let phrase = describe_put_counter_phrase(&amount, counter_type);
+        if let Some(rest) = phrase.strip_prefix("a ") {
+            return format!("an additional {rest} on it");
+        }
+        if let Some((quantity, counters)) = phrase.split_once(' ') {
+            return format!("{quantity} additional {counters} on it");
+        }
+    }
     if amount.has_surface_hint(ValueSurfaceHint::WhereXIs) {
         return format!(
             "X {} counters on it, where X is {}",
@@ -10655,7 +10667,7 @@ fn describe_optional_source_cant_attack_then_vigilance_rule(
         .effects
         .segments
         .iter()
-        .any(|segment| !segment.self_replacements.is_empty() || segment.starts_new_source_line)
+        .any(|segment| !segment.self_replacements.is_empty())
     {
         return None;
     }

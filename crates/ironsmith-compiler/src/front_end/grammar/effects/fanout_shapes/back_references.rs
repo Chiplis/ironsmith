@@ -19,6 +19,7 @@ fn demonstrative_object_head<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         let Some(word) = token.as_word() else {
             return false;
         };
+        let word = leaf::strip_leaf_source_possessive_suffix(word);
         leaf::parse_leaf_demonstrative_object_head_complete(word).is_ok()
             || word.as_bytes().last().is_some_and(|byte| *byte == b's')
                 && word

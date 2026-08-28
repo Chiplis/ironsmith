@@ -556,6 +556,13 @@ pub fn parse_atomic_put_counter_for_each_shape(tokens: &[OwnedLexToken]) -> bool
     if primitives::parse_prefix(tokens, primitives::kw("put")).is_none() {
         return false;
     }
+    // Two authored `counter on each` descriptors are peer placement actions,
+    // even when the second elides the shared leading `put`. A later
+    // `permanent ... with a time counter on it` is instead data inside one
+    // dynamic count filter and must remain part of the atomic placement.
+    if has_repeated_counter_on_each(tokens) {
+        return false;
+    }
     let Some((for_each, _, _)) =
         primitives::find_prefix(tokens, || primitives::phrase(&["for", "each"]).void())
     else {
@@ -832,3 +839,8 @@ pub use reference_programs::{
 mod resource_programs;
 use resource_programs::parse_half_starting_life;
 pub use resource_programs::parse_half_starting_life_shape;
+
+#[path = "zone_counter_shapes/coordination.rs"]
+mod coordination;
+use coordination::has_repeated_counter_on_each;
+pub use coordination::{RepeatedCounterPlacementShape, parse_repeated_counter_placement_shape};

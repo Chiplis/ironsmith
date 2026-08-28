@@ -82,15 +82,36 @@ fn preserve_unique_nested_comma_then_surface(effects: &mut [EffectAst]) {
     }
 }
 
+fn mark_first_typed_comma_then_sequence(effect: &mut EffectAst) -> bool {
+    if let EffectAst::Coordination(coordination) = effect
+        && coordination.boundaries.len() > 1
+        && coordination
+            .boundaries
+            .iter()
+            .all(|boundary| boundary.operator == crate::model::CoordinationOperatorAst::CommaThen)
+    {
+        coordination.kind = crate::model::CoordinationKindAst::Sequence;
+        for boundary in &mut coordination.boundaries {
+            boundary.ordering = crate::model::EffectOrderingAst::Ordered;
+        }
+        return true;
+    }
+
+    let mut marked = false;
+    for_each_nested_effects_mut(effect, true, |nested| {
+        if !marked {
+            marked = nested.iter_mut().any(mark_first_typed_comma_then_sequence);
+        }
+    });
+    marked
+}
+
 pub fn preserve_coordinated_effect_chain_surface(
     tokens: &[OwnedLexToken],
     mut effects: Vec<EffectAst>,
 ) -> Vec<EffectAst> {
-    // Whole-line parsing can reach this surface-preservation pass with the
-    // semantic actions already flattened, without going through
-    // `parse_effect_chain_lexed`. Preserve an authored same-sentence
-    // comma-then boundary here as well so every parser entrypoint produces
-    // the same typed sequence.
+    // Whole-line parsing can arrive with flattened semantic actions. Preserve
+    // an authored comma-then boundary for every parser entrypoint.
     if effects.len() > 1 && has_authored_comma_then_surface_lexed(tokens) {
         let coordination = crate::grammar::effects::coordination::coordination_from_effects(
             crate::model::CoordinationKindAst::Carry,
@@ -102,6 +123,7 @@ pub fn preserve_coordinated_effect_chain_surface(
         return vec![EffectAst::Coordination(coordination)];
     }
     if has_authored_comma_then_surface_lexed(tokens) {
+        let _ = effects.iter_mut().any(mark_first_typed_comma_then_sequence);
         preserve_unique_nested_comma_then_surface(&mut effects);
     }
 

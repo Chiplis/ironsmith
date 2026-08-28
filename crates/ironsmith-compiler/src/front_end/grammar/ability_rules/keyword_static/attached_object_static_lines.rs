@@ -18,6 +18,43 @@ fn split_attached_keyword_condition_suffix(
     Ok((trim_edge_punctuation(parsed.ability_tokens()), condition))
 }
 
+fn bind_condition_to_attached_object(condition: crate::ConditionExpr) -> crate::ConditionExpr {
+    match condition {
+        crate::ConditionExpr::TargetMatches(filter) => {
+            crate::ConditionExpr::AttachedToSourceMatches(filter)
+        }
+        crate::ConditionExpr::Not(inner) => crate::ConditionExpr::Not(Box::new(
+            bind_condition_to_attached_object(*inner),
+        )),
+        crate::ConditionExpr::And(left, right) => crate::ConditionExpr::And(
+            Box::new(bind_condition_to_attached_object(*left)),
+            Box::new(bind_condition_to_attached_object(*right)),
+        ),
+        crate::ConditionExpr::Or(left, right) => crate::ConditionExpr::Or(
+            Box::new(bind_condition_to_attached_object(*left)),
+            Box::new(bind_condition_to_attached_object(*right)),
+        ),
+        other => other,
+    }
+}
+
+fn bind_static_ability_condition_to_attached_object(ability: &mut StaticAbilityAst) {
+    let condition = match ability {
+        StaticAbilityAst::AttachedStaticAbilityGrant { condition, .. }
+        | StaticAbilityAst::AttachedKeywordActionGrant { condition, .. } => condition,
+        StaticAbilityAst::Static(ability) => {
+            let ironsmith_core::StaticAbilityPayload::Anthem(anthem) = &mut ability.payload else {
+                return;
+            };
+            &mut anthem.condition
+        }
+        _ => return,
+    };
+    if let Some(found) = condition.take() {
+        *condition = Some(bind_condition_to_attached_object(found));
+    }
+}
+
 fn explicit_attached_subject_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     if let Some(parsed) = attached_grammar::parse_attached_transform_tokens(tokens) {
         return Some(parsed.subject_tokens);
@@ -103,10 +140,8 @@ fn parse_attached_combat_restriction_and_loses_all_abilities_line(
     ]))
 }
 
-/// Parse a carried attached-object clause such as `It has defender and loses
-/// all other abilities.` The grant and the removal remain separate typed
-/// layer-6 operations; `other` is a presentation relationship between those
-/// operations, not permission to discard either one.
+/// Parse a carried attached-object grant followed by `loses all other
+/// abilities` as separate typed layer-6 operations.
 fn parse_attached_keyword_grant_and_loses_all_other_abilities_line(
     tokens: &[OwnedLexToken],
     subject_tokens: &[OwnedLexToken],
@@ -188,10 +223,7 @@ pub fn parse_attached_conditional_loses_all_abilities_line(
 }
 
 /// Carry an explicit attached-object subject into a following `It ...`
-/// sentence before ordinary sentence splitting. The reconstructed token slice
-/// is routed through the same typed attached-object parsers as an explicit
-/// subject, so the pronoun cannot silently fall back to the Aura itself or to
-/// every permanent.
+/// sentence before splitting, then reuse the typed attached-object parsers.
 pub fn parse_carried_attached_subject_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -209,12 +241,8 @@ pub fn parse_carried_attached_subject_line(
         return Ok(None);
     };
 
-    // Carry the explicit attached-object subject through one or more leading
-    // `As long as ..., it ...` continuations. Reorder each continuation into
-    // the equivalent explicit-subject trailing-condition form before the
-    // ordinary single-sentence static parser runs. This keeps both the
-    // affected-object filter and its target-relative predicate typed; without
-    // the carry, `it` silently denotes the Aura or Equipment source.
+    // Reorder leading `As long as ..., it ...` continuations into the
+    // equivalent explicit-subject trailing-condition form.
     if trailing.iter().all(|sentence| {
         split_as_long_as_condition_prefix_lexed(sentence).is_some_and(|split| {
             split
@@ -229,12 +257,23 @@ pub fn parse_carried_attached_subject_line(
             let mut explicit = subject_tokens.to_vec();
             explicit.extend_from_slice(&split.remainder_tokens[1..]);
             explicit.extend_from_slice(&sentence[..3]);
-            explicit.extend_from_slice(split.condition_tokens);
+            if let Some(condition_tail) =
+                attached_grammar::strip_attached_condition_pronoun(split.condition_tokens)
+            {
+                explicit.extend_from_slice(subject_tokens);
+                explicit.extend(crate::lexer::synthetic_word_tokens(["is"]));
+                explicit.extend_from_slice(condition_tail);
+            } else {
+                explicit.extend_from_slice(split.condition_tokens);
+            }
             let Some(mut parsed) = parse_static_ability_ast_line_lexed_single(&explicit)? else {
                 return Ok(None);
             };
             if parsed.is_empty() {
                 return Ok(None);
+            }
+            for ability in &mut parsed {
+                bind_static_ability_condition_to_attached_object(ability);
             }
             abilities.append(&mut parsed);
         }
@@ -368,7 +407,7 @@ fn parse_attached_has_keyword_condition_sentence(
         return Ok(None);
     }
     let (ability_tokens, condition) = split_attached_keyword_condition_suffix(&ability_tokens)?;
-    let Some(condition) = condition else {
+    let Some(condition) = condition.map(bind_condition_to_attached_object) else {
         return Ok(None);
     };
     let clause_text = crate::lexer::render_token_slice(tokens);
@@ -431,11 +470,15 @@ pub fn parse_attached_conditional_keyword_otherwise_line(
         return Ok(Some(grants));
     }
 
-    let second_words = crate::lexer::token_word_refs(second);
+    let second_words = crate::lexer::parser_token_word_refs(second);
     if second_words.first().copied() != Some("otherwise") {
         return Ok(None);
     }
-    let prevention_tokens = trim_edge_punctuation(&second[1..]);
+    let view = crate::lexer::TokenWordView::new(second);
+    let Some(prevention_start) = view.token_index_after_words(1) else {
+        return Ok(None);
+    };
+    let prevention_tokens = trim_edge_punctuation(&second[prevention_start..]);
     let Some(mut prevention) =
         parse_attached_prevent_all_damage_dealt_by_attached_line(&prevention_tokens)?
     else {

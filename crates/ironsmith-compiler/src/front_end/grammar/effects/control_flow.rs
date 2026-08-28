@@ -439,6 +439,22 @@ fn recognize_trailing_condition(
     if body_tokens.is_empty() || condition_tokens.is_empty() {
         return Some(malformed(token_span(tokens), "trailing unless condition"));
     }
+    // As with a trailing `if`, an authored `A, then B unless C` scopes the
+    // condition to B. Let coordination split the ordered boundary first so
+    // only its final member is wrapped by the typed condition node.
+    if super::chain_splitting::has_authored_comma_then_surface_tokens(body_tokens) {
+        return None;
+    }
+    // Action-first delayed schedules own a trailing payment as part of the
+    // scheduled program (`lose ... at their next draw step unless they pay`).
+    // Preserve the intact sentence for that typed family instead of
+    // stripping the payment into a generic state-condition plan.
+    if super::delayed_step_shapes::parse_delayed_timing_marker_shape(body_tokens).is_some()
+        && super::delayed_step_shapes::split_delayed_payment_action_shape(condition_tokens)
+            .is_some()
+    {
+        return None;
+    }
     let condition =
         parse_state_condition(condition_tokens, ConditionPositionAst::Postcondition, true)?;
     Some(ParseOutcome::matched(

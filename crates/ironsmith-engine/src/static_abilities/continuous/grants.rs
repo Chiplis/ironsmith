@@ -493,6 +493,10 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
         Some(&self.ability)
     }
 
+    fn granted_inline_condition(&self) -> Option<&crate::ConditionExpr> {
+        self.condition.as_ref()
+    }
+
     fn source_granted_inline_abilities(&self) -> Vec<&crate::ability::Ability> {
         if !self.filter.source {
             return Vec::new();

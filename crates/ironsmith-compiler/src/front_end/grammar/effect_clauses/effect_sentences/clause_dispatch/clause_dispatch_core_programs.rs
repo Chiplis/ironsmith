@@ -15,6 +15,27 @@ pub(super) fn parse_effect_clause_unstacked(
         tokens
     };
 
+    if let Some(player) = super::super::chain_carry::parse_leading_player_may_lexed(tokens)
+        && matches!(player, PlayerAst::Any | PlayerAst::Opponent)
+    {
+        let stripped = super::super::chain_carry::remove_through_first_word(tokens);
+        let stripped = crate::util::trim_edge_punctuation_tokens(&stripped);
+        if stripped.first().is_some_and(|token| token.is_word("pay")) {
+            let payment = super::super::zone_handlers::parse_pay(
+                crate::util::trim_edge_punctuation_tokens(&stripped[1..]),
+                Some(SubjectAst::Player(PlayerAst::That)),
+            )?;
+            return Ok(EffectAst::AnyPlayerMay {
+                players: if player == PlayerAst::Opponent {
+                    PlayerFilter::Opponent
+                } else {
+                    PlayerFilter::Any
+                },
+                effects: vec![payment],
+            });
+        }
+    }
+
     // A standalone effect sentence reaches clause dispatch directly, without
     // passing through the coordinated-chain parser. Preserve the dedicated
     // sequential-offer model for "any player/opponent may sacrifice ..." here
