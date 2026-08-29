@@ -75,6 +75,7 @@ pub(in crate::compiled_text) fn describe_for_players_unless_pays(
     let [effect_root] = for_players.effects.as_slice() else {
         return None;
     };
+    let effect_root = structural_unwrap_render_wrappers(effect_root);
     let effect = effect_root
         .downcast_ref::<crate::effects::SequenceEffect>()
         .filter(|sequence| {
@@ -83,6 +84,7 @@ pub(in crate::compiled_text) fn describe_for_players_unless_pays(
                 && sequence.effects.len() == 1
         })
         .map_or(effect_root, |sequence| &sequence.effects[0]);
+    let effect = structural_unwrap_render_wrappers(effect);
     let unless_pays = effect.downcast_ref::<crate::effects::UnlessPaysEffect>()?;
     if unless_pays.player != PlayerFilter::IteratedPlayer {
         return None;
@@ -4983,8 +4985,8 @@ pub(crate) fn for_each_moves_unselected_to_zone(
     if !conditional.if_true.is_empty() || conditional.if_false.len() != 1 {
         return false;
     }
-    let Some(move_to_zone) =
-        conditional.if_false[0].downcast_ref::<crate::effects::MoveToZoneEffect>()
+    let Some(move_to_zone) = unwrap_tag_wrapped_effect(&conditional.if_false[0])
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
     else {
         return false;
     };

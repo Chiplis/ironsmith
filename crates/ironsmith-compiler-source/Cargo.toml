@@ -6,7 +6,6 @@ edition = "2024"
 [dependencies]
 ironsmith-compiler-api = { path = "../ironsmith-compiler-api", default-features = false }
 ironsmith-compiler-syntax = { path = "../ironsmith-compiler-syntax", default-features = false }
-ironsmith-compiler-ast = { path = "../ironsmith-compiler-ast", default-features = false }
 
 [features]
 default = []

@@ -29,6 +29,18 @@
         return String::new();
     }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        if matches!(
+            sequence.surface,
+            ironsmith_core::SequenceSurface::CommaThen
+                | ironsmith_core::SequenceSurface::RepeatedCommaThen
+        ) {
+            let refs = sequence.effects.iter().collect::<Vec<_>>();
+            if let Some((compact, consumed)) = describe_looked_card_selected_partition(&refs)
+                && consumed == refs.len()
+            {
+                return compact;
+            }
+        }
         if let Some(compact) =
             super::describe_sacrificed_source_damage_backreference(sequence)
         {
@@ -6160,12 +6172,19 @@
             // declaration. Fold that declaration before broader clause-list
             // compactors expose it as a separate `Choose target player`
             // sentence.
-            let effect_text = describe_multi_consumer_synthetic_target_declaration(
-                &conditional.if_true,
-            )
+            let branch_effects = if let [only] = conditional.if_true.as_slice()
+                && let Some(sequence) = structural_unwrap_render_wrappers(only)
+                    .downcast_ref::<crate::effects::SequenceEffect>()
+                && sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+            {
+                sequence.effects.as_slice()
+            } else {
+                conditional.if_true.as_slice()
+            };
+            let effect_text = describe_multi_consumer_synthetic_target_declaration(branch_effects)
             .map(|text| lowercase_first(&text))
-            .or_else(|| describe_effect_clause_list(&conditional.if_true))
-                .unwrap_or_else(|| describe_effect_list(&conditional.if_true));
+            .or_else(|| describe_effect_clause_list(branch_effects))
+            .unwrap_or_else(|| describe_effect_list(branch_effects));
             // "Destroy target creature if it has mana value 2 or less" — the
             // condition inspects the pending target of THIS clause's own
             // action, so its tag must read present-tense, not as a

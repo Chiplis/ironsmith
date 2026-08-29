@@ -3821,7 +3821,8 @@ mod tests {
             let compiled = crate::compiled_text::compiled_text_lines(&definition).join("\n");
             assert!(
                 compiled.contains(expected_partition),
-                "{name} should render the structurally linked selected/remainder partition:\n{compiled}"
+                "{name} should render the structurally linked selected/remainder partition:\n{compiled}\n{:#?}",
+                definition.abilities
             );
         }
     }

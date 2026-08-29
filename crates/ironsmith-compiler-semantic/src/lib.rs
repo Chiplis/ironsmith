@@ -17,12 +17,8 @@ pub use ironsmith_core::{
 pub mod diagnostics {
     pub use ironsmith_compiler_api::{CardTextError, ParseAnnotations, TextSpan};
 }
-pub use ironsmith_compiler_ast::parse_context;
-pub mod front_end {
-    pub use ironsmith_compiler_source::*;
-    pub use ironsmith_compiler_syntax::*;
-}
 pub use cost::TotalCost;
+pub use ironsmith_compiler_ast::parse_context;
 pub use ironsmith_compiler_ast::{
     ClashOpponentAst, ControlDurationAst, DamageBySpec, ExchangeValueAst, ExtraTurnAnchorAst,
     FutureZoneReplacementCausePolicyAst, LibraryBottomOrderAst, LibraryConsultModeAst,
@@ -30,58 +26,33 @@ pub use ironsmith_compiler_ast::{
     PreventNextTimeDamageTargetAst, RetargetModeAst, ReturnControllerAst, SearchLibrarySlotAst,
     SharedTypeConstraintAst, TargetAst, ZoneReplacementDurationAst,
 };
-pub use ironsmith_compiler_syntax::lexer;
 pub use payload::{IfResultPredicate, KeywordAction};
 pub use tag::TagKey;
 pub use target::{ChooseSpec, PlayerFilter};
 
-#[path = "../../ironsmith-compiler/src/ability.rs"]
 pub mod ability;
-#[path = "../../ironsmith-compiler/src/alternative_cast.rs"]
 pub mod alternative_cast;
-#[path = "../../ironsmith-compiler/src/card.rs"]
 pub mod card;
-#[path = "../../ironsmith-compiler/src/color.rs"]
 pub mod color;
-#[path = "../../ironsmith-compiler/src/continuous.rs"]
 pub mod continuous;
-#[path = "../../ironsmith-compiler/src/cost.rs"]
 pub mod cost;
-#[path = "../../ironsmith-compiler/src/costs/mod.rs"]
 pub mod costs;
-#[path = "../../ironsmith-compiler/src/effect.rs"]
 pub mod effect;
-#[path = "../../ironsmith-compiler/src/effects/mod.rs"]
 pub mod effects;
-#[path = "../../ironsmith-compiler/src/events.rs"]
 pub mod events;
-#[path = "../../ironsmith-compiler/src/filter.rs"]
 pub mod filter;
-#[path = "../../ironsmith-compiler/src/game_state.rs"]
 pub mod game_state;
-#[path = "../../ironsmith-compiler/src/grant.rs"]
 pub mod grant;
-#[path = "../../ironsmith-compiler/src/ids.rs"]
 pub mod ids;
-#[path = "../../ironsmith-compiler/src/mana.rs"]
 pub mod mana;
-#[path = "../../ironsmith-compiler/src/object.rs"]
 pub mod object;
-#[path = "../../ironsmith-compiler/src/payload.rs"]
 pub mod payload;
-#[path = "../../ironsmith-compiler/src/resolution.rs"]
 pub mod resolution;
-#[path = "../../ironsmith-compiler/src/static_abilities.rs"]
 pub mod static_abilities;
-#[path = "../../ironsmith-compiler/src/tag.rs"]
 pub mod tag;
-#[path = "../../ironsmith-compiler/src/target.rs"]
 pub mod target;
-#[path = "../../ironsmith-compiler/src/triggers.rs"]
 pub mod triggers;
-#[path = "../../ironsmith-compiler/src/types.rs"]
 pub mod types;
-#[path = "../../ironsmith-compiler/src/zone.rs"]
 pub mod zone;
 
 pub mod cards {

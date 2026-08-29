@@ -173,7 +173,8 @@ fn torrent_of_souls_keeps_its_inline_player_target() {
         [
             "Return up to one target creature card from your graveyard to the battlefield if {B} was spent to cast this spell.",
             "Creatures target player controls get +2/+0 and gain haste until end of turn if {R} was spent to cast this spell.",
-        ]
+        ],
+        "{definition:#?}"
     );
 }
 
@@ -355,6 +356,7 @@ fn shared_creature_source_power_damage_keeps_one_authored_sentence() {
 
     assert_eq!(
         crate::compiled_text::compiled_text_lines(&definition).join("\n"),
-        TEXT
+        TEXT,
+        "{definition:#?}"
     );
 }

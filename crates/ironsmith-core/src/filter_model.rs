@@ -237,6 +237,16 @@ impl SameNameAntecedentSurface {
             Self::Object => "that object",
         }
     }
+
+    pub const fn source_phrase(self) -> &'static str {
+        match self {
+            Self::Card => "this card",
+            Self::Spell => "this spell",
+            Self::Permanent => "this permanent",
+            Self::Creature => "this creature",
+            Self::Object => "this object",
+        }
+    }
 }
 
 /// Authored source noun in a chosen-name relationship such as "a name chosen
@@ -4019,12 +4029,19 @@ impl ObjectFilter {
                     } else {
                         let antecedent = self
                             .same_name_antecedent_surface()
-                            .map(SameNameAntecedentSurface::phrase)
+                            .map(|surface| {
+                                if constraint.tag.as_str() == crate::SOURCE_OBJECT_TAG {
+                                    surface.source_phrase()
+                                } else {
+                                    surface.phrase()
+                                }
+                            })
                             .unwrap_or_else(|| match constraint.tag.as_str() {
                                 // The implicit object tag is established by choosing or revealing
                                 // a card. Keeping the lexical kind avoids an ambiguous pronoun
                                 // across a following search through multiple zones.
                                 "__it__" => "that card",
+                                crate::SOURCE_OBJECT_TAG => "this source",
                                 // A triggering spell is commonly followed by a same-name search or
                                 // graveyard count. Battlefield trigger subjects remain permanents.
                                 "triggering" if self.zone != Some(Zone::Battlefield) => {

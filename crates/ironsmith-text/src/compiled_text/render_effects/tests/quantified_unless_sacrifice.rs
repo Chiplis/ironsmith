@@ -13,7 +13,8 @@ fn each_opponent_sacrifice_cost_survives_provenance_wrappers() {
 
     assert_eq!(
         crate::compiled_text::compiled_text_lines(&definition).join("\n"),
-        text
+        text,
+        "{debug}"
     );
     assert!(debug.contains("ForPlayersEffect"), "{debug}");
     assert!(debug.contains("UnlessPaysEffect"), "{debug}");

@@ -12,7 +12,8 @@ fn each_player_reveal_land_partition_keeps_one_shared_revealed_set() {
 
     assert_eq!(
         crate::compiled_text::compiled_text_lines(&definition).join("\n"),
-        text
+        text,
+        "{debug}"
     );
     assert!(debug.contains("ForPlayersEffect"), "{debug}");
     assert!(debug.contains("LookAtTopCardsEffect"), "{debug}");

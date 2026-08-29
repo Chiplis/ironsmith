@@ -84,9 +84,8 @@ use chosen_type_untap::*;
 use coin_flip_target_backrefs::*;
 use combat_requirement_and_prohibition::*;
 use consult_attachment::*;
-use coordinated_keyword_grants::{
-    describe_coordinated_keyword_grants, describe_put_counters_then_coordinated_keyword_grants,
-};
+use coordinated_keyword_grants::describe_coordinated_keyword_grants;
+pub(in crate::compiled_text) use coordinated_keyword_grants::describe_put_counters_then_coordinated_keyword_grants;
 use copy_spell_modifiers::*;
 use correlated_delayed_combat::describe_end_combat_destroy_then_next_end_counter;
 pub(in crate::compiled_text) use correlated_delayed_combat::describe_quantified_tap_goad_then_watch_set;
@@ -185,6 +184,16 @@ pub(in crate::compiled_text) fn structural_unwrap_render_wrappers(effect: &Effec
     effect
 }
 
+fn target_player_zone_filter_view(filter: &ObjectFilter) -> Option<(Zone, PlayerFilter)> {
+    let mut stripped = filter.clone();
+    let zone = stripped.zone.take()?;
+    let owner = stripped.owner.take()?;
+    if stripped != ObjectFilter::default() {
+        return None;
+    }
+    Some((zone, owner))
+}
+
 fn exile_all_target_player_zone_view(effect: &Effect) -> Option<(Zone, PlayerFilter)> {
     let exile =
         structural_unwrap_render_wrappers(effect).downcast_ref::<crate::effects::ExileEffect>()?;
@@ -194,13 +203,38 @@ fn exile_all_target_player_zone_view(effect: &Effect) -> Option<(Zone, PlayerFil
     let ChooseSpec::All(filter) = exile.spec.base() else {
         return None;
     };
-    let mut stripped = filter.clone();
-    let zone = stripped.zone.take()?;
-    let owner = stripped.owner.take()?;
-    if stripped != ObjectFilter::default() {
+    target_player_zone_filter_view(filter)
+}
+
+fn exile_all_target_player_zone_pair_view(
+    effect: &Effect,
+) -> Option<((Zone, PlayerFilter), (Zone, PlayerFilter))> {
+    let exile =
+        structural_unwrap_render_wrappers(effect).downcast_ref::<crate::effects::ExileEffect>()?;
+    if exile.face_down {
         return None;
     }
-    Some((zone, owner))
+    let ChooseSpec::All(filter) = exile.spec.base() else {
+        return None;
+    };
+    let [first, second] = filter.any_of.as_slice() else {
+        return None;
+    };
+    let inherited_owner = filter.owner.clone();
+    let mut outer = filter.clone();
+    outer.owner = None;
+    outer.any_of.clear();
+    outer.union_surface = Default::default();
+    if outer != ObjectFilter::default() {
+        return None;
+    }
+    let branch_view = |branch: &ObjectFilter| {
+        let mut stripped = branch.clone();
+        let zone = stripped.zone.take()?;
+        let owner = stripped.owner.take().or_else(|| inherited_owner.clone())?;
+        (stripped == ObjectFilter::default()).then_some((zone, owner))
+    };
+    Some((branch_view(first)?, branch_view(second)?))
 }
 
 /// A shared player declaration followed by exhaustive hand and graveyard
@@ -215,6 +249,30 @@ fn describe_exile_all_from_same_target_players_hand_and_graveyard(
             .downcast_ref::<crate::effects::SequenceEffect>()
     {
         return describe_exile_all_from_same_target_players_hand_and_graveyard(&sequence.effects);
+    }
+    let union_effect = match effects {
+        [effect] => Some(effect),
+        [target_effect, effect] => {
+            let target = structural_unwrap_render_wrappers(target_effect)
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+            (target.chooser.is_none()
+                && !target.explicit_declaration
+                && matches!(target.target.base(), ChooseSpec::Player(PlayerFilter::Any)))
+            .then_some(effect)
+        }
+        _ => None,
+    };
+    if let Some(effect) = union_effect
+        && let Some(((first_zone, first_owner), (second_zone, second_owner))) =
+            exile_all_target_player_zone_pair_view(effect)
+        && first_owner == second_owner
+        && matches!(first_owner, PlayerFilter::Target(_))
+        && matches!(
+            (first_zone, second_zone),
+            (Zone::Hand, Zone::Graveyard) | (Zone::Graveyard, Zone::Hand)
+        )
+    {
+        return Some("Exile all cards from target player's hand and graveyard".to_string());
     }
     let (first_exile, second_exile) = match effects {
         [target_effect, first_exile, second_exile] => {
@@ -267,6 +325,22 @@ mod same_target_player_multi_zone_exile_tests {
                 exile_zone(Zone::Hand, owner.clone()),
                 exile_zone(Zone::Graveyard, owner),
             ]),
+            Some("Exile all cards from target player's hand and graveyard".to_string())
+        );
+    }
+
+    #[test]
+    fn shared_target_player_zone_union_stays_one_instruction() {
+        let owner = PlayerFilter::Target(Box::new(PlayerFilter::Any));
+        let hand = ObjectFilter::default().in_zone(Zone::Hand);
+        let graveyard = ObjectFilter::default().in_zone(Zone::Graveyard);
+        let mut union = ObjectFilter::default();
+        union.owner = Some(owner);
+        union.any_of = vec![hand, graveyard];
+        let exile = Effect::new(crate::effects::ExileEffect::all(union));
+
+        assert_eq!(
+            describe_exile_all_from_same_target_players_hand_and_graveyard(&[exile]),
             Some("Exile all cards from target player's hand and graveyard".to_string())
         );
     }
@@ -1168,14 +1242,28 @@ fn describe_delegated_collection_complement_move(effect: &Effect) -> Option<Stri
     Some(describe_effect(&Effect::new(surface)))
 }
 
+#[derive(Clone, Copy)]
+enum DelegatedCollectionOrigin {
+    DeclaredGraveyard,
+    RevealedTop,
+    SourceExiled,
+}
+
 pub(crate) fn describe_delegated_collection_partition_moves(effects: &[Effect]) -> Option<String> {
+    describe_delegated_collection_partition_moves_from(effects, None)
+}
+
+fn describe_delegated_collection_partition_moves_from(
+    effects: &[Effect],
+    origin: Option<DelegatedCollectionOrigin>,
+) -> Option<String> {
     let (selected_effect, complement_effect, counter_effect) = match effects {
         [selected, complement] => (selected, complement, None),
         [selected, complement, counter] => (selected, complement, Some(counter)),
         _ => return None,
     };
     let selected_unwrapped = structural_unwrap_render_wrappers(selected_effect);
-    let (selected_target, selected_zone, mut selected_text, separate_sentences) =
+    let (selected_target, selected_zone, mut selected_text, mut separate_sentences) =
         if let Some(selected) =
             selected_unwrapped.downcast_ref::<crate::effects::MoveToZoneEffect>()
         {
@@ -1232,13 +1320,28 @@ pub(crate) fn describe_delegated_collection_partition_moves(effects: &[Effect]) 
     {
         selected_text = format!("You put {rest}");
     }
+    selected_text = match (origin, selected_zone) {
+        (Some(DelegatedCollectionOrigin::SourceExiled), Zone::Library) => {
+            "You put that card on the bottom of your library".to_string()
+        }
+        (Some(DelegatedCollectionOrigin::RevealedTop), Zone::Hand) => {
+            "Put that card into your hand".to_string()
+        }
+        (Some(DelegatedCollectionOrigin::DeclaredGraveyard), Zone::Hand) => {
+            "Return that card to your hand".to_string()
+        }
+        (Some(_), _) => return None,
+        (None, _) => selected_text,
+    };
     let mut complement_text = describe_delegated_collection_complement_move(complement_effect)?;
     if let Some(counter_effect) = counter_effect {
+        separate_sentences = false;
+        let complement_tag = wrapped_effect_tag(complement_effect)?;
         let counter = structural_unwrap_render_wrappers(counter_effect)
             .downcast_ref::<crate::effects::PutCountersEffect>()?;
         if counter.distributed
             || counter.target_count.is_some()
-            || !matches!(counter.target.base(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+            || !matches!(counter.target.base(), ChooseSpec::Tagged(tag) if tag == complement_tag)
         {
             return None;
         }
@@ -1375,12 +1478,109 @@ fn describe_declared_pool_then_delegated_partition_conditional(
     if delegated_subset_choice_pool_tag(choice)? != pool_tag {
         return None;
     }
-    describe_delegated_subset_with_hand_remainder(&conditional.if_false)?;
+    let [true_move] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let true_move = structural_unwrap_render_wrappers(true_move)
+        .downcast_ref::<crate::effects::ReturnToHandEffect>()?;
+    if !matches!(true_move.spec.base(), ChooseSpec::Tagged(tag) if tag == pool_tag) {
+        return None;
+    }
+    let false_text = describe_delegated_subset_with_hand_remainder(&conditional.if_false)?;
+    let conditional_text = describe_effect(conditional_effect);
+    let condition = conditional_text.split_once(", ")?.0;
     Some(format!(
-        "{}. {}",
+        "{}. {condition}, return those cards to your hand. Otherwise, {}",
         describe_effect(target_effect).trim_end_matches('.'),
-        describe_effect(conditional_effect).trim_end_matches('.')
+        lowercase_first(&false_text)
     ))
+}
+
+/// Render a collection producer, delegated opponent subset, exact complement
+/// moves, and any trailing consumers as one authored procedure. Generated
+/// tags are accepted only when every producer/consumer edge agrees.
+fn describe_complete_delegated_collection_program(effects: &[Effect]) -> Option<String> {
+    if let Some(conditional) = describe_declared_pool_then_delegated_partition_conditional(effects)
+    {
+        return Some(conditional);
+    }
+
+    let (origin, pool_tag, choice_start) = if let Some(tag) =
+        effects.first().and_then(wrapped_effect_tag).filter(|_| {
+            structural_unwrap_render_wrappers(&effects[0])
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                .is_some_and(|target| target.explicit_declaration)
+        }) {
+        (DelegatedCollectionOrigin::DeclaredGraveyard, tag.clone(), 1)
+    } else if let Some(reveal) = effects
+        .first()
+        .and_then(|effect| {
+            structural_unwrap_render_wrappers(effect)
+                .downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+        })
+        .filter(|reveal| reveal.reveal)
+    {
+        (
+            DelegatedCollectionOrigin::RevealedTop,
+            reveal.tag.clone(),
+            1,
+        )
+    } else {
+        (
+            DelegatedCollectionOrigin::SourceExiled,
+            crate::TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+            0,
+        )
+    };
+
+    let choice_end = choice_start + 2;
+    let choice_effects = effects.get(choice_start..choice_end)?;
+    let choice = structural_unwrap_render_wrappers(choice_effects.get(1)?)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if delegated_subset_choice_pool_tag(choice)? != &pool_tag {
+        return None;
+    }
+    let choice_text = describe_delegated_subset_choice(choice_effects)?;
+
+    let move_start = choice_end;
+    let (move_text, move_count) = if let Some(text) = effects
+        .get(move_start..move_start + 3)
+        .and_then(|moves| describe_delegated_collection_partition_moves_from(moves, Some(origin)))
+    {
+        (text, 3)
+    } else {
+        (
+            describe_delegated_collection_partition_moves_from(
+                effects.get(move_start..move_start + 2)?,
+                Some(origin),
+            )?,
+            2,
+        )
+    };
+
+    let mut sentences = Vec::new();
+    match origin {
+        DelegatedCollectionOrigin::DeclaredGraveyard | DelegatedCollectionOrigin::RevealedTop => {
+            sentences.push(
+                describe_effect(effects.first()?)
+                    .trim_end_matches('.')
+                    .to_string(),
+            );
+        }
+        DelegatedCollectionOrigin::SourceExiled => {}
+    }
+    sentences.push(choice_text);
+    sentences.push(move_text);
+
+    let suffix = &effects[move_start + move_count..];
+    if !suffix.is_empty() {
+        sentences.push(
+            describe_effect_list(suffix)
+                .trim_end_matches('.')
+                .to_string(),
+        );
+    }
+    Some(sentences.join(". "))
 }
 
 /// Rejoin an ordinary target action with the same action applied to a target
@@ -8275,6 +8475,9 @@ pub(in crate::compiled_text) fn describe_nested_search_for_each_conditional_shuf
 }
 
 pub(crate) fn describe_pre_clause_structural_effect_list(effects: &[Effect]) -> Option<String> {
+    if let Some(compact) = describe_complete_delegated_collection_program(effects) {
+        return Some(compact);
+    }
     if let [effect] = effects
         && let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
         && sequence.surface == ironsmith_core::SequenceSurface::Coordinated
@@ -11853,7 +12056,7 @@ mod serial_pump_keyword_grant_public_tests {
             assert_eq!(
                 crate::compiled_text::compiled_text_lines(&definition),
                 [line],
-                "{name}"
+                "{name}: {definition:#?}"
             );
         }
     }
@@ -11926,7 +12129,12 @@ mod coordinated_counter_fanout_tests {
             panic!("expected beginning-of-combat trigger");
         };
         let effects = &triggered.effects.segments[0].default_effects;
-        assert_eq!(effects.len(), 3, "{effects:#?}");
+        assert_eq!(
+            effects.len(),
+            3,
+            "compiled abilities: {:#?}",
+            definition.abilities
+        );
         assert!(
             describe_optional_return_with_base_pt_and_haste(effects).is_some(),
             "{effects:#?}"
@@ -12074,6 +12282,9 @@ mod destroyed_same_object_no_regeneration_tests {
 }
 
 pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let Some(compact) = describe_complete_delegated_collection_program(effects) {
+        return compact;
+    }
     if let Some(compact) = describe_quantified_tap_goad_then_watch_set(effects) {
         return compact;
     }
@@ -15056,6 +15267,9 @@ fn describe_hand_pipeline_then_leading_conditional(effects: &[Effect]) -> Option
 }
 
 pub(crate) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> {
+    if let Some(compact) = describe_complete_delegated_collection_program(effects) {
+        return Some(lowercase_first(&compact));
+    }
     if let [target, other_damage, self_damage] = effects
         && let Some(compact) =
             describe_target_power_damage_to_other_and_self(target, other_damage, self_damage)

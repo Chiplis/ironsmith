@@ -5596,6 +5596,9 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if let Some(rest) = normalized.strip_prefix("two target creatures get ") {
         return format!("Two target creatures each get {rest}");
     }
+    if let Some(rest) = normalized.strip_prefix("Two target creatures get ") {
+        return format!("Two target creatures each get {rest}");
+    }
     if let Some(rest) =
         normalized.strip_prefix("When this creature enters, draw a card and you lose ")
     {

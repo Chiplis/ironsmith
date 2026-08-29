@@ -25,39 +25,164 @@
 //! This crate owns the parser grammar and its local recognition helpers.  The
 //! public `ironsmith-compiler` package remains the document/lowering facade.
 
-#[path = "../../ironsmith-compiler/src/model/card_document.rs"]
 pub mod card_document;
 
 pub mod model {
-    pub use crate::card_document::*;
-    pub use ironsmith_compiler_semantic::model::*;
+    pub use crate::card_document::{ParsedCardAst, ParsedCleaveBranch, ParsedOverloadBranch};
+    pub use ironsmith_compiler_semantic::model::{
+        ActivationRestrictionNormalizationFact, AdditionalCostChoiceOptionAst, AnnotatedEffect,
+        AnnotatedEffectSequence, Cardinality, CarriedFactAst, CarryKindAst, CastingConditionAst,
+        CharacteristicChangeAst, CharacteristicValueAst, ClashOpponentAst, ClauseActorAst,
+        ClauseVerbAst, CompilerAbility, CompilerAbilityCore, CompilerAbilityKind,
+        CompilerAbilityKindCore, CompilerAbilityPayload, CompilerActivatedAbility,
+        CompilerActivatedAbilityAst, CompilerActivatedAbilityCore, CompilerActivationLegalityAst,
+        CompilerAlternativeCastingMethod, CompilerAttachedAbilityGrantCore,
+        CompilerCastingLegalityAst, CompilerClassAbilityAst, CompilerClassLevelAst,
+        CompilerControlFlowAst, CompilerCost, CompilerDocument, CompilerDocumentItem,
+        CompilerDurationAst, CompilerEnterAsCopyAsEntersSpecCore, CompilerGrantAbilityCore,
+        CompilerGrantObjectAbilityForFilterCore, CompilerGrantSpecCore, CompilerGrantableCore,
+        CompilerGrantedAbilityAst, CompilerKeywordAbilityAst, CompilerKeywordIdentityAst,
+        CompilerKeywordPayloadAst, CompilerLevelAbilityAst, CompilerLevelBandAst,
+        CompilerManaUsageRestriction, CompilerModalAbilityAst, CompilerModalModeAst,
+        CompilerModalSelectionAst, CompilerOptionalCost, CompilerPermissionAst,
+        CompilerPowerToughnessChoiceOptionCore, CompilerSagaAbilityAst, CompilerSagaChapterAst,
+        CompilerSelectionAst, CompilerStaticAbilityAst, CompilerStaticAbilityCore,
+        CompilerStaticAbilityPayloadCore, CompilerStructuredAbilityAst, CompilerTotalCost,
+        CompilerTriggerEventAst, CompilerTriggerLegalityAst, CompilerTriggeredAbility,
+        CompilerTriggeredAbilityAst, CompilerTriggeredAbilityCore, ConditionPositionAst,
+        ContinuousLayerAst, ControlConditionAst, ControlDurationAst, ControlFlowError,
+        ControlFlowNodeAst, ControlFlowReferenceEnvironmentAst, ControlFlowScopeAst,
+        ControlFlowSemanticAst, ControlPredicateAst, CoordinationAst, CoordinationBoundaryAst,
+        CoordinationCarryAst, CoordinationError, CoordinationKindAst, CoordinationMemberAst,
+        CoordinationOperatorAst, CostRelationship, DamageBySpec, DashStyle, DelayedScheduleAst,
+        EffectDependencyAst, EffectOrderingAst, ExchangeValueAst, ExchangeValueKindAst,
+        ExtraTurnAnchorAst, FutureZoneReplacementCausePolicyAst, GiftTimingAst, IfResultPredicate,
+        LegalityFrequencyAst, LegalityPeriodAst, LegalityRelationshipAst, LevelBandAst,
+        LibraryBottomOrderAst, LibraryConsultModeAst, LibraryConsultStopRuleAst, LineAst,
+        LinkedTriggerEffectAst, LoweredEffects, ManaUseConstraintAst, ModalSelectionModifierAst,
+        NestedProgramAst, NestedProgramKindAst, ObjectDomain, ObjectRefAst, ParsedAbility,
+        ParsedActivationRestriction, ParsedAlternativeCastingMethodAst, ParsedCardItem,
+        ParsedLevelAbilityAst, ParsedLevelAbilityItemAst, ParsedLevelActivatedAbilityAst,
+        ParsedLineAst, ParsedManaRestriction, ParsedModalActivatedHeader, ParsedModalAst,
+        ParsedModalGate, ParsedModalHeader, ParsedModalModeAst, ParsedOptionalCostAst,
+        ParsedRestrictions, ParsedTriggerRestriction, PermissionKindAst, PermissionRelationshipAst,
+        PhaseStepAst, PlayerAst, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
+        PreventionRelationshipAst, ProvenanceId, ProvenanceRecord, ProvenanceStore, ProvenanceView,
+        Provenanced, PunctuationKind, QuoteStyle, RedirectNextTimeDamageDestinationAst, RefState,
+        ReferenceEnv, ReferenceExports, ReferenceFrame, ReferenceImports, ReferenceQuery,
+        ReferenceRole, ReminderTextDecision, RenderingHint, ReplacedEventAst, ReplacementKindAst,
+        ReplacementRelationshipAst, RestrictionBucket, RetargetModeAst, ReturnControllerAst,
+        SearchLibrarySlotAst, SemanticProvenance, SharedTypeConstraintAst, SourcePosition,
+        SourceSliceKind, SourceSpan, SourceUnit, SourceUnitId, StaticOperationAst,
+        StaticRestrictionAst, StaticScopeAst, StaticSubjectAst, SymbolBinding, SymbolId,
+        SymbolReference, SymbolResolutionError, SymbolScope, SymbolScopeId, SymbolScopeKind,
+        SymbolTable, TargetAst, TimingWindowAst, TriggerBindingsAst, TriggerFrequencyAst,
+        TriggerKindAst, TriggerReferenceAst, TriggerReferenceSurfaceAst, TriggerSubjectAst,
+        TriggerZoneTransitionAst, TurnOwnerAst, ZoneReplacementDurationAst, activated_abilities,
+        ast, canonical_references, clauses, compiler_semantic, control_flow, coordination, costs,
+        document_program, facts, interaction_clauses, legality, library_clauses,
+        object_action_clauses, parse_types, permission_clauses, provenance, reference,
+        reference_state, resource_choice_clauses, restrictions, selections, static_abilities,
+        structured_abilities, symbols, token_definition, triggered_abilities, visit,
+    };
 }
 pub use ironsmith_compiler_semantic::model::{
     canonical_references, compiler_semantic, provenance, symbols,
 };
-pub use ironsmith_compiler_semantic::*;
+pub use ironsmith_compiler_semantic::{
+    ClashOpponentAst, ControlDurationAst, DamageBySpec, ExchangeValueAst, ExtraTurnAnchorAst,
+    FutureZoneReplacementCausePolicyAst, IfResultPredicate, KeywordAction, LibraryBottomOrderAst,
+    LibraryConsultModeAst, LibraryConsultStopRuleAst, ObjectRefAst, PlayerAst,
+    PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, RetargetModeAst,
+    ReturnControllerAst, SearchLibrarySlotAst, SharedTypeConstraintAst, TargetAst,
+    ZoneReplacementDurationAst, ability, alternative_cast, card, color, continuous, cost, costs,
+    effect, effects, events, filter, game_state, grant, ids, mana, model_impl, object,
+    parse_context, payload, resolution, static_abilities, tag, target, triggers, types, zone,
+};
 
 pub mod diagnostics {
-    pub use ironsmith_compiler_api::*;
+    pub use ironsmith_compiler_api::{CardTextError, ParseAnnotations, TextSpan};
 }
 
 pub mod front_end {
     pub use crate::front_end_parser_support::*;
-    pub use ironsmith_compiler_source::*;
-    pub use ironsmith_compiler_syntax::*;
+    pub use ironsmith_compiler_source::{
+        CstFace, CstLine, CstLineKind, CstNode, CstNodeKind, DashStyle, DocumentCst, LineInfo,
+        MetadataLine, ModeMarker, NormalizedLine, NormalizedSourceMap, NormalizedSourceSegment,
+        ProvenanceId, ProvenanceRecord, ProvenanceStore, ProvenanceView, Provenanced,
+        PunctuationKind, QuoteStyle, ReminderTextDecision, RenderingHint, SelfReferenceSurface,
+        SemanticProvenance, SourcePosition, SourceSliceKind, SourceSpan, SourceUnit, SourceUnitId,
+        make_line_info, normalize_trimmed_line, parse_document_cst, parse_metadata_line,
+    };
+    pub use ironsmith_compiler_syntax::{
+        CommonSentenceHead, LeadingMayActionMatch, LeadingMayActor, LexCursor, LexStream, LexToken,
+        LexerError, OwnedLexToken, TokenKind, TokenWordPiece, TokenWordView, TurnDurationPhrase,
+        clone_sentence_chunk_tokens, contains_sequence, contains_token_any_word,
+        contains_token_kind, contains_token_word, contains_token_word_sequence, contains_window,
+        find_any_token_word_sequence_span, find_token_any_word, find_token_kind, find_token_word,
+        find_token_word_sequence, find_token_word_sequence_span, find_token_word_sequence_value,
+        find_window_by, is_authored_proper_name_phrase, is_bare_card_name_phrase, iter_contains,
+        iterators_equal, lex_line, lexed_head_words, lexed_tokens_contain_non_prefix_instead,
+        lexer, parse_common_sentence_head, parse_leading_may_action_lexed,
+        parse_turn_duration_prefix, parse_turn_duration_suffix, parser_token_word_positions,
+        parser_token_word_refs, parses_any_word_view_prefix, parses_word_view_prefix,
+        remove_copy_exception_type_removal_lexed, render_bare_card_name_surface,
+        render_token_slice, rewrite_followup_intro_to_if_lexed, rfind_token_word,
+        select_last_position, select_position, select_sequence_position, slice_contains,
+        slice_contains_all, slice_contains_any, slice_ends_with, slice_ends_with_any, slice_eq_any,
+        slice_primitives, slice_starts_with, slice_starts_with_any, slice_strip_any_prefix,
+        slice_strip_any_suffix, slice_strip_prefix, slice_strip_suffix, split_em_dash_label_prefix,
+        split_em_dash_label_prefix_tokens, split_lexed_once_on_comma,
+        split_lexed_once_on_comma_then, split_lexed_once_on_delimiter, split_lexed_once_on_period,
+        split_lexed_sentences, str_ends_with_any_char, str_find_char, str_rfind, str_rfind_char,
+        str_split_once, str_strip_prefix, str_strip_suffix, string_primitives,
+        strip_leading_if_you_do_lexed, synthetic_word_tokens, token_slice_at_is,
+        token_slice_at_is_any, token_slice_first_is, token_slice_first_is_any, token_utils,
+        token_word_pieces_for_token, token_word_refs, trim_lexed_commas, word_primitives,
+        word_slice_at_is, word_slice_at_is_any, word_slice_contains_all_words,
+        word_slice_contains_any_phrase_or_empty, word_slice_contains_any_word,
+        word_slice_contains_no_words, word_slice_contains_phrase_or_empty,
+        word_slice_contains_window_by, word_slice_contains_word, word_slice_ends_with_any,
+        word_slice_find_any_phrase_start, word_slice_find_any_phrase_start_or_zero,
+        word_slice_find_phrase_start_or_zero, word_slice_find_phrase_value,
+        word_slice_find_window_by, word_slice_first_is, word_slice_first_is_any,
+        word_slice_last_is, word_slice_last_is_any, word_slice_matching_phrase,
+        word_slice_matching_value, word_slice_starts_with_any, word_slice_starts_with_at,
+        word_slice_strip_any_prefix, word_slice_strip_any_suffix, word_slice_strip_first_word,
+        word_slice_strip_first_word_value, word_slice_strip_prefix, word_slice_strip_prefix_value,
+        word_slice_strip_suffix, word_slice_strip_suffix_value,
+    };
 
     pub mod grammar {
         pub use crate::grammar::*;
-    }
-
-    pub mod semantic_domain_migration {
-        pub use crate::semantic_domain_migration::*;
     }
 }
 pub use front_end::*;
 
 pub mod lexer {
-    pub use ironsmith_compiler_syntax::lexer::*;
+    pub use ironsmith_compiler_syntax::lexer::{
+        LexCursor, LexStream, LexToken, LexerError, OwnedLexToken, TokenKind, TokenWordPiece,
+        TokenWordView, contains_token_any_word, contains_token_kind, contains_token_word,
+        contains_token_word_sequence, find_any_token_word_sequence_span, find_token_any_word,
+        find_token_kind, find_token_word, find_token_word_sequence, find_token_word_sequence_span,
+        find_token_word_sequence_value, is_authored_proper_name_phrase, is_bare_card_name_phrase,
+        lex_line, parser_token_word_positions, parser_token_word_refs,
+        render_bare_card_name_surface, render_token_slice, rfind_token_word, split_lexed_sentences,
+        synthetic_word_tokens, token_slice_at_is, token_slice_at_is_any, token_slice_first_is,
+        token_slice_first_is_any, token_word_pieces_for_token, token_word_refs, trim_lexed_commas,
+        word_slice_at_is, word_slice_at_is_any, word_slice_contains_all_words,
+        word_slice_contains_any_phrase_or_empty, word_slice_contains_any_word,
+        word_slice_contains_no_words, word_slice_contains_phrase_or_empty,
+        word_slice_contains_window_by, word_slice_contains_word, word_slice_ends_with_any,
+        word_slice_find_any_phrase_start, word_slice_find_any_phrase_start_or_zero,
+        word_slice_find_phrase_start_or_zero, word_slice_find_phrase_value,
+        word_slice_find_window_by, word_slice_first_is, word_slice_first_is_any,
+        word_slice_last_is, word_slice_last_is_any, word_slice_matching_phrase,
+        word_slice_matching_value, word_slice_starts_with_any, word_slice_starts_with_at,
+        word_slice_strip_any_prefix, word_slice_strip_any_suffix, word_slice_strip_first_word,
+        word_slice_strip_first_word_value, word_slice_strip_prefix, word_slice_strip_prefix_value,
+        word_slice_strip_suffix, word_slice_strip_suffix_value,
+    };
     pub use ironsmith_grammar_common::lexical::{
         LexedClause, locate_token_kind, locate_token_word, locate_token_word_choice,
         token_slice_all_are_kind, token_slice_last_is,
@@ -91,116 +216,73 @@ pub use target::{
 pub use types::{CardType, Subtype, Supertype};
 pub use zone::Zone;
 
-#[path = "../../ironsmith-compiler/src/slice_primitives.rs"]
-pub mod slice_primitives;
-#[path = "../../ironsmith-compiler/src/string_primitives.rs"]
-pub mod string_primitives;
-#[path = "../../ironsmith-compiler/src/front_end/token_primitives.rs"]
+pub use ironsmith_compiler_syntax::{slice_primitives, string_primitives, word_primitives};
 pub mod token_primitives;
-#[path = "../../ironsmith-compiler/src/word_primitives.rs"]
-pub mod word_primitives;
 
-#[path = "../../ironsmith-compiler/src/facade.rs"]
 pub mod facade;
-#[path = "../../ironsmith-compiler/src/model/semantic_document.rs"]
-pub mod ir;
-#[path = "../../ironsmith-compiler/src/oracle_grammar.rs"]
-pub mod oracle_grammar;
-#[path = "../../ironsmith-compiler/src/parse_trace.rs"]
-pub mod parse_trace;
-#[path = "../../ironsmith-compiler/src/pipeline.rs"]
-pub mod pipeline;
-#[path = "../../ironsmith-compiler/src/registry.rs"]
-pub mod registry;
-#[path = "../../ironsmith-compiler/src/front_end/rule_engine.rs"]
-pub mod rule_engine;
-#[path = "../../ironsmith-compiler/src/front_end/semantic_domain_migration.rs"]
-pub mod semantic_domain_migration;
-
-#[path = "../../ironsmith-compiler/src/front_end/grammar/mod.rs"]
 pub mod grammar;
+pub mod ir;
+pub mod oracle_grammar;
+pub mod parse_trace;
+pub mod pipeline;
+pub mod registry;
+pub mod rule_engine;
 
-#[path = "../../ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/mod.rs"]
 pub mod effect_sentences;
 
-#[path = "../../ironsmith-compiler/src/front_end/grammar/ability_rules/activation_and_restrictions/mod.rs"]
 pub mod activation_and_restrictions;
-#[path = "../../ironsmith-compiler/src/front_end/grammar/ability_rules/activation_helpers.rs"]
 pub mod activation_helpers;
-#[path = "../../ironsmith-compiler/src/front_end/grammar/ability_rules/clause_support.rs"]
 pub mod clause_support;
-#[path = "../../ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_families.rs"]
 pub mod keyword_families;
-#[path = "../../ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_payloads.rs"]
 pub mod keyword_payloads;
-#[path = "../../ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_registry.rs"]
 pub mod keyword_registry;
-#[path = "../../ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static/mod.rs"]
 pub mod keyword_static;
-#[path = "../../ironsmith-compiler/src/front_end/grammar/ability_rules/keyword_static_helpers.rs"]
 pub mod keyword_static_helpers;
-#[path = "../../ironsmith-compiler/src/front_end/grammar/ability_rules/modal_helpers.rs"]
+pub mod line_info;
 pub mod modal_helpers;
-#[path = "../../ironsmith-compiler/src/front_end/grammar/ability_rules/object_filters.rs"]
 pub mod object_filters;
-#[path = "../../ironsmith-compiler/src/front_end/grammar/ability_rules/permission_helpers.rs"]
 pub mod permission_helpers;
-#[path = "../../ironsmith-compiler/src/front_end/grammar/ability_rules/restriction_support.rs"]
 pub mod restriction_support;
-#[path = "../../ironsmith-compiler/src/lowering/runtime_static_ability_helpers.rs"]
+#[path = "lowering_impl/runtime_static_ability_helpers.rs"]
 pub mod runtime_static_ability_helpers;
-#[path = "../../ironsmith-compiler/src/front_end/grammar/effect_clauses/search_library_support.rs"]
 pub mod search_library_support;
-#[path = "../../ironsmith-compiler/src/front_end/grammar/ability_rules/static_ability_helpers.rs"]
 pub mod static_ability_helpers;
 
-#[path = "../../ironsmith-compiler/src/front_end/cst.rs"]
-pub mod cst;
-#[path = "../../ironsmith-compiler/src/front_end/cst_lowering.rs"]
-pub mod cst_lowering;
-#[path = "../../ironsmith-compiler/src/front_end/parser_support.rs"]
 pub mod front_end_parser_support;
-#[path = "../../ironsmith-compiler/src/front_end/semantic_parser_support.rs"]
 pub mod parser_support;
-#[path = "../../ironsmith-compiler/src/front_end/semantic_preprocess.rs"]
 pub mod preprocess;
-#[path = "../../ironsmith-compiler/src/front_end/semantic_line_parsing/mod.rs"]
+pub mod recognized_document;
+pub mod semantic_assembly;
 pub mod semantic_line_parsing;
-#[path = "../../ironsmith-compiler/src/front_end/shared/util.rs"]
 pub mod util;
 
-#[path = "../../ironsmith-compiler/src/lowering/battlefield_entry_counter_fusion.rs"]
+#[path = "lowering_impl/battlefield_entry_counter_fusion.rs"]
 pub mod battlefield_entry_counter_fusion;
-#[path = "../../ironsmith-compiler/src/front_end/canonical_pipeline.rs"]
 pub mod canonical_pipeline;
-#[path = "../../ironsmith-compiler/src/cards/builders.rs"]
 pub mod card_builders;
-#[path = "../../ironsmith-compiler/src/lowering/compile_support.rs"]
+#[path = "lowering_impl/compile_support.rs"]
 pub mod compile_support;
-#[path = "../../ironsmith-compiler/src/lowering/pipeline.rs"]
+#[path = "lowering_impl/pipeline.rs"]
 pub mod compiler_pipeline;
-#[path = "../../ironsmith-compiler/src/lowering/condition_antecedent.rs"]
+#[path = "lowering_impl/condition_antecedent.rs"]
 pub mod condition_antecedent;
-#[path = "../../ironsmith-compiler/src/front_end/document/mod.rs"]
 pub mod document_parser;
-#[path = "../../ironsmith-compiler/src/lowering/effect_pipeline.rs"]
+#[path = "lowering_impl/effect_pipeline.rs"]
 pub mod effect_pipeline;
-#[path = "../../ironsmith-compiler/src/lowering/lower/mod.rs"]
+#[path = "lowering_impl/lower/mod.rs"]
 pub mod lower;
-#[path = "../../ironsmith-compiler/src/lowering/mod.rs"]
+#[path = "lowering_impl/mod.rs"]
 pub mod lowering;
-#[path = "../../ironsmith-compiler/src/lowering/lowering_support.rs"]
+#[path = "lowering_impl/lowering_support.rs"]
 pub mod lowering_support;
-#[path = "../../ironsmith-compiler/src/front_end/grammar/modal_support.rs"]
+#[path = "grammar/modal_support.rs"]
 pub mod modal_support;
-#[path = "../../ironsmith-compiler/src/parse_loss.rs"]
 pub mod parse_loss;
-#[path = "../../ironsmith-compiler/src/front_end/semantic_document.rs"]
 pub mod semantic_document;
 
 pub mod cards {
     pub use crate::card_builders::CardDefinitionBuilder;
-    pub use ironsmith_compiler_semantic::cards::*;
+    pub use ironsmith_compiler_semantic::cards::{CardDefinition, ParseAnnotations, TextSpan};
 
     pub mod builders {
         pub use crate::card_builders::*;
@@ -213,8 +295,8 @@ pub mod cards {
 
 pub use card_builders::CardDefinitionBuilder;
 pub use ironsmith_compiler_semantic::cards::CardDefinition;
+pub use line_info::LineInfo;
 
-#[path = "../../ironsmith-compiler/src/cards/tokens.rs"]
 pub mod card_tokens;
 
 pub mod host {
@@ -317,5 +399,5 @@ pub use oracle_grammar::{
 pub use pipeline::{LoweringPipeline, PostpassProcessor};
 
 #[cfg(test)]
-#[path = "../../ironsmith-compiler/src/tests/mod.rs"]
+#[path = "tests/mod.rs"]
 mod tests;

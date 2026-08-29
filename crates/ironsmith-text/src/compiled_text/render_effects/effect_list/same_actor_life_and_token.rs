@@ -309,6 +309,12 @@ mod tests {
                 "Enchanted player creates a Clue token, a Food token, and a Junk token".to_string()
             )
         );
+        assert_eq!(
+            describe_effect(&Effect::new(crate::effects::SequenceEffect::coordinated(
+                vec![clue.clone(), food.clone(), junk.clone()],
+            ))),
+            "Enchanted player creates a Clue token, a Food token, and a Junk token"
+        );
 
         let changed = create(
             crate::cards::tokens::junk_token_definition(),

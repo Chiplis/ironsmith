@@ -1,0 +1,123 @@
+//! Front-end semantic parsing for complete Oracle lines.
+//!
+//! These parsers bridge typed CST facts and the semantic [`LineAst`] model.
+//! They intentionally live on the front-end side of the CST -> semantic AST
+//! boundary; preparation and runtime lowering consume their typed output.
+
+use crate::Until;
+use crate::ability::{ActivationTiming, PresentationLabel};
+#[cfg(test)]
+use crate::cards::builders::NormalizedLine;
+use crate::cards::builders::{
+    CardTextError, ChoiceCount, EffectAst, IT_TAG, LibraryBottomOrderAst, LineAst, LineInfo,
+    ParsedAbility, ParsedCardItem, ParsedModalAst, ParsedModalModeAst, ParsedRestrictions,
+    PlayerAst, PredicateAst, ReferenceImports, ReturnControllerAst, SubjectVerbActionAst,
+    SubjectVerbRoleAst, TagKey, TargetAst, TextSpan, TriggerSpec,
+};
+use crate::color::ColorSet;
+use crate::cost::TotalCost;
+use crate::costs::Cost;
+use crate::model::CompilerOptionalCost as OptionalCost;
+use crate::model::CompilerStaticAbilityCore as StaticAbility;
+use crate::model::compiler_semantic::{
+    CompilerAbilityCore as Ability, CompilerAbilityKindCore as AbilityKind,
+    CompilerActivatedAbilityCore as ActivatedAbility,
+};
+use crate::resolution::ResolutionProgram;
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
+use crate::types::{CardType, Subtype};
+use crate::zone::Zone;
+use ironsmith_core::CostComponent;
+
+mod activated;
+mod chosen_options;
+mod effect_programs;
+mod lines;
+mod static_chunks;
+mod triggered_chunks;
+
+pub use chosen_options::{condition_for_chosen_option, wrap_chosen_option_static_chunk};
+use effect_programs::*;
+use static_chunks::*;
+pub use triggered_chunks::{
+    apply_chosen_option_to_triggered_chunk, apply_explicit_intervening_if_to_triggered_chunk,
+    infer_triggered_ability_functional_zones_from_facts,
+};
+
+pub use activated::parse_activated_line;
+pub use lines::{
+    dynamic_zone_change_group_token_creation_from_authored_trigger,
+    end_of_combat_destroy_then_next_end_step_counter_program,
+    exact_graveyard_card_copy_cast_sequence, exact_looked_hand_optional_cast_bundle,
+    exact_target_graveyard_any_type_may_cast_bundle,
+    exact_target_same_name_graveyard_may_cast_bundle,
+    has_created_token_reciprocal_lifecycle_surface,
+    has_linked_created_token_next_turn_sacrifice_surface,
+    is_authored_dynamic_exile_permission_bundle, is_authored_look_hand_optional_cast_bundle,
+    is_exact_correlated_trigger_effect_bundle, linked_created_token_next_turn_sacrifice_effects,
+    parse_exert_attack_keyword_line, parse_gift_keyword_line, parse_keyword_special_cases,
+    parse_library_origin_source_pump_unblockable_triggered_line,
+    parse_statement_token_groups_to_chunks, parse_static_line, rewrite_modal_to_parsed_item,
+};
+#[cfg(test)]
+pub use lines::{
+    normalize_exert_followup_source_reference_tokens, parse_keyword_line_for_test,
+    parse_keyword_line_with_full_tokens_for_test, parse_single_effect_lexed, parse_triggered_line,
+    strip_lexed_suffix_phrase,
+};
+
+use super::activation_and_restrictions::{
+    is_any_player_may_activate_sentence_lexed, parse_activation_cost,
+};
+use super::clause_support::{
+    parse_ability_line_lexed, parse_effect_sentences_lexed,
+    parse_linked_attack_group_combat_triggered_line_lexed, parse_static_ability_ast_line_lexed,
+    parse_trigger_clause_lexed, parse_triggered_line_lexed,
+};
+use super::compile_support::{
+    compile_condition_from_predicate_ast_with_env,
+    materialize_prepared_effects_with_trigger_context,
+};
+use super::grammar::activated_lines as activated_line_grammar;
+use super::grammar::effects as effect_grammar;
+use super::ir::{
+    ChosenOptionContext, RewriteKeywordLine, RewriteKeywordLineKind, RewriteModalBlock,
+    RewriteStatementLine, RewriteStaticLine, RewriteTriggeredLine,
+};
+use super::keyword_static::{
+    parse_if_this_spell_costs_less_to_cast_line_lexed,
+    parse_spell_additional_life_cost_per_target_line,
+    parse_spell_and_player_activated_ability_cost_modifier_line,
+    parse_spell_cost_increase_per_target_beyond_first_line, parse_spells_cost_modifier_line,
+    parse_value_binding_clause,
+};
+use super::lexer::{
+    OwnedLexToken, TokenKind, render_token_slice, split_lexed_sentences, token_word_refs,
+    trim_lexed_commas,
+};
+#[cfg(test)]
+use super::lexer::{TokenWordView, lex_line};
+use super::lowering_support::{
+    rewrite_parsed_triggered_ability, rewrite_prepare_effects_with_trigger_context_for_lowering,
+};
+use super::modal_support::{parse_modal_header, replace_modal_header_x_in_effects_ast};
+use super::parser_support::split_tokens_for_parse;
+use super::restriction_support::apply_pending_mana_restrictions;
+use super::token_primitives::strip_leading_if_you_do_lexed;
+use super::util::{join_sentences_with_period, parse_level_up_line_lexed};
+use crate::effect_sentences::merge_filters;
+use crate::model::reference_state::ReferenceEnv;
+
+#[cfg(test)]
+#[path = "mod_inline_source_boundary_surface_tests.rs"]
+mod source_boundary_surface_tests;
+
+#[path = "reference_programs.rs"]
+mod reference_programs;
+pub(crate) use reference_programs::parse_effect_sentences_preserving_source_boundaries;
+use reference_programs::{
+    first_for_each_object_filter, mark_matching_for_each_object_leading_then,
+};
+#[path = "core_programs.rs"]
+mod core_programs;
+use core_programs::preserve_flat_leading_then_for_each_surface;

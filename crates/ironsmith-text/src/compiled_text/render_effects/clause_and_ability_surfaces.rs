@@ -4007,6 +4007,11 @@ pub(super) fn describe_coordinated_sequence(
     {
         return Some(rendered);
     }
+    if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+        && let Some(rendered) = describe_shared_actor_token_creation_list(&sequence.effects)
+    {
+        return Some(rendered);
+    }
     // A target-damage + correlated fanout pair is more specific than the
     // broad action-fanout and coordinated-damage renderers below. Prove the
     // shared target tag and amount before either child is rendered alone,
@@ -7675,20 +7680,9 @@ pub(super) fn describe_execute_power_damage_from_tag<'a>(
     effect: &'a Effect,
     source_tag: &crate::TagKey,
 ) -> Option<&'a crate::effects::DealDamageEffect> {
-    let mut effect = effect;
-    loop {
-        if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
-            effect = &tag_all.effect;
-            continue;
-        }
-        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
-            effect = &tagged.effect;
-            continue;
-        }
-        break;
-    }
+    let effect = structural_unwrap_render_wrappers(effect);
     let with_source = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()?;
-    let ChooseSpec::Tagged(tag) = &with_source.source else {
+    let ChooseSpec::Tagged(tag) = with_source.source.unhinted() else {
         return None;
     };
     if tag.as_str() != source_tag.as_str() {
@@ -7697,10 +7691,10 @@ pub(super) fn describe_execute_power_damage_from_tag<'a>(
     let deal = with_source
         .effect
         .downcast_ref::<crate::effects::DealDamageEffect>()?;
-    let Value::PowerOf(power_source) = &deal.amount else {
+    let Value::PowerOf(power_source) = deal.amount.unhinted() else {
         return None;
     };
-    let ChooseSpec::Tagged(power_tag) = power_source.as_ref() else {
+    let ChooseSpec::Tagged(power_tag) = power_source.unhinted() else {
         return None;
     };
     if power_tag.as_str() != source_tag.as_str() {
@@ -7964,20 +7958,17 @@ pub(crate) fn describe_target_power_damage_to_other_and_self(
     other_damage_effect: &Effect,
     self_damage_effect: &Effect,
 ) -> Option<String> {
-    let tagged_target = target_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
-    let target_only = tagged_target
-        .effect
+    let target_tag = wrapped_effect_tag(target_effect)?;
+    let target_only = structural_unwrap_render_wrappers(target_effect)
         .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
-    let other_damage =
-        describe_execute_power_damage_from_tag(other_damage_effect, &tagged_target.tag)?;
-    let self_damage =
-        describe_execute_power_damage_from_tag(self_damage_effect, &tagged_target.tag)?;
+    let other_damage = describe_execute_power_damage_from_tag(other_damage_effect, target_tag)?;
+    let self_damage = describe_execute_power_damage_from_tag(self_damage_effect, target_tag)?;
     if !matches!(other_damage.target, ChooseSpec::AnyOtherTarget) {
         return None;
     }
     if !matches!(
         self_damage.target,
-        ChooseSpec::Tagged(ref target_tag) if target_tag.as_str() == tagged_target.tag.as_str()
+        ChooseSpec::Tagged(ref found_tag) if found_tag.as_str() == target_tag.as_str()
     ) {
         return None;
     }

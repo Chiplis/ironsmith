@@ -15,6 +15,7 @@ struct OwnershipManifest {
     program: Program,
     phases: Vec<Phase>,
     allowed_edges: Vec<AllowedEdge>,
+    allowed_dependencies: Vec<AllowedEdge>,
     bridges: Vec<Bridge>,
     exceptions: Vec<Exception>,
     audit: AuditConfiguration,
@@ -31,6 +32,7 @@ struct Program {
 #[derive(Debug, Deserialize)]
 struct Phase {
     id: String,
+    crates: Vec<String>,
     roots: Vec<String>,
 }
 
@@ -122,6 +124,12 @@ fn main() {
         .unwrap_or(manifest.program.audit_default_completed_pr);
     let mut findings = Vec::new();
     audit_expired_migration_state(&manifest, completed_pr, &repo_root, &mut findings);
+    audit_complete_phase_ownership(&manifest, completed_pr, &repo_root, &mut findings);
+    audit_cross_crate_path_inclusions(&manifest, completed_pr, &repo_root, &mut findings);
+    audit_cargo_dependency_graph(&manifest, completed_pr, &repo_root, &mut findings);
+    audit_compatibility_reexports(&manifest, completed_pr, &repo_root, &mut findings);
+    audit_parallel_semantic_models(&manifest, completed_pr, &repo_root, &mut findings);
+    audit_whole_program_recipe_paths(&manifest, completed_pr, &repo_root, &mut findings);
     audit_forbidden_imports(&manifest, completed_pr, &repo_root, &mut findings);
     audit_patterns(&manifest, completed_pr, &repo_root, &mut findings);
     print_report(&manifest, completed_pr, &findings, arguments.verbose);
@@ -133,6 +141,54 @@ fn main() {
     {
         std::process::exit(1);
     }
+}
+
+fn audit_complete_phase_ownership(
+    manifest: &OwnershipManifest,
+    completed_pr: u8,
+    repo_root: &Path,
+    findings: &mut Vec<Finding>,
+) {
+    for path in production_parser_rust_files(manifest, repo_root) {
+        let relative = relative_path(repo_root, &path);
+        let mut matching_roots = Vec::new();
+        for phase in &manifest.phases {
+            for root in &phase.roots {
+                if root_owns_path(root, &relative) {
+                    matching_roots.push((phase.id.as_str(), root.len()));
+                }
+            }
+        }
+        let longest_root = matching_roots.iter().map(|(_, len)| *len).max();
+        let owners = matching_roots
+            .iter()
+            .filter(|(_, len)| Some(*len) == longest_root)
+            .map(|(owner, _)| *owner)
+            .collect::<BTreeSet<_>>();
+        if owners.len() != 1 {
+            push_scanned_finding(
+                manifest,
+                completed_pr,
+                findings,
+                "invalid_phase_ownership",
+                "complete-phase-ownership",
+                &relative,
+                1,
+                &format!(
+                    "expected exactly one phase owner, found {}: {}",
+                    owners.len(),
+                    owners.into_iter().collect::<Vec<_>>().join(", ")
+                ),
+            );
+        }
+    }
+}
+
+fn root_owns_path(root: &str, relative: &str) -> bool {
+    relative == root
+        || relative
+            .strip_prefix(root)
+            .is_some_and(|tail| tail.starts_with('/'))
 }
 
 fn parse_arguments() -> Result<Arguments, String> {
@@ -208,6 +264,9 @@ fn validate_manifest(manifest: &OwnershipManifest) -> Result<(), String> {
         if phase.roots.is_empty() {
             return Err(format!("phase {} has no ownership roots", phase.id));
         }
+        if phase.crates.is_empty() {
+            return Err(format!("phase {} has no owning crates", phase.id));
+        }
     }
     for edge in &manifest.allowed_edges {
         if !phase_ids.contains(edge.from.as_str()) || !phase_ids.contains(edge.to.as_str()) {
@@ -215,6 +274,25 @@ fn validate_manifest(manifest: &OwnershipManifest) -> Result<(), String> {
                 "allowed edge {} -> {} references an unknown phase",
                 edge.from, edge.to
             ));
+        }
+    }
+    for edge in &manifest.allowed_dependencies {
+        if !phase_ids.contains(edge.from.as_str()) || !phase_ids.contains(edge.to.as_str()) {
+            return Err(format!(
+                "allowed dependency {} -> {} references an unknown phase",
+                edge.from, edge.to
+            ));
+        }
+    }
+    let mut crate_owners = BTreeMap::<&str, &str>::new();
+    for phase in &manifest.phases {
+        for crate_name in &phase.crates {
+            if let Some(previous) = crate_owners.insert(crate_name, &phase.id) {
+                return Err(format!(
+                    "crate {crate_name} is owned by both {previous} and {}",
+                    phase.id
+                ));
+            }
         }
     }
     for bridge in &manifest.bridges {
@@ -245,6 +323,322 @@ fn validate_manifest(manifest: &OwnershipManifest) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn audit_cross_crate_path_inclusions(
+    manifest: &OwnershipManifest,
+    completed_pr: u8,
+    repo_root: &Path,
+    findings: &mut Vec<Finding>,
+) {
+    for path in production_parser_rust_files(manifest, repo_root) {
+        let relative = relative_path(repo_root, &path);
+        let Some(source_crate) = crate_name_from_relative(&relative) else {
+            continue;
+        };
+        scan_lines(&path, |line_number, line| {
+            let Some(path_value) = rust_path_attribute_value(line) else {
+                return;
+            };
+            let target = path
+                .parent()
+                .expect("Rust source has a parent")
+                .join(path_value);
+            let Ok(target) = fs::canonicalize(&target) else {
+                push_scanned_finding(
+                    manifest,
+                    completed_pr,
+                    findings,
+                    "invalid_path_inclusion",
+                    "compiled-module-path",
+                    &relative,
+                    line_number,
+                    &format!("path attribute target does not exist: {}", target.display()),
+                );
+                return;
+            };
+            let target_relative = relative_path(repo_root, &target);
+            let Some(target_crate) = crate_name_from_relative(&target_relative) else {
+                return;
+            };
+            if source_crate != target_crate {
+                push_scanned_finding(
+                    manifest,
+                    completed_pr,
+                    findings,
+                    "cross_crate_path_inclusion",
+                    "compiled-module-path",
+                    &relative,
+                    line_number,
+                    &format!("{source_crate} compiles {target_relative} owned by {target_crate}"),
+                );
+            }
+        });
+    }
+}
+
+fn rust_path_attribute_value(line: &str) -> Option<&str> {
+    let marker = line.find("#[path")?;
+    let rest = &line[marker..];
+    let quote = rest.find('"')?;
+    let value = &rest[quote + 1..];
+    let end = value.find('"')?;
+    Some(&value[..end])
+}
+
+fn crate_name_from_relative(relative: &str) -> Option<&str> {
+    let mut parts = relative.split('/');
+    (parts.next()? == "crates").then_some(parts.next()?)
+}
+
+fn audit_cargo_dependency_graph(
+    manifest: &OwnershipManifest,
+    _completed_pr: u8,
+    repo_root: &Path,
+    findings: &mut Vec<Finding>,
+) {
+    let phase_by_crate = manifest
+        .phases
+        .iter()
+        .flat_map(|phase| {
+            phase
+                .crates
+                .iter()
+                .map(move |crate_name| (crate_name.as_str(), phase.id.as_str()))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let allowed = manifest
+        .allowed_dependencies
+        .iter()
+        .map(|edge| (edge.from.as_str(), edge.to.as_str()))
+        .collect::<BTreeSet<_>>();
+
+    for (crate_name, source_phase) in &phase_by_crate {
+        let crate_name = *crate_name;
+        let source_phase = *source_phase;
+        let cargo_path = repo_root.join("crates").join(crate_name).join("Cargo.toml");
+        if !cargo_path.is_file() {
+            findings.push(Finding {
+                kind: "missing_phase_crate".to_string(),
+                rule_id: "compiled-cargo-graph".to_string(),
+                path: relative_path(repo_root, &cargo_path),
+                line: None,
+                detail: format!("phase {source_phase} has no physical crate {crate_name}"),
+                suppressed_by: None,
+            });
+            continue;
+        }
+        let source = fs::read_to_string(&cargo_path)
+            .unwrap_or_else(|error| panic!("failed reading {}: {error}", cargo_path.display()));
+        let parsed = toml::from_str::<toml::Value>(&source)
+            .unwrap_or_else(|error| panic!("failed parsing {}: {error}", cargo_path.display()));
+        let Some(dependencies) = parsed.get("dependencies").and_then(toml::Value::as_table) else {
+            continue;
+        };
+        for (dependency_key, dependency_value) in dependencies {
+            let dependency_name = dependency_value
+                .as_table()
+                .and_then(|table| table.get("package"))
+                .and_then(toml::Value::as_str)
+                .unwrap_or(dependency_key);
+            let Some(target_phase) = phase_by_crate.get(dependency_name).copied() else {
+                continue;
+            };
+            if !allowed.contains(&(source_phase, target_phase)) {
+                findings.push(Finding {
+                    kind: "forbidden_cargo_dependency".to_string(),
+                    rule_id: "compiled-cargo-graph".to_string(),
+                    path: relative_path(repo_root, &cargo_path),
+                    line: cargo_dependency_line(&source, dependency_key),
+                    detail: format!(
+                        "{crate_name} ({source_phase}) depends on {dependency_name} ({target_phase})"
+                    ),
+                    suppressed_by: None,
+                });
+            }
+        }
+    }
+}
+
+fn cargo_dependency_line(source: &str, dependency: &str) -> Option<usize> {
+    let prefix = format!("{dependency} ");
+    source
+        .lines()
+        .position(|line| line.trim_start().starts_with(&prefix))
+        .map(|index| index + 1)
+}
+
+fn audit_compatibility_reexports(
+    manifest: &OwnershipManifest,
+    completed_pr: u8,
+    repo_root: &Path,
+    findings: &mut Vec<Finding>,
+) {
+    for phase in &manifest.phases {
+        // This invariant governs the parser/compiler phase stack. Runtime is
+        // the terminal consumer in that stack and may compose its own runtime
+        // implementation crates without creating a parser compatibility
+        // bridge.
+        if phase.id == "runtime" {
+            continue;
+        }
+        for crate_name in &phase.crates {
+            let path = repo_root.join("crates").join(crate_name).join("src/lib.rs");
+            if !path.is_file() {
+                continue;
+            }
+            let relative = relative_path(repo_root, &path);
+            scan_lines(&path, |line_number, line| {
+                let trimmed = line.trim();
+                if trimmed.starts_with("pub use ironsmith_") && trimmed.ends_with("::*;") {
+                    push_scanned_finding(
+                        manifest,
+                        completed_pr,
+                        findings,
+                        "compatibility_glob_reexport",
+                        "physical-layer-exports",
+                        &relative,
+                        line_number,
+                        trimmed,
+                    );
+                }
+            });
+        }
+    }
+}
+
+fn audit_parallel_semantic_models(
+    manifest: &OwnershipManifest,
+    completed_pr: u8,
+    repo_root: &Path,
+    findings: &mut Vec<Finding>,
+) {
+    let files = production_parser_rust_files(manifest, repo_root);
+    let semantic_definitions = [
+        "pub enum GiftTimingAst",
+        "pub enum LineAst",
+        "pub struct AdditionalCostChoiceOptionAst",
+        "pub struct ParsedAbility",
+        "pub enum ParsedCardItem",
+        "pub struct ParsedLineAst",
+        "pub struct ParsedModalAst",
+        "pub struct ParsedModalHeader",
+        "pub struct ParsedModalActivatedHeader",
+        "pub struct ParsedModalModeAst",
+        "pub struct ParsedModalGate",
+        "pub struct ParsedLevelAbilityAst",
+        "pub enum ParsedLevelAbilityItemAst",
+    ];
+    for definition in semantic_definitions {
+        let owners = definition_owners(repo_root, &files, definition);
+        if owners.len() > 1 {
+            let (path, line) = &owners[0];
+            push_scanned_finding(
+                manifest,
+                completed_pr,
+                findings,
+                "parallel_semantic_model",
+                "single-canonical-ast",
+                path,
+                *line,
+                &format!(
+                    "{definition} is defined in {}",
+                    owners
+                        .iter()
+                        .map(|(path, _)| path.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            );
+        }
+    }
+
+    let action_owners = definition_owners(repo_root, &files, "pub enum SubjectVerbActionAst");
+    let clause_owners = definition_owners(repo_root, &files, "pub struct CompilerClauseAst");
+    if let (Some((path, line)), Some((clause_path, _))) =
+        (action_owners.first(), clause_owners.first())
+    {
+        push_scanned_finding(
+            manifest,
+            completed_pr,
+            findings,
+            "parallel_semantic_model",
+            "single-canonical-effect-ast",
+            path,
+            *line,
+            &format!("SubjectVerbActionAst coexists with CompilerClauseAst in {clause_path}"),
+        );
+    }
+}
+
+fn definition_owners(
+    repo_root: &Path,
+    files: &[PathBuf],
+    definition: &str,
+) -> Vec<(String, usize)> {
+    files
+        .iter()
+        .filter_map(|path| {
+            let source = fs::read_to_string(path).ok()?;
+            let line = source.lines().position(|line| line.contains(definition))? + 1;
+            Some((relative_path(repo_root, path), line))
+        })
+        .collect()
+}
+
+fn audit_whole_program_recipe_paths(
+    manifest: &OwnershipManifest,
+    completed_pr: u8,
+    repo_root: &Path,
+    findings: &mut Vec<Finding>,
+) {
+    for path in production_parser_rust_files(manifest, repo_root) {
+        let relative = relative_path(repo_root, &path);
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
+        let recipe_path = file_name.ends_with("_programs.rs")
+            || file_name == "program.rs"
+            || relative.contains("/bundle_rules")
+            || relative.contains("/generic_program_shapes")
+            || relative.contains("/sequence_pairs/")
+            || relative.contains("/triple_sequence_shapes/")
+            || relative.contains("/sequence_quad_shapes/");
+        if recipe_path {
+            push_scanned_finding(
+                manifest,
+                completed_pr,
+                findings,
+                "whole_program_recipe",
+                "compositional-grammar-only",
+                &relative,
+                1,
+                "program/bundle/exact-sequence module remains in the production parser tree",
+            );
+        }
+    }
+}
+
+fn production_parser_rust_files(manifest: &OwnershipManifest, repo_root: &Path) -> Vec<PathBuf> {
+    let mut roots = manifest
+        .phases
+        .iter()
+        .filter(|phase| phase.id != "runtime")
+        .flat_map(|phase| phase.crates.iter())
+        .map(|crate_name| format!("crates/{crate_name}/src"))
+        .collect::<Vec<_>>();
+    roots.push("crates/ironsmith-compiler/src".to_string());
+    roots.sort();
+    roots.dedup();
+
+    let mut files = roots
+        .iter()
+        .flat_map(|root| rust_files(repo_root, root, &manifest.audit.excluded_path_fragments))
+        .collect::<Vec<_>>();
+    files.sort();
+    files.dedup();
+    files
 }
 
 fn validate_migration_item(
@@ -393,29 +787,57 @@ fn audit_patterns(
     repo_root: &Path,
     findings: &mut Vec<Finding>,
 ) {
+    let production_files = production_parser_rust_files(manifest, repo_root);
     for rule in &manifest.audit.pattern_rules {
-        for root in &rule.roots {
-            for path in rust_files(repo_root, root, &manifest.audit.excluded_path_fragments) {
-                let relative = relative_path(repo_root, &path);
-                scan_lines(&path, |line_number, line| {
-                    if rule.patterns.iter().any(|pattern| line.contains(pattern))
-                        && pattern_rule_applies_at_path(rule, &relative)
-                    {
-                        push_scanned_finding(
-                            manifest,
-                            completed_pr,
-                            findings,
-                            &rule.kind,
-                            &rule.id,
-                            &relative,
-                            line_number,
-                            line.trim(),
-                        );
-                    }
-                });
-            }
+        let files = if invariant_pattern_is_global(&rule.id) {
+            production_files.clone()
+        } else {
+            let mut files = rule
+                .roots
+                .iter()
+                .flat_map(|root| {
+                    rust_files(repo_root, root, &manifest.audit.excluded_path_fragments)
+                })
+                .collect::<Vec<_>>();
+            files.sort();
+            files.dedup();
+            files
+        };
+        for path in files {
+            let relative = relative_path(repo_root, &path);
+            scan_lines(&path, |line_number, line| {
+                if rule.patterns.iter().any(|pattern| line.contains(pattern))
+                    && pattern_rule_applies_at_path(rule, &relative)
+                {
+                    push_scanned_finding(
+                        manifest,
+                        completed_pr,
+                        findings,
+                        &rule.kind,
+                        &rule.id,
+                        &relative,
+                        line_number,
+                        line.trim(),
+                    );
+                }
+            });
         }
     }
+}
+
+fn invariant_pattern_is_global(rule_id: &str) -> bool {
+    matches!(
+        rule_id,
+        "literal-reference-tags"
+            | "registration-order-semantics"
+            | "legacy-registry-handlers-and-adapters"
+            | "postparse-semantic-repair"
+            | "legacy-runtime-semantic-alternatives"
+            | "stringly-semantic-tags"
+            | "expired-legacy-registries"
+            | "hidden-parser-state"
+            | "parser-stack-growth"
+    )
 }
 
 /// The discarded-error rule protects semantic commitment boundaries, not

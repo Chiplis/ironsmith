@@ -10,13 +10,16 @@ fn render_card(name: &str, card_type: CardType, text: &str) -> String {
 
 #[test]
 fn identity_crisis_rejoins_the_shared_target_players_zones() {
+    let definition =
+        crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Identity Crisis")
+            .card_types(vec![CardType::Sorcery])
+            .parse_text("Exile all cards from target player's hand and graveyard.")
+            .expect("Identity Crisis should compile");
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
     assert_eq!(
-        render_card(
-            "Identity Crisis",
-            CardType::Sorcery,
-            "Exile all cards from target player's hand and graveyard.",
-        ),
-        "Exile all cards from target player's hand and graveyard."
+        rendered, "Exile all cards from target player's hand and graveyard.",
+        "{:#?}",
+        definition.spell_effect
     );
 }
 

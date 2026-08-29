@@ -3,12 +3,45 @@
 //! Scoped reference resolution and compiler-AST normalization.
 
 pub use ironsmith_compiler_semantic::model;
-pub use ironsmith_compiler_semantic::model::facts::NormalizedLine;
 pub use ironsmith_compiler_semantic::model::visit::{
     assert_effect_ast_variant_coverage, for_each_nested_effects,
 };
-pub use ironsmith_compiler_semantic::*;
-pub use ironsmith_core::{ObjectFilter, PlayerFilter, Value};
+pub use ironsmith_compiler_semantic::{
+    AttachmentConditionHost, AuraAttachmentFilter, ChooseSpec, ClashOpponentAst, ConditionExpr,
+    ControlDurationAst, DamageBySpec, ExchangeValueAst, ExtraTurnAnchorAst,
+    FutureZoneReplacementCausePolicyAst, IfResultPredicate, KeywordAction, LibraryBottomOrderAst,
+    LibraryConsultModeAst, LibraryConsultStopRuleAst, ObjectRefAst,
+    PermanentLeftBattlefieldControlSurface, PlayerAst, PlayerFilter, PowerToughness,
+    PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, PtValue, RetargetModeAst,
+    ReturnControllerAst, SearchLibrarySlotAst, SharedTypeConstraintAst,
+    SourceCounterThresholdSurface, TagKey, TargetAst, TotalCost, ZoneReplacementDurationAst,
+    ability, alternative_cast, card, cards, color, continuous, cost, costs, diagnostics, effect,
+    effects, events, filter, game_state, grant, ids, mana, model_impl, object, parse_context,
+    payload, resolution, static_abilities, tag, target, triggers, types, zone,
+};
+pub use ironsmith_core::{ObjectFilter, Value};
+
+/// Read-only coordinate data used while attaching authored-source spans to
+/// resolved semantic references.
+///
+/// The document phase owns the strings and mapping storage. Resolution only
+/// borrows the minimal view needed to map an already-recognized span.
+#[derive(Debug, Clone, Copy)]
+pub struct SpanMappingContext<'a> {
+    pub normalized: &'a str,
+    pub original: &'a str,
+    pub char_map: &'a [usize],
+}
+
+impl<'a> SpanMappingContext<'a> {
+    pub const fn new(normalized: &'a str, original: &'a str, char_map: &'a [usize]) -> Self {
+        Self {
+            normalized,
+            original,
+            char_map,
+        }
+    }
+}
 
 pub mod util {
     pub fn source_reference_surface_for_span(
@@ -59,16 +92,12 @@ pub fn map_span_to_original(
     }
 }
 
-#[path = "../../ironsmith-compiler/src/lowering/compile_support/tag_support.rs"]
 pub mod tag_support;
 
 pub mod compile_support {
     pub use crate::tag_support::*;
 }
 
-#[path = "../../ironsmith-compiler/src/model/effect_ast_normalization.rs"]
 pub mod effect_ast_normalization;
-#[path = "../../ironsmith-compiler/src/model/reference_helpers.rs"]
 pub mod reference_helpers;
-#[path = "../../ironsmith-compiler/src/model/reference_resolution.rs"]
 pub mod reference_resolution;

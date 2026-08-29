@@ -8,11 +8,12 @@ fn each_player_return_keeps_additional_entry_counter() {
         .parse_text(oracle)
         .expect("each-player return with an entry counter should compile");
 
+    let debug = format!("{definition:#?}");
     assert_eq!(
         crate::compiled_text::compiled_text_lines(&definition).join("\n"),
-        oracle
+        oracle,
+        "{debug}"
     );
-    let debug = format!("{definition:#?}");
     assert!(debug.contains("ForPlayersEffect"), "{debug}");
     assert!(debug.contains("ReturnAllToBattlefieldEffect"), "{debug}");
     assert!(debug.contains("PutCountersEffect"), "{debug}");

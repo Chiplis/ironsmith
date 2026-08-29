@@ -10,7 +10,7 @@ fn arcane_artisan_keeps_one_target_and_the_exiled_card_copy_reference() {
         .expect("Arcane Artisan should compile");
 
     let compiled = crate::compiled_text::compiled_text_lines(&definition).join("\n");
-    assert_eq!(compiled, ORACLE);
+    assert_eq!(compiled, ORACLE, "{:#?}", definition.abilities);
     assert_eq!(compiled.matches("Target player").count(), 1, "{compiled}");
     assert!(!compiled.contains("Choose target player"), "{compiled}");
 }

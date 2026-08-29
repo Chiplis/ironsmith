@@ -20,7 +20,7 @@ pub(super) fn describe_consult_stop_text(
     let match_text = match stop_rule {
         crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
         | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
-            selection.to_string()
+            ensure_indefinite_article(selection)
         }
         crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count)
             if value_prefers_where_x(count) =>

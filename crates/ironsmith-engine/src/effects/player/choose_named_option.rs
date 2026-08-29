@@ -47,6 +47,7 @@ impl EffectExecutor for ChooseNamedOptionEffect {
             return Ok(EffectOutcome::count(0));
         };
         game.set_chosen_named_option(ctx.source, self.options[chosen].clone());
-        Ok(EffectOutcome::count(1))
+        let outcome = self.options[chosen].parse::<i32>().unwrap_or(1);
+        Ok(EffectOutcome::count(outcome))
     }
 }

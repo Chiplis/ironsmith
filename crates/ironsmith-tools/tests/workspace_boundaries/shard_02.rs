@@ -6,10 +6,10 @@ use super::*;
 #[test]
 pub(super) fn sentence_shape_predicates_route_shape_gates_through_typed_grammar() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/dispatch_inner/sentence_shape_predicates.rs";
+    let relative = "crates/ironsmith-compiler-grammar/src/effect_sentences/dispatch_inner/sentence_shape_predicates.rs";
     let content = read_repo_file(&root, relative);
     let grammar_relative =
-        "crates/ironsmith-compiler/src/front_end/grammar/effects/sentence_predicate_shapes.rs";
+        "crates/ironsmith-compiler-grammar/src/grammar/effects/sentence_predicate_shapes.rs";
     let grammar = read_repo_file(&root, grammar_relative);
 
     for required in [
@@ -61,7 +61,7 @@ pub(super) fn sentence_shape_predicates_route_shape_gates_through_typed_grammar(
 #[test]
 pub(super) fn token_copy_control_uses_typed_grammar_shapes() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/front_end/grammar/effect_clauses/effect_sentences/subject_verb_primitives/token_copy_control_family.rs";
+    let relative = "crates/ironsmith-compiler-grammar/src/effect_sentences/subject_verb_primitives/token_copy_control_family.rs";
     let content = read_repo_file(&root, relative);
 
     for required in [

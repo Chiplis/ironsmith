@@ -53,9 +53,11 @@ fn quoted_token_creation_then_coin_flip_preserves_all_public_instructions() {
             ])
             .parse_text(text)
             .expect("quoted token creation and coin-flip trigger should compile");
+    let debug = format!("{definition:#?}");
 
     assert_eq!(
         crate::compiled_text::compiled_text_lines(&definition).join("\n"),
-        text
+        text,
+        "{debug}"
     );
 }

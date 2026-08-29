@@ -168,6 +168,24 @@ fn describe_cross_segment_gain_control_aura_legal_attach_window(
     ))
 }
 
+fn describe_cross_segment_counter_then_keyword_grants_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [counter_segment, grant_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !counter_segment.self_replacements.is_empty() || !grant_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let mut effects = counter_segment.default_effects.clone();
+    effects.extend(grant_segment.default_effects.iter().cloned());
+    let rendered =
+        super::render_effects::describe_put_counters_then_coordinated_keyword_grants(&effects)?;
+    Some((rendered, 2))
+}
+
 fn exact_tagged_pool_filter(filter: &ObjectFilter, pool: &TagKey) -> bool {
     let [constraint] = filter.tagged_constraints.as_slice() else {
         return false;
@@ -3302,13 +3320,26 @@ fn describe_structural_starting_life_threshold_anthem(ability: &Ability) -> Opti
         return None;
     }
     let model = static_ability.compiled_model()?;
-    let ironsmith_core::StaticAbilityPayload::Anthem(anthem) = &model.payload else {
-        return None;
+    let (anthem, condition) = match &model.payload {
+        ironsmith_core::StaticAbilityPayload::Anthem(anthem) => {
+            (anthem, anthem.condition.as_ref()?)
+        }
+        ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
+            let ironsmith_core::StaticAbilityPayload::Anthem(anthem) = &ability.payload else {
+                return None;
+            };
+            if anthem.condition.is_some() {
+                return None;
+            }
+            (anthem, condition)
+        }
+        _ => return None,
     };
     let filter = anthem.filter.as_ref()?;
-    let condition = anthem.condition.as_ref()?;
-    if anthem.set_quantifier_surface.is_some()
-        || anthem.count_uses_where_x
+    if !matches!(
+        anthem.set_quantifier_surface,
+        None | Some(ironsmith_core::SetQuantifierSurface::Each)
+    ) || anthem.count_uses_where_x
         || anthem.additional_surface
         || anthem.replacement_surface.is_some()
     {
@@ -3529,6 +3560,12 @@ mod starting_life_threshold_anthem_tests {
         .card_types(vec![CardType::Creature])
         .parse_text(LINE)
         .expect("starting-life threshold anthem should parse");
+        let parsed_ability = definition.abilities.last().expect("parsed anthem");
+        assert_eq!(
+            describe_structural_starting_life_threshold_anthem(parsed_ability),
+            Some(LINE.trim_end_matches('.').to_string()),
+            "{parsed_ability:#?}"
+        );
         assert_eq!(
             crate::compiled_text::compiled_text_lines(&definition),
             vec![LINE.to_string()]
@@ -3542,13 +3579,17 @@ mod starting_life_threshold_anthem_tests {
             .compiled_model()
             .expect("compiled static model")
             .clone();
-        let ironsmith_core::StaticAbilityPayload::Anthem(anthem) = &mut model.payload else {
-            panic!("expected anthem payload");
+        let condition = match &mut model.payload {
+            ironsmith_core::StaticAbilityPayload::Anthem(anthem) => {
+                anthem.condition.as_mut().expect("anthem condition")
+            }
+            ironsmith_core::StaticAbilityPayload::Conditional { condition, .. } => condition,
+            payload => panic!("expected conditioned anthem payload, got {payload:#?}"),
         };
-        let Some(Condition::ValueComparison {
+        let Condition::ValueComparison {
             right: Value::Add(_, offset),
             ..
-        }) = &mut anthem.condition
+        } = condition
         else {
             panic!("expected starting-life comparison");
         };
@@ -11806,7 +11847,8 @@ mod each_player_token_characteristic_tests {
         assert_eq!(
             describe_cross_segment_each_player_token_characteristic_window(&program.segments, 0,)
                 .map(|(rendered, _)| rendered),
-            Some(ORACLE.to_string())
+            Some(ORACLE.to_string()),
+            "{program:#?}"
         );
         assert_eq!(
             crate::compiled_text::compiled_text_lines(&definition).join("\n"),
@@ -13560,20 +13602,33 @@ fn describe_cross_segment_conditional_pump_fight_program(
         return None;
     };
     let then_sequence = then_root.downcast_ref::<crate::effects::SequenceEffect>()?;
-    let [coordinated_root] = then_sequence.effects.as_slice() else {
-        return None;
-    };
-    let coordinated = coordinated_root.downcast_ref::<crate::effects::SequenceEffect>()?;
-    let [fight_target_root, pump_root, fight_root] = coordinated.effects.as_slice() else {
-        return None;
-    };
     if then_sequence.surface != ironsmith_core::SequenceSurface::SentenceLeadingThen
         || then_sequence.result_label.is_some()
-        || coordinated.surface != ironsmith_core::SequenceSurface::Coordinated
-        || coordinated.result_label.is_some()
     {
         return None;
     }
+    // Coordination normalization may preserve the pump/fight conjunction as
+    // an inner coordinated sequence or flatten its three executable members
+    // directly into the authored `Then` sequence. Both shapes retain the same
+    // typed target, pump, and fight edges.
+    let coordinated_effects = match then_sequence.effects.as_slice() {
+        [coordinated_root]
+            if coordinated_root
+                .downcast_ref::<crate::effects::SequenceEffect>()
+                .is_some_and(|coordinated| {
+                    coordinated.surface == ironsmith_core::SequenceSurface::Coordinated
+                        && coordinated.result_label.is_none()
+                }) =>
+        {
+            &coordinated_root
+                .downcast_ref::<crate::effects::SequenceEffect>()?
+                .effects
+        }
+        effects => effects,
+    };
+    let [fight_target_root, pump_root, fight_root] = coordinated_effects else {
+        return None;
+    };
 
     let fight_target = fight_target_root.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
     let pump_tagged = pump_root.downcast_ref::<crate::effects::TaggedEffect>()?;
@@ -19555,6 +19610,16 @@ pub(super) fn describe_resolution_program(
             continue;
         }
         if let Some((rendered, consumed)) =
+            describe_cross_segment_counter_then_keyword_grants_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
             describe_cross_segment_gain_control_aura_legal_attach_window(
                 &program.segments,
                 segment_index,
@@ -25480,6 +25545,7 @@ fn describe_single_quantified_unless_payment_program(
     let [effect] = segment.default_effects.as_slice() else {
         return None;
     };
+    let effect = structural_unwrap_render_wrappers(effect);
     let for_players = effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
     describe_for_players_unless_pays(for_players)
 }
@@ -25793,6 +25859,9 @@ fn describe_resolution_program_preserving_source_lines(
     if let Some(rendered) = describe_cross_segment_remove_abilities_then_destroy_program(program) {
         return rendered;
     }
+    if let Some(rendered) = describe_cross_segment_delegated_search_partition_program(program) {
+        return rendered;
+    }
     if let Some(rendered) = describe_single_quantified_unless_payment_program(program) {
         return rendered;
     }
@@ -25924,6 +25993,12 @@ fn describe_resolution_program_preserving_source_lines(
     }
     if let Some((rendered, consumed)) =
         describe_cross_segment_failed_sequence_draw_window(&program.segments, 0)
+        && consumed == program.segments.len()
+    {
+        return rendered;
+    }
+    if let Some((rendered, consumed)) =
+        describe_cross_segment_counter_then_keyword_grants_window(&program.segments, 0)
         && consumed == program.segments.len()
     {
         return rendered;
@@ -30470,9 +30545,11 @@ mod triggering_card_type_exile_permission_tests {
 
     #[test]
     fn renders_the_triggering_card_without_exposing_its_tag() {
+        let ability = exact_ability();
         assert_eq!(
-            describe_triggering_card_type_exile_then_cast_permission(&exact_ability()),
-            Some("Whenever a face-down creature you control dies, exile it if it's an instant or sorcery card. You may cast that card until the end of your next turn".to_string())
+            describe_triggering_card_type_exile_then_cast_permission(&ability),
+            Some("Whenever a face-down creature you control dies, exile it if it's an instant or sorcery card. You may cast that card until the end of your next turn".to_string()),
+            "{ability:#?}"
         );
     }
 
@@ -35029,7 +35106,9 @@ mod source_line_grant_loss_tests {
             vec![
                 "Hypertoxic Miasma — All lands have \"{T}: Add one mana of any color\" and lose all other abilities."
                     .to_string()
-            ]
+            ],
+            "{:#?}",
+            definition.abilities
         );
     }
 }
@@ -41383,7 +41462,10 @@ mod source_counter_threshold_static_surface_tests {
             let (surface, consumed) =
                 describe_structural_source_counter_threshold_static_bundle(abilities, subject)
                     .unwrap_or_else(|| {
-                        panic!("typed counter-threshold renderer should match {name}")
+                        panic!(
+                            "typed counter-threshold renderer should match {name}: selected={abilities:#?}; all={:#?}",
+                            definition.abilities
+                        )
                     });
             assert_eq!(consumed, expected_consumed, "{name}: {surface}");
             assert_eq!(

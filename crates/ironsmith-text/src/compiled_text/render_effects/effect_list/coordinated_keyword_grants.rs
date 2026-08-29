@@ -97,7 +97,7 @@ pub(super) fn describe_coordinated_keyword_grants(effects: &[Effect]) -> Option<
     ))
 }
 
-pub(super) fn describe_put_counters_then_coordinated_keyword_grants(
+pub(crate) fn describe_put_counters_then_coordinated_keyword_grants(
     effects: &[Effect],
 ) -> Option<String> {
     let [put_effect, grant_effects @ ..] = effects else {
@@ -290,7 +290,8 @@ mod tests {
             lines.first().map(String::as_str),
             Some(
                 "Put two +1/+1 counters on target creature. It gains vigilance, trample, lifelink, indestructible, and haste until end of turn."
-            )
+            ),
+            "{definition:#?}"
         );
     }
 }

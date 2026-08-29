@@ -6,7 +6,36 @@ use std::process::Command;
 
 mod tooling_paths;
 
-const PARSER_ROOT: &str = "crates/ironsmith-compiler/src";
+const LEGACY_FALLBACK_PATTERNS: &[&str] = &[
+    "LineFamilyRuleHandler::Legacy",
+    "LexRuleHandler::Legacy",
+    "RuleHandler::Legacy",
+    "LegacyRuntime",
+    "legacy_handler",
+    "legacy_adapter",
+    "compatibility_adapter",
+];
+
+const ORDER_DEPENDENT_DISPATCH_PATTERNS: &[&str] = &[
+    "preempt",
+    "first_refusal",
+    "first refusal",
+    "must_win_before",
+    "must win before",
+    "must_run_before",
+    "must run before",
+];
+
+const WHOLE_PROGRAM_PATH_PATTERNS: &[&str] = &[
+    "_programs.rs",
+    "/program.rs",
+    "/programs/",
+    "bundle_rules",
+    "generic_program_shapes",
+    "sequence_pairs",
+    "sequence_triples",
+    "sequence_quads",
+];
 
 const PHRASE_HELPER_PATTERNS: &[&str] = &[
     "words_match_prefix(",
@@ -295,6 +324,11 @@ const LEXED_CONTEXT_MARKERS: &[&str] = &[
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum AuditKind {
     ParserOwnership,
+    LegacyFallback,
+    OrderedDispatch,
+    OptionalParserBoundary,
+    SilentCandidateFailure,
+    WholeProgramRecipe,
     PhraseHelpers,
     ScanHelpers,
     WordSliceShapes,
@@ -306,6 +340,11 @@ impl AuditKind {
     fn as_str(self) -> &'static str {
         match self {
             Self::ParserOwnership => "parser_ownership",
+            Self::LegacyFallback => "legacy_fallback",
+            Self::OrderedDispatch => "ordered_dispatch",
+            Self::OptionalParserBoundary => "optional_parser_boundary",
+            Self::SilentCandidateFailure => "silent_candidate_failure",
+            Self::WholeProgramRecipe => "whole_program_recipe",
             Self::PhraseHelpers => "phrase_helpers",
             Self::ScanHelpers => "scan_helpers",
             Self::WordSliceShapes => "word_slice_shapes",
@@ -363,7 +402,7 @@ fn main() {
     let args = Args::parse();
     let repo_root = tooling_paths::repo_root()
         .unwrap_or_else(|err| panic!("failed to locate repo root: {err}"));
-    let files = tracked_rs_files(&repo_root, PARSER_ROOT);
+    let files = tracked_rs_files(&repo_root);
 
     let mut findings = Vec::new();
     for path in files {
@@ -384,8 +423,18 @@ fn main() {
             });
         }
 
+        for (line, kind, name) in module_protocol_findings(&rel, &source) {
+            findings.push(Finding {
+                file: rel.clone(),
+                name: name.to_string(),
+                line,
+                kinds: BTreeSet::from([kind]),
+            });
+        }
+
         for function in extract_functions(&rel, &source) {
-            let kinds = classify_function(&function.file, &function.body);
+            let mut kinds = classify_function(&function.file, &function.body);
+            kinds.extend(classify_parser_protocol(&function.name, &function.body));
             if kinds.is_empty() {
                 continue;
             }
@@ -491,6 +540,11 @@ fn print_report(findings: &[Finding]) {
     println!("counts_by_kind:");
     for kind in [
         AuditKind::ParserOwnership,
+        AuditKind::LegacyFallback,
+        AuditKind::OrderedDispatch,
+        AuditKind::OptionalParserBoundary,
+        AuditKind::SilentCandidateFailure,
+        AuditKind::WholeProgramRecipe,
         AuditKind::PhraseHelpers,
         AuditKind::ScanHelpers,
         AuditKind::WordSliceShapes,
@@ -526,11 +580,18 @@ fn print_report(findings: &[Finding]) {
     }
 }
 
-fn tracked_rs_files(repo_root: &Path, root: &str) -> Vec<PathBuf> {
+fn tracked_rs_files(repo_root: &Path) -> Vec<PathBuf> {
     let output = Command::new("git")
         .arg("-C")
         .arg(repo_root)
-        .args(["ls-files", "--", root])
+        .args([
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "--",
+            "*.rs",
+        ])
         .output()
         .unwrap_or_else(|err| panic!("failed enumerating tracked parser files: {err}"));
     assert!(
@@ -542,6 +603,11 @@ fn tracked_rs_files(repo_root: &Path, root: &str) -> Vec<PathBuf> {
         .expect("git ls-files returned a non-UTF-8 path")
         .lines()
         .filter(|path| path.ends_with(".rs"))
+        .filter(|path| {
+            (path.starts_with("crates/ironsmith-compiler")
+                && !path.starts_with("crates/ironsmith-compiler-runtime/"))
+                || path.starts_with("crates/ironsmith-grammar-common/")
+        })
         .filter(|path| {
             !path.contains("/tests/")
                 && !path.ends_with("/tests.rs")
@@ -912,6 +978,77 @@ fn contains_rust_identifier(source: &str, expected: &str) -> bool {
     })
 }
 
+fn module_protocol_findings(file: &str, source: &str) -> Vec<(usize, AuditKind, &'static str)> {
+    let sanitized = sanitize_source(source);
+    let mut findings = Vec::new();
+
+    if let Some(line) = first_pattern_line(&sanitized, LEGACY_FALLBACK_PATTERNS) {
+        findings.push((line, AuditKind::LegacyFallback, "<module-legacy-fallback>"));
+    }
+    if let Some(line) = first_pattern_line(
+        &source.to_ascii_lowercase(),
+        ORDER_DEPENDENT_DISPATCH_PATTERNS,
+    ) {
+        findings.push((
+            line,
+            AuditKind::OrderedDispatch,
+            "<module-ordered-dispatch>",
+        ));
+    }
+    if WHOLE_PROGRAM_PATH_PATTERNS
+        .iter()
+        .any(|pattern| file.contains(pattern))
+    {
+        findings.push((
+            1,
+            AuditKind::WholeProgramRecipe,
+            "<module-whole-program-recipe>",
+        ));
+    }
+
+    findings
+}
+
+fn first_pattern_line(source: &str, patterns: &[&str]) -> Option<usize> {
+    source
+        .lines()
+        .position(|line| contains_any(line, patterns))
+        .map(|line| line + 1)
+}
+
+fn classify_parser_protocol(name: &str, body: &str) -> BTreeSet<AuditKind> {
+    let mut kinds = BTreeSet::new();
+    let candidate = [
+        "parse",
+        "recognize",
+        "match",
+        "candidate",
+        "dispatch",
+        "handler",
+    ]
+    .iter()
+    .any(|marker| name.contains(marker));
+    if !candidate {
+        return kinds;
+    }
+
+    let sanitized = sanitize_source(body);
+    let signature = sanitized
+        .split_once('{')
+        .map_or(sanitized.as_str(), |(head, _)| head);
+    let compact_signature = signature
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>();
+    if compact_signature.contains("->Option<") || compact_signature.contains("Result<Option<") {
+        kinds.insert(AuditKind::OptionalParserBoundary);
+    }
+    if sanitized.contains(".ok()") {
+        kinds.insert(AuditKind::SilentCandidateFailure);
+    }
+    kinds
+}
+
 fn classify_function(file: &str, body: &str) -> BTreeSet<AuditKind> {
     let mut kinds = BTreeSet::new();
 
@@ -1118,6 +1255,46 @@ fn contains_raw_string_after_lex(body: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parser_protocol_detection_covers_optional_and_discarded_candidates() {
+        let kinds = classify_parser_protocol(
+            "parse_candidate",
+            "fn parse_candidate() -> Result<Option<Value>, Error> { probe().ok(); todo!() }",
+        );
+        assert!(kinds.contains(&AuditKind::OptionalParserBoundary));
+        assert!(kinds.contains(&AuditKind::SilentCandidateFailure));
+        assert!(
+            classify_parser_protocol(
+                "format_value",
+                "fn format_value() -> Option<Value> { None }"
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn module_protocol_detection_cannot_be_hidden_by_renamed_files() {
+        let legacy = module_protocol_findings(
+            "crates/ironsmith-compiler-grammar/src/registry.rs",
+            "const HANDLER: LexRuleHandler = LexRuleHandler::Legacy(parse_old);",
+        );
+        assert!(
+            legacy
+                .iter()
+                .any(|(_, kind, _)| *kind == AuditKind::LegacyFallback)
+        );
+
+        let recipes = module_protocol_findings(
+            "crates/ironsmith-compiler-grammar/src/effect_programs.rs",
+            "pub fn typed() {}",
+        );
+        assert!(
+            recipes
+                .iter()
+                .any(|(_, kind, _)| *kind == AuditKind::WholeProgramRecipe)
+        );
+    }
 
     #[test]
     fn extracts_lexer_style_functions_after_char_and_raw_literals() {

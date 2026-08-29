@@ -15,6 +15,7 @@ use ironsmith_tools::{
 
 const DEFAULT_PROBE_NAME: &str = "Parser Probe";
 const DEFAULT_SHOW_DEFINITION: bool = true;
+const COMPILER_WORKER_STACK_SIZE: usize = 64 * 1024 * 1024;
 
 fn text_includes_metadata(text: &str) -> bool {
     text.lines().map(str::trim).any(|line| {
@@ -413,7 +414,7 @@ fn write_compare_text_job<W: Write>(out: &mut W, job: &CompileJob) -> Result<(),
     Ok(())
 }
 
-fn main() -> Result<(), String> {
+fn run_compile_oracle_text() -> Result<(), String> {
     let mut names: Vec<String> = Vec::new();
     let mut cards_path = default_cards_path().display().to_string();
     let mut text_arg: Option<String> = None;
@@ -621,6 +622,19 @@ fn main() -> Result<(), String> {
         .map_err(|err| format!("failed to flush compile output: {err}"))?;
 
     Ok(())
+}
+
+fn main() -> Result<(), String> {
+    let worker = std::thread::Builder::new()
+        .name("compile-oracle-text".to_string())
+        .stack_size(COMPILER_WORKER_STACK_SIZE)
+        .spawn(run_compile_oracle_text)
+        .map_err(|err| format!("failed to start compiler worker: {err}"))?;
+
+    match worker.join() {
+        Ok(result) => result,
+        Err(payload) => std::panic::resume_unwind(payload),
+    }
 }
 
 #[cfg(test)]

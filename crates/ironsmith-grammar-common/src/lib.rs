@@ -4,11 +4,22 @@
 //! Shared lexical grammar primitives and typed leaf recognizers.
 
 pub use ironsmith_compiler_semantic::model;
-pub use ironsmith_compiler_semantic::*;
+pub use ironsmith_compiler_semantic::{
+    AttachmentConditionHost, AuraAttachmentFilter, ChooseSpec, ClashOpponentAst, ConditionExpr,
+    ControlDurationAst, DamageBySpec, ExchangeValueAst, ExtraTurnAnchorAst,
+    FutureZoneReplacementCausePolicyAst, IfResultPredicate, KeywordAction, LibraryBottomOrderAst,
+    LibraryConsultModeAst, LibraryConsultStopRuleAst, ObjectRefAst,
+    PermanentLeftBattlefieldControlSurface, PlayerAst, PlayerFilter, PowerToughness,
+    PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, PtValue, RetargetModeAst,
+    ReturnControllerAst, SearchLibrarySlotAst, SharedTypeConstraintAst,
+    SourceCounterThresholdSurface, TagKey, TargetAst, TotalCost, ZoneReplacementDurationAst,
+    ability, alternative_cast, card, cards, color, continuous, cost, costs, diagnostics, effect,
+    effects, events, filter, game_state, grant, ids, mana, model_impl, object, parse_context,
+    payload, resolution, static_abilities, tag, target, triggers, types, zone,
+};
 pub use ironsmith_compiler_syntax::lexer;
 
-#[path = "../../ironsmith-compiler/src/slice_primitives.rs"]
-pub mod slice_primitives;
+pub use ironsmith_compiler_syntax::slice_primitives;
 
 pub mod util {
     use std::cell::Cell;
@@ -96,7 +107,6 @@ pub mod util {
     }
 }
 
-#[path = "../../ironsmith-compiler/src/recognition.rs"]
 pub mod recognition;
 
 pub mod grammar;

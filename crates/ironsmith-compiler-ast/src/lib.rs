@@ -16,25 +16,30 @@ pub mod types {
     pub use ironsmith_core::{CardType, Subtype, Supertype};
 }
 
-#[path = "../../ironsmith-compiler/src/model/provenance.rs"]
-pub mod provenance;
+pub mod provenance {
+    pub use ironsmith_compiler_source::provenance::{
+        DashStyle, ProvenanceId, ProvenanceRecord, ProvenanceStore, ProvenanceView, Provenanced,
+        PunctuationKind, QuoteStyle, ReminderTextDecision, RenderingHint, SemanticProvenance,
+        SourcePosition, SourceSliceKind, SourceSpan, SourceUnit, SourceUnitId,
+    };
+}
 
 pub mod model {
     pub use crate::provenance;
     pub use crate::symbols;
 }
 
-#[path = "../../ironsmith-compiler/src/parse_context.rs"]
 pub mod parse_context;
-#[path = "../../ironsmith-compiler/src/model/parse_types.rs"]
 pub mod parse_types;
-#[path = "../../ironsmith-compiler/src/model/restrictions.rs"]
 pub mod restrictions;
-#[path = "../../ironsmith-compiler/src/model/symbols.rs"]
 pub mod symbols;
 
 pub use parse_context::*;
 pub use parse_types::*;
-pub use provenance::*;
+pub use provenance::{
+    DashStyle, ProvenanceId, ProvenanceRecord, ProvenanceStore, ProvenanceView, Provenanced,
+    PunctuationKind, QuoteStyle, ReminderTextDecision, RenderingHint, SemanticProvenance,
+    SourcePosition, SourceSliceKind, SourceSpan, SourceUnit, SourceUnitId,
+};
 pub use restrictions::*;
 pub use symbols::*;

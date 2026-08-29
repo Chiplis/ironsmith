@@ -3682,7 +3682,7 @@ pub(super) fn describe_effect_list_compacts_optional_search_battlefield_hand_par
 }
 
 #[test]
-pub(super) fn unselected_remainder_accepts_iterated_membership_condition_orientation() {
+pub(super) fn unselected_remainder_accepts_wrapped_iterated_membership_move() {
     let looked = TagKey::from("revealed");
     let chosen = TagKey::from("matched");
     let rest = crate::effects::ForEachTaggedEffect::new(
@@ -3694,10 +3694,13 @@ pub(super) fn unselected_remainder_accepts_iterated_membership_condition_orienta
                     .match_tagged(chosen.clone(), TaggedOpbjectRelation::IsTaggedObject),
             ),
             vec![],
-            vec![Effect::new(crate::effects::MoveToZoneEffect::new(
-                ChooseSpec::Iterated,
-                Zone::Graveyard,
-                false,
+            vec![Effect::new(crate::effects::TaggedEffect::new(
+                "moved_1",
+                Effect::new(crate::effects::MoveToZoneEffect::new(
+                    ChooseSpec::Iterated,
+                    Zone::Graveyard,
+                    false,
+                )),
             ))],
         ))],
     );
