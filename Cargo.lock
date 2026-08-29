@@ -1325,6 +1325,7 @@ name = "ironsmith-compiler-ast"
 version = "0.1.0"
 dependencies = [
  "ironsmith-compiler-api",
+ "ironsmith-compiler-source",
  "ironsmith-core",
 ]
 
@@ -1372,8 +1373,6 @@ dependencies = [
  "erased-serde",
  "ironsmith-compiler-api",
  "ironsmith-compiler-ast",
- "ironsmith-compiler-source",
- "ironsmith-compiler-syntax",
  "ironsmith-core",
  "serde",
 ]
@@ -1383,7 +1382,6 @@ name = "ironsmith-compiler-source"
 version = "0.1.0"
 dependencies = [
  "ironsmith-compiler-api",
- "ironsmith-compiler-ast",
  "ironsmith-compiler-syntax",
 ]
 
