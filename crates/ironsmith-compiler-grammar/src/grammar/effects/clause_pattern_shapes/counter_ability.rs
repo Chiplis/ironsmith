@@ -205,7 +205,7 @@ fn term_filters(term: CounterTargetTerm) -> Vec<(ObjectFilter, bool)> {
 #[path = "counter_ability_inline_tests.rs"]
 mod tests;
 
-#[path = "counter_ability/counter_programs.rs"]
+#[path = "counter_ability/counter.rs"]
 mod counter_programs;
 use counter_programs::parse_counter_ability_target_lexed;
 pub use counter_programs::parse_counter_ability_target_tokens;

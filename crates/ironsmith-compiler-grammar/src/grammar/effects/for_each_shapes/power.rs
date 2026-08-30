@@ -118,6 +118,6 @@ fn split_subject_and_rest(
 #[path = "power_inline_tests.rs"]
 mod tests;
 
-#[path = "power/core_programs.rs"]
+#[path = "power/core.rs"]
 mod core_programs;
 pub use core_programs::{parse_base_power_clause_shape, parse_base_power_toughness_clause_shape};

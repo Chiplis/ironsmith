@@ -216,17 +216,17 @@ pub fn parse_tagged_into_hand_shape(tokens: &[OwnedLexToken]) -> Option<TaggedPu
 #[path = "looked_put_inline_tests.rs"]
 mod tests;
 
-#[path = "looked_put/library_programs.rs"]
+#[path = "looked_put/library.rs"]
 mod library_programs;
 pub use library_programs::{
     is_reorder_tagged_cards, parse_revealed_remainder_shape, parse_tagged_on_top_library_shape,
 };
-#[path = "looked_put/reference_programs.rs"]
+#[path = "looked_put/reference.rs"]
 mod reference_programs;
 pub use reference_programs::parse_all_exiled_into_hand_filter;
-#[path = "looked_put/zone_programs.rs"]
+#[path = "looked_put/zone.rs"]
 mod zone_programs;
 pub use zone_programs::has_from_among_hand_surface;
-#[path = "looked_put/core_programs.rs"]
+#[path = "looked_put/core.rs"]
 mod core_programs;
 pub use core_programs::parse_from_among_them_shape;

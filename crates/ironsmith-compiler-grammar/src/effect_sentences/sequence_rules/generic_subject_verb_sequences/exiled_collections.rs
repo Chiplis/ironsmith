@@ -278,7 +278,7 @@ pub fn parse_exile_top_then_put_from_among_tokens(
         tag: chosen_tag,
         effects: vec![EffectAst::subject_verb_put_onto_battlefield(
             chooser,
-            TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
             tapped,
             controller,
         )],
@@ -357,7 +357,7 @@ fn build_exile_top_then_cast_collection(
     effects.push(EffectAst::ForEachTagged {
         tag: chosen_tag.clone(),
         effects: vec![EffectAst::subject_verb_cast_tagged(
-            TagKey::from(crate::cards::builders::IT_TAG),
+            crate::tag::CompilerReferenceTag::It.key(),
             PlayerAst::You,
             false,
             false,

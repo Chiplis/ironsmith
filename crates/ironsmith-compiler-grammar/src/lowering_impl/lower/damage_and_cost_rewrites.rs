@@ -75,7 +75,7 @@ fn remember_single_cross_ability_player_choice(builder: &mut CardDefinitionBuild
 
 fn filter_uses_persistent_chosen_object(filter: &ObjectFilter) -> bool {
     filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == ironsmith_core::CHOSEN_OBJECTS_TAG
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::ChosenObjects.as_str()
             && matches!(
                 constraint.relation,
                 crate::filter::TaggedOpbjectRelation::IsTaggedObject
@@ -107,7 +107,9 @@ fn static_ability_uses_persistent_chosen_object(
 
 fn choose_spec_uses_persistent_chosen_object(spec: &ChooseSpec) -> bool {
     match spec {
-        ChooseSpec::Tagged(tag) => tag.as_str() == ironsmith_core::CHOSEN_OBJECTS_TAG,
+        ChooseSpec::Tagged(tag) => {
+            tag.as_str() == crate::tag::CompilerReferenceTag::ChosenObjects.as_str()
+        }
         ChooseSpec::SurfaceHinted { spec, .. }
         | ChooseSpec::Target(spec)
         | ChooseSpec::WithCount(spec, _)
@@ -356,7 +358,7 @@ pub fn lower_normalized_card_ast_with_facts(
     for item in items {
         match item {
             NormalizedCardItem::Line(line) => {
-                rewrite_lower_line_ast(
+                lower_line_ast(
                     &mut builder,
                     &mut state,
                     &mut annotations,
@@ -367,16 +369,15 @@ pub fn lower_normalized_card_ast_with_facts(
             }
             NormalizedCardItem::Modal(modal) => {
                 let abilities_before = builder.abilities.len();
-                builder =
-                    rewrite_lower_parsed_modal(builder, modal, allow_unsupported, provenance_view)?;
-                rewrite_update_last_restrictable_ability(
+                builder = lower_parsed_modal(builder, modal, allow_unsupported, provenance_view)?;
+                update_last_restrictable_ability(
                     &builder,
                     abilities_before,
                     &mut last_restrictable_ability,
                 );
             }
             NormalizedCardItem::LevelAbility(level) => {
-                let lowered = rewrite_lower_level_ability_ast(level)?;
+                let lowered = lower_level_ability_ast(level)?;
                 level_abilities.push(lowered.level_ability);
                 level_activated_lines.extend(lowered.activated_lines);
             }
@@ -387,7 +388,7 @@ pub fn lower_normalized_card_ast_with_facts(
         builder = builder.with_level_abilities(level_abilities);
     }
     for line in level_activated_lines {
-        rewrite_lower_line_ast(
+        lower_line_ast(
             &mut builder,
             &mut state,
             &mut annotations,
@@ -399,7 +400,7 @@ pub fn lower_normalized_card_ast_with_facts(
 
     remember_single_cross_ability_player_choice(&mut builder);
     remember_single_cross_ability_object_choice(&mut builder);
-    builder = rewrite_finalize_lowered_card(builder, &mut state);
+    builder = finalize_lowered_card(builder, &mut state);
     if let Some(overload_ast) = overload_ast {
         let overloaded = lower_normalized_card_ast_with_facts(overload_ast)?;
         let overload_effects = overloaded

@@ -152,7 +152,7 @@ fn parse_emblem_description_ast(
     EmblemDescriptionAst { text, abilities }
 }
 
-#[path = "emblem_actions/core_programs.rs"]
+#[path = "emblem_actions/core.rs"]
 mod core_programs;
 pub use core_programs::{
     parse_emblem_action, parse_quoted_emblem_then_action, parse_unquoted_emblem_action,

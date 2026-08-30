@@ -1,8 +1,5 @@
 use super::*;
 use crate::grammar::activation_restrictions as restriction_grammar;
-
-const DAMAGED_THIS_WAY_TAG: &str = "damaged_0";
-
 fn player_negated_restriction_subject(words: &[&str]) -> Option<PlayerFilter> {
     restriction_grammar::parse_player_negated_subject_words(words)
 }
@@ -574,11 +571,13 @@ pub fn parse_player_restriction_subject(
         crate::cards::builders::SubjectAst::Player(PlayerAst::That) => PlayerFilter::IteratedPlayer,
         crate::cards::builders::SubjectAst::Player(PlayerAst::Defending) => PlayerFilter::Defending,
         crate::cards::builders::SubjectAst::Player(PlayerAst::ItsController) => {
-            PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(TagKey::from(IT_TAG)))
+            PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(
+                crate::tag::CompilerReferenceTag::It.key(),
+            ))
         }
-        crate::cards::builders::SubjectAst::Player(PlayerAst::ItsOwner) => {
-            PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(TagKey::from(IT_TAG)))
-        }
+        crate::cards::builders::SubjectAst::Player(PlayerAst::ItsOwner) => PlayerFilter::OwnerOf(
+            crate::filter::ObjectRef::tagged(crate::tag::CompilerReferenceTag::It.key()),
+        ),
         crate::cards::builders::SubjectAst::Player(PlayerAst::Chosen) => PlayerFilter::ChosenPlayer,
         crate::cards::builders::SubjectAst::Player(PlayerAst::Attacking) => PlayerFilter::Attacking,
         crate::cards::builders::SubjectAst::Player(PlayerAst::MostLifeTied) => {
@@ -894,9 +893,12 @@ pub fn parse_negated_object_restriction_clause(
             (filter, Some(target), None)
         } else if subject_tokens.is_empty() {
             // Supports carried clauses like "... and can't be blocked this turn."
-            let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens));
+            let target = TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::It.key(),
+                span_from_tokens(tokens),
+            );
             (
-                ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
                 Some(target),
                 None,
             )
@@ -915,10 +917,14 @@ pub fn parse_negated_object_restriction_clause(
             // blocked, it can't be regenerated this turn"), not a filter over
             // every creature. target=None keeps it on the plain
             // cant-restriction path (no spurious "choose it").
-            (ObjectFilter::tagged(TagKey::from(IT_TAG)), None, None)
+            (
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
+                None,
+                None,
+            )
         } else if bare_other_choice {
             (
-                ObjectFilter::creature().not_tagged(TagKey::from(IT_TAG)),
+                ObjectFilter::creature().not_tagged(crate::tag::CompilerReferenceTag::It.key()),
                 None,
                 None,
             )
@@ -945,13 +951,12 @@ pub fn parse_negated_object_restriction_clause(
         filter.set_plural_object_noun_surface(true);
     }
     if restriction_grammar::parse_dealt_damage_this_way_words(&words).is_some()
-        && !filter
-            .tagged_constraints
-            .iter()
-            .any(|constraint| constraint.tag.as_str() == DAMAGED_THIS_WAY_TAG)
+        && !filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::DamagedThisWay.as_str()
+        })
     {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from(DAMAGED_THIS_WAY_TAG),
+            tag: crate::tag::CompilerReferenceTag::DamagedThisWay.key(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }
@@ -1179,9 +1184,9 @@ pub fn parse_activated_ability_subject(
     let owner_words = crate::lexer::token_word_refs(&normalized_owner_tokens);
     if restriction_grammar::parse_it_owner_reference_words(&owner_words).is_some() {
         return Ok(Some(ParsedActivatedAbilitySubject {
-            filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
+            filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
             target: Some(TargetAst::Tagged(
-                TagKey::from(IT_TAG),
+                crate::tag::CompilerReferenceTag::It.key(),
                 span_from_tokens(tokens),
             )),
             scope,
@@ -1224,10 +1229,10 @@ pub fn ensure_it_tagged_constraint(filter: &mut ObjectFilter) {
     if !filter
         .tagged_constraints
         .iter()
-        .any(|constraint| constraint.tag.as_str() == IT_TAG)
+        .any(|constraint| constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
     {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }
@@ -1272,7 +1277,9 @@ pub fn parse_subject_object_filter(
             return Ok(Some(ObjectFilter::source()));
         }
         Some(restriction_grammar::RestrictionSubjectSurface::TaggedObjectPronoun) => {
-            return Ok(Some(ObjectFilter::tagged(TagKey::from(IT_TAG))));
+            return Ok(Some(ObjectFilter::tagged(
+                crate::tag::CompilerReferenceTag::It.key(),
+            )));
         }
         Some(restriction_grammar::RestrictionSubjectSurface::Player) | None => {}
     }

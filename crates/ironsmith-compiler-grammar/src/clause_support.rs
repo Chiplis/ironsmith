@@ -825,7 +825,7 @@ pub fn parse_linked_attack_group_combat_triggered_line_lexed(
         return Ok(None);
     };
 
-    let group_tag = crate::TagKey::from(ironsmith_core::ATTACKING_GROUP_TAG);
+    let group_tag = crate::tag::CompilerReferenceTag::AttackingGroup.key();
     effects.insert(
         0,
         EffectAst::subject_verb_tag_matching_objects(

@@ -47,13 +47,13 @@ fn exile_then_return_same_object_uses_captured_clauses_and_counter_followup() {
     let lowered_debug = format!("{lowered:#?}");
     assert!(lowered_debug.contains("PutCountersEffect"), "{lowered_debug}");
 
-    let prepared = crate::lowering_support::rewrite_prepare_statement_effects_for_lowering(
+    let prepared = crate::lowering_support::stage_statement_effects_for_lowering(
         &effects,
         crate::model::reference_state::ReferenceImports::default(),
     )
     .expect("prepare statement exile-return counter program");
     let statement_lowered =
-        crate::lowering_support::rewrite_lower_prepared_statement_effects(&prepared)
+        crate::lowering_support::lower_prepared_statement_effects(&prepared)
             .expect("lower prepared statement exile-return counter program");
     let statement_debug = format!("{statement_lowered:#?}");
     assert!(
@@ -116,7 +116,7 @@ fn source_exile_then_return_at_end_of_combat_stays_delayed() {
         "{effects:#?}"
     );
     let debug = format!("{effects:#?}");
-    assert!(debug.contains(crate::tag::SOURCE_EXILED_TAG), "{debug}");
+    assert!(debug.contains(crate::tag::CompilerReferenceTag::SourceExiled.as_str()), "{debug}");
 }
 
 #[test]

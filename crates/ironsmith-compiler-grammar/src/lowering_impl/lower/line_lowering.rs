@@ -19,7 +19,7 @@ use super::super::effect_pipeline::{
 };
 use super::*;
 
-pub(super) fn rewrite_apply_line_ast(
+pub(super) fn apply_line_ast(
     builder: CardDefinitionBuilder,
     state: &mut RewriteLoweredCardState,
     chunk: NormalizedLineChunk,
@@ -226,7 +226,7 @@ fn materialize_static_abilities(
                 builder = builder.has_fuse();
             }
             ability => {
-                let ability = rewrite_lower_static_ability_ast(ability)?;
+                let ability = lower_static_ability_ast(ability)?;
                 let ability =
                     materialize_self_spell_cost_facts(ability, &semantic_facts.static_ability);
                 lowered_abilities.push(ability);
@@ -386,7 +386,7 @@ fn materialize_ability(
     ability: NormalizedParsedAbility,
     semantic_facts: &LineSemanticFacts,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
-    let mut ability = rewrite_lower_prepared_ability(ability)?;
+    let mut ability = lower_prepared_ability(ability)?;
     preserve_triggered_leading_unless_surface(
         &mut ability,
         semantic_facts.triggered_ability.leading_unless_surface,
@@ -401,7 +401,7 @@ fn materialize_triggered(
     max_triggers_per_turn: Option<u32>,
     semantic_facts: &LineSemanticFacts,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
-    let functional_zones = infer_triggered_ability_functional_zones_from_facts(
+    let functional_zones = derive_triggered_ability_functional_zones_from_facts(
         &trigger,
         &semantic_facts.triggered_ability.functional_zones,
     );
@@ -409,16 +409,15 @@ fn materialize_triggered(
         max_triggers_per_turn,
         &semantic_facts.triggered_ability.frequency,
     );
-    let parsed = rewrite_parsed_triggered_ability(
+    let parsed = assemble_parsed_triggered_ability(
         trigger.clone(),
         Vec::new(),
         functional_zones,
-        None,
         intervening_if,
         semantic_facts.triggered_ability.presentation_label.as_ref(),
         prepared.prepared.imports.clone(),
     );
-    let mut parsed = rewrite_lower_prepared_ability(NormalizedParsedAbility {
+    let mut parsed = lower_prepared_ability(NormalizedParsedAbility {
         parsed,
         prepared: Some(NormalizedPreparedAbility::Triggered { trigger, prepared }),
     })?;
@@ -512,7 +511,10 @@ fn is_nested_anaphoric_target_condition(effect: &crate::cards::builders::EffectA
     let Some(program) = control.program(*consequence_program) else {
         return false;
     };
-    effects_reference_tag_in_object_position(&program.effects, IT_TAG)
+    effects_reference_tag_in_object_position(
+        &program.effects,
+        crate::tag::CompilerReferenceTag::It.as_str(),
+    )
 }
 
 fn count_nested_anaphoric_target_conditions(
@@ -568,19 +570,15 @@ fn materialize_statement(
             "normalized statement contains no effects".to_string(),
         ));
     }
-    let rebind_cross_line_target_condition =
+    let link_cross_line_target_condition =
         has_unique_cross_line_self_replacement_target_condition(&prepared, statement_facts);
-    let mut lowered = rewrite_lower_prepared_statement_effects(&prepared)?;
+    let mut lowered = lower_prepared_statement_effects(&prepared)?;
     preserve_single_statement_self_replacement_surface(&mut lowered.effects, statement_facts);
     fuse_repeatable_mana_payment_prevention_until_end_of_turn(
         &mut lowered.effects,
         statement_facts.repeatable_instant_timing_payment_until_end_of_turn,
     );
-    rewrite_validate_iterated_player_bindings_in_lowered_effects(
-        &lowered,
-        false,
-        "spell text effects",
-    )?;
+    validate_iterated_player_bindings_in_lowered_effects(&lowered, false, "spell text effects")?;
     state.latest_spell_exports = lowered.exports;
     if let Some(as_enters) = &statement_facts.as_enters_effect_program {
         let static_ability = if as_enters.turns_face_up_only {
@@ -613,7 +611,7 @@ fn materialize_statement(
         builder.spell_effect.as_mut(),
         &lowered.effects,
         statement_facts,
-        rebind_cross_line_target_condition,
+        link_cross_line_target_condition,
     ) {
         return Ok(builder);
     }
@@ -844,18 +842,18 @@ fn damage_target(effect: &crate::effect::Effect) -> Option<&ChooseSpec> {
         .map(|damage| &damage.target)
 }
 
-fn retarget_damage_effect(
+fn redirect_damage_effect(
     effect: &crate::effect::Effect,
     target: ChooseSpec,
 ) -> Option<crate::effect::Effect> {
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
         let mut with_id = with_id.clone();
-        with_id.effect = Box::new(retarget_damage_effect(with_id.effect.as_ref(), target)?);
+        with_id.effect = Box::new(redirect_damage_effect(with_id.effect.as_ref(), target)?);
         return Some(crate::effect::Effect::new(with_id));
     }
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         let mut tagged = tagged.clone();
-        tagged.effect = Box::new(retarget_damage_effect(tagged.effect.as_ref(), target)?);
+        tagged.effect = Box::new(redirect_damage_effect(tagged.effect.as_ref(), target)?);
         return Some(crate::effect::Effect::new(tagged));
     }
     let mut damage = effect
@@ -865,7 +863,7 @@ fn retarget_damage_effect(
     Some(crate::effect::Effect::new(damage))
 }
 
-fn retarget_coordinated_damage_replacement(
+fn redirect_coordinated_damage_replacement(
     default_effect: &crate::effect::Effect,
     replacement_effects: &[crate::effect::Effect],
 ) -> Option<Vec<crate::effect::Effect>> {
@@ -892,7 +890,7 @@ fn retarget_coordinated_damage_replacement(
         .iter()
         .zip(&replacement_sequence.effects)
         .map(|(default, replacement)| {
-            retarget_damage_effect(replacement, damage_target(default)?.clone())
+            redirect_damage_effect(replacement, damage_target(default)?.clone())
         })
         .collect::<Option<Vec<_>>>()?;
     let mut sequence = replacement_sequence.clone();
@@ -907,12 +905,12 @@ fn retarget_coordinated_damage_replacement(
     }
 }
 
-fn retarget_amount_replacement(
+fn redirect_amount_replacement(
     default_effect: &crate::effect::Effect,
     replacement_effects: &[crate::effect::Effect],
 ) -> Option<Vec<crate::effect::Effect>> {
     if let Some(replacement) =
-        retarget_coordinated_damage_replacement(default_effect, replacement_effects)
+        redirect_coordinated_damage_replacement(default_effect, replacement_effects)
     {
         return Some(replacement);
     }
@@ -932,7 +930,7 @@ fn retarget_amount_replacement(
 
     if declared_target.is_none()
         && let Some(replacement) =
-            retarget_damage_effect(replacement, default_damage.target.clone())
+            redirect_damage_effect(replacement, default_damage.target.clone())
     {
         return Some(vec![replacement]);
     }
@@ -1130,7 +1128,7 @@ fn exact_single_replacement_action_target(effect: &crate::effect::Effect) -> Opt
     extract_previous_replacement_target(effect)
 }
 
-fn rebind_runtime_cross_line_target_condition(
+fn link_runtime_cross_line_target_condition(
     default_effect: &crate::effect::Effect,
     replacement_effects: &[crate::effect::Effect],
 ) -> Option<Vec<crate::effect::Effect>> {
@@ -1176,7 +1174,7 @@ fn attach_cross_line_self_replacement(
     existing: Option<&mut crate::resolution::ResolutionProgram>,
     followup: &crate::resolution::ResolutionProgram,
     facts: &crate::model::facts::StatementLineSemanticFacts,
-    rebind_local_target_condition: bool,
+    link_local_target_condition: bool,
 ) -> bool {
     if facts.instead_followup.semantics != crate::cards::builders::InsteadSemantics::SelfReplacement
     {
@@ -1217,10 +1215,10 @@ fn attach_cross_line_self_replacement(
     let Some(default_effect) = existing_segment.default_effects.last() else {
         return false;
     };
-    let replacement_effects = retarget_amount_replacement(default_effect, &conditional.if_true)
+    let replacement_effects = redirect_amount_replacement(default_effect, &conditional.if_true)
         .unwrap_or_else(|| conditional.if_true.clone());
-    let replacement_effects = if rebind_local_target_condition {
-        rebind_runtime_cross_line_target_condition(default_effect, &replacement_effects)
+    let replacement_effects = if link_local_target_condition {
+        link_runtime_cross_line_target_condition(default_effect, &replacement_effects)
             .unwrap_or(replacement_effects)
     } else {
         replacement_effects
@@ -1248,7 +1246,7 @@ fn materialize_additional_cost(
             "normalized additional cost contains no effects".to_string(),
         ));
     }
-    let lowered = rewrite_lower_prepared_statement_effects(&prepared)?;
+    let lowered = lower_prepared_statement_effects(&prepared)?;
     let mut costs = builder.additional_cost.costs().to_vec();
     costs.extend(runtime_effects_to_costs(lowered.effects.to_vec())?);
     builder.additional_cost = crate::cost::TotalCost::from_costs(costs);
@@ -1311,7 +1309,7 @@ fn materialize_gift(
     builder = builder.optional_cost(cost);
     match timing {
         GiftTimingAst::SpellResolution => {
-            let lowered = rewrite_lower_prepared_statement_effects(&prepared)?;
+            let lowered = lower_prepared_statement_effects(&prepared)?;
             let mut effects = lowered.effects.to_vec();
             effects.push(crate::Effect::emit_gift_given(PlayerFilter::ChosenPlayer));
             let gift = crate::effect::Effect::conditional(
@@ -1332,11 +1330,10 @@ fn materialize_gift(
             let trigger = TriggerSpec::ThisEntersBattlefield {
                 origin_condition: None,
             };
-            let parsed = rewrite_parsed_triggered_ability(
+            let parsed = assemble_parsed_triggered_ability(
                 trigger.clone(),
                 Vec::new(),
                 vec![Zone::Battlefield],
-                None,
                 Some(crate::ConditionExpr::ThisSpellPaidLabel("Gift".into())),
                 None,
                 prepared.imports.clone(),
@@ -1345,7 +1342,7 @@ fn materialize_gift(
                 prepared,
                 intervening_if: None,
             };
-            let mut parsed = rewrite_lower_prepared_ability(NormalizedParsedAbility {
+            let mut parsed = lower_prepared_ability(NormalizedParsedAbility {
                 parsed,
                 prepared: Some(NormalizedPreparedAbility::Triggered { trigger, prepared }),
             })?;
@@ -1368,16 +1365,15 @@ fn materialize_optional_cost_trigger(
     let reference = cost.cost_ref();
     builder = builder.optional_cost(cost);
     let trigger = TriggerSpec::YouCastThisSpell;
-    let parsed = rewrite_parsed_triggered_ability(
+    let parsed = assemble_parsed_triggered_ability(
         trigger.clone(),
         Vec::new(),
         vec![Zone::Stack],
-        None,
         Some(crate::ConditionExpr::ThisSpellPaidLabel(reference)),
         None,
         prepared.imports.clone(),
     );
-    let parsed = rewrite_lower_prepared_ability(NormalizedParsedAbility {
+    let parsed = lower_prepared_ability(NormalizedParsedAbility {
         parsed,
         prepared: Some(NormalizedPreparedAbility::Triggered {
             trigger,
@@ -1400,8 +1396,7 @@ fn materialize_additional_cost_choice(
             "normalized additional-cost choice requires two nonempty modes".to_string(),
         ));
     }
-    let (modes, exports) =
-        rewrite_lower_prepared_additional_cost_choice_modes_with_exports(&options)?;
+    let (modes, exports) = lower_prepared_additional_cost_choice_modes_with_exports(&options)?;
     let mut costs = builder.additional_cost.costs().to_vec();
     costs.push(
         crate::costs::payment_effect_to_cost(crate::effect::Effect::choose_one(modes))

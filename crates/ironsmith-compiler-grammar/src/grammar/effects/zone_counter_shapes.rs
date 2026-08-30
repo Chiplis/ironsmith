@@ -3,7 +3,7 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
 
-use crate::cards::builders::{IT_TAG, PlayerAst};
+use crate::cards::builders::PlayerAst;
 use crate::effect::{ChoiceCount, Value};
 use crate::grammar::{filters, leaf, primitives, values};
 use crate::lexer::{LexStream, OwnedLexToken, TokenKind};
@@ -29,7 +29,6 @@ pub enum DynamicCounterCountShape {
     },
     ColorsOfManaSpentToCastThisSpell,
     BasicLandTypesAmongLandsYouControl,
-    ObjectsAffectedThisWay,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -223,17 +222,6 @@ pub fn parse_dynamic_counter_count_shape(
     }
     if primitives::parse_prefix(tokens, parse_basic_land_types_prefix).is_some() {
         return Some(DynamicCounterCountShape::BasicLandTypesAmongLandsYouControl);
-    }
-    if has_phrase(tokens, &["this", "way"])
-        && (has_word(tokens, "destroyed")
-            || has_word(tokens, "died")
-            || has_word(tokens, "exiled")
-            || has_word(tokens, "sacrificed")
-            || has_word(tokens, "discarded")
-            || has_word(tokens, "milled")
-            || has_word(tokens, "revealed"))
-    {
-        return Some(DynamicCounterCountShape::ObjectsAffectedThisWay);
     }
     None
 }
@@ -829,13 +817,13 @@ fn possessive_surface_kw<'a>(
 #[path = "zone_counter_shapes_inline_tests.rs"]
 mod tests;
 
-#[path = "zone_counter_shapes/reference_programs.rs"]
+#[path = "zone_counter_shapes/reference.rs"]
 mod reference_programs;
 use reference_programs::exact_self_reference;
 pub use reference_programs::{
     parse_transform_target_shape, player_filter_for_half_reference, source_spec_for_reference,
 };
-#[path = "zone_counter_shapes/resource_programs.rs"]
+#[path = "zone_counter_shapes/resource.rs"]
 mod resource_programs;
 use resource_programs::parse_half_starting_life;
 pub use resource_programs::parse_half_starting_life_shape;

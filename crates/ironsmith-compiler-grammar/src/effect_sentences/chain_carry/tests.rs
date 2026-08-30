@@ -17,7 +17,6 @@ use crate::zone::Zone;
 
 use super::super::super::lexer::lex_line;
 use super::super::dispatch_entry::parse_effect_sentences_lexed;
-use super::super::dispatch_inner::parse_fully_typed_mixed_restriction_action_chain;
 use super::super::{
     parse_effect_sentence_inner_lexed, parse_effect_sentence_lexed,
     parse_effect_sentence_lexed_with_context,
@@ -334,7 +333,7 @@ fn optional_mana_payment_exports_the_result_across_the_followup_sentence() {
     let effects = parse_effect_sentences_lexed(&tokens)
         .expect("optional payment and followup should parse into typed sentences");
     let trigger = crate::cards::builders::TriggerSpec::ThisAttacksAndIsntBlocked;
-    let prepared = crate::lowering_support::rewrite_prepare_effects_with_trigger_context_for_lowering(
+    let prepared = crate::lowering_support::stage_effects_with_trigger_context_for_lowering(
         Some(&trigger),
         &effects,
         crate::model::reference_state::ReferenceImports::default(),
@@ -458,15 +457,14 @@ fn multicolor_source_animation_then_unblockable_keeps_both_typed_arms() {
 
     let effects = parse_effect_sentences_lexed(&tokens)
         .expect("the complete effect-body dispatcher should preserve both typed arms");
-    let [
-        EffectAst::Coordinated {
-            effects: coordinated,
-            ..
-        },
-    ] = effects.as_slice()
-    else {
+    let [EffectAst::Coordination(coordination)] = effects.as_slice() else {
         panic!("expected one coordinated animation/restriction chain, got {effects:#?}");
     };
+    let coordinated = coordination
+        .members
+        .iter()
+        .flat_map(|member| member.effects.iter().cloned())
+        .collect::<Vec<_>>();
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
@@ -567,19 +565,27 @@ fn activated_effect_body_routes_multicolor_animation_before_broad_cant() {
 }
 
 #[test]
-fn mixed_action_restriction_preemption_rejects_homogeneous_near_misses() {
+fn cant_grammar_declines_mixed_action_restriction_coordination() {
     for text in [
-        "This creature can't attack and can't block this turn.",
-        "This artifact becomes a 2/2 blue and black Horror artifact creature until end of turn.",
+        "Target creature can't block this turn and becomes a Coward in addition to its other types until end of turn.",
+        "This artifact becomes a 2/2 blue and black Horror artifact creature until end of turn and can't be blocked this turn.",
     ] {
-        let tokens = lex_line(text, 0).expect("near-miss fixture should lex");
+        let tokens = lex_line(text, 0).expect("mixed coordination fixture should lex");
         assert!(
-            parse_fully_typed_mixed_restriction_action_chain(&tokens)
-                .expect("near-miss proof should remain fallible")
+            crate::grammar::effects::prepare_cant_sentence_restriction_clause_lexed(&tokens)
+                .expect("cant ownership probe should remain fallible")
                 .is_none(),
-            "homogeneous restriction or characteristic lists must stay on their ordinary route: {text}"
+            "mixed coordination must be left to the typed chain grammar: {text}"
         );
     }
+
+    let restriction = lex_line("This creature can't attack and can't block this turn.", 0).unwrap();
+    assert!(
+        crate::grammar::effects::prepare_cant_sentence_restriction_clause_lexed(&restriction)
+            .unwrap()
+            .is_some(),
+        "homogeneous restriction coordination remains cant grammar"
+    );
 }
 
 #[test]
@@ -1490,7 +1496,7 @@ fn leading_may_choose_to_have_normalizes_both_causative_markers() {
                     ..
                 },
                 ..
-            })] if tag.as_str() == crate::cards::builders::IT_TAG
+            })] if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         ),
         "both `choose to` and non-player-causative `have` must be removed before damage parsing: {optional:#?}"
     );
@@ -2905,7 +2911,7 @@ fn gain_toughness_lose_power_then_put_keeps_all_three_actions() {
     assert_eq!(gain_spec.unhinted(), lose_spec.unhinted());
     assert!(matches!(
         lose_spec.unhinted(),
-        crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == crate::cards::builders::IT_TAG
+        crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     ));
 }
 
@@ -3253,7 +3259,7 @@ fn mass_destruction_trailing_source_power_condition_preempts_broad_destroy() {
             || matches!(
                 source.unhinted(),
                 crate::target::ChooseSpec::Tagged(tag)
-                    if tag.as_str() == crate::cards::builders::IT_TAG
+                    if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             )
     );
     assert_eq!(right.unhinted(), &Value::Fixed(20));
@@ -3427,12 +3433,9 @@ fn source_linked_exile_reveal_keeps_nonpermanents_face_up_and_moves_only_permane
                 "this artifact".to_string()
             ))
         );
-        assert!(
-            candidate
-                .tagged_constraints
-                .iter()
-                .any(|constraint| { constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG })
-        );
+        assert!(candidate.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
+        }));
     }
     assert!(reveal_filter.card_types.is_empty(), "{reveal_filter:#?}");
     assert_eq!(filter.card_types.len(), 6, "{filter:#?}");
@@ -3867,6 +3870,50 @@ fn or_action_clause_preserves_secondary_or_inside_sacrifice_filter() {
     assert!(
         debug.contains("Planeswalker"),
         "expected sacrifice filter to keep planeswalker branch, got {debug}"
+    );
+}
+
+#[test]
+fn complete_serial_keyword_damage_clause_has_one_semantic_owner() {
+    let tokens = lex_line(
+        "It deals 1 damage to each creature that doesn't have first strike, double strike, vigilance, or haste",
+        0,
+    )
+    .expect("serial keyword damage sentence should lex");
+    let direct = super::super::clause_dispatch::parse_effect_clause_lexed(&tokens)
+        .expect("complete clause parser should recognize serial keyword damage");
+    let chained = super::parse_effect_chain_inner_lexed(&tokens)
+        .expect("chain parser should recognize serial keyword damage");
+    let routed = super::super::parse_effect_sentence_lexed(&tokens)
+        .expect("sentence dispatcher should recognize serial keyword damage");
+
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::DealDamageEach { filter, .. },
+        ..
+    }) = &direct
+    else {
+        panic!("expected a typed mass-damage clause: {direct:#?}");
+    };
+    let each_index = tokens
+        .iter()
+        .position(|token| token.is_word("each"))
+        .expect("damage clause should contain each");
+    let suffix_filter =
+        crate::object_filters::parse_object_filter_lexed(&tokens[each_index + 1..], false)
+            .expect("complete mass-damage filter suffix should parse");
+    assert_eq!(
+        filter, &suffix_filter,
+        "the direct clause parser must preserve the grammar-owned filter"
+    );
+
+    assert_eq!(
+        chained,
+        vec![direct],
+        "the chain layer must not reinterpret a complete direct clause"
+    );
+    assert_eq!(
+        routed, chained,
+        "sentence dispatch must preserve the chain layer's unique semantic result"
     );
 }
 

@@ -153,10 +153,10 @@ pub fn parse_exile_then_return_same_object_sentence(
         }
     }
     fn target_references_it_tag(target: &TargetAst) -> bool {
-        target_references_tag(target, IT_TAG)
+        target_references_tag(target, crate::tag::CompilerReferenceTag::It.as_str())
     }
     fn target_references_source_exiled_tag(target: &TargetAst) -> bool {
-        target_references_tag(target, crate::tag::SOURCE_EXILED_TAG)
+        target_references_tag(target, crate::tag::CompilerReferenceTag::SourceExiled.as_str())
     }
 
     let Some(shape) = replacement_grammar::parse_exile_return_same_shape(tokens) else {
@@ -182,7 +182,7 @@ pub fn parse_exile_then_return_same_object_sentence(
     }) {
         return Ok(None);
     }
-    let source_exiled_tag = TagKey::from(crate::tag::SOURCE_EXILED_TAG);
+    let source_exiled_tag = crate::tag::CompilerReferenceTag::SourceExiled.key();
     let return_reference_surface =
         replacement_grammar::parse_exile_return_reference_shape(shape.return_tokens).map(
             |surface| match surface {
@@ -245,7 +245,7 @@ pub fn parse_exile_then_return_same_object_sentence(
         second_effects.push(EffectAst::subject_verb_put_counters(
             counter_type,
             Value::Fixed(count as i32),
-            TargetAst::Tagged(TagKey::from(IT_TAG), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
             None,
             false,
         ));
@@ -403,7 +403,7 @@ pub fn parse_look_at_hand_sentence(
         effects.push(EffectAst::subject_verb_choose_card_name(
             PlayerAst::You,
             None,
-            TagKey::from(IT_TAG),
+            crate::tag::CompilerReferenceTag::It.key(),
         ));
     }
     Ok(Some(effects))

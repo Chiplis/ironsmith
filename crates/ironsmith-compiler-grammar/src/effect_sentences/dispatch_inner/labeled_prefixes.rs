@@ -163,15 +163,6 @@ fn parse_effect_sentence_inner_lexed_unstacked(
     if is_trigger_only_restriction_sentence_lexed(tokens) {
         return Ok(Vec::new());
     }
-    // Choice-complement clauses begin with the same `each player chooses`
-    // surface as several generic mechanic markers. Give the typed choice
-    // grammar first refusal so the broad subject/verb extension cannot turn
-    // the `then sacrifices the rest` tail into an unsupported marker.
-    if dispatch_shape.each_player_choose
-        && let Some(effect) = parse_choice_complement_subject_verb(tokens)?
-    {
-        return Ok(vec![effect]);
-    }
     if let Some(effects) =
         super::subject_verb_special_recognizers::parse_scaled_target_power_sentence(tokens)?
     {
@@ -279,11 +270,18 @@ fn parse_effect_sentence_inner_lexed_unstacked(
         super::preserve_leading_result_coordination_lexed(tokens, &mut result);
         return Ok(result);
     }
-    if dispatch_shape.each_player_choose
-        && let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)?
-    {
-        apply_where_x_to_damage_amounts(tokens, &mut effects)?;
-        return Ok(effects);
+    if dispatch_shape.each_player_choose {
+        // The complete choice/complement grammar and the generic participant
+        // action grammar are separate subdomains of this classified head.
+        // A proved complement owns its `then ... the rest` relation; only a
+        // non-complement participant action reaches the generic extension.
+        if let Some(effect) = parse_choice_complement_subject_verb(tokens)? {
+            return Ok(vec![effect]);
+        }
+        if let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)? {
+            apply_where_x_to_damage_amounts(tokens, &mut effects)?;
+            return Ok(effects);
+        }
     }
     if let Some(effect) = parse_for_each_opponent_clause(tokens)? {
         return Ok(vec![effect]);
@@ -292,7 +290,7 @@ fn parse_effect_sentence_inner_lexed_unstacked(
         return Ok(vec![effect]);
     }
     if let Some(cast_from_among) = dispatch_shape.cast_from_among_free {
-        let mut filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
+        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
         filter.card_types.push(CardType::Instant);
         filter.card_types.push(CardType::Sorcery);
         filter.card_types.push(CardType::Artifact);
@@ -588,13 +586,13 @@ fn parse_exile_replacement_subject_verb_sentence(
 mod followup_predicates;
 pub use followup_predicates::*;
 
-#[path = "labeled_prefixes/reference_programs.rs"]
+#[path = "labeled_prefixes/reference.rs"]
 mod reference_programs;
 pub use reference_programs::parse_subject_verb_extension_sentence;
 use reference_programs::{
     parse_earthbend_subject_verb_sentence, parse_for_each_opponent_doesnt_subject_verb_sentence,
     parse_gain_ability_subject_verb_sentence, parse_gain_ability_to_source_subject_verb_sentence,
 };
-#[path = "labeled_prefixes/core_programs.rs"]
+#[path = "labeled_prefixes/core.rs"]
 mod labeled_prefixes_core_programs;
 use labeled_prefixes_core_programs::parse_passive_color_type_addition_sentence;

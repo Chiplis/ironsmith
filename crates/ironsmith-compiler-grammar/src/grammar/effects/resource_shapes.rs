@@ -709,10 +709,10 @@ fn tagged_into_their_library<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 #[path = "resource_shapes/tests.rs"]
 mod tests;
 
-#[path = "resource_shapes/choice_programs.rs"]
+#[path = "resource_shapes/choice.rs"]
 mod choice_programs;
 use choice_programs::chosen_name_tail;
 pub use choice_programs::parse_resource_chosen_name_target_shape;
-#[path = "resource_shapes/library_programs.rs"]
+#[path = "resource_shapes/library.rs"]
 mod library_programs;
 pub use library_programs::parse_resource_shuffle_shape;

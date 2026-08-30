@@ -475,6 +475,28 @@ pub fn parse_cant_clauses(
                 crate::grammar::anthem_grants::parse_each_creature_subject(clause.subject_tokens)
                     .is_some()
             })
+        || crate::grammar::keyword_static_lines::parse_dont_untap_during_controllers_step_tokens(
+            tokens,
+        )
+        .is_some()
+        || crate::keyword_static::parse_static_text_marker_line(tokens).is_some()
+        || crate::grammar::anthem_grants::parse_cant_be_blocked_and_has_keywords_clause(tokens)
+            .is_some()
+        // The mirrored order ("<subject> has <keywords> and can't be blocked")
+        // is one grant-plus-restriction production. Reading only its negated
+        // half drops the granted keywords.
+        || matches!(
+            crate::keyword_static::parse_subject_has_keywords_and_cant_be_blocked_line(tokens),
+            Ok(Some(_))
+        )
+        // A subject-scoped evasion line ("Blue creatures you control can't be
+        // blocked") has its own canonical static ability. Competing here makes
+        // the whole line ambiguous, and the statement fallback then renders it
+        // as a pronoun grant that has lost the subject filter.
+        || matches!(
+            crate::keyword_static::parse_subject_cant_be_blocked_line(tokens),
+            Ok(Some(_))
+        )
     {
         // Flying-only evasion has a dedicated canonical static ability. The
         // generic negated-restriction route can recognize the same words but

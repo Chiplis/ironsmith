@@ -3,7 +3,7 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
 
-use crate::cards::builders::{IT_TAG, TagKey};
+use crate::cards::builders::TagKey;
 use crate::effect::{EventValueSpec, Value};
 use crate::filter::TaggedOpbjectRelation;
 use crate::grammar::{filters, leaf, primitives, values};
@@ -206,6 +206,13 @@ fn parse_as_many_this_way(tokens: &[OwnedLexToken]) -> Option<Value> {
         )
 }
 
+/// A trailing `where <variable> is ...` clause is bound by the sentence
+/// dispatcher after effect parsing; the draw clause itself is complete.
+pub fn tail_is_where_variable_binding(tokens: &[OwnedLexToken]) -> bool {
+    let words = super::super::super::super::lexer::parser_token_word_refs(tokens);
+    words.len() >= 3 && words[0] == "where" && words[1].len() == 1 && words[2] == "is"
+}
+
 pub fn parse_draw_head_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<DrawHeadShape<'_>, DrawHeadShapeError> {
@@ -236,6 +243,7 @@ pub fn parse_draw_head_shape(
             if parsed_offset.is_none()
                 && !trailing.is_empty()
                 && primitives::find_prefix(trailing, || semantic_phrase(&["for", "each"])).is_none()
+                && !tail_is_where_variable_binding(trailing)
             {
                 return Err(DrawHeadShapeError::UnsupportedTrailingClause);
             }
@@ -621,7 +629,7 @@ pub fn parse_draw_counter_reference_shape(tokens: &[OwnedLexToken]) -> Option<Va
             &["those", "permanents"],
         ],
     ) {
-        ChooseSpec::Tagged(TagKey::from(IT_TAG))
+        ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())
     } else {
         let words = primitives::TokenWordView::new(reference_tokens).to_word_refs();
         source_choose_spec_for_surface(source_reference_surface_for_words(&words)?)
@@ -633,12 +641,12 @@ pub fn parse_draw_counter_reference_shape(tokens: &[OwnedLexToken]) -> Option<Va
 #[path = "draw_inline_tests.rs"]
 mod tests;
 
-#[path = "draw/zone_programs.rs"]
+#[path = "draw/zone.rs"]
 mod zone_programs;
 pub use zone_programs::same_name_graveyard_count_value;
-#[path = "draw/counter_programs.rs"]
+#[path = "draw/counter.rs"]
 mod counter_programs;
 pub use counter_programs::counter_same_name_graveyard_shape;
-#[path = "draw/resource_programs.rs"]
+#[path = "draw/resource.rs"]
 mod resource_programs;
 pub use resource_programs::parse_draw_equal_shape;

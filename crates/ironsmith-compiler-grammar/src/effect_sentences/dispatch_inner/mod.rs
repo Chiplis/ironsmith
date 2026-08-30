@@ -31,10 +31,9 @@ use super::{
     parse_reveal_source_exiled_permanents_sentence_lexed, parse_search_library_sentence_lexed,
 };
 use crate::cards::builders::{
-    CHOSEN_OBJECTS_TAG, CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, KeywordAction,
-    PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan,
-    TriggerSpec,
+    CardTextError, EffectAst, GrantedAbilityAst, KeywordAction, PlayerAst, PredicateAst,
+    ReturnControllerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan, TriggerSpec,
 };
 use crate::effect::{ChoiceCount, EventValueSpec, Until, Value, ValueComparisonOperator};
 use crate::object::CounterType;
@@ -46,7 +45,7 @@ use crate::types::CardType;
 use crate::zone::Zone;
 
 include!("sentence_shape_predicates.rs");
-include!("generic_subject_verb_programs.rs");
+include!("generic_subject_verb.rs");
 include!("labeled_prefixes.rs");
 include!("copy_and_next_spell_shapes.rs");
 include!("replacement_and_prevention_shapes.rs");

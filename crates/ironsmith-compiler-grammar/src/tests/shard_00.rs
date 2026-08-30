@@ -3082,7 +3082,10 @@ pub(super) fn rewrite_lexed_for_each_exiled_reveal_until_then_bottom_uses_consul
     let [EffectAst::ForEachTagged { tag, effects }] = parsed.as_slice() else {
         panic!("expected canonical tagged exile iteration, got {parsed:#?}");
     };
-    assert_eq!(tag.as_str(), crate::tag::SOURCE_EXILED_TAG);
+    assert_eq!(
+        tag.as_str(),
+        crate::tag::CompilerReferenceTag::SourceExiled.as_str()
+    );
 
     let inner = format!("{effects:#?}");
     assert!(inner.contains("ConsultTopOfLibrary"), "{inner}");
@@ -4263,7 +4266,7 @@ pub(super) fn rewrite_if_clause_binds_that_enchantment_and_created_token_referen
         matches!(
             target,
             crate::cards::builders::TargetAst::Tagged(tag, _)
-                if tag.as_str() == crate::cards::builders::IT_TAG
+                if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         ),
         "expected attachment destination to bind the created token, got {target:?}"
     );

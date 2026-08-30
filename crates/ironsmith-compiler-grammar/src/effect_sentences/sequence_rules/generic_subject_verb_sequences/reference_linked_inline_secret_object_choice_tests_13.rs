@@ -50,6 +50,6 @@ fn participant_relative_secret_object_choices_keep_the_revealed_result_set() {
                 ..
             },
             ..
-        })] if iterated.as_str() == IT_TAG
+        })] if iterated.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     ));
 }

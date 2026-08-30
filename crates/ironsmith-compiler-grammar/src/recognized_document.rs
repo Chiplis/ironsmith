@@ -44,7 +44,7 @@ impl KeywordLinePayload {
                     Some(label) => crate::model::CompilerOptionalCost::custom(label, cost.clone()),
                     None => crate::model::CompilerOptionalCost::kicker(cost.clone()),
                 };
-                LineAst::OptionalCost(cost.into())
+                LineAst::OptionalCost(cost)
             }
         }
     }

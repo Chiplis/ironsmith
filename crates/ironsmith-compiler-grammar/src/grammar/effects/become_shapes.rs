@@ -4,7 +4,7 @@ use winnow::prelude::*;
 use winnow::token::{literal, take_till};
 
 use super::super::{leaf, permission_shapes, primitives};
-use crate::cards::builders::{IT_TAG, PlayerAst, SubjectAst, TagKey, TargetAst};
+use crate::cards::builders::{PlayerAst, SubjectAst, TagKey, TargetAst};
 use crate::effect::Value;
 use crate::lexer::{LexStream, OwnedLexToken, TokenWordView};
 use crate::target::{ChooseSpec, ObjectFilter};
@@ -219,7 +219,7 @@ fn parse_controller_owner_subject_tokens_with_optional_context(
         };
         return Some(ControllerOwnerSubjectShape {
             subject: SubjectAst::Player(player),
-            target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+            target: TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
         });
     }
 
@@ -259,21 +259,21 @@ fn parse_controller_owner_subject_tokens_with_optional_context(
 #[path = "become_shapes_inline_tests.rs"]
 mod tests;
 
-#[path = "become_shapes/resource_programs.rs"]
+#[path = "become_shapes/resource.rs"]
 mod resource_programs;
 pub use resource_programs::parse_become_iterated_mana_value_pt_words;
-#[path = "become_shapes/reference_programs.rs"]
+#[path = "become_shapes/reference.rs"]
 mod reference_programs;
 pub use reference_programs::{
     parse_base_power_toughness_subject_tokens, parse_filtered_object_animation_tokens,
 };
-#[path = "become_shapes/counter_programs.rs"]
+#[path = "become_shapes/counter.rs"]
 mod counter_programs;
 use counter_programs::parse_become_iterated_counter_value_words;
 pub use counter_programs::parse_counter_state_pronoun_tokens;
-#[path = "become_shapes/object_action_programs.rs"]
+#[path = "become_shapes/object_action.rs"]
 mod object_action_programs;
 pub use object_action_programs::parse_become_base_pt_words;
-#[path = "become_shapes/condition_programs.rs"]
+#[path = "become_shapes/condition.rs"]
 mod condition_programs;
 use condition_programs::parse_modifier_words;

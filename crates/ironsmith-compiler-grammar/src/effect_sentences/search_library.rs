@@ -9,7 +9,7 @@ use super::super::util::{
 use super::parse_effect_chain;
 use super::sentence_helpers::*;
 use crate::cards::builders::{
-    CardTextError, CarryContext, ChoiceCount, EffectAst, IT_TAG, LibraryBottomOrderAst,
+    CardTextError, CarryContext, ChoiceCount, EffectAst, LibraryBottomOrderAst,
     LibraryConsultModeAst, LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst,
     SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst,
 };
@@ -129,10 +129,10 @@ pub fn parse_shuffle_graveyard_into_library_sentence(
     let subject_tokens = shape.subject_tokens;
     let optional_shuffle = shape.optional_shuffle;
     let each_player_subject = shape.each_player_subject;
-    let subject = if subject_tokens.is_empty() {
-        SubjectAst::Player(PlayerAst::You)
-    } else if each_player_subject {
+    let subject = if each_player_subject {
         SubjectAst::Player(PlayerAst::Implicit)
+    } else if subject_tokens.is_empty() {
+        SubjectAst::Player(PlayerAst::You)
     } else {
         parse_subject(subject_tokens)
     };
@@ -417,10 +417,13 @@ pub fn parse_shuffle_object_into_library_sentence(
         && shape.reference == search_grammar::SearchShuffleObjectReference::PluralTaggedReference
     {
         return append_trailing(vec![EffectAst::ForEachTagged {
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
             effects: vec![
                 EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(target_tokens)),
+                    TargetAst::Tagged(
+                        crate::tag::CompilerReferenceTag::It.key(),
+                        span_from_tokens(target_tokens),
+                    ),
                     Zone::Library,
                     false,
                     ReturnControllerAst::Preserve,
@@ -536,9 +539,12 @@ pub fn parse_target_player_exiles_creature_and_graveyard_sentence(
             count: ChoiceCount::exactly(1),
             count_value: None,
             player: subject_player,
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
         },
-        EffectAst::subject_verb_exile(TargetAst::Tagged(TagKey::from(IT_TAG), None), false),
+        EffectAst::subject_verb_exile(
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+            false,
+        ),
         EffectAst::subject_verb_exile_all(graveyard_filter, false),
     ]))
 }
@@ -565,12 +571,13 @@ pub fn parse_for_each_exiled_this_way_sentence(
         })
         .transpose()?;
     if shape.permanent_card_type_consult {
-        let filter = ObjectFilter::permanent().shares_card_type_with_tagged(IT_TAG);
+        let filter = ObjectFilter::permanent()
+            .shares_card_type_with_tagged(crate::tag::CompilerReferenceTag::It.as_str());
         let revealed_tag = helper_tag_for_tokens(tokens, "revealed");
         let matched_tag = helper_tag_for_tokens(tokens, "chosen");
 
         return Ok(Some(vec![EffectAst::ForEachTagged {
-            tag: IT_TAG.into(),
+            tag: crate::tag::CompilerReferenceTag::It.as_str().into(),
             effects: vec![
                 EffectAst::subject_verb_consult_top_of_library(
                     PlayerAst::Implicit,
@@ -630,7 +637,9 @@ pub fn parse_for_each_exiled_this_way_sentence(
             }
         };
         return Ok(Some(vec![EffectAst::ForEachTagged {
-            tag: crate::tag::SOURCE_EXILED_TAG.into(),
+            tag: crate::tag::CompilerReferenceTag::SourceExiled
+                .as_str()
+                .into(),
             effects: vec![
                 EffectAst::subject_verb_consult_top_of_library(
                     PlayerAst::ItsController,
@@ -671,7 +680,7 @@ pub fn parse_for_each_exiled_this_way_sentence(
     };
 
     Ok(Some(vec![EffectAst::ForEachTagged {
-        tag: IT_TAG.into(),
+        tag: crate::tag::CompilerReferenceTag::It.as_str().into(),
         effects,
     }]))
 }
@@ -698,7 +707,7 @@ pub fn parse_each_player_put_permanent_cards_exiled_with_source_sentence(
         CardType::Battle,
     ];
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+        tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
 
@@ -761,7 +770,7 @@ pub fn parse_for_each_destroyed_this_way_sentence(
     }
 
     Ok(Some(vec![EffectAst::ForEachTagged {
-        tag: IT_TAG.into(),
+        tag: crate::tag::CompilerReferenceTag::It.as_str().into(),
         effects: vec![EffectAst::Conditional {
             predicate: PredicateAst::ItMatchedLastKnown(filter),
             if_true: effects,
@@ -774,16 +783,16 @@ pub fn parse_for_each_destroyed_this_way_sentence(
 #[path = "search_library_inline_typed_put_into_graveyard_result_iterator_tests_2.rs"]
 mod typed_put_into_graveyard_result_iterator_tests;
 
-#[path = "search_library/condition_programs.rs"]
+#[path = "search_library/condition.rs"]
 mod condition_programs;
 pub use condition_programs::parse_restriction_duration;
-#[path = "search_library/core_programs.rs"]
+#[path = "search_library/core.rs"]
 mod core_programs;
 pub use core_programs::{parse_earthbend_sentence, parse_enchant_sentence};
-#[path = "search_library/zone_programs.rs"]
+#[path = "search_library/zone.rs"]
 mod zone_programs;
 pub use zone_programs::parse_for_each_put_into_graveyard_this_way_sentence;
-#[path = "search_library/resource_programs.rs"]
+#[path = "search_library/resource.rs"]
 mod resource_programs;
 use resource_programs::bind_sacrificed_snapshot_controller;
 pub use resource_programs::parse_for_each_sacrificed_this_way_sentence;

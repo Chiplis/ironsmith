@@ -607,9 +607,21 @@ fn parse_attached_with_base_power_toughness_clause(
 }
 
 pub fn display_text_for_tokens(tokens: &[OwnedLexToken], capitalize_effect_start: bool) -> String {
+    display_text_for_tokens_in_mode(tokens, capitalize_effect_start, false)
+}
+
+/// Render authored tokens as display text.
+///
+/// `effect_text_from_start` marks clauses that carry no activation cost, so a
+/// comma inside them separates effect words instead of cost actions.
+pub fn display_text_for_tokens_in_mode(
+    tokens: &[OwnedLexToken],
+    capitalize_effect_start: bool,
+    effect_text_from_start: bool,
+) -> String {
     let mut text = String::new();
     let mut needs_space = false;
-    let mut in_effect_text = false;
+    let mut in_effect_text = effect_text_from_start;
     let mut in_loyalty_cost = false;
     let mut capitalize_next_effect_word = false;
     let mut capitalize_next_cost_action = true;
@@ -727,6 +739,43 @@ fn parse_attached_granted_activated_line(
     parse_activated_line(&trimmed)
 }
 
+fn parse_attached_granted_triggered_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ParsedAbility>, CardTextError> {
+    let edge_trimmed = trim_edge_punctuation(tokens);
+    let trimmed = trim_edge_punctuation(&trim_outer_quotes(&edge_trimmed));
+    if !attached_grammar::parse_trigger_intro_tokens(&trimmed) {
+        return Ok(None);
+    }
+    let LineAst::Triggered {
+        trigger,
+        effects,
+        max_triggers_per_turn,
+    } = crate::clause_support::parse_triggered_line_lexed(&trimmed)?
+    else {
+        return Ok(None);
+    };
+    let trigger = match trigger_surface::parse_trigger_intro_surface_tokens(&trimmed) {
+        Some(intro) => crate::semantic_line_parsing::apply_trigger_intro_surface(
+            trigger,
+            Some(intro),
+        ),
+        None => trigger,
+    };
+    let parsed = parsed_triggered_ability(
+        trigger,
+        effects,
+        vec![Zone::Battlefield],
+        trigger_surface::parse_trigger_frequency_condition_tokens(&trimmed, max_triggers_per_turn),
+        None,
+        ReferenceImports::default(),
+    );
+    if parsed_triggered_ability_is_empty(&parsed) {
+        return Ok(None);
+    }
+    Ok(Some(parsed))
+}
+
 pub fn parse_attached_land_ability_reset_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -802,7 +851,6 @@ fn parse_nonstatic_keyword_action_as_object_ability(
                     functional_zones: vec![Zone::Battlefield],
                 }
                 .into(),
-                text: Some(format!("Crew {amount}")),
                 effects_ast: None,
                 reference_imports: ReferenceImports::default(),
                 trigger_spec: None,
@@ -1004,6 +1052,25 @@ pub fn parse_enchanted_creature_has_line(
             display: format!(
                 "{subject} has {}",
                 display_text_for_tokens(&ability_tokens, true)
+            ),
+            condition,
+        }]));
+    }
+
+    // A quoted grant may name a triggered ability rather than an activated
+    // one. Both are attachment-continuous grants of one authored ability, so
+    // the same static family owns them; without this arm the line falls
+    // through to the generic effect grammar, which renders the authored
+    // `has` as a one-shot `gains`.
+    if let Some(parsed) = parse_attached_granted_triggered_line(&ability_tokens)? {
+        return Ok(Some(vec![StaticAbilityAst::AttachedObjectAbilityGrant {
+            ability: parsed,
+            display: format!(
+                "{subject} has {}",
+                // A triggered grant has no activation colon, so its whole
+                // clause is effect text and its comma must not capitalize the
+                // following word as a cost action.
+                display_text_for_tokens_in_mode(&ability_tokens, false, true)
             ),
             condition,
         }]));
@@ -1493,20 +1560,20 @@ pub fn parse_prevent_damage_to_source_remove_counter_line(
     lower_remove_counter_prevention_spec(spec).map(Some)
 }
 
-#[path = "attached_object_static_lines/attached_object_static_lines_permission_programs.rs"]
+#[path = "attached_object_static_lines/attached_object_static_lines_permission.rs"]
 mod attached_object_static_lines_permission_programs;
 pub use attached_object_static_lines_permission_programs::parse_enchanted_has_activated_ability_line;
-#[path = "attached_object_static_lines/attached_object_static_lines_object_action_programs.rs"]
+#[path = "attached_object_static_lines/attached_object_static_lines_object_action.rs"]
 mod attached_object_static_lines_object_action_programs;
 pub use attached_object_static_lines_object_action_programs::{
     parse_attached_gets_and_has_ability_line,
     parse_attached_is_legendary_gets_and_has_keywords_line,
     parse_equipped_gets_and_has_activated_ability_line,
 };
-#[path = "attached_object_static_lines/attached_object_static_lines_trigger_programs.rs"]
+#[path = "attached_object_static_lines/attached_object_static_lines_trigger.rs"]
 mod attached_object_static_lines_trigger_programs;
 pub use attached_object_static_lines_trigger_programs::parse_attached_has_keywords_and_triggered_ability_line;
-#[path = "attached_object_static_lines/attached_object_static_lines_combat_programs.rs"]
+#[path = "attached_object_static_lines/attached_object_static_lines_combat.rs"]
 mod attached_object_static_lines_combat_programs;
 pub use attached_object_static_lines_combat_programs::{
     lower_remove_counter_prevention_spec,

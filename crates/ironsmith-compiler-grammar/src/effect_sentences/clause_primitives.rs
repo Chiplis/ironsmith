@@ -19,9 +19,8 @@ use super::parse_restriction_duration;
 use super::sentence_helpers::*;
 use super::subject_verb_primitives::SubjectVerbPrimitiveClause;
 use crate::cards::builders::{
-    CHOSEN_OBJECTS_TAG, COPIED_STACK_OBJECT_TAG, CardTextError, EffectAst, GrantedAbilityAst,
-    IT_TAG, LineAst, OwnedLexToken, PlayerAst, RetargetModeAst, SubjectAst, SubjectVerbActionAst,
-    SubjectVerbRoleAst, TagKey, TargetAst,
+    CardTextError, EffectAst, GrantedAbilityAst, LineAst, OwnedLexToken, PlayerAst,
+    RetargetModeAst, SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::effect::Value;
 use crate::grammar::effects::typed_clause_heads::classify_typed_clause_head;
@@ -34,12 +33,41 @@ use crate::zone::Zone;
 use winnow::Parser;
 use winnow::combinator::alt;
 
-pub type ClausePrimitiveParser = fn(&[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError>;
+pub type ClausePrimitiveParser = fn(&[OwnedLexToken]) -> ParseOutcome<EffectAst>;
 
 pub struct ClausePrimitive {
     pub metadata: RegistryRuleMetadata,
     pub phase: ClausePrimitivePhase,
     pub parser: ClausePrimitiveParser,
+}
+
+fn clause_primitive_outcome(
+    rule: RuleId,
+    tokens: &[OwnedLexToken],
+    result: Result<Option<EffectAst>, CardTextError>,
+) -> ParseOutcome<EffectAst> {
+    let span = span_from_tokens(tokens);
+    match result {
+        Ok(Some(effect)) => ParseOutcome::matched(effect, span),
+        Ok(None) => ParseOutcome::NoMatch,
+        Err(error) => ParseOutcome::Error(ParseDiagnostic::from_card_text_error(rule, span, error)),
+    }
+}
+
+macro_rules! specific_primitive {
+    ($id:literal, $heads:expr, $parser:path $(,)?) => {
+        ClausePrimitive::specific($id, $heads, |tokens| {
+            clause_primitive_outcome(RuleId::new($id), tokens, $parser(tokens))
+        })
+    };
+}
+
+macro_rules! fallback_primitive {
+    ($id:literal, $parser:path $(,)?) => {
+        ClausePrimitive::fallback($id, |tokens| {
+            clause_primitive_outcome(RuleId::new($id), tokens, $parser(tokens))
+        })
+    };
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,9 +103,6 @@ impl ClausePrimitive {
         }
     }
 }
-
-const CHOSEN_NAME_TAG: &str = "__chosen_name__";
-
 pub fn parse_retarget_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     if let Some(effect) = parse_choose_new_targets_clause(tokens)? {
         return Ok(Some(effect));
@@ -110,7 +135,7 @@ pub fn parse_copy_targets_clause(
     Ok(Some(EffectAst::subject_verb_retarget_stack_object(
         PlayerAst::Implicit,
         TargetAst::Tagged(
-            TagKey::from(COPIED_STACK_OBJECT_TAG),
+            crate::tag::CompilerReferenceTag::CopiedStackObject.key(),
             LexedClause::new(tokens).span(),
         ),
         RetargetModeAst::OneToFixed {
@@ -133,8 +158,12 @@ pub fn parse_choose_new_targets_clause(
     if split.reference_target {
         let reference_tag = match clause_shapes::parse_retarget_reference_shape(split.target_tokens)
         {
-            Some(clause_shapes::RetargetReferenceShape::Copy) => COPIED_STACK_OBJECT_TAG,
-            Some(clause_shapes::RetargetReferenceShape::Other) => IT_TAG,
+            Some(clause_shapes::RetargetReferenceShape::Copy) => {
+                crate::tag::CompilerReferenceTag::CopiedStackObject.key()
+            }
+            Some(clause_shapes::RetargetReferenceShape::Other) => {
+                crate::tag::CompilerReferenceTag::It.key()
+            }
             None => {
                 return Err(CardTextError::ParseError(format!(
                     "missing typed retarget reference shape (clause: '{}')",
@@ -142,10 +171,7 @@ pub fn parse_choose_new_targets_clause(
                 )));
             }
         };
-        let target = TargetAst::Tagged(
-            TagKey::from(reference_tag),
-            span_from_tokens(split.target_tokens),
-        );
+        let target = TargetAst::Tagged(reference_tag, span_from_tokens(split.target_tokens));
         return Ok(Some(
             EffectAst::subject_verb_retarget_stack_object(
                 PlayerAst::Implicit,
@@ -330,139 +356,139 @@ pub fn parse_stack_retarget_filter(
 
 pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     const PRIMITIVES: &[ClausePrimitive] = &[
-        ClausePrimitive::specific(
+        specific_primitive!(
             "choose-card-name-clause",
             &["choose"],
             parse_choose_card_name_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "repeat-this-process-clause",
             &["repeat"],
             parse_repeat_this_process_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "retain-mana-through-steps-clause",
             &["you", "mana"],
             parse_dont_lose_this_mana_as_steps_and_phases_end_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "retarget-clause",
             &["choose", "change"],
             parse_retarget_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "copy-targets-clause",
             &["the", "copy"],
             parse_copy_targets_clause,
         ),
-        ClausePrimitive::specific("copy-spell-clause", &["copy"], parse_copy_spell_clause),
-        ClausePrimitive::specific(
+        specific_primitive!("copy-spell-clause", &["copy"], parse_copy_spell_clause),
+        specific_primitive!(
             "win-game-clause",
             &["you", "target", "that", "its"],
             parse_win_the_game_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "damage-equal-power-clause",
             &["it", "that", "target", "this"],
             parse_deal_damage_equal_to_power_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "anaphoric-object-damage-clause",
             &["it", "that", "those"],
             parse_anaphoric_object_deals_damage_clause,
         ),
-        ClausePrimitive::specific("fight-clause", &[], parse_fight_clause),
-        ClausePrimitive::specific(
+        specific_primitive!("fight-clause", &[], parse_fight_clause),
+        specific_primitive!(
             "clash-clause",
             &["clash", "you", "target"],
             parse_clash_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "for-each-target-player-clause",
             &["for", "any"],
             parse_for_each_target_players_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "each-player-exiles-hand-clause",
             &["each"],
             parse_each_player_exiles_hand_face_down_and_draws_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "each-player-return-counter-clause",
             &["each"],
             parse_each_player_return_with_additional_counter_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "for-each-opponent-clause",
             &["for", "each"],
             parse_for_each_opponent_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "for-each-player-clause",
             &["for", "each"],
             parse_for_each_player_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "double-counters-clause",
             &["double"],
             parse_double_counters_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "distribute-counters-clause",
             &["distribute"],
             parse_distribute_counters_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "until-end-turn-play-tagged-clause",
             &["until", "you"],
             parse_until_end_of_turn_may_play_tagged_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "until-next-turn-play-tagged-clause",
             &["until", "you"],
             parse_until_your_next_turn_may_play_tagged_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "additional-land-play-clause",
             &["you", "that"],
             parse_additional_land_plays_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "cast-as-flash-clause",
             &["you", "spells"],
             parse_cast_spells_as_though_they_had_flash_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "unsupported-play-cast-permission-clause",
             &["you", "that"],
             parse_unsupported_play_cast_permission_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "cast-or-play-tagged-clause",
             &["you", "that", "its"],
             parse_cast_or_play_tagged_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "prevent-next-damage-clause",
             &["prevent", "the"],
             parse_prevent_next_damage_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "prevent-all-damage-clause",
             &["prevent", "all"],
             parse_prevent_all_damage_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "attack-as-though-no-defender-clause",
             &["it", "they", "target"],
             parse_can_attack_as_though_no_defender_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "block-additional-creature-clause",
             &["it", "they", "target"],
             parse_can_block_additional_creature_this_turn_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "attack-or-block-if-able-clause",
             &[
                 "all", "another", "attack", "attacks", "block", "blocks", "each", "it", "that",
@@ -470,7 +496,7 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
             ],
             parse_attack_or_block_this_turn_if_able_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "attack-if-able-clause",
             &[
                 "all", "another", "attack", "attacks", "each", "it", "that", "they", "those",
@@ -478,38 +504,38 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
             ],
             parse_attack_this_turn_if_able_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "must-be-blocked-clause",
             &["it", "they", "target"],
             parse_must_be_blocked_if_able_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "must-block-clause",
             &[
                 "all", "another", "each", "it", "that", "they", "those", "target",
             ],
             parse_must_block_if_able_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "until-duration-triggered-clause",
             &["until"],
             parse_until_duration_triggered_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "keyword-mechanic-clause",
             &[],
             parse_keyword_mechanic_clause,
         ),
-        ClausePrimitive::specific(
+        specific_primitive!(
             "connive-clause",
             &["connive", "target"],
             parse_connive_clause,
         ),
-        ClausePrimitive::fallback(
+        fallback_primitive!(
             "choose-target-action-fallback",
             parse_choose_target_and_verb_clause,
         ),
-        ClausePrimitive::fallback("verb-first-clause-fallback", parse_verb_first_clause),
+        fallback_primitive!("verb-first-clause-fallback", parse_verb_first_clause),
     ];
 
     fn recognize_phase(
@@ -532,15 +558,7 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
         for primitive in primitives.iter().filter(|primitive| {
             primitive.phase == phase && primitive.metadata.head.accepts(typed_head.first_word)
         }) {
-            let outcome = match (primitive.parser)(tokens) {
-                Ok(Some(effect)) => ParseOutcome::matched(effect, typed_head.span),
-                Ok(None) => ParseOutcome::NoMatch,
-                Err(error) => ParseOutcome::Error(ParseDiagnostic::from_card_text_error(
-                    primitive.metadata.id,
-                    typed_head.span,
-                    error,
-                )),
-            };
+            let outcome = (primitive.parser)(tokens).within(primitive.metadata.id);
             match outcome {
                 ParseOutcome::NoMatch => {}
                 ParseOutcome::Match(matched) => candidates.push(RegistryCandidate::new(
@@ -604,7 +622,7 @@ pub fn parse_choose_card_name_clause(
     Ok(Some(EffectAst::subject_verb_choose_card_name(
         shape.player,
         filter,
-        TagKey::from(CHOSEN_NAME_TAG),
+        crate::tag::CompilerReferenceTag::ChosenName.key(),
     )))
 }
 
@@ -692,7 +710,7 @@ pub fn parse_attack_or_block_this_turn_if_able_clause(
     let subject_clause = LexedClause::new(shape.subject_tokens).trimmed();
     let result_filter = parse_dealt_damage_this_way_subject_filter(subject_clause.tokens())?;
     let target = if subject_clause.is_empty() {
-        TargetAst::Tagged(TagKey::from(IT_TAG), clause.span())
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), clause.span())
     } else if let Some(filter) = result_filter.clone() {
         TargetAst::Object(filter, None, clause.span())
     } else {
@@ -714,7 +732,7 @@ pub fn parse_attack_or_block_this_turn_if_able_clause(
         || demonstrative_backref
     {
         let target = if demonstrative_backref {
-            TargetAst::Tagged(TagKey::from(IT_TAG), clause.span())
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), clause.span())
         } else {
             target
         };
@@ -754,7 +772,7 @@ pub fn parse_attack_this_turn_if_able_clause(
     let subject_clause = LexedClause::new(shape.subject_tokens).trimmed();
     let result_filter = parse_dealt_damage_this_way_subject_filter(subject_clause.tokens())?;
     let target = if subject_clause.is_empty() {
-        TargetAst::Tagged(TagKey::from(IT_TAG), clause.span())
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), clause.span())
     } else if let Some(filter) = result_filter.clone() {
         TargetAst::Object(filter, None, clause.span())
     } else {
@@ -776,7 +794,7 @@ pub fn parse_attack_this_turn_if_able_clause(
         || demonstrative_backref
     {
         let target = if demonstrative_backref {
-            TargetAst::Tagged(TagKey::from(IT_TAG), clause.span())
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), clause.span())
         } else {
             target
         };
@@ -823,7 +841,10 @@ fn parse_dealt_damage_this_way_subject_filter(
     let Some(mut filter) = target_ast_to_object_filter(target) else {
         return Ok(None);
     };
-    filter = filter.match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
+    filter = filter.match_tagged(
+        crate::tag::CompilerReferenceTag::It.key(),
+        TaggedOpbjectRelation::IsTaggedObject,
+    );
     Ok(Some(filter))
 }
 
@@ -849,7 +870,9 @@ pub fn parse_must_be_blocked_if_able_clause(
             effects: vec![
                 EffectAst::subject_verb_target_only(attacker_target),
                 EffectAst::subject_verb_cant(
-                    crate::effect::Restriction::must_be_blocked(ObjectFilter::tagged(IT_TAG)),
+                    crate::effect::Restriction::must_be_blocked(ObjectFilter::tagged(
+                        crate::tag::CompilerReferenceTag::It.key(),
+                    )),
                     Until::EndOfTurn,
                     None,
                 ),
@@ -865,7 +888,9 @@ pub fn parse_must_be_blocked_if_able_clause(
         .is_some_and(|token| token.is_word("that") || token.is_word("it"))
     {
         return Ok(Some(EffectAst::subject_verb_cant(
-            crate::effect::Restriction::must_be_blocked(ObjectFilter::tagged(IT_TAG)),
+            crate::effect::Restriction::must_be_blocked(ObjectFilter::tagged(
+                crate::tag::CompilerReferenceTag::It.key(),
+            )),
             Until::EndOfTurn,
             None,
         )));
@@ -1174,13 +1199,13 @@ pub fn parse_until_duration_triggered_clause(
         && let Some(source) = combat_source_filter_mut(&mut trigger)
     {
         if !source.tagged_constraints.iter().any(|constraint| {
-            constraint.tag.as_str() == IT_TAG
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
         }) {
             source
                 .tagged_constraints
                 .push(crate::target::TaggedObjectConstraint {
-                    tag: TagKey::from(IT_TAG),
+                    tag: crate::tag::CompilerReferenceTag::It.key(),
                     relation: TaggedOpbjectRelation::IsTaggedObject,
                 });
         }
@@ -1276,7 +1301,7 @@ pub fn parse_anaphoric_object_deals_damage_clause(
     {
         TargetAst::Source(span_from_tokens(source_tokens))
     } else {
-        let mut filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
+        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
         if crate::word_primitives::parse_sequence_complete(source_words, &["that", "land"]) {
             // Identity remains the typed trigger-object constraint while the
             // authored demonstrative is explicit rendering provenance.
@@ -1293,7 +1318,7 @@ pub fn parse_anaphoric_object_deals_damage_clause(
             filter
                 .tagged_constraints
                 .push(crate::filter::TaggedObjectConstraint {
-                    tag: TagKey::from(IT_TAG),
+                    tag: crate::tag::CompilerReferenceTag::It.key(),
                     relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
                 });
             TargetAst::Object(filter, None, span_from_tokens(source_tokens))
@@ -1338,7 +1363,10 @@ pub fn parse_deal_damage_equal_to_power_clause(
         return Ok(None);
     };
     let source = if shape.source_is_tagged {
-        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(shape.source_tokens))
+        TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+            span_from_tokens(shape.source_tokens),
+        )
     } else {
         parse_target_phrase(shape.source_tokens)?
     };
@@ -1381,7 +1409,7 @@ pub fn parse_deal_damage_equal_to_power_clause(
             filter
                 .tagged_constraints
                 .push(crate::filter::TaggedObjectConstraint {
-                    tag: TagKey::from(IT_TAG),
+                    tag: crate::tag::CompilerReferenceTag::It.key(),
                     relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
                 });
             Some(filter)
@@ -1457,7 +1485,7 @@ fn bind_iterated_source_possessive_characteristic(value: Value) -> Value {
         Value::PowerOf(spec)
             if matches!(
                 spec.base(),
-                ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG
+                ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             ) && matches!(
                 spec.source_reference_surface(),
                 Some(crate::target::SourceReferenceSurface::ThisPermanentType(surface))
@@ -1470,7 +1498,7 @@ fn bind_iterated_source_possessive_characteristic(value: Value) -> Value {
         Value::ToughnessOf(spec)
             if matches!(
                 spec.base(),
-                ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG
+                ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             ) && matches!(
                 spec.source_reference_surface(),
                 Some(crate::target::SourceReferenceSurface::ThisPermanentType(surface))
@@ -1504,7 +1532,7 @@ pub fn parse_fight_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
             )
         })
     {
-        let tag = TagKey::from(CHOSEN_OBJECTS_TAG);
+        let tag = crate::tag::CompilerReferenceTag::ChosenObjects.key();
         return Ok(Some(
             EffectAst::subject_verb_fight(
                 TargetAst::Tagged(
@@ -1541,7 +1569,10 @@ pub fn parse_fight_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
                 &["you", "may", "have", "it"],
             )
         {
-            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(left_tokens))
+            TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::It.key(),
+                span_from_tokens(left_tokens),
+            )
         } else {
             parse_target_phrase(left_tokens)?
         }
@@ -1549,7 +1580,10 @@ pub fn parse_fight_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
         TargetAst::Source(None)
     };
     let creature2 = if shape.right_is_tagged_other {
-        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(shape.right_tokens))
+        TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+            span_from_tokens(shape.right_tokens),
+        )
     } else {
         parse_target_phrase(shape.right_tokens)?
     };
@@ -1650,7 +1684,10 @@ mod result_subject_tests {
             .expect("match attack followup");
         let debug = format!("{effect:#?}");
         assert!(debug.contains("IsTaggedObject"), "{debug}");
-        assert!(debug.contains(IT_TAG), "{debug}");
+        assert!(
+            debug.contains(crate::tag::CompilerReferenceTag::It.as_str()),
+            "{debug}"
+        );
     }
 
     #[test]
@@ -1749,7 +1786,7 @@ mod result_subject_tests {
                 ..
             })] if matches!(spec.base(), ChooseSpec::Source)
                 && target_filter.tagged_constraints.iter().any(|constraint| {
-                    constraint.tag.as_str() == IT_TAG
+                    constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                         && constraint.relation
                             == crate::filter::TaggedOpbjectRelation::IsTaggedObject
                 })
@@ -1833,7 +1870,7 @@ mod result_subject_tests {
             ))
         );
         assert!(source_filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag.as_str() == IT_TAG
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
         }));
     }

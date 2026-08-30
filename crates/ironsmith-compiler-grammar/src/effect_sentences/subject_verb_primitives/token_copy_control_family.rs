@@ -25,7 +25,8 @@ pub fn parse_sentence_each_player_reveals_top_count_put_permanents_onto_battlefi
     let count = shape.count;
 
     let revealed_tag_key = helper_tag_for_tokens(clause.tokens(), "revealed");
-    let iterated_target = TargetAst::Tagged(TagKey::from(IT_TAG), clause.span());
+    let iterated_target =
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), clause.span());
 
     Ok(Some(vec![EffectAst::ForEachPlayer {
         effects: vec![
@@ -111,7 +112,7 @@ pub fn parse_choose_then_do_same_for_filter_sentence(
     else {
         return Ok(None);
     };
-    let tag = TagKey::from(IT_TAG);
+    let tag = crate::tag::CompilerReferenceTag::It.key();
 
     let followup_filter = parse_object_filter(shape.filter_tokens, false)?;
     if followup_filter.controller.is_some() || followup_filter.owner.is_some() {
@@ -165,10 +166,10 @@ fn preserve_choose_clause_it_reference(references_prior_choice: bool, filter: &m
     if !filter
         .tagged_constraints
         .iter()
-        .any(|constraint| constraint.tag.as_str() == IT_TAG)
+        .any(|constraint| constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
     {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }
@@ -193,7 +194,7 @@ pub fn parse_choose_then_choose_objects_sentence(
         count: first_count,
         count_value: None,
         player: first_player,
-        tag: TagKey::from(IT_TAG),
+        tag: crate::tag::CompilerReferenceTag::It.key(),
     };
 
     let Some((mut second_player, mut second_filter, second_count)) =
@@ -224,7 +225,7 @@ pub fn parse_choose_then_choose_objects_sentence(
             count: second_count,
             count_value: None,
             player: second_player,
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
         },
     ]))
 }
@@ -264,7 +265,7 @@ pub fn parse_sacrifice_any_number_sentence(
             parse_object_filter(shape.filter_tokens, false)?
         };
     let filter = sacrifice_choice_filter(parsed_filter);
-    let tag = TagKey::from(IT_TAG);
+    let tag = crate::tag::CompilerReferenceTag::It.key();
 
     let mut effects = vec![
         EffectAst::ChooseObjects {
@@ -306,7 +307,7 @@ pub fn parse_sacrifice_one_or_more_sentence(
             parse_object_filter(shape.filter_tokens, false)?
         };
     let filter = sacrifice_choice_filter(parsed_filter);
-    let tag = TagKey::from(IT_TAG);
+    let tag = crate::tag::CompilerReferenceTag::It.key();
     Ok(Some(vec![
         EffectAst::ChooseObjects {
             filter,
@@ -460,12 +461,12 @@ pub fn parse_exile_source_with_counters_sentence(
         let source = TargetAst::Source(clause.span());
         (source.clone(), source)
     } else if shape.it_reference {
-        let it = TargetAst::Tagged(TagKey::from(IT_TAG), clause.span());
+        let it = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), clause.span());
         (it.clone(), it)
     } else {
         (
             parse_target_phrase(shape.target_tokens)?,
-            TargetAst::Tagged(TagKey::from(IT_TAG), clause.span()),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), clause.span()),
         )
     };
     Ok(Some(vec![
@@ -557,7 +558,7 @@ pub fn parse_destroy_then_land_controller_graveyard_count_damage_sentence(
 
     let mut count_filter = ObjectFilter::default();
     count_filter.zone = Some(Zone::Graveyard);
-    let tagged_ref = crate::target::ObjectRef::tagged(IT_TAG);
+    let tagged_ref = crate::target::ObjectRef::tagged(crate::tag::CompilerReferenceTag::It.key());
     count_filter.owner = Some(PlayerFilter::ControllerOf(tagged_ref.clone()));
     count_filter.card_types.push(CardType::Land);
     head_effects.push(EffectAst::subject_verb_damage(

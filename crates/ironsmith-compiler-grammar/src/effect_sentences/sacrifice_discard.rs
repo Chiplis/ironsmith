@@ -148,9 +148,9 @@ pub fn preserve_terminal_nonbasic_land_union(tokens: &[OwnedLexToken], filter: &
 #[path = "sacrifice_discard_inline_selected_sacrifice_tests.rs"]
 mod selected_sacrifice_tests;
 
-#[path = "sacrifice_discard/library_programs.rs"]
+#[path = "sacrifice_discard/library.rs"]
 mod library_programs;
 pub use library_programs::{discard_subject_owner_filter, parse_discard};
-#[path = "sacrifice_discard/resource_programs.rs"]
+#[path = "sacrifice_discard/resource.rs"]
 mod resource_programs;
 pub use resource_programs::parse_sacrifice;

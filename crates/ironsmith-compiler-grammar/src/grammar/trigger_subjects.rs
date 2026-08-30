@@ -654,15 +654,15 @@ fn normalized_phrase_occurs(words: &[&str], expected: &[&str]) -> bool {
     }
 }
 
-#[path = "trigger_subjects/core_programs.rs"]
+#[path = "trigger_subjects/core.rs"]
 mod core_programs;
 use core_programs::{
     exact_phrase_occurs, exact_word_occurs, normalized_word_matches, parse_exact_phrase,
     parse_normalized_phrase, parse_normalized_word, trim_commas_ref,
 };
-#[path = "trigger_subjects/choice_programs.rs"]
+#[path = "trigger_subjects/choice.rs"]
 mod choice_programs;
 use choice_programs::parse_normalized_word_choice;
-#[path = "trigger_subjects/object_action_programs.rs"]
+#[path = "trigger_subjects/object_action.rs"]
 mod object_action_programs;
 use object_action_programs::attached_controller_occurs;

@@ -577,13 +577,13 @@ fn parse_all_to_target_by_choice<'a>(
 #[path = "damage_inline_tests.rs"]
 mod tests;
 
-#[path = "damage/combat_programs.rs"]
+#[path = "damage/combat.rs"]
 mod combat_programs;
 use combat_programs::parse_redirect_next_damage_lexed;
 pub use combat_programs::parse_redirect_next_damage_tokens;
-#[path = "damage/core_programs.rs"]
+#[path = "damage/core.rs"]
 mod core_programs;
 use core_programs::{next_time_tail, parse_next_amount, parse_next_time};
-#[path = "damage/condition_programs.rs"]
+#[path = "damage/condition.rs"]
 mod condition_programs;
 use condition_programs::{classify_next_amount_destination, classify_next_time_destination};

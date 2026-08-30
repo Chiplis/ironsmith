@@ -37,13 +37,17 @@ fn materialize_optional_cost(
 fn materialize_alternative_casting_method(
     method: crate::model::compiler_semantic::ParsedAlternativeCastingMethodAst,
 ) -> Result<crate::alternative_cast::AlternativeCastingMethod, CardTextError> {
-    method.try_map(
+    // Materialize the whole cost algebra: one authored payment ("return an
+    // Island you control to its owner's hand") expands into sibling runtime
+    // components, and per-component mapping would fold them back into a
+    // single composite that prints as two authored sentences.
+    method.try_map_total_costs(
         crate::lowering_support::lower_compiler_child_effect,
-        crate::lowering_support::lower_compiler_cost_component,
+        |cost| crate::lowering::cost_materialization::materialize_compiler_core_total_cost(&cost),
     )
 }
 
-fn normalize_rewrite_parsed_ability(
+fn normalize_parsed_ability(
     mut parsed: ParsedAbility,
 ) -> Result<NormalizedParsedAbility, CardTextError> {
     fn cost_removes_source_counters(cost: &crate::model::CompilerCost) -> bool {
@@ -91,7 +95,7 @@ fn normalize_rewrite_parsed_ability(
                 .expect("checked compiler effect sidecar"),
         );
         if let Some(trigger) = triggered_spec {
-            let (trigger, prepared) = rewrite_prepare_owned_triggered_effects_for_lowering(
+            let (trigger, prepared) = stage_owned_triggered_effects_for_lowering(
                 trigger,
                 effects,
                 parsed.reference_imports.clone(),
@@ -108,7 +112,7 @@ fn normalize_rewrite_parsed_ability(
                 );
             }
             Some(NormalizedPreparedAbility::Activated(
-                rewrite_prepare_effects_with_trigger_context_for_lowering(
+                stage_effects_with_trigger_context_for_lowering(
                     None,
                     &effects,
                     parsed.reference_imports.clone(),
@@ -122,7 +126,7 @@ fn normalize_rewrite_parsed_ability(
     Ok(NormalizedParsedAbility { parsed, prepared })
 }
 
-fn normalize_rewrite_line_ast(
+fn normalize_line_ast(
     info: crate::model::facts::LineInfo,
     chunks: Vec<LineAst>,
     restrictions: ParsedRestrictions,
@@ -136,7 +140,7 @@ fn normalize_rewrite_line_ast(
         .as_ref()
         .is_some_and(|facts| facts.source_pronoun_enters_with_counter_surface);
     for chunk in chunks {
-        normalize_rewrite_line_chunk(
+        normalize_line_chunk(
             chunk,
             state,
             &mut normalized_chunks,
@@ -152,17 +156,17 @@ fn normalize_rewrite_line_ast(
     })
 }
 
-pub fn normalize_rewrite_line_ast_standalone(
+pub fn normalize_line_ast_standalone(
     info: crate::model::facts::LineInfo,
     chunks: Vec<LineAst>,
     restrictions: ParsedRestrictions,
     semantic_facts: crate::model::facts::LineSemanticFacts,
 ) -> Result<NormalizedLineAst, CardTextError> {
     let mut state = RewriteNormalizationState::default();
-    normalize_rewrite_line_ast(info, chunks, restrictions, semantic_facts, &mut state)
+    normalize_line_ast(info, chunks, restrictions, semantic_facts, &mut state)
 }
 
-fn normalize_rewrite_line_chunk(
+fn normalize_line_chunk(
     chunk: LineAst,
     state: &mut RewriteNormalizationState,
     normalized_chunks: &mut Vec<NormalizedLineChunk>,
@@ -170,7 +174,7 @@ fn normalize_rewrite_line_chunk(
 ) -> Result<(), CardTextError> {
     if let LineAst::Multiple(chunks) = chunk {
         for chunk in chunks {
-            normalize_rewrite_line_chunk(
+            normalize_line_chunk(
                 chunk,
                 state,
                 normalized_chunks,
@@ -187,15 +191,13 @@ fn normalize_rewrite_line_chunk(
         LineAst::Abilities(actions) => NormalizedLineChunk::Abilities(actions),
         LineAst::StaticAbility(ability) => NormalizedLineChunk::StaticAbility(ability),
         LineAst::StaticAbilities(abilities) => NormalizedLineChunk::StaticAbilities(abilities),
-        LineAst::Ability(parsed) => {
-            NormalizedLineChunk::Ability(normalize_rewrite_parsed_ability(parsed)?)
-        }
+        LineAst::Ability(parsed) => NormalizedLineChunk::Ability(normalize_parsed_ability(parsed)?),
         LineAst::Triggered {
             trigger,
             effects,
             max_triggers_per_turn,
         } => {
-            let (trigger, prepared) = rewrite_prepare_owned_triggered_effects_for_lowering(
+            let (trigger, prepared) = stage_owned_triggered_effects_for_lowering(
                 trigger,
                 effects,
                 ReferenceImports::default(),
@@ -208,7 +210,7 @@ fn normalize_rewrite_line_chunk(
         }
         LineAst::Statement { mut effects } => {
             if source_pronoun_enters_with_counter_surface {
-                retarget_as_enters_source_counter_grants(&mut effects);
+                resolve_as_enters_source_counter_grants(&mut effects);
             }
             let mut imports = state.statement_reference_imports();
             if let Some(cost_tag) = imports.last_object_tag.as_ref()
@@ -220,22 +222,24 @@ fn normalize_rewrite_line_chunk(
                     .iter()
                     .any(|effect| effect_references_tag(effect, &alias))
                 {
+                    let alias = TagKey::new(alias);
                     // A later effect in this statement may advance the ordinary
                     // last-object reference before the cost-linked reference is
                     // lowered. Snapshot the explicit additional-cost alias now.
                     imports
                         .snapshot_tag_aliases
                         .retain(|(existing, _)| existing != &alias);
-                    imports
-                        .snapshot_tag_aliases
-                        .push((alias, cost_tag.as_str().to_string()));
+                    imports.snapshot_tag_aliases.push((alias, cost_tag.clone()));
                 }
             }
             if let Some(cost_tag) = imports.last_object_tag.as_ref()
                 && (cost_tag.as_str().starts_with("sacrifice_cost_")
-                    || effects
-                        .iter()
-                        .any(|effect| effect_references_tag(effect, ADDITIONAL_COST_OBJECT_TAG)))
+                    || effects.iter().any(|effect| {
+                        effect_references_tag(
+                            effect,
+                            crate::tag::CompilerReferenceTag::AdditionalCostObject.as_str(),
+                        )
+                    }))
             {
                 // Bind the cost export before annotating any body effect. The
                 // ordinary last-object reference is intentionally free to
@@ -245,15 +249,15 @@ fn normalize_rewrite_line_chunk(
                 // demonstrative can initially carry the generic `it` marker
                 // and only become recognizable as cost-linked after an
                 // intervening source move advances ordinary object memory.
-                imports
-                    .snapshot_tag_aliases
-                    .retain(|(alias, _)| alias != ADDITIONAL_COST_OBJECT_TAG);
+                imports.snapshot_tag_aliases.retain(|(alias, _)| {
+                    alias != &crate::tag::CompilerReferenceTag::AdditionalCostObject.key()
+                });
                 imports.snapshot_tag_aliases.push((
-                    ADDITIONAL_COST_OBJECT_TAG.to_string(),
-                    cost_tag.as_str().to_string(),
+                    crate::tag::CompilerReferenceTag::AdditionalCostObject.key(),
+                    cost_tag.clone(),
                 ));
             }
-            let prepared = rewrite_prepare_statement_effects_for_lowering(&effects, imports)?;
+            let prepared = stage_statement_effects_for_lowering(&effects, imports)?;
             state.latest_spell_exports = prepared.exports.clone();
             NormalizedLineChunk::Statement {
                 effects_ast: effects,
@@ -261,11 +265,9 @@ fn normalize_rewrite_line_chunk(
             }
         }
         LineAst::AdditionalCost { effects } => {
-            let effects = rewrite_normalize_selected_sacrifice_tags(effects);
-            let prepared = rewrite_prepare_additional_cost_effects_for_lowering(
-                &effects,
-                ReferenceImports::default(),
-            )?;
+            let effects = normalize_selected_sacrifice_tags(effects);
+            let prepared =
+                stage_additional_cost_effects_for_lowering(&effects, ReferenceImports::default())?;
             state.latest_additional_cost_exports = prepared.exports.clone();
             NormalizedLineChunk::AdditionalCost {
                 effects_ast: effects,
@@ -280,8 +282,7 @@ fn normalize_rewrite_line_chunk(
             effects,
             timing,
         } => {
-            let prepared =
-                rewrite_prepare_effects_for_lowering(&effects, ReferenceImports::default())?;
+            let prepared = stage_effects_for_lowering(&effects, ReferenceImports::default())?;
             NormalizedLineChunk::GiftKeyword {
                 cost: materialize_optional_cost(cost)?,
                 prepared,
@@ -289,7 +290,7 @@ fn normalize_rewrite_line_chunk(
             }
         }
         LineAst::OptionalCostWithCastTrigger { cost, effects } => {
-            let prepared = rewrite_prepare_effects_for_lowering(
+            let prepared = stage_effects_for_lowering(
                 &effects,
                 state.latest_additional_cost_exports.to_imports(),
             )?;
@@ -303,10 +304,8 @@ fn normalize_rewrite_line_chunk(
             let mut exports = ReferenceExports::default();
             let mut saw_option = false;
             for option in options {
-                let prepared = rewrite_prepare_effects_for_lowering(
-                    &option.effects,
-                    ReferenceImports::default(),
-                )?;
+                let prepared =
+                    stage_effects_for_lowering(&option.effects, ReferenceImports::default())?;
                 exports = if saw_option {
                     ReferenceExports::join(&exports, &prepared.exports)
                 } else {
@@ -337,7 +336,7 @@ fn normalize_rewrite_line_chunk(
 /// the preceding optional action.  The line fact above proves the pronoun
 /// surface; this traversal then retargets only the matching typed
 /// entry-counter grant.
-fn retarget_as_enters_source_counter_grants(effects: &mut [EffectAst]) {
+fn resolve_as_enters_source_counter_grants(effects: &mut [EffectAst]) {
     fn retarget(effect: &mut EffectAst) {
         if let EffectAst::SubjectVerb(subject_verb) = effect
             && let SubjectVerbActionAst::GrantAbilitiesToTarget {
@@ -362,7 +361,7 @@ fn retarget_as_enters_source_counter_grants(effects: &mut [EffectAst]) {
             *target = TargetAst::Source(None);
         }
         crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
-            retarget_as_enters_source_counter_grants(nested);
+            resolve_as_enters_source_counter_grants(nested);
         });
     }
 
@@ -371,17 +370,17 @@ fn retarget_as_enters_source_counter_grants(effects: &mut [EffectAst]) {
     }
 }
 
-fn normalize_rewrite_modal_ast(modal: ParsedModalAst) -> Result<NormalizedModalAst, CardTextError> {
+fn normalize_modal_ast(modal: ParsedModalAst) -> Result<NormalizedModalAst, CardTextError> {
     let prepared_prefix = if modal.header.prefix_effects_ast.is_empty() {
         None
     } else if modal.header.trigger.is_some() || modal.header.activated.is_some() {
-        Some(rewrite_prepare_effects_with_trigger_context_for_lowering(
+        Some(stage_effects_with_trigger_context_for_lowering(
             modal.header.trigger.as_ref(),
             &modal.header.prefix_effects_ast,
             ReferenceImports::default(),
         )?)
     } else {
-        Some(rewrite_prepare_effects_for_lowering(
+        Some(stage_effects_for_lowering(
             &modal.header.prefix_effects_ast,
             ReferenceImports::default(),
         )?)
@@ -390,13 +389,13 @@ fn normalize_rewrite_modal_ast(modal: ParsedModalAst) -> Result<NormalizedModalA
     let prepared_common_prefix = if modal.header.common_prefix_effects_ast.is_empty() {
         None
     } else if modal.header.trigger.is_some() || modal.header.activated.is_some() {
-        Some(rewrite_prepare_effects_with_trigger_context_for_lowering(
+        Some(stage_effects_with_trigger_context_for_lowering(
             modal.header.trigger.as_ref(),
             &modal.header.common_prefix_effects_ast,
             ReferenceImports::default(),
         )?)
     } else {
-        Some(rewrite_prepare_effects_for_lowering(
+        Some(stage_effects_for_lowering(
             &modal.header.common_prefix_effects_ast,
             ReferenceImports::default(),
         )?)
@@ -404,8 +403,7 @@ fn normalize_rewrite_modal_ast(modal: ParsedModalAst) -> Result<NormalizedModalA
 
     let mut modes = Vec::with_capacity(modal.modes.len());
     for mode in modal.modes {
-        let prepared =
-            rewrite_prepare_effects_for_lowering(&mode.effects_ast, ReferenceImports::default())?;
+        let prepared = stage_effects_for_lowering(&mode.effects_ast, ReferenceImports::default())?;
         modes.push(NormalizedModalModeAst {
             info: mode.info,
             description: mode.description,
@@ -422,26 +420,24 @@ fn normalize_rewrite_modal_ast(modal: ParsedModalAst) -> Result<NormalizedModalA
         modes,
     })
 }
-fn prepare_parsed_item_to_normalized_item(
+fn normalized_item_from_parsed_item(
     item: ParsedCardItem,
     state: &mut RewriteNormalizationState,
 ) -> Result<NormalizedCardItem, CardTextError> {
     match item {
-        ParsedCardItem::Line(line) => Ok(NormalizedCardItem::Line(normalize_rewrite_line_ast(
+        ParsedCardItem::Line(line) => Ok(NormalizedCardItem::Line(normalize_line_ast(
             line.info,
             line.chunks,
             line.restrictions,
             line.semantic_facts,
             state,
         )?)),
-        ParsedCardItem::Modal(modal) => Ok(NormalizedCardItem::Modal(normalize_rewrite_modal_ast(
-            modal,
-        )?)),
+        ParsedCardItem::Modal(modal) => Ok(NormalizedCardItem::Modal(normalize_modal_ast(modal)?)),
         ParsedCardItem::LevelAbility(level) => Ok(NormalizedCardItem::LevelAbility(level)),
     }
 }
 
-pub fn prepare_parsed_card_ast_for_lowering(
+pub fn normalize_parsed_card_ast_for_lowering(
     ast: ParsedCardAst,
 ) -> Result<NormalizedCardAst, CardTextError> {
     let ParsedCardAst {
@@ -464,7 +460,7 @@ pub fn prepare_parsed_card_ast_for_lowering(
         let mut state = RewriteNormalizationState::default();
         let mut items = Vec::new();
         for item in branch.items {
-            items.push(prepare_parsed_item_to_normalized_item(item, &mut state)?);
+            items.push(normalized_item_from_parsed_item(item, &mut state)?);
         }
         Some(NormalizedOverloadBranch { items })
     } else {
@@ -474,7 +470,7 @@ pub fn prepare_parsed_card_ast_for_lowering(
         let mut state = RewriteNormalizationState::default();
         let mut items = Vec::new();
         for item in branch.items {
-            items.push(prepare_parsed_item_to_normalized_item(item, &mut state)?);
+            items.push(normalized_item_from_parsed_item(item, &mut state)?);
         }
         Some(NormalizedCleaveBranch { items })
     } else {
@@ -483,7 +479,7 @@ pub fn prepare_parsed_card_ast_for_lowering(
     let mut state = RewriteNormalizationState::default();
     let mut normalized_items = Vec::new();
     for item in items {
-        normalized_items.push(prepare_parsed_item_to_normalized_item(item, &mut state)?);
+        normalized_items.push(normalized_item_from_parsed_item(item, &mut state)?);
     }
 
     Ok(NormalizedCardAst {
@@ -499,10 +495,10 @@ pub fn prepare_parsed_card_ast_for_lowering(
 }
 
 #[cfg(test)]
-pub fn rewrite_document_to_normalized_card_ast(
+pub fn document_to_normalized_card_ast(
     doc: RewriteSemanticDocument,
 ) -> Result<NormalizedCardAst, CardTextError> {
-    prepare_parsed_card_ast_for_lowering(super::super::semantic_document::parse_semantic_document(
-        doc,
-    )?)
+    normalize_parsed_card_ast_for_lowering(
+        super::super::semantic_document::parse_semantic_document(doc)?,
+    )
 }

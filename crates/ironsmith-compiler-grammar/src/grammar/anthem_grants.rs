@@ -1925,14 +1925,14 @@ fn first_token_word(tokens: &[OwnedLexToken], expected: AnthemWordClass) -> Opti
 #[path = "anthem_grants_inline_tests.rs"]
 mod tests;
 
-#[path = "anthem_grants/object_action_programs.rs"]
+#[path = "anthem_grants/object_action.rs"]
 mod object_action_programs;
 use object_action_programs::{
     first_token_kind_from, token_any_phrase_complete, token_phrase_complete, token_phrase_prefix,
 };
-#[path = "anthem_grants/condition_programs.rs"]
+#[path = "anthem_grants/condition.rs"]
 mod condition_programs;
 use condition_programs::find_cant_gain_tail;
-#[path = "anthem_grants/combat_programs.rs"]
+#[path = "anthem_grants/combat.rs"]
 mod combat_programs;
 use combat_programs::find_no_defender_phrase;

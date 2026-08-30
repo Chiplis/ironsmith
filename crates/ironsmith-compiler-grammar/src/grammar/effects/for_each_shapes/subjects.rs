@@ -105,7 +105,7 @@ pub use iterated_effects::*;
 #[path = "subjects/tests.rs"]
 mod tests;
 
-#[path = "subjects/reference_programs.rs"]
+#[path = "subjects/reference.rs"]
 mod reference_programs;
 use reference_programs::contains_effect_verb_outside_filter_zone;
 pub use reference_programs::{

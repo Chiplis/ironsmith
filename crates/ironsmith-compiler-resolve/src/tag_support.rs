@@ -1,5 +1,5 @@
 use crate::cards::builders::{
-    EffectAst, IT_TAG, ObjectRefAst, ParseAnnotations, PlayerAst, PredicateAst, RetargetModeAst,
+    EffectAst, ObjectRefAst, ParseAnnotations, PlayerAst, PredicateAst, RetargetModeAst,
     SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst,
 };
 use crate::effect::{EventValueSpec, Value};
@@ -8,44 +8,28 @@ use crate::target::ChooseSpec;
 
 use super::{SpanMappingContext, assert_effect_ast_variant_coverage, for_each_nested_effects};
 
-const REVEALED_COLLECTION_TAG_PREFIX: &str = "revealed";
-const SEARCHED_COLLECTION_TAG_PREFIX: &str = "searched";
-const EXILE_COST_TAG_PREFIX: &str = "exile_cost_";
-const EXILED_COLLECTION_TAG_PREFIX: &str = "exiled_";
-const SENTENCE_HELPER_REVEALED_TAG_PREFIX: &str = "__sentence_helper_revealed";
-const SENTENCE_HELPER_EXILED_TAG_PREFIX: &str = "__sentence_helper_exiled";
-const SENTENCE_HELPER_CONSULT_MATCH_TAG_PREFIX: &str = "__sentence_helper_consult_match";
-
-fn tag_str_has_prefix(tag: &str, prefix: &str) -> bool {
-    tag.starts_with(prefix)
+pub fn is_revealed_collection_tag(tag: &TagKey) -> bool {
+    crate::tag::CompilerTagClass::RevealedCollection.contains(tag)
 }
 
-pub fn is_revealed_collection_tag(tag: &str) -> bool {
-    tag_str_has_prefix(tag, REVEALED_COLLECTION_TAG_PREFIX)
-        || tag_str_has_prefix(tag, SENTENCE_HELPER_REVEALED_TAG_PREFIX)
-        || tag == crate::tag::REVEALED_THIS_WAY_TAG
+pub fn is_searched_collection_tag(tag: &TagKey) -> bool {
+    crate::tag::CompilerTagClass::SearchedCollection.contains(tag)
 }
 
-pub fn is_searched_collection_tag(tag: &str) -> bool {
-    tag_str_has_prefix(tag, SEARCHED_COLLECTION_TAG_PREFIX)
+pub fn is_exile_cost_collection_tag(tag: &TagKey) -> bool {
+    crate::tag::CompilerCostObjectTag::Exile.matches(tag)
 }
 
-pub fn is_exile_cost_collection_tag(tag: &str) -> bool {
-    tag_str_has_prefix(tag, EXILE_COST_TAG_PREFIX)
+pub fn is_sentence_helper_exiled_collection_tag(tag: &TagKey) -> bool {
+    crate::tag::CompilerTagClass::SentenceHelperExiledCollection.contains(tag)
 }
 
-pub fn is_sentence_helper_exiled_collection_tag(tag: &str) -> bool {
-    tag_str_has_prefix(tag, SENTENCE_HELPER_EXILED_TAG_PREFIX)
+pub fn is_sentence_helper_consult_match_tag(tag: &TagKey) -> bool {
+    crate::tag::CompilerTagClass::SentenceHelperConsultMatch.contains(tag)
 }
 
-pub fn is_sentence_helper_consult_match_tag(tag: &str) -> bool {
-    tag_str_has_prefix(tag, SENTENCE_HELPER_CONSULT_MATCH_TAG_PREFIX)
-}
-
-pub fn is_exiled_collection_tag(tag: &str) -> bool {
-    tag_str_has_prefix(tag, EXILED_COLLECTION_TAG_PREFIX)
-        || is_sentence_helper_exiled_collection_tag(tag)
-        || tag == crate::tag::SOURCE_EXILED_TAG
+pub fn is_exiled_collection_tag(tag: &TagKey) -> bool {
+    crate::tag::CompilerTagClass::ExiledCollection.contains(tag)
 }
 
 fn total_cost_values_any(
@@ -163,7 +147,7 @@ fn collect_effect_produced_tags(effect: &EffectAst, tags: &mut Vec<TagKey>) {
             SubjectVerbActionAst::CopySpell { .. }
             | SubjectVerbActionAst::CopySpellForEachTarget { .. } => push_unique_tag(
                 tags,
-                &TagKey::from(crate::cards::builders::COPIED_STACK_OBJECT_TAG),
+                &crate::tag::CompilerReferenceTag::CopiedStackObject.key(),
             ),
             _ => {}
         },
@@ -869,7 +853,7 @@ pub fn choose_spec_references_tag(spec: &ChooseSpec, tag: &str) -> bool {
 
 pub fn choose_spec_references_exiled_tag(spec: &ChooseSpec) -> bool {
     fn is_exiled_tag(tag: &TagKey) -> bool {
-        is_exiled_collection_tag(tag.as_str())
+        is_exiled_collection_tag(tag)
     }
 
     match spec {
@@ -1519,36 +1503,36 @@ pub fn effect_references_its_controller(effect: &EffectAst) -> bool {
 
 pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
     assert_effect_ast_variant_coverage(effect);
-    if direct_effect_targets_reference_tag(effect, IT_TAG) {
+    if direct_effect_targets_reference_tag(effect, crate::tag::CompilerReferenceTag::It.as_str()) {
         return true;
     }
 
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
             SubjectVerbActionAst::DealDamageEach { amount, filter } => {
-                value_references_tag(amount, IT_TAG) || filter_references_tag(filter, IT_TAG)
+                value_references_tag(amount, crate::tag::CompilerReferenceTag::It.as_str()) || filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
             }
             SubjectVerbActionAst::CounterUnlessPays { cost, .. } => {
-                total_cost_values_any(cost, |value| value_references_tag(value, IT_TAG))
+                total_cost_values_any(cost, |value| value_references_tag(value, crate::tag::CompilerReferenceTag::It.as_str()))
             }
             SubjectVerbActionAst::Discard { count, filter, .. } => {
-                value_references_tag(count, IT_TAG)
+                value_references_tag(count, crate::tag::CompilerReferenceTag::It.as_str())
                     || filter
                         .as_ref()
-                        .is_some_and(|filter| filter_references_tag(filter, IT_TAG))
+                        .is_some_and(|filter| filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str()))
             }
             SubjectVerbActionAst::Sacrifice { filter, target, .. } => {
-                filter_references_tag(filter, IT_TAG)
+                filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
                     || target
                         .as_ref()
-                        .is_some_and(|target| target_references_tag(target, IT_TAG))
+                        .is_some_and(|target| target_references_tag(target, crate::tag::CompilerReferenceTag::It.as_str()))
             }
-            SubjectVerbActionAst::SacrificeAll { filter } => filter_references_tag(filter, IT_TAG),
+            SubjectVerbActionAst::SacrificeAll { filter } => filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str()),
             SubjectVerbActionAst::PutSticker { target, .. }
             | SubjectVerbActionAst::MoveToLibraryNthFromTop { target, .. }
             | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target }
             | SubjectVerbActionAst::SwitchPowerToughness { target, .. } => {
-                target_references_tag(target, IT_TAG)
+                target_references_tag(target, crate::tag::CompilerReferenceTag::It.as_str())
             }
             SubjectVerbActionAst::Regenerate {
                 follow_up_effects, ..
@@ -1564,14 +1548,14 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
             | SubjectVerbActionAst::PhaseInAll { filter }
             | SubjectVerbActionAst::ScalePowerToughnessAll { filter, .. }
             | SubjectVerbActionAst::RegenerateAll { filter } => {
-                filter_references_tag(filter, IT_TAG)
+                filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
             }
             SubjectVerbActionAst::TapOrUntapAll {
                 tap_filter,
                 untap_filter,
             } => {
-                filter_references_tag(tap_filter, IT_TAG)
-                    || filter_references_tag(untap_filter, IT_TAG)
+                filter_references_tag(tap_filter, crate::tag::CompilerReferenceTag::It.as_str())
+                    || filter_references_tag(untap_filter, crate::tag::CompilerReferenceTag::It.as_str())
             }
             SubjectVerbActionAst::ExileTopOfLibrary {
                 count,
@@ -1579,38 +1563,38 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 accumulated_tags,
                 ..
             } => {
-                value_references_tag(count, IT_TAG)
-                    || tags.iter().any(|tag| tag.as_str() == IT_TAG)
-                    || accumulated_tags.iter().any(|tag| tag.as_str() == IT_TAG)
+                value_references_tag(count, crate::tag::CompilerReferenceTag::It.as_str())
+                    || tags.iter().any(|tag| tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
+                    || accumulated_tags.iter().any(|tag| tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
             }
             SubjectVerbActionAst::DrawForEachTaggedMatching { tag, filter } => {
-                tag.as_str() == IT_TAG || filter_references_tag(filter, IT_TAG)
+                tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() || filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
             }
             SubjectVerbActionAst::PutCountersAll { count, filter, .. }
             | SubjectVerbActionAst::RemoveCountersAll {
                 amount: count,
                 filter,
                 ..
-            } => value_references_tag(count, IT_TAG) || filter_references_tag(filter, IT_TAG),
-            SubjectVerbActionAst::ReorderTopOfLibrary { tag } => tag.as_str() == IT_TAG,
+            } => value_references_tag(count, crate::tag::CompilerReferenceTag::It.as_str()) || filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str()),
+            SubjectVerbActionAst::ReorderTopOfLibrary { tag } => tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str(),
             SubjectVerbActionAst::ReduceNextSpellCostThisTurn { filter, .. }
             | SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn { filter, .. } => {
-                filter_references_tag(filter, IT_TAG)
+                filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
             }
             SubjectVerbActionAst::PreventDamageToTargetPutCounters {
                 amount: Some(amount),
                 ..
-            } => value_references_tag(amount, IT_TAG),
+            } => value_references_tag(amount, crate::tag::CompilerReferenceTag::It.as_str()),
             SubjectVerbActionAst::PreventDamageEach { amount, filter, .. } => {
-                value_references_tag(amount, IT_TAG) || filter_references_tag(filter, IT_TAG)
+                value_references_tag(amount, crate::tag::CompilerReferenceTag::It.as_str()) || filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
             }
             SubjectVerbActionAst::PutOrRemoveCounters {
                 put_count,
                 remove_count,
                 ..
-            } => value_references_tag(put_count, IT_TAG) || value_references_tag(remove_count, IT_TAG),
+            } => value_references_tag(put_count, crate::tag::CompilerReferenceTag::It.as_str()) || value_references_tag(remove_count, crate::tag::CompilerReferenceTag::It.as_str()),
             SubjectVerbActionAst::PutCounterChoice { count, .. } => {
-                value_references_tag(count, IT_TAG)
+                value_references_tag(count, crate::tag::CompilerReferenceTag::It.as_str())
             }
             SubjectVerbActionAst::Pump {
                 power, toughness, ..
@@ -1624,28 +1608,28 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
             | SubjectVerbActionAst::PumpAll {
                 power, toughness, ..
             } => {
-                value_references_tag(power, IT_TAG) || value_references_tag(toughness, IT_TAG)
+                value_references_tag(power, crate::tag::CompilerReferenceTag::It.as_str()) || value_references_tag(toughness, crate::tag::CompilerReferenceTag::It.as_str())
             }
             SubjectVerbActionAst::SetBasePower { power, .. } => {
-                value_references_tag(power, IT_TAG)
+                value_references_tag(power, crate::tag::CompilerReferenceTag::It.as_str())
             }
             SubjectVerbActionAst::PumpForEach { count, .. } => {
-                value_references_tag(count, IT_TAG)
+                value_references_tag(count, crate::tag::CompilerReferenceTag::It.as_str())
             }
             SubjectVerbActionAst::CopySpellForEachTarget { object_filter, .. } => object_filter
                 .as_ref()
-                .is_some_and(|filter| filter_references_tag(filter, IT_TAG)),
+                .is_some_and(|filter| filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())),
             SubjectVerbActionAst::DealDamageEqualToPower {
                 source,
                 amount,
                 target,
                 ..
             } => {
-                target_references_tag(source, IT_TAG)
-                    || value_references_tag(amount, IT_TAG)
-                    || target_references_tag(target, IT_TAG)
+                target_references_tag(source, crate::tag::CompilerReferenceTag::It.as_str())
+                    || value_references_tag(amount, crate::tag::CompilerReferenceTag::It.as_str())
+                    || target_references_tag(target, crate::tag::CompilerReferenceTag::It.as_str())
             }
-            SubjectVerbActionAst::CastTagged { tag, .. } => tag.as_str() == IT_TAG,
+            SubjectVerbActionAst::CastTagged { tag, .. } => tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str(),
             SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn { tag, .. }
             | SubjectVerbActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
                 tag,
@@ -1654,14 +1638,14 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
             | SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn { tag, .. }
             | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { tag, .. }
             | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsYouControlSource { tag, .. } => {
-                tag.as_str() == IT_TAG
+                tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             }
             SubjectVerbActionAst::PutRestOnBottomOfLibrary => true,
             SubjectVerbActionAst::Cant { restriction, .. } => {
-                restriction_references_tag(restriction, IT_TAG)
+                restriction_references_tag(restriction, crate::tag::CompilerReferenceTag::It.as_str())
             }
             SubjectVerbActionAst::CreateTokenCopy { object, .. } => {
-                matches!(object, ObjectRefAst::Tagged(tag) if tag.as_str() == IT_TAG)
+                matches!(object, ObjectRefAst::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
             }
             SubjectVerbActionAst::CreateTokenWithMods {
                 count,
@@ -1669,17 +1653,17 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 attached_to,
                 ..
             } => {
-                value_references_tag(count, IT_TAG)
+                value_references_tag(count, crate::tag::CompilerReferenceTag::It.as_str())
                     || dynamic_power_toughness.as_ref().is_some_and(|(power, toughness)| {
-                        value_references_tag(power, IT_TAG)
-                            || value_references_tag(toughness, IT_TAG)
+                        value_references_tag(power, crate::tag::CompilerReferenceTag::It.as_str())
+                            || value_references_tag(toughness, crate::tag::CompilerReferenceTag::It.as_str())
                     })
                     || attached_to
                         .as_ref()
-                        .is_some_and(|target| target_references_tag(target, IT_TAG))
+                        .is_some_and(|target| target_references_tag(target, crate::tag::CompilerReferenceTag::It.as_str()))
             }
             action => subject_verb_action_value(action)
-                .is_some_and(|value| value_references_tag(value, IT_TAG)),
+                .is_some_and(|value| value_references_tag(value, crate::tag::CompilerReferenceTag::It.as_str())),
         },
         EffectAst::Conditional {
             predicate,
@@ -1693,32 +1677,32 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
             ..
         } => {
             predicate_uses_implicit_it_reference(predicate)
-                || predicate_references_tag(predicate, IT_TAG)
+                || predicate_references_tag(predicate, crate::tag::CompilerReferenceTag::It.as_str())
                 || effects_reference_it_tag(if_true)
                 || effects_reference_it_tag(if_false)
         }
         EffectAst::TrailingIf { predicate, effects }
         | EffectAst::TrailingUnless { predicate, effects } => {
             predicate_uses_implicit_it_reference(predicate)
-                || predicate_references_tag(predicate, IT_TAG)
+                || predicate_references_tag(predicate, crate::tag::CompilerReferenceTag::It.as_str())
                 || effects_reference_it_tag(effects)
         }
         EffectAst::ForEachTagged { tag, effects } => {
-            tag.as_str() == IT_TAG || effects_reference_it_tag(effects)
+            tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() || effects_reference_it_tag(effects)
         }
         EffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
             tag,
             blocker_tag,
             effects,
         } => {
-            tag.as_str() == IT_TAG
-                || blocker_tag.as_str() == IT_TAG
+            tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                || blocker_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 || effects_reference_it_tag(effects)
         }
         EffectAst::DelayedWhenLastObjectDiesThisTurn { .. }
         | EffectAst::DelayedWhenLastObjectLeavesBattlefield { .. } => true,
         EffectAst::ForEachObject { filter, effects } => {
-            filter_references_tag(filter, IT_TAG) || effects_reference_it_tag(effects)
+            filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str()) || effects_reference_it_tag(effects)
         }
         EffectAst::ControlFlow(control) => {
             let condition_references_it = |condition: &crate::model::ControlConditionAst| {
@@ -1726,7 +1710,7 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
                     &condition.predicate,
                     crate::model::ControlPredicateAst::State(predicate)
                         if predicate_uses_implicit_it_reference(predicate)
-                            || predicate_references_tag(predicate, IT_TAG)
+                            || predicate_references_tag(predicate, crate::tag::CompilerReferenceTag::It.as_str())
                 )
             };
             let node_references_it = match &control.node {
@@ -1754,7 +1738,7 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
         }
         _ => {
             if let Some(filter) = effect_tagged_filter(effect) {
-                return filter_references_tag(filter, IT_TAG);
+                return filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str());
             }
             let mut references = false;
             for_each_nested_effects(effect, true, |nested| {
@@ -1904,18 +1888,17 @@ pub fn collect_tag_spans_from_target(
         annotations.record_tag_span(tag, mapped);
     }
     if let TargetAst::Object(filter, _, Some(it_span)) = target
-        && filter
-            .tagged_constraints
-            .iter()
-            .any(|constraint| constraint.tag.as_str() == IT_TAG)
+        && filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        })
     {
         let mapped =
             super::map_span_to_original(*it_span, ctx.normalized, ctx.original, ctx.char_map);
         #[cfg(not(feature = "serialization"))]
-        annotations.record_tag_span(IT_TAG, mapped);
+        annotations.record_tag_span(crate::tag::CompilerReferenceTag::It.as_str(), mapped);
         #[cfg(feature = "serialization")]
         {
-            let it_tag = TagKey::from(IT_TAG);
+            let it_tag = crate::tag::CompilerReferenceTag::It.key();
             annotations.record_tag_span(&it_tag, mapped);
         }
     }

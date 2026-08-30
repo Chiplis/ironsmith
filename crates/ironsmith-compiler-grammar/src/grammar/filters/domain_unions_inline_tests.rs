@@ -194,7 +194,7 @@ fn trailing_attachment_provenance_scopes_every_coordinated_noun() {
                 matches!(
                     branch.tagged_constraints.as_slice(),
                     [constraint]
-                        if constraint.tag == crate::TagKey::from(crate::cards::builders::IT_TAG)
+                        if constraint.tag == crate::tag::CompilerReferenceTag::It.key()
                             && constraint.relation == relation
                 )
             }),

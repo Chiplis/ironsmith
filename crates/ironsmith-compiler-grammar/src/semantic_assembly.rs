@@ -163,7 +163,6 @@ fn assemble_triggered_line(
     )?;
     let chunk = crate::semantic_line_parsing::apply_chosen_option_to_triggered_chunk(
         chunk,
-        &triggered.full_text,
         &info.semantic_facts.triggered_ability,
         triggered.max_triggers_per_turn,
         triggered.chosen_option.as_ref(),

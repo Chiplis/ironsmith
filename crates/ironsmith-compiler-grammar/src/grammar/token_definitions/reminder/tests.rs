@@ -52,8 +52,8 @@ fn parses_dynamic_pt_and_lifecycle_reminders() {
     assert!(matches!(
         facts.dynamic_power_toughness,
         Some((Value::PowerOf(ref power), Value::ToughnessOf(ref toughness)))
-            if matches!(power.as_ref(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::model::token_definition::TOKEN_DYNAMIC_THAT_CARD_TAG)
-                && matches!(toughness.as_ref(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::model::token_definition::TOKEN_DYNAMIC_THAT_CARD_TAG)
+            if matches!(power.as_ref(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::TokenDynamicThatCard.as_str())
+                && matches!(toughness.as_ref(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::TokenDynamicThatCard.as_str())
     ));
 
     let embedded = lex_line(
@@ -101,7 +101,8 @@ fn parses_unquoted_base_pt_from_the_exact_zone_change_group() {
         assert_eq!(filter.zone, None);
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
-                && constraint.tag.as_str() == ironsmith_core::ZONE_CHANGE_GROUP_TAG
+                && constraint.tag.as_str()
+                    == crate::tag::CompilerReferenceTag::ZoneChangeGroup.as_str()
         }));
     }
 

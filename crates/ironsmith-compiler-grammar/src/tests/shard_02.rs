@@ -3191,7 +3191,7 @@ pub(super) fn rewrite_search_library_same_name_tail_parser_splits_reference_suff
     assert!(matches!(
         parsed.same_name_reference,
         Some(super::super::grammar::effects::SearchLibrarySameNameReference::Tagged(tag))
-            if tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+            if tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
     ));
 }
 
@@ -3364,7 +3364,10 @@ pub(super) fn library_search_resolves_same_name_it_to_the_revealed_card_tag() {
         .expect("search filter should retain the same-name relation");
 
     assert_eq!(same_name.tag, revealed_tag);
-    assert_ne!(same_name.tag.as_str(), crate::cards::builders::IT_TAG);
+    assert_ne!(
+        same_name.tag.as_str(),
+        crate::tag::CompilerReferenceTag::It.as_str()
+    );
 }
 
 #[test]
@@ -4546,3 +4549,4 @@ pub(super) fn definite_player_damage_followup_keeps_the_end_step_participant() {
     assert!(compact.contains("target:Player(IteratedPlayer"), "{debug}");
     assert!(!compact.contains("target:Player(Any"), "{debug}");
 }
+

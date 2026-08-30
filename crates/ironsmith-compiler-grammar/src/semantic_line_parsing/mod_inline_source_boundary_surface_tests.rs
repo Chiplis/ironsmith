@@ -113,7 +113,7 @@ fn moved_object_followup_keeps_prior_leading_then_boundary() {
                 },
                 ..
             }),
-        ] if tag.as_str() == IT_TAG
+        ] if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     ));
 }
 

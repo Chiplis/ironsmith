@@ -94,7 +94,7 @@ fn parse_target_deals_power_damage_to_other_and_self_where_x(
 
     let source = parse_target_phrase(&source_tokens)?;
     let first_target = parse_target_phrase(&first_target_tokens)?;
-    let source_ref = TargetAst::Tagged(TagKey::from(IT_TAG), None);
+    let source_ref = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None);
     Ok(Some(vec![
         EffectAst::subject_verb_target_only(source.clone()),
         EffectAst::subject_verb_damage_equal_to_power(source_ref.clone(), first_target),
@@ -121,10 +121,10 @@ fn parse_conjoined_must_be_blocked_sentence(
     }
 
     let subject_and_action = trim_edge_punctuation(shape.subject_tokens);
-    let Some(and_token_idx) = crate::slice_primitives::select_last_position(
-        &subject_and_action,
-        |token| token.as_word() == Some("and"),
-    )
+    let Some(and_token_idx) =
+        crate::slice_primitives::select_last_position(&subject_and_action, |token| {
+            token.as_word() == Some("and")
+        })
     else {
         return Ok(None);
     };
@@ -154,7 +154,7 @@ fn parse_conjoined_must_be_blocked_sentence(
     }
 
     let restriction_filter = if starts_with_target_indicator(&shared_subject_tokens) {
-        ObjectFilter::tagged(TagKey::from(IT_TAG))
+        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key())
     } else {
         let target = parse_target_phrase(&shared_subject_tokens)?;
         target_ast_to_object_filter(target).ok_or_else(|| {
@@ -344,7 +344,7 @@ fn parse_target_relative_combat_set_sentence(
         && relation_idx > 2
         && let Some(destination_idx) =
             crate::word_primitives::parse_sequence_start(&words[relation_idx + 5..], &["to"])
-            .map(|offset| relation_idx + 5 + offset)
+                .map(|offset| relation_idx + 5 + offset)
         && destination_idx > relation_idx + 4
         && crate::word_primitives::parse_any_sequence_complete(
             &words[destination_idx..],
@@ -404,7 +404,7 @@ pub fn lower_where_x_shape(
             let object_tokens = crate::lexer::synthetic_word_tokens([object_kind.as_str()]);
             let mut filter = parse_object_filter(&object_tokens, false).ok()?;
             filter = filter.match_tagged(
-                TagKey::from(CHOSEN_OBJECTS_TAG),
+                crate::tag::CompilerReferenceTag::ChosenObjects.key(),
                 TaggedOpbjectRelation::IsTaggedObject,
             );
             (
@@ -422,7 +422,9 @@ pub fn lower_where_x_shape(
                 Reference::Target => crate::target::ChooseSpec::target(
                     crate::target::ChooseSpec::Object(ObjectFilter::default()),
                 ),
-                Reference::TaggedIt => crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG)),
+                Reference::TaggedIt => {
+                    crate::target::ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())
+                }
             };
             let value = match (reference, metric) {
                 (Reference::Source, Metric::Power) => Value::SourcePower,
@@ -435,9 +437,9 @@ pub fn lower_where_x_shape(
         }
         sentence_shapes::WhereXValueShape::TapCostPower => (
             None,
-            Value::PowerOf(Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(
-                "tap_cost_0",
-            ))))
+            Value::PowerOf(Box::new(crate::target::ChooseSpec::Tagged(
+                crate::tag::CompilerReferenceTag::TapCost0.key(),
+            )))
             .with_surface_hint(
                 ironsmith_core::ValueSurfaceHint::CharacteristicOfObjectThisWay {
                     card_type: crate::types::CardType::Creature,
@@ -489,15 +491,15 @@ pub fn lower_where_x_shape(
             Value::Add(
                 Box::new(Value::Fixed(2)),
                 Box::new(Value::ManaValueOf(Box::new(
-                    crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG)),
+                    crate::target::ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key()),
                 ))),
             ),
         ),
         sentence_shapes::WhereXValueShape::SourceExiledManaValue => (
             None,
-            Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(
-                crate::tag::SOURCE_EXILED_TAG,
-            )))),
+            Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
+                crate::tag::CompilerReferenceTag::SourceExiled.key(),
+            ))),
         ),
         sentence_shapes::WhereXValueShape::PriorEffectMetric(query) => {
             (None, Value::PendingPriorEffectMetric(query))
@@ -522,7 +524,9 @@ pub fn lower_where_x_shape(
                     counter_type,
                 ),
                 (Reference::TaggedIt, counter_type) => Value::CountersOn(
-                    Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+                    Box::new(ChooseSpec::Tagged(
+                        crate::tag::CompilerReferenceTag::It.key(),
+                    )),
                     counter_type,
                 ),
             };
@@ -872,7 +876,10 @@ fn parse_it_is_aura_enchantment_sentence_lexed(
         granted_abilities.append(&mut parsed);
     }
     let mut effects = vec![EffectAst::subject_verb_become_aura_enchantment_with_grants(
-        TargetAst::Tagged(TagKey::from(IT_TAG), Some(TextSpan::synthetic())),
+        TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+            Some(TextSpan::synthetic()),
+        ),
         attachment_filter,
         granted_abilities,
         Until::Forever,
@@ -915,7 +922,7 @@ fn parse_set_quantifier_surface(
         let object_end = crate::slice_primitives::select_position(&words[verb + 1..], |word| {
             matches!(*word, "to" | "from")
         })
-            .map_or(words.len(), |offset| verb + 1 + offset);
+        .map_or(words.len(), |offset| verb + 1 + offset);
         &words[verb + 1..object_end]
     } else {
         &words[..verb]
@@ -939,11 +946,10 @@ fn parse_return_set_reference_surface(tokens: &[OwnedLexToken]) -> Option<String
     let object_end = crate::slice_primitives::select_position(&words[verb + 1..], |word| {
         matches!(*word, "to" | "from")
     })
-        .map_or(words.len(), |offset| verb + 1 + offset);
+    .map_or(words.len(), |offset| verb + 1 + offset);
     let object = &words[verb + 1..object_end];
-    let quantifier = crate::slice_primitives::select_position(object, |word| {
-        matches!(*word, "each" | "those")
-    })?;
+    let quantifier =
+        crate::slice_primitives::select_position(object, |word| matches!(*word, "each" | "those"))?;
     Some(object[quantifier..].join(" "))
 }
 
@@ -1072,55 +1078,36 @@ fn parse_gain_ability_before_effect_chain(
     super::parse_effect_chain_lexed(tokens)
 }
 
-/// Return whether a quoted outer gain carries an authored `unless` tail.
-///
-/// The broad restriction dispatcher scans the whole token stream for a
-/// negation, including inside quoted granted rules. For
-/// `<subject> gains "... can't ..." until ... unless ...`, that nested
-/// negation belongs to the granted ability rather than the outer sentence.
-/// Requiring an outer gain verb before the opening quote and `unless` after
-/// the closing quote keeps this preemption tied to the complete gain grammar.
-fn quoted_gain_has_trailing_unless(tokens: &[OwnedLexToken]) -> bool {
-    let Some(open_quote) =
-        crate::slice_primitives::select_position(tokens, OwnedLexToken::is_quote)
-    else {
-        return false;
-    };
-    let Some(close_quote) =
-        crate::slice_primitives::select_last_position(tokens, OwnedLexToken::is_quote)
-    else {
-        return false;
-    };
-    open_quote < close_quote
-        && tokens[..open_quote]
-            .iter()
-            .any(|token| token.is_any_word(&["gain", "gains", "have", "has", "lose", "loses"]))
-        && tokens[close_quote + 1..]
-            .iter()
-            .any(|token| token.is_word("unless"))
-}
-
 #[cfg(test)]
 #[path = "sentence_shape_predicates_inline_spent_mana_repeat_tests.rs"]
 mod spent_mana_repeat_tests;
 
-#[path = "sentence_shape_predicates/sentence_shape_predicates_core_programs.rs"]
+#[path = "sentence_shape_predicates/sentence_shape_predicates_core.rs"]
 mod sentence_shape_predicates_core_programs;
-use sentence_shape_predicates_core_programs::{has_unrecognized_leading_effect_label, parse_effect_sentence_lexed_inner, parse_effect_sentence_lexed_inner_unstacked, parse_effect_sentence_with_where_x_lexed};
-pub use sentence_shape_predicates_core_programs::{parse_effect_sentence_lexed, parse_effect_sentence_lexed_with_context};
-#[path = "sentence_shape_predicates/sentence_shape_predicates_combat_programs.rs"]
+use sentence_shape_predicates_core_programs::{
+    has_unrecognized_leading_effect_label, parse_effect_sentence_lexed_inner,
+    parse_effect_sentence_lexed_inner_unstacked, parse_effect_sentence_with_where_x_lexed,
+};
+pub use sentence_shape_predicates_core_programs::{
+    parse_effect_sentence_lexed, parse_effect_sentence_lexed_with_context,
+};
+#[path = "sentence_shape_predicates/sentence_shape_predicates_combat.rs"]
 mod sentence_shape_predicates_combat_programs;
 pub(super) use sentence_shape_predicates_combat_programs::parse_attacking_doesnt_tap_if_source_untapped;
-use sentence_shape_predicates_combat_programs::{parse_explicit_assign_no_combat_damage_followup, parse_required_damage_fanout, rebind_plural_create_followup_damage_source, restore_authored_damage_source_surface};
-#[path = "sentence_shape_predicates/sentence_shape_predicates_library_programs.rs"]
+use sentence_shape_predicates_combat_programs::{
+    parse_explicit_assign_no_combat_damage_followup, parse_required_damage_fanout,
+    rebind_plural_create_followup_damage_source, restore_authored_damage_source_surface,
+};
+#[path = "sentence_shape_predicates/sentence_shape_predicates_library.rs"]
 mod sentence_shape_predicates_library_programs;
-use sentence_shape_predicates_library_programs::{parse_manifest_dread_graveyard_card_to_hand, parse_prefix_then_look_at_top_exile_one, parse_put_cards_from_single_graveyard_on_bottom_owner_library_sentence, parse_source_and_blocked_creatures_top_library_shuffle_sentence};
-#[path = "sentence_shape_predicates/sentence_shape_predicates_condition_programs.rs"]
-mod sentence_shape_predicates_condition_programs;
-pub(super) use sentence_shape_predicates_condition_programs::{parse_fully_typed_mixed_restriction_action_chain};
-#[path = "sentence_shape_predicates/sentence_shape_predicates_counter_programs.rs"]
+use sentence_shape_predicates_library_programs::{
+    parse_manifest_dread_graveyard_card_to_hand, parse_prefix_then_look_at_top_exile_one,
+    parse_put_cards_from_single_graveyard_on_bottom_owner_library_sentence,
+    parse_source_and_blocked_creatures_top_library_shuffle_sentence,
+};
+#[path = "sentence_shape_predicates/sentence_shape_predicates_counter.rs"]
 mod sentence_shape_predicates_counter_programs;
-use sentence_shape_predicates_counter_programs::{bind_numeric_result_counter_amounts};
-#[path = "sentence_shape_predicates/sentence_shape_predicates_object_action_programs.rs"]
+use sentence_shape_predicates_counter_programs::bind_numeric_result_counter_amounts;
+#[path = "sentence_shape_predicates/sentence_shape_predicates_object_action.rs"]
 mod sentence_shape_predicates_object_action_programs;
-use sentence_shape_predicates_object_action_programs::{parse_create_token_then_copy_spell_chain};
+use sentence_shape_predicates_object_action_programs::parse_create_token_then_copy_spell_chain;

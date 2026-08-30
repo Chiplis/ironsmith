@@ -44,6 +44,8 @@ pub struct ReturnDestinationShape {
     pub has_unparsed_timing_words: bool,
     pub attached_to_tokens: Option<Vec<OwnedLexToken>>,
     pub excluded_subtypes: Vec<Subtype>,
+    /// Counters the returned object enters with, as authored after `with`.
+    pub entry_counter_tokens: Option<Vec<OwnedLexToken>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -269,6 +271,20 @@ fn split_phrase<'a>(
 }
 
 fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape> {
+    // `... to the battlefield with a finality counter on it` states what the
+    // returned object enters with. Split that clause out so the return action
+    // can pair it with the counters it names instead of dropping the tail.
+    let (tokens, entry_counter_tokens) = match split_phrase(tokens, &["with"]) {
+        Some((head, tail))
+            if crate::grammar::primitives::find_prefix(tail, || {
+                alt((primitives::kw("counter"), primitives::kw("counters"))).void()
+            })
+            .is_some() =>
+        {
+            (head, Some(tail.to_vec()))
+        }
+        _ => (tokens, None),
+    };
     let (without_timing, timing) = split_timing(tokens);
     let (without_attachment, attached_to_tokens) =
         if let Some((head, target)) = split_phrase(without_timing, &["attached", "to"]) {
@@ -388,6 +404,7 @@ fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape>
         has_unparsed_timing_words,
         attached_to_tokens,
         excluded_subtypes,
+        entry_counter_tokens,
     })
 }
 
@@ -521,9 +538,9 @@ fn starts_multi_target(tokens: &[OwnedLexToken]) -> bool {
 #[path = "return_shapes_inline_tests.rs"]
 mod tests;
 
-#[path = "return_shapes/zone_programs.rs"]
+#[path = "return_shapes/zone.rs"]
 mod zone_programs;
 pub use zone_programs::parse_return_clause_shape;
-#[path = "return_shapes/reference_programs.rs"]
+#[path = "return_shapes/reference.rs"]
 mod reference_programs;
 use reference_programs::classify_target;

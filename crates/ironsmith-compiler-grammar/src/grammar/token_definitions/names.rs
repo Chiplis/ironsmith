@@ -440,14 +440,14 @@ fn parse_referenced_card_name<'a>()
     }
 }
 
-#[path = "names/library_programs.rs"]
+#[path = "names/library.rs"]
 mod library_programs;
 pub(super) use library_programs::graveyard_anthem_card_name;
-#[path = "names/core_programs.rs"]
+#[path = "names/core.rs"]
 mod core_programs;
 pub(super) use core_programs::{
     creature_surface_name, leading_explicit_name, leading_name_phrase, vehicle_surface_name,
 };
-#[path = "names/condition_programs.rs"]
+#[path = "names/condition.rs"]
 mod condition_programs;
 pub(super) use condition_programs::artifact_surface_name;

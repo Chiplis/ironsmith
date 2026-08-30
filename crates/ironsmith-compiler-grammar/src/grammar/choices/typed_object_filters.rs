@@ -1,4 +1,4 @@
-use crate::cards::builders::{CHOSEN_OBJECTS_TAG, IT_TAG, TagKey};
+use crate::cards::builders::TagKey;
 use crate::effect::ChoiceCount;
 #[cfg(test)]
 use crate::effect::Value;
@@ -132,13 +132,11 @@ pub fn parse_typed_choice_object_clause_tokens(
         {
             filter.zone = Some(Zone::Hand);
         }
-        if !filter
-            .tagged_constraints
-            .iter()
-            .any(|constraint| constraint.tag.as_str() == IT_TAG)
-        {
+        if !filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        }) {
             filter.tagged_constraints.push(TaggedObjectConstraint {
-                tag: TagKey::from(IT_TAG),
+                tag: crate::tag::CompilerReferenceTag::It.key(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
             });
         }
@@ -146,12 +144,12 @@ pub fn parse_typed_choice_object_clause_tokens(
     }
     if shape.references.excludes_chosen_this_way
         && !filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag.as_str() == CHOSEN_OBJECTS_TAG
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::ChosenObjects.as_str()
                 && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
         })
     {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from(CHOSEN_OBJECTS_TAG),
+            tag: crate::tag::CompilerReferenceTag::ChosenObjects.key(),
             relation: TaggedOpbjectRelation::IsNotTaggedObject,
         });
     }
@@ -257,10 +255,10 @@ fn expand_tagged_hand_or_graveyard_disjunction_filter(
     if !hand_arm
         .tagged_constraints
         .iter()
-        .any(|constraint| constraint.tag.as_str() == IT_TAG)
+        .any(|constraint| constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
     {
         hand_arm.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }
@@ -268,9 +266,9 @@ fn expand_tagged_hand_or_graveyard_disjunction_filter(
     let mut graveyard_arm = filter.clone();
     graveyard_arm.zone = Some(Zone::Graveyard);
     graveyard_arm.any_of.clear();
-    graveyard_arm
-        .tagged_constraints
-        .retain(|constraint| constraint.tag.as_str() != IT_TAG);
+    graveyard_arm.tagged_constraints.retain(|constraint| {
+        constraint.tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
+    });
     if graveyard_arm_is_plain_card {
         graveyard_arm.excluded_card_types.clear();
     }

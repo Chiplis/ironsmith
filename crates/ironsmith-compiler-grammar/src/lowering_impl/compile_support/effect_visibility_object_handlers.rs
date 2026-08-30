@@ -13,14 +13,6 @@ fn mark_choose_effects_reveal(mut effects: Vec<Effect>) -> Vec<Effect> {
     effects
 }
 
-pub(super) fn try_compile_visibility_and_card_selection_effect(
-    effect: &EffectAst,
-    _ctx: &mut EffectLoweringContext,
-) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
-    let _ = effect;
-    Ok(None)
-}
-
 fn chooses_tagged_object_pool(filter: &ObjectFilter) -> bool {
     filter
         .tagged_constraints
@@ -43,12 +35,12 @@ fn record_exiled_collection_choice(
     tag: &TagKey,
     count: &ChoiceCount,
 ) {
-    if !is_sentence_helper_exiled_collection_tag(tag.as_str()) {
+    if !is_sentence_helper_exiled_collection_tag(tag) {
         return;
     }
-    let appends_to_existing = ctx.last_exiled_collection_tag.as_deref() == Some(tag.as_str());
+    let appends_to_existing = ctx.last_exiled_collection_tag.as_ref() == Some(tag);
     let current_choice_is_plural = count.max.is_none_or(|max| max > 1);
-    ctx.last_exiled_collection_tag = Some(tag.as_str().to_string());
+    ctx.last_exiled_collection_tag = Some(tag.clone());
     ctx.last_exiled_collection_is_plural = if appends_to_existing {
         true
     } else {
@@ -67,15 +59,15 @@ fn normalize_choice_from_last_exiled_collection(
     ctx: &EffectLoweringContext,
     filter: &mut ObjectFilter,
 ) -> bool {
-    let exiled_tag = ctx.last_exiled_collection_tag.as_deref().or_else(|| {
+    let exiled_tag = ctx.last_exiled_collection_tag.as_ref().or_else(|| {
         ctx.last_object_tag
-            .as_deref()
+            .as_ref()
             .filter(|tag| is_sentence_helper_exiled_collection_tag(tag))
     });
     let Some(exiled_tag) = exiled_tag else {
         return false;
     };
-    if !filter_references_tagged_collection(filter, exiled_tag) {
+    if !filter_references_tagged_collection(filter, exiled_tag.as_str()) {
         return false;
     }
 
@@ -115,7 +107,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 )
                 .with_aggregate_constraint(constraint.clone()),
             ));
-            ctx.last_object_tag = Some(tag.as_str().to_string());
+            ctx.last_object_tag = Some(tag.clone());
             ctx.last_player_filter = Some(chooser);
             (effects, subject.into_choices())
         }
@@ -140,7 +132,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 && filter.owner.is_none()
                 && filter.controller.is_none()
                 && filter.tagged_constraints.iter().any(|constraint| {
-                    constraint.tag.as_str() == IT_TAG
+                    constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                         && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
                 });
             let mut resolved_filter =
@@ -154,8 +146,8 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             if references_revealed_hand && ctx.last_player_filter.is_some() {
                 let has_revealed_collection_tag = ctx
                     .last_object_tag
-                    .as_deref()
-                    .is_some_and(is_revealed_collection_tag);
+                    .as_ref()
+                    .is_some_and(|tag| is_revealed_collection_tag(tag));
                 if !chooses_last_exiled_collection && !has_revealed_collection_tag {
                     resolved_filter.tagged_constraints.retain(|constraint| {
                         !matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
@@ -175,11 +167,11 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             let chooses_revealed_pool =
                 resolved_filter.tagged_constraints.iter().any(|constraint| {
                     matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
-                        && (is_revealed_collection_tag(constraint.tag.as_str())
+                        && (is_revealed_collection_tag(&constraint.tag)
                             || ctx
                                 .last_revealed_tag
-                                .as_deref()
-                                .is_some_and(|tag| constraint.tag.as_str() == tag))
+                                .as_ref()
+                                .is_some_and(|tag| constraint.tag == *tag))
                 });
             let chooses_revealed_library_pool = chooses_revealed_pool
                 && (ctx.last_revealed_zone == Some(Zone::Library)
@@ -270,9 +262,11 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             if chooses_revealed_pool {
                 effects = mark_choose_effects_reveal(effects);
             }
-            ctx.last_it_choice_is_set = tag.as_str() == IT_TAG;
-            if tag.as_str() != crate::condition_antecedent::CONDITION_COLLECTION_CHOICE_TAG {
-                ctx.last_object_tag = Some(tag.as_str().to_string());
+            ctx.last_it_choice_is_set =
+                tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str();
+            if tag.as_str() != crate::tag::CompilerReferenceTag::ConditionCollectionChoice.as_str()
+            {
+                ctx.last_object_tag = Some(tag.clone());
             }
             record_exiled_collection_choice(ctx, tag, count);
             ctx.last_player_filter = Some(followup_player);
@@ -299,8 +293,9 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 tag.clone(),
                 *zone,
             );
-            ctx.last_it_choice_is_set = tag.as_str() == IT_TAG;
-            ctx.last_object_tag = Some(tag.as_str().to_string());
+            ctx.last_it_choice_is_set =
+                tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str();
+            ctx.last_object_tag = Some(tag.clone());
             record_exiled_collection_choice(ctx, tag, count);
             ctx.last_player_filter = Some(followup_player);
             (effects, choices)
@@ -329,8 +324,9 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             .bottom_only();
             choose_effect.description = "Choose bottom library card".to_string();
             let effects = subject.prepend_target_prelude_if_needed(Effect::new(choose_effect));
-            ctx.last_it_choice_is_set = tag.as_str() == IT_TAG;
-            ctx.last_object_tag = Some(tag.as_str().to_string());
+            ctx.last_it_choice_is_set =
+                tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str();
+            ctx.last_object_tag = Some(tag.clone());
             record_exiled_collection_choice(ctx, tag, count);
             ctx.last_player_filter = Some(chooser);
             (effects, subject.into_choices())
@@ -359,8 +355,9 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             .top_only();
             choose_effect.description = "Choose top library card".to_string();
             let effects = subject.prepend_target_prelude_if_needed(Effect::new(choose_effect));
-            ctx.last_it_choice_is_set = tag.as_str() == IT_TAG;
-            ctx.last_object_tag = Some(tag.as_str().to_string());
+            ctx.last_it_choice_is_set =
+                tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str();
+            ctx.last_object_tag = Some(tag.clone());
             record_exiled_collection_choice(ctx, tag, count);
             ctx.last_player_filter = Some(chooser);
             (effects, subject.into_choices())
@@ -390,7 +387,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 && filter.owner.is_none()
                 && filter.controller.is_none()
                 && filter.tagged_constraints.iter().any(|constraint| {
-                    constraint.tag.as_str() == IT_TAG
+                    constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                         && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
                 });
             let mut resolved_filter =
@@ -404,8 +401,8 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             if references_revealed_hand && ctx.last_player_filter.is_some() {
                 let has_revealed_collection_tag = ctx
                     .last_object_tag
-                    .as_deref()
-                    .is_some_and(is_revealed_collection_tag);
+                    .as_ref()
+                    .is_some_and(|tag| is_revealed_collection_tag(tag));
                 if !chooses_last_exiled_collection && !has_revealed_collection_tag {
                     resolved_filter.tagged_constraints.retain(|constraint| {
                         !matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
@@ -452,8 +449,9 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                         default_search,
                     )
                 };
-            ctx.last_it_choice_is_set = tag.as_str() == IT_TAG;
-            ctx.last_object_tag = Some(tag.as_str().to_string());
+            ctx.last_it_choice_is_set =
+                tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str();
+            ctx.last_object_tag = Some(tag.clone());
             ctx.last_player_filter = Some(followup_player);
             (effects, choices)
         }

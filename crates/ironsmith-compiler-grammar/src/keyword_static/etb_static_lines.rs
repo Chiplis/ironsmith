@@ -950,12 +950,12 @@ pub fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
                 Value::LifeTotalDifference(PlayerFilter::target_player())
             }
             WhereXKnownValue::ThatPlayerSpeed => Value::Speed(PlayerFilter::target_player()),
-            WhereXKnownValue::DiscardedCardManaValue => {
-                Value::ManaValueOf(Box::new(ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::DiscardedCost.key())))
-            }
-            WhereXKnownValue::RevealedCardsTotalManaValue => {
-                Value::TotalManaValue(ObjectFilter::tagged(crate::tag::CompilerReferenceTag::PublicRevealed.key()))
-            }
+            WhereXKnownValue::DiscardedCardManaValue => Value::ManaValueOf(Box::new(
+                ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::DiscardedCost.key()),
+            )),
+            WhereXKnownValue::RevealedCardsTotalManaValue => Value::TotalManaValue(
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::PublicRevealed.key()),
+            ),
             WhereXKnownValue::DraftNotedHighestNumber { card_name_tokens } => {
                 Value::DraftNotedHighestNumber {
                     card_name: parser_token_word_refs(card_name_tokens).join(" "),
@@ -1051,13 +1051,13 @@ pub fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
     {
         let tag = match reference {
             EtbTaggedManaValueReference::ExiledCard | EtbTaggedManaValueReference::ThatCard => {
-                IT_TAG
+                crate::tag::CompilerReferenceTag::It
             }
-            EtbTaggedManaValueReference::TriggeringSpell => "triggering",
+            EtbTaggedManaValueReference::TriggeringSpell => {
+                crate::tag::CompilerReferenceTag::Triggering
+            }
         };
-        return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-            TagKey::from(tag),
-        ))));
+        return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(tag.key()))));
     }
 
     // where X is the number of cards in your hand
@@ -1168,7 +1168,9 @@ pub fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Option<Value
                 Value::ManaValueOf(Box::new(ChooseSpec::Source))
             }
             (EtbSourceStatFallback::TaggedObject, kind) => {
-                let tagged = Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)));
+                let tagged = Box::new(ChooseSpec::Tagged(
+                    crate::tag::CompilerReferenceTag::It.key(),
+                ));
                 match kind {
                     EtbSourceStatKind::Power => Value::PowerOf(tagged),
                     EtbSourceStatKind::Toughness => Value::ToughnessOf(tagged),
@@ -1176,7 +1178,9 @@ pub fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Option<Value
                 }
             }
             (EtbSourceStatFallback::TriggeringSpell, EtbSourceStatKind::ManaValue) => {
-                Value::ManaValueOf(Box::new(ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::Triggering.key())))
+                Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
+                    crate::tag::CompilerReferenceTag::Triggering.key(),
+                )))
             }
             (EtbSourceStatFallback::TriggeringSpell, _) => return None,
         }
@@ -1230,7 +1234,7 @@ pub fn parse_where_x_is_fixed_plus_reference_value(tokens: &[OwnedLexToken]) -> 
     }
 
     let reference_value = {
-        let it = || ChooseSpec::Tagged(TagKey::from(IT_TAG));
+        let it = || ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key());
         let value = match captured.reference_kind {
             EtbReferenceValueKind::SacrificedCreaturePower => Value::PowerOf(Box::new(it())),
             EtbReferenceValueKind::SacrificedCreatureToughness => {
@@ -1391,7 +1395,7 @@ pub fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Opti
             filter.zone = None;
         }
         if !filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag.as_str() == IT_TAG
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 && matches!(
                     constraint.relation,
                     crate::filter::TaggedOpbjectRelation::IsTaggedObject
@@ -1400,7 +1404,7 @@ pub fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Opti
             filter
                 .tagged_constraints
                 .push(crate::filter::TaggedObjectConstraint {
-                    tag: TagKey::from(IT_TAG),
+                    tag: crate::tag::CompilerReferenceTag::It.key(),
                     relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
                 });
         }
@@ -1465,7 +1469,7 @@ fn parse_cast_time_controlled_objects_filter(tokens: &[OwnedLexToken]) -> Option
     filter
         .tagged_constraints
         .push(crate::filter::TaggedObjectConstraint {
-            tag: TagKey::from(ironsmith_core::CAST_CONTROLLED_OBJECTS_TAG),
+            tag: crate::tag::CompilerReferenceTag::CastControlledObjects.key(),
             relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
         });
     Some(filter)
@@ -1695,12 +1699,9 @@ pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Opti
     // typed ability-list suffix first.
     if let Some(ability_word) = crate::word_primitives::find_any_phrase_start(
         &words,
-        &[
-            &["number", "of", "ability"],
-            &["number", "of", "abilities"],
-        ],
+        &[&["number", "of", "ability"], &["number", "of", "abilities"]],
     )
-        .map(|(_, index)| index + 2)
+    .map(|(_, index)| index + 2)
         && let Some((token_index, _)) = crate::lexer::parser_token_word_positions(tokens)
             .into_iter()
             .nth(ability_word)
@@ -1720,12 +1721,14 @@ pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Opti
     if filter_words.len() == 4
         && crate::word_primitives::parse_any_sequence_prefix(
             &filter_words,
-            &[&["color", "that"], &["color", "the"], &["colors", "that"], &["colors", "the"]],
+            &[
+                &["color", "that"],
+                &["color", "the"],
+                &["colors", "that"],
+                &["colors", "the"],
+            ],
         )
-        && crate::word_primitives::parse_any_sequence_suffix(
-            &filter_words,
-            &[&["was"], &["were"]],
-        )
+        && crate::word_primitives::parse_any_sequence_suffix(&filter_words, &[&["was"], &["were"]])
     {
         // This is a characteristic aggregate over a remembered object, not
         // the cardinality of an object filter. Let the typed where-X grammar
@@ -1736,8 +1739,7 @@ pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Opti
     if let Some(as_cast_index) = crate::word_primitives::parse_sequence_start(
         &filter_words,
         &["as", "you", "cast", "this", "spell"],
-    )
-    {
+    ) {
         filter_tokens = &filter_tokens[..as_cast_index];
     }
     let filter_words = crate::lexer::token_word_refs(filter_tokens);
@@ -1752,12 +1754,7 @@ pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Opti
         ],
     ) || crate::word_primitives::parse_choice_sequence_complete(
         &filter_words,
-        &[
-            &["time", "times"],
-            &["this", "it"],
-            &["was"],
-            &["kicked"],
-        ],
+        &[&["time", "times"], &["this", "it"], &["was"], &["kicked"]],
     ) {
         return Some(scale_where_x_number_value(Value::KickCount, multiplier));
     }
@@ -1772,12 +1769,7 @@ pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Opti
         ],
     ) || crate::word_primitives::parse_choice_sequence_complete(
         &filter_words,
-        &[
-            &["time", "times"],
-            &["this", "it"],
-            &["has"],
-            &["mutated"],
-        ],
+        &[&["time", "times"], &["this", "it"], &["has"], &["mutated"]],
     ) {
         return Some(scale_where_x_number_value(
             Value::SourceMutationCount,
@@ -2012,10 +2004,7 @@ pub fn parse_enters_tapped_for_filter_line(
     // temporary replacement rule. It is not a static ability of the spell
     // card itself, so leave the explicitly turn-scoped form to the effect
     // sentence dispatcher.
-    if crate::word_primitives::parse_sequence_suffix(
-        &clause_words,
-        &["tapped", "this", "turn"],
-    ) {
+    if crate::word_primitives::parse_sequence_suffix(&clause_words, &["tapped", "this", "turn"]) {
         return Ok(None);
     }
     // A resolution procedure can end with "They enter tapped" (for example,
@@ -2497,10 +2486,8 @@ mod etb_enters_tapped_with_counters_tests {
         let abilities = parse_enters_with_counters_line(&tokens)
             .expect("parser should not error")
             .expect("dynamic enters-with-counters line should parse");
-        let ironsmith_core::StaticAbilityPayload::EntersWithCountersValue {
-            counter,
-            count,
-        } = &abilities[0].payload
+        let ironsmith_core::StaticAbilityPayload::EntersWithCountersValue { counter, count } =
+            &abilities[0].payload
         else {
             panic!(
                 "expected typed dynamic entry-counter payload: {:#?}",
@@ -3056,12 +3043,12 @@ struct FilteredEtbCounterIfOtherwise {
 fn split_filtered_etb_counter_if_otherwise(
     tokens: &[OwnedLexToken],
 ) -> Option<FilteredEtbCounterIfOtherwise> {
-    let otherwise_idx = crate::slice_primitives::select_position(tokens, |token| {
-        token.is_word("otherwise")
-    })?;
-    let if_idx = crate::slice_primitives::select_last_position(&tokens[..otherwise_idx], |token| {
-        token.is_word("if")
-    })?;
+    let otherwise_idx =
+        crate::slice_primitives::select_position(tokens, |token| token.is_word("otherwise"))?;
+    let if_idx =
+        crate::slice_primitives::select_last_position(&tokens[..otherwise_idx], |token| {
+            token.is_word("if")
+        })?;
     let primary_tokens = trim_edge_punctuation(&tokens[..if_idx]);
     let condition_tokens = trim_edge_punctuation(&tokens[if_idx + 1..otherwise_idx]);
     let otherwise_tokens = trim_edge_punctuation(&tokens[otherwise_idx + 1..]);
@@ -3084,7 +3071,9 @@ fn bind_it_reference_to_entering_object_in_choose_spec(spec: &mut ChooseSpec) ->
             bind_it_reference_to_entering_object_in_choose_spec(spec)
                 | bind_it_reference_to_entering_object_in_value(value)
         }
-        ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG => {
+        ChooseSpec::Tagged(tag)
+            if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() =>
+        {
             *spec = ChooseSpec::Source;
             true
         }
@@ -3154,10 +3143,9 @@ fn parse_filtered_etb_counter_otherwise_count(
     let mut counts = abilities
         .into_iter()
         .filter_map(|ability| match ability.payload {
-            ironsmith_core::StaticAbilityPayload::EntersWithCountersValue {
-                counter,
-                count,
-            } => Some((counter, count)),
+            ironsmith_core::StaticAbilityPayload::EntersWithCountersValue { counter, count } => {
+                Some((counter, count))
+            }
             _ => None,
         });
     let Some(count) = counts.next() else {
@@ -3500,10 +3488,12 @@ mod filtered_turn_history_counter_tests {
         assert_eq!(filter.controller, Some(PlayerFilter::You));
         assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
         assert!(filter.other, "{filter:#?}");
-        assert!(filter
-            .any_of
-            .iter()
-            .any(|branch| branch.subtypes == vec![Subtype::Vehicle]));
+        assert!(
+            filter
+                .any_of
+                .iter()
+                .any(|branch| branch.subtypes == vec![Subtype::Vehicle])
+        );
         assert!(
             filter
                 .any_of
@@ -3532,25 +3522,25 @@ mod filtered_turn_history_counter_tests {
             "Each other creature you control enters with a number of additional +1/+1 counters on it equal to Arwen's toughness.",
         );
         let ability = (|| {
-                assert!(
-                    parse_enters_with_counters_line(&tokens)
-                        .expect("self-entry parser should not hard-error")
-                        .is_none(),
-                    "a filtered entry replacement must not become a self-entry ability"
-                );
-                let routed = parse_static_ability_ast_line_lexed(&tokens)
-                    .expect("static dispatcher should not hard-error")
-                    .expect("static dispatcher should claim the filtered entry replacement");
-                let routed_debug = format!("{routed:#?}");
-                assert!(
-                    routed_debug.contains("EntersWithCountersAndSubtypesForFilter")
-                        && !routed_debug.contains("EntersWithCountersValue"),
-                    "the static dispatcher must prefer the filtered entry rule: {routed_debug}"
-                );
-                parse_enters_with_additional_counter_for_filter_line(&tokens)
-                    .expect("filtered entry parser should not hard-error")
-                    .expect("filtered entry replacement should parse")
-            })();
+            assert!(
+                parse_enters_with_counters_line(&tokens)
+                    .expect("self-entry parser should not hard-error")
+                    .is_none(),
+                "a filtered entry replacement must not become a self-entry ability"
+            );
+            let routed = parse_static_ability_ast_line_lexed(&tokens)
+                .expect("static dispatcher should not hard-error")
+                .expect("static dispatcher should claim the filtered entry replacement");
+            let routed_debug = format!("{routed:#?}");
+            assert!(
+                routed_debug.contains("EntersWithCountersAndSubtypesForFilter")
+                    && !routed_debug.contains("EntersWithCountersValue"),
+                "the static dispatcher must prefer the filtered entry rule: {routed_debug}"
+            );
+            parse_enters_with_additional_counter_for_filter_line(&tokens)
+                .expect("filtered entry parser should not hard-error")
+                .expect("filtered entry replacement should parse")
+        })();
         let ironsmith_core::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
             filter,
             count,
@@ -3625,7 +3615,7 @@ mod filtered_turn_history_counter_tests {
                     if matches!(
                         left.unhinted(),
                         Value::ManaValueOf(spec)
-                            if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG)
+                            if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
                     ) && matches!(right.unhinted(), Value::Fixed(-4))
             ),
             "{mana_value:?}"
@@ -4374,7 +4364,8 @@ mod spell_cast_history_aggregate_tests {
         assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
         assert_eq!(filter.cast_by, None);
         assert!(filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag.as_str() == ironsmith_core::CAST_CONTROLLED_OBJECTS_TAG
+            constraint.tag.as_str()
+                == crate::tag::CompilerReferenceTag::CastControlledObjects.as_str()
                 && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
         }));
     }

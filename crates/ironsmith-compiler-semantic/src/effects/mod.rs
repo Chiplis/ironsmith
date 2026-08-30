@@ -129,10 +129,6 @@ pub type VillainousChoiceEffect = CoreVillainousChoiceEffect<Effect>;
 pub type GrantEffect = CoreGrantEffect<crate::grant::Grantable, crate::grant::GrantDuration>;
 pub type GrantBySpecEffect =
     CoreGrantBySpecEffect<crate::grant::GrantSpec, crate::grant::GrantDuration>;
-
-pub const VOTE_WINNERS_TAG: &str = "__vote_winners__";
-pub const VOTED_OBJECTS_TAG: &str = "__voted_objects__";
-
 pub type SearchLibraryEffect = CoreSearchLibraryEffect;
 pub type SearchLibrarySlotsEffect = CoreSearchLibrarySlotsEffect;
 

@@ -3,7 +3,7 @@ use ironsmith_compiler::cards::CardDefinitionBuilder;
 use ironsmith_compiler::effects::{MoveToZoneEffect, TagTriggeringObjectEffect};
 use ironsmith_compiler::events::KeywordActionKind;
 use ironsmith_compiler::ids::CardId;
-use ironsmith_compiler::tag::MANIFEST_DREAD_GRAVEYARD_TAG;
+use ironsmith_compiler::tag::CompilerReferenceTag;
 use ironsmith_compiler::target::{ChooseSpec, PlayerFilter, TaggedOpbjectRelation};
 use ironsmith_compiler::triggers::TriggerKind;
 use ironsmith_compiler::types::CardType;
@@ -35,7 +35,10 @@ fn manifest_dread_observer_lowers_to_the_distinct_action_and_tagged_graveyard_ob
     let tag = tag_effect
         .downcast_ref::<TagTriggeringObjectEffect>()
         .unwrap_or_else(|| panic!("expected triggering-object prelude: {triggered:#?}"));
-    assert_eq!(tag.tag.as_str(), MANIFEST_DREAD_GRAVEYARD_TAG);
+    assert_eq!(
+        tag.tag.as_str(),
+        CompilerReferenceTag::ManifestDreadGraveyard.as_str()
+    );
 
     let move_to_hand = move_effect
         .downcast_ref::<MoveToZoneEffect>()
@@ -43,14 +46,17 @@ fn manifest_dread_observer_lowers_to_the_distinct_action_and_tagged_graveyard_ob
     assert_eq!(move_to_hand.zone, Zone::Hand);
     match move_to_hand.target.base() {
         ChooseSpec::Tagged(move_tag) => {
-            assert_eq!(move_tag.as_str(), MANIFEST_DREAD_GRAVEYARD_TAG);
+            assert_eq!(
+                move_tag.as_str(),
+                CompilerReferenceTag::ManifestDreadGraveyard.as_str()
+            );
         }
         ChooseSpec::Object(filter) => {
             assert_eq!(filter.zone, Some(Zone::Graveyard));
             assert_eq!(filter.tagged_constraints.len(), 1);
             assert_eq!(
                 filter.tagged_constraints[0].tag.as_str(),
-                MANIFEST_DREAD_GRAVEYARD_TAG
+                CompilerReferenceTag::ManifestDreadGraveyard.as_str()
             );
             assert_eq!(
                 filter.tagged_constraints[0].relation,

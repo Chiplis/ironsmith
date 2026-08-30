@@ -212,11 +212,11 @@ fn inline_partner_label_head(input: &mut LexStream<'_>) -> WResult<()> {
 #[path = "keyword_special_lines/tests.rs"]
 mod tests;
 
-#[path = "keyword_special_lines/resource_programs.rs"]
+#[path = "keyword_special_lines/resource.rs"]
 mod resource_programs;
 use resource_programs::{
     parse_behold_and_exile_additional_cost_lexed, parse_optional_keyword_additional_cost_lexed,
 };
-#[path = "keyword_special_lines/trigger_programs.rs"]
+#[path = "keyword_special_lines/trigger.rs"]
 mod trigger_programs;
 use trigger_programs::parse_optional_cost_with_cast_trigger_lexed;

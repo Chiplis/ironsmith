@@ -266,13 +266,13 @@ fn parse_each_player_counter_follow_up_lexed<'a>(
 #[path = "prevention/tests.rs"]
 mod tests;
 
-#[path = "prevention/reference_programs.rs"]
+#[path = "prevention/reference.rs"]
 mod reference_programs;
 use reference_programs::{parse_this_source, validate_source_reference};
-#[path = "prevention/counter_programs.rs"]
+#[path = "prevention/counter.rs"]
 mod counter_programs;
 use counter_programs::parse_counter_destination;
-#[path = "prevention/combat_programs.rs"]
+#[path = "prevention/combat.rs"]
 mod combat_programs;
 use combat_programs::{
     parse_creature_combat_put_counter_prevention_lexed, parse_general_put_counter_prevention_lexed,

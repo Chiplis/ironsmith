@@ -27,9 +27,6 @@ use super::util::{
     parse_supertype_word,
 };
 
-#[cfg(test)]
-const OBJECT_FILTER_ENCHANTED_TAG: &str = "enchanted";
-
 const ORIGINAL_PRINTING_SET_PREFIX: &[&str] =
     &["with", "a", "name", "originally", "printed", "in", "the"];
 const SACRIFICED_AS_IT_ENTERED_SUFFIX: &[&str] = &["sacrificed", "as", "it", "entered"];
@@ -2037,7 +2034,7 @@ mod tests {
                 .tagged_constraints
                 .iter()
                 .any(|constraint| {
-                    constraint.tag.as_str() == OBJECT_FILTER_ENCHANTED_TAG
+                    constraint.tag.as_str() == crate::tag::CompilerReferenceTag::Enchanted.as_str()
                         && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
                 }),
             "{filter:?}"

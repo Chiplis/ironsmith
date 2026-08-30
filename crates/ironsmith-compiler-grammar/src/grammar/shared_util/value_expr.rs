@@ -1,4 +1,3 @@
-use crate::cards::builders::IT_TAG;
 use crate::effect::{EventValueSpec, Value};
 use crate::grammar::{filters::parse_counter_type_words, leaf};
 use crate::lexer::{OwnedLexToken, TokenWordView, synthetic_word_tokens};
@@ -179,13 +178,13 @@ const TAGGED_MANA_VALUE_PREFIXES: &[&[&str]] = &[
     &["mana", "value", "of", "the", "army", "you", "amassed"],
 ];
 
-fn tagged_characteristic_reference_tag(words: &[&str]) -> &'static str {
+fn tagged_characteristic_reference_tag(words: &[&str]) -> crate::tag::CompilerReferenceTag {
     if words.contains(&"exiled") {
-        crate::tag::SOURCE_EXILED_TAG
+        crate::tag::CompilerReferenceTag::SourceExiled
     } else if words.contains(&"exploited") {
-        crate::tag::EXPLOITED_TAG
+        crate::tag::CompilerReferenceTag::Exploited
     } else {
-        IT_TAG
+        crate::tag::CompilerReferenceTag::It
     }
 }
 
@@ -266,7 +265,9 @@ pub fn colored_mana_symbols_in_costs(words: &[&str]) -> Option<(Value, usize)> {
 
     Some((
         Value::ManaSymbolsInManaCostOf {
-            spec: Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+            spec: Box::new(ChooseSpec::Tagged(
+                crate::tag::CompilerReferenceTag::It.key(),
+            )),
             color,
         }
         .with_surface_hint(ValueSurfaceHint::SacrificedObject(kind)),
@@ -447,17 +448,17 @@ pub fn parse_value_expr_tokens(tokens: &[OwnedLexToken]) -> Option<(Value, usize
 #[path = "value_expr_inline_tests.rs"]
 mod tests;
 
-#[path = "value_expr/value_expr_counter_programs.rs"]
+#[path = "value_expr/value_expr_counter.rs"]
 mod value_expr_counter_programs;
 use value_expr_counter_programs::{
     first_counter_word, is_source_counter_reference, is_tagged_counter_reference,
 };
-#[path = "value_expr/value_expr_core_programs.rs"]
+#[path = "value_expr/value_expr_core.rs"]
 mod value_expr_core_programs;
 use value_expr_core_programs::{
     exact_one_of, first_rounding, parse_number_of_value, parse_value_expr_term_words, prefix_len,
     rounded_half, value_boundary,
 };
-#[path = "value_expr/value_expr_reference_programs.rs"]
+#[path = "value_expr/value_expr_reference.rs"]
 mod value_expr_reference_programs;
 use value_expr_reference_programs::parse_source_controller_graveyard_filter;

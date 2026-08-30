@@ -282,23 +282,23 @@ pub struct TrailingIfFallbackShape<'a> {
 #[path = "permissions_inline_tests.rs"]
 mod tests;
 
-#[path = "permissions/condition_programs.rs"]
+#[path = "permissions/condition.rs"]
 mod condition_programs;
 pub use condition_programs::parse_trailing_if_fallback_shape;
-#[path = "permissions/combat_programs.rs"]
+#[path = "permissions/combat.rs"]
 mod combat_programs;
 pub use combat_programs::parse_for_each_prevent_shape;
-#[path = "permissions/counter_programs.rs"]
+#[path = "permissions/counter.rs"]
 mod counter_programs;
 use counter_programs::counter_group_removed;
 pub use counter_programs::parse_counter_group_removed_shape;
-#[path = "permissions/choice_programs.rs"]
+#[path = "permissions/choice.rs"]
 mod choice_programs;
 pub use choice_programs::parse_opponent_return_choice_shape;
-#[path = "permissions/library_programs.rs"]
+#[path = "permissions/library.rs"]
 mod library_programs;
 pub use library_programs::parse_for_each_card_payment_shape;
-#[path = "permissions/reference_programs.rs"]
+#[path = "permissions/reference.rs"]
 mod reference_programs;
 pub use reference_programs::{
     parse_cast_target_from_your_graveyard_this_turn_shape, parse_cast_target_without_paying_shape,

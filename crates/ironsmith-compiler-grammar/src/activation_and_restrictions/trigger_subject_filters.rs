@@ -155,10 +155,14 @@ pub fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFilter {
         }
         PossessivePlayerReference::AttachedController(subject) => {
             let tag = match subject {
-                AttachedControllerSubject::Enchanted => "enchanted",
-                AttachedControllerSubject::Equipped => "equipped",
+                AttachedControllerSubject::Enchanted => {
+                    crate::tag::CompilerReferenceTag::Enchanted.key()
+                }
+                AttachedControllerSubject::Equipped => {
+                    crate::tag::CompilerReferenceTag::Equipped.key()
+                }
             };
-            PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(TagKey::from(tag)))
+            PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(tag))
         }
         PossessivePlayerReference::ChosenPlayer => PlayerFilter::ChosenPlayer,
         PossessivePlayerReference::You => PlayerFilter::You,
@@ -372,7 +376,7 @@ pub fn parse_trigger_subject_filter_lexed(
     if let Some(chosen) = crate::grammar::targets::parse_chosen_object_target(subject_tokens) {
         let mut filter = parse_object_filter_lexed(chosen.filter_tokens, false)?;
         filter = filter.match_tagged(
-            crate::cards::builders::CHOSEN_OBJECTS_TAG,
+            crate::tag::CompilerReferenceTag::ChosenObjects.as_str(),
             crate::filter::TaggedOpbjectRelation::IsTaggedObject,
         );
         return Ok(Some(filter));
@@ -387,7 +391,11 @@ pub fn parse_trigger_subject_filter_lexed(
         idx.checked_sub(1)
             .and_then(|prev| subject_words.get(prev))
             .is_some_and(|copula| matches!(*copula, "is" | "are" | "that's" | "thats"))
-            .then_some(*word)
+            .then(|| match *word {
+                "enchanted" => crate::tag::CompilerReferenceTag::Enchanted.key(),
+                "equipped" => crate::tag::CompilerReferenceTag::Equipped.key(),
+                _ => unreachable!("attachment state was lexically constrained"),
+            })
     });
     if let Some(filter) = parse_source_or_filter_trigger_subject_filter_lexed(subject_tokens)? {
         return Ok(Some(filter));
@@ -498,9 +506,9 @@ pub fn parse_trigger_subject_filter_lexed(
                 filter.controller = Some(controller);
                 filter.zone.get_or_insert(Zone::Battlefield);
             }
-            if let Some(tag) = intrinsic_attachment_state
+            if let Some(ref tag) = intrinsic_attachment_state
                 && !filter.tagged_constraints.iter().any(|constraint| {
-                    constraint.tag.as_str() == tag
+                    constraint.tag == *tag
                         && constraint.relation
                             == crate::filter::TaggedOpbjectRelation::IsTaggedObject
                 })
@@ -508,7 +516,7 @@ pub fn parse_trigger_subject_filter_lexed(
                 filter
                     .tagged_constraints
                     .push(crate::filter::TaggedObjectConstraint {
-                        tag: crate::tag::TagKey::from(tag),
+                        tag: tag.clone(),
                         relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
                     });
             }
@@ -864,7 +872,7 @@ pub fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<MayCastTag
         MayCastSurfaceSubject::You => (PlayerAst::Implicit, None),
         MayCastSurfaceSubject::ExiledCardsOwner => (
             PlayerAst::ItsOwner,
-            Some(TagKey::from(crate::tag::SOURCE_EXILED_TAG)),
+            Some(crate::tag::CompilerReferenceTag::SourceExiled.key()),
         ),
     };
     let verb = match facts.verb {
@@ -872,15 +880,18 @@ pub fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<MayCastTag
         MayCastSurfaceVerb::Play => MayCastItVerb::Play,
     };
     let (tag, as_copy) = match facts.reference {
-        MayCastSurfaceReference::It => (TagKey::from(IT_TAG), false),
-        MayCastSurfaceReference::ThatCard => {
-            (subject_tag.unwrap_or_else(|| TagKey::from(IT_TAG)), false)
+        MayCastSurfaceReference::It => (crate::tag::CompilerReferenceTag::It.key(), false),
+        MayCastSurfaceReference::ThatCard => (
+            subject_tag.unwrap_or_else(|| crate::tag::CompilerReferenceTag::It.key()),
+            false,
+        ),
+        MayCastSurfaceReference::ExiledCard => {
+            (crate::tag::CompilerReferenceTag::SourceExiled.key(), false)
         }
-        MayCastSurfaceReference::ExiledCard => (TagKey::from(crate::tag::SOURCE_EXILED_TAG), false),
         MayCastSurfaceReference::RevealedCard => {
             (crate::tag::CompilerReferenceTag::LastRevealed.key(), false)
         }
-        MayCastSurfaceReference::Copy => (TagKey::from(IT_TAG), true),
+        MayCastSurfaceReference::Copy => (crate::tag::CompilerReferenceTag::It.key(), true),
     };
     let (without_paying_mana_cost, predicate) = match facts.tail {
         MayCastTailSurface::None => (false, None),
@@ -1124,7 +1135,10 @@ pub fn parse_sentence_exile_that_token_when_source_leaves(
     let _ = last_created_token_info(prior_effects)?;
 
     Some(EffectAst::subject_verb_exile_when_source_leaves(
-        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+        TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+            span_from_tokens(tokens),
+        ),
     ))
 }
 
@@ -1142,7 +1156,10 @@ pub fn parse_sentence_sacrifice_source_when_that_token_leaves(
     let _ = last_created_token_info(prior_effects)?;
 
     Some(EffectAst::subject_verb_sacrifice_source_when_leaves(
-        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+        TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+            span_from_tokens(tokens),
+        ),
     ))
 }
 
@@ -1308,41 +1325,38 @@ pub fn append_token_reminder_to_last_create_effect(
             && window[4].as_word() == Some("enters")
     })
     .is_some();
+    let requires_complete_grant = crate::effect_sentences::mixed_pronoun_token_rule_list(tokens)
+        .is_some()
+        || reminder.dynamic_power_toughness.is_some()
+        || has_quoted_enters_rule;
     for effect in effects.iter_mut().rev() {
-        // A pronoun rule sentence that mixes an ordinary keyword, a quoted
-        // attached-object rule, and a trailing activation must be parsed as
-        // one ability list. The compact equipment-reminder facts understand
-        // the activation but cannot carry the quoted sibling, so give the
-        // complete typed grant parser first refusal for exactly this shape.
-        if crate::effect_sentences::mixed_pronoun_token_rule_list(tokens).is_some()
-            && append_token_granted_ability_to_effect(Some(effect), tokens)?
-        {
-            return Ok(true);
-        }
-        // A separately authored `It has "This token's power and toughness
-        // ..."` sentence is a characteristic-defining ability of the token,
-        // not a one-time base-P/T assignment made by the create effect. Give
-        // the nested token-identity parser first refusal for this shape; the
-        // dynamic reminder path below remains the fallback for unquoted
-        // copy/snapshot P/T clauses.
-        if (reminder.dynamic_power_toughness.is_some() || has_quoted_enters_rule)
-            && append_token_granted_ability_to_effect(Some(effect), tokens)?
-        {
-            return Ok(true);
-        }
-        // Specialized reminder facts must win over the generic granted-ability
-        // parser. Otherwise a quoted rule such as "When this token dies ..."
-        // is retained as an opaque granted ability and its typed token rule is
-        // lost before the merge path gets a chance to install it.
-        if append_token_reminder_to_effect(
-            Some(effect),
+        // Build both semantic candidates before choosing ownership. A full
+        // grant owns mixed/quoted rule lists and characteristic-defining P/T
+        // text; compact reminder facts own the remaining specialized token
+        // lifecycle shapes. The choice depends on typed surface facts rather
+        // than parser registration order.
+        let mut reminder_candidate = effect.clone();
+        let reminder_matches = append_token_reminder_to_effect(
+            Some(&mut reminder_candidate),
             &reminder,
             ability_presentation,
             standalone_ability_sentence,
-        ) {
-            return Ok(true);
-        }
-        if append_token_granted_ability_to_effect(Some(effect), tokens)? {
+        );
+        let mut grant_candidate = effect.clone();
+        let grant_matches =
+            append_token_granted_ability_to_effect(Some(&mut grant_candidate), tokens)?;
+
+        let resolved = if requires_complete_grant && grant_matches {
+            Some(grant_candidate)
+        } else if reminder_matches {
+            Some(reminder_candidate)
+        } else if grant_matches {
+            Some(grant_candidate)
+        } else {
+            None
+        };
+        if let Some(resolved) = resolved {
+            *effect = resolved;
             return Ok(true);
         }
     }
@@ -1843,7 +1857,7 @@ mod typed_trigger_subject_migration_tests {
         assert_eq!(
             filter.tagged_constraints[0],
             crate::filter::TaggedObjectConstraint {
-                tag: crate::tag::TagKey::from(crate::cards::builders::CHOSEN_OBJECTS_TAG),
+                tag: crate::tag::CompilerReferenceTag::ChosenObjects.key(),
                 relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
             }
         );
@@ -1881,7 +1895,10 @@ mod typed_trigger_subject_migration_tests {
         )
         .unwrap();
         let spec = parse_may_cast_it_sentence(&tokens).unwrap();
-        assert_eq!(spec.tag.as_str(), crate::tag::SOURCE_EXILED_TAG);
+        assert_eq!(
+            spec.tag.as_str(),
+            crate::tag::CompilerReferenceTag::SourceExiled.as_str()
+        );
         assert!(matches!(spec.player, PlayerAst::ItsOwner));
         assert!(matches!(spec.verb, MayCastItVerb::Play));
         assert!(!spec.as_copy);

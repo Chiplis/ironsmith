@@ -922,24 +922,24 @@ pub fn is_creature_subtype_subject_list_boundary(
 #[path = "recognition_inline_tests.rs"]
 mod tests;
 
-#[path = "recognition/core_programs.rs"]
+#[path = "recognition/core.rs"]
 mod core_programs;
 use core_programs::{
     contains_all, contains_any, ends_any, exact_any, exact_tail_from_any_word, find_any_word,
     first_word, has_any_phrase, is_color_word, last_word, nth_word, starts_any,
 };
-#[path = "recognition/library_programs.rs"]
+#[path = "recognition/library.rs"]
 mod library_programs;
 use library_programs::is_card_type_word;
-#[path = "recognition/zone_programs.rs"]
+#[path = "recognition/zone.rs"]
 mod zone_programs;
 use zone_programs::{has_zone_word, is_zone_word};
-#[path = "recognition/condition_programs.rs"]
+#[path = "recognition/condition.rs"]
 mod condition_programs;
 use condition_programs::last_non_quantifier_word;
-#[path = "recognition/combat_programs.rs"]
+#[path = "recognition/combat.rs"]
 mod combat_programs;
 use combat_programs::damage_equal_followup;
-#[path = "recognition/resource_programs.rs"]
+#[path = "recognition/resource.rs"]
 mod resource_programs;
 use resource_programs::life_equal_followup;

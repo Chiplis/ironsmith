@@ -162,18 +162,18 @@ pub fn is_plural_tagged_object_reference(tokens: &[OwnedLexToken]) -> bool {
 #[path = "common_inline_tests.rs"]
 mod tests;
 
-#[path = "common/trigger_programs.rs"]
+#[path = "common/trigger.rs"]
 mod trigger_programs;
 pub use trigger_programs::parse_delayed_hand_tail;
-#[path = "common/library_programs.rs"]
+#[path = "common/library.rs"]
 mod library_programs;
 pub use library_programs::{parse_counted_card_target_shape, parse_counted_those_cards};
-#[path = "common/core_programs.rs"]
+#[path = "common/core.rs"]
 mod core_programs;
 pub use core_programs::{
     contains_among_them, contains_from_it, contains_permanent, contains_sticker,
     starts_with_all_or_each,
 };
-#[path = "common/zone_programs.rs"]
+#[path = "common/zone.rs"]
 mod zone_programs;
 pub use zone_programs::contains_graveyard_and_hand;

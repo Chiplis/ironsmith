@@ -1,13 +1,13 @@
 use crate::cards::TextSpan;
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, IT_TAG, OwnedLexToken, PlayerAst, PredicateAst,
-    SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, TargetAst,
+    CardTextError, ChoiceCount, EffectAst, OwnedLexToken, PlayerAst, PredicateAst, SubjectAst,
+    SubjectVerbActionAst, SubjectVerbEffectAst, TargetAst,
 };
 use crate::effect::EventValueSpec;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::zone::Zone;
 use crate::{ChooseSpec, CounterType, TagKey, Value};
-use ironsmith_core::{EffectMetric, EffectMetricSource, ValueSurfaceHint};
+use ironsmith_core::ValueSurfaceHint;
 
 use super::super::activation_and_restrictions::parse_devotion_value_from_add_clause;
 use super::super::grammar::structure::split_trailing_if_clause_lexed;
@@ -28,13 +28,6 @@ use crate::grammar::shared_util::value_semantics::{
 use super::clause_pattern_helpers::extract_subject_player;
 type ZoneCounterCompatWords<'a> = TokenWordView<'a>;
 
-fn this_way_object_count_value() -> Value {
-    Value::PendingEffectMetric {
-        source: EffectMetricSource::AffectedObjects,
-        metric: EffectMetric::Count,
-    }
-}
-
 fn render_clause_words(tokens: &[OwnedLexToken]) -> String {
     ZoneCounterCompatWords::new(tokens).to_word_refs().join(" ")
 }
@@ -45,7 +38,7 @@ fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value
     // this turn other than the first"). Recognize those typed values before
     // the generic object-count fallback, which would otherwise retain only
     // "other spell" and silently lose the turn-history semantics.
-    let affected_this_way_fallback = match shapes::parse_dynamic_counter_count_shape(tokens) {
+    match shapes::parse_dynamic_counter_count_shape(tokens) {
         Some(dynamic) => match dynamic {
             shapes::DynamicCounterCountShape::LifeLostThisWay { group_size } => {
                 let life_lost = Value::EventValue(EventValueSpec::LifeAmount);
@@ -77,18 +70,13 @@ fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value
                     ObjectFilter::land().you_control(),
                 ));
             }
-            // This is only a compatibility fallback. Give the typed
-            // prior-action grammar first refusal so authored facts such as
-            // "permanent destroyed this way" retain both their action and
-            // object filter instead of collapsing to "objects affected".
-            shapes::DynamicCounterCountShape::ObjectsAffectedThisWay => true,
         },
-        None => false,
-    };
+        None => {}
+    }
 
     // Reuse the generic for-each value grammar so a prior-action reference
     // retains its object restriction (for example, creature cards among all
-    // cards exiled this way). Reference resolution replaces IT_TAG with the
+    // cards exiled this way). Reference resolution replaces crate::tag::CompilerReferenceTag::It.as_str() with the
     // concrete snapshot tag emitted by the prior action.
     let mut for_each_words = vec!["for", "each"];
     for_each_words.extend(crate::lexer::token_word_refs(tokens));
@@ -98,7 +86,7 @@ fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value
     {
         return Some(value);
     }
-    affected_this_way_fallback.then(this_way_object_count_value)
+    None
 }
 
 pub fn describe_counter_type_for_mode(counter_type: CounterType) -> String {
@@ -469,9 +457,9 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
     if equal_to_difference {
         let target_spec = crate::reference_helpers::choose_spec_for_target(&target);
         count_value = Value::Add(
-            Box::new(Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(
-                IT_TAG,
-            ))))),
+            Box::new(Value::PowerOf(Box::new(ChooseSpec::Tagged(
+                crate::tag::CompilerReferenceTag::It.key(),
+            )))),
             Box::new(Value::Scaled(
                 Box::new(Value::PowerOf(Box::new(target_spec))),
                 -1,
@@ -521,7 +509,10 @@ pub fn parse_sentence_put_multiple_counters_on_target(
     let second_effect = EffectAst::subject_verb_put_counters(
         second.counter_type,
         Value::Fixed(second.count as i32),
-        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+        TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+            span_from_tokens(tokens),
+        ),
         None,
         false,
     );
@@ -631,7 +622,7 @@ fn parse_transform_like(
             Ok(EffectAst::ForEachObject {
                 filter,
                 effects: vec![action(TargetAst::Tagged(
-                    TagKey::from(IT_TAG),
+                    crate::tag::CompilerReferenceTag::It.key(),
                     span_from_tokens(tokens),
                 ))],
             })

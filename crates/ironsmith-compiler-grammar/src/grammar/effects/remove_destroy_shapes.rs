@@ -581,22 +581,22 @@ fn strip_negated_chosen_copula(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexTok
 #[path = "remove_destroy_shapes/tests.rs"]
 mod tests;
 
-#[path = "remove_destroy_shapes/counter_programs.rs"]
+#[path = "remove_destroy_shapes/counter.rs"]
 mod counter_programs;
 pub use counter_programs::parse_destroy_counter_constraint_shape;
-#[path = "remove_destroy_shapes/core_programs.rs"]
+#[path = "remove_destroy_shapes/core.rs"]
 mod core_programs;
 use core_programs::parse_destroy_all_shape;
 pub use core_programs::parse_destroy_clause_shape;
-#[path = "remove_destroy_shapes/reference_programs.rs"]
+#[path = "remove_destroy_shapes/reference.rs"]
 mod reference_programs;
 use reference_programs::{
     has_multi_target_tail, parse_destroy_target_and_attached_shape,
     parse_inline_no_regeneration_target, target_count_before_target,
 };
-#[path = "remove_destroy_shapes/condition_programs.rs"]
+#[path = "remove_destroy_shapes/condition.rs"]
 mod condition_programs;
 use condition_programs::parse_conditional_destroy_shape;
-#[path = "remove_destroy_shapes/combat_programs.rs"]
+#[path = "remove_destroy_shapes/combat.rs"]
 mod combat_programs;
 use combat_programs::has_trailing_attack_or_block_restriction;

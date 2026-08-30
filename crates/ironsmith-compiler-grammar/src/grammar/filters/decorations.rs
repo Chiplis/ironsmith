@@ -1,9 +1,7 @@
-use winnow::error::ModalResult as WResult;
-use winnow::prelude::*;
-
-use crate::effects::VOTE_WINNERS_TAG;
 use crate::filter::{CounterConstraint, ParityRequirement};
 use crate::{ObjectFilter, TagKey, TaggedOpbjectRelation};
+use winnow::error::ModalResult as WResult;
+use winnow::prelude::*;
 
 use super::super::primitives::{self, WordSliceInput};
 use crate::lexer::{OwnedLexToken, TokenWordView, parser_token_word_refs};
@@ -85,7 +83,7 @@ impl FilterEnvelopeDecorations {
         filter.distinct_names |= self.distinct_names;
         if self.vote_winners_only {
             filter = filter.match_tagged(
-                TagKey::from(VOTE_WINNERS_TAG),
+                crate::tag::CompilerReferenceTag::VoteWinners.key(),
                 TaggedOpbjectRelation::IsTaggedObject,
             );
         }
@@ -635,7 +633,7 @@ mod tests {
         let filter = decorations.apply(ObjectFilter::default());
         assert!(filter.distinct_names);
         assert!(filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag.as_str() == VOTE_WINNERS_TAG
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::VoteWinners.as_str()
                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
         }));
     }
@@ -650,7 +648,7 @@ mod tests {
         let filter = crate::object_filters::parse_object_filter_lexed(&tokens, false).unwrap();
         assert_eq!(filter.card_types, vec![CardType::Creature]);
         assert!(!filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag.as_str() == VOTE_WINNERS_TAG
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::VoteWinners.as_str()
                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
         }));
     }

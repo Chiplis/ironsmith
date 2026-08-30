@@ -19,7 +19,7 @@ pub trait LoweringPipeline<Context, SemanticDocument, ParsedDocument, PreparedDo
         document: SemanticDocument,
     ) -> Result<ParsedDocument, CardTextError>;
 
-    fn prepare_parsed_document(
+    fn normalize_parsed_document(
         &self,
         document: ParsedDocument,
     ) -> Result<PreparedDocument, CardTextError>;
@@ -64,7 +64,7 @@ mod tests {
             Ok(format!("parsed<{document}>"))
         }
 
-        fn prepare_parsed_document(&self, document: String) -> Result<String, CardTextError> {
+        fn normalize_parsed_document(&self, document: String) -> Result<String, CardTextError> {
             Ok(format!("prepared<{document}>"))
         }
 
@@ -106,7 +106,7 @@ mod tests {
             .parse_semantic_document(semantic)
             .expect("parse stage should succeed");
         let prepared = pipeline
-            .prepare_parsed_document(parsed)
+            .normalize_parsed_document(parsed)
             .expect("prepare stage should succeed");
         let lowered = pipeline
             .lower_prepared_document(prepared)

@@ -1,5 +1,5 @@
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, IT_TAG, IfResultPredicate, OwnedLexToken, PlayerAst,
+    CardTextError, ChoiceCount, EffectAst, IfResultPredicate, OwnedLexToken, PlayerAst,
     PredicateAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey,
     TargetAst,
 };
@@ -245,26 +245,26 @@ pub fn parse_get_for_each_count_value(
     {
         return Ok(Some(value.with_surface_hint(ValueSurfaceHint::ForEach)));
     }
+    // Parse the authored object phrase at the grammar boundary before the
+    // broad value vocabulary is considered. This preserves punctuation and
+    // subtype-list provenance without a downstream semantic repair pass.
+    let authored_filter = parse_object_filter(shape.target_tokens, false).ok();
     let words = LexedClause::new(tokens).word_refs();
     let Some((value, _)) = parse_for_each_count_value_words(&words) else {
         return Err(CardTextError::ParseError(
             "missing filter after 'for each' in gets clause".to_string(),
         ));
     };
-    // The word fallback intentionally handles the broad dynamic-value
-    // vocabulary, but it loses punctuation. When the result is an ordinary
-    // object count, reparse the exact token slice so serial subtype-list
-    // provenance (commas plus terminal "or") survives into rendering.
     let exact_surface_filter = |original: ObjectFilter| {
-        let Ok(reparsed) = parse_object_filter(shape.target_tokens, false) else {
+        let Some(authored) = authored_filter.clone() else {
             return original;
         };
-        // Exact token reparsing is only a surface enrichment. Preserve a
+        // The authored filter is only a surface enrichment. Preserve a
         // specialized semantic count (for example, the cast-time snapshot tag
         // for "modified creatures you controlled as you cast this spell")
         // whenever the ordinary object-filter parse denotes a different set.
-        if reparsed == original {
-            reparsed
+        if authored == original {
+            authored
         } else {
             original
         }
@@ -418,24 +418,25 @@ fn stabilize_standalone_participant_choice_tag(
         | EffectAst::ChooseTaggedObjectsInZone { tag, .. } => tag,
         _ => return,
     };
-    if tag.as_str() != IT_TAG {
+    if tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str() {
         return;
     }
     let anchor = source_tokens
         .first()
         .map(|token| token.span)
         .unwrap_or_else(TextSpan::synthetic);
-    *tag = TagKey::from(format!(
-        "participant_choice_l{}_s{}",
-        anchor.line, anchor.start
-    ));
+    *tag = crate::tag::CompilerProvenanceTag::ParticipantChoice {
+        line: anchor.line,
+        start: anchor.start,
+    }
+    .key();
 }
 
 fn tagged_predicate(filter_tokens: Option<&[OwnedLexToken]>) -> Option<PredicateAst> {
     let filter = parse_object_filter(filter_tokens?, false).ok()?;
     Some(PredicateAst::PlayerTaggedObjectMatches {
         player: PlayerAst::That,
-        tag: TagKey::from(IT_TAG),
+        tag: crate::tag::CompilerReferenceTag::It.key(),
         filter,
         mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
     })
@@ -676,32 +677,30 @@ mod dynamic_modifier_surface_tests;
 #[path = "for_each_helpers_inline_participant_choice_ownership_tests_2.rs"]
 mod participant_choice_ownership_tests;
 
-#[path = "for_each_helpers/for_each_helpers_reference_programs.rs"]
-mod for_each_helpers_reference_programs;
-use for_each_helpers_reference_programs::{
+#[path = "for_each_helpers/participant_scopes.rs"]
+mod participant_scopes;
+use participant_scopes::{
     opponent_filter, player_filter, reanchor_other_player_copy_filter, wrap_players,
 };
-pub use for_each_helpers_reference_programs::{
-    parse_for_each_player_clause, parse_for_each_target_players_clause,
-};
-#[path = "for_each_helpers/for_each_helpers_combat_programs.rs"]
-mod for_each_helpers_combat_programs;
-use for_each_helpers_combat_programs::parse_combat_damage_history_participant;
-#[path = "for_each_helpers/for_each_helpers_condition_programs.rs"]
-mod for_each_helpers_condition_programs;
-pub use for_each_helpers_condition_programs::parse_who_did_this_way_predicate;
-#[path = "for_each_helpers/for_each_helpers_core_programs.rs"]
-mod for_each_helpers_core_programs;
-pub use for_each_helpers_core_programs::parse_for_each_opponent_clause;
-use for_each_helpers_core_programs::wrap_opponents;
-#[path = "for_each_helpers/for_each_helpers_object_action_programs.rs"]
-mod for_each_helpers_object_action_programs;
-use for_each_helpers_object_action_programs::parse_relative_control_conditional;
-#[path = "for_each_helpers/for_each_helpers_trigger_programs.rs"]
-mod for_each_helpers_trigger_programs;
-use for_each_helpers_trigger_programs::effect_copies_triggering_stack_object;
-#[path = "for_each_helpers/for_each_helpers_choice_programs.rs"]
-mod for_each_helpers_choice_programs;
-use for_each_helpers_choice_programs::{
-    parse_participant_choice_complement_effects, parse_participant_creature_type_choice_program,
+pub use participant_scopes::{parse_for_each_player_clause, parse_for_each_target_players_clause};
+#[path = "for_each_helpers/combat_history.rs"]
+mod combat_history;
+use combat_history::parse_combat_damage_history_participant;
+#[path = "for_each_helpers/predicates.rs"]
+mod predicates;
+pub use predicates::parse_who_did_this_way_predicate;
+#[path = "for_each_helpers/opponent_iteration.rs"]
+mod opponent_iteration;
+pub use opponent_iteration::parse_for_each_opponent_clause;
+use opponent_iteration::wrap_opponents;
+#[path = "for_each_helpers/relative_control.rs"]
+mod relative_control;
+use relative_control::parse_relative_control_conditional;
+#[path = "for_each_helpers/triggering_stack_copy.rs"]
+mod triggering_stack_copy;
+use triggering_stack_copy::effect_copies_triggering_stack_object;
+#[path = "for_each_helpers/participant_choices.rs"]
+mod participant_choices;
+use participant_choices::{
+    parse_participant_choice_complement_effects, parse_participant_creature_type_choice,
 };

@@ -57,6 +57,6 @@ fn contains_words(words: &[&str], phrase: &[&str]) -> bool {
 #[path = "copy_modifiers_inline_tests.rs"]
 mod tests;
 
-#[path = "copy_modifiers/object_action_programs.rs"]
+#[path = "copy_modifiers/object_action.rs"]
 mod object_action_programs;
 pub use object_action_programs::parse_copy_modifier_words;

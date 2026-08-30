@@ -666,7 +666,7 @@ pub fn parse_same_name_exile_hand_and_graveyard_clause(
     let mut filter = ObjectFilter::default();
     filter.owner = Some(owner);
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: TagKey::from(IT_TAG),
+        tag: crate::tag::CompilerReferenceTag::It.key(),
         relation: TaggedOpbjectRelation::SameNameAsTagged,
     });
     filter.any_of = [Zone::Hand, Zone::Graveyard]
@@ -1161,7 +1161,7 @@ mod tests {
         };
         assert!(filter.subtypes.contains(&Subtype::Aura));
         assert!(filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag.as_str() == IT_TAG
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
         }));
         assert!(filter.has_plural_object_noun_surface());

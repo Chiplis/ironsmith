@@ -371,15 +371,15 @@ fn parse_base_power_toughness_type_addition_lexed<'a>(
 #[path = "tail_static_shapes_tests.rs"]
 mod tests;
 
-#[path = "tail_static_shapes/core_programs.rs"]
+#[path = "tail_static_shapes/core.rs"]
 mod core_programs;
 use core_programs::{
     contains_parser, has_prefix, parse_fixed_power_toughness, parse_have,
     parse_isnt_creature_lexed, parse_negated_creature_tail, take_until_have,
 };
-#[path = "tail_static_shapes/object_action_programs.rs"]
+#[path = "tail_static_shapes/object_action.rs"]
 mod object_action_programs;
 use object_action_programs::take_token;
-#[path = "tail_static_shapes/ability_programs.rs"]
+#[path = "tail_static_shapes/ability.rs"]
 mod ability_programs;
 use ability_programs::parse_base_power_grant_lexed;

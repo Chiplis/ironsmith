@@ -1,5 +1,5 @@
 use crate::cards::builders::{
-    CardTextError, ControlDurationAst, EffectAst, EventValueSpec, ExtraTurnAnchorAst, IT_TAG,
+    CardTextError, ControlDurationAst, EffectAst, EventValueSpec, ExtraTurnAnchorAst,
     IfResultPredicate, ObjectRefAst, OwnedLexToken, PlayerAst, PredicateAst, ReturnControllerAst,
     SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst,
     SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan, Verb,

@@ -805,14 +805,14 @@ fn parse_split_non_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilter
 #[path = "simple/tests.rs"]
 mod tests;
 
-#[path = "simple/simple_core_programs.rs"]
+#[path = "simple/simple_core.rs"]
 mod simple_core_programs;
 use simple_core_programs::{
     apply_named_atom, parse_any_word, parse_location, parse_location_suffix,
     parse_other_than_split, parse_own_action, parse_owner_suffix, parse_typed_word_atom,
     push_unique, suffix_tail, word_phrase,
 };
-#[path = "simple/simple_reference_programs.rs"]
+#[path = "simple/simple_reference.rs"]
 mod simple_reference_programs;
 use simple_reference_programs::{
     apply_simple_object_filter_suffix, contains_simple_filter_reject, parse_controller_player,
@@ -820,10 +820,10 @@ use simple_reference_programs::{
     parse_other_than_filter, parse_simple_filter_reject, parse_simple_object_filter_suffix,
     parse_target_player_or_planeswalker_controller,
 };
-#[path = "simple/simple_choice_programs.rs"]
+#[path = "simple/simple_choice.rs"]
 mod simple_choice_programs;
 use simple_choice_programs::parse_chosen_player_location;
-#[path = "simple/simple_object_action_programs.rs"]
+#[path = "simple/simple_object_action.rs"]
 mod simple_object_action_programs;
 use simple_object_action_programs::{
     parse_control_action, parse_control_negation, parse_controller_owner_suffix,

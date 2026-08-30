@@ -275,7 +275,7 @@ fn bind_damage_source_possessive_characteristic(value: Value) -> Value {
     fn local_source_spec(spec: crate::target::ChooseSpec) -> crate::target::ChooseSpec {
         if matches!(
             spec.base(),
-            crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == crate::cards::builders::IT_TAG
+            crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         ) && matches!(
             spec.source_reference_surface(),
             Some(crate::target::SourceReferenceSurface::ThisPermanentType(surface))
@@ -487,13 +487,13 @@ fn clash_opponent<'a>(input: &mut crate::lexer::LexStream<'a>) -> WResult<ClashO
 #[path = "clause_primitive_shapes/tests.rs"]
 mod tests;
 
-#[path = "clause_primitive_shapes/resource_programs.rs"]
+#[path = "clause_primitive_shapes/resource.rs"]
 mod resource_programs;
 pub use resource_programs::is_dont_lose_mana_between_steps_shape;
-#[path = "clause_primitive_shapes/core_programs.rs"]
+#[path = "clause_primitive_shapes/core.rs"]
 mod core_programs;
 use core_programs::parse_repeat_process;
 pub use core_programs::{parse_clash_shape, parse_repeat_process_shape};
-#[path = "clause_primitive_shapes/reference_programs.rs"]
+#[path = "clause_primitive_shapes/reference.rs"]
 mod reference_programs;
 pub use reference_programs::{parse_retarget_constraint_shapes, parse_retarget_reference_shape};

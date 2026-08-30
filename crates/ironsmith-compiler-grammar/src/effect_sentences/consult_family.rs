@@ -252,7 +252,7 @@ fn parse_typed_consult_damage_and_collection_disposition(
             parts.all_tag.clone(),
             disposition
                 .exclude_current_reference
-                .then(|| TagKey::from(crate::cards::builders::IT_TAG)),
+                .then(|| crate::tag::CompilerReferenceTag::It.key()),
             order,
             player,
             disposition.surface,
@@ -274,7 +274,7 @@ fn bind_consult_it_relation_to_prefix_affected_object(
     filter: &mut ObjectFilter,
 ) {
     let relation_uses_it = filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == crate::cards::builders::IT_TAG
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             && matches!(
                 constraint.relation,
                 TaggedOpbjectRelation::SharesCardType
@@ -310,7 +310,7 @@ fn bind_consult_it_relation_to_prefix_affected_object(
         tag: antecedent_tag.clone(),
     };
     for constraint in &mut filter.tagged_constraints {
-        if constraint.tag.as_str() == crate::cards::builders::IT_TAG {
+        if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
             constraint.tag = antecedent_tag.clone();
         }
     }

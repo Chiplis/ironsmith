@@ -357,7 +357,9 @@ fn rewrite_value_source_to_it_tag(value: &mut Value) {
         Value::PowerOf(spec) | Value::ToughnessOf(spec) | Value::ManaValueOf(spec)
             if matches!(spec.as_ref(), crate::target::ChooseSpec::Source) =>
         {
-            *spec = Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG)));
+            *spec = Box::new(crate::target::ChooseSpec::Tagged(
+                crate::tag::CompilerReferenceTag::It.key(),
+            ));
         }
         _ => {}
     }
@@ -388,13 +390,17 @@ fn rewrite_cost_source_values_to_it_tag(
                     crate::model::CompilerCost::SacrificeSelf { .. } => {
                         *component = crate::model::CompilerCost::Sacrifice {
                             count: crate::effect::ChoiceCount::exactly(1),
-                            filter: crate::target::ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                            filter: crate::target::ObjectFilter::tagged(
+                                crate::tag::CompilerReferenceTag::It.key(),
+                            ),
                             all: false,
                             binding: None,
                         };
                     }
                     crate::model::CompilerCost::Sacrifice { filter, .. } if filter.source => {
-                        *filter = crate::target::ObjectFilter::tagged(TagKey::from(IT_TAG));
+                        *filter = crate::target::ObjectFilter::tagged(
+                            crate::tag::CompilerReferenceTag::It.key(),
+                        );
                     }
                     _ => {}
                 }
@@ -1059,7 +1065,7 @@ pub fn parse_sentence_implicit_become_clause(
     let target = match subject_shape.kind {
         delayed_grammar::ImplicitBecomeSubjectKind::Source => TargetAst::Source(None),
         delayed_grammar::ImplicitBecomeSubjectKind::Tagged => {
-            TargetAst::Tagged(TagKey::from(IT_TAG), None)
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None)
         }
     };
     let rest_clause = SubjectVerbPrimitiveClause::new(subject_shape.remainder_tokens).trimmed();
@@ -1296,7 +1302,7 @@ pub fn parse_sentence_gains_or_loses_all_creature_types(
     }
 
     let target = if delayed_grammar::delayed_tagged_creature_reference_shape(shape.subject_tokens) {
-        TargetAst::Tagged(TagKey::from(IT_TAG), None)
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None)
     } else {
         parse_target_phrase(shape.subject_tokens)?
     };
@@ -1406,7 +1412,8 @@ mod tests {
                         && filter.tagged_constraints.iter().any(|constraint| {
                             constraint.relation
                                 == crate::filter::TaggedOpbjectRelation::IsTaggedObject
-                                && constraint.tag.as_str() == IT_TAG
+                                && constraint.tag.as_str()
+                                    == crate::tag::CompilerReferenceTag::It.as_str()
                         }),
                     "the pronoun must survive until lowering can bind it: {filter:#?}"
                 );

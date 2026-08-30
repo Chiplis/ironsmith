@@ -1,9 +1,9 @@
 use crate::ability::{Ability, AbilityKind};
 use crate::cards::builders::{
-    ADDITIONAL_COST_OBJECT_TAG, CardDefinitionBuilder, CardTextError, EffectAst, IT_TAG, LineAst,
-    ParseAnnotations, ParsedAbility, ParsedCardItem, ParsedLevelAbilityAst,
-    ParsedLevelAbilityItemAst, ParsedModalAst, ParsedRestrictions, PlayerAst, PredicateAst,
-    ReferenceImports, SubjectVerbActionAst, TagKey, TriggerSpec,
+    CardDefinitionBuilder, CardTextError, EffectAst, LineAst, ParseAnnotations, ParsedAbility,
+    ParsedCardItem, ParsedLevelAbilityAst, ParsedLevelAbilityItemAst, ParsedModalAst,
+    ParsedRestrictions, PlayerAst, PredicateAst, ReferenceImports, SubjectVerbActionAst, TagKey,
+    TriggerSpec,
 };
 use crate::model::ParsedCardAst;
 use crate::resolution::ResolutionProgram;
@@ -12,39 +12,38 @@ use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
 
 mod damage_and_cost_rewrites;
+mod finalization_support;
+mod line_ast_helpers;
 mod line_lowering;
 mod modal_and_level_lowering;
 mod normalization_support;
 mod restriction_support;
 #[cfg(test)]
-mod rewrite_sentence_grouping;
-mod rewrite_support;
-mod rewrite_text_helpers;
+mod sentence_grouping_lowering;
 
 #[cfg(test)]
 use super::semantic_line_parsing::{
     normalize_exert_followup_source_reference_tokens, parse_keyword_line_for_test,
     parse_single_effect_lexed, parse_triggered_line, strip_lexed_suffix_phrase,
 };
-pub use normalization_support::normalize_rewrite_line_ast_standalone;
-pub use normalization_support::prepare_parsed_card_ast_for_lowering;
 #[cfg(test)]
-pub use normalization_support::rewrite_document_to_normalized_card_ast;
+pub use normalization_support::document_to_normalized_card_ast;
+pub use normalization_support::normalize_line_ast_standalone;
+pub use normalization_support::normalize_parsed_card_ast_for_lowering;
 
 pub use damage_and_cost_rewrites::*;
-pub use modal_and_level_lowering::*;
-pub use rewrite_support::infer_triggered_ability_functional_zones_from_facts;
-use rewrite_support::{
-    rewrite_finalize_lowered_card, rewrite_normalize_selected_sacrifice_tags,
-    runtime_effects_to_costs,
+pub use finalization_support::derive_triggered_ability_functional_zones_from_facts;
+use finalization_support::{
+    finalize_lowered_card, normalize_selected_sacrifice_tags, runtime_effects_to_costs,
 };
-pub use rewrite_text_helpers::*;
+pub use line_ast_helpers::*;
+pub use modal_and_level_lowering::*;
 
 use super::compile_support::{
+    bind_returned_attachment_history_to_triggering_object,
     compile_condition_from_predicate_ast_with_env, effect_references_tag,
     effects_reference_tag_in_object_position, materialize_prepared_effects_with_trigger_context,
-    rebind_returned_attachment_history_to_triggering_object,
-    trigger_binds_player_reference_context as rewrite_trigger_binds_player_reference_context,
+    trigger_binds_player_reference_context,
 };
 use super::effect_pipeline::{
     LoweredCardDocument, NormalizedAdditionalCostChoiceOptionAst, NormalizedCardAst,
@@ -53,19 +52,15 @@ use super::effect_pipeline::{
     NormalizedPreparedAbility,
 };
 use super::lowering_support::{
-    rewrite_apply_delayed_trigger_followup_statement_to_last_ability,
-    rewrite_apply_instead_followup_statement_to_last_ability,
-    rewrite_lower_keyword_action_to_object_abilities, rewrite_lower_parsed_ability,
-    rewrite_lower_prepared_ability,
-    rewrite_lower_prepared_additional_cost_choice_modes_with_exports,
-    rewrite_lower_prepared_statement_effects, rewrite_lower_static_abilities_ast,
-    rewrite_lower_static_ability_ast, rewrite_parsed_triggered_ability,
-    rewrite_prepare_additional_cost_effects_for_lowering, rewrite_prepare_effects_for_lowering,
-    rewrite_prepare_effects_with_trigger_context_for_lowering,
-    rewrite_prepare_owned_triggered_effects_for_lowering,
-    rewrite_prepare_statement_effects_for_lowering, rewrite_prepare_triggered_effects_for_lowering,
-    rewrite_static_ability_for_keyword_action,
-    rewrite_validate_iterated_player_bindings_in_lowered_effects,
+    apply_delayed_trigger_followup_statement_to_last_ability,
+    apply_instead_followup_statement_to_last_ability, assemble_parsed_triggered_ability,
+    lower_keyword_action_to_object_abilities, lower_parsed_ability, lower_prepared_ability,
+    lower_prepared_additional_cost_choice_modes_with_exports, lower_prepared_statement_effects,
+    lower_static_abilities_ast, lower_static_ability_ast,
+    runtime_static_ability_for_keyword_action, stage_additional_cost_effects_for_lowering,
+    stage_effects_for_lowering, stage_effects_with_trigger_context_for_lowering,
+    stage_owned_triggered_effects_for_lowering, stage_statement_effects_for_lowering,
+    stage_triggered_effects_for_lowering, validate_iterated_player_bindings_in_lowered_effects,
 };
 use crate::model::reference_state::LoweredEffects;
 use crate::model::reference_state::ReferenceExports;

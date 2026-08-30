@@ -11,7 +11,7 @@ use crate::static_abilities::StaticAbility as RuntimeStaticAbility;
 use crate::target::PlayerFilter;
 use crate::triggers::Trigger;
 
-use super::lowering_support::rewrite_lower_parsed_ability;
+use super::lowering_support::lower_parsed_ability;
 
 /// Expands marker-backed gameplay keywords to the complete object-ability set
 /// used by a printed instance of the same keyword.
@@ -281,7 +281,7 @@ fn lower_keyword_action_or_err(
             "static-ability lowering received a non-static keyword action".to_string(),
         )
     })?;
-    crate::lowering_support::rewrite_lower_static_ability_ast(
+    crate::lowering_support::lower_static_ability_ast(
         crate::cards::builders::StaticAbilityAst::Static(ability),
     )
 }
@@ -292,7 +292,7 @@ pub fn lower_granted_ability_ast(
     match ability {
         GrantedAbilityAst::KeywordAction(action) => lower_keyword_action_or_err((**action).clone()),
         GrantedAbilityAst::StaticAbility(ability) => {
-            crate::lowering_support::rewrite_lower_static_ability_ast((**ability).clone())
+            crate::lowering_support::lower_static_ability_ast((**ability).clone())
         }
         GrantedAbilityAst::ThisAbility => Err(CardTextError::InvariantViolation(
             "this ability cannot lower as a static ability".to_string(),
@@ -306,7 +306,7 @@ pub fn lower_granted_ability_ast(
             Ok(RuntimeStaticAbility::can_block_additional_creature_each_combat(*additional))
         }
         GrantedAbilityAst::ParsedObjectAbility { ability, display } => {
-            let lowered = rewrite_lower_parsed_ability((**ability).clone())?;
+            let lowered = lower_parsed_ability((**ability).clone())?;
             Ok(RuntimeStaticAbility::grant_object_ability_for_filter(
                 ObjectFilter::source(),
                 lowered,
@@ -523,7 +523,7 @@ pub fn lower_granted_ability_ast_to_object_ability(
             Ok(Ability::static_ability(static_ability))
         }
         GrantedAbilityAst::StaticAbility(static_ability) => Ok(Ability::static_ability(
-            crate::lowering_support::rewrite_lower_static_ability_ast((**static_ability).clone())?,
+            crate::lowering_support::lower_static_ability_ast((**static_ability).clone())?,
         )),
         GrantedAbilityAst::ThisAbility => Err(CardTextError::InvariantViolation(
             "this ability cannot lower as a granted object ability".to_string(),
@@ -546,7 +546,7 @@ pub fn lower_granted_ability_ast_to_object_ability(
             Ok(Ability::static_ability(static_ability))
         }
         GrantedAbilityAst::ParsedObjectAbility { ability, .. } => {
-            let lowered = rewrite_lower_parsed_ability((**ability).clone())?;
+            let lowered = lower_parsed_ability((**ability).clone())?;
             Ok(lowered)
         }
     }

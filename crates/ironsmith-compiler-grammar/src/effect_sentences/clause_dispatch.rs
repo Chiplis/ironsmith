@@ -64,8 +64,7 @@ use super::{
 };
 use crate::TagKey;
 use crate::cards::builders::{
-    ABILITY_CONTROLLER_TARGET_CHOICE_TAG, CardTextError, ChooseOneModeAst, EffectAst,
-    GrantedAbilityAst, IT_TAG, OPPONENT_TARGET_CHOICE_TAG, PlayerAst, ReturnControllerAst,
+    CardTextError, ChooseOneModeAst, EffectAst, GrantedAbilityAst, PlayerAst, ReturnControllerAst,
     SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TargetAst,
 };
 use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
@@ -130,7 +129,7 @@ fn parse_participant_choice_then_return_chosen_set(
     else {
         return Ok(None);
     };
-    let chosen_tag = TagKey::from(IT_TAG);
+    let chosen_tag = crate::tag::CompilerReferenceTag::It.key();
     Ok(Some(EffectAst::Sequence {
         effects: vec![
             EffectAst::ChooseObjects {
@@ -149,7 +148,7 @@ fn player_filter_mentions_source_object(filter: &PlayerFilter) -> bool {
     match filter {
         PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(tag))
         | PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag)) => {
-            tag.as_str() == crate::tag::SOURCE_OBJECT_TAG
+            tag.as_str() == crate::tag::CompilerReferenceTag::SourceObject.as_str()
         }
         PlayerFilter::Target(inner) | PlayerFilter::AliasedTarget(inner) => {
             player_filter_mentions_source_object(inner)
@@ -211,7 +210,7 @@ fn bind_explicit_damage_subject_characteristics_to_source(value: &mut Value) {
         | Value::ManaSymbolsInManaCostOf { spec, .. }
             if matches!(
                 spec.base(),
-                crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG
+                crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             ) =>
         {
             *spec = Box::new(crate::target::ChooseSpec::Source);
@@ -252,7 +251,10 @@ fn parse_explicit_target_object_damage_source(
         }
         source
     } else {
-        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(subject_tokens))
+        TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+            span_from_tokens(subject_tokens),
+        )
     };
 
     let (mut amount, target, unpreventable) = match parsed.action {
@@ -300,7 +302,7 @@ fn bind_gain_control_pronoun_to_source(effect: &mut EffectAst) {
             ..
         } = &mut subject_verb.action
         && let TargetAst::Tagged(tag, span) = target
-        && tag.as_str() == IT_TAG
+        && tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     {
         *target = TargetAst::Source(*span);
         source_reference_surface
@@ -321,9 +323,11 @@ fn target_choice_excluded_controller(
     match chooser {
         clause_grammar::ChooseTargetChooserShape::AbilityController => Some(PlayerFilter::You),
         clause_grammar::ChooseTargetChooserShape::ItsController
-        | clause_grammar::ChooseTargetChooserShape::ThatOpponent => Some(
-            PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(TagKey::from(IT_TAG))),
-        ),
+        | clause_grammar::ChooseTargetChooserShape::ThatOpponent => {
+            Some(PlayerFilter::ControllerOf(
+                crate::filter::ObjectRef::Tagged(crate::tag::CompilerReferenceTag::It.key()),
+            ))
+        }
         clause_grammar::ChooseTargetChooserShape::Unresolved => None,
     }
 }
@@ -339,7 +343,7 @@ fn explicit_target_choice(
     let (choice, alias) = match shape.chooser {
         clause_grammar::ChooseTargetChooserShape::AbilityController => (
             EffectAst::subject_verb_explicit_target_only(target),
-            Some(ABILITY_CONTROLLER_TARGET_CHOICE_TAG),
+            Some(crate::tag::CompilerReferenceTag::AbilityControllerTargetChoice),
         ),
         clause_grammar::ChooseTargetChooserShape::ItsController => (
             EffectAst::subject_verb_explicit_target_only_for_chooser(
@@ -353,7 +357,7 @@ fn explicit_target_choice(
                 target,
                 PlayerAst::ItsController,
             ),
-            Some(OPPONENT_TARGET_CHOICE_TAG),
+            Some(crate::tag::CompilerReferenceTag::OpponentTargetChoice),
         ),
         clause_grammar::ChooseTargetChooserShape::Unresolved => {
             (EffectAst::subject_verb_target_only(target), None)
@@ -364,7 +368,7 @@ fn explicit_target_choice(
     };
     EffectAst::TagAffected {
         effect: Box::new(choice),
-        tag: TagKey::from(alias),
+        tag: alias.key(),
     }
 }
 
@@ -572,6 +576,18 @@ impl<'a> CommonPlayerActionClause<'a> {
         if !matches!(subject, SubjectAst::Player(_)) {
             return None;
         }
+        // A comma-separated list of sibling actions ("draw two cards, lose 2
+        // life") is a chain of player actions, not one action clause. The
+        // effect-chain splitter owns that sentence; claiming it here hands
+        // the later actions to the first verb's trailing-clause grammar.
+        if crate::grammar::effects::chain_splitting::split_segments_on_comma_effect_head_tokens(
+            vec![action_tokens],
+        )
+        .len()
+            > 1
+        {
+            return None;
+        }
         let pattern = common_player_action_pattern_for(verb, action_tokens)?;
         let clause = ComposedPlayerActionClause {
             subject,
@@ -619,7 +635,7 @@ fn parse_play_exiled_cards_for_as_long_as_exiled_clause(
         == Some(clause_grammar::TaggedPermissionShape::PlayExiledForAsLongAsExiled))
     .then(|| {
         EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
-            TagKey::from(IT_TAG),
+            crate::tag::CompilerReferenceTag::It.key(),
             PlayerAst::You,
             true,
             false,
@@ -634,7 +650,7 @@ fn parse_mana_any_type_cast_tagged_this_way_clause(tokens: &[OwnedLexToken]) -> 
         == Some(clause_grammar::TaggedPermissionShape::ManaAnyTypeCastsTaggedThisWay))
     .then(|| {
         EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
-            TagKey::from(IT_TAG),
+            crate::tag::CompilerReferenceTag::It.key(),
             PlayerAst::You,
             false,
             false,
@@ -705,7 +721,7 @@ fn parse_cast_any_number_from_among_tagged_clause(tokens: &[OwnedLexToken]) -> O
     let shape = clause_grammar::parse_cast_any_tagged_shape(tokens)?;
 
     let mut filter = ObjectFilter::nonland().in_zone(Zone::Exile).match_tagged(
-        TagKey::from(IT_TAG),
+        crate::tag::CompilerReferenceTag::It.key(),
         crate::target::TaggedOpbjectRelation::IsTaggedObject,
     );
 
@@ -715,7 +731,7 @@ fn parse_cast_any_number_from_among_tagged_clause(tokens: &[OwnedLexToken]) -> O
         filter,
         effects: vec![EffectAst::May {
             effects: vec![EffectAst::subject_verb_cast_tagged(
-                TagKey::from(IT_TAG),
+                crate::tag::CompilerReferenceTag::It.key(),
                 PlayerAst::You,
                 false,
                 false,
@@ -757,7 +773,7 @@ fn parse_passive_sacrifice_by_controller_clause(
         filter,
         effects: vec![EffectAst::subject_verb_sacrifice(
             PlayerAst::ItsController,
-            ObjectFilter::tagged(TagKey::from(IT_TAG)),
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
             1,
             None,
         )],
@@ -937,12 +953,12 @@ pub(crate) fn parse_get_pump_clause(
                 .any(|word| word == "those")
         {
             return Ok(Some(EffectAst::ForEachTagged {
-                tag: TagKey::from(IT_TAG),
+                tag: crate::tag::CompilerReferenceTag::It.key(),
                 effects: vec![EffectAst::subject_verb_pump_for_each(
                     power_per,
                     toughness_per,
                     TargetAst::Tagged(
-                        TagKey::from(IT_TAG),
+                        crate::tag::CompilerReferenceTag::It.key(),
                         span_from_tokens(subject_shape.subject_tokens),
                     ),
                     count,
@@ -961,7 +977,7 @@ pub(crate) fn parse_get_pump_clause(
                 power_per,
                 toughness_per,
                 TargetAst::Tagged(
-                    TagKey::from(IT_TAG),
+                    crate::tag::CompilerReferenceTag::It.key(),
                     span_from_tokens(subject_shape.subject_tokens),
                 ),
                 count,
@@ -1061,7 +1077,7 @@ pub(crate) fn parse_get_pump_clause(
                         power_per,
                         toughness_per,
                         TargetAst::Tagged(
-                            TagKey::from(IT_TAG),
+                            crate::tag::CompilerReferenceTag::It.key(),
                             span_from_tokens(subject_shape.subject_tokens),
                         ),
                         count,
@@ -1139,7 +1155,7 @@ pub(crate) fn parse_get_pump_clause(
             power,
             toughness,
             TargetAst::Tagged(
-                TagKey::from(IT_TAG),
+                crate::tag::CompilerReferenceTag::It.key(),
                 span_from_tokens(subject_shape.subject_tokens),
             ),
             duration,
@@ -1296,13 +1312,13 @@ fn lower_direct_clause_shape(
         clause_grammar::DirectClauseShape::CopySourceExiledCard => {
             EffectAst::ChooseObjectsAcrossZones {
                 filter: ObjectFilter::default().in_zone(Zone::Exile).match_tagged(
-                    TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+                    crate::tag::CompilerReferenceTag::SourceExiled.key(),
                     crate::target::TaggedOpbjectRelation::IsTaggedObject,
                 ),
                 count: ChoiceCount::exactly(1),
                 count_value: None,
                 player: PlayerAst::You,
-                tag: TagKey::from(IT_TAG),
+                tag: crate::tag::CompilerReferenceTag::It.key(),
                 zones: vec![Zone::Exile],
                 search_mode: None,
             }
@@ -1311,7 +1327,10 @@ fn lower_direct_clause_shape(
             EffectAst::subject_verb_put_counters(
                 CounterType::PlusOnePlusOne,
                 Value::Fixed(1),
-                TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+                TargetAst::Tagged(
+                    crate::tag::CompilerReferenceTag::It.key(),
+                    span_from_tokens(tokens),
+                ),
                 None,
                 false,
             )
@@ -1333,7 +1352,7 @@ fn lower_direct_clause_shape(
             PlayerAst::You,
             SubjectVerbActionAst::TurnFaceUp {
                 target: TargetAst::Tagged(
-                    TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+                    crate::tag::CompilerReferenceTag::SourceExiled.key(),
                     span_from_tokens(tokens),
                 ),
             },
@@ -1342,7 +1361,10 @@ fn lower_direct_clause_shape(
             SubjectVerbRoleAst::Actor,
             PlayerAst::You,
             SubjectVerbActionAst::TurnFaceUp {
-                target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+                target: TargetAst::Tagged(
+                    crate::tag::CompilerReferenceTag::It.key(),
+                    span_from_tokens(tokens),
+                ),
             },
         ),
         clause_grammar::DirectClauseShape::Planeswalk => {
@@ -1378,28 +1400,28 @@ fn lower_direct_clause_shape(
         ),
         clause_grammar::DirectClauseShape::OnlyChosenCanAttack => EffectAst::subject_verb_cant(
             crate::effect::Restriction::attack(
-                ObjectFilter::creature().not_tagged(TagKey::from(IT_TAG)),
+                ObjectFilter::creature().not_tagged(crate::tag::CompilerReferenceTag::It.key()),
             ),
             Until::EndOfCombat,
             None,
         ),
         clause_grammar::DirectClauseShape::OnlyChosenCanBlock => EffectAst::subject_verb_cant(
             crate::effect::Restriction::block(
-                ObjectFilter::creature().not_tagged(TagKey::from(IT_TAG)),
+                ObjectFilter::creature().not_tagged(crate::tag::CompilerReferenceTag::It.key()),
             ),
             Until::EndOfCombat,
             None,
         ),
         clause_grammar::DirectClauseShape::CastNonlandTaggedThisWay => {
             let filter = ObjectFilter::nonland().in_zone(Zone::Exile).match_tagged(
-                TagKey::from(IT_TAG),
+                crate::tag::CompilerReferenceTag::It.key(),
                 crate::target::TaggedOpbjectRelation::IsTaggedObject,
             );
             EffectAst::ForEachObject {
                 filter,
                 effects: vec![EffectAst::May {
                     effects: vec![EffectAst::subject_verb_cast_tagged(
-                        TagKey::from(IT_TAG),
+                        crate::tag::CompilerReferenceTag::It.key(),
                         PlayerAst::You,
                         false,
                         false,
@@ -1422,15 +1444,15 @@ pub fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
 #[path = "clause_dispatch_inline_tests.rs"]
 mod tests;
 
-#[path = "clause_dispatch/clause_dispatch_core_programs.rs"]
+#[path = "clause_dispatch/clause_dispatch_core.rs"]
 mod clause_dispatch_core_programs;
 pub use clause_dispatch_core_programs::parse_effect_clause_lexed;
 use clause_dispatch_core_programs::{parse_effect_clause_unstacked, parse_passive_goad_clause};
-#[path = "clause_dispatch/clause_dispatch_reference_programs.rs"]
+#[path = "clause_dispatch/clause_dispatch_reference.rs"]
 mod clause_dispatch_reference_programs;
 pub(super) use clause_dispatch_reference_programs::parse_hexproof_targeting_override_clause;
 pub use clause_dispatch_reference_programs::parse_targeting_as_though_no_ability_spec;
-#[path = "clause_dispatch/clause_dispatch_object_action_programs.rs"]
+#[path = "clause_dispatch/clause_dispatch_object_action.rs"]
 mod clause_dispatch_object_action_programs;
 pub use clause_dispatch_object_action_programs::parse_conditional_become_pair;
 use clause_dispatch_object_action_programs::parse_conditional_become_pair_impl;

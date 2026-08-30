@@ -46,7 +46,7 @@ fn announced_stack_target_and_copy_share_the_unresolved_reference_tag() {
                 },
                 ..
             })
-        ] if tag.as_str() == IT_TAG
+        ] if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     ));
 }
 

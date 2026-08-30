@@ -3,7 +3,7 @@ use winnow::error::{ContextError, ErrMode, ModalResult as WResult, StrContext, S
 use winnow::prelude::*;
 use winnow::token::any;
 
-use crate::cards::builders::{CardTextError, IT_TAG, TagKey};
+use crate::cards::builders::{CardTextError, TagKey};
 use crate::effect::{Value, ValueComparisonOperator};
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::target::{ChooseSpec, ChooseSpecSurfaceHint, PlayerFilter, SacrificedObjectKind};
@@ -194,9 +194,11 @@ fn parse_value_stat_segment_shape(clause: LexedClause<'_>) -> Option<ValueStatSe
 fn value_from_stat_segment_shape(shape: ValueStatSegmentShape) -> Value {
     let choose_spec = match shape.subject {
         ValueStatSubjectShape::Source => ChooseSpec::Source,
-        ValueStatSubjectShape::Tagged => ChooseSpec::Tagged(TagKey::from(IT_TAG)),
+        ValueStatSubjectShape::Tagged => {
+            ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())
+        }
         ValueStatSubjectShape::Exploited => {
-            ChooseSpec::Tagged(TagKey::from(crate::tag::EXPLOITED_TAG))
+            ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::Exploited.key())
         }
     };
     match shape.axis {
@@ -332,10 +334,12 @@ fn parse_value_mana_value_segment_shape(
 fn value_from_mana_value_segment_shape(shape: ValueManaValueSegmentShape) -> Value {
     let choose_spec = match shape.subject {
         ValueManaValueSubjectShape::Source => ChooseSpec::Source,
-        ValueManaValueSubjectShape::Tagged => ChooseSpec::Tagged(TagKey::from(IT_TAG)),
-        ValueManaValueSubjectShape::TaggedPossessivePronoun => ChooseSpec::Tagged(TagKey::from(
-            IT_TAG,
-        ))
+        ValueManaValueSubjectShape::Tagged => {
+            ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())
+        }
+        ValueManaValueSubjectShape::TaggedPossessivePronoun => ChooseSpec::Tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+        )
         .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(
             crate::target::SourceReferenceSurface::ThisPermanentType("it".to_string()),
         )),
@@ -764,6 +768,6 @@ pub fn parse_value_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<(Value, usiz
 #[path = "values_inline_migrated_shape_tests.rs"]
 mod migrated_shape_tests;
 
-#[path = "values/resource_programs.rs"]
+#[path = "values/resource.rs"]
 mod resource_programs;
 pub use resource_programs::parse_add_mana_equal_amount_value_lexed;

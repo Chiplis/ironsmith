@@ -735,6 +735,6 @@ fn parse_put_destination_choice(
 #[path = "control_copy_attach_verbs_inline_looked_card_count_tests.rs"]
 mod looked_card_count_tests;
 
-#[path = "control_copy_attach_verbs/control_copy_attach_verbs_zone_programs.rs"]
+#[path = "control_copy_attach_verbs/control_copy_attach_verbs_zone.rs"]
 mod control_copy_attach_verbs_zone_programs;
 pub use control_copy_attach_verbs_zone_programs::{parse_put_into_hand};

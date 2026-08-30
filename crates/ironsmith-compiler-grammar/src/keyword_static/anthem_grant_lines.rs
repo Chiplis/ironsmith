@@ -204,6 +204,12 @@ pub fn parse_subject_has_keywords_and_cant_be_blocked_line(
         return Ok(None);
     }
 
+    // An attachment subject ("Equipped creature has hexproof and can't be
+    // blocked") belongs to the attached-object static family, which models the
+    // grant as continuous while this production models an ordinary subject.
+    if crate::grammar::attached_object_static_lines::parse_attached_has_tokens(tokens).is_some() {
+        return Ok(None);
+    }
     let Some(head) = anthem_grant_grammar::parse_has_keyword_unblockable_head(tokens) else {
         return Ok(None);
     };
@@ -820,6 +826,29 @@ fn parse_union_subject_keyword_grants(
 pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let granted_line_words = crate::lexer::parser_token_word_refs(tokens);
+    if (crate::word_primitives::parse_sequence_prefix(&granted_line_words, &["as", "long", "as"])
+        || crate::word_primitives::sequence_occurs(
+            &granted_line_words,
+            &["in", "addition", "to"],
+        ))
+        && matches!(
+            crate::keyword_static::parse_filter_has_granted_ability_line(tokens),
+            Ok(Some(_))
+        )
+    {
+        // A leading-condition pronoun grant belongs to the subject-grant
+        // family, which binds the pronoun to the conditioned host. This
+        // production keeps trailing-condition grants, where both grammars
+        // prove one identical typed fact.
+        return Ok(None);
+    }
+    // An unconditional all-subject indestructible grant is a complete
+    // narrower production with its own canonical static ability; the generic
+    // granted-keyword family must not register a second reading of it.
+    if matches!(parse_all_have_indestructible_line(tokens), Ok(Some(_))) {
+        return Ok(None);
+    }
     fn extract_grant_spec_from_subject(
         subject_tokens: &[OwnedLexToken],
         grantable: crate::model::CompilerGrantableCore,
@@ -1882,6 +1911,17 @@ pub fn parse_all_have_indestructible_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let words = crate::lexer::token_word_refs(tokens);
+    // This production owns the unconditional all-permanents grant it is named
+    // for. A narrower subject ("commanders you control have indestructible")
+    // or a conditioned rung ("... this creature has indestructible") belongs
+    // to the general granted-keyword family, which keeps the subject filter
+    // and the condition this production cannot represent.
+    if !words.first().is_some_and(|word| *word == "all")
+        || anthem_grant_grammar::parse_prefix_condition_shape(tokens, tokens.len()).is_some()
+        || crate::token_primitives::parse_simple_restriction_duration_prefix(tokens).is_some()
+    {
+        return Ok(None);
+    }
     let Some(parsed) = anthem_grant_grammar::parse_indestructible_grant_clause(tokens) else {
         return Ok(None);
     };
@@ -2563,16 +2603,7 @@ pub fn parse_static_condition_clause(
         ));
     }
     let display = clause_words.join(" ");
-
-    // Target-kind attack history is more specific than a source
-    // characteristic filter. Give the complete temporal form first refusal
-    // so `attacked a battle this turn` cannot collapse to `is a Battle`.
-    if matches!(
-        anthem_grant_grammar::parse_fixed_static_condition_kind(&tokens),
-        Some(anthem_grant_grammar::FixedStaticConditionKind::SourceAttackedBattleThisTurn)
-    ) {
-        return Ok(crate::ConditionExpr::SourceAttackedBattleThisTurn);
-    }
+    let fixed_kind = anthem_grant_grammar::parse_fixed_static_condition_kind(&tokens);
 
     // A condition on an affected attached object may quantify permanents
     // controlled by that object's controller. Reuse the ordinary control-
@@ -2655,13 +2686,19 @@ pub fn parse_static_condition_clause(
     if let Some(condition) = parse_life_total_static_condition(&tokens) {
         return Ok(condition);
     }
-    if let Some(filter) =
+    // Attack history and source characteristics are disjoint condition
+    // domains. A complete `attacked a battle this turn` fact is temporal, so
+    // it never enters the source-characteristic filter grammar.
+    if !matches!(
+        fixed_kind,
+        Some(anthem_grant_grammar::FixedStaticConditionKind::SourceAttackedBattleThisTurn)
+    ) && let Some(filter) =
         crate::grammar::filters::parse_source_keyword_condition_filter_lexed(&tokens)
     {
         return Ok(crate::ConditionExpr::SourceMatches(filter));
     }
 
-    if let Some(kind) = anthem_grant_grammar::parse_fixed_static_condition_kind(&tokens) {
+    if let Some(kind) = fixed_kind {
         use anthem_grant_grammar::FixedStaticConditionKind;
         return match kind {
             FixedStaticConditionKind::SourceEquipmentAttachedToCreature => Ok(
@@ -4163,7 +4200,6 @@ pub fn parse_soulbond_shared_line(
     } = shape.effect
     {
         if mills_each_opponent_by_toughness {
-            let display = display_text_for_tokens(ability_tokens, false);
             let ability = parsed_triggered_ability(
                 TriggerSpec::ThisAttacks,
                 vec![EffectAst::subject_verb(
@@ -4174,7 +4210,6 @@ pub fn parse_soulbond_shared_line(
                     },
                 )],
                 vec![Zone::Battlefield],
-                Some(display.clone()),
                 None,
                 None,
                 ReferenceImports::default(),
@@ -5073,6 +5108,19 @@ mod dynamic_anthem_tests {
         assert_eq!(
             filter.static_abilities,
             vec![crate::static_abilities::StaticAbilityId::Defender]
+        );
+    }
+
+    #[test]
+    fn source_attack_history_is_not_a_source_characteristic_condition() {
+        let tokens = lex_line("This creature attacked a battle this turn.", 0)
+            .expect("attack-history condition should lex");
+        let condition = parse_static_condition_clause(&tokens)
+            .expect("attack-history condition should parse");
+
+        assert_eq!(
+            condition,
+            crate::ConditionExpr::SourceAttackedBattleThisTurn
         );
     }
 }

@@ -586,15 +586,15 @@ pub fn parse_life_equal_surface(words: &[&str]) -> Option<LifeEqualSurface> {
 #[path = "counter_stat_shapes/tests.rs"]
 mod tests;
 
-#[path = "counter_stat_shapes/core_programs.rs"]
+#[path = "counter_stat_shapes/core.rs"]
 mod core_programs;
 use core_programs::{parse_possessive_stem, words_after_first};
-#[path = "counter_stat_shapes/resource_programs.rs"]
+#[path = "counter_stat_shapes/resource.rs"]
 mod resource_programs;
 pub use resource_programs::parse_half_life;
-#[path = "counter_stat_shapes/counter_programs.rs"]
+#[path = "counter_stat_shapes/counter.rs"]
 mod counter_programs;
 pub use counter_programs::parse_counter_reference;
-#[path = "counter_stat_shapes/reference_programs.rs"]
+#[path = "counter_stat_shapes/reference.rs"]
 mod reference_programs;
 pub use reference_programs::parse_possessive_target_stat;

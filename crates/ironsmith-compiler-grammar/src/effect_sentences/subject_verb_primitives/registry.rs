@@ -16,7 +16,7 @@ pub(super) const MECHANIC_MARKER_PREFIXES: &[&[&str]] = &[
     &["it", "doesnt", "untap", "during"],
 ];
 pub type SubjectVerbPrimitiveParser =
-    for<'a> fn(SubjectVerbPrimitiveClause<'a>) -> Result<Option<Vec<EffectAst>>, CardTextError>;
+    for<'a> fn(SubjectVerbPrimitiveClause<'a>) -> ParseOutcome<Vec<EffectAst>>;
 pub(super) type SubjectVerbPrimitiveNormalizedWords<'a> = TokenWordView<'a>;
 
 const REGISTRY_CARD_OR_CARDS_WORDS: &[&str] = &["card", "cards"];
@@ -405,53 +405,59 @@ fn primitive_route_starts_with_any(id: &str, prefixes: &[&str]) -> bool {
     prefixes.iter().any(|prefix| id.starts_with(prefix))
 }
 
-fn run_sentence_primitive(
-    primitive: &SubjectVerbPrimitive,
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause = SubjectVerbPrimitiveClause::new(tokens);
-    let parsed = (primitive.parser)(clause);
-    match parsed {
+pub fn subject_verb_primitive_outcome(
+    id: RuleId,
+    clause: SubjectVerbPrimitiveClause<'_>,
+    result: Result<Option<Vec<EffectAst>>, CardTextError>,
+) -> ParseOutcome<Vec<EffectAst>> {
+    let span = crate::util::span_from_tokens(clause.tokens());
+    match result {
+        Ok(Some(effects)) if effects.is_empty() => ParseOutcome::Error(ParseDiagnostic::invariant(
+            id,
+            span,
+            format!("primitive '{}' produced empty effects", id.as_str()),
+        )),
         Ok(Some(effects)) => {
             let stage = format!(
                 "parse_effect_sentence:subject-verb-primitive-hit:{}",
-                primitive.id
+                id.as_str()
             );
-            parser_trace(&stage, tokens);
+            parser_trace(&stage, clause.tokens());
             parse_trace::event(format!(
                 "effect subject/verb primitive: {} -> {}",
-                primitive.id,
+                id.as_str(),
                 summarize_effects(&effects)
             ));
             parse_trace::event(format!(
                 "effect-route: {}",
-                primitive_subject_verb_route(primitive.id)
+                primitive_subject_verb_route(id.as_str())
             ));
-            if effects.is_empty() {
-                return Err(CardTextError::ParseError(format!(
-                    "primitive '{}' produced empty effects (clause: '{}')",
-                    primitive.id,
-                    clause.text()
-                )));
-            }
-            Ok(Some(effects))
+            ParseOutcome::matched(effects, span)
         }
-        Ok(None) => Ok(None),
-        Err(err) => {
+        Ok(None) => ParseOutcome::NoMatch,
+        Err(error) => {
             if parser_trace_enabled() {
                 eprintln!(
-                    "[parser-flow] stage=parse_effect_sentence:subject-verb-primitive-error primitive={} clause='{}' error={err:?}",
-                    primitive.id,
+                    "[parser-flow] stage=parse_effect_sentence:subject-verb-primitive-error primitive={} clause='{}' error={error:?}",
+                    id.as_str(),
                     clause.text()
                 );
             }
             parse_trace::event(format!(
-                "effect subject/verb primitive: {} errored: {err:?}",
-                primitive.id
+                "effect subject/verb primitive: {} errored: {error:?}",
+                id.as_str()
             ));
-            Err(err)
+            ParseOutcome::Error(ParseDiagnostic::from_card_text_error(id, span, error))
         }
     }
+}
+
+fn run_sentence_primitive(
+    primitive: &SubjectVerbPrimitive,
+    tokens: &[OwnedLexToken],
+) -> ParseOutcome<Vec<EffectAst>> {
+    let clause = SubjectVerbPrimitiveClause::new(tokens);
+    (primitive.parser)(clause).within(primitive.metadata.id)
 }
 
 fn normalize_parser_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
@@ -474,7 +480,7 @@ fn run_sentence_primitive_lexed(
     primitive: &SubjectVerbPrimitive,
     tokens: &[OwnedLexToken],
     lowered: &OnceCell<Vec<OwnedLexToken>>,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+) -> ParseOutcome<Vec<EffectAst>> {
     // Possessive owner subjects carry executable target provenance in the
     // apostrophe itself (`target creature's owner`). The shared parser-token
     // normalizer intentionally strips that punctuation, so this one typed
@@ -509,15 +515,8 @@ fn recognize_subject_verb_primitives_lexed(
         {
             continue;
         }
-        let outcome = match run_sentence_primitive_lexed(primitive, tokens, &lowered) {
-            Ok(Some(effects)) => ParseOutcome::matched(effects, typed_head.span),
-            Ok(None) => ParseOutcome::NoMatch,
-            Err(error) => ParseOutcome::Error(ParseDiagnostic::from_card_text_error(
-                primitive.metadata.id,
-                typed_head.span,
-                error,
-            )),
-        };
+        let outcome =
+            run_sentence_primitive_lexed(primitive, tokens, &lowered).within(primitive.metadata.id);
         match outcome {
             ParseOutcome::NoMatch => {}
             ParseOutcome::Match(matched) => candidates.push(RegistryCandidate::new(
@@ -902,7 +901,7 @@ pub fn parse_sentence_choose_player_to_effect(
     let mut effects = vec![EffectAst::subject_verb_choose_player(
         chooser,
         filter,
-        TagKey::from(IT_TAG),
+        crate::tag::CompilerReferenceTag::It.key(),
         random,
         exclude_previous_choices,
     )];
@@ -954,11 +953,11 @@ pub fn parse_sentence_damage_to_that_player_half_damage_of_those_spells(
             PlayerAst::You,
             PlayerAst::That,
             ObjectFilter::default().with_type(card_type),
-            TagKey::from(IT_TAG),
+            crate::tag::CompilerReferenceTag::It.key(),
         ),
         EffectAst::subject_verb_damage(
             Value::HalfRoundedDown(Box::new(Value::DamageDealtThisTurnByTaggedSpellCast(
-                TagKey::from(IT_TAG),
+                crate::tag::CompilerReferenceTag::It.key(),
             ))),
             TargetAst::Player(PlayerFilter::target_player(), None),
         ),
@@ -990,7 +989,7 @@ pub fn parse_draw_for_each_card_exiled_from_hand_this_way_sentence(
     }
     effects.push(EffectAst::subject_verb_draw_for_each_tagged_matching(
         player,
-        TagKey::from(IT_TAG),
+        crate::tag::CompilerReferenceTag::It.key(),
         filter,
     ));
     Ok(Some(effects))
@@ -1135,7 +1134,7 @@ pub fn parse_sentence_sacrifice_it_next_end_step(
         return Ok(None);
     }
     let filter = if registry_shapes::is_tagged_delayed_object(shape.object_tokens) {
-        ObjectFilter::tagged(TagKey::from(IT_TAG))
+        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key())
     } else {
         parse_object_filter(shape.object_tokens, false)?
     };
@@ -1185,16 +1184,19 @@ pub fn parse_sentence_exile_it_next_end_step(
         EffectAst::subject_verb_exile_all(filter, false)
     } else {
         let target = if registry_shapes::is_tagged_delayed_object(shape.object_tokens) {
-            TargetAst::Tagged(TagKey::from(IT_TAG), object_clause.span())
+            TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::It.key(),
+                object_clause.span(),
+            )
         } else {
             let mut filter = parse_object_filter(shape.object_tokens, false)?;
             if plural_demonstrative {
                 if !filter.tagged_constraints.iter().any(|constraint| {
-                    constraint.tag.as_str() == IT_TAG
+                    constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                         && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
                 }) {
                     filter.tagged_constraints.push(TaggedObjectConstraint {
-                        tag: TagKey::from(IT_TAG),
+                        tag: crate::tag::CompilerReferenceTag::It.key(),
                         relation: TaggedOpbjectRelation::IsTaggedObject,
                     });
                 }

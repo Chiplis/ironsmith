@@ -16,27 +16,9 @@ pub fn joined_activation_clause_text(tokens: &[OwnedLexToken]) -> String {
     crate::lexer::token_word_refs(tokens).join(" ")
 }
 
-pub fn parse_prefixed_activated_ability_label(
-    tokens: &[OwnedLexToken],
-    cost_start: usize,
-) -> Option<String> {
-    if cost_start == 0 {
-        return None;
-    }
-
-    let prefix = ActivationRestrictionCompatWords::new(&tokens[..cost_start]);
-    match prefix.get(prefix.len().saturating_sub(1)) {
-        Some("boast") => Some("Boast".to_string()),
-        Some("exhaust") => Some("Exhaust".to_string()),
-        Some("renew") => Some("Renew".to_string()),
-        _ => None,
-    }
-}
-
 pub fn parse_hand_keyword_activated_body_lexed(
     body_tokens: &[OwnedLexToken],
     keyword: &str,
-    display_label: &str,
     clause_text: &str,
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     if body_tokens.is_empty() {
@@ -49,7 +31,6 @@ pub fn parse_hand_keyword_activated_body_lexed(
     let Some(mut parsed) = parse_activated_line_with_raw(&ability_tokens)? else {
         return Ok(None);
     };
-    *parsed.text_mut() = Some(display_label.to_string());
     *parsed.functional_zones_mut() = vec![Zone::Hand];
     Ok(Some(parsed))
 }
@@ -128,7 +109,7 @@ fn parse_direct_controller_sacrifice_draw_program(
     }
     let sacrifice = EffectAst::subject_verb_sacrifice(
         PlayerAst::ItsController,
-        ObjectFilter::tagged(IT_TAG),
+        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
         1,
         None,
     );
@@ -159,7 +140,6 @@ fn parse_direct_controller_sacrifice_draw_ability(
     {
         return Ok(None);
     }
-    let cost_start = 0;
     let cost_tokens = before_colon;
     if cost_tokens.is_empty() || effect_tokens.is_empty() {
         return Ok(None);
@@ -167,12 +147,6 @@ fn parse_direct_controller_sacrifice_draw_ability(
     let Some(effects) = parse_direct_controller_sacrifice_draw_program(effect_tokens)? else {
         return Ok(None);
     };
-    let ability_label = parse_prefixed_activated_ability_label(tokens, cost_start);
-    let ability_display_text = prefixed_activated_ability_display_text(
-        ability_label.as_deref(),
-        cost_tokens,
-        effect_tokens,
-    );
     let mana_cost = parse_compiler_activation_cost(cost_tokens)?;
     let reference_imports = ReferenceImports::default();
     let functional_zones = vec![Zone::Battlefield];
@@ -193,7 +167,6 @@ fn parse_direct_controller_sacrifice_draw_ability(
             functional_zones,
         }
         .into(),
-        text: ability_display_text,
         effects_ast: Some(effects),
         reference_imports,
         trigger_spec: None,
@@ -264,7 +237,6 @@ fn parse_direct_simple_effect_ability(
             functional_zones: vec![Zone::Battlefield],
         }
         .into(),
-        text: prefixed_activated_ability_display_text(None, cost_tokens, effect_tokens),
         effects_ast: Some(vec![effect]),
         reference_imports,
         trigger_spec: None,
@@ -310,12 +282,9 @@ fn parse_activated_line_with_raw_remaining(
     if cost_tokens.is_empty() || effect_tokens.is_empty() {
         return Ok(None);
     }
-    let ability_label = parse_prefixed_activated_ability_label(tokens, cost_start);
-    let ability_display_text = prefixed_activated_ability_display_text(
-        ability_label.as_deref(),
-        cost_tokens,
-        effect_tokens,
-    );
+    let activation_prefix = ActivationRestrictionCompatWords::new(&tokens[..cost_start]);
+    let has_exhaust_prefix = cost_start > 0
+        && activation_prefix.get(activation_prefix.len().saturating_sub(1)) == Some("exhaust");
     let trimmed_effect_tokens = crate::util::trim_edge_punctuation_tokens(effect_tokens);
     if let Some(effects) = parse_direct_controller_sacrifice_draw_program(effect_tokens)? {
         let mana_cost = parse_compiler_activation_cost(cost_tokens)?;
@@ -341,7 +310,6 @@ fn parse_activated_line_with_raw_remaining(
                 functional_zones,
             }
             .into(),
-            text: ability_display_text,
             effects_ast: Some(effects),
             reference_imports,
             trigger_spec: None,
@@ -410,7 +378,6 @@ fn parse_activated_line_with_raw_remaining(
                 functional_zones,
             }
             .into(),
-            text: ability_display_text,
             effects_ast: Some(vec![effect]),
             reference_imports,
             trigger_spec: None,
@@ -424,9 +391,7 @@ fn parse_activated_line_with_raw_remaining(
     let mana_activation_condition = scanned_modifiers.mana_activation_condition;
     let mut additional_activation_restrictions =
         scanned_modifiers.additional_activation_restrictions;
-    if ability_label.as_deref() == Some("Exhaust")
-        && !scanned_modifiers.has_exhaust_once_restriction
-    {
+    if has_exhaust_prefix && !scanned_modifiers.has_exhaust_once_restriction {
         additional_activation_restrictions
             .push("Activate each exhaust ability only once.".to_string());
     }
@@ -516,7 +481,6 @@ fn parse_activated_line_with_raw_remaining(
                 effects_ast.extend(extra_effects_ast);
                 return Ok(Some(ParsedAbility {
                     ability: ability.into(),
-                    text: ability_display_text.clone(),
                     effects_ast: Some(effects_ast),
                     reference_imports: reference_imports.clone(),
                     trigger_spec: None,
@@ -545,7 +509,6 @@ fn parse_activated_line_with_raw_remaining(
                     };
                     return Ok(Some(ParsedAbility {
                         ability: ability.into(),
-                        text: ability_display_text.clone(),
                         effects_ast: None,
                         reference_imports: ReferenceImports::default(),
                         trigger_spec: None,
@@ -576,7 +539,6 @@ fn parse_activated_line_with_raw_remaining(
                 effects_ast.extend(extra_effects_ast);
                 return Ok(Some(ParsedAbility {
                     ability: ability.into(),
-                    text: ability_display_text.clone(),
                     effects_ast: Some(effects_ast),
                     reference_imports,
                     trigger_spec: None,
@@ -620,7 +582,6 @@ fn parse_activated_line_with_raw_remaining(
                 }
             }
             .into(),
-            text: ability_display_text.clone(),
             effects_ast: None,
             reference_imports: ReferenceImports::default(),
             trigger_spec: None,
@@ -675,25 +636,10 @@ fn parse_activated_line_with_raw_remaining(
             }
         }
         .into(),
-        text: ability_display_text,
         effects_ast: Some(effects_ast),
         reference_imports,
         trigger_spec: None,
     }))
-}
-
-fn prefixed_activated_ability_display_text(
-    ability_label: Option<&str>,
-    cost_tokens: &[OwnedLexToken],
-    effect_tokens: &[OwnedLexToken],
-) -> Option<String> {
-    ability_label.map(|label| {
-        format!(
-            "{label} — {}: {}",
-            render_token_slice(cost_tokens).trim(),
-            render_token_slice(effect_tokens).trim()
-        )
-    })
 }
 
 pub fn activation_cost_mentions_x(tokens: &[OwnedLexToken]) -> bool {

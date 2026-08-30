@@ -452,10 +452,7 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
         )
     } else if crate::word_primitives::sequence_occurs(&words, &["copy", "that", "spell"]) {
         EffectAst::subject_verb_copy_spell(
-            TargetAst::Tagged(
-                crate::tag::TagKey::from(ironsmith_core::MANA_PAID_OBJECT_TAG),
-                None,
-            ),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::ManaPaidObject.key(), None),
             Value::Fixed(1),
             PlayerAst::You,
             false,
@@ -776,42 +773,42 @@ fn parse_filter_restriction(tokens: &[OwnedLexToken]) -> Option<ManaUsageRestric
 #[path = "mana_usage_inline_tests.rs"]
 mod tests;
 
-#[path = "mana_usage/mana_usage_object_action_programs.rs"]
+#[path = "mana_usage/mana_usage_object_action.rs"]
 mod mana_usage_object_action_programs;
 use mana_usage_object_action_programs::token_slice_for_words;
-#[path = "mana_usage/mana_usage_core_programs.rs"]
+#[path = "mana_usage/mana_usage_core.rs"]
 mod mana_usage_core_programs;
 use mana_usage_core_programs::{
     last_exact_suffix_offset, matches_exact_word_slice, parse_any_prefix_word_count,
     parse_any_prefix_words, strip_article,
 };
-#[path = "mana_usage/mana_usage_choice_programs.rs"]
+#[path = "mana_usage/mana_usage_choice.rs"]
 mod mana_usage_choice_programs;
 use mana_usage_choice_programs::{first_phrase_choice, first_word_choice};
-#[path = "mana_usage/mana_usage_counter_programs.rs"]
+#[path = "mana_usage/mana_usage_counter.rs"]
 mod mana_usage_counter_programs;
 use mana_usage_counter_programs::{
     mana_spend_counter_subject_matches, parse_mana_spend_counter_shape,
     parse_mana_spend_counter_tail,
 };
-#[path = "mana_usage/mana_usage_reference_programs.rs"]
+#[path = "mana_usage/mana_usage_reference.rs"]
 mod mana_usage_reference_programs;
 use mana_usage_reference_programs::{
     parse_ability_source_filter, parse_filter_cast_shape, parse_mana_usage_spell_filter,
     parse_nondefault_spell_filter, parse_simple_subtype_spell_filter, parse_special_spell_filter,
 };
-#[path = "mana_usage/mana_usage_library_programs.rs"]
+#[path = "mana_usage/mana_usage_library.rs"]
 mod mana_usage_library_programs;
 use mana_usage_library_programs::parse_simple_bonus_card_type;
-#[path = "mana_usage/mana_usage_resource_programs.rs"]
+#[path = "mana_usage/mana_usage_resource.rs"]
 mod mana_usage_resource_programs;
 use mana_usage_resource_programs::{
     parse_mana_spend_bonus_condition_prefix, parse_mana_spend_bonus_shape,
     strip_mana_spend_duration_grant_suffix,
 };
-#[path = "mana_usage/mana_usage_permission_programs.rs"]
+#[path = "mana_usage/mana_usage_permission.rs"]
 mod mana_usage_permission_programs;
 use mana_usage_permission_programs::parse_alternative_cast_spell_with_origin;
-#[path = "mana_usage/mana_usage_condition_programs.rs"]
+#[path = "mana_usage/mana_usage_condition.rs"]
 mod mana_usage_condition_programs;
 use mana_usage_condition_programs::classify_spec;

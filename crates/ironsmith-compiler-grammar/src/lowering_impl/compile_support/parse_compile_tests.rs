@@ -683,7 +683,10 @@ fn compile_amass_tags_output_when_followup_references_it() {
         "amass subtype: {debug}"
     );
     assert!(debug.contains("amount: Fixed(2)"), "amass amount: {debug}");
-    assert_eq!(ctx.last_object_tag.as_deref(), Some("amassed_0"));
+    assert_eq!(
+        ctx.last_object_tag.as_ref().map(|tag| tag.as_str()),
+        Some("amassed_0")
+    );
 }
 
 #[test]
@@ -2230,11 +2233,10 @@ fn resolve_target_spec_preserves_source_surface_when_collapsing_to_source() {
 
 #[test]
 fn predicate_tag_detection_descends_through_surface_hinted_characteristic_specs() {
-    let referenced_target = ChooseSpec::Tagged(TagKey::from(IT_TAG)).with_surface_hint(
-        crate::target::ChooseSpecSurfaceHint::SourceReference(
+    let referenced_target = ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())
+        .with_surface_hint(crate::target::ChooseSpecSurfaceHint::SourceReference(
             crate::target::SourceReferenceSurface::ThisPermanentType("it".to_string()),
-        ),
-    );
+        ));
     let predicate = PredicateAst::ValueComparison {
         left: Value::ManaValueOf(Box::new(referenced_target)),
         operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
@@ -2242,7 +2244,7 @@ fn predicate_tag_detection_descends_through_surface_hinted_characteristic_specs(
     };
 
     assert!(
-        predicate_references_tag(&predicate, IT_TAG),
+        predicate_references_tag(&predicate, crate::tag::CompilerReferenceTag::It.as_str()),
         "surface metadata must not hide the target reference used to hoist a trailing condition"
     );
 }
@@ -2250,7 +2252,9 @@ fn predicate_tag_detection_descends_through_surface_hinted_characteristic_specs(
 fn target_mana_value_threshold_branch(target_span: TextSpan, threshold: i32) -> EffectAst {
     EffectAst::TrailingIf {
         predicate: PredicateAst::ValueComparison {
-            left: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
+            left: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
+                crate::tag::CompilerReferenceTag::It.key(),
+            ))),
             operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
             right: Value::Fixed(threshold),
         },
@@ -2352,7 +2356,7 @@ fn source_sacrifice_preserves_its_authored_permanent_noun() {
 #[test]
 fn resolve_target_spec_preserves_implicit_it_when_it_resolves_to_source() {
     let target = TargetAst::Tagged(
-        TagKey::from(IT_TAG),
+        crate::tag::CompilerReferenceTag::It.key(),
         Some(TextSpan {
             line: 0,
             start: 42,
@@ -2541,7 +2545,7 @@ fn compile_effects_with_explicit_frame_uses_annotated_reference_frames() {
             None,
         )),
         EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-            TagKey::from(IT_TAG),
+            crate::tag::CompilerReferenceTag::It.key(),
             PlayerAst::You,
             false,
             false,
@@ -2565,7 +2569,10 @@ fn compile_effects_with_explicit_frame_uses_annotated_reference_frames() {
         debug.contains("destroyed_0"),
         "grant-play-tagged tag: {debug}"
     );
-    assert_eq!(frame_out.last_object_tag.as_deref(), Some("destroyed_0"));
+    assert_eq!(
+        frame_out.last_object_tag.as_ref().map(|tag| tag.as_str()),
+        Some("destroyed_0")
+    );
 }
 
 #[test]
@@ -2585,7 +2592,7 @@ fn synthesis_pod_consult_match_keeps_its_tag_through_exile_and_cast() {
             false,
         ),
         EffectAst::subject_verb_cast_tagged(
-            TagKey::from(IT_TAG),
+            crate::tag::CompilerReferenceTag::It.key(),
             PlayerAst::You,
             false,
             false,
@@ -2626,7 +2633,7 @@ fn praetors_grasp_search_exile_uses_source_exiled_permission_provenance() {
             true,
         ),
         EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
-            TagKey::from(IT_TAG),
+            crate::tag::CompilerReferenceTag::It.key(),
             PlayerAst::You,
             true,
             false,
@@ -2646,7 +2653,10 @@ fn praetors_grasp_search_exile_uses_source_exiled_permission_provenance() {
         .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>())
         .expect("searched exiled card should receive a play permission");
-    assert_eq!(grant.tag.as_str(), crate::tag::SOURCE_EXILED_TAG);
+    assert_eq!(
+        grant.tag.as_str(),
+        crate::tag::CompilerReferenceTag::SourceExiled.as_str()
+    );
     assert_ne!(grant.tag, searched_tag);
 }
 
@@ -2771,7 +2781,7 @@ fn compile_may_branch_preserves_auto_tagged_destroy_followup() {
             ))],
         },
         EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-            TagKey::from(IT_TAG),
+            crate::tag::CompilerReferenceTag::It.key(),
             PlayerAst::You,
             false,
             false,
@@ -2804,7 +2814,10 @@ fn compile_may_branch_preserves_auto_tagged_destroy_followup() {
         debug.contains("GrantPlayTaggedEffect"),
         "expected grant-play-tagged follow-up: {debug}"
     );
-    assert_eq!(frame_out.last_object_tag.as_deref(), Some("destroyed_0"));
+    assert_eq!(
+        frame_out.last_object_tag.as_ref().map(|tag| tag.as_str()),
+        Some("destroyed_0")
+    );
 }
 
 #[test]
@@ -2883,13 +2896,16 @@ fn compile_live_permanent_spell_predicate_preserves_stack_identity() {
     let condition = compile_condition_from_predicate_ast(
         &PredicateAst::ItMatches(permanent_spell),
         &mut EffectLoweringContext::new(),
-        &Some(COPIED_STACK_OBJECT_TAG.to_string()),
+        &Some(crate::tag::CompilerReferenceTag::CopiedStackObject.key()),
     )
     .expect("live permanent-spell predicate should lower");
     let Condition::TaggedObjectMatches(tag, filter) = condition else {
         panic!("expected tagged copied-spell condition");
     };
-    assert_eq!(tag.as_str(), COPIED_STACK_OBJECT_TAG);
+    assert_eq!(
+        tag.as_str(),
+        crate::tag::CompilerReferenceTag::CopiedStackObject.as_str()
+    );
     assert_eq!(filter.zone, Some(Zone::Stack));
     assert_eq!(
         filter.stack_kind,
@@ -2908,9 +2924,12 @@ fn compile_copy_does_not_replace_the_original_pronoun_antecedent() {
         Vec::new(),
     )];
     let mut ctx = EffectLoweringContext::new();
-    ctx.last_object_tag = Some("original_spell".to_string());
+    ctx.last_object_tag = Some(TagKey::from("original_spell"));
     compile_effects(&effects, &mut ctx).expect("copy should lower");
-    assert_eq!(ctx.last_object_tag.as_deref(), Some("original_spell"));
+    assert_eq!(
+        ctx.last_object_tag.as_ref().map(|tag| tag.as_str()),
+        Some("original_spell")
+    );
 }
 
 #[test]
@@ -2920,7 +2939,7 @@ fn compile_for_each_tagged_rewrites_it_targets_to_iterated_object() {
         effects: vec![EffectAst::Conditional {
             predicate: PredicateAst::ItMatches(ObjectFilter::permanent()),
             if_true: vec![EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
                 Zone::Battlefield,
                 false,
                 ReturnControllerAst::Owner,
@@ -2928,7 +2947,7 @@ fn compile_for_each_tagged_rewrites_it_targets_to_iterated_object() {
                 None,
             )],
             if_false: vec![EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
                 Zone::Graveyard,
                 false,
                 ReturnControllerAst::Preserve,
@@ -2981,8 +3000,10 @@ fn consult_inside_for_each_tagged_does_not_steal_the_iteration_binding() {
                 SubjectVerbRoleAst::Actor,
                 PlayerAst::Implicit,
                 SubjectVerbActionAst::DealDamage {
-                    amount: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
-                    target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    amount: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
+                        crate::tag::CompilerReferenceTag::It.key(),
+                    ))),
+                    target: TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
                     unpreventable: false,
                 },
             ),
@@ -3373,7 +3394,7 @@ fn serial_keyword_filters_survive_trigger_and_effect_comma_boundaries() {
         )
         .expect("serial keyword filters should remain one parsed clause");
 
-    let damage_filter = definition
+    let damage_fanout = definition
         .abilities
         .iter()
         .filter_map(|ability| match &ability.kind {
@@ -3381,29 +3402,25 @@ fn serial_keyword_filters_survive_trigger_and_effect_comma_boundaries() {
             _ => None,
         })
         .flat_map(|triggered| triggered.effects.flattened_default_effects())
-        .find_map(|effect| {
-            let damage = effect
-                .downcast_ref::<crate::effects::DealDamageEffect>()
-                .or_else(|| {
-                    effect
-                        .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
-                        .and_then(|execute| {
-                            execute
-                                .effect
-                                .downcast_ref::<crate::effects::DealDamageEffect>()
-                        })
-                })?;
-            match damage.target.unhinted() {
-                ChooseSpec::Object(filter) => Some(filter),
-                _ => None,
-            }
-        })
-        .expect("entry damage should retain its filtered object domain");
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ForEachObject>())
+        .expect("entry damage should iterate over its complete filtered object domain");
     assert_eq!(
-        damage_filter.excluded_static_abilities,
+        damage_fanout.filter.excluded_static_abilities,
         vec![FirstStrike, DoubleStrike, Vigilance, Haste]
     );
-    assert!(damage_filter.any_of.is_empty());
+    assert!(damage_fanout.filter.any_of.is_empty());
+    let [damage] = damage_fanout.effects.as_slice() else {
+        panic!("mass damage must have one per-object action: {damage_fanout:#?}");
+    };
+    let damage = damage
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .map_or(damage, |tagged| &tagged.effect);
+    let damage = damage
+        .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+        .map_or(damage, |sourced| &sourced.effect)
+        .downcast_ref::<crate::effects::DealDamageEffect>()
+        .expect("mass damage iteration must execute typed damage");
+    assert!(matches!(damage.target.base(), ChooseSpec::Iterated));
 
     let attacks = definition
         .abilities

@@ -701,7 +701,7 @@ pub(super) fn attach_compiler_trigger_facts(
                 let mut creature_card_filter = crate::ObjectFilter::creature();
                 creature_card_filter.zone = None;
                 let membership_filter = crate::ObjectFilter::default()
-                    .same_stable_id_as_tagged(crate::TagKey::from(crate::host::IT_TAG));
+                    .same_stable_id_as_tagged(crate::tag::CompilerReferenceTag::It.key());
                 Some((
                     trigger,
                     vec![
@@ -745,7 +745,7 @@ pub(super) fn attach_compiler_trigger_facts(
                                         if_false: vec![
                                             crate::host::EffectAst::subject_verb_move_to_zone(
                                                 crate::TargetAst::Tagged(
-                                                    crate::TagKey::from(crate::host::IT_TAG),
+                                                    crate::tag::CompilerReferenceTag::It.key(),
                                                     None,
                                                 ),
                                                 crate::Zone::Graveyard,
@@ -974,7 +974,7 @@ pub(super) fn attach_compiler_trigger_facts(
             &mut effects,
         );
         let functional_zones =
-            super::super::semantic_line_parsing::infer_triggered_ability_functional_zones_from_facts(
+            super::super::semantic_line_parsing::derive_triggered_ability_functional_zones_from_facts(
                 &trigger,
                 &triggered.info.semantic_facts.triggered_ability.functional_zones,
             );

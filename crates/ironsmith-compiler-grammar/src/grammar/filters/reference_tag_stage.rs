@@ -1219,20 +1219,20 @@ enum PermanentOrSuspendedCardArm {
 #[path = "reference_tag_stage_inline_shared_characteristic_relation_tests.rs"]
 mod shared_characteristic_relation_tests;
 
-#[path = "reference_tag_stage/reference_tag_stage_reference_programs.rs"]
+#[path = "reference_tag_stage/reference_tag_stage_reference.rs"]
 mod reference_tag_stage_reference_programs;
 pub(super) use reference_tag_stage_reference_programs::parse_object_filter_inner;
 use reference_tag_stage_reference_programs::{
     try_apply_could_be_targeted_by_that_spell_clause,
     try_apply_shared_creature_type_with_source_clause,
 };
-#[path = "reference_tag_stage/reference_tag_stage_choice_programs.rs"]
+#[path = "reference_tag_stage/reference_tag_stage_choice.rs"]
 mod reference_tag_stage_choice_programs;
 use reference_tag_stage_choice_programs::try_apply_no_shared_creature_type_with_chosen_creature_clause;
-#[path = "reference_tag_stage/reference_tag_stage_zone_programs.rs"]
+#[path = "reference_tag_stage/reference_tag_stage_zone.rs"]
 mod reference_tag_stage_zone_programs;
 use reference_tag_stage_zone_programs::try_apply_no_shared_creature_type_with_your_creatures_or_graveyard_clause;
-#[path = "reference_tag_stage/reference_tag_stage_core_programs.rs"]
+#[path = "reference_tag_stage/reference_tag_stage_core.rs"]
 mod reference_tag_stage_core_programs;
 use reference_tag_stage_core_programs::{
     apply_basic_land_exception, positive_relative_characteristic_union,
@@ -1240,12 +1240,12 @@ use reference_tag_stage_core_programs::{
     relation_clause_is_inside_aggregate_scope, try_apply_distinct_creature_types_clause,
     try_apply_distinct_powers_clause,
 };
-#[path = "reference_tag_stage/reference_tag_stage_resource_programs.rs"]
+#[path = "reference_tag_stage/reference_tag_stage_resource.rs"]
 mod reference_tag_stage_resource_programs;
 use reference_tag_stage_resource_programs::{
     lift_shared_trailing_mana_value_from_type_union, try_apply_distinct_mana_values_clause,
 };
-#[path = "reference_tag_stage/reference_tag_stage_library_programs.rs"]
+#[path = "reference_tag_stage/reference_tag_stage_library.rs"]
 mod reference_tag_stage_library_programs;
 use reference_tag_stage_library_programs::{
     consume_permanent_or_suspended_card_tail, parse_permanent_or_suspended_card_arm,

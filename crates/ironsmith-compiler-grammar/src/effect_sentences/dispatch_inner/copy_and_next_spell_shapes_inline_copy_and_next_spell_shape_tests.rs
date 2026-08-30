@@ -127,7 +127,7 @@
         assert!(matches!(
             &filter.owner,
             Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag)))
-                if tag.as_str() == crate::cards::builders::IT_TAG
+                if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         ));
     }
 

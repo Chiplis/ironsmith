@@ -58,7 +58,10 @@ pub fn parse_equipment_equip_shape(tokens: &[OwnedLexToken]) -> Option<Equipment
         primitives::find_prefix(after_prefix, || primitives::phrase(&["as", "long", "as"]))?;
     let as_token = prefix_end + relative_as;
     let cost_tokens = trim_lexed_commas(tokens.get(prefix_end..as_token)?);
-    let condition_tokens = tokens.get(as_token..)?;
+    // The condition parser owns the clause after the marker; keeping the
+    // authored `as long as` words inside it would repeat them in the rendered
+    // condition surface.
+    let condition_tokens = tokens.get(as_token + 3..)?;
     (!cost_tokens.is_empty() && !condition_tokens.is_empty()).then_some(EquipmentEquipShape {
         cost_tokens,
         condition_tokens,

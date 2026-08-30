@@ -239,8 +239,7 @@ pub(super) fn parse_alternative_cast(
                 Some(cost),
                 Vec::new(),
                 condition,
-            )
-            .into(),
+            ),
         )));
     }
     if let Some(keyword_tokens) =
@@ -261,8 +260,7 @@ pub(super) fn parse_alternative_cast(
                 crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(
                     crate::types::Subtype::Assassin,
                 ),
-            )
-            .into(),
+            ),
         )));
     }
     if let Some(keyword_tokens) =
@@ -291,8 +289,7 @@ pub(super) fn parse_alternative_cast(
                 "Sneak",
                 Some(cost),
                 vec![crate::model::CompilerCost::Sneak],
-            )
-            .into(),
+            ),
         )));
     }
     if parse_keyword_special_form_shape_tokens(tokens)
@@ -303,23 +300,23 @@ pub(super) fn parse_alternative_cast(
         ])));
     }
     if let Some(method) = parse_self_free_cast_alternative_cost_line_lexed(tokens) {
-        return Ok(ast(LineAst::AlternativeCastingMethod(method.into())));
+        return Ok(ast(LineAst::AlternativeCastingMethod(method)));
     }
     if let Some(method) = parse_flash_with_additional_cost_line_lexed(tokens) {
-        return Ok(ast(LineAst::AlternativeCastingMethod(method.into())));
+        return Ok(ast(LineAst::AlternativeCastingMethod(method)));
     }
     if let Some(method) = parse_jump_start_line_lexed(tokens)? {
-        return Ok(ast(LineAst::AlternativeCastingMethod(method.into())));
+        return Ok(ast(LineAst::AlternativeCastingMethod(method)));
     }
     let surface = line.info.normalized.normalized.as_str();
     if let Some(method) = parse_you_may_rather_than_spell_cost_line_lexed(tokens, surface)? {
-        return Ok(ast(LineAst::AlternativeCastingMethod(method.into())));
+        return Ok(ast(LineAst::AlternativeCastingMethod(method)));
     }
     if let Some(method) = parse_if_conditional_alternative_cost_line_lexed(tokens, surface)? {
-        return Ok(ast(LineAst::AlternativeCastingMethod(method.into())));
+        return Ok(ast(LineAst::AlternativeCastingMethod(method)));
     }
     if let Some(method) = parse_prowl_line_lexed(tokens)? {
-        return Ok(ast(LineAst::AlternativeCastingMethod(method.into())));
+        return Ok(ast(LineAst::AlternativeCastingMethod(method)));
     }
     if let Some(ability) = parse_if_this_spell_costs_less_to_cast_line_lexed(tokens)? {
         return Ok(ast(LineAst::StaticAbility(ability.into())));
@@ -400,7 +397,7 @@ pub(super) fn parse_flashback(
     };
 
     if sentences.len() == 1 {
-        return Ok(ast(LineAst::AlternativeCastingMethod(method.into())));
+        return Ok(ast(LineAst::AlternativeCastingMethod(method)));
     }
     if sentences.len() != 2 {
         return Ok(None);
@@ -435,7 +432,7 @@ pub(super) fn parse_flashback(
     reduction.alternative_cast = Some(crate::filter::AlternativeCastKind::Flashback);
 
     Ok(ast(LineAst::Multiple(vec![
-        LineAst::AlternativeCastingMethod(method.into()),
+        LineAst::AlternativeCastingMethod(method),
         LineAst::StaticAbility(StaticAbilityAst::Static(ability)),
     ])))
 }
@@ -466,7 +463,7 @@ pub(super) fn parse_blitz(
         return Ok(None);
     }
     Ok(parse_blitz_line_lexed(tokens)?
-        .map(|parsed| KeywordLinePayload::ast(LineAst::AlternativeCastingMethod(parsed.into()))))
+        .map(|parsed| KeywordLinePayload::ast(LineAst::AlternativeCastingMethod(parsed))))
 }
 
 pub(super) fn parse_kicker(
@@ -489,7 +486,7 @@ pub(super) fn parse_mutate(
         return Ok(None);
     };
     Ok(ast(LineAst::AlternativeCastingMethod(
-        crate::model::CompilerAlternativeCastingMethod::Mutate { cost }.into(),
+        crate::model::CompilerAlternativeCastingMethod::Mutate { cost },
     )))
 }
 
@@ -499,7 +496,7 @@ pub(super) fn parse_squad(
     _full_tokens: &[OwnedLexToken],
 ) -> KeywordParseResult {
     if let Some(cost) = parse_squad_line_lexed(tokens)? {
-        return Ok(ast(LineAst::OptionalCost(cost.into())));
+        return Ok(ast(LineAst::OptionalCost(cost)));
     }
     if let Some(effect_tokens) = optional_cost_tail_effect_tokens(tokens)
         && let Ok(effects) = parse_effect_sentences_lexed(effect_tokens)
@@ -578,17 +575,17 @@ pub(super) fn parse_splice(
 #[path = "keyword_payloads_inline_tests.rs"]
 mod tests;
 
-#[path = "keyword_payloads/core_programs.rs"]
+#[path = "keyword_payloads/core.rs"]
 mod core_programs;
 pub(super) use core_programs::{
     parse_epic, parse_escalate, parse_eternalize, parse_evoke, parse_exploit,
 };
-#[path = "keyword_payloads/combat_programs.rs"]
+#[path = "keyword_payloads/combat.rs"]
 mod combat_programs;
 pub(super) use combat_programs::parse_exert_attack;
-#[path = "keyword_payloads/condition_programs.rs"]
+#[path = "keyword_payloads/condition.rs"]
 mod condition_programs;
 pub(super) use condition_programs::parse_gift;
-#[path = "keyword_payloads/permission_programs.rs"]
+#[path = "keyword_payloads/permission.rs"]
 mod permission_programs;
 pub(super) use permission_programs::parse_cast_this_spell_only;

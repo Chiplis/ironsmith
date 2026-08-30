@@ -13,7 +13,7 @@ use super::super::lexer::{
     OwnedLexToken, TokenKind, contains_token_kind, is_authored_proper_name_phrase,
     locate_token_kind, locate_token_word, token_slice_first_is, trim_lexed_commas,
 };
-use super::super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
+use super::super::lowering_support::assemble_parsed_triggered_ability as parsed_triggered_ability;
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 #[cfg(test)]
 use super::super::token_primitives::str_contains as string_contains;
@@ -31,10 +31,9 @@ use super::sentence_helpers::*;
 use super::subject_verb_primitives::SubjectVerbPrimitiveClause;
 use super::{Verb, find_verb, parse_effect_chain, parse_effect_sentence_lexed};
 use crate::cards::builders::{
-    COPIED_STACK_OBJECT_TAG, CardTextError, EffectAst, GrantedAbilityAst, IT_TAG,
-    IfResultPredicate, KeywordAction, LineAst, ParsedAbility, PlayerAst, PredicateAst,
-    ReferenceImports, StaticAbilityAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    TagKey, TargetAst, TextSpan, TriggerSpec,
+    CardTextError, EffectAst, GrantedAbilityAst, IfResultPredicate, KeywordAction, LineAst,
+    ParsedAbility, PlayerAst, PredicateAst, ReferenceImports, StaticAbilityAst, SubjectAst,
+    SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst, TextSpan, TriggerSpec,
 };
 use crate::effect::{Until, Value};
 use crate::grammar::clause_support as clause_grammar;
@@ -206,7 +205,11 @@ fn append_shared_subject_pump_to_target(
 }
 
 fn bind_shared_subject_characteristic_fallback(value: &Value) -> Value {
-    let shared_target = || Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)));
+    let shared_target = || {
+        Box::new(ChooseSpec::Tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+        ))
+    };
     match value {
         Value::SourcePower => Value::PowerOf(shared_target()),
         Value::SourceToughness => Value::ToughnessOf(shared_target()),
@@ -768,11 +771,50 @@ fn parse_granted_ability_component_for_gain(
         ));
     }
 
-    if let Some(parsed) =
-        crate::activation_and_restrictions::parse_equip_line_lexed(&ability_tokens)?
+    if let Some(equip_spec) =
+        crate::grammar::keyword_activated_lines::parse_equip_line_spec_tokens(&ability_tokens)
+        && let Some(parsed) =
+            crate::activation_and_restrictions::parse_equip_line_lexed(&ability_tokens)?
     {
+        let typed_cost = match &equip_spec {
+            crate::grammar::keyword_activated_lines::EquipLineSpec::Mana { cost } => {
+                cost.to_oracle()
+            }
+            crate::grammar::keyword_activated_lines::EquipLineSpec::QualifiedCost {
+                qualifier,
+                ..
+            } => {
+                let qualifier = qualifier
+                    .subtypes
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let crate::model::CompilerAbilityKindCore::Activated(activated) = parsed.kind()
+                else {
+                    return Err(CardTextError::InvariantViolation(
+                        "equip grammar produced a non-activated ability".to_string(),
+                    ));
+                };
+                format!("{qualifier} {}", activated.mana_cost.display())
+            }
+            crate::grammar::keyword_activated_lines::EquipLineSpec::ActivationCost { .. } => {
+                let crate::model::CompilerAbilityKindCore::Activated(activated) = parsed.kind()
+                else {
+                    return Err(CardTextError::InvariantViolation(
+                        "equip grammar produced a non-activated ability".to_string(),
+                    ));
+                };
+                activated.mana_cost.display()
+            }
+            crate::grammar::keyword_activated_lines::EquipLineSpec::MissingCost => {
+                return Err(CardTextError::InvariantViolation(
+                    "equip grammar produced an ability without a cost".to_string(),
+                ));
+            }
+        };
         return Ok(Some(vec![GrantedAbilityAst::ParsedObjectAbility {
-            display: crate::lexer::token_word_refs(&ability_tokens).join(" "),
+            display: format!("Equip {typed_cost}"),
             ability: Box::new(parsed),
         }]));
     }
@@ -1438,7 +1480,7 @@ fn source_target_from_subject_tokens(tokens: &[OwnedLexToken]) -> Option<TargetA
         &[&["the", "those"], &["copies"]],
     ) {
         return Some(TargetAst::Tagged(
-            TagKey::from(COPIED_STACK_OBJECT_TAG),
+            crate::tag::CompilerReferenceTag::CopiedStackObject.key(),
             span_from_lexed_tokens(tokens),
         ));
     }
@@ -1697,8 +1739,10 @@ fn parse_simple_ability_modifier_clause_lexed(
     let is_pronoun_subject = implied_it_subject || subject_shape.tagged_pronoun;
     if is_pronoun_subject {
         let set_quantifier_surface = pronoun_set_quantifier_surface(&subject_word_refs);
-        let target =
-            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_lexed_tokens(subject_tokens));
+        let target = TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+            span_from_lexed_tokens(subject_tokens),
+        );
         if losing {
             return Ok(Some(EffectAst::subject_verb_remove_abilities_from_target(
                 target, abilities, duration,
@@ -1732,7 +1776,10 @@ fn parse_simple_ability_modifier_clause_lexed(
     let is_demonstrative_subject = subject_shape.demonstrative_object;
     if is_demonstrative_subject || subject_shape.target {
         let target = if is_demonstrative_subject {
-            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_lexed_tokens(subject_tokens))
+            TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::It.key(),
+                span_from_lexed_tokens(subject_tokens),
+            )
         } else {
             parse_target_phrase(subject_tokens)?
         };
@@ -1873,7 +1920,10 @@ fn parse_complete_simple_source_gain_ability_sentence(
         if !subject_shape.pronoun && !subject_shape.demonstrative_object {
             return Ok(None);
         }
-        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&subject_tokens))
+        TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+            span_from_tokens(&subject_tokens),
+        )
     };
     let source_target = matches!(&target, TargetAst::Source(_))
         || matches!(&target, TargetAst::Object(filter, None, _) if filter.source);
@@ -1907,6 +1957,12 @@ fn parse_complete_simple_source_gain_ability_sentence(
 fn parse_gain_ability_sentence_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // `can be the target ... as though` is a targeting permission relation,
+    // not a grant of the ability named in the comparison. Keep that complete
+    // typed domain outside every gain-ability route.
+    if super::clause_dispatch::parse_targeting_as_though_no_ability_spec(tokens)?.is_some() {
+        return Ok(None);
+    }
     if let Some(effects) = parse_complete_simple_source_gain_ability_sentence(tokens)? {
         return Ok(Some(effects));
     }
@@ -1952,27 +2008,27 @@ mod typed_grant_tests;
 #[path = "gain_ability_inline_tests.rs"]
 mod tests;
 
-#[path = "gain_ability/gain_ability_reference_programs.rs"]
-mod gain_ability_reference_programs;
-use gain_ability_reference_programs::parse_gain_ability_sentence_with_subject;
-pub use gain_ability_reference_programs::parse_gain_ability_to_source_sentence;
-#[path = "gain_ability/gain_ability_choice_programs.rs"]
-mod gain_ability_choice_programs;
-pub use gain_ability_choice_programs::parse_choice_of_abilities;
-#[path = "gain_ability/gain_ability_ability_programs.rs"]
-mod gain_ability_ability_programs;
-pub use gain_ability_ability_programs::append_gain_ability_trailing_effects;
-use gain_ability_ability_programs::{
+#[path = "gain_ability/subject_resolution.rs"]
+mod subject_resolution;
+use subject_resolution::parse_gain_ability_sentence_with_subject;
+pub use subject_resolution::parse_gain_ability_to_source_sentence;
+#[path = "gain_ability/ability_choices.rs"]
+mod ability_choices;
+pub use ability_choices::parse_choice_of_abilities;
+#[path = "gain_ability/grant_followups.rs"]
+mod grant_followups;
+pub use grant_followups::append_gain_ability_trailing_effects;
+use grant_followups::{
     apply_gain_clause_duration_to_leading_effect,
     parse_single_effect_sentence_for_granted_otherwise,
 };
-#[path = "gain_ability/gain_ability_trigger_programs.rs"]
-mod gain_ability_trigger_programs;
-pub use gain_ability_trigger_programs::parse_granted_activated_or_triggered_ability_for_gain;
-use gain_ability_trigger_programs::{
+#[path = "gain_ability/triggered_abilities.rs"]
+mod triggered_abilities;
+pub use triggered_abilities::parse_granted_activated_or_triggered_ability_for_gain;
+use triggered_abilities::{
     normalize_named_granted_trigger_subject, parse_granted_trigger_with_nested_token_rule,
     parse_granted_triggered_otherwise_ability,
 };
-#[path = "gain_ability/gain_ability_core_programs.rs"]
-mod gain_ability_core_programs;
-use gain_ability_core_programs::reject_unsupported_lost_abilities;
+#[path = "gain_ability/ability_validation.rs"]
+mod ability_validation;
+use ability_validation::reject_unsupported_lost_abilities;

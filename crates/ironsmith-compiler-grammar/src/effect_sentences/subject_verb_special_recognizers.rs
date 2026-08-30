@@ -5,7 +5,7 @@ use super::super::rule_engine::{
 use super::sentence_helpers::target_ast_to_object_filter;
 use super::{parse_object_filter, parse_target_phrase as parse_target_phrase_lexed};
 use crate::cards::builders::{CardTextError, ChoiceCount, EffectAst};
-use crate::cards::builders::{IT_TAG, PlayerAst, TagKey, Value};
+use crate::cards::builders::{PlayerAst, TagKey, Value};
 use crate::effect::{EventValueSpec, Until};
 use crate::model::ast::{SubjectVerbActionAst, SubjectVerbRoleAst};
 use crate::recognition::{ParseOutcome, RuleId};
@@ -192,7 +192,7 @@ pub(super) fn parse_spell_this_way_pay_life_rule_lexed(
 ) -> ParseOutcome<Vec<EffectAst>> {
     if shapes::parses_spell_this_way_pay_life(view.tokens) {
         return ParseOutcome::matched(vec![
-            EffectAst::subject_verb_grant_tagged_spell_alternative_cost_pay_life_by_mana_value_until_end_of_turn(TagKey::from(IT_TAG), PlayerAst::You),
+            EffectAst::subject_verb_grant_tagged_spell_alternative_cost_pay_life_by_mana_value_until_end_of_turn(crate::tag::CompilerReferenceTag::It.key(), PlayerAst::You),
         ], lex_clause_span(view));
     }
     ParseOutcome::NoMatch

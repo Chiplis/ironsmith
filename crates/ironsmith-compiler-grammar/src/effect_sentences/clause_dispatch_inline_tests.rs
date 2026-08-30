@@ -9,9 +9,10 @@ fn lex_tail(text: &str) -> Vec<OwnedLexToken> {
 
 #[test]
 fn targeting_as_though_permission_keeps_affected_set_and_source_controller_scope() {
-    let static_spec = parse_targeting_as_though_no_ability_spec(&lex_tail(
-            "Creatures your opponents control with hexproof can be the targets of spells and abilities you control as though they didn't have hexproof.",
-        ))
+    let static_tokens = lex_tail(
+        "Creatures your opponents control with hexproof can be the targets of spells and abilities you control as though they didn't have hexproof.",
+    );
+    let static_spec = parse_targeting_as_though_no_ability_spec(&static_tokens)
         .expect("static permission should parse")
         .expect("static permission should be claimed");
     assert_eq!(static_spec.ignored_ability, StaticAbilityId::Hexproof);
@@ -19,6 +20,11 @@ fn targeting_as_though_permission_keeps_affected_set_and_source_controller_scope
     let objects = static_spec.objects.expect("creature set");
     assert_eq!(objects.card_types, [CardType::Creature]);
     assert_eq!(objects.controller, Some(PlayerFilter::Opponent));
+    assert!(
+        crate::effect_sentences::gain_ability::parse_gain_ability_sentence(&static_tokens)
+            .expect("gain parser should reject the targeting domain")
+            .is_none()
+    );
 
     let temporary_spec = parse_targeting_as_though_no_ability_spec(&lex_tail(
             "Autumn Willow can be the target of spells and abilities controlled by target player as though it didn't have shroud.",
@@ -477,7 +483,11 @@ fn targeted_graveyard_cast_permission_preserves_one_target_and_duration() {
             excludes_land,
             "{text}"
         );
-        assert_eq!(tag.as_str(), IT_TAG, "{text}");
+        assert_eq!(
+            tag.as_str(),
+            crate::tag::CompilerReferenceTag::It.as_str(),
+            "{text}"
+        );
         assert_eq!(*player, PlayerAst::You, "{text}");
         assert!(!*allow_land, "{text}");
         assert!(!*without_paying_mana_cost, "{text}");
@@ -541,7 +551,7 @@ fn plural_demonstrative_pump_preserves_tagged_set() {
         Some(ironsmith_core::SetQuantifierSurface::Those)
     );
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == IT_TAG
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
     }));
 }
@@ -560,7 +570,7 @@ fn plural_demonstrative_untap_preserves_typed_tagged_set() {
     };
     assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == IT_TAG
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
     }));
 }
@@ -615,7 +625,10 @@ fn counter_linked_land_subtype_followup_lowers_to_prior_tagged_land() {
     let debug = format!("{effect:#?}");
     assert!(debug.contains("AddSubtypes"), "{debug}");
     assert!(debug.contains("Island"), "{debug}");
-    assert!(debug.contains(IT_TAG), "{debug}");
+    assert!(
+        debug.contains(crate::tag::CompilerReferenceTag::It.as_str()),
+        "{debug}"
+    );
     assert!(
         debug.contains("ForAsLongAs") && debug.contains("Flood"),
         "{debug}"
@@ -661,7 +674,7 @@ fn explicit_target_damage_subject_owns_its_characteristic_and_controller() {
         matches!(controller_reference, crate::target::ObjectRef::Target)
             || matches!(
                 controller_reference,
-                crate::target::ObjectRef::Tagged(tag) if tag.as_str() == IT_TAG
+                crate::target::ObjectRef::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             ),
         "controller provenance should remain target-relative: {target:#?}"
     );
@@ -727,7 +740,7 @@ fn authored_duration_before_for_each_is_retained_on_the_count() {
                 filter.tagged_constraints.as_slice(),
                 [constraint]
                     if constraint.tag.as_str()
-                        == ironsmith_core::CAST_MODIFIED_CREATURES_TAG
+                        == crate::tag::CompilerReferenceTag::CastModifiedCreatures.as_str()
             )
     ));
 }

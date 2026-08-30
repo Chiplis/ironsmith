@@ -125,10 +125,10 @@ struct ThenSplit {
 #[path = "split_rules_inline_tests.rs"]
 mod tests;
 
-#[path = "split_rules/core_programs.rs"]
+#[path = "split_rules/core.rs"]
 mod core_programs;
 use core_programs::{find_then_split, is_word};
-#[path = "split_rules/object_action_programs.rs"]
+#[path = "split_rules/object_action.rs"]
 mod object_action_programs;
 pub use object_action_programs::{
     has_authored_comma_then_surface_tokens, split_segments_on_comma_effect_head_tokens,

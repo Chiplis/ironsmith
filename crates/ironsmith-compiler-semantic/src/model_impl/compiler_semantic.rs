@@ -74,7 +74,6 @@ pub struct AdditionalCostChoiceOptionAst<Effect = EffectAst> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParsedAbility {
     pub ability: Box<CompilerAbilityCore>,
-    pub text: Option<String>,
     pub effects_ast: Option<Vec<EffectAst>>,
     pub reference_imports: ReferenceImports,
     pub trigger_spec: Option<Box<TriggerSpec>>,
@@ -91,14 +90,6 @@ impl ParsedAbility {
 
     pub fn functional_zones_mut(&mut self) -> &mut Vec<Zone> {
         &mut self.ability.functional_zones
-    }
-
-    pub fn text(&self) -> &Option<String> {
-        &self.text
-    }
-
-    pub fn text_mut(&mut self) -> &mut Option<String> {
-        &mut self.text
     }
 }
 

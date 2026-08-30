@@ -1,4 +1,4 @@
-use crate::cards::builders::{CHOSEN_OBJECTS_TAG, CardTextError, IT_TAG, TargetAst};
+use crate::cards::builders::{CardTextError, TargetAst};
 use crate::grammar::filters::parse_filter_counter_constraint_words;
 use crate::grammar::leaf;
 use crate::grammar::permission_shapes;
@@ -28,9 +28,6 @@ use crate::{ChoiceCount, TagKey};
 use super::aggregate_constraints::lift_total_mana_value_choice_constraint;
 use super::reference_shapes;
 use super::target_surfaces::*;
-
-const CHOSEN_NAME_TAG: &str = "__chosen_name__";
-
 fn typed_demonstrative_reference_surface(
     tokens: &[OwnedLexToken],
 ) -> Option<SourceReferenceSurface> {
@@ -76,16 +73,20 @@ fn apply_target_preparation_facts(filter: &mut ObjectFilter, facts: TargetPrepar
     }
     filter.tagged_constraints.retain(|constraint| {
         !(constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-            && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+            && constraint.tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str())
     });
     filter.zone.get_or_insert(Zone::Exile);
 }
 
 fn tagged_it_owner_or_controller_player_filter(word: &str) -> PlayerFilter {
     if matches!(word, "owner" | "owners") {
-        PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(IT_TAG))
+        PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+        ))
     } else {
-        PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(IT_TAG))
+        PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+        ))
     }
 }
 
@@ -108,7 +109,7 @@ fn source_owner_exclusion(words: &[&str]) -> Option<PlayerFilter> {
         .collect::<Vec<_>>();
     this_source_surface_for_words(&normalized)?;
     Some(PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(
-        crate::tag::SOURCE_OBJECT_TAG,
+        crate::tag::CompilerReferenceTag::SourceObject.as_str(),
     )))
 }
 
@@ -168,6 +169,6 @@ fn sacrificed_object_kind(words: &[&str]) -> Option<SacrificedObjectKind> {
 #[path = "target_semantics_inline_tests.rs"]
 mod tests;
 
-#[path = "target_semantics/reference_programs.rs"]
+#[path = "target_semantics/reference.rs"]
 mod reference_programs;
 pub use reference_programs::parse_target_phrase_inner;

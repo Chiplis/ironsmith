@@ -63,7 +63,8 @@ fn parse_you_choose_objects_clause_supports_bare_card_from_it() {
         filter
             .tagged_constraints
             .iter()
-            .any(|constraint| constraint.tag.as_str() == IT_TAG),
+            .any(|constraint| constraint.tag.as_str()
+                == crate::tag::CompilerReferenceTag::It.as_str()),
         "expected hand choice to stay tied to the prior revealed hand, got {filter:?}"
     );
     assert!(
@@ -91,7 +92,8 @@ fn parse_you_choose_objects_clause_supports_card_from_it_with_filter_tail() {
         filter
             .tagged_constraints
             .iter()
-            .any(|constraint| constraint.tag.as_str() == IT_TAG),
+            .any(|constraint| constraint.tag.as_str()
+                == crate::tag::CompilerReferenceTag::It.as_str()),
         "expected hand choice to stay tied to the prior revealed hand, got {filter:?}"
     );
     assert!(
@@ -148,7 +150,8 @@ fn parse_you_choose_objects_clause_container_reference_overrides_permanent_defau
         filter
             .tagged_constraints
             .iter()
-            .any(|constraint| constraint.tag.as_str() == IT_TAG),
+            .any(|constraint| constraint.tag.as_str()
+                == crate::tag::CompilerReferenceTag::It.as_str()),
         "expected hand choice to stay tied to the prior revealed hand, got {filter:?}"
     );
 }
@@ -174,7 +177,8 @@ fn parse_you_choose_objects_clause_supports_serial_card_type_union_from_it() {
         filter
             .tagged_constraints
             .iter()
-            .any(|constraint| constraint.tag.as_str() == IT_TAG),
+            .any(|constraint| constraint.tag.as_str()
+                == crate::tag::CompilerReferenceTag::It.as_str()),
         "the serial choice must remain tied to the revealed hand: {filter:?}"
     );
 }
@@ -193,7 +197,8 @@ fn parse_you_choose_objects_clause_supports_one_of_them() {
         filter
             .tagged_constraints
             .iter()
-            .any(|constraint| constraint.tag.as_str() == IT_TAG),
+            .any(|constraint| constraint.tag.as_str()
+                == crate::tag::CompilerReferenceTag::It.as_str()),
         "expected one-of-them choice to reference the previous object set, got {filter:?}"
     );
     assert_eq!(filter.zone, None);

@@ -45,7 +45,7 @@ pub struct SpellsFromSourceExiledFact<'a> {
 #[path = "source_exiled_inline_tests.rs"]
 mod tests;
 
-#[path = "source_exiled/reference_programs.rs"]
+#[path = "source_exiled/reference.rs"]
 mod reference_programs;
 use reference_programs::{parse_source_exiled_tail_lexed, parse_spell_from_source_exiled_lexed};
 pub use reference_programs::{

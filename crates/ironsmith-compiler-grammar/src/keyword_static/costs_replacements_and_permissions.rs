@@ -412,6 +412,9 @@ fn parse_cost_reduction_characteristic_intersection(
 pub fn parse_spells_cost_modifier_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    if spell_additional_life_cost_per_target_amount(tokens).is_some() {
+        return Ok(None);
+    }
     if let Some(ability) = parse_optional_life_additional_cost_reduction_line(tokens)? {
         return Ok(Some(ability));
     }
@@ -1578,7 +1581,7 @@ pub fn parse_dynamic_cost_modifier_value(
                     .unwrap_or_default();
                 filter.zone = Some(Zone::Exile);
                 filter = filter.match_tagged(
-                    crate::tag::SOURCE_EXILED_TAG,
+                    crate::tag::CompilerReferenceTag::SourceExiled.as_str(),
                     crate::filter::TaggedOpbjectRelation::IsTaggedObject,
                 );
                 Value::Count(filter)
@@ -1605,7 +1608,9 @@ pub fn parse_dynamic_cost_modifier_value(
                     None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
                 },
                 CounterReferenceKind::Tagged => Value::CountersOn(
-                    Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+                    Box::new(ChooseSpec::Tagged(
+                        crate::tag::CompilerReferenceTag::It.key(),
+                    )),
                     counter_type,
                 ),
                 CounterReferenceKind::Other => {
@@ -1774,6 +1779,12 @@ pub fn parse_all_permanents_colorless_line(
 pub fn parse_subject_are_card_types_in_addition_to_their_other_types_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    if crate::grammar::abilities::parse_source_is_chosen_type_in_addition_line_lexed(tokens)
+        .is_some()
+    {
+        // The source-scoped chosen-type production owns its complete line.
+        return Ok(None);
+    }
     let Some(fact) = type_and_color_facts::parse_subject_type_addition_tokens(tokens) else {
         return Ok(None);
     };
@@ -2804,6 +2815,10 @@ pub fn parse_prevent_all_noncombat_damage_to_other_creatures_you_control_line(
 pub fn parse_prevent_all_noncombat_damage_to_matching_permanents_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    if is_prevent_all_noncombat_damage_to_other_creatures_you_control_line_lexed(tokens) {
+        // The other-creatures-you-control production owns its complete line.
+        return Ok(None);
+    }
     if !is_prevent_all_noncombat_damage_to_matching_permanents_line_lexed(tokens) {
         return Ok(None);
     }
@@ -2918,7 +2933,7 @@ pub fn parse_doesnt_untap_during_untap_step_line(
             tail_tokens,
         }) => {
             let subject = render_token_slice(subject_tokens);
-            let text = format!("{subject} doesnt untap during its controllers untap step");
+            let text = format!("{subject} doesn't untap during its controller's untap step");
             let condition = if tail_tokens.is_empty() {
                 None
             } else {
@@ -3111,7 +3126,7 @@ pub fn parse_you_may_cast_exile_counter_cards_with_mana_permission_line(
         base_filter
             .tagged_constraints
             .push(crate::target::TaggedObjectConstraint {
-                tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+                tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
                 relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
             });
     }
@@ -3244,7 +3259,7 @@ pub fn parse_you_may_static_grant_line(
         filter
             .tagged_constraints
             .push(crate::target::TaggedObjectConstraint {
-                tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+                tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
                 relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
             });
         let grant = StaticAbility::grants(
@@ -3914,8 +3929,9 @@ pub fn parse_conditional_draw_replacement_line(
         ],
     ) {
         let mode = |label: &str, filter: ObjectFilter, suffix: &str| {
-            let all_tag = TagKey::from(format!("draw_replacement_{suffix}_all"));
-            let match_tag = TagKey::from(format!("draw_replacement_{suffix}_match"));
+            let all_tag = crate::tag::CompilerIndexedTag::DrawReplacementAll.key_in_scope(suffix);
+            let match_tag =
+                crate::tag::CompilerIndexedTag::DrawReplacementMatch.key_in_scope(suffix);
             ChooseOneModeAst {
                 description: label.to_string(),
                 effects: vec![
@@ -4093,8 +4109,14 @@ pub fn parse_keyword_action_replacement_line(
                 crate::events::KeywordActionKind::Explore,
                 ObjectFilter::creature().controlled_by(PlayerFilter::You),
                 vec![
-                    EffectAst::subject_verb_explore(TargetAst::Tagged(TagKey::from(IT_TAG), None)),
-                    EffectAst::subject_verb_explore(TargetAst::Tagged(TagKey::from(IT_TAG), None)),
+                    EffectAst::subject_verb_explore(TargetAst::Tagged(
+                        crate::tag::CompilerReferenceTag::It.key(),
+                        None,
+                    )),
+                    EffectAst::subject_verb_explore(TargetAst::Tagged(
+                        crate::tag::CompilerReferenceTag::It.key(),
+                        None,
+                    )),
                 ],
                 display,
             )
@@ -4122,7 +4144,10 @@ pub fn parse_keyword_action_replacement_line(
                         PlayerAst::You,
                         SubjectVerbActionAst::Scry { count },
                     ),
-                    EffectAst::subject_verb_explore(TargetAst::Tagged(TagKey::from(IT_TAG), None)),
+                    EffectAst::subject_verb_explore(TargetAst::Tagged(
+                        crate::tag::CompilerReferenceTag::It.key(),
+                        None,
+                    )),
                 ],
                 display,
             )
@@ -4974,7 +4999,7 @@ mod tests {
                 .contains(&crate::types::Subtype::Dinosaur)
         );
         assert!(spec.filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
                 && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
         }));
         assert!(spec.cast_this_way_grants.iter().any(|grant| {
@@ -5293,7 +5318,8 @@ mod tests {
                 .comparison
                 .tagged_constraints
                 .iter()
-                .any(|constraint| constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG),
+                .any(|constraint| constraint.tag.as_str()
+                    == crate::tag::CompilerReferenceTag::SourceExiled.as_str()),
             "{:#?}",
             intersection.comparison
         );

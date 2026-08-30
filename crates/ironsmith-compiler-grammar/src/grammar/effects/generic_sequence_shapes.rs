@@ -532,20 +532,20 @@ pub fn parse_prevention_exile_top_followup_shape(tokens: &[OwnedLexToken]) -> bo
 #[path = "generic_sequence_shapes_inline_tests.rs"]
 mod tests;
 
-#[path = "generic_sequence_shapes/trigger_programs.rs"]
+#[path = "generic_sequence_shapes/trigger.rs"]
 mod trigger_programs;
 pub use trigger_programs::parse_delayed_upkeep_payment_shape;
-#[path = "generic_sequence_shapes/resource_programs.rs"]
+#[path = "generic_sequence_shapes/resource.rs"]
 mod resource_programs;
 use resource_programs::upkeep_pay_prefix;
-#[path = "generic_sequence_shapes/core_programs.rs"]
+#[path = "generic_sequence_shapes/core.rs"]
 mod core_programs;
 pub use core_programs::parse_untap_clause_prefix_shape;
 use core_programs::{remains_tapped, untap_prefix};
-#[path = "generic_sequence_shapes/reference_programs.rs"]
+#[path = "generic_sequence_shapes/reference.rs"]
 mod reference_programs;
 pub use reference_programs::parse_source_tapped_lock_shape;
 use reference_programs::source_tapped_duration;
-#[path = "generic_sequence_shapes/counter_programs.rs"]
+#[path = "generic_sequence_shapes/counter.rs"]
 mod counter_programs;
 use counter_programs::source_marker;

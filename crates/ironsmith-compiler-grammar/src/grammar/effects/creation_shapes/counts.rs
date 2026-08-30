@@ -2,7 +2,7 @@ use winnow::combinator::{alt, opt, preceded, repeat};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
-use crate::cards::builders::{CardTextError, IT_TAG, TagKey};
+use crate::cards::builders::{CardTextError, TagKey};
 use crate::effect::{EventValueSpec, Value};
 use crate::static_abilities::StaticAbilityId;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
@@ -228,7 +228,7 @@ pub fn parse_creation_for_each_dynamic_count_tokens(tokens: &[OwnedLexToken]) ->
         filter
             .tagged_constraints
             .push(crate::filter::TaggedObjectConstraint {
-                tag: TagKey::from(IT_TAG),
+                tag: crate::tag::CompilerReferenceTag::It.key(),
                 relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
             });
         return Some(Value::Count(filter).with_surface_hint(ValueSurfaceHint::ForEach));
@@ -341,7 +341,7 @@ pub fn parse_investigate_for_each_count_tokens(
         filter
             .tagged_constraints
             .push(crate::filter::TaggedObjectConstraint {
-                tag: TagKey::from(IT_TAG),
+                tag: crate::tag::CompilerReferenceTag::It.key(),
                 relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
             });
         return Ok(Value::Count(filter).with_surface_hint(ValueSurfaceHint::ForEach));

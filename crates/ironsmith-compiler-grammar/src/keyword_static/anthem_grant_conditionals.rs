@@ -1201,7 +1201,6 @@ fn attached_object_anthem_subject_filter(subject: &AnthemSubjectAst) -> Option<&
 fn parsed_ability_from_ability(ability: Ability) -> ParsedAbility {
     ParsedAbility {
         ability: ability.into(),
-        text: None,
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,
@@ -1238,7 +1237,6 @@ pub fn parse_equipment_you_control_have_equip_line(
             functional_zones: vec![Zone::Battlefield],
         }
         .into(),
-        text: Some("Equip {0}".to_string()),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,
@@ -1248,7 +1246,9 @@ pub fn parse_equipment_you_control_have_equip_line(
             .with_subtype(Subtype::Equipment)
             .you_control(),
         ability,
-        display: "Equipment you control have equip {0}".to_string(),
+        // The grant renderer prints the subject and the `have` verb; this is
+        // only the granted ability's own surface.
+        display: "equip {0}".to_string(),
         condition: Some(condition),
     }]))
 }
@@ -1274,7 +1274,6 @@ fn parsed_exploit_ability() -> ParsedAbility {
     };
     ParsedAbility {
         ability: ability.into(),
-        text: Some("Exploit".to_string()),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: Some(Box::new(trigger)),
@@ -1332,7 +1331,6 @@ fn parse_triggered_granted_ability(
                 trigger,
                 effects,
                 vec![Zone::Battlefield],
-                Some(crate::lexer::token_word_refs(&trigger_tokens).join(" ")),
                 intervening_if,
                 None,
                 ReferenceImports::default(),
@@ -1524,7 +1522,6 @@ fn nonstatic_keyword_action_as_granted_object_ability(
             Some((
                 ParsedAbility {
                     ability: ability.into(),
-                    text: Some(format!("Casualty {power}")),
                     effects_ast: None,
                     reference_imports: ReferenceImports::default(),
                     trigger_spec: None,
@@ -1681,7 +1678,6 @@ fn parse_heterogeneous_granted_tail_remaining(
                 parsed.granted_object_abilities.push((
                     ParsedAbility {
                         ability: cumulative_upkeep_granted_ability(total_cost.clone()).into(),
-                        text: Some(display_text_for_tokens(&segment, false)),
                         effects_ast: None,
                         reference_imports: ReferenceImports::default(),
                         trigger_spec: None,
@@ -2237,6 +2233,13 @@ pub fn parse_anthem_with_trailing_segments_line(
     // Complete anthem-plus-keyword clauses have their own grammar production.
     // This trailing-segment family only accepts the remaining compound tails.
     if is_plain_anthem_keyword_line(tokens) {
+        return Ok(None);
+    }
+    if matches!(parse_anthem_and_keyword_line(tokens), Ok(Some(_))) {
+        // The anthem-plus-keyword production proves the complete line,
+        // including quoted granted abilities; this family owns only the
+        // tails that production rejects. Its committed errors stay its own:
+        // this family may still prove a line that production cannot.
         return Ok(None);
     }
     if let Some(shape) = anthem_grant_grammar::parse_anthem_and_addition_shape(tokens)
@@ -3337,12 +3340,43 @@ pub fn parse_has_base_power_and_granted_ability_static_line(
 pub fn parse_filter_has_granted_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    {
+        // This production owns one complete static line. Multi-sentence
+        // statement groups (a resolution step followed by a token's quoted
+        // rule) must keep their earlier sentences as executable effects.
+        // Count only literal periods before the first quote: nested quoted
+        // abilities and label dashes must not register as boundaries.
+        let first_quote = tokens
+            .iter()
+            .position(|token| token.kind == crate::lexer::TokenKind::Quote)
+            .unwrap_or(tokens.len());
+        if first_quote < tokens.len()
+            && tokens[..first_quote]
+                .iter()
+                .any(|token| token.kind == crate::lexer::TokenKind::Period)
+        {
+            return Ok(None);
+        }
+    }
     // Attached-object grants and copular animation bundles are complete,
     // narrower productions. Keep this general subject-grant parser's domain
     // structurally disjoint from them.
     if is_equipped_keyword_grant_line(tokens)?
         || attached_grammar::parse_enchanted_has_tokens(tokens).is_some()
         || is_compound_animation_grant_line(tokens)
+    {
+        return Ok(None);
+    }
+    // The landwalk block-override and the conditioned keyword-grant lines are
+    // complete narrower productions; the broad `has`/`have` family must stay
+    // structurally disjoint from both.
+    if matches!(
+        crate::keyword_static::parse_landwalk_as_though_block_override_line(tokens),
+        Ok(Some(_))
+    ) || matches!(
+        crate::keyword_static::parse_source_can_block_shadow_as_though_no_shadow_line(tokens),
+        Ok(Some(_))
+    ) || anthem_grant_grammar::parse_base_power_toughness_grant_shape(tokens).is_some()
     {
         return Ok(None);
     }
@@ -3356,6 +3390,22 @@ pub fn parse_filter_has_granted_ability_line(
         return Ok(None);
     }
     if let Ok(Some(_)) = parse_source_can_attack_as_though_no_defender_as_long_as_line(tokens) {
+        return Ok(None);
+    }
+    // Each of these is a complete static production whose line also contains a
+    // `has`/`have` grant surface. When one of them proves the line, this broad
+    // family must decline rather than register a second, non-equivalent
+    // reading of the same input.
+    if matches!(
+        parse_has_base_power_toughness_and_type_color_addition_static_line(tokens),
+        Ok(Some(_))
+    ) || matches!(parse_targeting_as_though_no_ability_line(tokens), Ok(Some(_)))
+        || matches!(parse_equipment_you_control_have_equip_line(tokens), Ok(Some(_)))
+        || matches!(
+            crate::keyword_static::parse_all_have_indestructible_line(tokens),
+            Ok(Some(_))
+        )
+    {
         return Ok(None);
     }
     let clause_words = crate::lexer::token_word_refs(tokens);

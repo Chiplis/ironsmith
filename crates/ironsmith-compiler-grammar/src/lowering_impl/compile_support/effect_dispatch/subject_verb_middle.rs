@@ -173,7 +173,7 @@ pub(super) fn compile_create_token_with_mods_action(
         .transpose()?;
     let needs_created_tag =
         ctx.auto_tag_object_targets || attached_to.is_some() || resolved_dynamic_pt.is_some();
-    let mut created_tag: Option<String> = None;
+    let mut created_tag: Option<TagKey> = None;
     if needs_created_tag {
         let tag = ctx.next_tag("created");
         effect = effect.tag(tag.clone());
@@ -191,7 +191,7 @@ pub(super) fn compile_create_token_with_mods_action(
         };
         compiled.extend(
             compile_effect_for_target(
-                &TargetAst::Tagged(TagKey::from(created_tag.as_str()), None),
+                &TargetAst::Tagged(created_tag.clone(), None),
                 ctx,
                 |spec| {
                     Effect::set_base_power_toughness(
@@ -758,9 +758,9 @@ pub(super) fn compile_subject_verb_middle(
             if let Some(surface) = count_surface {
                 lowered_copy = lowered_copy.with_count_surface(*surface);
             }
-            let copy_effect =
-                Effect::with_id(id.0, Effect::new(lowered_copy)).tag(COPIED_STACK_OBJECT_TAG);
-            let retarget_effect = if *may_choose_new_targets {
+            let copy_effect = Effect::with_id(id.0, Effect::new(lowered_copy))
+                .tag(crate::tag::CompilerReferenceTag::CopiedStackObject.key());
+            let choose_new_targets_effect = if *may_choose_new_targets {
                 let retarget = crate::effects::ChooseNewTargetsEffect::may_for_player(
                     id,
                     player_filter.clone(),
@@ -775,7 +775,7 @@ pub(super) fn compile_subject_verb_middle(
                 None
             };
             let mut compiled = vec![copy_effect];
-            if let Some(retarget) = retarget_effect {
+            if let Some(retarget) = choose_new_targets_effect {
                 compiled.push(retarget);
             }
             Ok((compiled, choices))
@@ -808,8 +808,8 @@ pub(super) fn compile_subject_verb_middle(
             }
             let id = ctx.next_effect_id();
             ctx.last_effect_id = Some(id);
-            let effect =
-                Effect::with_id(id.0, Effect::new(copy_effect)).tag(COPIED_STACK_OBJECT_TAG);
+            let effect = Effect::with_id(id.0, Effect::new(copy_effect))
+                .tag(crate::tag::CompilerReferenceTag::CopiedStackObject.key());
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::PutTaggedRemainderInZone {
@@ -830,7 +830,10 @@ pub(super) fn compile_subject_verb_middle(
                     tag: resolved_keep,
                     relation: TaggedOpbjectRelation::SameStableId,
                 });
-            let in_keep = Condition::TaggedObjectMatches(TagKey::from(IT_TAG), membership_filter);
+            let in_keep = Condition::TaggedObjectMatches(
+                crate::tag::CompilerReferenceTag::It.key(),
+                membership_filter,
+            );
             let move_rest = Effect::for_each_tagged(
                 resolved_tag,
                 vec![Effect::conditional(
@@ -857,23 +860,19 @@ pub(super) fn compile_subject_verb_middle(
             surface,
         } => {
             let current_refs = current_reference_env(ctx);
-            let (resolved_tag, inferred_keep_tagged) = if tag.as_str() == IT_TAG
+            let (resolved_tag, inferred_keep_tagged) = if tag.as_str()
+                == crate::tag::CompilerReferenceTag::It.as_str()
                 && let Some(revealed_tag) = ctx.last_revealed_tag.clone()
-                && ctx.last_object_tag.as_deref() != Some(revealed_tag.as_str())
+                && ctx.last_object_tag.as_ref() != Some(&revealed_tag)
             {
-                (
-                    TagKey::from(revealed_tag.as_str()),
-                    ctx.last_object_tag
-                        .as_ref()
-                        .map(|tag| TagKey::from(tag.as_str())),
-                )
+                (revealed_tag.clone(), ctx.last_object_tag.clone())
             } else if tag.as_str() == "__last_revealed__" {
                 (
-                    TagKey::from(ctx.last_revealed_tag.clone().ok_or_else(|| {
+                    ctx.last_revealed_tag.clone().ok_or_else(|| {
                         CardTextError::ParseError(
                             "unable to resolve revealed remainder without prior reveal".to_string(),
                         )
-                    })?),
+                    })?,
                     None,
                 )
             } else {
@@ -889,7 +888,7 @@ pub(super) fn compile_subject_verb_middle(
             // library owner from the tagged revealed collection instead of
             // letting that intervening chooser replace the antecedent.
             let subject = if *player == PlayerAst::That
-                && ctx.last_revealed_tag.as_deref() == Some(resolved_tag.as_str())
+                && ctx.last_revealed_tag.as_ref() == Some(&resolved_tag)
                 && let Some(revealed_player) = ctx.last_revealed_player_filter.clone()
             {
                 LoweredSubject::from_resolved(as_followup_player_alias(revealed_player), Vec::new())
@@ -930,24 +929,24 @@ pub(super) fn compile_subject_verb_middle(
             mana_spend_mode,
         } => {
             let resolved_tag = if tag.as_str() == "__last_revealed__" {
-                TagKey::from(ctx.last_revealed_tag.clone().ok_or_else(|| {
+                ctx.last_revealed_tag.clone().ok_or_else(|| {
                     CardTextError::ParseError(
                         "unable to resolve last revealed card without prior reveal".to_string(),
                     )
-                })?)
-            } else if tag.as_str() == IT_TAG {
-                TagKey::from(ctx.last_object_tag.clone().ok_or_else(|| {
+                })?
+            } else if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+                ctx.last_object_tag.clone().ok_or_else(|| {
                     CardTextError::ParseError(
                         "unable to resolve 'it' without prior reference".to_string(),
                     )
-                })?)
+                })?
             } else if tag.as_str() == "__source_exiled__" {
-                TagKey::from(ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
-                    format!(
+                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
+                    TagKey::new(format!(
                         "__sentence_helper_exiled_l0_s0_e{}",
                         ctx.id_gen_context().next_tag_id.saturating_sub(1)
-                    )
-                }))
+                    ))
+                })
             } else {
                 tag.clone()
             };
@@ -991,24 +990,24 @@ pub(super) fn compile_subject_verb_middle(
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
             let resolved_tag = if tag.as_str() == "__last_revealed__" {
-                TagKey::from(ctx.last_revealed_tag.clone().ok_or_else(|| {
+                ctx.last_revealed_tag.clone().ok_or_else(|| {
                     CardTextError::ParseError(
                         "unable to resolve last revealed card without prior reveal".to_string(),
                     )
-                })?)
-            } else if tag.as_str() == IT_TAG {
-                TagKey::from(ctx.last_object_tag.clone().ok_or_else(|| {
+                })?
+            } else if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+                ctx.last_object_tag.clone().ok_or_else(|| {
                     CardTextError::ParseError(
                         "unable to resolve 'it' without prior reference".to_string(),
                     )
-                })?)
+                })?
             } else if tag.as_str() == "__source_exiled__" {
-                TagKey::from(ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
-                    format!(
+                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
+                    TagKey::new(format!(
                         "__sentence_helper_exiled_l0_s0_e{}",
                         ctx.id_gen_context().next_tag_id.saturating_sub(1)
-                    )
-                }))
+                    ))
+                })
             } else {
                 tag.clone()
             };
@@ -1031,7 +1030,7 @@ pub(super) fn compile_subject_verb_middle(
                 )
             });
             if ctx.last_exiled_collection_is_plural
-                && (is_sentence_helper_exiled_collection_tag(resolved_tag.as_str())
+                && (is_sentence_helper_exiled_collection_tag(&resolved_tag)
                     || surface_refers_to_plural_exiled_pool)
             {
                 grant_play = grant_play.cast_pool_is_plural(true);
@@ -1067,19 +1066,19 @@ pub(super) fn compile_subject_verb_middle(
         } => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
-            let resolved_tag = if tag.as_str() == IT_TAG {
-                TagKey::from(ctx.last_object_tag.clone().ok_or_else(|| {
+            let resolved_tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+                ctx.last_object_tag.clone().ok_or_else(|| {
                     CardTextError::ParseError(
                         "unable to resolve 'it' without prior reference".to_string(),
                     )
-                })?)
+                })?
             } else if tag.as_str() == "__source_exiled__" {
-                TagKey::from(ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
-                    format!(
+                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
+                    TagKey::new(format!(
                         "__sentence_helper_exiled_l0_s0_e{}",
                         ctx.id_gen_context().next_tag_id.saturating_sub(1)
-                    )
-                }))
+                    ))
+                })
             } else {
                 tag.clone()
             };
@@ -1103,19 +1102,19 @@ pub(super) fn compile_subject_verb_middle(
         } => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
-            let resolved_tag = if tag.as_str() == IT_TAG {
-                TagKey::from(ctx.last_object_tag.clone().ok_or_else(|| {
+            let resolved_tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+                ctx.last_object_tag.clone().ok_or_else(|| {
                     CardTextError::ParseError(
                         "unable to resolve 'it' without prior reference".to_string(),
                     )
-                })?)
+                })?
             } else if tag.as_str() == "__source_exiled__" {
-                TagKey::from(ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
-                    format!(
+                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
+                    TagKey::new(format!(
                         "__sentence_helper_exiled_l0_s0_e{}",
                         ctx.id_gen_context().next_tag_id.saturating_sub(1)
-                    )
-                }))
+                    ))
+                })
             } else {
                 tag.clone()
             };
@@ -1131,7 +1130,7 @@ pub(super) fn compile_subject_verb_middle(
                 *allow_any_color_for_cast,
             )
             .with_max_plays(*max_plays);
-            if is_sentence_helper_exiled_collection_tag(resolved_tag.as_str())
+            if is_sentence_helper_exiled_collection_tag(&resolved_tag)
                 && ctx.last_exiled_collection_is_plural
             {
                 grant_play = grant_play.cast_pool_is_plural(true);
@@ -1151,19 +1150,19 @@ pub(super) fn compile_subject_verb_middle(
         } => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
-            let resolved_tag = if tag.as_str() == IT_TAG {
-                TagKey::from(ctx.last_object_tag.clone().ok_or_else(|| {
+            let resolved_tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+                ctx.last_object_tag.clone().ok_or_else(|| {
                     CardTextError::ParseError(
                         "unable to resolve 'it' without prior reference".to_string(),
                     )
-                })?)
+                })?
             } else if tag.as_str() == "__source_exiled__" {
-                TagKey::from(ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
-                    format!(
+                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
+                    TagKey::new(format!(
                         "__sentence_helper_exiled_l0_s0_e{}",
                         ctx.id_gen_context().next_tag_id.saturating_sub(1)
-                    )
-                }))
+                    ))
+                })
             } else {
                 tag.clone()
             };
@@ -1174,7 +1173,7 @@ pub(super) fn compile_subject_verb_middle(
                 *allow_land,
                 *allow_any_color_for_cast,
             );
-            if is_sentence_helper_exiled_collection_tag(resolved_tag.as_str())
+            if is_sentence_helper_exiled_collection_tag(&resolved_tag)
                 && ctx.last_exiled_collection_is_plural
             {
                 grant_play = grant_play.cast_pool_is_plural(true);
@@ -1210,19 +1209,19 @@ pub(super) fn compile_subject_verb_middle(
         } => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
-            let resolved_tag = if tag.as_str() == IT_TAG {
-                TagKey::from(ctx.last_object_tag.clone().ok_or_else(|| {
+            let resolved_tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+                ctx.last_object_tag.clone().ok_or_else(|| {
                     CardTextError::ParseError(
                         "unable to resolve 'it' without prior reference".to_string(),
                     )
-                })?)
+                })?
             } else if tag.as_str() == "__source_exiled__" {
-                TagKey::from(ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
-                    format!(
+                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
+                    TagKey::new(format!(
                         "__sentence_helper_exiled_l0_s0_e{}",
                         ctx.id_gen_context().next_tag_id.saturating_sub(1)
-                    )
-                }))
+                    ))
+                })
             } else {
                 tag.clone()
             };
@@ -1236,7 +1235,7 @@ pub(super) fn compile_subject_verb_middle(
             if let Some(surface) = surface {
                 grant_play = grant_play.with_surface(surface.clone());
             }
-            if is_sentence_helper_exiled_collection_tag(resolved_tag.as_str())
+            if is_sentence_helper_exiled_collection_tag(&resolved_tag)
                 && ctx.last_exiled_collection_is_plural
             {
                 grant_play = grant_play.cast_pool_is_plural(true);
@@ -1367,11 +1366,11 @@ pub(super) fn compile_subject_verb_middle(
             };
             let resolved_spec = if !ctx.iterated_player
                 && !ctx.iterated_object
-                && ctx.last_object_tag.as_deref() == Some(IT_TAG)
+                && ctx.last_object_tag.as_ref() == Some(&crate::tag::CompilerReferenceTag::It.key())
                 && *controller == ReturnControllerAst::Owner
                 && matches!(resolved_spec.base(), ChooseSpec::Iterated)
             {
-                ChooseSpec::Tagged(TagKey::from(IT_TAG))
+                ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())
             } else {
                 resolved_spec
             };
@@ -1504,7 +1503,7 @@ pub(super) fn compile_subject_verb_middle(
             let refers_to_milled_cards =
                 resolved_filter.tagged_constraints.iter().any(|constraint| {
                     constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-                        && (crate::util::is_sentence_helper_tag(constraint.tag.as_str(), "milled")
+                        && (crate::util::is_sentence_helper_tag(&constraint.tag, "milled")
                             || constraint.tag.as_str().starts_with("milled_"))
                 });
             if resolved_filter.zone == Some(Zone::Battlefield) && refers_to_milled_cards {
@@ -1576,9 +1575,9 @@ pub(super) fn compile_subject_verb_middle(
             // identity for both execution and compiled text.
             let revealed_target = if ctx.iterated_player
                 && matches!(target, TargetAst::Source(_))
-                && let Some(revealed_tag) = ctx.last_revealed_tag.as_deref()
+                && let Some(revealed_tag) = ctx.last_revealed_tag.as_ref()
             {
-                Some(ChooseSpec::Tagged(TagKey::from(revealed_tag)))
+                Some(ChooseSpec::Tagged(revealed_tag.clone()))
             } else {
                 None
             };
@@ -1640,14 +1639,14 @@ pub(super) fn compile_subject_verb_middle(
             }
             if !ctx.iterated_player
                 && !ctx.iterated_object
-                && ctx.last_object_tag.as_deref() == Some(IT_TAG)
+                && ctx.last_object_tag.as_ref() == Some(&crate::tag::CompilerReferenceTag::It.key())
                 && (ctx.last_it_choice_is_set
                     || (*zone == Zone::Battlefield
                         && *battlefield_controller
                             == crate::cards::builders::ReturnControllerAst::Owner))
                 && matches!(spec.base(), ChooseSpec::Iterated)
             {
-                spec = ChooseSpec::Tagged(TagKey::from(IT_TAG));
+                spec = ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key());
             }
             let resolved_attach_spec = if let Some(attach_target) = attached_to {
                 if *zone != Zone::Battlefield {
@@ -1758,11 +1757,13 @@ pub(super) fn compile_subject_verb_middle(
                 && filter.tagged_constraints.is_empty()
             {
                 let remainder_tag = ctx.last_exiled_collection_tag.clone().or_else(|| {
-                    (ctx.last_object_tag.as_deref() == Some("__source_exiled__")).then(|| {
-                        format!(
+                    (ctx.last_object_tag.as_ref()
+                        == Some(&crate::tag::CompilerReferenceTag::SourceExiled.key()))
+                    .then(|| {
+                        TagKey::new(format!(
                             "__sentence_helper_exiled_l0_s0_e{}",
                             ctx.id_gen_context().next_tag_id.saturating_sub(1)
-                        )
+                        ))
                     })
                 });
                 let Some(remainder_tag) = remainder_tag else {
@@ -1781,7 +1782,7 @@ pub(super) fn compile_subject_verb_middle(
                 let library_owner = ctx.last_player_filter.clone().unwrap_or(PlayerFilter::You);
                 return Ok(Some((
                     vec![Effect::put_tagged_remainder_on_library_bottom(
-                        TagKey::from(remainder_tag.as_str()),
+                        remainder_tag.clone(),
                         Some(crate::tag::CompilerReferenceTag::SourceExiled.key()),
                         crate::effects::consult_helpers::LibraryBottomOrder::Random,
                         library_owner,
@@ -1791,37 +1792,38 @@ pub(super) fn compile_subject_verb_middle(
             }
             if matches!(
                 spec.base(),
-                ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
             ) && let Some(tag) = ctx.last_exiled_collection_tag.clone()
             {
                 spec = if ctx.last_exiled_collection_is_plural {
                     ChooseSpec::All(ObjectFilter::tagged(tag).in_zone(Zone::Exile))
                 } else {
-                    ChooseSpec::Tagged(TagKey::from(tag))
+                    ChooseSpec::Tagged(tag)
                 };
             }
             if *zone != Zone::Battlefield
                 && !explicitly_counted_source_collection
                 && let ChooseSpec::Object(filter) = spec.base()
                 && filter.zone == Some(Zone::Exile)
-                && filter
-                    .tagged_constraints
-                    .iter()
-                    .any(|constraint| constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+                && filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag.as_str()
+                        == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
+                })
             {
                 spec = ChooseSpec::All(filter.clone());
             }
             if *zone != Zone::Battlefield
                 && matches!(
                     spec.base(),
-                    ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                    ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
                 )
             {
                 spec = if let Some(tag) = ctx.last_exiled_collection_tag.clone() {
-                    ChooseSpec::Tagged(TagKey::from(tag))
+                    ChooseSpec::Tagged(tag)
                 } else {
                     ChooseSpec::All(
-                        ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile),
+                        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.key())
+                            .in_zone(Zone::Exile),
                     )
                 };
             }
@@ -1884,7 +1886,7 @@ pub(super) fn compile_subject_verb_middle(
                 ReturnControllerAst::You => move_effect.under_you_control(),
             };
             let mut effect = Effect::new(move_effect);
-            let mut moved_tag: Option<String> = None;
+            let mut moved_tag: Option<TagKey> = None;
             let moves_multiple_objects = choose_spec_may_hold_multiple_objects(&spec);
             let produces_referencable_objects =
                 choose_spec_targets_object(&spec) || matches!(spec.base(), ChooseSpec::All(_));
@@ -1913,8 +1915,7 @@ pub(super) fn compile_subject_verb_middle(
                             .to_string(),
                     )
                 })?;
-                let moved_objects =
-                    ChooseSpec::All(ObjectFilter::tagged(TagKey::from(moved_tag.as_str())));
+                let moved_objects = ChooseSpec::All(ObjectFilter::tagged(moved_tag.clone()));
                 source_choice_prelude.push(effect);
                 let mut attach =
                     crate::effects::AttachObjectsEffect::new(moved_objects, attach_spec);
@@ -1970,7 +1971,7 @@ pub(super) fn compile_subject_verb_middle(
             if !source_tags.is_empty() {
                 effect = effect.from_tagged_sources(source_tags.clone());
             }
-            ctx.last_object_tag = Some(tag.as_str().to_string());
+            ctx.last_object_tag = Some(tag.clone());
             Ok((vec![Effect::new(effect)], Vec::new()))
         }
         SubjectVerbActionAst::SetBasePowerToughness {
@@ -2525,11 +2526,11 @@ pub(super) fn compile_subject_verb_middle(
                 }
             };
             if matches!(mode, crate::cards::builders::LibraryConsultModeAst::Reveal) {
-                ctx.last_revealed_tag = Some(resolved_all_tag.as_str().to_string());
+                ctx.last_revealed_tag = Some(resolved_all_tag.clone());
                 ctx.last_revealed_zone = Some(Zone::Library);
                 ctx.last_revealed_player_filter = Some(player_filter.clone());
             }
-            ctx.last_object_tag = Some(resolved_match_tag.as_str().to_string());
+            ctx.last_object_tag = Some(resolved_match_tag.clone());
             ctx.last_player_filter = Some(player_filter.clone());
             let mut consult = crate::effects::ConsultTopOfLibraryEffect::new(
                 player_filter,
@@ -2816,7 +2817,7 @@ pub(super) fn compile_subject_verb_middle(
             let needs_created_tag = ctx.auto_tag_object_targets
                 || attached_to.is_some()
                 || resolved_dynamic_pt.is_some();
-            let mut created_tag: Option<String> = None;
+            let mut created_tag: Option<TagKey> = None;
             if needs_created_tag {
                 let tag = ctx.next_tag("created");
                 effect = effect.tag(tag.clone());
@@ -2834,7 +2835,7 @@ pub(super) fn compile_subject_verb_middle(
                 };
                 compiled.extend(
                     compile_effect_for_target(
-                        &TargetAst::Tagged(TagKey::from(created_tag.as_str()), None),
+                        &TargetAst::Tagged(created_tag.clone(), None),
                         ctx,
                         |spec| {
                             Effect::set_base_power_toughness(
@@ -3049,16 +3050,17 @@ pub(super) fn compile_subject_verb_middle(
             for choice in source_choices {
                 push_choice(&mut choices, choice);
             }
-            if let Some(last_tag) = ctx.last_object_tag.as_deref()
+            if let Some(last_tag) = ctx.last_object_tag.as_ref()
                 && is_exile_cost_collection_tag(last_tag)
                 && let ChooseSpec::Object(filter) = &source_spec
                 && filter.zone == Some(Zone::Exile)
                 && filter.tagged_constraints.iter().any(|constraint| {
                     constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-                        && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                        && constraint.tag.as_str()
+                            == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
                 })
             {
-                source_spec = ChooseSpec::Tagged(TagKey::from(last_tag));
+                source_spec = ChooseSpec::Tagged(last_tag.clone());
             }
             source_spec = with_target_reference_surface_hint(source_spec, source);
             let aggregate_source_filter = if *set_base_power_toughness_to_source_totals {
@@ -3203,7 +3205,7 @@ pub(super) fn compile_subject_verb_middle(
                 })
                 .collect::<Result<Vec<_>, CardTextError>>()?;
             let resolved_tag = resolve_it_tag_key(progress_tag, &current_reference_env(ctx))?;
-            ctx.last_object_tag = Some(resolved_tag.as_str().to_string());
+            ctx.last_object_tag = Some(resolved_tag.clone());
             ctx.last_player_filter = Some(player_filter.clone());
             Ok((
                 vec![Effect::new(crate::effects::SearchLibrarySlotsEffect::new(
@@ -3227,13 +3229,13 @@ pub(super) fn compile_subject_verb_middle(
             if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok() {
                 eprintln!(
                     "retarget-lowering: bare_it={} source_antecedent={} last_tag={:?}",
-                    retarget_target_is_bare_it(target),
+                    target_is_bare_it(target),
                     refs.has_source_object_antecedent(),
                     refs.known_last_object_tag()
                 );
             }
             let (spec, mut choices) =
-                if retarget_target_is_bare_it(target) && refs.has_source_object_antecedent() {
+                if target_is_bare_it(target) && refs.has_source_object_antecedent() {
                     // A body sentence about the source can re-seed the object
                     // antecedent ("this creature gets +2/+2 ... choose new
                     // targets for that spell"), but a stack retarget inside a

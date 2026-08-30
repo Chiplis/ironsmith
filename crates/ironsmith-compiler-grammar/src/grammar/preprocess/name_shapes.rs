@@ -111,6 +111,6 @@ pub fn parse_short_self_reference_name(name: &str) -> String {
 #[path = "name_shapes_inline_tests.rs"]
 mod tests;
 
-#[path = "name_shapes/core_programs.rs"]
+#[path = "name_shapes/core.rs"]
 mod core_programs;
 use core_programs::is_reserved_short_alias;

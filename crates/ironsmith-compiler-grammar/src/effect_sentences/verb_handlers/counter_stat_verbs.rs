@@ -640,7 +640,7 @@ pub fn parse_reveal(
     // The engine does not model hidden information, so this compiles to a semantic no-op
     // that still allows parsing and auditing to proceed.
     if counter_grammar::parse_reveal_reference(tokens).is_some() {
-        return Ok(EffectAst::subject_verb_reveal_tagged(TagKey::from(IT_TAG)));
+        return Ok(EffectAst::subject_verb_reveal_tagged(crate::tag::CompilerReferenceTag::It.key()));
     }
     if counter_grammar::find_word(&words, REVEAL_HAND_WORDS).is_some() {
         let is_full_hand_reveal = counter_grammar::parse_reveal_full_hand(tokens).is_some();
@@ -684,7 +684,7 @@ pub fn parse_reveal(
                             player,
                             ChoiceCount::dynamic_x(),
                             Some(count_value),
-                            TagKey::from(IT_TAG),
+                            crate::tag::CompilerReferenceTag::It.key(),
                         ));
                     }
                 }
@@ -700,7 +700,7 @@ pub fn parse_reveal(
                         player,
                         ChoiceCount::dynamic_x(),
                         Some(count_value),
-                        TagKey::from(IT_TAG),
+                        crate::tag::CompilerReferenceTag::It.key(),
                     ));
                 }
                 if matches!(parse_value(tokens), Some((Value::X, _)))
@@ -719,7 +719,7 @@ pub fn parse_reveal(
                         player,
                         ChoiceCount::dynamic_x(),
                         count_value,
-                        TagKey::from(IT_TAG),
+                        crate::tag::CompilerReferenceTag::It.key(),
                     ));
                 }
                 if let Some((count, _used)) = parse_number(tokens)
@@ -730,10 +730,10 @@ pub fn parse_reveal(
                         player,
                         ChoiceCount::exactly(count as usize),
                         None,
-                        TagKey::from(IT_TAG),
+                        crate::tag::CompilerReferenceTag::It.key(),
                     ));
                 }
-                return Ok(EffectAst::subject_verb_reveal_tagged(TagKey::from(IT_TAG)));
+                return Ok(EffectAst::subject_verb_reveal_tagged(crate::tag::CompilerReferenceTag::It.key()));
             }
             return Err(CardTextError::ParseError(format!(
                 "unsupported reveal-hand clause (clause: '{}')",
@@ -779,7 +779,7 @@ pub fn parse_reveal(
                 source: ironsmith_core::EffectMetricSource::Outcome,
                 metric: ironsmith_core::EffectMetric::Count,
             },
-            TagKey::from(IT_TAG),
+            crate::tag::CompilerReferenceTag::It.key(),
         ));
     }
 
@@ -807,7 +807,7 @@ pub fn parse_reveal(
                 return Ok(EffectAst::subject_verb_reveal_top_cards(
                     player,
                     count,
-                    TagKey::from(IT_TAG),
+                    crate::tag::CompilerReferenceTag::It.key(),
                 ));
             }
         }
@@ -1047,7 +1047,7 @@ pub fn parse_life_amount_from_trailing(
     // Prefer the generic tagged-count representation for prior-action
     // correlations. Unlike a bare pending effect count, this preserves noun
     // restrictions such as "land card discarded this way" and resolves the
-    // IT_TAG placeholder to the prior action's affected-object snapshots.
+    // crate::tag::CompilerReferenceTag::It.as_str() placeholder to the prior action's affected-object snapshots.
     let trailing_words = crate::lexer::token_word_refs(trailing);
     if let Some((value, used)) =
         crate::grammar::shared_util::count_shapes::parse_for_each_count_value_words(&trailing_words)
@@ -1119,7 +1119,7 @@ fn parse_for_each_counter_on_reference_value(tokens: &[OwnedLexToken]) -> Option
         counter_grammar::CounterReferenceShape::Tagged {
             counter_type_tokens,
         } => Some(Value::CountersOn(
-            Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+            Box::new(ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())),
             crate::grammar::filters::parse_counter_type_from_tokens(counter_type_tokens),
         )),
     }
@@ -1145,13 +1145,13 @@ pub fn remap_source_stat_value_to_it(value: Value) -> Value {
             hints,
         },
         Value::PowerOf(spec) if matches!(spec.as_ref(), ChooseSpec::Source) => {
-            Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
+            Value::PowerOf(Box::new(ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())))
         }
         Value::ToughnessOf(spec) if matches!(spec.as_ref(), ChooseSpec::Source) => {
-            Value::ToughnessOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
+            Value::ToughnessOf(Box::new(ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())))
         }
         Value::ManaValueOf(spec) if matches!(spec.as_ref(), ChooseSpec::Source) => {
-            Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
+            Value::ManaValueOf(Box::new(ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())))
         }
         Value::Add(left, right) => Value::Add(
             Box::new(remap_source_stat_value_to_it(*left)),

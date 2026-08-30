@@ -3,6 +3,10 @@ use crate::ChoiceCount;
 use crate::cards::builders::SubjectVerbSubjectAst;
 use crate::grammar::effects::followup_shapes;
 use crate::grammar::structure::parse_trailing_if_predicate_lexed;
+use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId};
+use crate::registry::{
+    HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_registry_candidates,
+};
 
 pub(super) enum PreParseFollowupResult {
     Handled {
@@ -13,7 +17,12 @@ pub(super) enum PreParseFollowupResult {
 }
 
 pub(super) enum PostParseFollowupResult {
-    Handled { consumed_sentences: usize },
+    Handled {
+        consumed_sentences: usize,
+    },
+    /// The rule refined the already-parsed state or sentence effects in
+    /// place; the dispatcher must still append the sentence normally.
+    Annotated,
 }
 
 type PreParseFollowupRuleFn = for<'a> fn(
@@ -21,7 +30,7 @@ type PreParseFollowupRuleFn = for<'a> fn(
     &[SentenceInput],
     usize,
     &[OwnedLexToken],
-) -> Result<Option<PreParseFollowupResult>, CardTextError>;
+) -> ParseOutcome<PreParseFollowupResult>;
 
 type PostParseFollowupRuleFn = for<'a> fn(
     &mut SentenceDispatchState<'a>,
@@ -29,21 +38,82 @@ type PostParseFollowupRuleFn = for<'a> fn(
     usize,
     &[OwnedLexToken],
     &mut Vec<EffectAst>,
-)
-    -> Result<Option<PostParseFollowupResult>, CardTextError>;
+) -> ParseOutcome<PostParseFollowupResult>;
 
 struct SubjectVerbFollowupRuleDef {
     id: &'static str,
-    priority: u16,
     heads: &'static [&'static str],
     run: PreParseFollowupRuleFn,
 }
 
 struct SubjectVerbPostParseRuleDef {
     id: &'static str,
-    priority: u16,
     heads: &'static [&'static str],
     run: PostParseFollowupRuleFn,
+}
+
+fn pre_followup_outcome(
+    rule: RuleId,
+    sentence_tokens: &[OwnedLexToken],
+    result: Result<Option<PreParseFollowupResult>, CardTextError>,
+) -> ParseOutcome<PreParseFollowupResult> {
+    let span = crate::util::span_from_tokens(sentence_tokens);
+    match result {
+        Ok(Some(result)) => ParseOutcome::matched(result, span),
+        Ok(None) => ParseOutcome::NoMatch,
+        Err(error) => ParseOutcome::Error(ParseDiagnostic::from_card_text_error(rule, span, error)),
+    }
+}
+
+fn post_followup_outcome(
+    rule: RuleId,
+    sentence_tokens: &[OwnedLexToken],
+    result: Result<Option<PostParseFollowupResult>, CardTextError>,
+) -> ParseOutcome<PostParseFollowupResult> {
+    let span = crate::util::span_from_tokens(sentence_tokens);
+    match result {
+        Ok(Some(result)) => ParseOutcome::matched(result, span),
+        Ok(None) => ParseOutcome::NoMatch,
+        Err(error) => ParseOutcome::Error(ParseDiagnostic::from_card_text_error(rule, span, error)),
+    }
+}
+
+macro_rules! pre_followup_rule {
+    ($id:literal, $heads:expr, $run:path) => {
+        SubjectVerbFollowupRuleDef {
+            id: $id,
+            heads: $heads,
+            run: |state, sentences, sentence_idx, sentence_tokens| {
+                pre_followup_outcome(
+                    RuleId::new($id),
+                    sentence_tokens,
+                    $run(state, sentences, sentence_idx, sentence_tokens),
+                )
+            },
+        }
+    };
+}
+
+macro_rules! post_followup_rule {
+    ($id:literal, $heads:expr, $run:path) => {
+        SubjectVerbPostParseRuleDef {
+            id: $id,
+            heads: $heads,
+            run: |state, sentences, sentence_idx, sentence_tokens, sentence_effects| {
+                post_followup_outcome(
+                    RuleId::new($id),
+                    sentence_tokens,
+                    $run(
+                        state,
+                        sentences,
+                        sentence_idx,
+                        sentence_tokens,
+                        sentence_effects,
+                    ),
+                )
+            },
+        }
+    };
 }
 
 fn effect_contains_search_library(effect: &EffectAst) -> bool {
@@ -263,7 +333,8 @@ fn sacrifice_effect_targets_tagged_it(effect: &EffectAst) -> bool {
         && !*one_of_referenced_set
         && target.is_none()
         && filter.tagged_constraints.len() == 1
-        && filter.tagged_constraints[0].tag.as_str() == crate::cards::builders::IT_TAG
+        && filter.tagged_constraints[0].tag.as_str()
+            == crate::tag::CompilerReferenceTag::It.as_str()
         && filter.tagged_constraints[0].relation == TaggedOpbjectRelation::IsTaggedObject
 }
 
@@ -327,31 +398,78 @@ pub(super) fn run_pre_parse_followup_registry(
     sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
-    let mut matching_rules = PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES
+    struct Candidate {
+        result: PreParseFollowupResult,
+        effects: Vec<EffectAst>,
+        carried_context: Option<CarryContext>,
+    }
+
+    let baseline_effects = state.effects.clone();
+    let baseline_carried_context = *state.carried_context;
+    let mut candidates = Vec::new();
+    let mut diagnostics = Vec::new();
+
+    for rule in PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES
         .iter()
         .filter(|rule| rule_matches_sentence_head(rule.heads, sentence_tokens))
-        .collect::<Vec<_>>();
-    matching_rules.sort_by_key(|rule| rule.priority);
+    {
+        let mut effects = baseline_effects.clone();
+        let mut carried_context = baseline_carried_context;
+        let mut candidate_state = SentenceDispatchState {
+            effects: &mut effects,
+            carried_context: &mut carried_context,
+        };
+        match (rule.run)(
+            &mut candidate_state,
+            sentences,
+            sentence_idx,
+            sentence_tokens,
+        ) {
+            ParseOutcome::Match(matched) => candidates.push(RegistryCandidate::new(
+                RegistryRuleMetadata::distinct(
+                    RuleId::new(rule.id),
+                    HeadDiscriminator::words(rule.heads),
+                ),
+                Candidate {
+                    result: matched.value,
+                    effects,
+                    carried_context,
+                },
+                matched.span,
+            )),
+            ParseOutcome::NoMatch => {}
+            ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
+        }
+    }
 
-    for rule in matching_rules {
-        if let Some(mut result) = (rule.run)(state, sentences, sentence_idx, sentence_tokens)? {
+    match resolve_registry_candidates(
+        RuleId::new("subject-verb-pre-followup-registry"),
+        candidates,
+        diagnostics,
+    ) {
+        ParseOutcome::NoMatch => Ok(None),
+        ParseOutcome::Error(diagnostic) => Err(diagnostic.into_card_text_error()),
+        ParseOutcome::Match(matched) => {
+            let rule_match = matched.value;
+            let mut candidate = rule_match.value;
+            *state.effects = candidate.effects;
+            *state.carried_context = candidate.carried_context;
             parser_trace(
                 format!(
                     "parse_effect_sentences:subject-verb-followup-pre:{}",
-                    rule.id
+                    rule_match.rule
                 )
                 .as_str(),
                 sentence_tokens,
             );
-            if let PreParseFollowupResult::Handled { route, .. } = &mut result
+            if let PreParseFollowupResult::Handled { route, .. } = &mut candidate.result
                 && route.is_none()
             {
-                *route = Some(pre_followup_subject_verb_route(rule.id));
+                *route = Some(pre_followup_subject_verb_route(rule_match.rule.as_str()));
             }
-            return Ok(Some(result));
+            Ok(Some(candidate.result))
         }
     }
-    Ok(None)
 }
 
 pub(super) fn run_post_parse_followup_registry(
@@ -361,32 +479,79 @@ pub(super) fn run_post_parse_followup_registry(
     sentence_tokens: &[OwnedLexToken],
     sentence_effects: &mut Vec<EffectAst>,
 ) -> Result<Option<PostParseFollowupResult>, CardTextError> {
-    let mut matching_rules = POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES
+    struct Candidate {
+        result: PostParseFollowupResult,
+        effects: Vec<EffectAst>,
+        carried_context: Option<CarryContext>,
+        sentence_effects: Vec<EffectAst>,
+    }
+
+    let baseline_effects = state.effects.clone();
+    let baseline_carried_context = *state.carried_context;
+    let baseline_sentence_effects = sentence_effects.clone();
+    let mut candidates = Vec::new();
+    let mut diagnostics = Vec::new();
+
+    for rule in POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES
         .iter()
         .filter(|rule| rule_matches_sentence_head(rule.heads, sentence_tokens))
-        .collect::<Vec<_>>();
-    matching_rules.sort_by_key(|rule| rule.priority);
-
-    for rule in matching_rules {
-        if let Some(result) = (rule.run)(
-            state,
+    {
+        let mut effects = baseline_effects.clone();
+        let mut carried_context = baseline_carried_context;
+        let mut candidate_sentence_effects = baseline_sentence_effects.clone();
+        let mut candidate_state = SentenceDispatchState {
+            effects: &mut effects,
+            carried_context: &mut carried_context,
+        };
+        match (rule.run)(
+            &mut candidate_state,
             sentences,
             sentence_idx,
             sentence_tokens,
-            sentence_effects,
-        )? {
+            &mut candidate_sentence_effects,
+        ) {
+            ParseOutcome::Match(matched) => candidates.push(RegistryCandidate::new(
+                RegistryRuleMetadata::distinct(
+                    RuleId::new(rule.id),
+                    HeadDiscriminator::words(rule.heads),
+                ),
+                Candidate {
+                    result: matched.value,
+                    effects,
+                    carried_context,
+                    sentence_effects: candidate_sentence_effects,
+                },
+                matched.span,
+            )),
+            ParseOutcome::NoMatch => {}
+            ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
+        }
+    }
+
+    match resolve_registry_candidates(
+        RuleId::new("subject-verb-post-followup-registry"),
+        candidates,
+        diagnostics,
+    ) {
+        ParseOutcome::NoMatch => Ok(None),
+        ParseOutcome::Error(diagnostic) => Err(diagnostic.into_card_text_error()),
+        ParseOutcome::Match(matched) => {
+            let rule_match = matched.value;
+            let candidate = rule_match.value;
+            *state.effects = candidate.effects;
+            *state.carried_context = candidate.carried_context;
+            *sentence_effects = candidate.sentence_effects;
             parser_trace(
                 format!(
                     "parse_effect_sentences:subject-verb-followup-post:{}",
-                    rule.id
+                    rule_match.rule
                 )
                 .as_str(),
                 sentence_tokens,
             );
-            return Ok(Some(result));
+            Ok(Some(candidate.result))
         }
     }
-    Ok(None)
 }
 
 fn pre_rule_library_shuffle_followups(
@@ -561,7 +726,8 @@ fn pre_rule_return_source_exiled_cards_if_source_sacrificed(
     state.effects.push(EffectAst::IfResult {
         predicate: IfResultPredicate::Did,
         effects: vec![EffectAst::subject_verb_return_all_to_battlefield(
-            ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile),
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.key())
+                .in_zone(Zone::Exile),
             false,
             false,
             ReturnControllerAst::Owner,
@@ -1055,255 +1221,194 @@ mod correlated_plural_sacrifice_result_tests;
 mod delayed_copy_retarget_followup_tests;
 
 const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
-    SubjectVerbFollowupRuleDef {
-        id: "prepare-each-player-coin-face-followup",
-        priority: 4,
-        heads: &["each"],
-        run: pre_rule_each_player_coin_face_followup,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "optional-source-exile-and-collect-evidence",
-        priority: 5,
-        heads: &["you"],
-        run: pre_rule_optional_source_exile_and_collect_evidence,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "prepare-returned-permanent-enters-followup",
-        priority: 5,
-        heads: &["when"],
-        run: pre_rule_returned_permanent_enters,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "library-shuffle",
-        priority: 10,
-        heads: &["if", "then", "that"],
-        run: pre_rule_library_shuffle_followups,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "still-lands",
-        priority: 20,
-        heads: &["theyre", "they", "its", "it"],
-        run: pre_rule_still_lands_followup,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "cant-be-regenerated",
-        priority: 30,
-        heads: &["it", "they", "those", "creature", "creatures", "a"],
-        run: pre_rule_cant_be_regenerated_followup,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "damage-cant-be-prevented",
-        priority: 35,
-        heads: &["the"],
-        run: pre_rule_damage_cant_be_prevented_followup,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "copy-and-cast",
-        priority: 40,
-        heads: &["copy", "that", "you", "the"],
-        run: pre_rule_copy_and_cast_followups,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "draw-count-demonstrative-gain",
-        priority: 45,
-        heads: &["that", "those", "each", "all"],
-        run: pre_rule_draw_count_demonstrative_gain_followup,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "token-followups",
-        priority: 42,
-        heads: &[],
-        run: pre_rule_token_followups,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "moved-object-entry-followup",
-        priority: 43,
-        heads: &["it"],
-        run: pre_rule_moved_object_entry_followup,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "exile-this-way",
-        priority: 55,
-        heads: &["if"],
-        run: pre_rule_exile_this_way_followup,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "source-exiled-return-if-sacrificed",
-        priority: 55,
-        heads: &["if"],
-        run: pre_rule_return_source_exiled_cards_if_source_sacrificed,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "declined-tagged-battlefield-move",
-        priority: 54,
-        heads: &["if"],
-        run: pre_rule_declined_tagged_battlefield_move_followup,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "milled-this-way",
-        priority: 55,
-        heads: &["when"],
-        run: pre_rule_when_milled_this_way_followup,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "if-no-one-does",
-        priority: 55,
-        heads: &["if"],
-        run: pre_rule_if_no_one_does_followup,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "if-you-win",
-        priority: 55,
-        heads: &["if"],
-        run: pre_rule_if_you_win_followup,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "choose-for-each-player-instead",
-        priority: 55,
-        heads: &["if"],
-        run: pre_rule_choose_for_each_player_instead,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "future-zone-replacement",
-        priority: 56,
-        heads: &["if"],
-        run: pre_rule_future_zone_replacement_followup,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "skip-tapped-source-turn-replacement",
-        priority: 57,
-        heads: &["if"],
-        run: pre_rule_skip_tapped_source_turn_replacement,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "damage-this-way-player-followup",
-        priority: 58,
-        heads: &["if", "players"],
-        run: pre_rule_damage_this_way_player_followup,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "tap-damage-this-way",
-        priority: 58,
-        heads: &["tap"],
-        run: pre_rule_tap_damage_this_way_followup,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "destroy-those-creatures",
-        priority: 59,
-        heads: &["destroy", "then"],
-        run: pre_rule_destroy_those_creatures_followup,
-    },
-    SubjectVerbFollowupRuleDef {
-        id: "otherwise",
-        priority: 60,
-        heads: &["otherwise"],
-        run: pre_rule_otherwise_followup,
-    },
+    pre_followup_rule!(
+        "prepare-each-player-coin-face-followup",
+        &["each"],
+        pre_rule_each_player_coin_face_followup
+    ),
+    pre_followup_rule!(
+        "optional-source-exile-and-collect-evidence",
+        &["you"],
+        pre_rule_optional_source_exile_and_collect_evidence
+    ),
+    pre_followup_rule!(
+        "prepare-returned-permanent-enters-followup",
+        &["when"],
+        pre_rule_returned_permanent_enters
+    ),
+    pre_followup_rule!(
+        "library-shuffle",
+        &["if", "then", "that"],
+        pre_rule_library_shuffle_followups
+    ),
+    pre_followup_rule!(
+        "still-lands",
+        &["theyre", "they", "its", "it"],
+        pre_rule_still_lands_followup
+    ),
+    pre_followup_rule!(
+        "cant-be-regenerated",
+        &["it", "they", "those", "creature", "creatures", "a"],
+        pre_rule_cant_be_regenerated_followup
+    ),
+    pre_followup_rule!(
+        "damage-cant-be-prevented",
+        &["the"],
+        pre_rule_damage_cant_be_prevented_followup
+    ),
+    pre_followup_rule!(
+        "copy-and-cast",
+        &["copy", "that", "you", "the"],
+        pre_rule_copy_and_cast_followups
+    ),
+    pre_followup_rule!(
+        "draw-count-demonstrative-gain",
+        &["that", "those", "each", "all"],
+        pre_rule_draw_count_demonstrative_gain_followup
+    ),
+    pre_followup_rule!("token-followups", &[], pre_rule_token_followups),
+    pre_followup_rule!(
+        "moved-object-entry-followup",
+        &["it"],
+        pre_rule_moved_object_entry_followup
+    ),
+    pre_followup_rule!("exile-this-way", &["if"], pre_rule_exile_this_way_followup),
+    pre_followup_rule!(
+        "source-exiled-return-if-sacrificed",
+        &["if"],
+        pre_rule_return_source_exiled_cards_if_source_sacrificed
+    ),
+    pre_followup_rule!(
+        "declined-tagged-battlefield-move",
+        &["if"],
+        pre_rule_declined_tagged_battlefield_move_followup
+    ),
+    pre_followup_rule!(
+        "milled-this-way",
+        &["when"],
+        pre_rule_when_milled_this_way_followup
+    ),
+    pre_followup_rule!("if-no-one-does", &["if"], pre_rule_if_no_one_does_followup),
+    pre_followup_rule!("if-you-win", &["if"], pre_rule_if_you_win_followup),
+    pre_followup_rule!(
+        "choose-for-each-player-instead",
+        &["if"],
+        pre_rule_choose_for_each_player_instead
+    ),
+    pre_followup_rule!(
+        "future-zone-replacement",
+        &["if"],
+        pre_rule_future_zone_replacement_followup
+    ),
+    pre_followup_rule!(
+        "skip-tapped-source-turn-replacement",
+        &["if"],
+        pre_rule_skip_tapped_source_turn_replacement
+    ),
+    pre_followup_rule!(
+        "damage-this-way-player-followup",
+        &["if", "players"],
+        pre_rule_damage_this_way_player_followup
+    ),
+    pre_followup_rule!(
+        "tap-damage-this-way",
+        &["tap"],
+        pre_rule_tap_damage_this_way_followup
+    ),
+    pre_followup_rule!(
+        "destroy-those-creatures",
+        &["destroy", "then"],
+        pre_rule_destroy_those_creatures_followup
+    ),
+    pre_followup_rule!("otherwise", &["otherwise"], pre_rule_otherwise_followup),
 ];
 
 const POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbPostParseRuleDef] = &[
-    SubjectVerbPostParseRuleDef {
-        id: "numeric-result-branch-label",
-        priority: 5,
-        heads: &[],
-        run: post_rule_numeric_result_branch_label,
-    },
-    SubjectVerbPostParseRuleDef {
-        id: "token-copy-and-extra-turn",
-        priority: 10,
-        heads: &[],
-        run: post_rule_token_copy_and_extra_turn,
-    },
-    SubjectVerbPostParseRuleDef {
-        id: "future-zone-and-self-replacement",
-        priority: 20,
-        heads: &[],
-        run: post_rule_future_zone_and_self_replacement,
-    },
-    SubjectVerbPostParseRuleDef {
-        id: "each-player-coin-face-followup",
-        priority: 22,
-        heads: &["each"],
-        run: post_rule_each_player_coin_face_followup,
-    },
-    SubjectVerbPostParseRuleDef {
-        id: "typed-sacrificed-result-iterator",
-        priority: 23,
-        heads: &["for"],
-        run: post_rule_typed_sacrificed_result_iterator,
-    },
-    SubjectVerbPostParseRuleDef {
-        id: "revealed-same-mana-value-as-another-iterator",
-        priority: 23,
-        heads: &["for"],
-        run: post_rule_revealed_same_mana_value_as_another_iterator,
-    },
-    SubjectVerbPostParseRuleDef {
-        id: "correlated-plural-sacrifice-result",
-        priority: 24,
-        heads: &["those"],
-        run: post_rule_correlated_plural_sacrifice_result,
-    },
-    SubjectVerbPostParseRuleDef {
-        id: "hand-reveal-choice-discard-followup",
-        priority: 25,
-        heads: &["that", "the"],
-        run: post_rule_hand_reveal_choice_discard_followup,
-    },
-    SubjectVerbPostParseRuleDef {
-        id: "prior-exiled-card-reference",
-        priority: 26,
-        heads: &[],
-        run: post_rule_prior_exiled_card_reference,
-    },
-    SubjectVerbPostParseRuleDef {
-        id: "consult-remainder-reference",
-        priority: 26,
-        heads: &["put", "shuffle", "that", "then"],
-        run: post_rule_consult_remainder_reference,
-    },
-    SubjectVerbPostParseRuleDef {
-        id: "returned-permanent-enters",
-        priority: 26,
-        heads: &["when"],
-        run: post_rule_returned_permanent_enters,
-    },
-    SubjectVerbPostParseRuleDef {
-        id: "targeted-object-delayed-leave",
-        priority: 26,
-        heads: &["when", "whenever"],
-        run: post_rule_targeted_object_delayed_leave,
-    },
-    SubjectVerbPostParseRuleDef {
-        id: "reflexive-object-followup",
-        priority: 27,
-        heads: &[],
-        run: post_rule_reflexive_object_followup,
-    },
-    SubjectVerbPostParseRuleDef {
-        id: "delayed-trigger-result-followup",
-        priority: 30,
-        heads: &["if", "when"],
-        run: post_rule_delayed_trigger_result_followup,
-    },
-    SubjectVerbPostParseRuleDef {
-        id: "delayed-trigger-copy-retarget-followup",
-        priority: 31,
-        heads: &["you"],
-        run: post_rule_delayed_trigger_copy_retarget_followup,
-    },
-    SubjectVerbPostParseRuleDef {
-        id: "optional-copy-retarget-followup",
-        priority: 32,
-        heads: &["the"],
-        run: post_rule_optional_copy_retarget_followup,
-    },
-    SubjectVerbPostParseRuleDef {
-        id: "self-replacement-common-suffix",
-        priority: 100,
-        heads: &[],
-        run: post_rule_self_replacement_common_suffix,
-    },
+    post_followup_rule!(
+        "numeric-result-branch-label",
+        &[],
+        post_rule_numeric_result_branch_label
+    ),
+    post_followup_rule!(
+        "token-copy-and-extra-turn",
+        &[],
+        post_rule_token_copy_and_extra_turn
+    ),
+    post_followup_rule!(
+        "future-zone-and-self-replacement",
+        &[],
+        post_rule_future_zone_and_self_replacement
+    ),
+    post_followup_rule!(
+        "each-player-coin-face-followup",
+        &["each"],
+        post_rule_each_player_coin_face_followup
+    ),
+    post_followup_rule!(
+        "typed-sacrificed-result-iterator",
+        &["for"],
+        post_rule_typed_sacrificed_result_iterator
+    ),
+    post_followup_rule!(
+        "revealed-same-mana-value-as-another-iterator",
+        &["for"],
+        post_rule_revealed_same_mana_value_as_another_iterator
+    ),
+    post_followup_rule!(
+        "correlated-plural-sacrifice-result",
+        &["those"],
+        post_rule_correlated_plural_sacrifice_result
+    ),
+    post_followup_rule!(
+        "hand-reveal-choice-discard-followup",
+        &["that", "the"],
+        post_rule_hand_reveal_choice_discard_followup
+    ),
+    post_followup_rule!(
+        "prior-exiled-card-reference",
+        &[],
+        post_rule_prior_exiled_card_reference
+    ),
+    post_followup_rule!(
+        "consult-remainder-reference",
+        &["put", "shuffle", "that", "then"],
+        post_rule_consult_remainder_reference
+    ),
+    post_followup_rule!(
+        "returned-permanent-enters",
+        &["when"],
+        post_rule_returned_permanent_enters
+    ),
+    post_followup_rule!(
+        "targeted-object-delayed-leave",
+        &["when", "whenever"],
+        post_rule_targeted_object_delayed_leave
+    ),
+    post_followup_rule!(
+        "reflexive-object-followup",
+        &[],
+        post_rule_reflexive_object_followup
+    ),
+    post_followup_rule!(
+        "delayed-trigger-result-followup",
+        &["if", "when"],
+        post_rule_delayed_trigger_result_followup
+    ),
+    post_followup_rule!(
+        "delayed-trigger-copy-retarget-followup",
+        &["you"],
+        post_rule_delayed_trigger_copy_retarget_followup
+    ),
+    post_followup_rule!(
+        "optional-copy-retarget-followup",
+        &["the"],
+        post_rule_optional_copy_retarget_followup
+    ),
+    post_followup_rule!(
+        "self-replacement-common-suffix",
+        &[],
+        post_rule_self_replacement_common_suffix
+    ),
 ];
 
 #[cfg(test)]
@@ -1353,7 +1458,7 @@ mod definite_damage_recipient_tests;
 #[path = "subject_verb_followups_inline_targeted_search_self_replacement_followup_tests_20.rs"]
 mod targeted_search_self_replacement_followup_tests;
 
-#[path = "subject_verb_followups/subject_verb_followups_reference_programs.rs"]
+#[path = "subject_verb_followups/subject_verb_followups_reference.rs"]
 mod subject_verb_followups_reference_programs;
 pub(super) use subject_verb_followups_reference_programs::transport_copy_retarget_into_trailing_optional_copy;
 use subject_verb_followups_reference_programs::{
@@ -1370,7 +1475,7 @@ use subject_verb_followups_reference_programs::{
     pre_rule_moved_object_entry_followup, rebind_source_match_to_target, tag_latest_prior_exile,
     tagged_may_battlefield_move, tagged_object_reference, target_is_explicitly_a_land,
 };
-#[path = "subject_verb_followups/subject_verb_followups_trigger_programs.rs"]
+#[path = "subject_verb_followups/subject_verb_followups_trigger.rs"]
 mod subject_verb_followups_trigger_programs;
 pub(super) use subject_verb_followups_trigger_programs::transport_copy_retarget_into_trailing_delayed_trigger;
 use subject_verb_followups_trigger_programs::{
@@ -1380,19 +1485,19 @@ use subject_verb_followups_trigger_programs::{
     post_rule_reflexive_object_followup, post_rule_targeted_object_delayed_leave,
     replace_event_amount_with_value, trailing_delayed_trigger_effects_mut,
 };
-#[path = "subject_verb_followups/subject_verb_followups_object_action_programs.rs"]
+#[path = "subject_verb_followups/subject_verb_followups_object_action.rs"]
 mod subject_verb_followups_object_action_programs;
 use subject_verb_followups_object_action_programs::{
     parse_create_more_of_prior_tokens, post_rule_token_copy_and_extra_turn,
     pre_rule_token_followups, trailing_optional_copy_effects_mut,
 };
-#[path = "subject_verb_followups/subject_verb_followups_zone_programs.rs"]
+#[path = "subject_verb_followups/subject_verb_followups_zone.rs"]
 mod subject_verb_followups_zone_programs;
 use subject_verb_followups_zone_programs::{
     is_explicit_return_to_battlefield, is_singular_explicit_return_to_battlefield,
     post_rule_returned_permanent_enters, pre_rule_returned_permanent_enters,
 };
-#[path = "subject_verb_followups/subject_verb_followups_library_programs.rs"]
+#[path = "subject_verb_followups/subject_verb_followups_library.rs"]
 mod subject_verb_followups_library_programs;
 use subject_verb_followups_library_programs::{
     bind_cast_tag_to_prior_exiled_card, bind_prior_exiled_card_to_source_link,
@@ -1405,14 +1510,14 @@ use subject_verb_followups_library_programs::{
     preserve_search_owner_anaphor_in_self_replacement, replace_matching_library_search_count,
     replace_mill_event_amounts_with_value,
 };
-#[path = "subject_verb_followups/subject_verb_followups_resource_programs.rs"]
+#[path = "subject_verb_followups/subject_verb_followups_resource.rs"]
 mod subject_verb_followups_resource_programs;
 use subject_verb_followups_resource_programs::{
     bind_prior_exiled_mana_value, effects_contain_gain_life,
     post_rule_correlated_plural_sacrifice_result, post_rule_typed_sacrificed_result_iterator,
     pre_rule_draw_count_demonstrative_gain_followup,
 };
-#[path = "subject_verb_followups/subject_verb_followups_condition_programs.rs"]
+#[path = "subject_verb_followups/subject_verb_followups_condition.rs"]
 mod subject_verb_followups_condition_programs;
 pub(super) use subject_verb_followups_condition_programs::post_rule_future_zone_and_self_replacement;
 use subject_verb_followups_condition_programs::{
@@ -1420,24 +1525,24 @@ use subject_verb_followups_condition_programs::{
     pre_rule_if_no_one_does_followup, pre_rule_if_you_win_followup,
     predicate_explicitly_says_that_land, take_self_replacement_condition,
 };
-#[path = "subject_verb_followups/subject_verb_followups_core_programs.rs"]
+#[path = "subject_verb_followups/subject_verb_followups_core.rs"]
 mod subject_verb_followups_core_programs;
 use subject_verb_followups_core_programs::{
     is_destroy_those_creatures_sentence, post_rule_numeric_result_branch_label,
     pre_rule_destroy_those_creatures_followup, pre_rule_otherwise_followup,
 };
-#[path = "subject_verb_followups/subject_verb_followups_choice_programs.rs"]
+#[path = "subject_verb_followups/subject_verb_followups_choice.rs"]
 mod subject_verb_followups_choice_programs;
 use subject_verb_followups_choice_programs::{
     pre_rule_choose_for_each_player_instead, rewrite_each_player_choice_complement_chooser,
     target_is_explicitly_chosen,
 };
-#[path = "subject_verb_followups/subject_verb_followups_combat_programs.rs"]
+#[path = "subject_verb_followups/subject_verb_followups_combat.rs"]
 mod subject_verb_followups_combat_programs;
 use subject_verb_followups_combat_programs::{
     normalize_anaphoric_damage_self_replacement, primary_damage_source_from_effect,
     replace_anaphoric_damage_source_in_effects, sole_damage_payload,
 };
-#[path = "subject_verb_followups/subject_verb_followups_permission_programs.rs"]
+#[path = "subject_verb_followups/subject_verb_followups_permission.rs"]
 mod subject_verb_followups_permission_programs;
 use subject_verb_followups_permission_programs::pre_rule_exile_this_way_followup;

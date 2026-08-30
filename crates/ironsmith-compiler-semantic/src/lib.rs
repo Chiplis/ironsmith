@@ -103,12 +103,6 @@ pub mod cards {
             FutureReplacement,
             NonReplacement,
         }
-
-        pub const IT_TAG: &str = "__it__";
-        pub const ADDITIONAL_COST_OBJECT_TAG: &str = "__additional_cost_object__";
-        pub const THIS_WAY_SACRIFICED_TAG: &str = "__this_way_sacrificed__";
-        pub const CHOSEN_OBJECTS_TAG: &str = ironsmith_core::CHOSEN_OBJECTS_TAG;
-        pub const COPIED_STACK_OBJECT_TAG: &str = "__copied_stack_object__";
     }
 }
 

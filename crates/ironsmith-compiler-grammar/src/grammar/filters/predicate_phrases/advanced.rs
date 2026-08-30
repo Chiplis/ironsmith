@@ -281,7 +281,7 @@ fn parse_turn_history_intervening_predicate(
     }
     if surface::exact_words(&words, &["it", "has", "madness"]) {
         return Ok(Some(PredicateAst::TaggedMatches(
-            TagKey::from(IT_TAG),
+            crate::tag::CompilerReferenceTag::It.key(),
             ObjectFilter::default()
                 .with_alternative_cast(ironsmith_core::AlternativeCastKind::Madness),
         )));
@@ -384,9 +384,9 @@ fn parse_turn_history_intervening_predicate(
         return Ok(Some(PredicateAst::ValueComparison {
             left: Value::ManaSpentToCastTriggeringObject,
             operator: ValueComparisonOperator::LessThan,
-            right: Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(
-                "triggering",
-            )))),
+            right: Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
+                crate::tag::CompilerReferenceTag::Triggering.key(),
+            ))),
         }));
     }
     if surface::exact_words(
@@ -2362,7 +2362,9 @@ pub(super) fn parse_tagged_was_cast_shape(tokens: &[OwnedLexToken]) -> Option<Pr
     if !is_was_cast_action_clause(action_clause) {
         return None;
     }
-    Some(PredicateAst::TaggedWasCast(TagKey::from(IT_TAG)))
+    Some(PredicateAst::TaggedWasCast(
+        crate::tag::CompilerReferenceTag::It.key(),
+    ))
 }
 
 pub(super) fn parse_this_spell_was_cast_from_shape(
@@ -2903,12 +2905,14 @@ pub(super) fn is_soulbond_partner_clause(clause: LexedClause<'_>) -> bool {
     surface::exact_any(clause, &[&["creature"], &["another", "creature"]])
 }
 
-pub(super) fn tagged_creature_role_clause(clause: LexedClause<'_>) -> Option<&'static str> {
+pub(super) fn tagged_creature_role_clause(
+    clause: LexedClause<'_>,
+) -> Option<crate::tag::CompilerReferenceTag> {
     if surface::exact(clause, &["equipped", "creature"]) {
-        return Some("equipped");
+        return Some(crate::tag::CompilerReferenceTag::Equipped);
     }
     if surface::exact(clause, &["enchanted", "creature"]) {
-        return Some("enchanted");
+        return Some(crate::tag::CompilerReferenceTag::Enchanted);
     }
     None
 }
@@ -2982,7 +2986,7 @@ pub(super) fn parse_additional_cost_object_state_predicate(
         ironsmith_core::AdditionalCostObjectSurface::new(cost_action, subject_kind),
     ));
     Ok(Some(PredicateAst::TaggedMatches(
-        TagKey::from(ADDITIONAL_COST_OBJECT_TAG),
+        crate::tag::CompilerReferenceTag::AdditionalCostObject.key(),
         filter,
     )))
 }
@@ -3005,7 +3009,7 @@ pub(super) fn parse_tagged_exiled_predicate(tokens: &[OwnedLexToken]) -> Option<
         return None;
     }
     Some(PredicateAst::TaggedMatches(
-        TagKey::from(IT_TAG),
+        crate::tag::CompilerReferenceTag::It.key(),
         ObjectFilter::default().in_zone(Zone::Exile),
     ))
 }
@@ -3087,7 +3091,7 @@ pub(super) fn parse_tagged_controlled_permanent_shape(
     ));
     Some(PredicateAst::PlayerTaggedObjectMatches {
         player: PlayerAst::You,
-        tag: TagKey::from(IT_TAG),
+        tag: crate::tag::CompilerReferenceTag::It.key(),
         filter,
         mode: ironsmith_core::TaggedObjectMatchMode::LastKnown,
     })
@@ -3114,7 +3118,7 @@ pub(super) fn parse_tagged_entered_under_your_control_shape(
     }
     Some(PredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn {
         player: PlayerAst::You,
-        tag: TagKey::from(IT_TAG),
+        tag: crate::tag::CompilerReferenceTag::It.key(),
     })
 }
 
@@ -3139,7 +3143,7 @@ pub(super) fn parse_tagged_wasnt_blocking_shape(tokens: &[OwnedLexToken]) -> Opt
             continue;
         }
         return Some(PredicateAst::TaggedMatches(
-            TagKey::from(IT_TAG),
+            crate::tag::CompilerReferenceTag::It.key(),
             ObjectFilter {
                 nonblocking: true,
                 ..Default::default()
@@ -3353,7 +3357,7 @@ pub(super) fn parse_tagged_creature_filter_shape(tokens: &[OwnedLexToken]) -> Op
     if filter.card_types.is_empty() {
         filter.card_types.push(CardType::Creature);
     }
-    Some(PredicateAst::TaggedMatches(TagKey::from(tag), filter))
+    Some(PredicateAst::TaggedMatches(tag.key(), filter))
 }
 
 pub(super) fn graveyard_possessive_matches_subject(
@@ -4087,7 +4091,7 @@ pub(super) fn parse_counted_source_exiled_objects_predicate(
     };
     filter.zone = Some(Zone::Exile);
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+        tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
 
@@ -4603,11 +4607,11 @@ pub(super) fn parse_exploited_triggering_object_predicate(
     }
     Some(PredicateAst::And(
         Box::new(PredicateAst::TaggedMatches(
-            TagKey::from(crate::tag::EXPLOITED_TAG),
+            crate::tag::CompilerReferenceTag::Exploited.key(),
             ObjectFilter::tagged("triggering"),
         )),
         Box::new(PredicateAst::TaggedMatches(
-            TagKey::from(crate::tag::EXPLOITER_TAG),
+            crate::tag::CompilerReferenceTag::Exploiter.key(),
             ObjectFilter::source(),
         )),
     ))
@@ -5068,15 +5072,11 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
         return Ok(predicate);
     }
 
-    // Qualitative life comparisons such as "you have the most life" share
-    // the `you have ... life` prefix with fixed life-total bounds. Give the
-    // typed relation parser first refusal so the numeric parser does not turn
-    // an ordinary nonnumeric amount into a hard parse error.
-    if let Some(predicate) = parse_player_life_relation_predicate(predicate_tokens) {
+    if let Some(predicate) = parse_you_life_total_at_most_predicate(predicate_tokens)? {
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_you_life_total_at_most_predicate(predicate_tokens)? {
+    if let Some(predicate) = parse_player_life_relation_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 

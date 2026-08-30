@@ -98,7 +98,7 @@ pub fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                                 effects: vec![EffectAst::subject_verb_remove_up_to_any_counters(
                                     amount,
                                     TargetAst::Tagged(
-                                        TagKey::from(IT_TAG),
+                                        crate::tag::CompilerReferenceTag::It.key(),
                                         span_from_tokens(tokens),
                                     ),
                                     counter_type,
@@ -301,7 +301,7 @@ fn lower_destroy_all_shape(shape: shapes::DestroyAllShape<'_>) -> Result<EffectA
                 }
             };
             let filter = parse_object_filter(filter_tokens, false)?
-                .match_tagged(TagKey::from(IT_TAG), relation);
+                .match_tagged(crate::tag::CompilerReferenceTag::It.key(), relation);
             Ok(EffectAst::subject_verb_destroy_all(filter))
         }
         shapes::DestroyAllShape::Plain { filter_tokens } => Ok(
@@ -319,7 +319,10 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
         return Ok(EffectAst::Coordinated {
             effects: vec![
                 EffectAst::subject_verb_destroy(TargetAst::Source(None)),
-                EffectAst::subject_verb_destroy(TargetAst::Tagged(TagKey::from(IT_TAG), None)),
+                EffectAst::subject_verb_destroy(TargetAst::Tagged(
+                    crate::tag::CompilerReferenceTag::It.key(),
+                    None,
+                )),
             ],
             leading_duration: false,
             result_conjunction: false,
@@ -485,9 +488,31 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
             EffectAst::subject_verb_destroy_no_regeneration(parse_target_phrase(target_tokens)?)
         }
         shapes::DestroyClauseKind::MultiTarget => {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported multi-target destroy clause (clause: '{original_clause}')"
-            )));
+            // A list of independently declared targets is a coordinated
+            // destroy program. The multi-target primitive owns that shape;
+            // it reads the whole sentence, so restore the verb this clause
+            // parser already consumed.
+            let mut sentence_tokens = vec![OwnedLexToken::word(
+                "destroy".to_string(),
+                crate::diagnostics::TextSpan::synthetic(),
+            )];
+            sentence_tokens.extend_from_slice(tokens);
+            let parsed = crate::effect_sentences::subject_verb_primitives::
+                parse_sentence_destroy_multi_target(
+                    crate::effect_sentences::subject_verb_primitives::
+                        SubjectVerbPrimitiveClause::new(&sentence_tokens),
+                )?;
+            match parsed.as_deref() {
+                Some([effect]) => effect.clone(),
+                Some(effects) if !effects.is_empty() => EffectAst::Sequence {
+                    effects: effects.to_vec(),
+                },
+                _ => {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported multi-target destroy clause (clause: '{original_clause}')"
+                    )));
+                }
+            }
         }
         shapes::DestroyClauseKind::Blocked { target_tokens } => {
             EffectAst::subject_verb_destroy(parse_target_phrase(&target_tokens)?)
@@ -508,7 +533,10 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
                             target,
                             PlayerAst::Opponent,
                         ),
-                        EffectAst::subject_verb_destroy(TargetAst::Tagged(IT_TAG.into(), None)),
+                        EffectAst::subject_verb_destroy(TargetAst::Tagged(
+                            crate::tag::CompilerReferenceTag::It.as_str().into(),
+                            None,
+                        )),
                     ],
                 }
             } else {
@@ -645,7 +673,10 @@ mod tests {
         let debug = format!("{effect:#?}");
 
         assert!(debug.contains("SharesColorWithTagged"), "{debug}");
-        assert!(debug.contains(IT_TAG), "{debug}");
+        assert!(
+            debug.contains(crate::tag::CompilerReferenceTag::It.as_str()),
+            "{debug}"
+        );
     }
 
     #[test]

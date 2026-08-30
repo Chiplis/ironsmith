@@ -2,8 +2,7 @@ use super::*;
 use crate::grammar::activated_lines::{self as activated_line_grammar, ActivatedCyclingContext};
 use crate::grammar::keyword_activated_lines::{
     self as keyword_activated_grammar, CraftMaterialKind, CyclingFilterSpec,
-    CyclingKeywordCostGroup, CyclingKeywordCostKind, CyclingSearchParseError, CyclingSearchSpec,
-    EquipLineSpec,
+    CyclingSearchParseError, CyclingSearchSpec, EquipLineSpec,
 };
 
 pub fn parse_cycling_line(
@@ -98,25 +97,6 @@ pub fn parse_cycling_line_lexed(
         )
     };
 
-    let cost_text = first_group
-        .cost_kind
-        .mana_cost()
-        .map(ManaCost::to_oracle)
-        .or_else(|| base_cost.mana_cost().map(|cost| cost.to_oracle()))
-        .unwrap_or_else(|| {
-            ActivationRestrictionCompatWords::new(first_group.cost_tokens).join(" ")
-        });
-    let render_text = if let Some(group) = parse_cycling_keyword_group_text(&cycling_groups) {
-        group
-    } else if crate::lexer::token_word_refs(first_group.keyword_tokens).is_empty() {
-        cost_text
-    } else {
-        format!(
-            "{} {cost_text}",
-            crate::lexer::token_word_refs(first_group.keyword_tokens).join(" ")
-        )
-    };
-
     Ok(Some(ParsedAbility {
         ability: Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
@@ -134,7 +114,6 @@ pub fn parse_cycling_line_lexed(
             functional_zones: vec![Zone::Hand],
         }
         .into(),
-        text: Some(render_text),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,
@@ -149,7 +128,7 @@ pub fn parse_channel_line_lexed(
     };
 
     let clause_text = joined_activation_clause_text(tokens);
-    parse_hand_keyword_activated_body_lexed(spec.body_tokens, "channel", "Channel", &clause_text)
+    parse_hand_keyword_activated_body_lexed(spec.body_tokens, "channel", &clause_text)
 }
 
 pub fn parse_craft_line_lexed(
@@ -204,11 +183,6 @@ pub fn parse_craft_line_lexed(
         PlayerAst::Implicit,
         SubjectVerbActionAst::ReturnSourceTransformedFromExile,
     );
-    let cost_text = base_cost
-        .mana_cost()
-        .map(|cost| cost.to_oracle())
-        .unwrap_or_else(|| crate::lexer::token_word_refs(spec.cost_tokens).join(" "));
-
     Ok(Some(ParsedAbility {
         ability: Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
@@ -226,7 +200,6 @@ pub fn parse_craft_line_lexed(
             functional_zones: vec![Zone::Battlefield],
         }
         .into(),
-        text: Some(format!("Craft with {material_text} {cost_text}")),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,
@@ -311,34 +284,6 @@ pub fn merge_cycling_search_filters(base: &mut ObjectFilter, extra: &ObjectFilte
     }
 }
 
-fn parse_cycling_keyword_group_text(groups: &[CyclingKeywordCostGroup]) -> Option<String> {
-    let parts = groups
-        .iter()
-        .filter_map(|group| {
-            let keyword = crate::lexer::token_word_refs(group.keyword_tokens).join(" ");
-            if keyword.is_empty() {
-                return None;
-            }
-            let cost = match &group.cost_kind {
-                CyclingKeywordCostKind::Mana(mana_cost) => mana_cost.to_oracle(),
-                CyclingKeywordCostKind::PayLife { amount } => format!("pay {amount} life"),
-                CyclingKeywordCostKind::Activation { .. } => {
-                    crate::lexer::render_token_slice(group.cost_tokens)
-                        .trim()
-                        .to_string()
-                }
-            };
-            Some(format!("{keyword} {cost}"))
-        })
-        .collect::<Vec<_>>();
-
-    if parts.is_empty() {
-        None
-    } else {
-        Some(parts.join(", "))
-    }
-}
-
 pub fn parse_cycling_search_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
@@ -378,37 +323,22 @@ pub fn parse_equip_line(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility
             "equip missing activation cost".to_string(),
         )),
         EquipLineSpec::Mana { cost } => {
-            let (total_cost, cost_text) = equip_mana_total_cost(cost);
+            let total_cost = equip_mana_total_cost(cost);
             Ok(Some(build_equip_ability(
                 total_cost,
-                format!("Equip {cost_text}"),
                 ObjectFilter::creature().you_control(),
             )))
         }
         EquipLineSpec::QualifiedCost {
             qualifier,
             cost_tokens,
-            mana_prefix,
-            exact_mana_cost,
+            mana_prefix: _,
+            exact_mana_cost: _,
         } => {
             let total_cost = parse_compiler_activation_cost(cost_tokens)?;
-            let cost_text = if exact_mana_cost {
-                mana_prefix.to_oracle()
-            } else {
-                total_cost
-                    .mana_cost()
-                    .map(ManaCost::to_oracle)
-                    .unwrap_or_else(|| ActivationRestrictionCompatWords::new(cost_tokens).join(" "))
-            };
-            let qualifier_text =
-                keyword_title(&crate::lexer::token_word_refs(qualifier.tokens).join(" "));
             let mut target_filter = ObjectFilter::creature().you_control();
             target_filter.subtypes = qualifier.subtypes;
-            Ok(Some(build_equip_ability(
-                total_cost,
-                format!("Equip {qualifier_text} {cost_text}"),
-                target_filter,
-            )))
+            Ok(Some(build_equip_ability(total_cost, target_filter)))
         }
         EquipLineSpec::ActivationCost { cost_tokens } => {
             let total_cost = parse_compiler_activation_cost(cost_tokens)?;
@@ -420,7 +350,6 @@ pub fn parse_equip_line(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility
             }
             Ok(Some(build_equip_ability(
                 total_cost,
-                format!("Equip—{}", keyword_title(&tail_words.join(" "))),
                 ObjectFilter::creature().you_control(),
             )))
         }
@@ -456,19 +385,12 @@ pub fn parse_equip_line(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility
     Ok(Some(parsed))
 }
 
-fn equip_mana_total_cost(
-    cost: ManaCost,
-) -> (
-    ironsmith_core::TotalCost<crate::model::CompilerCost>,
-    String,
-) {
-    let mut saw_zero = false;
+fn equip_mana_total_cost(cost: ManaCost) -> ironsmith_core::TotalCost<crate::model::CompilerCost> {
     let pips = cost
         .pips()
         .iter()
         .filter_map(|pip| {
             if matches!(pip.as_slice(), [ManaSymbol::Generic(0)]) {
-                saw_zero = true;
                 None
             } else {
                 Some(pip.clone())
@@ -476,17 +398,14 @@ fn equip_mana_total_cost(
         })
         .collect::<Vec<_>>();
     if pips.is_empty() {
-        let text = if saw_zero { "{0}" } else { "" }.to_string();
-        return (ironsmith_core::TotalCost::free(), text);
+        return ironsmith_core::TotalCost::free();
     }
     let mana_cost = ManaCost::from_pips(pips);
-    let text = mana_cost.to_oracle();
-    (ironsmith_core::TotalCost::mana(mana_cost), text)
+    ironsmith_core::TotalCost::mana(mana_cost)
 }
 
 fn build_equip_ability(
     total_cost: ironsmith_core::TotalCost<crate::model::CompilerCost>,
-    text: String,
     target_filter: ObjectFilter,
 ) -> ParsedAbility {
     let target = TargetAst::Object(target_filter, None, None);
@@ -509,7 +428,6 @@ fn build_equip_ability(
             functional_zones: vec![Zone::Battlefield],
         }
         .into(),
-        text: Some(text),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,
@@ -534,10 +452,6 @@ pub fn parse_reconfigure_line_lexed(
         ));
     }
     let total_cost = parse_compiler_activation_cost(spec.cost_tokens)?;
-    let text = total_cost
-        .mana_cost()
-        .map(|mana| format!("Reconfigure {}", mana.to_oracle()))
-        .unwrap_or_else(|| "Reconfigure".to_string());
     let target = TargetAst::Object(ObjectFilter::creature().you_control(), None, None);
     Ok(Some(ParsedAbility {
         ability: Ability {
@@ -562,7 +476,6 @@ pub fn parse_reconfigure_line_lexed(
             functional_zones: vec![Zone::Battlefield],
         }
         .into(),
-        text: Some(text),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,

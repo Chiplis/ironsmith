@@ -559,12 +559,12 @@ fn parse_discover<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape
 #[path = "keywords/tests.rs"]
 mod tests;
 
-#[path = "keywords/object_action_programs.rs"]
+#[path = "keywords/object_action.rs"]
 mod object_action_programs;
 pub use object_action_programs::parse_keyword_mechanic_tokens;
-#[path = "keywords/ability_programs.rs"]
+#[path = "keywords/ability.rs"]
 mod ability_programs;
 use ability_programs::parse_keyword_mechanic_lexed;
-#[path = "keywords/core_programs.rs"]
+#[path = "keywords/core.rs"]
 mod core_programs;
 use core_programs::{parse_endure, parse_explore};

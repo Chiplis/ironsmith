@@ -295,12 +295,12 @@ fn split_all_creature_types(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]
 #[path = "descriptors_inline_tests.rs"]
 mod tests;
 
-#[path = "descriptors/object_action_programs.rs"]
+#[path = "descriptors/object_action.rs"]
 mod object_action_programs;
 pub use object_action_programs::{
     parse_become_animation_suffix_shape, parse_become_color_words,
     parse_become_simple_descriptor_words,
 };
-#[path = "descriptors/core_programs.rs"]
+#[path = "descriptors/core.rs"]
 mod core_programs;
 use core_programs::creature_subtypes_only;

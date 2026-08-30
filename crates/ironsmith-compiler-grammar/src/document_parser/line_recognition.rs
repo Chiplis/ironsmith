@@ -877,7 +877,7 @@ pub(super) fn recognize_saga_chapter_line(
 ) -> Result<RecognizedSagaChapterLine, CardTextError> {
     let parse_tokens = lexed_tokens(parse_text, line.info.line_index)?;
     let mut effects_ast = parse_effect_sentences_lexed(&parse_tokens)?;
-    crate::util::reconcile_unique_named_source_exile_surface(
+    crate::util::recognize_unique_named_source_exile_surface(
         &mut effects_ast,
         &line.info.source_tokens,
     );

@@ -136,6 +136,8 @@ fn parses_add_mana_equal_amount_tail_with_typed_shape() {
             .unwrap();
     assert_eq!(
         parsed,
-        Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
+        Value::PowerOf(Box::new(ChooseSpec::Tagged(
+            crate::tag::CompilerReferenceTag::It.key()
+        )))
     );
 }

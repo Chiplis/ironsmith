@@ -301,7 +301,7 @@ fn parse_standalone_x_definition_value(tokens: &[OwnedLexToken]) -> Option<crate
         // different resolution context. Check this typed shape before the
         // generic value parser can erase that distinction.
         return Some(crate::effect::Value::ManaValueOf(Box::new(
-            ChooseSpec::Tagged(TagKey::from(crate::tag::SOURCE_EXILED_TAG)),
+            ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::SourceExiled.key()),
         )));
     }
 
@@ -438,10 +438,9 @@ fn authored_trailing_sorcery_speed_restriction(raw_line: &str) -> bool {
 /// together while lowering an activated ability.  The ordinary effect-body
 /// dispatcher supports this shape, but activated parsing has a sentence-wise
 /// fallback whose second sentence begins with the nontargeted instruction
-/// "Exile one".  Once split, that sentence can be claimed by the broad exile
-/// target parser and the selected-card tag is no longer available to the
-/// permission.  Give the already-typed three-sentence grammar first refusal
-/// at the activated boundary.
+/// "Exile one". Once split, that sentence no longer carries the selected-card
+/// tag required by the permission. The complete three-sentence fact therefore
+/// owns the activated body at this boundary.
 fn parse_hidden_look_partition_activated(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -639,25 +638,25 @@ mod leading_duration_gain_activated_tests;
 #[path = "activated_inline_trailing_sorcery_speed_surface_tests_4.rs"]
 mod trailing_sorcery_speed_surface_tests;
 
-#[path = "activated/activated_permission_programs.rs"]
+#[path = "activated/activated_permission.rs"]
 mod activated_permission_programs;
 pub use activated_permission_programs::parse_activated_line;
 use activated_permission_programs::{
     activated_presentation_display, infer_rewrite_activated_functional_zones,
     parse_activated_effects_lexed, parse_activated_line_impl,
 };
-#[path = "activated/activated_choice_programs.rs"]
+#[path = "activated/activated_choice.rs"]
 mod activated_choice_programs;
 use activated_choice_programs::apply_chosen_option_condition_to_activated;
-#[path = "activated/activated_library_programs.rs"]
+#[path = "activated/activated_library.rs"]
 mod activated_library_programs;
 use activated_library_programs::mark_forecast_reveal_duration;
-#[path = "activated/activated_reference_programs.rs"]
+#[path = "activated/activated_reference.rs"]
 mod activated_reference_programs;
-use activated_reference_programs::reconcile_named_source_action_surfaces;
-#[path = "activated/activated_resource_programs.rs"]
+use activated_reference_programs::recognize_named_source_action_surfaces;
+#[path = "activated/activated_resource.rs"]
 mod activated_resource_programs;
 use activated_resource_programs::normalize_mana_replacement_effects;
-#[path = "activated/activated_condition_programs.rs"]
+#[path = "activated/activated_condition.rs"]
 mod activated_condition_programs;
 use activated_condition_programs::rewrite_self_replacements_as_conditionals;

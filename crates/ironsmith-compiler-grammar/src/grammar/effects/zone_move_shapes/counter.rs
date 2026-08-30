@@ -247,6 +247,21 @@ fn parse_unless_shape<'a>(
     if let Some(first) = normalized_payment_tokens.first_mut() {
         first.replace_word("pay");
     }
+    // A trailing `instead` marks this counter clause as replacing an earlier
+    // one; it is sentence structure rather than part of the payment.
+    while normalized_payment_tokens
+        .last()
+        .is_some_and(|token| token.is_word("instead"))
+    {
+        normalized_payment_tokens.pop();
+    }
+    let mut after_pays = after_pays;
+    while after_pays
+        .last()
+        .is_some_and(|token| token.is_word("instead"))
+    {
+        after_pays = &after_pays[..after_pays.len() - 1];
+    }
     let payment_tokens = trimmed(after_pays);
     let has_x_mana_payment = contains_x_mana(payment_tokens);
     let has_dynamic_payment_tail =

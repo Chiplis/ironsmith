@@ -33,14 +33,17 @@ fn delayed_copy_of_prior_exiled_card_keeps_cast_inside_trigger() {
         .split_once("CastTaggedEffect")
         .map(|(_, tail)| &tail[..tail.len().min(500)])
         .expect("delayed trigger should contain a tagged cast");
-    assert!(cast.contains(crate::tag::PRIOR_EXILED_CARD_TAG), "{debug}");
+    assert!(
+        cast.contains(crate::tag::CompilerReferenceTag::PriorExiledCard.as_str()),
+        "{debug}"
+    );
     assert!(!cast.contains("triggering"), "{debug}");
     let mana_value = debug
         .split_once("ManaValueOf")
         .map(|(_, tail)| &tail[..tail.len().min(500)])
         .expect("pump should contain a mana-value reference");
     assert!(
-        mana_value.contains(crate::tag::PRIOR_EXILED_CARD_TAG),
+        mana_value.contains(crate::tag::CompilerReferenceTag::PriorExiledCard.as_str()),
         "pump should use the exiled card's mana value: {debug}"
     );
 }
@@ -81,7 +84,10 @@ fn cross_ability_exiled_card_copy_uses_source_link() {
     let debug = format!("{definition:#?}");
 
     assert!(debug.contains("ImprintFromHandEffect"), "{debug}");
-    assert!(debug.contains(crate::tag::SOURCE_EXILED_TAG), "{debug}");
+    assert!(
+        debug.contains(crate::tag::CompilerReferenceTag::SourceExiled.as_str()),
+        "{debug}"
+    );
     assert!(
         !debug.contains("CopySpellEffect"),
         "an exiled card is not a stack spell and must be selected before the copy-cast: {debug}"
@@ -91,7 +97,10 @@ fn cross_ability_exiled_card_copy_uses_source_link() {
         .split_once("CastTaggedEffect")
         .map(|(_, tail)| tail)
         .expect("combat-damage trigger should contain a tagged cast");
-    assert!(cast_debug.contains(IT_TAG), "{debug}");
+    assert!(
+        cast_debug.contains(crate::tag::CompilerReferenceTag::It.as_str()),
+        "{debug}"
+    );
     assert!(cast_debug.contains("as_copy: true"), "{debug}");
     assert!(
         cast_debug.contains("without_paying_mana_cost: true"),

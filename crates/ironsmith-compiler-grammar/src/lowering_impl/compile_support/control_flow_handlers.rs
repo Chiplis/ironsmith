@@ -22,7 +22,7 @@ fn bind_explicit_tag_to_player_tagged_predicate(
     if let PredicateAst::PlayerTaggedObjectMatches {
         tag: predicate_tag, ..
     } = &mut bound
-        && predicate_tag.as_str() == IT_TAG
+        && predicate_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     {
         *predicate_tag = tag.clone();
     }
@@ -47,7 +47,7 @@ pub fn compile_if_do_with_opponent_doesnt(
     } = first
     {
         if let Some(predicate) = predicate {
-            let explicit_tag = TagKey::from(ctx.next_tag("discarded").as_str());
+            let explicit_tag = ctx.next_tag("discarded");
             let mut tagged_opponent_effects = opponent_effects.clone();
             if !tag_last_discard_in_effects(&mut tagged_opponent_effects, &explicit_tag) {
                 return Err(CardTextError::ParseError(
@@ -92,7 +92,7 @@ pub fn compile_if_do_with_opponent_doesnt(
     } = first
     {
         if let Some(predicate) = predicate {
-            let explicit_tag = TagKey::from(ctx.next_tag("discarded").as_str());
+            let explicit_tag = ctx.next_tag("discarded");
             let mut tagged_player_effects = player_effects.clone();
             if !tag_last_discard_in_effects(&mut tagged_player_effects, &explicit_tag) {
                 return Err(CardTextError::ParseError(
@@ -158,7 +158,7 @@ pub fn compile_if_do_with_opponent_doesnt(
     };
 
     if let Some(predicate) = predicate {
-        let explicit_tag = TagKey::from(ctx.next_tag("discarded").as_str());
+        let explicit_tag = ctx.next_tag("discarded");
         let mut tagged_first_effects = first_effects.clone();
         let Some(EffectAst::ForEachOpponent {
             effects: tagged_opponent_effects,
@@ -250,7 +250,7 @@ pub fn compile_if_do_with_player_doesnt(
     } = first
     {
         if let Some(predicate) = predicate {
-            let explicit_tag = TagKey::from(ctx.next_tag("discarded").as_str());
+            let explicit_tag = ctx.next_tag("discarded");
             let mut tagged_player_effects = player_effects.clone();
             if !tag_last_discard_in_effects(&mut tagged_player_effects, &explicit_tag) {
                 return Err(CardTextError::ParseError(
@@ -305,7 +305,7 @@ pub fn compile_if_do_with_player_doesnt(
     };
 
     if let Some(predicate) = predicate {
-        let explicit_tag = TagKey::from(ctx.next_tag("discarded").as_str());
+        let explicit_tag = ctx.next_tag("discarded");
         let mut tagged_first_effects = first_effects.clone();
         let Some(EffectAst::ForEachPlayer {
             effects: tagged_player_effects,
@@ -1208,7 +1208,7 @@ fn compile_starting_with_controller_each_player_process(
 pub fn compile_effects_in_iterated_player_context(
     effects: &[EffectAst],
     ctx: &mut EffectLoweringContext,
-    tagged_object: Option<String>,
+    tagged_object: Option<TagKey>,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
     let saved_frame = ctx.lowering_frame();
     let mut iterated_frame = saved_frame.clone();
@@ -1221,7 +1221,7 @@ pub fn compile_effects_in_iterated_player_context(
     if tagged_object.is_some() {
         // A tagged-object loop establishes `__it__`, but it does not replace
         // an outer player antecedent with an artificial iterated player.
-        iterated_frame.last_object_tag = Some(IT_TAG.to_string());
+        iterated_frame.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.key());
         iterated_frame.last_it_choice_is_set = false;
         iterated_frame.iterated_object = true;
     } else {
@@ -1264,7 +1264,7 @@ pub fn compile_effects_in_iterated_object_context(
     {
         iterated_frame.last_effect_id = None;
     }
-    iterated_frame.last_object_tag = Some(IT_TAG.to_string());
+    iterated_frame.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.key());
     iterated_frame.last_it_choice_is_set = false;
     iterated_frame.iterated_object = true;
 

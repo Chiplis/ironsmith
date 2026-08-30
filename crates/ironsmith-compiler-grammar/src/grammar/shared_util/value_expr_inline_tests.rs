@@ -18,9 +18,9 @@ fn parses_rounded_and_tagged_value_expressions() {
     assert_eq!(
         parse_value_expr_words(&["the", "exploited", "creature", "power"]),
         Some((
-            Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(
-                crate::tag::EXPLOITED_TAG,
-            )))),
+            Value::PowerOf(Box::new(ChooseSpec::Tagged(
+                crate::tag::CompilerReferenceTag::Exploited.key()
+            ))),
             4,
         ))
     );
@@ -106,7 +106,7 @@ fn possessive_it_characteristics_keep_the_object_antecedent() {
         parse_value_expr_words(&["its", "power"]),
         Some((
             Value::PowerOf(Box::new(
-                ChooseSpec::Tagged(TagKey::from(IT_TAG)).with_surface_hint(
+                ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key()).with_surface_hint(
                     ChooseSpecSurfaceHint::SourceReference(
                         SourceReferenceSurface::ThisPermanentType("it".to_string()),
                     ),
@@ -119,7 +119,7 @@ fn possessive_it_characteristics_keep_the_object_antecedent() {
         parse_value_expr_words(&["its", "toughness"]),
         Some((
             Value::ToughnessOf(Box::new(
-                ChooseSpec::Tagged(TagKey::from(IT_TAG)).with_surface_hint(
+                ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key()).with_surface_hint(
                     ChooseSpecSurfaceHint::SourceReference(
                         SourceReferenceSurface::ThisPermanentType("it".to_string()),
                     ),
@@ -435,19 +435,23 @@ fn generic_number_of_value_keeps_hand_threshold_on_qualified_players() {
 
 #[test]
 fn sacrificed_characteristic_values_keep_identity_and_typed_surface() {
-    let sacrificed_creature =
-        Value::ToughnessOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))).with_surface_hint(
-            ValueSurfaceHint::SacrificedObject(SacrificedObjectKind::Creature),
-        );
+    let sacrificed_creature = Value::ToughnessOf(Box::new(ChooseSpec::Tagged(
+        crate::tag::CompilerReferenceTag::It.key(),
+    )))
+    .with_surface_hint(ValueSurfaceHint::SacrificedObject(
+        SacrificedObjectKind::Creature,
+    ));
     assert_eq!(
         parse_value_expr_words(&["the", "sacrificed", "creature", "toughness"]),
         Some((sacrificed_creature, 4))
     );
 
-    let sacrificed_permanent =
-        Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))).with_surface_hint(
-            ValueSurfaceHint::SacrificedObject(SacrificedObjectKind::Permanent),
-        );
+    let sacrificed_permanent = Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
+        crate::tag::CompilerReferenceTag::It.key(),
+    )))
+    .with_surface_hint(ValueSurfaceHint::SacrificedObject(
+        SacrificedObjectKind::Permanent,
+    ));
     assert_eq!(
         parse_value_expr_words(&[
             "the",
@@ -462,7 +466,9 @@ fn sacrificed_characteristic_values_keep_identity_and_typed_surface() {
     );
 
     let red_symbols = Value::ManaSymbolsInManaCostOf {
-        spec: Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+        spec: Box::new(ChooseSpec::Tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+        )),
         color: Color::Red,
     }
     .with_surface_hint(ValueSurfaceHint::SacrificedObject(
@@ -573,7 +579,7 @@ fn its_characteristic_keeps_the_pronoun_on_the_object_reference() {
     };
     assert!(matches!(
         spec.base(),
-        ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG
+        ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     ));
     assert_eq!(
         spec.source_reference_surface(),

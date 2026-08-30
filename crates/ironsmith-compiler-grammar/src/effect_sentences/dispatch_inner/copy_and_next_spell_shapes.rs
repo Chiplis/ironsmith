@@ -158,7 +158,7 @@ fn delayed_tagged_dealt_damage_trigger_from_core(
         delayed_shapes::DelayedObjectKind::Creature => ObjectFilter::creature(),
         delayed_shapes::DelayedObjectKind::Permanent => ObjectFilter::permanent(),
     };
-    filter = filter.match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
+    filter = filter.match_tagged(crate::tag::CompilerReferenceTag::It.key(), TaggedOpbjectRelation::IsTaggedObject);
 
     if shape.combat {
         Some(TriggerSpec::IsDealtCombatDamage(filter))
@@ -175,7 +175,7 @@ fn delayed_that_deals_combat_damage_to_player_trigger_from_core(
         delayed_shapes::DelayedObjectKind::Creature => ObjectFilter::creature(),
         delayed_shapes::DelayedObjectKind::Permanent => ObjectFilter::permanent(),
     };
-    filter = filter.match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
+    filter = filter.match_tagged(crate::tag::CompilerReferenceTag::It.key(), TaggedOpbjectRelation::IsTaggedObject);
     Some(TriggerSpec::DealsCombatDamageToPlayer {
         source: filter,
         player: PlayerFilter::Any,
@@ -377,7 +377,7 @@ fn parse_next_cast_single_opponent_or_permanent_copy_loop(
     let chosen_destination = TargetAst::ObjectOrPlayer(
         ObjectFilter::permanent()
             .controlled_by(PlayerFilter::IteratedPlayer)
-            .match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject),
+            .match_tagged(crate::tag::CompilerReferenceTag::It.key(), TaggedOpbjectRelation::IsTaggedObject),
         PlayerFilter::IteratedPlayer,
         None,
     );
@@ -459,7 +459,7 @@ pub fn parse_sentence_delayed_trigger_this_turn(
             trigger_filter
                 .tagged_constraints
                 .push(TaggedObjectConstraint {
-                    tag: TagKey::from(IT_TAG),
+                    tag: crate::tag::CompilerReferenceTag::It.key(),
                     relation: TaggedOpbjectRelation::IsTaggedObject,
                 });
             return Ok(Some(vec![
@@ -468,7 +468,7 @@ pub fn parse_sentence_delayed_trigger_this_turn(
                     count: ChoiceCount::exactly(1),
                     count_value: None,
                     player: PlayerAst::You,
-                    tag: TagKey::from(IT_TAG),
+                    tag: crate::tag::CompilerReferenceTag::It.key(),
                 },
                 EffectAst::DelayedTriggerThisTurn {
                     trigger: TriggerSpec::AttacksAndIsntBlocked(trigger_filter),
@@ -607,7 +607,7 @@ pub fn parse_sentence_delayed_trigger_this_turn(
             )));
         }
         return Ok(Some(vec![EffectAst::DelayedTriggerThisTurn {
-            trigger: TriggerSpec::PutIntoGraveyard(ObjectFilter::tagged(TagKey::from(IT_TAG))),
+            trigger: TriggerSpec::PutIntoGraveyard(ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key())),
             effects: delayed_effects,
             one_shot: true,
             until_end_of_combat: false,
@@ -749,7 +749,7 @@ pub fn parse_delayed_when_that_dies_this_turn_sentence(
         let mut graveyard = ObjectFilter::default();
         graveyard.zone = Some(Zone::Graveyard);
         graveyard.owner = Some(PlayerFilter::ControllerOf(
-            crate::filter::ObjectRef::Tagged(TagKey::from(crate::cards::builders::IT_TAG)),
+            crate::filter::ObjectRef::Tagged(crate::tag::CompilerReferenceTag::It.key()),
         ));
         vec![EffectAst::subject_verb_exile_all(graveyard, false)]
     } else {

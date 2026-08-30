@@ -199,22 +199,22 @@ fn affected_object_counter_duration_lexed(input: &mut LexStream<'_>) -> WResult<
 #[path = "durations_inline_tests.rs"]
 mod tests;
 
-#[path = "durations/ability_programs.rs"]
+#[path = "durations/ability.rs"]
 mod ability_programs;
 pub use ability_programs::{
     parse_gain_ability_duration_shape, parse_leading_gain_duration_shape,
     parse_quoted_gain_duration_shape, parse_simple_ability_duration_shape,
 };
-#[path = "durations/reference_programs.rs"]
+#[path = "durations/reference.rs"]
 mod reference_programs;
 pub use reference_programs::parse_source_tapped_gain_duration_shape;
 use reference_programs::{source_remains_on_battlefield, source_tapped_duration};
-#[path = "durations/object_action_programs.rs"]
+#[path = "durations/object_action.rs"]
 mod object_action_programs;
 use object_action_programs::you_control;
-#[path = "durations/core_programs.rs"]
+#[path = "durations/core.rs"]
 mod core_programs;
 use core_programs::continuous_duration;
-#[path = "durations/counter_programs.rs"]
+#[path = "durations/counter.rs"]
 mod counter_programs;
 pub use counter_programs::parse_leading_affected_object_counter_duration_shape;

@@ -40,7 +40,7 @@ pub use object_segments::*;
 mod exile_segments;
 pub use exile_segments::*;
 
-#[path = "activation_costs/program.rs"]
+#[path = "activation_costs/components.rs"]
 mod program;
 pub use program::*;
 

@@ -40,7 +40,7 @@ fn plural_return_back_reference_preserves_its_authored_pronoun() {
 
     assert!(filter.has_plural_pronoun_reference_surface());
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == IT_TAG
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
 }
@@ -126,12 +126,9 @@ fn preserves_explicit_controller_and_source_link_for_exiled_card_returns() {
     };
 
     assert_eq!(controller, ReturnControllerAst::You);
-    assert!(
-        filter
-            .tagged_constraints
-            .iter()
-            .any(|constraint| { constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG })
-    );
+    assert!(filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
+    }));
 }
 
 #[test]
@@ -165,11 +162,11 @@ fn source_linked_return_tail_excludes_only_the_current_exile_result() {
     assert!(filter.card_types.is_empty(), "{filter:#?}");
     assert!(filter.subtypes.is_empty(), "{filter:#?}");
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == crate::cards::builders::IT_TAG
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
     }));
     assert_eq!(

@@ -2196,9 +2196,9 @@ pub(crate) fn restore_authored_source_trigger_surface(
 /// The player named by this wording is the entering object's controller after
 /// the zone change. Lower this to the ordinary typed ETB trigger so the
 /// trigger's existing player-reference export binds later `that player` and
-/// `they` clauses to the triggering object's controller. Without this
-/// preemption, the broad damage-trigger fallback can consume words from the
-/// resolution clause and leave the payment action detached from its trigger.
+/// `they` clauses to the triggering object's controller. The complete
+/// player/put/battlefield suffix is disjoint from combat-damage trigger
+/// grammar, so this family has unique structural ownership.
 fn try_parse_player_puts_object_onto_battlefield_lexed(
     raw_tokens: &[OwnedLexToken],
 ) -> Result<Option<TriggerSpec>, CardTextError> {
@@ -2658,12 +2658,12 @@ fn try_parse_trigger_union_lexed(tokens: &[OwnedLexToken]) -> Option<TriggerSpec
     None
 }
 
-#[path = "semantic/semantic_counter_programs.rs"]
+#[path = "semantic/semantic_counter.rs"]
 mod semantic_counter_programs;
 use semantic_counter_programs::{
     parse_loyalty_ability_trigger_tail_lexed, split_counter_recipient_or_player,
 };
-#[path = "semantic/semantic_trigger_programs.rs"]
+#[path = "semantic/semantic_trigger.rs"]
 mod semantic_trigger_programs;
 use semantic_trigger_programs::{
     parse_ability_of_object_trigger_tail_lexed, parse_named_ability_trigger_tail_lexed,

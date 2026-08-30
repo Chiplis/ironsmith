@@ -31,7 +31,6 @@ pub fn recognize_keyword_line_cst(line: &PreprocessedLine) -> ParseOutcome<Recog
         return ParseOutcome::NoMatch;
     };
     let rules = keyword_line_rules();
-    let span = crate::util::span_from_tokens(&tokens);
     let mut candidates = Vec::new();
     let mut diagnostics = Vec::new();
 
@@ -39,13 +38,7 @@ pub fn recognize_keyword_line_cst(line: &PreprocessedLine) -> ParseOutcome<Recog
         if !rule.hints.iter().any(|candidate| candidate == &hint) {
             continue;
         }
-        let outcome = match (rule.parse)(line, &tokens, &full_parse_tokens) {
-            Ok(Some(payload)) => ParseOutcome::matched(payload, span),
-            Ok(None) => ParseOutcome::NoMatch,
-            Err(error) => ParseOutcome::Error(
-                crate::recognition::ParseDiagnostic::from_card_text_error(rule.id, span, error),
-            ),
-        };
+        let outcome = (rule.parse)(line, &tokens, &full_parse_tokens).within(rule.id);
         match outcome {
             ParseOutcome::Match(matched) => {
                 candidates.push(RegistryCandidate::new(
@@ -108,12 +101,16 @@ pub fn parse_keyword_payload_for_kind(
         .ok_or_else(|| {
             CardTextError::InvariantViolation(format!("no keyword parser registered for {kind:?}"))
         })?;
-    let payload = (rule.parse)(&line, parse_tokens, full_parse_tokens)?.ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "keyword parser for {kind:?} did not recognize '{}'",
-            line.info.raw_line
-        ))
-    })?;
+    let payload = match (rule.parse)(&line, parse_tokens, full_parse_tokens).within(rule.id) {
+        ParseOutcome::Match(matched) => matched.value,
+        ParseOutcome::NoMatch => {
+            return Err(CardTextError::ParseError(format!(
+                "keyword parser for {kind:?} did not recognize '{}'",
+                line.info.raw_line
+            )));
+        }
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
+    };
     Ok(payload.to_line_ast())
 }
 

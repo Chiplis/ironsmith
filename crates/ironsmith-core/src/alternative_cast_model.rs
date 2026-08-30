@@ -502,28 +502,35 @@ where
 impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
     pub fn try_map<E2, C2, Err>(
         self,
-        mut map_effect: impl FnMut(E) -> Result<E2, Err>,
+        map_effect: impl FnMut(E) -> Result<E2, Err>,
         mut map_cost: impl FnMut(C) -> Result<C2, Err>,
     ) -> Result<AlternativeCastingMethod<E2, C2, Cond>, Err>
     where
         C: Clone,
         C2: CostComponent,
     {
-        fn map_total_cost<C, C2, Err>(
-            total_cost: TotalCost<C>,
-            map_cost: &mut impl FnMut(C) -> Result<C2, Err>,
-        ) -> Result<TotalCost<C2>, Err>
-        where
-            C: Clone,
-            C2: CostComponent,
-        {
-            total_cost.try_map(map_cost)
-        }
+        self.try_map_total_costs(map_effect, |total_cost| total_cost.try_map(&mut map_cost))
+    }
 
+    /// Map effects and whole cost algebras.
+    ///
+    /// A single authored cost component can expand into several runtime
+    /// components (choosing an object and then returning it). Mapping the
+    /// total cost rather than each component keeps those siblings side by
+    /// side instead of collapsing them into one composite component.
+    pub fn try_map_total_costs<E2, C2, Err>(
+        self,
+        mut map_effect: impl FnMut(E) -> Result<E2, Err>,
+        mut map_total_cost: impl FnMut(TotalCost<C>) -> Result<TotalCost<C2>, Err>,
+    ) -> Result<AlternativeCastingMethod<E2, C2, Cond>, Err>
+    where
+        C: Clone,
+        C2: CostComponent,
+    {
         Ok(match self {
             Self::Dash { cost } => AlternativeCastingMethod::Dash { cost },
             Self::Blitz { total_cost } => AlternativeCastingMethod::Blitz {
-                total_cost: map_total_cost(total_cost, &mut map_cost)?,
+                total_cost: map_total_cost(total_cost)?,
             },
             Self::Warp { cost } => AlternativeCastingMethod::Warp { cost },
             Self::Plot { cost } => AlternativeCastingMethod::Plot { cost },
@@ -565,16 +572,16 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
                 },
             },
             Self::Flashback { total_cost } => AlternativeCastingMethod::Flashback {
-                total_cost: map_total_cost(total_cost, &mut map_cost)?,
+                total_cost: map_total_cost(total_cost)?,
             },
             Self::Harmonize { total_cost } => AlternativeCastingMethod::Harmonize {
-                total_cost: map_total_cost(total_cost, &mut map_cost)?,
+                total_cost: map_total_cost(total_cost)?,
             },
             Self::Retrace { total_cost } => AlternativeCastingMethod::Retrace {
-                total_cost: map_total_cost(total_cost, &mut map_cost)?,
+                total_cost: map_total_cost(total_cost)?,
             },
             Self::JumpStart { additional_cost } => AlternativeCastingMethod::JumpStart {
-                additional_cost: map_total_cost(additional_cost, &mut map_cost)?,
+                additional_cost: map_total_cost(additional_cost)?,
             },
             Self::Escape {
                 cost,
@@ -583,7 +590,7 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
             } => AlternativeCastingMethod::Escape {
                 cost,
                 exile_count,
-                additional_cost: map_total_cost(additional_cost, &mut map_cost)?,
+                additional_cost: map_total_cost(additional_cost)?,
             },
             Self::Madness { cost } => AlternativeCastingMethod::Madness { cost },
             Self::Miracle { cost } => AlternativeCastingMethod::Miracle { cost },
@@ -592,7 +599,7 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
                 total_cost,
             } => AlternativeCastingMethod::FlashWithAdditionalCost {
                 additional_cost,
-                total_cost: map_total_cost(total_cost, &mut map_cost)?,
+                total_cost: map_total_cost(total_cost)?,
             },
             Self::Foretell { cost } => AlternativeCastingMethod::Foretell { cost },
             Self::Composed {
@@ -602,7 +609,7 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
                 prototype_power_toughness,
             } => AlternativeCastingMethod::Composed {
                 name,
-                total_cost: map_total_cost(total_cost, &mut map_cost)?,
+                total_cost: map_total_cost(total_cost)?,
                 condition,
                 prototype_power_toughness,
             },
@@ -615,7 +622,7 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
             } => AlternativeCastingMethod::FromZone {
                 name,
                 zone,
-                total_cost: map_total_cost(total_cost, &mut map_cost)?,
+                total_cost: map_total_cost(total_cost)?,
                 condition,
                 exiles_after_resolution,
             },
@@ -629,7 +636,7 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
                 condition,
             },
             Self::Bestow { total_cost } => AlternativeCastingMethod::Bestow {
-                total_cost: map_total_cost(total_cost, &mut map_cost)?,
+                total_cost: map_total_cost(total_cost)?,
             },
             Self::Mutate { cost } => AlternativeCastingMethod::Mutate { cost },
         })

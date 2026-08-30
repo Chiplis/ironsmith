@@ -3357,7 +3357,7 @@ impl ObjectFilter {
 
     pub fn shares_most_common_permanent_color(self) -> Self {
         self.match_tagged(
-            TagKey::from("most_common_permanent_color"),
+            TagKey::new(crate::tag::MOST_COMMON_PERMANENT_COLOR_TAG),
             TaggedOpbjectRelation::SharesMostCommonPermanentColor,
         )
     }

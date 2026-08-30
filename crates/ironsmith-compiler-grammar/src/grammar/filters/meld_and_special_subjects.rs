@@ -641,7 +641,7 @@ mod tests {
         assert_eq!(
             filter.tagged_constraints,
             vec![TaggedObjectConstraint {
-                tag: TagKey::from(IT_TAG),
+                tag: crate::tag::CompilerReferenceTag::It.key(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
             }]
         );
@@ -768,7 +768,7 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: TagKey::from(IT_TAG),
+                    tag: crate::tag::CompilerReferenceTag::It.key(),
                     relation: TaggedOpbjectRelation::IsTaggedObject,
                 }
         }));
@@ -827,7 +827,7 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: TagKey::from(IT_TAG),
+                    tag: crate::tag::CompilerReferenceTag::It.key(),
                     relation: TaggedOpbjectRelation::AttachedToTaggedObject,
                 }
         }));
@@ -844,11 +844,11 @@ mod tests {
 
         assert!(past_filter.tagged_constraints.iter().any(|constraint| {
             constraint.relation == TaggedOpbjectRelation::WasAttachedToTaggedObject
-                && constraint.tag == TagKey::from(IT_TAG)
+                && constraint.tag == crate::tag::CompilerReferenceTag::It.key()
         }));
         assert!(current_filter.tagged_constraints.iter().any(|constraint| {
             constraint.relation == TaggedOpbjectRelation::AttachedToTaggedObject
-                && constraint.tag == TagKey::from(IT_TAG)
+                && constraint.tag == crate::tag::CompilerReferenceTag::It.key()
         }));
         assert!(!current_filter.tagged_constraints.iter().any(|constraint| {
             constraint.relation == TaggedOpbjectRelation::WasAttachedToTaggedObject
@@ -957,7 +957,7 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: TagKey::from(IT_TAG),
+                    tag: crate::tag::CompilerReferenceTag::It.key(),
                     relation: TaggedOpbjectRelation::AttachedToTaggedObject,
                 }
         }));
@@ -972,7 +972,7 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+                    tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
                     relation: TaggedOpbjectRelation::IsTaggedObject,
                 }
         }));
@@ -991,12 +991,12 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+                    tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
                     relation: TaggedOpbjectRelation::SameNameAsTagged,
                 }
         }));
         assert!(!filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
         }));
     }
@@ -1009,7 +1009,7 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: TagKey::from(IT_TAG),
+                    tag: crate::tag::CompilerReferenceTag::It.key(),
                     relation: TaggedOpbjectRelation::IsTaggedObject,
                 }
         }));
@@ -1028,7 +1028,7 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: TagKey::from(crate::cards::builders::ADDITIONAL_COST_OBJECT_TAG),
+                    tag: crate::tag::CompilerReferenceTag::AdditionalCostObject.key(),
                     relation: TaggedOpbjectRelation::SameManaValueAsTagged,
                 }
         }));
@@ -1047,7 +1047,7 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: TagKey::from(IT_TAG),
+                    tag: crate::tag::CompilerReferenceTag::It.key(),
                     relation: TaggedOpbjectRelation::SameNameAsTagged,
                 }
         }));
@@ -1066,7 +1066,7 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: TagKey::from(crate::tag::SOURCE_OBJECT_TAG),
+                    tag: crate::tag::CompilerReferenceTag::SourceObject.key(),
                     relation: TaggedOpbjectRelation::SameNameAsTagged,
                 }
         }));

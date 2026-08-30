@@ -208,15 +208,15 @@ fn parse_fixed_power_toughness(word: &str) -> Option<(i32, i32)> {
 #[path = "surface_inline_tests.rs"]
 mod tests;
 
-#[path = "surface/combat_programs.rs"]
+#[path = "surface/combat.rs"]
 mod combat_programs;
 pub use combat_programs::parse_become_attack_color;
-#[path = "surface/object_action_programs.rs"]
+#[path = "surface/object_action.rs"]
 mod object_action_programs;
 use object_action_programs::parse_structured_become_copy_exception_shape;
 pub use object_action_programs::{
     parse_become_body_surface_shape, parse_become_copy_exception_shape, parse_become_rest_shape,
 };
-#[path = "surface/core_programs.rs"]
+#[path = "surface/core.rs"]
 mod core_programs;
 use core_programs::basic_land_type;

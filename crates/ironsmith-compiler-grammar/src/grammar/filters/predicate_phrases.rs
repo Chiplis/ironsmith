@@ -120,7 +120,6 @@ const HAS_OR_HAVE_WORDS: &[&str] = &["has", "have"];
 const INSTEAD_WORD: &str = "instead";
 const OTHER_OR_ANOTHER_WORDS: &[&str] = &["another", "other"];
 const OR_WORD: &str = "or";
-const CHOSEN_NAME_TAG: &str = "__chosen_name__";
 const CARD_WORD: &str = "card";
 const CARD_OR_CARDS_WORDS: &[&str] = &["card", "cards"];
 const NONLAND_CARD_OBJECT_PHRASES: &[&[&str]] = &[
@@ -848,16 +847,22 @@ fn parse_you_life_total_at_most_predicate(
 fn life_total_at_most_from_amount_tokens(
     amount_tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    let Some((amount, used)) = parse_less_than_or_equal_quantity_prefix(
-        amount_tokens,
-        false,
-        false,
-        "life-total predicate",
-    )?
+    let Some(parsed) =
+        crate::grammar::shared_util::value_shapes::parse_quantity_comparison_prefix_tokens(
+            amount_tokens,
+            false,
+            false,
+        )
+    else {
+        // Qualitative amounts such as `the most` belong to the life-relation
+        // grammar. They are a clean no-match for this numeric leaf.
+        return Ok(None);
+    };
+    let Some(amount) = crate::util::comparison_to_strict_at_most_threshold(&parsed.comparison)
     else {
         return Ok(None);
     };
-    if used != amount_tokens.len() {
+    if parsed.consumed_tokens != amount_tokens.len() {
         return Ok(None);
     }
     Ok(Some(PredicateAst::ValueComparison {
@@ -1314,7 +1319,9 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
     if surface::exact(relation.subject_clause, &["it"]) {
         return Some(PredicateAst::ValueComparison {
             left: Value::CountersOn(
-                Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+                Box::new(crate::target::ChooseSpec::Tagged(
+                    crate::tag::CompilerReferenceTag::It.key(),
+                )),
                 Some(counter_type),
             ),
             operator,
@@ -1497,7 +1504,7 @@ fn parse_source_verbless_counted_counter_predicate(tokens: &[OwnedLexToken]) -> 
         let counter_type = parse_terminal_counter_phrase(counter_tokens)??;
         return Some(PredicateAst::ValueComparison {
             left: Value::CountersOn(
-                Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+                Box::new(crate::target::ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())),
                 Some(counter_type),
             ),
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
@@ -1559,9 +1566,9 @@ fn parse_triggering_object_had_counter_predicate(tokens: &[OwnedLexToken]) -> Op
     if surface::exact_any(counter_clause, &[&["counter"], &["counters"]]) {
         return Some(PredicateAst::ValueComparison {
             left: Value::CountersOn(
-                Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(
-                    "triggering",
-                ))),
+                Box::new(crate::target::ChooseSpec::Tagged(
+                    crate::tag::CompilerReferenceTag::Triggering.key(),
+                )),
                 None,
             ),
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
@@ -2139,8 +2146,10 @@ fn parse_player_controls_zero_quantity_predicate(
     let result = parse_object_filter(object_clause.tokens(), false).map(|mut filter| {
         filter.controller = Some(controller);
         if tagged_neither {
-            filter =
-                filter.match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
+            filter = filter.match_tagged(
+                crate::tag::CompilerReferenceTag::It.key(),
+                TaggedOpbjectRelation::IsTaggedObject,
+            );
         }
         PredicateAst::PlayerControlsNo { player, filter }
     });
@@ -2300,7 +2309,7 @@ fn parse_you_control_or_returned_to_hand_this_way_predicate(
                     }),
                     Box::new(PredicateAst::PlayerTaggedObjectMatches {
                         player: PlayerAst::You,
-                        tag: TagKey::from(IT_TAG),
+                        tag: crate::tag::CompilerReferenceTag::It.key(),
                         filter: returned_filter,
                         mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
                     }),
@@ -2960,7 +2969,7 @@ fn parse_this_way_object_filter_clause(clause: LexedClause<'_>) -> Option<Object
             filter.set_explicit_card_noun(stripped_card_noun);
             if needs_chosen_name {
                 filter.tagged_constraints.push(TaggedObjectConstraint {
-                    tag: TagKey::from(CHOSEN_NAME_TAG),
+                    tag: crate::tag::CompilerReferenceTag::ChosenName.key(),
                     relation: TaggedOpbjectRelation::SameNameAsTagged,
                 });
             }
@@ -2973,7 +2982,7 @@ fn parse_this_way_object_filter_clause(clause: LexedClause<'_>) -> Option<Object
             }
             if needs_chosen_name {
                 filter.tagged_constraints.push(TaggedObjectConstraint {
-                    tag: TagKey::from(CHOSEN_NAME_TAG),
+                    tag: crate::tag::CompilerReferenceTag::ChosenName.key(),
                     relation: TaggedOpbjectRelation::SameNameAsTagged,
                 });
             }
@@ -2986,7 +2995,7 @@ fn parse_this_way_object_filter_clause(clause: LexedClause<'_>) -> Option<Object
             }
             if needs_chosen_name {
                 filter.tagged_constraints.push(TaggedObjectConstraint {
-                    tag: TagKey::from(CHOSEN_NAME_TAG),
+                    tag: crate::tag::CompilerReferenceTag::ChosenName.key(),
                     relation: TaggedOpbjectRelation::SameNameAsTagged,
                 });
             }
@@ -3052,9 +3061,9 @@ fn parse_passive_this_way_tagged_object_predicate(
         })?;
     let action_words = action_clause.word_refs();
     let reference_tag = if action_words.get(1) == Some(&"sacrificed") {
-        THIS_WAY_SACRIFICED_TAG
+        crate::tag::CompilerReferenceTag::ThisWaySacrificed
     } else {
-        IT_TAG
+        crate::tag::CompilerReferenceTag::It
     };
     let filter_clause = matched
         .capture_clause_by_role(WinnowCaptureRole::Object, clause)
@@ -3072,7 +3081,7 @@ fn parse_passive_this_way_tagged_object_predicate(
             .map(|(action, _)| action),
     );
     Ok(Some(PredicateAst::TaggedMatches(
-        TagKey::from(reference_tag),
+        reference_tag.key(),
         filter,
     )))
 }
@@ -3116,7 +3125,7 @@ fn parse_active_this_way_discard_predicate(
     filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Discarded));
     Ok(Some(PredicateAst::PlayerTaggedObjectMatches {
         player,
-        tag: TagKey::from(IT_TAG),
+        tag: crate::tag::CompilerReferenceTag::It.key(),
         filter,
         mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
     }))
@@ -3161,7 +3170,7 @@ fn parse_negative_put_tagged_object_predicate(tokens: &[OwnedLexToken]) -> Optio
     Some(PredicateAst::Not(Box::new(
         PredicateAst::PlayerTaggedObjectMatches {
             player: PlayerAst::You,
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
             filter: ObjectFilter::default().in_zone(zone),
             mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
         },
@@ -3262,7 +3271,7 @@ fn parse_active_this_way_battlefield_predicate(
     }
     Ok(Some(PredicateAst::PlayerTaggedObjectMatches {
         player: PlayerAst::You,
-        tag: TagKey::from(IT_TAG),
+        tag: crate::tag::CompilerReferenceTag::It.key(),
         filter,
         mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
     }))
@@ -3312,7 +3321,7 @@ fn parse_passive_this_way_battlefield_predicate(
         filter.zone = Some(Zone::Battlefield);
     }
     Ok(Some(PredicateAst::TaggedMatches(
-        TagKey::from(IT_TAG),
+        crate::tag::CompilerReferenceTag::It.key(),
         filter,
     )))
 }
@@ -4060,7 +4069,7 @@ fn parse_demonstrative_shares_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
         Some(PlayerFilter::Any) => PlayerAst::Any,
         _ => return None,
     };
-    filter = filter.shares_color_with_tagged(IT_TAG);
+    filter = filter.shares_color_with_tagged(crate::tag::CompilerReferenceTag::It.as_str());
     Some(PredicateAst::PlayerControls { player, filter })
 }
 

@@ -2,12 +2,11 @@ use std::ops::{Deref, DerefMut};
 
 use crate::effect::EffectId;
 use crate::filter::PlayerFilter;
+use crate::tag::TagKey;
 use crate::zone::Zone;
 
 use super::ast::PredicateAst;
 use super::reference_state::ReferenceEnv;
-
-const SENTENCE_HELPER_TAG_PREFIX: &str = "__sentence_helper_";
 
 #[derive(Debug, Clone)]
 pub enum MetadataLine {
@@ -154,25 +153,25 @@ pub struct IdGenContext {
 pub struct LoweringFrame {
     pub last_effect_id: Option<EffectId>,
     pub last_library_search_effect_id: Option<EffectId>,
-    pub last_object_tag: Option<String>,
+    pub last_object_tag: Option<TagKey>,
     pub last_it_choice_is_set: bool,
     /// Parse-time tag aliases bound by `SnapshotLastObjectTag`, mapping a
     /// stable parse-time placeholder tag to the concrete runtime tag that was
     /// in `last_object_tag` at snapshot time. Consulted during tag/filter
     /// resolution so composed effects can reference an earlier looked-at pool
     /// even after a later `ChooseObjects` clobbers `last_object_tag`.
-    pub snapshot_tag_aliases: Vec<(String, String)>,
-    pub last_revealed_tag: Option<String>,
+    pub snapshot_tag_aliases: Vec<(TagKey, TagKey)>,
+    pub last_revealed_tag: Option<TagKey>,
     pub last_revealed_zone: Option<Zone>,
     pub last_revealed_player_filter: Option<PlayerFilter>,
-    pub last_exiled_collection_tag: Option<String>,
+    pub last_exiled_collection_tag: Option<TagKey>,
     /// True when the most recent exile/choose that bound an exiled-collection
     /// tag set aside more than one card (a dynamic or fixed >1 count). Drives
     /// "those exiled cards" (plural) vs "that card" cast-permission wording.
     pub last_exiled_collection_is_plural: bool,
     pub last_player_filter: Option<PlayerFilter>,
     pub source_object_antecedent: bool,
-    pub recent_player_choice_tags: Vec<String>,
+    pub recent_player_choice_tags: Vec<TagKey>,
     pub iterated_player: bool,
     /// True while lowering the body of an object iteration. Kept separate from
     /// `iterated_player` so `__it__` can lower to `ChooseSpec::Iterated`
@@ -226,15 +225,8 @@ impl CompileContext {
         id
     }
 
-    pub fn next_tag(&mut self, prefix: &str) -> String {
-        let tag = if matches!(prefix, "exiled" | "looked" | "chosen" | "revealed") {
-            format!(
-                "{SENTENCE_HELPER_TAG_PREFIX}{prefix}_l0_s0_e{}",
-                self.next_tag_id
-            )
-        } else {
-            format!("{prefix}_{}", self.next_tag_id)
-        };
+    pub fn next_tag(&mut self, prefix: &str) -> TagKey {
+        let tag = crate::tag::generated_result_tag(prefix, self.next_tag_id);
         self.next_tag_id += 1;
         tag
     }
@@ -244,7 +236,7 @@ impl CompileContext {
 pub struct EffectLoweringContext {
     ids: CompileContext,
     frame: LoweringFrame,
-    reserved_object_result_tag: Option<String>,
+    reserved_object_result_tag: Option<TagKey>,
 }
 
 impl Default for EffectLoweringContext {
@@ -327,19 +319,19 @@ impl EffectLoweringContext {
         self.ids.next_effect_id()
     }
 
-    pub fn next_tag(&mut self, prefix: &str) -> String {
+    pub fn next_tag(&mut self, prefix: &str) -> TagKey {
         self.ids.next_tag(prefix)
     }
 
-    pub fn reserve_object_result_tag(&mut self, tag: Option<String>) {
+    pub fn reserve_object_result_tag(&mut self, tag: Option<TagKey>) {
         self.reserved_object_result_tag = tag;
     }
 
-    pub fn take_reserved_object_result_tag(&mut self, prefix: &str) -> Option<String> {
+    pub fn take_reserved_object_result_tag(&mut self, prefix: &str) -> Option<TagKey> {
         let prefix = format!("{prefix}_");
         self.reserved_object_result_tag
             .as_ref()
-            .is_some_and(|tag| tag.starts_with(&prefix))
+            .is_some_and(|tag| tag.as_str().starts_with(&prefix))
             .then(|| self.reserved_object_result_tag.take())
             .flatten()
     }

@@ -12,7 +12,7 @@ use super::helpers::render_lower_words;
 use crate::cards::builders::GrantedAbilityAst;
 use crate::effect::{Until, Value};
 use crate::grammar::effects::become_shapes as become_grammar;
-use crate::host::{CardTextError, EffectAst, IT_TAG, PredicateAst, TagKey, TargetAst};
+use crate::host::{CardTextError, EffectAst, PredicateAst, TagKey, TargetAst};
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::types::{CardType, SubtypeFamily};
 
@@ -38,6 +38,6 @@ fn trailing_duration_belongs_to_quoted_ability(
 #[path = "become_clause_inline_quoted_duration_tests.rs"]
 mod quoted_duration_tests;
 
-#[path = "become_clause/object_action_programs.rs"]
+#[path = "become_clause/object_action.rs"]
 mod object_action_programs;
 pub use object_action_programs::parse_become_clause;

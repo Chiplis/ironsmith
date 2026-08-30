@@ -9,7 +9,7 @@ use crate::condition_antecedent::{
     ConditionAntecedentBinding, bind_condition_antecedent_in_effects,
     bind_condition_counter_antecedent_in_effects,
     bind_random_count_condition_antecedent_in_effects, predicate_object_filter_antecedent,
-    predicate_source_counter_antecedent, retarget_it_animations_to_source,
+    predicate_source_counter_antecedent, resolve_it_animations_to_source,
 };
 use crate::model::ast::TriggerIntroSurfaceAst;
 use crate::model::facts::TriggeredLineSemanticFacts;
@@ -43,7 +43,7 @@ fn is_stack_object_targeting_predicate(predicate: &PredicateAst) -> bool {
     }
 }
 
-pub(super) fn apply_trigger_intro_surface(
+pub(crate) fn apply_trigger_intro_surface(
     trigger: TriggerSpec,
     intro: Option<TriggerIntroSurfaceAst>,
 ) -> TriggerSpec {
@@ -237,7 +237,7 @@ fn absorb_predicate_into_trigger(
     }
 }
 
-fn retarget_spell_cast_mana_spent_predicate(
+fn link_spell_cast_mana_spent_predicate(
     trigger: &TriggerSpec,
     predicate: PredicateAst,
 ) -> PredicateAst {
@@ -316,13 +316,13 @@ fn absorb_single_conditional_effect_into_trigger(
     }
 }
 
-pub fn infer_triggered_ability_functional_zones_from_facts(
+pub fn derive_triggered_ability_functional_zones_from_facts(
     trigger: &TriggerSpec,
     facts: &crate::model::facts::TriggerFunctionalZoneFacts,
 ) -> Vec<Zone> {
     let mut zones = match trigger {
         TriggerSpec::WithIntro { trigger, .. } => {
-            return infer_triggered_ability_functional_zones_from_facts(trigger, facts);
+            return derive_triggered_ability_functional_zones_from_facts(trigger, facts);
         }
         TriggerSpec::YouCastThisSpell => vec![Zone::Stack],
         TriggerSpec::KeywordActionFromSource {
@@ -416,7 +416,6 @@ fn rewrite_do_this_trigger_frequency_surface(
 
 pub fn apply_chosen_option_to_triggered_chunk(
     chunk: LineAst,
-    full_text: &str,
     facts: &TriggeredLineSemanticFacts,
     max_triggers_per_turn: Option<u32>,
     chosen_option: Option<&ChosenOptionContext>,
@@ -464,14 +463,13 @@ pub fn apply_chosen_option_to_triggered_chunk(
                 (Some(condition), None) => Some(condition),
                 (None, existing) => existing,
             };
-            Ok(LineAst::Ability(rewrite_parsed_triggered_ability(
+            Ok(LineAst::Ability(assemble_parsed_triggered_ability(
                 trigger.clone(),
                 effects,
-                infer_triggered_ability_functional_zones_from_facts(
+                derive_triggered_ability_functional_zones_from_facts(
                     &trigger,
                     &facts.functional_zones,
                 ),
-                Some(full_text.to_string()),
                 merged_condition,
                 presentation,
                 ReferenceImports::default(),
@@ -525,15 +523,12 @@ pub fn apply_chosen_option_to_triggered_chunk(
             {
                 triggered.presentation_label = presentation.cloned();
             }
-            if parsed.text().is_none() {
-                *parsed.text_mut() = Some(full_text.to_string());
-            }
             Ok(LineAst::Ability(parsed))
         }
         other => Ok(other),
     }
 }
 
-#[path = "triggered_chunks/trigger_programs.rs"]
+#[path = "triggered_chunks/trigger.rs"]
 mod trigger_programs;
 pub use trigger_programs::apply_explicit_intervening_if_to_triggered_chunk;

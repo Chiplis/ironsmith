@@ -499,7 +499,7 @@ impl EffectAst {
     /// lowered to. `looked_tag` names the prior looked-at pool; callers that
     /// emit the look themselves should pass a fresh tag, while standalone
     /// follow-ups should snapshot the prior `last_object_tag` via
-    /// `SnapshotLastObjectTag` (handled here) and pass `IT_TAG`.
+    /// `SnapshotLastObjectTag` (handled here) and pass `crate::tag::CompilerReferenceTag::It.as_str()`.
     pub fn compose_put_some_into_hand_rest_on_bottom_of_library(
         player: PlayerAst,
         count: ChoiceCount,
@@ -559,7 +559,7 @@ impl EffectAst {
             Self::ForEachTagged {
                 tag: chosen_tag.clone(),
                 effects: vec![Self::subject_verb_move_to_zone(
-                    TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
                     Zone::Library,
                     true,
                     ReturnControllerAst::Preserve,

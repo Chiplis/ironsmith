@@ -113,6 +113,43 @@ fn each_damage_except_your_keyword_bearers_keeps_the_boolean_complement() {
 }
 
 #[test]
+fn each_damage_keeps_a_complete_serial_negative_keyword_filter() {
+    use crate::static_abilities::StaticAbilityId::{DoubleStrike, FirstStrike, Haste, Vigilance};
+
+    let tokens = lex_line(
+        "1 damage to each creature that doesn't have first strike, double strike, vigilance, or haste",
+        0,
+    )
+    .expect("serial negative keyword damage clause should lex");
+    let effect = parse_deal_damage(&tokens)
+        .expect("serial negative keyword damage clause should parse at the verb boundary");
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::DealDamageEach { filter, .. },
+        ..
+    }) = effect
+    else {
+        panic!("expected typed damage fanout: {effect:#?}");
+    };
+
+    assert_eq!(
+        filter.excluded_static_abilities,
+        [FirstStrike, DoubleStrike, Vigilance, Haste],
+        "the damage handler must own the complete filter without a dispatcher repair"
+    );
+    let each_index = tokens
+        .iter()
+        .position(|token| token.is_word("each"))
+        .expect("damage clause should contain each");
+    let direct_filter =
+        crate::object_filters::parse_object_filter_lexed(&tokens[each_index + 1..], false)
+            .expect("the same complete filter should parse directly");
+    assert_eq!(
+        filter, direct_filter,
+        "the damage handler must not normalize away typed filter facts"
+    );
+}
+
+#[test]
 fn fixed_plus_count_damage_keeps_equal_to_surface() {
     let tokens = lex_line(
         "damage equal to 2 plus the number of Lesson cards in your graveyard to target creature",
@@ -170,7 +207,7 @@ fn equal_to_damage_keeps_authored_optional_single_target() {
 }
 
 #[test]
-fn relative_controller_count_preempts_the_permissive_filter_value() {
+fn relative_controller_count_has_unique_typed_amount_ownership() {
     let tokens = lex_line(
             "damage to target creature equal to the number of nonbasic lands that creature's controller controls",
             0,
@@ -328,13 +365,13 @@ fn target_spell_controller_damage_materializes_the_spell_target_first() {
                         ..
                     },
                 ..
-            }) if tag.as_str() == IT_TAG
+            }) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 && matches!(
                     amount.unhinted(),
                     Value::ManaValueOf(spec)
                         if matches!(
                             spec.unhinted(),
-                            ChooseSpec::Tagged(value_tag) if value_tag.as_str() == IT_TAG
+                            ChooseSpec::Tagged(value_tag) if value_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                         )
                 )
         ));

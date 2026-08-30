@@ -37,10 +37,10 @@ fn preserves_filtered_prior_action_counts() {
         ),
     ] {
         let parsed = parse_draw_this_way_metric_shape(&tokens(text));
-        let expected = Value::Count(
-            expected_filter
-                .match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject),
-        );
+        let expected = Value::Count(expected_filter.match_tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+            TaggedOpbjectRelation::IsTaggedObject,
+        ));
         assert_eq!(parsed, Some(expected), "{text}");
     }
 }

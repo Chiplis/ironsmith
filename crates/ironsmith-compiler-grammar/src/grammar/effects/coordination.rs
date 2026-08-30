@@ -224,7 +224,7 @@ fn member_produces_plural_created_collection(effect: &crate::cards::builders::Ef
 }
 
 fn bind_singular_damage_source_to_ability_source(effect: &mut crate::cards::builders::EffectAst) {
-    use crate::cards::builders::{EffectAst, IT_TAG, SubjectVerbActionAst, TagKey, TargetAst};
+    use crate::cards::builders::{EffectAst, SubjectVerbActionAst, TagKey, TargetAst};
     use crate::target::ObjectFilter;
 
     if let EffectAst::SubjectVerb(subject_verb) = effect
@@ -232,12 +232,14 @@ fn bind_singular_damage_source_to_ability_source(effect: &mut crate::cards::buil
             &mut subject_verb.action
     {
         match source {
-            TargetAst::Tagged(tag, span) if tag.as_str() == IT_TAG => {
+            TargetAst::Tagged(tag, span)
+                if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() =>
+            {
                 *source = TargetAst::Source(*span);
                 return;
             }
             TargetAst::Object(filter, None, span)
-                if *filter == ObjectFilter::tagged(TagKey::from(IT_TAG)) =>
+                if *filter == ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()) =>
             {
                 *source = TargetAst::Source(*span);
                 return;
@@ -541,6 +543,20 @@ fn classify_boundary<'a>(
     RecognizedCoordinationBoundary,
     Option<TypedClauseHeadAst<'a>>,
 )> {
+    if boundary_continues_shuffle_zone_list(candidate.operator, before, after) {
+        // "shuffles their hand and graveyard into their library" is one
+        // shuffle whose object is a zone union; the connective is not an
+        // action boundary.
+        return None;
+    }
+    if boundary_continues_filter_keyword_list(candidate.operator, before, after) {
+        // A comma or connective between keyword constraints belongs to the
+        // surrounding object predicate or ability list. In particular,
+        // `doesn't have first strike, double strike, vigilance, or haste`
+        // must remain one filter; `haste` is a keyword constraint, not an
+        // executable alternative effect.
+        return None;
+    }
     if matches!(
         candidate.operator,
         CoordinationOperatorAst::Comma | CoordinationOperatorAst::And
@@ -934,6 +950,76 @@ fn classify_boundary<'a>(
         },
         after_head,
     ))
+}
+
+fn boundary_continues_shuffle_zone_list(
+    operator: CoordinationOperatorAst,
+    before: &[OwnedLexToken],
+    after: &[OwnedLexToken],
+) -> bool {
+    if !matches!(operator, CoordinationOperatorAst::And) {
+        return false;
+    }
+    let after_words = crate::lexer::parser_token_word_refs(after);
+    if !matches!(
+        after_words.first(),
+        Some(&"hand" | &"hands" | &"graveyard" | &"graveyards" | &"library" | &"libraries")
+    ) || !after_words.iter().any(|word| *word == "into")
+    {
+        return false;
+    }
+    let before_words = crate::lexer::parser_token_word_refs(before);
+    // Only a zone-to-zone union ("their hand and graveyard into ...") stays
+    // one shuffle object. An object-plus-zone union ("this artifact and your
+    // graveyard") keeps its coordination boundary so the authored arms can be
+    // rejoined by the renderer.
+    before_words
+        .iter()
+        .any(|word| matches!(*word, "shuffle" | "shuffles"))
+        && before_words.iter().any(|word| {
+            matches!(
+                *word,
+                "hand" | "hands" | "graveyard" | "graveyards" | "library" | "libraries"
+            )
+        })
+}
+
+fn boundary_continues_filter_keyword_list(
+    operator: CoordinationOperatorAst,
+    before: &[OwnedLexToken],
+    after: &[OwnedLexToken],
+) -> bool {
+    let after_words = crate::lexer::parser_token_word_refs(after);
+    let continues_keyword_list =
+        if crate::util::starts_filter_keyword_list_continuation_words(&after_words) {
+            true
+        } else {
+            let connector = match operator {
+                CoordinationOperatorAst::And => "and",
+                CoordinationOperatorAst::Or => "or",
+                _ => return false,
+            };
+            let mut continuation_words = Vec::with_capacity(after_words.len() + 1);
+            continuation_words.push(connector);
+            continuation_words.extend(after_words);
+            crate::util::starts_filter_keyword_list_continuation_words(&continuation_words)
+        };
+    if !continues_keyword_list {
+        return false;
+    }
+    // The keyword continuation belongs to the surrounding filter only when
+    // the nearest governing head before the boundary is a possession or
+    // filter head. An effect verb such as `gains`/`loses` makes the keyword
+    // arms executable alternatives that coordination must keep separate.
+    let before_words = crate::lexer::parser_token_word_refs(before);
+    for word in before_words.iter().rev() {
+        match *word {
+            "have" | "has" | "had" | "with" | "without" => return true,
+            "gain" | "gains" | "gained" | "lose" | "loses" | "lost" => return false,
+            _ => {}
+        }
+    }
+    true
 }
 
 fn token_is_card_type_noun(token: &OwnedLexToken) -> bool {

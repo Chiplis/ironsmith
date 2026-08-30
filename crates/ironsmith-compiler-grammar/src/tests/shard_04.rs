@@ -1753,7 +1753,10 @@ pub(super) fn rewrite_filtered_future_exile_and_delayed_return_links_all_objects
     assert!(debug.contains("cause_policy: Any"), "{debug}");
     assert!(debug.contains("link_exiled_to_source: true"), "{debug}");
     assert!(debug.contains("DelayedUntilNextEndStep"), "{debug}");
-    assert!(debug.contains(crate::tag::SOURCE_EXILED_TAG), "{debug}");
+    assert!(
+        debug.contains(crate::tag::CompilerReferenceTag::SourceExiled.as_str()),
+        "{debug}"
+    );
     assert!(debug.contains("controller: Owner"), "{debug}");
 }
 
@@ -1970,10 +1973,9 @@ pub(super) fn rewrite_source_exiled_counter_play_and_cast_permission_static_line
     assert!(grant.filter.any_of.iter().any(|candidate| {
         candidate.card_types == vec![CardType::Land]
             && candidate.zone == Some(crate::zone::Zone::Exile)
-            && candidate
-                .tagged_constraints
-                .iter()
-                .any(|constraint| constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+            && candidate.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
+            })
     }));
     assert!(grant.filter.any_of.iter().any(|candidate| {
         candidate.excluded_card_types.contains(&CardType::Creature)
@@ -2008,10 +2010,9 @@ pub(super) fn rewrite_source_exiled_counter_play_and_cast_permission_static_line
     assert_eq!(mana_filter.any_of.len(), 2);
     assert!(mana_filter.any_of.iter().all(|candidate| {
         candidate.zone == Some(crate::zone::Zone::Exile)
-            && candidate
-                .tagged_constraints
-                .iter()
-                .any(|constraint| constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+            && candidate.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
+            })
     }));
 
     let def = CardDefinitionBuilder::new(CardId::new(), "Haldan Variant")

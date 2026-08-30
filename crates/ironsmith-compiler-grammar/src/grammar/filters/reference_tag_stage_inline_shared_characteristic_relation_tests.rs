@@ -188,7 +188,7 @@ fn source_and_chosen_object_exclusions_keep_both_identities() {
     assert_eq!(
         filter.tagged_constraints[0],
         TaggedObjectConstraint {
-            tag: TagKey::from(crate::cards::builders::CHOSEN_OBJECTS_TAG),
+            tag: crate::tag::CompilerReferenceTag::ChosenObjects.key(),
             relation: TaggedOpbjectRelation::IsNotTaggedObject,
         }
     );
@@ -227,7 +227,7 @@ fn attachment_host_noun_does_not_narrow_the_attachment_filter() {
     assert!(filter.card_types.is_empty(), "{filter:#?}");
     assert_eq!(filter.subtypes, vec![Subtype::Equipment], "{filter:#?}");
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == IT_TAG
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             && constraint.relation == TaggedOpbjectRelation::AttachedToTaggedObject
     }));
 }
@@ -369,7 +369,7 @@ fn tagged_comparison_surfaces_remain_nested_in_generic_relations() {
             .tagged_constraints
             .iter()
             .any(|constraint| {
-                constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                constraint.tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
                     && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
             })
     );

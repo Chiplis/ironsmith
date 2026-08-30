@@ -135,6 +135,24 @@ pub fn parse_draw(
                 );
             } else if let Some(parsed) = parse_draw_trailing_clause(tail, effect.clone())? {
                 effect = parsed;
+            } else if zone_move_grammar::tail_is_where_variable_binding(tail)
+                && let Some(where_value) = crate::keyword_static::parse_value_binding_clause(tail)
+            {
+                // Bind the authored `where X is ...` definition into the draw
+                // count so the amount and its rendering surface survive when
+                // this clause parses outside the sentence dispatcher's
+                // whole-sentence where-binding pass.
+                let bound = crate::effect_sentences::dispatch_entry::with_where_x_surface_hints(
+                    where_value,
+                    tokens,
+                );
+                let mut effects = vec![effect.clone()];
+                crate::effect_sentences::dispatch_entry::replace_unbound_x_in_effects_anywhere(
+                    &mut effects,
+                    &bound,
+                    &clause_words.join(" "),
+                )?;
+                effect = effects.remove(0);
             } else {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported trailing draw clause (clause: '{}')",

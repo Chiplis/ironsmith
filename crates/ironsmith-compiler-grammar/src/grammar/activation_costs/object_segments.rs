@@ -586,12 +586,12 @@ fn parse_sacrifice_count<'a>(input: &mut LexStream<'a>) -> WResult<ChoiceCount> 
 #[path = "object_segments/tests.rs"]
 mod tests;
 
-#[path = "object_segments/reference_programs.rs"]
+#[path = "object_segments/reference.rs"]
 mod reference_programs;
 use reference_programs::parse_optional_object_count;
-#[path = "object_segments/choice_programs.rs"]
+#[path = "object_segments/choice.rs"]
 mod choice_programs;
 use choice_programs::{parse_tap_chosen_shape_lexed, parse_unattach_chosen_tail_lexed};
-#[path = "object_segments/resource_programs.rs"]
+#[path = "object_segments/resource.rs"]
 mod resource_programs;
 use resource_programs::parse_unattach_cost_shape_lexed;

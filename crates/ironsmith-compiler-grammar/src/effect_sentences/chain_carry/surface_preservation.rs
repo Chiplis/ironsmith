@@ -22,7 +22,7 @@ pub fn parse_each_prior_affected_object_controller_mana_value_life(
         return Ok(None);
     }
 
-    let it = TagKey::from(IT_TAG);
+    let it = crate::tag::CompilerReferenceTag::It.key();
     Ok(Some(EffectAst::ForEachTagged {
         tag: it.clone(),
         effects: vec![EffectAst::subject_verb(
@@ -222,8 +222,8 @@ fn same_target_ignoring_surface_spans(left: &TargetAst, right: &TargetAst) -> bo
     if target_is_source(left) && target_is_source(right) {
         return true;
     }
-    if matches!(right, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG)
-        || matches!(left, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG)
+    if matches!(right, TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
+        || matches!(left, TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
     {
         // Within an exact two-arm continuous-effect coordination, `it` is
         // the typed anaphor for the other arm's declared target. Treating the

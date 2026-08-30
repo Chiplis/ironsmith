@@ -3932,6 +3932,12 @@ fn try_push_complete_typed_static_line(
     {
         return Ok(false);
     }
+    if split_lexed_sentences(&line.tokens).len() != 1 {
+        // This fast path owns one complete quoted-grant sentence. Earlier
+        // sentences on the same line (a search, a token creation) are
+        // resolution steps that sentence dispatch must keep.
+        return Ok(false);
+    }
     let Some(parsed) = crate::keyword_static::parse_filter_has_granted_ability_line(&line.tokens)?
     else {
         return Ok(false);
@@ -3975,6 +3981,31 @@ fn try_push_complete_typed_quoted_gain_statement(
     // quoted-gain statement parser understands the inner ability list, but
     // the complete typed anthem owns the outer battlefield-static meaning.
     if crate::keyword_static::parse_anthem_with_trailing_segments_line(&line.tokens)?.is_some() {
+        return Ok(false);
+    }
+    // An enter-as-copy replacement can carry a quoted ability inside its
+    // `except` exception. The copy static family owns that complete line;
+    // the quoted-gain fast path would reduce it to a bare ability grant.
+    if crate::grammar::keyword_static_lines::parse_enter_as_copy_tokens(&line.tokens).is_some() {
+        return Ok(false);
+    }
+    // An attachment-subject `has ...` line is a continuous grant owned by the
+    // attached-object static family. Reducing it to a resolution-time ability
+    // gain drops the attachment semantics and renders the authored `has` as
+    // `gains`.
+    if matches!(
+        crate::keyword_static::parse_enchanted_creature_has_line(&line.tokens),
+        Ok(Some(_))
+    ) {
+        return Ok(false);
+    }
+    // A conditioned grant list ("has X as long as you control a Y, ...")
+    // belongs to the conditional static family; reducing it to the quoted
+    // arm would drop every condition and every unquoted grant.
+    if crate::word_primitives::sequence_occurs(
+        &crate::lexer::parser_token_word_refs(&line.tokens),
+        &["as", "long", "as"],
+    ) {
         return Ok(false);
     }
     let first_quote = crate::slice_primitives::select_position(&line.tokens, |token| {

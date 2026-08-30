@@ -120,7 +120,7 @@ fn bind_target_iteration_exclusion_in_attachment_counts(
     }
 }
 
-fn sacrifice_all_tag_relation(effects: &[EffectAst]) -> Option<(String, TaggedOpbjectRelation)> {
+fn sacrifice_all_tag_relation(effects: &[EffectAst]) -> Option<(TagKey, TaggedOpbjectRelation)> {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::SacrificeAll { filter },
@@ -135,7 +135,7 @@ fn sacrifice_all_tag_relation(effects: &[EffectAst]) -> Option<(String, TaggedOp
             constraint.relation,
             TaggedOpbjectRelation::IsTaggedObject | TaggedOpbjectRelation::IsNotTaggedObject
         )
-        .then(|| (constraint.tag.as_str().to_string(), constraint.relation))
+        .then(|| (constraint.tag.clone(), constraint.relation))
     })
 }
 
@@ -215,7 +215,7 @@ fn effect_has_may_decider_scoped_search_followup(effect: &Effect, decider: &Play
         .is_some_and(|shuffle| shuffle.player == *decider)
 }
 
-fn reconcile_may_decider_scoped_search_effect(
+fn scope_may_decider_search_effect(
     effect: &Effect,
     decider: &PlayerFilter,
     force_search_scope: bool,
@@ -229,7 +229,7 @@ fn reconcile_may_decider_scoped_search_effect(
             .effects
             .iter()
             .map(|child| {
-                reconcile_may_decider_scoped_search_effect(
+                scope_may_decider_search_effect(
                     child,
                     decider,
                     force_search_scope || sequence_scopes_search,
@@ -245,7 +245,7 @@ fn reconcile_may_decider_scoped_search_effect(
         let effects = for_each
             .effects
             .iter()
-            .map(|child| reconcile_may_decider_scoped_search_effect(child, decider, false))
+            .map(|child| scope_may_decider_search_effect(child, decider, false))
             .collect();
         return Effect::for_each_tagged(for_each.tag.clone(), effects);
     }
@@ -253,18 +253,14 @@ fn reconcile_may_decider_scoped_search_effect(
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
         return Effect::with_id(
             with_id.id.0,
-            reconcile_may_decider_scoped_search_effect(
-                &with_id.effect,
-                decider,
-                force_search_scope,
-            ),
+            scope_may_decider_search_effect(&with_id.effect, decider, force_search_scope),
         );
     }
 
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         return Effect::new(crate::effects::TaggedEffect::new(
             tagged.tag.clone(),
-            reconcile_may_decider_scoped_search_effect(&tagged.effect, decider, force_search_scope),
+            scope_may_decider_search_effect(&tagged.effect, decider, force_search_scope),
         ));
     }
 
@@ -307,13 +303,10 @@ fn reconcile_may_decider_scoped_search_effect(
     effect.clone()
 }
 
-fn reconcile_may_decider_scoped_search_effects(
-    effects: Vec<Effect>,
-    decider: &PlayerFilter,
-) -> Vec<Effect> {
+fn scope_may_decider_search_effects(effects: Vec<Effect>, decider: &PlayerFilter) -> Vec<Effect> {
     effects
         .iter()
-        .map(|effect| reconcile_may_decider_scoped_search_effect(effect, decider, false))
+        .map(|effect| scope_may_decider_search_effect(effect, decider, false))
         .collect()
 }
 
@@ -350,10 +343,14 @@ fn try_compile_for_each_object_become_copy_of_prior_choice(
         return Ok(None);
     };
     let source_reference_span = match source {
-        TargetAst::Tagged(source_tag, span) if source_tag.as_str() == IT_TAG => *span,
+        TargetAst::Tagged(source_tag, span)
+            if source_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() =>
+        {
+            *span
+        }
         TargetAst::Object(source_filter, _, reference_span)
             if source_filter.tagged_constraints.iter().any(|constraint| {
-                constraint.tag.as_str() == IT_TAG
+                constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                     && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
             }) =>
         {
@@ -363,7 +360,7 @@ fn try_compile_for_each_object_become_copy_of_prior_choice(
     };
     if !matches!(
         target,
-        TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG
+        TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     ) && !matches!(target, TargetAst::Object(_, _, _))
     {
         return Ok(None);
@@ -421,12 +418,12 @@ fn choose_spec_is_single_damage_recipient(spec: &ChooseSpec) -> bool {
 
 fn bind_iterated_source_stat_value(value: &Value) -> Value {
     match value {
-        Value::PowerOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG) => {
+        Value::PowerOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()) => {
             Value::PowerOf(Box::new(
                 ChooseSpec::Iterated.with_surface_hints(spec.surface_hints().to_vec()),
             ))
         }
-        Value::ToughnessOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG) => {
+        Value::ToughnessOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()) => {
             Value::ToughnessOf(Box::new(
                 ChooseSpec::Iterated.with_surface_hints(spec.surface_hints().to_vec()),
             ))
@@ -474,7 +471,7 @@ fn try_compile_for_each_object_as_damage_source(
         } if matches!(
             amount.unhinted(),
             Value::PowerOf(spec) | Value::ToughnessOf(spec)
-                if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG)
+                if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
         ) =>
         {
             (None, amount, target, unpreventable)
@@ -489,7 +486,7 @@ fn try_compile_for_each_object_as_damage_source(
         )
         || matches!(
             source,
-            Some(TargetAst::Tagged(tag, _)) if tag.as_str() == IT_TAG
+            Some(TargetAst::Tagged(tag, _)) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         );
     if !source_is_iterand {
         return Ok(None);
@@ -501,10 +498,10 @@ fn try_compile_for_each_object_as_damage_source(
         && filter.set_quantifier_surface() == Some(ironsmith_core::SetQuantifierSurface::Those)
         && filter.tagged_constraints.len() == 1
         && filter.tagged_constraints[0].relation == TaggedOpbjectRelation::IsTaggedObject
-        && matches!(
-            filter.tagged_constraints[0].tag.as_str(),
-            IT_TAG | ironsmith_core::CHOSEN_OBJECTS_TAG
-        );
+        && (filter.tagged_constraints[0].tag.as_str()
+            == crate::tag::CompilerReferenceTag::It.as_str()
+            || filter.tagged_constraints[0].tag.as_str()
+                == crate::tag::CompilerReferenceTag::ChosenObjects.as_str());
     let (target_spec, choices) = if source.is_some_and(|source| source == target) {
         (ChooseSpec::Iterated, Vec::new())
     } else if other_member_of_prior_set {
@@ -587,10 +584,8 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let effect = if ctx.iterated_player
                 && ctx.last_player_filter.as_ref() == Some(&PlayerFilter::IteratedPlayer)
             {
-                let inner_effects = reconcile_may_decider_scoped_search_effects(
-                    inner_effects,
-                    &PlayerFilter::IteratedPlayer,
-                );
+                let inner_effects =
+                    scope_may_decider_search_effects(inner_effects, &PlayerFilter::IteratedPlayer);
                 Effect::may_player(PlayerFilter::IteratedPlayer, inner_effects)
             } else {
                 Effect::may(inner_effects)
@@ -644,8 +639,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                     "empty compiled may-by-player effect branch is unsupported".to_string(),
                 ));
             }
-            let inner_effects =
-                reconcile_may_decider_scoped_search_effects(inner_effects, &player_filter);
+            let inner_effects = scope_may_decider_search_effects(inner_effects, &player_filter);
             let mut choices = inner_choices;
             choices.extend(subject.into_choices());
             if compiled_effects_are_play_permissions(&inner_effects)
@@ -1098,16 +1092,16 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let effective_tag = if let Some(concrete) = ctx
                 .snapshot_tag_aliases
                 .iter()
-                .find(|(alias, _)| alias == tag.as_str())
+                .find(|(alias, _)| alias == tag)
                 .map(|(_, concrete)| concrete.clone())
             {
                 concrete
-            } else if tag.as_str() == IT_TAG {
+            } else if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                 ctx.last_object_tag
                     .clone()
-                    .unwrap_or_else(|| IT_TAG.to_string())
+                    .unwrap_or_else(|| crate::tag::CompilerReferenceTag::It.key())
             } else {
-                tag.as_str().to_string()
+                tag.clone()
             };
 
             let (inner_effects, inner_choices) = compile_effects_in_iterated_player_context(
@@ -1126,9 +1120,9 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let resolve_tag = |tag: &TagKey| {
                 ctx.snapshot_tag_aliases
                     .iter()
-                    .find(|(alias, _)| alias == tag.as_str())
+                    .find(|(alias, _)| alias == tag)
                     .map(|(_, concrete)| concrete.clone())
-                    .unwrap_or_else(|| tag.as_str().to_string())
+                    .unwrap_or_else(|| tag.clone())
             };
             let effective_tag = resolve_tag(tag);
             let effective_blocker_tag = resolve_tag(blocker_tag);
@@ -1148,9 +1142,9 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let effective_tag = ctx
                 .snapshot_tag_aliases
                 .iter()
-                .find(|(alias, _)| alias == tag.as_str())
+                .find(|(alias, _)| alias == tag)
                 .map(|(_, concrete)| concrete.clone())
-                .unwrap_or_else(|| tag.as_str().to_string());
+                .unwrap_or_else(|| tag.clone());
             let effect = Effect::for_each_tagged(
                 effective_tag,
                 vec![Effect::move_to_zone(ChooseSpec::Iterated, *zone, false)],
@@ -1163,10 +1157,8 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             // earlier looked-at pool even after an intervening `ChooseObjects`
             // clobbers `last_object_tag`. Emits no runtime effect.
             if let Some(concrete) = ctx.last_object_tag.clone() {
-                ctx.snapshot_tag_aliases
-                    .retain(|(alias, _)| alias != into.as_str());
-                ctx.snapshot_tag_aliases
-                    .push((into.as_str().to_string(), concrete));
+                ctx.snapshot_tag_aliases.retain(|(alias, _)| alias != into);
+                ctx.snapshot_tag_aliases.push((into.clone(), concrete));
             }
             (Vec::new(), Vec::new())
         }
@@ -1239,7 +1231,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
 fn single_cast_tagged_reference_tag(
     effects: &[EffectAst],
     ctx: &EffectLoweringContext,
-) -> Result<Option<String>, CardTextError> {
+) -> Result<Option<TagKey>, CardTextError> {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::CastTagged { tag, .. },
@@ -1253,18 +1245,10 @@ fn single_cast_tagged_reference_tag(
     if tag.as_str() == "__last_revealed__" {
         return Ok(ctx.last_revealed_tag.clone());
     }
-    if tag.as_str() == IT_TAG {
+    if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
         return Ok(ctx.last_object_tag.clone());
     }
-    Ok(Some(tag.as_str().to_string()))
-}
-
-pub(super) fn try_compile_token_generation_effect(
-    effect: &EffectAst,
-    ctx: &mut EffectLoweringContext,
-) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
-    let _ = (effect, ctx);
-    Ok(None)
+    Ok(Some(tag.clone()))
 }
 
 pub(super) fn try_compile_search_and_reorder_effect(

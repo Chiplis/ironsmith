@@ -14,7 +14,7 @@ use crate::effect::{Until, Value, ValueComparisonOperator};
 use crate::grammar::shared_util::value_semantics::{
     parse_value_prefix_lexed, starts_explicit_ordered_comparison,
 };
-use crate::host::{CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, TagKey, TargetAst};
+use crate::host::{CardTextError, EffectAst, PlayerAst, PredicateAst, TagKey, TargetAst};
 use crate::model::CompilerStaticAbilityCore as StaticAbility;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
@@ -366,7 +366,7 @@ fn parse_filtered_spells_from_among_tagged_tokens(
     mark_generic_spell_filter_nonland(&mut filter, fact.subject_tokens);
     Ok(Some((
         TaggedPermissionTarget {
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
             as_copy: false,
             max_plays: None,
             surface: tagged_permission_object_surface(fact.surface),
@@ -395,7 +395,7 @@ fn parse_spell_from_among_source_exiled_tokens(
     };
     Some((
         TaggedPermissionTarget {
-            tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+            tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
             as_copy: false,
             max_plays: None,
             surface: Some(
@@ -562,9 +562,11 @@ fn parse_tagged_cast_or_play_target_tokens(
 ) -> Option<(TaggedPermissionTarget, &[OwnedLexToken])> {
     let fact = permission_tagged_facts::parse_tagged_permission_target_tokens(tokens)?;
     let tag = match fact.reference {
-        permission_tagged_facts::TaggedPermissionReference::LastTagged => TagKey::from(IT_TAG),
+        permission_tagged_facts::TaggedPermissionReference::LastTagged => {
+            crate::tag::CompilerReferenceTag::It.key()
+        }
         permission_tagged_facts::TaggedPermissionReference::SourceExiled => {
-            TagKey::from(crate::tag::SOURCE_EXILED_TAG)
+            crate::tag::CompilerReferenceTag::SourceExiled.key()
         }
         permission_tagged_facts::TaggedPermissionReference::LastRevealed => {
             crate::tag::CompilerReferenceTag::LastRevealed.key()
@@ -591,9 +593,11 @@ fn parse_until_source_exiles_another_permission(tokens: &[OwnedLexToken]) -> Opt
         | permission_tagged_facts::PermissionActor::ItsOwner => return None,
     };
     let tag = match fact.reference {
-        permission_tagged_facts::TaggedPermissionReference::LastTagged => TagKey::from(IT_TAG),
+        permission_tagged_facts::TaggedPermissionReference::LastTagged => {
+            crate::tag::CompilerReferenceTag::It.key()
+        }
         permission_tagged_facts::TaggedPermissionReference::SourceExiled => {
-            TagKey::from(crate::tag::SOURCE_EXILED_TAG)
+            crate::tag::CompilerReferenceTag::SourceExiled.key()
         }
         permission_tagged_facts::TaggedPermissionReference::LastRevealed => {
             crate::tag::CompilerReferenceTag::LastRevealed.key()
@@ -671,7 +675,7 @@ fn parse_revealed_top_library_permission_clause(
             without_paying_mana_cost,
             ..
         }) if matches!(player, PlayerAst::You | PlayerAst::Implicit) => {
-            if tag.as_str() == IT_TAG {
+            if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                 tag = crate::tag::CompilerReferenceTag::LastRevealed.key();
             }
             EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_while_on_top_of_library(
@@ -965,7 +969,7 @@ fn parse_once_each_turn_top_library_cast_shares_source_exiled_type_permission(
 
     let mut filter = ObjectFilter::nonland();
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+        tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
         relation: TaggedOpbjectRelation::SharesCardType,
     });
 
@@ -1032,7 +1036,7 @@ pub fn parse_permission_clause_spec_lexed(
             filter.owner = Some(PlayerFilter::You);
         }
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+            tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         let spec = crate::model::CompilerGrantSpecCore::new(
@@ -1674,7 +1678,7 @@ fn parse_any_number_free_cast_from_hand_clause(
         filter,
         effects: vec![EffectAst::May {
             effects: vec![EffectAst::subject_verb_cast_tagged(
-                TagKey::from(IT_TAG),
+                crate::tag::CompilerReferenceTag::It.key(),
                 lead.player,
                 false,
                 false,
@@ -1743,7 +1747,7 @@ fn value_is_tagged_it_mana_value(value: &Value) -> bool {
         Value::ManaValueOf(spec)
             if matches!(
                 spec.as_ref(),
-                crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG
+                crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             )
     )
 }
@@ -1857,7 +1861,7 @@ fn parse_cast_with_tagged_mana_value_limit_clause_impl(
         let mut filter = ObjectFilter::nonland()
             .owned_by(crate::target::PlayerFilter::You)
             .match_tagged(
-                TagKey::from(IT_TAG),
+                crate::tag::CompilerReferenceTag::It.key(),
                 crate::filter::TaggedOpbjectRelation::ManaValueLteTagged,
             );
         filter.union_surface = filter.union_surface.with_equal_or_lesser_mana_value(true);
@@ -1961,7 +1965,7 @@ fn parse_cast_with_tagged_mana_value_limit_clause_impl(
         filter
             .tagged_constraints
             .push(crate::filter::TaggedObjectConstraint {
-                tag: TagKey::from(IT_TAG),
+                tag: crate::tag::CompilerReferenceTag::It.key(),
                 relation: crate::filter::TaggedOpbjectRelation::ManaValueLteTagged,
             });
     } else if let (ValueComparisonOperator::Equal, Value::CountersOnSource(counter_type)) =
@@ -2002,7 +2006,7 @@ pub fn parse_cast_or_play_tagged_clause(
             effects: vec![
                 EffectAst::subject_verb_target_only(target),
                 EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-                    TagKey::from(IT_TAG),
+                    crate::tag::CompilerReferenceTag::It.key(),
                     PlayerAst::You,
                     false,
                     false,
@@ -2019,7 +2023,7 @@ pub fn parse_cast_or_play_tagged_clause(
     if let Some(permission_tokens) = strip_for_as_long_as_look_at_tagged_prefix_tokens(&trimmed)
         && let Some(permission) = parse_cast_or_play_tagged_clause(&permission_tokens)?
     {
-        let mut look_filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
+        let mut look_filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
         look_filter.zone = Some(Zone::Exile);
         return Ok(Some(EffectAst::Sequence {
             effects: vec![
@@ -2345,7 +2349,7 @@ mod source_exile_duration_tests {
         assert_eq!(filter.tagged_constraints.len(), 1, "{filter:#?}");
         assert!(filter.union_surface.equal_or_lesser_mana_value());
         let constraint = &filter.tagged_constraints[0];
-        assert_eq!(constraint.tag, TagKey::from(IT_TAG));
+        assert_eq!(constraint.tag, crate::tag::CompilerReferenceTag::It.key());
         assert_eq!(
             constraint.relation,
             crate::filter::TaggedOpbjectRelation::ManaValueLteTagged

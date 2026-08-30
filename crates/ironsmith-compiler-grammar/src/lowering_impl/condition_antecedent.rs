@@ -1,5 +1,5 @@
 use crate::cards::builders::{
-    EffectAst, GrantedAbilityAst, IT_TAG, PredicateAst, SubjectVerbActionAst, TargetAst,
+    EffectAst, GrantedAbilityAst, PredicateAst, SubjectVerbActionAst, TargetAst,
 };
 use crate::effect::Value;
 use crate::filter::{ObjectFilter, TaggedOpbjectRelation};
@@ -12,8 +12,6 @@ use super::effect_ast_traversal::for_each_nested_effects_mut;
 /// their choice").  Reference tracking deliberately does not export this tag
 /// until the consuming action runs, so an earlier subject such as "that
 /// creature's controller" still resolves against the trigger object.
-pub const CONDITION_COLLECTION_CHOICE_TAG: &str = "__condition_collection_choice";
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConditionAntecedentBinding {
     TaggedItOnly,
@@ -136,7 +134,7 @@ fn merge_filter_overlay(base: &mut ObjectFilter, overlay: ObjectFilter) {
 
 pub fn bind_condition_filter_antecedent(filter: &mut ObjectFilter, antecedent: &ObjectFilter) {
     let references_it = filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == IT_TAG
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
     });
     if !references_it {
@@ -145,7 +143,7 @@ pub fn bind_condition_filter_antecedent(filter: &mut ObjectFilter, antecedent: &
 
     let mut overlay = filter.clone();
     overlay.tagged_constraints.retain(|constraint| {
-        !(constraint.tag.as_str() == IT_TAG
+        !(constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject))
     });
     let mut replacement = antecedent.clone();
@@ -173,7 +171,7 @@ fn bind_condition_antecedent_in_target(
         // "if enchanted creature is untapped, tap it": a bare `it` target
         // binds to the condition subject.
         TargetAst::Tagged(tag, span)
-            if tag.as_str() == IT_TAG
+            if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 && !matches!(mode, ConditionAntecedentBinding::RandomWithCountObjectsOnly) =>
         {
             *target = TargetAst::Object(antecedent.clone(), *span, None);
@@ -187,7 +185,7 @@ fn bind_condition_antecedent_in_target(
             {
                 if let TargetAst::Object(filter, _, _) = inner.as_mut() {
                     let references_it = filter.tagged_constraints.iter().any(|constraint| {
-                        constraint.tag.as_str() == IT_TAG
+                        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                             && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
                     });
                     if references_it {
@@ -218,7 +216,7 @@ fn target_establishes_body_object_antecedent(target: &TargetAst) -> bool {
         | TargetAst::AnyOtherTarget(_)
         | TargetAst::ObjectOrPlayer(_, _, _)
         | TargetAst::Object(_, _, _) => true,
-        TargetAst::Tagged(tag, _) => tag.as_str() != IT_TAG,
+        TargetAst::Tagged(tag, _) => tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str(),
         TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
             target_establishes_body_object_antecedent(inner)
         }
@@ -360,7 +358,7 @@ pub fn bind_condition_collection_antecedent_in_effects(
 ) {
     fn is_source_exiled_collection(filter: &ObjectFilter) -> bool {
         filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
         })
     }
@@ -394,7 +392,7 @@ pub fn bind_condition_collection_antecedent_in_effects(
         }
     }
 
-    fn rewrite_inline_collection_choice(effect: &mut EffectAst, antecedent: &ObjectFilter) -> bool {
+    fn bind_inline_collection_choice(effect: &mut EffectAst, antecedent: &ObjectFilter) -> bool {
         let EffectAst::SubjectVerb(subject_verb) = effect else {
             return false;
         };
@@ -411,7 +409,7 @@ pub fn bind_condition_collection_antecedent_in_effects(
             return false;
         };
         let references_condition_collection = filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag.as_str() == IT_TAG
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
         });
         if !references_condition_collection {
@@ -433,7 +431,7 @@ pub fn bind_condition_collection_antecedent_in_effects(
         choice_filter
             .controller
             .get_or_insert(crate::filter::PlayerFilter::IteratedPlayer);
-        let tag = crate::tag::TagKey::from(CONDITION_COLLECTION_CHOICE_TAG);
+        let tag = crate::tag::CompilerReferenceTag::ConditionCollectionChoice.key();
         let choice = EffectAst::ChooseObjects {
             filter: choice_filter,
             count: *count,
@@ -454,7 +452,7 @@ pub fn bind_condition_collection_antecedent_in_effects(
         true
     }
 
-    fn rewrite_plural_collection_move(effect: &mut EffectAst, antecedent: &ObjectFilter) -> bool {
+    fn bind_plural_collection_move(effect: &mut EffectAst, antecedent: &ObjectFilter) -> bool {
         let EffectAst::SubjectVerb(subject_verb) = effect else {
             return false;
         };
@@ -467,7 +465,11 @@ pub fn bind_condition_collection_antecedent_in_effects(
         else {
             return false;
         };
-        if !*target_plural_surface || !target_references_tag(target, |tag| tag == IT_TAG) {
+        if !*target_plural_surface
+            || !target_references_tag(target, |tag| {
+                tag == crate::tag::CompilerReferenceTag::It.as_str()
+            })
+        {
             return false;
         }
         bind_condition_antecedent_in_target(
@@ -480,10 +482,10 @@ pub fn bind_condition_collection_antecedent_in_effects(
     }
 
     fn bind(effect: &mut EffectAst, antecedent: &ObjectFilter) {
-        if rewrite_inline_collection_choice(effect, antecedent) {
+        if bind_inline_collection_choice(effect, antecedent) {
             return;
         }
-        if rewrite_plural_collection_move(effect, antecedent) {
+        if bind_plural_collection_move(effect, antecedent) {
             return;
         }
         match effect {
@@ -545,18 +547,22 @@ fn target_references_tag(target: &TargetAst, expected: impl Fn(&str) -> bool + C
 
 fn target_references_observed_object(target: &TargetAst) -> bool {
     target_references_tag(target, |tag| {
-        tag == IT_TAG || tag == "__public_revealed" || tag.starts_with("__sentence_helper_revealed")
+        tag == crate::tag::CompilerReferenceTag::It.as_str()
+            || tag == "__public_revealed"
+            || tag.starts_with("__sentence_helper_revealed")
     })
 }
 
-fn retarget_unresolved_it(target: &mut TargetAst, antecedent_tag: &crate::tag::TagKey) {
+fn bind_unresolved_it_to_antecedent(target: &mut TargetAst, antecedent_tag: &crate::tag::TagKey) {
     match target {
-        TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG => {
+        TargetAst::Tagged(tag, _)
+            if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() =>
+        {
             *tag = antecedent_tag.clone();
         }
         TargetAst::Object(filter, explicit_target_span, _) if explicit_target_span.is_none() => {
             for constraint in &mut filter.tagged_constraints {
-                if constraint.tag.as_str() == IT_TAG
+                if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                     && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
                 {
                     constraint.tag = antecedent_tag.clone();
@@ -564,7 +570,7 @@ fn retarget_unresolved_it(target: &mut TargetAst, antecedent_tag: &crate::tag::T
             }
         }
         TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
-            retarget_unresolved_it(inner, antecedent_tag);
+            bind_unresolved_it_to_antecedent(inner, antecedent_tag);
         }
         _ => {}
     }
@@ -618,7 +624,7 @@ fn bind_trigger_antecedent_after_observation_in_effects(
                     && !state.observed_object_was_moved
                     && let Some(target) = persistent_battlefield_subject(&mut subject_verb.action)
                 {
-                    retarget_unresolved_it(target, antecedent_tag);
+                    bind_unresolved_it_to_antecedent(target, antecedent_tag);
                 }
                 if state.saw_top_library_observation && moves_observed_object(&subject_verb.action)
                 {
@@ -686,7 +692,7 @@ fn source_deals_damage_to_player(effect: &EffectAst) -> bool {
     )
 }
 
-fn retarget_implicit_must_attack_to_source(effect: &mut EffectAst) {
+fn resolve_implicit_must_attack_to_source(effect: &mut EffectAst) {
     let EffectAst::SubjectVerb(subject_verb) = effect else {
         return;
     };
@@ -700,29 +706,29 @@ fn retarget_implicit_must_attack_to_source(effect: &mut EffectAst) {
         return;
     }
     if let TargetAst::Tagged(tag, span) = target
-        && tag.as_str() == IT_TAG
+        && tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     {
         *target = TargetAst::Source(*span);
     }
 }
 
-fn retarget_source_damage_attack_followups_to_source_internal(effects: &mut [EffectAst]) {
+fn resolve_source_damage_attack_followups_to_source_internal(effects: &mut [EffectAst]) {
     for index in 1..effects.len() {
         let (before, after) = effects.split_at_mut(index);
         if source_deals_damage_to_player(&before[index - 1]) {
-            retarget_implicit_must_attack_to_source(&mut after[0]);
+            resolve_implicit_must_attack_to_source(&mut after[0]);
         }
     }
 
     for effect in effects {
         for_each_nested_effects_mut(effect, true, |nested| {
-            retarget_source_damage_attack_followups_to_source_internal(nested);
+            resolve_source_damage_attack_followups_to_source_internal(nested);
         });
     }
 }
 
-pub fn retarget_source_damage_attack_followups_to_source(effects: &mut [EffectAst]) {
-    retarget_source_damage_attack_followups_to_source_internal(effects);
+pub fn resolve_source_damage_attack_followups_to_source(effects: &mut [EffectAst]) {
+    resolve_source_damage_attack_followups_to_source_internal(effects);
 }
 
 fn bind_condition_counter_antecedent_in_effect(effect: &mut EffectAst, counter_type: CounterType) {
@@ -757,17 +763,19 @@ pub fn bind_condition_counter_antecedent_in_effects(
     }
 }
 
-fn retarget_it_animation_target_to_source(target: &mut TargetAst) {
+fn resolve_it_animation_target_to_source(target: &mut TargetAst) {
     match target {
-        TargetAst::Tagged(tag, span) if tag.as_str() == IT_TAG => {
+        TargetAst::Tagged(tag, span)
+            if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() =>
+        {
             *target = TargetAst::Source(*span);
         }
-        TargetAst::WithCount(inner, _) => retarget_it_animation_target_to_source(inner),
+        TargetAst::WithCount(inner, _) => resolve_it_animation_target_to_source(inner),
         _ => {}
     }
 }
 
-fn retarget_it_animation_to_source(effect: &mut EffectAst) -> bool {
+fn resolve_it_animation_to_source(effect: &mut EffectAst) -> bool {
     // As with condition-filter binding, an implicit `it` that is retargeted to
     // the source is not a new local antecedent. Keep walking so a coordinated
     // sequence of source-bound grants/animations is retargeted consistently.
@@ -780,7 +788,7 @@ fn retarget_it_animation_to_source(effect: &mut EffectAst) -> bool {
         | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { target, .. } =
             &mut subject_verb.action
     {
-        retarget_it_animation_target_to_source(target);
+        resolve_it_animation_target_to_source(target);
     }
 
     if establishes_body_antecedent {
@@ -791,22 +799,22 @@ fn retarget_it_animation_to_source(effect: &mut EffectAst) -> bool {
     let mut every_nested_branch_establishes = true;
     for_each_nested_effects_mut(effect, true, |nested| {
         saw_nested = true;
-        every_nested_branch_establishes &= retarget_it_animations_to_source_internal(nested);
+        every_nested_branch_establishes &= resolve_it_animations_to_source_internal(nested);
     });
     saw_nested && every_nested_branch_establishes
 }
 
-fn retarget_it_animations_to_source_internal(effects: &mut [EffectAst]) -> bool {
+fn resolve_it_animations_to_source_internal(effects: &mut [EffectAst]) -> bool {
     for effect in effects {
-        if retarget_it_animation_to_source(effect) {
+        if resolve_it_animation_to_source(effect) {
             return true;
         }
     }
     false
 }
 
-pub fn retarget_it_animations_to_source(effects: &mut [EffectAst]) {
-    let _ = retarget_it_animations_to_source_internal(effects);
+pub fn resolve_it_animations_to_source(effects: &mut [EffectAst]) {
+    let _ = resolve_it_animations_to_source_internal(effects);
 }
 
 #[cfg(test)]
@@ -828,7 +836,7 @@ mod tests {
     }
 
     fn it_target() -> TargetAst {
-        TargetAst::Tagged(IT_TAG.into(), None)
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.as_str().into(), None)
     }
 
     #[test]
@@ -864,7 +872,11 @@ mod tests {
             filter: contested_lands,
         };
         let one_of_those = TargetAst::WithCount(
-            Box::new(TargetAst::Object(ObjectFilter::tagged(IT_TAG), None, None)),
+            Box::new(TargetAst::Object(
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
+                None,
+                None,
+            )),
             crate::effect::ChoiceCount::exactly(1),
         );
         let mut effects = vec![
@@ -906,7 +918,10 @@ mod tests {
         };
         assert!(count.is_single());
         assert_eq!(*player, PlayerAst::That);
-        assert_eq!(tag.as_str(), CONDITION_COLLECTION_CHOICE_TAG);
+        assert_eq!(
+            tag.as_str(),
+            crate::tag::CompilerReferenceTag::ConditionCollectionChoice.as_str()
+        );
         assert_eq!(filter.card_types, [crate::types::CardType::Land]);
         assert_eq!(
             filter.controller,
@@ -924,7 +939,7 @@ mod tests {
             &untap.action,
             SubjectVerbActionAst::Untap {
                 target: TargetAst::Tagged(untap_tag, _),
-            } if untap_tag.as_str() == IT_TAG
+            } if untap_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         ));
     }
 
@@ -984,7 +999,11 @@ mod tests {
             right: Value::Fixed(2),
         };
         let random_those = TargetAst::WithCount(
-            Box::new(TargetAst::Object(ObjectFilter::tagged(IT_TAG), None, None)),
+            Box::new(TargetAst::Object(
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
+                None,
+                None,
+            )),
             crate::effect::ChoiceCount::exactly(1).at_random(),
         );
         let mut effects = vec![EffectAst::subject_verb_destroy(random_those)];
@@ -1029,14 +1048,15 @@ mod tests {
             SubjectVerbActionAst::GrantAbilitiesToTarget {
                 target: TargetAst::Tagged(tag, _),
                 ..
-            } if tag.as_str() == IT_TAG
+            } if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         ));
     }
 
     #[test]
     fn source_exiled_count_condition_binds_plural_move_to_the_whole_collection() {
         let mut source_exiled =
-            ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(crate::zone::Zone::Exile);
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.key())
+                .in_zone(crate::zone::Zone::Exile);
         source_exiled.source_surface =
             Some(crate::target::SourceReferenceSurface::ThisPermanentType(
                 "this enchantment".to_string(),
@@ -1088,7 +1108,7 @@ mod tests {
             ),
         ];
 
-        retarget_source_damage_attack_followups_to_source(&mut effects);
+        resolve_source_damage_attack_followups_to_source(&mut effects);
 
         let EffectAst::SubjectVerb(grant) = &effects[1] else {
             panic!("expected grant effect");
@@ -1131,7 +1151,7 @@ mod tests {
             &untap.action,
             SubjectVerbActionAst::Untap {
                 target: TargetAst::Tagged(tag, _)
-            } if tag.as_str() == IT_TAG
+            } if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         ));
     }
 
@@ -1184,7 +1204,7 @@ mod tests {
             SubjectVerbActionAst::GrantAbilitiesToTarget {
                 target: TargetAst::Tagged(tag, _),
                 ..
-            } if tag.as_str() == IT_TAG
+            } if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         ));
     }
 
@@ -1248,7 +1268,7 @@ mod tests {
             }),
         ];
 
-        retarget_it_animations_to_source(&mut effects);
+        resolve_it_animations_to_source(&mut effects);
 
         let EffectAst::SubjectVerb(grant) = &effects[1] else {
             panic!("expected grant effect");
@@ -1258,7 +1278,7 @@ mod tests {
             SubjectVerbActionAst::GrantAbilitiesToTarget {
                 target: TargetAst::Tagged(tag, _),
                 ..
-            } if tag.as_str() == IT_TAG
+            } if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         ));
     }
 
@@ -1275,7 +1295,7 @@ mod tests {
         };
         let mut effects = vec![grant(), grant()];
 
-        retarget_it_animations_to_source(&mut effects);
+        resolve_it_animations_to_source(&mut effects);
 
         for grant in &effects {
             let EffectAst::SubjectVerb(grant) = grant else {
@@ -1368,7 +1388,7 @@ mod tests {
                     SubjectVerbActionAst::MoveToZone {
                         target: TargetAst::Tagged(tag, _),
                         ..
-                    } if tag.as_str() == IT_TAG
+                    } if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 )
         ));
     }
@@ -1419,7 +1439,7 @@ mod tests {
             };
             assert!(matches!(
                 target,
-                TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG
+                TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             ));
         }
     }

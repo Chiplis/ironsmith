@@ -683,7 +683,7 @@ fn parse_source_exiled_card_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAs
     if !is_source_reference_clause(source) {
         return None;
     }
-    let mut filter = ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG);
+    let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.key());
     filter.zone = Some(Zone::Exile);
     let source_words = source.word_refs();
     filter.source_surface = source_reference_surface_for_words(&source_words)

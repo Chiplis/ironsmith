@@ -65,7 +65,7 @@ impl LoweredSubject {
             track_last_player_filter,
         )?;
         if player == PlayerAst::Opponent {
-            let tag = TagKey::from(ctx.next_tag("choosing_opponent").as_str());
+            let tag = ctx.next_tag("choosing_opponent");
             subject.player_filter = PlayerFilter::TaggedPlayer(tag.clone());
             subject
                 .resolution_prelude

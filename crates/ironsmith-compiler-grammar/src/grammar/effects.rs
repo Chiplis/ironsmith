@@ -24,7 +24,7 @@ use super::super::util::{
 };
 use super::primitives;
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, IT_TAG, IfResultPredicate, PlayerAst, PredicateAst,
+    CardTextError, ChoiceCount, EffectAst, IfResultPredicate, PlayerAst, PredicateAst,
     ReturnControllerAst, SearchLibrarySlotAst, SubjectAst, SubjectVerbActionAst,
     SubjectVerbRoleAst, TagKey, TargetAst, TextSpan,
 };
@@ -39,7 +39,7 @@ use ironsmith_core::Value;
 use winnow::combinator::{alt, dispatch, fail, opt, peek};
 use winnow::error::{ContextError, ErrMode};
 use winnow::prelude::*;
-#[path = "effects/bundle_rules.rs"]
+#[path = "effects/effect_composition.rs"]
 mod bundle_rules;
 pub use bundle_rules::*;
 #[path = "effects/become_shapes.rs"]
@@ -93,7 +93,7 @@ pub mod followup_shapes;
 pub use exile_permission_followups::*;
 #[path = "effects/for_each_shapes.rs"]
 pub mod for_each_shapes;
-#[path = "effects/generic_program_shapes.rs"]
+#[path = "effects/composition_shapes.rs"]
 mod generic_program_shapes;
 pub use generic_program_shapes::*;
 #[path = "effects/gain_life_shapes.rs"]
@@ -152,7 +152,7 @@ pub mod remove_destroy_shapes;
 pub mod resource_shapes;
 #[path = "effects/sacrifice_discard_shapes.rs"]
 pub mod sacrifice_discard_shapes;
-#[path = "effects/sequence_quad_shapes.rs"]
+#[path = "effects/four_clause_shapes.rs"]
 pub mod sequence_quad_shapes;
 pub use next_spell_grants::*;
 #[path = "effects/search_library.rs"]
@@ -175,13 +175,13 @@ pub mod counter_marker_shapes;
 pub mod counter_stat_shapes;
 #[path = "effects/sentence_predicate_shapes.rs"]
 pub mod sentence_predicate_shapes;
-#[path = "effects/sequence_pairs.rs"]
+#[path = "effects/linked_clauses.rs"]
 mod sequence_pairs;
 #[path = "effects/special_sentence_shapes.rs"]
 pub mod special_sentence_shapes;
 #[path = "effects/subject_verb_registry_shapes.rs"]
 pub mod subject_verb_registry_shapes;
-#[path = "effects/triple_sequence_shapes.rs"]
+#[path = "effects/three_clause_shapes.rs"]
 pub mod triple_sequence_shapes;
 #[path = "effects/typed_clause_heads.rs"]
 pub mod typed_clause_heads;
@@ -602,6 +602,21 @@ pub fn prepare_cant_sentence_restriction_clause_lexed(
 
     let clause_tokens = cant_sentence_clause_tokens_for_restriction_scan_lexed(&clause_tokens);
     if !cant_sentence_has_supported_negation_gate_lexed(&clause_tokens) {
+        return Ok(None);
+    }
+
+    let coordinated_members =
+        chain_splitting::split_effect_chain_on_and_tokens(&clause_tokens, true);
+    if coordinated_members.len() > 1
+        && coordinated_members.iter().any(|member| {
+            super::activation_restrictions::parse_activation_negation_span_tokens(member).is_none()
+                && (chain_splitting::find_chain_verb_tokens(member).is_some()
+                    || chain_splitting::has_extended_effect_head_tokens(member))
+        })
+    {
+        // A complete affirmative member is not part of the restriction.
+        // Leave mixed action/restriction coordination to the typed chain
+        // grammar so no member can be silently discarded by cant lowering.
         return Ok(None);
     }
 
@@ -1274,11 +1289,14 @@ fn prevent_damage_effect_with_optional_condition(
         let predicate = condition_filter.map_or_else(
             || {
                 PredicateAst::TargetMatches(
-                    ObjectFilter::default().shares_color_with_tagged(TagKey::from(IT_TAG)),
+                    ObjectFilter::default()
+                        .shares_color_with_tagged(crate::tag::CompilerReferenceTag::It.key()),
                 )
             },
             |filter| {
-                PredicateAst::TargetMatches(filter.shares_color_with_tagged(TagKey::from(IT_TAG)))
+                PredicateAst::TargetMatches(
+                    filter.shares_color_with_tagged(crate::tag::CompilerReferenceTag::It.key()),
+                )
             },
         );
         EffectAst::Conditional {
@@ -1498,7 +1516,9 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
         ],
     ) {
         return Ok(Some(vec![EffectAst::subject_verb_cant(
-            crate::effect::Restriction::Untap(ObjectFilter::tagged(IT_TAG)),
+            crate::effect::Restriction::Untap(ObjectFilter::tagged(
+                crate::tag::CompilerReferenceTag::It.key(),
+            )),
             crate::effect::Until::ControllersNextUntapStep,
             None,
         )]));
@@ -1661,6 +1681,6 @@ pub fn parse_cant_effect_sentence(
 mod cant_duration_shapes;
 pub use cant_duration_shapes::*;
 
-#[path = "effects/effects_library_programs.rs"]
+#[path = "effects/effects_library.rs"]
 mod effects_library_programs;
 pub use effects_library_programs::parse_search_library_sentence_with_grammar_entrypoint_lexed;

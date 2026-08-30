@@ -12,15 +12,6 @@ use subject_verb_late::compile_subject_verb_late;
 use subject_verb_middle::compile_subject_verb_middle;
 
 type EffectCompileOutcome = (Vec<Effect>, Vec<ChooseSpec>);
-type EffectCompileHandler = fn(
-    &EffectAst,
-    &mut EffectLoweringContext,
-) -> Result<Option<EffectCompileOutcome>, CardTextError>;
-
-#[derive(Clone, Copy)]
-struct EffectCompileHandlerDef {
-    run: EffectCompileHandler,
-}
 
 fn with_target_count_preserving_value(spec: ChooseSpec, count: ChoiceCount) -> ChooseSpec {
     if let Some(value) = spec.count_value().cloned() {
@@ -605,15 +596,14 @@ fn bind_explicit_that_card_token_stat_reference(
 ) -> Value {
     let reference_tag = ctx
         .last_exiled_collection_tag
-        .as_deref()
-        .map(TagKey::from)
+        .clone()
         .or_else(|| current_reference_env(ctx).known_last_object_tag().cloned());
     let bind_spec = |spec: &ChooseSpec| {
         if matches!(
             spec.base(),
             ChooseSpec::Tagged(tag)
                 if tag.as_str()
-                    == crate::model::token_definition::TOKEN_DYNAMIC_THAT_CARD_TAG
+                    == crate::tag::CompilerReferenceTag::TokenDynamicThatCard.as_str()
         ) {
             reference_tag
                 .as_ref()
@@ -709,13 +699,13 @@ fn choose_spec_owned_by_iterated_player(spec: &ChooseSpec) -> bool {
     }
 }
 
-fn reserved_or_next_object_tag(ctx: &mut EffectLoweringContext, prefix: &str) -> String {
+fn reserved_or_next_object_tag(ctx: &mut EffectLoweringContext, prefix: &str) -> TagKey {
     let prefix_with_sep = format!("{prefix}_");
     ctx.take_reserved_object_result_tag(prefix)
         .or_else(|| {
             ctx.last_object_tag
                 .clone()
-                .filter(|tag| tag.starts_with(&prefix_with_sep))
+                .filter(|tag| tag.as_str().starts_with(&prefix_with_sep))
         })
         .unwrap_or_else(|| ctx.next_tag(prefix))
 }
@@ -752,17 +742,17 @@ fn resolve_tagged_top_library_condition(
     match condition {
         crate::ConditionExpr::TaggedObjectIsTopOfLibrary { tag, player } => {
             let resolved_tag = if tag.as_str() == "__last_revealed__" {
-                TagKey::from(ctx.last_revealed_tag.clone().ok_or_else(|| {
+                ctx.last_revealed_tag.clone().ok_or_else(|| {
                     CardTextError::ParseError(
                         "unable to resolve last revealed card without prior reveal".to_string(),
                     )
-                })?)
-            } else if tag.as_str() == IT_TAG {
-                TagKey::from(ctx.last_object_tag.clone().ok_or_else(|| {
+                })?
+            } else if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+                ctx.last_object_tag.clone().ok_or_else(|| {
                     CardTextError::ParseError(
                         "unable to resolve 'it' without prior reference".to_string(),
                     )
-                })?)
+                })?
             } else {
                 tag.clone()
             };
@@ -786,57 +776,14 @@ fn resolve_tagged_top_library_condition(
     }
 }
 
-const EFFECT_COMPILE_HANDLERS: [EffectCompileHandlerDef; 14] = [
-    EffectCompileHandlerDef {
-        run: effect_combat_resource_handlers::try_compile_combat_and_damage_effect,
-    },
-    EffectCompileHandlerDef {
-        run: effect_combat_resource_handlers::try_compile_board_state_effect,
-    },
-    EffectCompileHandlerDef {
-        run: effect_combat_resource_handlers::try_compile_player_resource_and_choice_effect,
-    },
-    EffectCompileHandlerDef {
-        run: effect_handlers::try_compile_timing_and_control_effect,
-    },
-    EffectCompileHandlerDef {
-        run: effect_flow_search_handlers::try_compile_flow_and_iteration_effect,
-    },
-    EffectCompileHandlerDef {
-        run: effect_handlers::try_compile_destroy_and_exile_effect,
-    },
-    EffectCompileHandlerDef {
-        run: effect_visibility_object_handlers::try_compile_visibility_and_card_selection_effect,
-    },
-    EffectCompileHandlerDef {
-        run: effect_handlers::try_compile_stack_and_condition_effect,
-    },
-    EffectCompileHandlerDef {
-        run: effect_handlers::try_compile_attachment_and_setup_effect,
-    },
-    EffectCompileHandlerDef {
-        run: effect_flow_search_handlers::try_compile_token_generation_effect,
-    },
-    EffectCompileHandlerDef {
-        run: effect_continuous_turn_handlers::try_compile_continuous_and_modifier_effect,
-    },
-    EffectCompileHandlerDef {
-        run: effect_flow_search_handlers::try_compile_search_and_reorder_effect,
-    },
-    EffectCompileHandlerDef {
-        run: effect_visibility_object_handlers::try_compile_object_zone_and_exchange_effect,
-    },
-    EffectCompileHandlerDef {
-        run: effect_continuous_turn_handlers::try_compile_player_turn_and_counter_effect,
-    },
-];
-
-fn retarget_target_is_bare_it(target: &TargetAst) -> bool {
+fn target_is_bare_it(target: &TargetAst) -> bool {
     match target {
-        TargetAst::Tagged(tag, _) => tag.as_str() == IT_TAG,
-        TargetAst::Object(filter, _, _) => filter == &ObjectFilter::tagged(IT_TAG),
+        TargetAst::Tagged(tag, _) => tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str(),
+        TargetAst::Object(filter, _, _) => {
+            filter == &ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key())
+        }
         TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
-            retarget_target_is_bare_it(inner)
+            target_is_bare_it(inner)
         }
         _ => false,
     }
@@ -1146,7 +1093,7 @@ fn compile_effect_inner(
         // target slots, so each explicit TargetOnly action must keep its
         // inner `targeted_N` tag.
         let preserves_explicit_chosen_target_slot = tag.as_str()
-            == crate::cards::builders::CHOSEN_OBJECTS_TAG
+            == crate::tag::CompilerReferenceTag::ChosenObjects.as_str()
             && matches!(
                 effect.as_ref(),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -1182,13 +1129,13 @@ fn compile_effect_inner(
                 "tag-affected nested effect may only have target or capture preludes".to_string(),
             ));
         }
-        ctx.last_object_tag = Some(tag.as_str().to_string());
-        if wraps_plural_exile_collection && is_sentence_helper_exiled_collection_tag(tag.as_str()) {
+        ctx.last_object_tag = Some(tag.clone());
+        if wraps_plural_exile_collection && is_sentence_helper_exiled_collection_tag(tag) {
             // The explicit outcome wrapper suppresses the nested ExileAll
             // action's automatic tag. Preserve the collection facts that the
             // automatic path would have recorded so a following plural cast
             // permission remains plural as well.
-            ctx.last_exiled_collection_tag = Some(tag.as_str().to_string());
+            ctx.last_exiled_collection_tag = Some(tag.clone());
             ctx.last_exiled_collection_is_plural = true;
         }
         lowered.push(inner.tag_all(tag.clone()));
@@ -1578,12 +1525,23 @@ fn try_compile_effect_via_handlers(
     effect: &EffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<EffectCompileOutcome>, CardTextError> {
-    for EffectCompileHandlerDef { run, .. } in EFFECT_COMPILE_HANDLERS {
-        if let Some(compiled) = run(effect, ctx)? {
-            return Ok(Some(compiled));
-        }
+    if let Some(compiled) = effect_handlers::try_compile_timing_and_control_effect(effect, ctx)? {
+        return Ok(Some(compiled));
     }
-    Ok(None)
+    if let Some(compiled) =
+        effect_flow_search_handlers::try_compile_flow_and_iteration_effect(effect, ctx)?
+    {
+        return Ok(Some(compiled));
+    }
+    if let Some(compiled) = effect_handlers::try_compile_stack_and_condition_effect(effect, ctx)? {
+        return Ok(Some(compiled));
+    }
+    if let Some(compiled) =
+        effect_flow_search_handlers::try_compile_search_and_reorder_effect(effect, ctx)?
+    {
+        return Ok(Some(compiled));
+    }
+    effect_visibility_object_handlers::try_compile_object_zone_and_exchange_effect(effect, ctx)
 }
 
 fn compile_subject_verb_effect(
@@ -2024,7 +1982,7 @@ fn is_iterated_pronoun_move_to_zone(
                 attached_to: None,
                 all: false,
                 ..
-            } if tag.as_str() == IT_TAG
+            } if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         )
 }
 
@@ -2622,7 +2580,10 @@ mod nested_result_value_link_tests {
 
         assert!(debug.contains("linked_primary"), "{debug}");
         assert!(!debug.contains("destroyed_"), "{debug}");
-        assert_eq!(ctx.last_object_tag.as_deref(), Some("linked_primary"));
+        assert_eq!(
+            ctx.last_object_tag.as_ref().map(|tag| tag.as_str()),
+            Some("linked_primary")
+        );
     }
 
     #[test]
@@ -2634,7 +2595,7 @@ mod nested_result_value_link_tests {
         );
         let ast = EffectAst::TagAffected {
             effect: Box::new(EffectAst::subject_verb_explicit_target_only(target)),
-            tag: TagKey::from(crate::cards::builders::CHOSEN_OBJECTS_TAG),
+            tag: crate::tag::CompilerReferenceTag::ChosenObjects.key(),
         };
         let mut ctx = EffectLoweringContext::new();
         ctx.auto_tag_object_targets = true;
@@ -2648,7 +2609,7 @@ mod nested_result_value_link_tests {
             .expect("chosen collection should remain the outer tag");
         assert_eq!(
             outer.tag.as_str(),
-            crate::cards::builders::CHOSEN_OBJECTS_TAG
+            crate::tag::CompilerReferenceTag::ChosenObjects.as_str()
         );
         let inner = outer
             .effect
@@ -2662,8 +2623,8 @@ mod nested_result_value_link_tests {
                 .is_some()
         );
         assert_eq!(
-            ctx.last_object_tag.as_deref(),
-            Some(crate::cards::builders::CHOSEN_OBJECTS_TAG)
+            ctx.last_object_tag.as_ref().map(|tag| tag.as_str()),
+            Some(crate::tag::CompilerReferenceTag::ChosenObjects.as_str())
         );
     }
 }

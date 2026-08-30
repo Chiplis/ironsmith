@@ -12,8 +12,8 @@ use super::zone_counter_helpers::{split_until_source_leaves_tail, target_object_
 use super::zone_handlers::collapse_leading_signed_pt_modifier_tokens;
 use super::{apply_where_x_to_damage_amounts, find_verb, parse_simple_gain_ability_clause};
 use crate::cards::builders::{
-    CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, TagKey, TargetAst, Verb,
+    CardTextError, EffectAst, PlayerAst, PredicateAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    TagKey, TargetAst, Verb,
 };
 use crate::effect::{EventValueSpec, Until, Value};
 use crate::model::visit::for_each_nested_effects_mut;
@@ -185,16 +185,16 @@ pub fn parse_same_name_fanout_filter(
         ))
     })?;
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: TagKey::from(IT_TAG),
+        tag: crate::tag::CompilerReferenceTag::It.key(),
         relation: TaggedOpbjectRelation::SameNameAsTagged,
     });
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: TagKey::from(IT_TAG),
+        tag: crate::tag::CompilerReferenceTag::It.key(),
         relation: TaggedOpbjectRelation::IsNotTaggedObject,
     });
     if controller_shape.same_controller {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
             relation: TaggedOpbjectRelation::SameControllerAsTagged,
         });
     }
@@ -317,11 +317,11 @@ pub fn parse_shared_color_fanout_filter(
         ))
     })?;
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: TagKey::from(IT_TAG),
+        tag: crate::tag::CompilerReferenceTag::It.key(),
         relation: TaggedOpbjectRelation::SharesColorWithTagged,
     });
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: TagKey::from(IT_TAG),
+        tag: crate::tag::CompilerReferenceTag::It.key(),
         relation: TaggedOpbjectRelation::IsNotTaggedObject,
     });
     Ok(Some(filter))
@@ -738,10 +738,12 @@ fn parse_damage_part(
                 )
             }
             fanout_grammar::DamageBackReferenceShape::ThatObject => {
-                TargetAst::Tagged(TagKey::from(IT_TAG), None)
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None)
             }
             fanout_grammar::DamageBackReferenceShape::ThatObjectController => TargetAst::Player(
-                PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged(IT_TAG)),
+                PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged(
+                    crate::tag::CompilerReferenceTag::It.key(),
+                )),
                 None,
             ),
         };
@@ -1539,7 +1541,7 @@ mod coordinated_target_tests {
         assert!(matches!(
             target,
             TargetAst::Player(PlayerFilter::ControllerOf(reference), None)
-                if matches!(reference, crate::target::ObjectRef::Tagged(tag) if tag.as_str() == IT_TAG)
+                if matches!(reference, crate::target::ObjectRef::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
         ));
 
         let owner = lex_line(
@@ -1694,15 +1696,14 @@ mod coordinated_target_tests {
         let (_, choices) = crate::compile_support::compile_trigger_effects(None, &parsed)
             .expect("the typed serial targets should lower");
         assert_eq!(choices.len(), 3, "lowered choices: {choices:#?}");
-        let (_, prepared) =
-            crate::lowering_support::rewrite_prepare_triggered_effects_for_lowering(
-                crate::cards::builders::TriggerSpec::ThisEntersBattlefield {
-                    origin_condition: None,
-                },
-                &parsed,
-                crate::model::reference_state::ReferenceImports::default(),
-            )
-            .expect("the typed serial targets should prepare");
+        let (_, prepared) = crate::lowering_support::stage_triggered_effects_for_lowering(
+            crate::cards::builders::TriggerSpec::ThisEntersBattlefield {
+                origin_condition: None,
+            },
+            &parsed,
+            crate::model::reference_state::ReferenceImports::default(),
+        )
+        .expect("the typed serial targets should prepare");
         let (lowered, _) =
             crate::compile_support::materialize_prepared_triggered_effects(&prepared)
                 .expect("the prepared serial targets should materialize");

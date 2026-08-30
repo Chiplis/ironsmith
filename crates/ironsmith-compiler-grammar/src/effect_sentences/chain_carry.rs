@@ -64,12 +64,9 @@ use crate::recognition::{ParseOutcome, RuleId};
 use crate::registry::{HeadDiscriminator, RegistryRuleMetadata};
 use crate::util::span_from_tokens;
 
-const ENCHANTED_TAG_NAME: &str = "enchanted";
-const SENTENCE_HELPER_REVEALED_TAG_PREFIX: &str = "__sentence_helper_revealed";
 use crate::cards::builders::{
-    CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, ReturnControllerAst,
-    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey,
-    TargetAst, TextSpan,
+    CardTextError, EffectAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::target::{
@@ -119,7 +116,7 @@ fn parse_quantified_participant_subject_effect(
 ) -> Result<Option<EffectAst>, CardTextError> {
     // Some quantified-player clauses describe one coordinated choice across
     // multiple zones.  Preserve those full-clause specialists before the
-    // generic fanout path strips the participant subject and reparses the
+    // generic fanout path strips the participant subject and recognizes the
     // remainder as one object filter (which would intersect the zone arms).
     if let Some(effect) =
         super::zone_handlers::parse_each_opponent_exiles_card_from_their_hand_or_permanent_they_control(
@@ -166,7 +163,7 @@ fn parse_choose_land_of_each_basic_land_type_segment(
                     count: ChoiceCount::exactly(1),
                     count_value: None,
                     player: PlayerAst::Implicit,
-                    tag: TagKey::from(crate::cards::builders::IT_TAG),
+                    tag: crate::tag::CompilerReferenceTag::It.key(),
                 }
             })
             .collect(),
@@ -331,7 +328,8 @@ pub fn parse_reveal_source_exiled_permanents_sentence_lexed(
         SourceLinkedExileReferenceKind::CardType(_) => return None,
     };
     let mut source_exiled =
-        ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile);
+        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.key())
+            .in_zone(Zone::Exile);
     source_exiled.owner = Some(PlayerFilter::IteratedPlayer);
     source_exiled.source_surface = Some(SourceReferenceSurface::ThisPermanentType(
         source_surface.to_string(),
@@ -490,7 +488,7 @@ pub(crate) fn parse_simple_that_creature_owner_library_placement(
         return None;
     }
 
-    let mut filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
+    let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
     filter.card_types.push(CardType::Creature);
     filter.set_explicit_card_type_noun(Some(CardType::Creature));
     Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -594,10 +592,11 @@ fn parse_effect_chain_lexed_inner(
     {
         return Ok(effects);
     }
-    if let Some(effects) =
-        super::subject_verb_primitives::parse_sentence_shuffle_object_into_library(
-            SubjectVerbPrimitiveClause::new(tokens),
-        )?
+    if parse_leading_player_may_lexed(tokens).is_none()
+        && let Some(effects) =
+            super::subject_verb_primitives::parse_sentence_shuffle_object_into_library(
+                SubjectVerbPrimitiveClause::new(tokens),
+            )?
     {
         return Ok(effects);
     }
@@ -737,13 +736,38 @@ fn parse_effect_chain_lexed_inner(
     {
         return Ok(vec![copy]);
     }
+    // A hand/graveyard-into-library shuffle owns its complete clause. The
+    // chain splitter would otherwise sever the coordinated zone list ("their
+    // hand and graveyard into their library") and hand the shuffle verb a
+    // bare "their hand" fragment.
+    if let Some(effects) =
+        super::search_library::parse_shuffle_graveyard_into_library_sentence(tokens)?
+    {
+        return Ok(effects);
+    }
+    // A tagged cast/play permission owns its complete sentence, including a
+    // coordinated "and you may spend mana as though ..." payment suffix. The
+    // chain splitter would otherwise sever that suffix into a verb-less arm
+    // that no clause grammar accepts.
+    {
+        let words = crate::lexer::parser_token_word_refs(tokens);
+        if crate::word_primitives::sequence_occurs(&words, &["for", "as", "long", "as"])
+            && crate::word_primitives::sequence_occurs(
+                &words,
+                &["may", "spend", "mana", "as", "though"],
+            )
+            && let Some(permission) =
+                crate::permission_helpers::parse_cast_or_play_tagged_clause(tokens)?
+        {
+            return Ok(vec![permission]);
+        }
+    }
     // A paid-label condition owns the complete consequence, including every
-    // authored conjunction inside it.  This must run before the ordinary
-    // chain splitter: a consequence such as "phase out, and until ..., can't
-    // change and gain protection" contains several independently executable
-    // heads, so the splitter can otherwise lower those heads and discard the
-    // leading condition before the subject/verb priority route below is ever
-    // reached.
+    // authored conjunction inside it. A consequence such as "phase out, and
+    // until ..., can't change and gain protection" contains several
+    // independently executable heads, but the typed leading condition makes
+    // them members of one conditional consequence rather than top-level
+    // coordination.
     if leading_condition_is_paid_label(tokens) {
         let Some(mut effects) =
             parse_conditional_sentence_family_lexed(tokens, parse_effect_chain_lexed)?
@@ -1104,6 +1128,19 @@ fn parse_effect_chain_uncoordinated_lexed(
 
     let comma_then_segments = split_segments_on_comma_then_lexed(vec![tokens]);
     if let Some(effects) = parse_inline_looked_card_partition_chain(tokens) {
+        return Ok(effects);
+    }
+    // A hand/graveyard-into-library shuffle owns its complete clause even
+    // when a participant loop already stripped the subject; coordination
+    // would otherwise sever the zone list from the shuffle verb. An optional
+    // shuffle keeps its `may` scope through the may-aware routes.
+    if parse_leading_player_may_lexed(tokens).is_none()
+        && !chain_grammar::starts_with_may_tokens(tokens)
+        && super::super::grammar::effects::parse_shuffle_graveyard_shape_lexed(tokens)
+            .is_some_and(|shape| shape.has_hand_clause)
+        && let Some(effects) =
+            super::search_library::parse_shuffle_graveyard_into_library_sentence(tokens)?
+    {
         return Ok(effects);
     }
     if let [mill_tokens, followup_tokens] = comma_then_segments.as_slice() {
@@ -1949,6 +1986,19 @@ fn parse_effect_chain_inner_lexed_unstacked(
         return Ok(vec![effect]);
     }
     if let Some(effects) = parse_inline_looked_card_partition_chain(tokens) {
+        return Ok(effects);
+    }
+    // A hand/graveyard-into-library shuffle owns its complete clause even
+    // when a participant loop already stripped the subject; coordination
+    // would otherwise sever the zone list from the shuffle verb. An optional
+    // shuffle keeps its `may` scope through the may-aware routes.
+    if parse_leading_player_may_lexed(tokens).is_none()
+        && !chain_grammar::starts_with_may_tokens(tokens)
+        && super::super::grammar::effects::parse_shuffle_graveyard_shape_lexed(tokens)
+            .is_some_and(|shape| shape.has_hand_clause)
+        && let Some(effects) =
+            super::search_library::parse_shuffle_graveyard_into_library_sentence(tokens)?
+    {
         return Ok(effects);
     }
     // A gain/get compound carries one shared target and can also carry a
@@ -2919,7 +2969,7 @@ fn bind_each_prior_affected_object_controller_life_gain(
             }),
             Value::ManaValueOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag == prior_tag) => {
                 Some(Value::ManaValueOf(Box::new(
-                    ChooseSpec::Tagged(TagKey::from(IT_TAG))
+                    ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())
                         .with_surface_hints(spec.surface_hints().iter().cloned()),
                 )))
             }
@@ -3068,12 +3118,12 @@ pub enum Verb {
     End,
 }
 
-#[path = "chain_carry/chain_carry_zone_programs.rs"]
+#[path = "chain_carry/chain_carry_zone.rs"]
 mod chain_carry_zone_programs;
 pub use chain_carry_zone_programs::{
     parse_return_it_then_loses_all_abilities_lexed, remove_first_word, remove_through_first_word,
 };
-#[path = "chain_carry/chain_carry_reference_programs.rs"]
+#[path = "chain_carry/chain_carry_reference.rs"]
 mod chain_carry_reference_programs;
 pub use chain_carry_reference_programs::{
     bind_implicit_player_context, collapse_for_each_object_it_tag_followups,
@@ -3093,7 +3143,7 @@ use chain_carry_reference_programs::{
     parse_leading_player_may_words, player_target_carry_context, subject_verb_player_action_player,
     subject_verb_player_action_player_mut, target_ast_is_source,
 };
-#[path = "chain_carry/chain_carry_combat_programs.rs"]
+#[path = "chain_carry/chain_carry_combat.rs"]
 mod chain_carry_combat_programs;
 use chain_carry_combat_programs::{
     append_shared_damage_player_operand, source_damage_then_gain_ability_actions,
@@ -3102,7 +3152,7 @@ pub use chain_carry_combat_programs::{
     collapse_token_copy_end_of_combat_exile_followup,
     collapse_token_copy_end_of_combat_exile_followup_lexed,
 };
-#[path = "chain_carry/chain_carry_object_action_programs.rs"]
+#[path = "chain_carry/chain_carry_object_action.rs"]
 mod chain_carry_object_action_programs;
 use chain_carry_object_action_programs::parse_tap_those_then_unattach_equipment_lexed;
 pub use chain_carry_object_action_programs::{
@@ -3110,13 +3160,13 @@ pub use chain_carry_object_action_programs::{
     collapse_token_copy_next_end_step_exile_followup_lexed,
     expand_segments_with_multi_create_clauses_lexed,
 };
-#[path = "chain_carry/chain_carry_condition_programs.rs"]
+#[path = "chain_carry/chain_carry_condition.rs"]
 mod chain_carry_condition_programs;
 use chain_carry_condition_programs::{parse_carried_cant_effects, trailing_if_predicate_supported};
 pub use chain_carry_condition_programs::{
     parse_effect_clause_with_trailing_if, parse_effect_clause_with_trailing_if_lexed,
 };
-#[path = "chain_carry/chain_carry_core_programs.rs"]
+#[path = "chain_carry/chain_carry_core.rs"]
 mod chain_carry_core_programs;
 use chain_carry_core_programs::{
     apply_carried_effect_duration, is_orphan_rounded_up_where_x_tail,
@@ -3126,13 +3176,13 @@ pub use chain_carry_core_programs::{
     expand_missing_verb_segment_lexed, expand_segments_with_comma_action_clauses_lexed, find_verb,
     parse_effect_chain, parse_effect_chain_inner, parse_effect_chain_lexed_with_context,
 };
-#[path = "chain_carry/chain_carry_choice_programs.rs"]
+#[path = "chain_carry/chain_carry_choice.rs"]
 mod chain_carry_choice_programs;
 use chain_carry_choice_programs::{
     explicit_target_choose_spec, normalize_imperative_choose_player,
     parse_player_chooses_source_excluded_permanent_then_exiles,
 };
-#[path = "chain_carry/chain_carry_resource_programs.rs"]
+#[path = "chain_carry/chain_carry_resource.rs"]
 mod chain_carry_resource_programs;
 use chain_carry_resource_programs::{
     bind_adjacent_life_stat_pronouns, effect_uses_half_life_total_value, value_is_half_life_total,
@@ -3141,13 +3191,13 @@ pub use chain_carry_resource_programs::{
     bind_adjacent_shared_x_life_stat_values,
     collapse_token_copy_next_end_step_sacrifice_followup_lexed,
 };
-#[path = "chain_carry/chain_carry_library_programs.rs"]
+#[path = "chain_carry/chain_carry_library.rs"]
 mod chain_carry_library_programs;
 use chain_carry_library_programs::{
     bind_adjacent_discard_count_draws, bind_adjacent_implicit_draw_discard_subjects,
     for_each_revealed_this_way_filter, is_revealed_this_way_scalar_reward,
     sentence_helper_revealed_tag,
 };
-#[path = "chain_carry/chain_carry_ability_programs.rs"]
+#[path = "chain_carry/chain_carry_ability.rs"]
 mod chain_carry_ability_programs;
 use chain_carry_ability_programs::effect_duration_for_gain_followup_carry;

@@ -441,7 +441,7 @@ impl CardDefinitionBuilder {
             other if other.lowers_to_static_ability() => {
                 let text = other.display_text();
                 let static_ability =
-                    crate::lowering_support::rewrite_static_ability_for_keyword_action(other)
+                    crate::lowering_support::runtime_static_ability_for_keyword_action(other)
                         .unwrap_or_else(|| {
                             crate::static_abilities::StaticAbility::keyword_marker(text.clone())
                         });
@@ -2567,15 +2567,3 @@ impl CardDefinitionBuilder {
         }
     }
 }
-
-pub const IT_TAG: &str = crate::host::IT_TAG;
-pub const ADDITIONAL_COST_OBJECT_TAG: &str = crate::host::ADDITIONAL_COST_OBJECT_TAG;
-pub const THIS_WAY_SACRIFICED_TAG: &str = crate::host::THIS_WAY_SACRIFICED_TAG;
-pub const CHOSEN_OBJECTS_TAG: &str = crate::host::CHOSEN_OBJECTS_TAG;
-pub const COPIED_STACK_OBJECT_TAG: &str = crate::host::COPIED_STACK_OBJECT_TAG;
-/// Parse-time alias for an authored target selected by the ability's
-/// controller (for example, "the creature you chose").
-pub const ABILITY_CONTROLLER_TARGET_CHOICE_TAG: &str = "__ability_controller_target_choice_0";
-/// Parse-time alias for an authored target selected by the opponent tied to a
-/// prior target (for example, "the creature your opponent chose").
-pub const OPPONENT_TARGET_CHOICE_TAG: &str = "__opponent_target_choice_1";

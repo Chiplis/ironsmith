@@ -208,17 +208,17 @@ pub struct DiscardedThisWayModifierShape {
 #[path = "relational/tests.rs"]
 mod tests;
 
-#[path = "relational/library_programs.rs"]
+#[path = "relational/library.rs"]
 mod library_programs;
 pub use library_programs::{
     is_pronoun_library_choice_put_shape, parse_discarded_this_way_modifier_shape,
 };
-#[path = "relational/object_action_programs.rs"]
+#[path = "relational/object_action.rs"]
 mod object_action_programs;
 pub use object_action_programs::parse_modifier_duration_for_each_tokens;
-#[path = "relational/reference_programs.rs"]
+#[path = "relational/reference.rs"]
 mod reference_programs;
 pub use reference_programs::{parse_control_player_shape, parse_hexproof_targeting_override_shape};
-#[path = "relational/core_programs.rs"]
+#[path = "relational/core.rs"]
 mod core_programs;
 pub use core_programs::parse_passive_goad_shape;

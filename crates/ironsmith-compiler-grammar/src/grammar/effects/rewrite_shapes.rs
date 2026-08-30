@@ -113,7 +113,7 @@ pub fn parse_compound_buff_unblockable_tokens(
 #[path = "rewrite_shapes_inline_tests.rs"]
 mod tests;
 
-#[path = "rewrite_shapes/combat_programs.rs"]
+#[path = "rewrite_shapes/combat.rs"]
 mod combat_programs;
 pub use combat_programs::parse_cant_blocked_base_power_toughness_tokens;
 use combat_programs::{parse_cant_be_blocked, parse_cant_blocked_base_power_toughness_lexed};

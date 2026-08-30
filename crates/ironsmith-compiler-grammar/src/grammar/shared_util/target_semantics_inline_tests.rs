@@ -158,7 +158,7 @@ fn counters_put_on_it_this_way_keeps_exact_producer_set_reference() {
         Some(ironsmith_core::PriorEffectAction::CountersPut)
     );
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == IT_TAG
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
 }
@@ -171,7 +171,7 @@ fn became_a_creature_this_way_keeps_exact_animation_result_reference() {
     };
     assert!(filter.card_types.contains(&CardType::Artifact));
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == IT_TAG
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
 }
@@ -307,7 +307,7 @@ fn qualified_typed_demonstrative_target_keeps_prior_object_identity() {
         panic!("expected qualified demonstrative object target with reference span");
     };
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == IT_TAG
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
     assert_eq!(
@@ -323,7 +323,7 @@ fn definite_card_target_is_a_tagged_reference() {
     let TargetAst::Tagged(tag, Some(_span)) = parse("the card") else {
         panic!("expected definite card reference");
     };
-    assert_eq!(tag.as_str(), IT_TAG);
+    assert_eq!(tag.as_str(), crate::tag::CompilerReferenceTag::It.as_str());
 }
 
 #[test]
@@ -331,7 +331,7 @@ fn bare_anaphoric_and_attachment_targets_reach_typed_semantics() {
     let TargetAst::Tagged(it, _) = parse("it") else {
         panic!("expected bare it to resolve as a tagged reference");
     };
-    assert_eq!(it.as_str(), IT_TAG);
+    assert_eq!(it.as_str(), crate::tag::CompilerReferenceTag::It.as_str());
 
     let TargetAst::Object(enchanted, _, _) = parse("enchanted creature") else {
         panic!("expected enchanted creature to resolve as an attachment reference");
@@ -352,7 +352,7 @@ fn sacrificed_object_target_is_a_typed_tagged_reference() {
     let TargetAst::Tagged(tag, Some(_span)) = parse("the sacrificed creature") else {
         panic!("expected tagged sacrificed-object reference");
     };
-    assert_eq!(tag.as_str(), IT_TAG);
+    assert_eq!(tag.as_str(), crate::tag::CompilerReferenceTag::It.as_str());
 }
 
 #[test]

@@ -60,6 +60,7 @@ fn tracked_production_modules(repo_root: &Path) -> Result<Vec<PathBuf>, String> 
         .lines()
         .map(PathBuf::from)
         .filter(|path| is_parser_module(path) && !is_test_only(path))
+        .filter(|path| repo_root.join(path).is_file())
         .collect::<Vec<_>>();
     modules.sort();
     modules.dedup();

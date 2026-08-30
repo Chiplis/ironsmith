@@ -3,13 +3,13 @@ use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming, T
 use crate::card::PowerToughness;
 use crate::cards::CardDefinition;
 use crate::cards::builders::{
-    COPIED_STACK_OBJECT_TAG, CardDefinitionBuilder, CardTextError, ClashOpponentAst,
-    ControlDurationAst, DamageBySpec, EffectAst, EffectLoweringContext, ExchangeValueAst,
-    ExchangeValueKindAst, ExtraTurnAnchorAst, GrantedAbilityAst, IT_TAG, IdGenContext,
-    IfResultPredicate, LoweringFrame, NormalizedLine, ObjectRefAst, PlayerAst, PredicateAst,
-    PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, RetargetModeAst,
-    ReturnControllerAst, SharedTypeConstraintAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    SubjectVerbRoleAst, TagKey, TargetAst, TriggerSpec, TurnHistoryPredicateAst,
+    CardDefinitionBuilder, CardTextError, ClashOpponentAst, ControlDurationAst, DamageBySpec,
+    EffectAst, EffectLoweringContext, ExchangeValueAst, ExchangeValueKindAst, ExtraTurnAnchorAst,
+    GrantedAbilityAst, IdGenContext, IfResultPredicate, LoweringFrame, NormalizedLine,
+    ObjectRefAst, PlayerAst, PredicateAst, PreventNextTimeDamageSourceAst,
+    PreventNextTimeDamageTargetAst, RetargetModeAst, ReturnControllerAst, SharedTypeConstraintAst,
+    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TriggerSpec,
+    TurnHistoryPredicateAst,
 };
 use crate::color::{Color, ColorSet};
 use crate::cost::TotalCost;
@@ -39,14 +39,13 @@ use super::effect_pipeline::{
     PreparedTriggeredEffectsForLowering,
 };
 use super::lowering_support::{
-    rewrite_lower_parsed_ability as lower_parsed_ability, rewrite_lower_static_ability_ast,
-    rewrite_parsed_triggered_ability, rewrite_prepare_effects_for_lowering,
-    rewrite_prepare_effects_with_trigger_context_for_lowering,
+    assemble_parsed_triggered_ability, lower_parsed_ability, lower_static_ability_ast,
+    stage_effects_for_lowering, stage_effects_with_trigger_context_for_lowering,
 };
 use super::reference_helpers::{
-    as_followup_player_alias, choose_spec_targets_object, infer_player_filter_from_object_filter,
-    is_you_player_filter, object_filter_as_tagged_reference, resolve_attach_object_spec,
-    resolve_choose_spec_it_tag, resolve_it_tag, resolve_it_tag_key,
+    as_followup_player_alias, choose_spec_targets_object, is_you_player_filter,
+    object_filter_as_tagged_reference, player_filter_from_object_filter,
+    resolve_attach_object_spec, resolve_choose_spec_it_tag, resolve_it_tag, resolve_it_tag_key,
     resolve_non_target_player_filter, resolve_restriction_it_tag, resolve_target_spec_with_choices,
     resolve_total_cost_it_tags, resolve_unless_player_filter, resolve_value_it_tag,
     watch_tag_from_filter, with_target_reference_surface_hint,
@@ -70,10 +69,6 @@ use crate::model::reference_state::{
 mod choose_effect_helpers;
 #[path = "compile_support/control_flow_handlers.rs"]
 mod control_flow_handlers;
-#[path = "compile_support/effect_combat_resource_handlers.rs"]
-mod effect_combat_resource_handlers;
-#[path = "compile_support/effect_continuous_turn_handlers.rs"]
-mod effect_continuous_turn_handlers;
 #[path = "compile_support/effect_dispatch.rs"]
 mod effect_dispatch;
 #[path = "compile_support/effect_flow_search_handlers.rs"]
@@ -122,10 +117,10 @@ pub use player_effect_helpers::{
     compile_player_role_effect,
 };
 pub use prepared_effects::{
+    bind_returned_attachment_history_to_triggering_object,
     compile_condition_from_predicate_ast_with_env,
     materialize_prepared_effects_with_trigger_context, materialize_prepared_statement_effects,
     materialize_prepared_triggered_effects,
-    rebind_returned_attachment_history_to_triggering_object,
 };
 #[cfg(test)]
 pub use prepared_effects::{compile_statement_effects, compile_statement_effects_with_imports};
@@ -149,7 +144,7 @@ pub use trigger_support::{
 pub fn compile_condition_from_predicate_ast(
     predicate: &PredicateAst,
     ctx: &mut EffectLoweringContext,
-    saved_last_tag: &Option<String>,
+    saved_last_tag: &Option<TagKey>,
 ) -> Result<Condition, CardTextError> {
     let refs = current_reference_env(ctx);
     Ok(match predicate {
@@ -186,7 +181,7 @@ pub fn compile_condition_from_predicate_ast(
             // ordinary identity predicates continue to ignore the referenced
             // object's current zone.
             let is_same_name_comparison_set = filter.tagged_constraints.iter().any(|constraint| {
-                constraint.tag.as_str() == crate::cards::builders::IT_TAG
+                constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                     && constraint.relation == TaggedOpbjectRelation::SameNameAsTagged
             });
             if !is_same_name_comparison_set && resolved.zone != Some(Zone::Stack) {
@@ -226,7 +221,7 @@ pub fn compile_condition_from_predicate_ast(
             let mut resolved = resolve_it_tag(filter, &refs)?;
             resolved.zone = None;
             if let Some(tag) = saved_last_tag.clone()
-                && !filter_references_tag(&resolved, &tag)
+                && !filter_references_tag(&resolved, tag.as_str())
             {
                 Condition::TaggedObjectMatches(tag.into(), resolved)
             } else if resolved.source && resolved.zone != Some(Zone::Exile) {
@@ -294,7 +289,9 @@ pub fn compile_condition_from_predicate_ast(
         }
         PredicateAst::NoVoteObjectsMatched { filter } => {
             Condition::Not(Box::new(Condition::TaggedObjectMatches(
-                crate::effects::VOTED_OBJECTS_TAG.into(),
+                crate::tag::CompilerReferenceTag::VotedObjects
+                    .as_str()
+                    .into(),
                 resolve_it_tag(filter, &refs)?,
             )))
         }
@@ -1079,12 +1076,7 @@ pub fn compile_annotated_effects_with_context(
             continue;
         }
 
-        ctx.reserve_object_result_tag(
-            current
-                .out_env
-                .known_last_object_tag()
-                .map(|tag| tag.as_str().to_string()),
-        );
+        ctx.reserve_object_result_tag(current.out_env.known_last_object_tag().cloned());
         let (mut effect_list, effect_choices) = compile_effect(&current.effect, ctx)?;
         ctx.reserve_object_result_tag(None);
         if let Some(id) = current.assigned_effect_id
@@ -1705,7 +1697,7 @@ fn choose_followup_player_filter(
     filter: &ObjectFilter,
     chooser: &PlayerFilter,
 ) -> Option<PlayerFilter> {
-    let inferred = infer_player_filter_from_object_filter(filter);
+    let inferred = player_filter_from_object_filter(filter);
     if inferred
         .as_ref()
         .is_some_and(PlayerFilter::mentions_iterated_player)
@@ -2183,9 +2175,7 @@ fn compile_emblem_description(
         match ability {
             EmblemAbilityAst::Static(static_abilities) => {
                 for static_ability in static_abilities {
-                    if let Ok(static_ability) =
-                        rewrite_lower_static_ability_ast(static_ability.clone())
-                    {
+                    if let Ok(static_ability) = lower_static_ability_ast(static_ability.clone()) {
                         abilities.push(Ability::static_ability(static_ability));
                     }
                 }
@@ -2200,11 +2190,10 @@ fn compile_emblem_description(
                 effects,
                 trigger_limit_condition,
             } => {
-                let parsed = rewrite_parsed_triggered_ability(
+                let parsed = assemble_parsed_triggered_ability(
                     trigger.clone(),
                     effects.clone(),
                     vec![Zone::Battlefield],
-                    None,
                     trigger_limit_condition.clone(),
                     None,
                     ReferenceImports::default(),
@@ -2471,7 +2460,7 @@ fn granted_ability_mode_description(
     Ok(format!("This creature gains {display} until end of turn."))
 }
 
-pub fn tagged_alias_for_choice(effects: &[Effect], choice: &ChooseSpec) -> Option<String> {
+pub fn tagged_alias_for_choice(effects: &[Effect], choice: &ChooseSpec) -> Option<TagKey> {
     for effect in effects {
         let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() else {
             continue;
@@ -2479,7 +2468,7 @@ pub fn tagged_alias_for_choice(effects: &[Effect], choice: &ChooseSpec) -> Optio
         if let Some(target_spec) = tagged.effect.target_spec()
             && target_spec == choice
         {
-            return Some(tagged.tag.as_str().to_string());
+            return Some(tagged.tag.clone());
         }
     }
     None
@@ -2586,7 +2575,7 @@ fn generic_mana_cost(amount: u32) -> Option<ManaCost> {
 /// they control (each paying {1}), so the cost expands into N+1 branches: pay
 /// all the mana (0 taps), down to fully paying by tapping N permanents.
 pub fn waterbend_optional_total_cost(generic: u32) -> TotalCost {
-    let tag = TagKey::from(format!("waterbend_cost_{generic}"));
+    let tag = crate::tag::CompilerIndexedTag::WaterbendCost.key(generic);
     let mut branches = Vec::new();
     for taps in 0..=generic {
         if taps == 0 {

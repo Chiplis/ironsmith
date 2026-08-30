@@ -427,7 +427,7 @@ pub enum SubjectVerbActionAst {
         tag: TagKey,
     },
     /// Put the chosen/iterated objects onto the battlefield under a resolved
-    /// controller. Inside a `ForEachTagged`, `TargetAst::Tagged(IT_TAG)` lowers
+    /// controller. Inside a `ForEachTagged`, `TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.as_str())` lowers
     /// to `ChooseSpec::Iterated`; otherwise the tagged collection is used.
     /// Lowers to `Effect::put_onto_battlefield`.
     PutOntoBattlefield {

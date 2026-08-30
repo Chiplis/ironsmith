@@ -312,7 +312,7 @@ pub fn target_ast_to_object_filter(target: TargetAst) -> Option<ObjectFilter> {
         TargetAst::Spell(_) => Some(ObjectFilter::spell()),
         TargetAst::Tagged(tag, _) => Some(ObjectFilter::tagged(tag)),
         TargetAst::AnyOtherTarget(_) => {
-            Some(ObjectFilter::default().not_tagged(TagKey::from(IT_TAG)))
+            Some(ObjectFilter::default().not_tagged(crate::tag::CompilerReferenceTag::It.key()))
         }
         TargetAst::WithCount(inner, _) => target_ast_to_object_filter(*inner),
         _ => None,
@@ -481,6 +481,43 @@ pub fn parse_single_graveyard_bottom_library_compiler_payment(
     ]))
 }
 
+/// Parse `<payment> and <payment>` or `<payment>, <payment>` as one payment of
+/// both components.
+///
+/// A compound cost may conjoin a mana payment with an action ("pay {1} and
+/// return a basic land you control to its owner's hand", "Ward—{2}, Pay 2
+/// life"). Cost components are already paid together, so the halves become
+/// siblings of one total cost. A split is taken only when both halves are
+/// themselves complete payments, which keeps commas inside one payment's own
+/// filter out of the separator role.
+fn parse_conjoined_payment_clause_as_total_cost(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>, CardTextError> {
+    for (index, token) in tokens.iter().enumerate() {
+        if !token.is_word("and") && !token.is_comma() {
+            continue;
+        }
+        let left_tokens = trim_edge_punctuation(&trim_commas(&tokens[..index]));
+        let right_tokens = trim_edge_punctuation(&trim_commas(&tokens[index + 1..]));
+        if left_tokens.is_empty() || right_tokens.is_empty() {
+            continue;
+        }
+        let (Ok(Some(left)), Ok(Some(right))) = (
+            parse_payment_clause_as_total_cost(&left_tokens),
+            parse_payment_clause_as_total_cost(&right_tokens),
+        ) else {
+            continue;
+        };
+        let (Some(left), Some(right)) = (left.as_all(), right.as_all()) else {
+            continue;
+        };
+        let mut components = left.to_vec();
+        components.extend(right.iter().cloned());
+        return Ok(Some(ironsmith_core::TotalCost::from_costs(components)));
+    }
+    Ok(None)
+}
+
 pub fn parse_payment_clause_as_total_cost(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>, CardTextError> {
@@ -508,7 +545,12 @@ pub fn parse_payment_clause_as_total_cost(
 
     match parse_dynamic_payment_clause_as_total_cost(&trimmed)? {
         DynamicPaymentParse::Parsed(dynamic_cost) => return Ok(Some(dynamic_cost)),
-        DynamicPaymentParse::Rejected => return Ok(None),
+        DynamicPaymentParse::Rejected => {
+            // A dynamic-payment head can appear inside a conjoined payment
+            // ("pay {1} and return a basic land ..."), where the rejected
+            // reading covers only the first half.
+            return parse_conjoined_payment_clause_as_total_cost(&trimmed);
+        }
         DynamicPaymentParse::NotRecognized => {}
     }
 
@@ -519,6 +561,10 @@ pub fn parse_payment_clause_as_total_cost(
     if let Ok(total_cost) = parse_activation_cost(&trimmed)
         && !total_cost.is_free()
     {
+        return Ok(Some(total_cost));
+    }
+
+    if let Some(total_cost) = parse_conjoined_payment_clause_as_total_cost(&trimmed)? {
         return Ok(Some(total_cost));
     }
 

@@ -39,7 +39,7 @@ fn owned_graveyard_return_keeps_x_as_an_inline_entry_counter() {
         }) if matches!(count.unhinted(), Value::X)
             && count.has_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
             && count.has_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
-            && tag.as_str() == IT_TAG
+            && tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     ));
 }
 

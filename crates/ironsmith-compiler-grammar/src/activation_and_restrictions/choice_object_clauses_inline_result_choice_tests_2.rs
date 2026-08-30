@@ -10,7 +10,7 @@ fn implicit_choice_actor_is_preserved_for_enclosing_sentence_binding() {
     assert_eq!(chooser, PlayerAst::Implicit);
     assert!(count.is_single());
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == IT_TAG
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
 }

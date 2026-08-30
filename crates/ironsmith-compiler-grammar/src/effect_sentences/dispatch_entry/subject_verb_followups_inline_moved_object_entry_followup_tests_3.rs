@@ -41,7 +41,7 @@ fn optional_single_hand_move_keeps_entry_state_and_grant_in_may_scope() {
     else {
         panic!("entry follow-up escaped the may branch: {effects:#?}");
     };
-    assert_eq!(tag.as_str(), IT_TAG);
+    assert_eq!(tag.as_str(), crate::tag::CompilerReferenceTag::It.as_str());
     assert_eq!(abilities, &[KeywordAction::Indestructible.into()]);
 }
 
@@ -61,7 +61,7 @@ fn entry_followup_does_not_attach_to_a_mandatory_move() {
         None,
     );
     let grant = EffectAst::subject_verb_grant_abilities_to_target(
-        TargetAst::Tagged(TagKey::from(IT_TAG), None),
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
         vec![KeywordAction::Indestructible.into()],
         Until::EndOfTurn,
     );

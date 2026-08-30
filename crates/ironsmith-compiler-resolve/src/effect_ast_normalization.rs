@@ -1,6 +1,5 @@
 use crate::cards::builders::{
-    CHOSEN_OBJECTS_TAG, EffectAst, IT_TAG, PredicateAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, TargetAst,
+    EffectAst, PredicateAst, SubjectVerbActionAst, SubjectVerbEffectAst, TargetAst,
 };
 use crate::effect::Value;
 use ironsmith_core::ValueSurfaceHint;
@@ -411,7 +410,7 @@ fn collapse_single_nested_coordination(effect: &mut EffectAst) {
 /// a prior top-of-library exile, including when that producer lives inside a
 /// delayed or quantified wrapper.
 ///
-/// Standalone permission sentences initially use `IT_TAG`.  Resolving that
+/// Standalone permission sentences initially use `crate::tag::CompilerReferenceTag::It.as_str()`.  Resolving that
 /// through the generic last-object channel is wrong when the intervening
 /// producer is wrapped: the wrapper's watched/iterated object remains the
 /// generic antecedent even though "it" / "those cards" refers to the newly
@@ -447,7 +446,7 @@ fn bind_until_next_turn_permissions_to_prior_exiled_collection(effects: &mut [Ef
             action: SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn { tag, .. },
             ..
         }) = effect
-            && (tag.as_str() == IT_TAG
+            && (tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 || tag.as_str().starts_with("damaged_")
                 || tag.as_str().starts_with("pumped_"))
         {
@@ -495,7 +494,7 @@ fn normalize_singular_source_exiled_move(effect: &mut EffectAst) {
         && !*target_plural_surface
         && *zone == crate::zone::Zone::Graveyard
         && let [constraint] = filter.tagged_constraints.as_slice()
-        && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+        && constraint.tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
         && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
     {
         let mut remainder = filter.clone();
@@ -571,7 +570,7 @@ fn filter_is_misbound_chosen_subtype_result(
         return false;
     }
     let mut expected = crate::filter::ObjectFilter::creature().match_tagged(
-        crate::tag::TagKey::from(IT_TAG),
+        crate::tag::CompilerReferenceTag::It.key(),
         crate::filter::TaggedOpbjectRelation::IsTaggedObject,
     );
     // The ordinary object-filter route may leave the implicit permanent zone
@@ -694,7 +693,7 @@ fn retag_quantified_choice_collection(effect: &mut EffectAst) -> bool {
         let EffectAst::ChooseObjects { tag, .. } = effect else {
             return false;
         };
-        *tag = crate::tag::TagKey::from(CHOSEN_OBJECTS_TAG);
+        *tag = crate::tag::CompilerReferenceTag::ChosenObjects.key();
     }
     true
 }
@@ -750,7 +749,8 @@ fn choice_collection_producer_is_quantified(effect: &EffectAst) -> Option<bool> 
 }
 
 fn choice_collection_tag_can_accumulate(tag: &crate::tag::TagKey) -> bool {
-    matches!(tag.as_str(), IT_TAG | CHOSEN_OBJECTS_TAG)
+    tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        || tag.as_str() == crate::tag::CompilerReferenceTag::ChosenObjects.as_str()
         || tag.as_str().starts_with("participant_choice_l")
 }
 
@@ -851,7 +851,7 @@ fn target_only_collection_tag_mut(effect: &mut EffectAst) -> Option<&mut crate::
         );
         *effect = EffectAst::TagAffected {
             effect: Box::new(target_only),
-            tag: crate::tag::TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
         };
     }
     match effect {
@@ -896,7 +896,7 @@ fn bind_explicit_chosen_object_followups(effects: &mut [EffectAst]) {
     for consumer_index in 1..effects.len() {
         if !super::compile_support::effect_references_tag(
             &effects[consumer_index],
-            CHOSEN_OBJECTS_TAG,
+            crate::tag::CompilerReferenceTag::ChosenObjects.as_str(),
         ) && !iterated_object_effect_uses_prior_choice(&effects[consumer_index])
         {
             continue;
@@ -904,7 +904,7 @@ fn bind_explicit_chosen_object_followups(effects: &mut [EffectAst]) {
         if choice_collection_producer_has_accumulating_tags(&effects[consumer_index - 1]) {
             retag_choice_collection_producer(
                 &mut effects[consumer_index - 1],
-                &crate::tag::TagKey::from(CHOSEN_OBJECTS_TAG),
+                &crate::tag::CompilerReferenceTag::ChosenObjects.key(),
             );
             continue;
         }
@@ -918,7 +918,7 @@ fn bind_explicit_chosen_object_followups(effects: &mut [EffectAst]) {
             .rev()
             .find_map(target_only_collection_tag_mut)
         {
-            *tag = crate::tag::TagKey::from(CHOSEN_OBJECTS_TAG);
+            *tag = crate::tag::CompilerReferenceTag::ChosenObjects.key();
         }
     }
 }
@@ -954,7 +954,7 @@ fn target_has_demonstrative_it_reference(target: &TargetAst) -> bool {
         return false;
     };
     filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == IT_TAG
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
     }) && matches!(
         filter.source_surface.as_ref(),
@@ -1067,7 +1067,9 @@ fn direct_destroy_consumes_choice_collection(effect: &EffectAst) -> bool {
     };
     filter.other
         || filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag.as_str() == IT_TAG || constraint.tag.as_str() == CHOSEN_OBJECTS_TAG
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                || constraint.tag.as_str()
+                    == crate::tag::CompilerReferenceTag::ChosenObjects.as_str()
         })
 }
 
@@ -1116,7 +1118,7 @@ fn bind_quantified_choice_collections_to_destroy_followups(effects: &mut [Effect
             }
         }
 
-        let durable_tag = crate::tag::TagKey::from(CHOSEN_OBJECTS_TAG);
+        let durable_tag = crate::tag::CompilerReferenceTag::ChosenObjects.key();
         for producer in &mut effects[producer_start..consumer_index] {
             retag_choice_collection_producer(producer, &durable_tag);
         }
@@ -1125,7 +1127,7 @@ fn bind_quantified_choice_collections_to_destroy_followups(effects: &mut [Effect
             continue;
         };
         for constraint in &mut filter.tagged_constraints {
-            if constraint.tag.as_str() == IT_TAG {
+            if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                 constraint.tag = durable_tag.clone();
             }
         }
@@ -1161,7 +1163,10 @@ fn direct_destroy_references_chosen_collection(effect: &EffectAst) -> bool {
         EffectAst::SubjectVerb(subject_verb)
             if matches!(&subject_verb.action, SubjectVerbActionAst::Destroy { .. }) =>
         {
-            super::compile_support::effect_references_tag(effect, CHOSEN_OBJECTS_TAG)
+            super::compile_support::effect_references_tag(
+                effect,
+                crate::tag::CompilerReferenceTag::ChosenObjects.as_str(),
+            )
         }
         _ => false,
     }
@@ -1338,7 +1343,8 @@ fn correlate_split_for_each_player_choice_complements(effects: &mut [EffectAst])
             continue;
         }
 
-        let durable_tag = if original_tag.as_str() == IT_TAG {
+        let durable_tag = if original_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        {
             crate::tag::CompilerReferenceTag::ChosenForEachPlayer.key()
         } else {
             original_tag.clone()
@@ -1415,7 +1421,9 @@ fn bind_counted_set_followups(effects: &mut [EffectAst]) {
         };
         let unresolved_set_reference = match target {
             TargetAst::Source(_) => true,
-            TargetAst::Tagged(tag, _) => tag.as_str() == IT_TAG,
+            TargetAst::Tagged(tag, _) => {
+                tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            }
             _ => false,
         };
         if unresolved_set_reference {
@@ -1621,7 +1629,7 @@ fn rewrite_repeat_process_may(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
 }
 
 fn rewrite_return_as_aura(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
-    use crate::cards::builders::{IT_TAG, ReturnAsAuraAst, SubjectVerbActionAst, TargetAst};
+    use crate::cards::builders::{ReturnAsAuraAst, SubjectVerbActionAst, TargetAst};
 
     let has_return_aura_pair = effects.windows(2).any(|pair| {
         let [
@@ -1639,7 +1647,7 @@ fn rewrite_return_as_aura(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
             SubjectVerbActionAst::BecomeAuraEnchantment {
                 target: TargetAst::Tagged(tag, _),
                 ..
-            } if tag.as_str() == IT_TAG
+            } if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         )
     });
     if !has_return_aura_pair {
@@ -1678,7 +1686,8 @@ fn rewrite_return_as_aura(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
             index += 1;
             continue;
         };
-        if !matches!(target, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG) {
+        if !matches!(target, TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
+        {
             rewritten.push(effects[index].clone());
             index += 1;
             continue;
@@ -1726,7 +1735,7 @@ fn is_return_as_aura_remove_all_marker(action: &SubjectVerbActionAst) -> bool {
         } => {
             abilities.is_empty()
                 && matches!(duration, crate::effect::Until::Forever)
-                && matches!(target, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG)
+                && matches!(target, TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
         }
         _ => false,
     }
@@ -1748,7 +1757,7 @@ fn is_noop_effect(effect: &EffectAst) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::cards::builders::{CHOSEN_OBJECTS_TAG, IT_TAG, IfResultPredicate};
+    use crate::cards::builders::IfResultPredicate;
     use crate::cards::builders::{
         EffectAst, PlayerAst, PredicateAst, SubjectVerbActionAst, TagKey, TargetAst,
     };
@@ -1814,8 +1823,10 @@ mod tests {
                 Vec::new(),
             )],
         };
-        let misbound = ObjectFilter::creature()
-            .match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
+        let misbound = ObjectFilter::creature().match_tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+            TaggedOpbjectRelation::IsTaggedObject,
+        );
 
         let normalized =
             normalize_effects_ast(&[choose_type, EffectAst::subject_verb_destroy_all(misbound)]);
@@ -1833,11 +1844,13 @@ mod tests {
                 count: ChoiceCount::exactly(1),
                 count_value: None,
                 player: PlayerAst::That,
-                tag: TagKey::from(IT_TAG),
+                tag: crate::tag::CompilerReferenceTag::It.key(),
             }],
         };
-        let chosen = ObjectFilter::creature()
-            .match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
+        let chosen = ObjectFilter::creature().match_tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+            TaggedOpbjectRelation::IsTaggedObject,
+        );
 
         let normalized =
             normalize_effects_ast(&[choose_object, EffectAst::subject_verb_destroy_all(chosen)]);
@@ -1853,10 +1866,10 @@ mod tests {
             count: ChoiceCount::exactly(2),
             count_value: None,
             player: PlayerAst::You,
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
         };
         let chosen_filter = ObjectFilter::creature().match_tagged(
-            TagKey::from(CHOSEN_OBJECTS_TAG),
+            crate::tag::CompilerReferenceTag::ChosenObjects.key(),
             TaggedOpbjectRelation::IsTaggedObject,
         );
         let difference = Value::absolute_difference(
@@ -1874,7 +1887,10 @@ mod tests {
         let [EffectAst::ChooseObjects { tag, .. }, _] = normalized.as_slice() else {
             panic!("expected choice followed by draw: {normalized:#?}");
         };
-        assert_eq!(tag.as_str(), CHOSEN_OBJECTS_TAG);
+        assert_eq!(
+            tag.as_str(),
+            crate::tag::CompilerReferenceTag::ChosenObjects.as_str()
+        );
     }
 
     #[test]
@@ -1884,13 +1900,13 @@ mod tests {
             count: ChoiceCount::exactly(1),
             count_value: None,
             player: PlayerAst::You,
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
         };
         let mut chosen_permanents = ObjectFilter::permanent();
         chosen_permanents
             .tagged_constraints
             .push(TaggedObjectConstraint {
-                tag: TagKey::from(CHOSEN_OBJECTS_TAG),
+                tag: crate::tag::CompilerReferenceTag::ChosenObjects.key(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
             });
         let effects = vec![
@@ -1920,7 +1936,10 @@ mod tests {
         let [EffectAst::ChooseObjects { tag, .. }] = effects.as_slice() else {
             panic!("expected one quantified object choice: {effects:#?}");
         };
-        assert_eq!(tag.as_str(), CHOSEN_OBJECTS_TAG);
+        assert_eq!(
+            tag.as_str(),
+            crate::tag::CompilerReferenceTag::ChosenObjects.as_str()
+        );
         assert!(super::direct_destroy_references_chosen_collection(destroy));
     }
 
@@ -1931,11 +1950,11 @@ mod tests {
             count: ChoiceCount::exactly(1),
             count_value: None,
             player: PlayerAst::You,
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
         };
         let mut complement = ObjectFilter::creature();
         complement.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
             relation: TaggedOpbjectRelation::IsNotTaggedObject,
         });
         let normalized = normalize_effects_ast(&[
@@ -1952,10 +1971,13 @@ mod tests {
         let [EffectAst::ChooseObjects { tag, .. }] = effects.as_slice() else {
             panic!("expected repeated object choice: {effects:#?}");
         };
-        assert_eq!(tag.as_str(), CHOSEN_OBJECTS_TAG);
+        assert_eq!(
+            tag.as_str(),
+            crate::tag::CompilerReferenceTag::ChosenObjects.as_str()
+        );
         let filter = super::direct_destroy_filter(destroy).expect("destroy filter");
         assert!(filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag.as_str() == CHOSEN_OBJECTS_TAG
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::ChosenObjects.as_str()
                 && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
         }));
     }
@@ -1967,7 +1989,7 @@ mod tests {
             count: ChoiceCount::exactly(1),
             count_value: None,
             player: PlayerAst::You,
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
         };
         let mut complement = ObjectFilter::permanent();
         complement.other = true;
@@ -1994,12 +2016,18 @@ mod tests {
         let [EffectAst::ChooseObjects { tag: repeated, .. }] = effects.as_slice() else {
             panic!("expected quantified object choice: {effects:#?}");
         };
-        assert_eq!(direct.as_str(), CHOSEN_OBJECTS_TAG);
-        assert_eq!(repeated.as_str(), CHOSEN_OBJECTS_TAG);
+        assert_eq!(
+            direct.as_str(),
+            crate::tag::CompilerReferenceTag::ChosenObjects.as_str()
+        );
+        assert_eq!(
+            repeated.as_str(),
+            crate::tag::CompilerReferenceTag::ChosenObjects.as_str()
+        );
         let filter = super::direct_destroy_filter(destroy).expect("destroy filter");
         assert!(!filter.other);
         assert!(filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag.as_str() == CHOSEN_OBJECTS_TAG
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::ChosenObjects.as_str()
                 && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
         }));
     }
@@ -2016,7 +2044,7 @@ mod tests {
                     count: ChoiceCount::exactly(1),
                     count_value: None,
                     player: PlayerAst::You,
-                    tag: TagKey::from(IT_TAG),
+                    tag: crate::tag::CompilerReferenceTag::It.key(),
                 }],
             },
             EffectAst::subject_verb_destroy_all(unrelated_complement),
@@ -2028,7 +2056,7 @@ mod tests {
         let [EffectAst::ChooseObjects { tag, .. }] = effects.as_slice() else {
             panic!("expected object choice: {effects:#?}");
         };
-        assert_eq!(tag.as_str(), IT_TAG);
+        assert_eq!(tag.as_str(), crate::tag::CompilerReferenceTag::It.as_str());
         let filter = super::direct_destroy_filter(destroy).expect("destroy filter");
         assert!(filter.other);
         assert!(filter.tagged_constraints.is_empty());
@@ -2333,7 +2361,7 @@ mod tests {
 
     #[test]
     fn normalize_binds_player_choice_remainder_to_the_same_graveyard_domain() {
-        let tag = TagKey::from(IT_TAG);
+        let tag = crate::tag::CompilerReferenceTag::It.key();
         let choice_filter = ObjectFilter::default()
             .in_zone(Zone::Graveyard)
             .owned_by(crate::target::PlayerFilter::IteratedPlayer);
@@ -2431,7 +2459,7 @@ mod tests {
             while_any_tagged_object_in_zone: None,
         };
         let grant = EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
-            TagKey::from(IT_TAG),
+            crate::tag::CompilerReferenceTag::It.key(),
             PlayerAst::You,
             true,
             false,

@@ -2,7 +2,9 @@ use super::*;
 
 macro_rules! primitive {
     ($id:literal, $_former_order:expr, $stage:ident, $hints:expr, $parser:expr) => {
-        SubjectVerbPrimitive::new($id, SubjectVerbPrimitiveStage::$stage, $hints, $parser)
+        SubjectVerbPrimitive::new($id, SubjectVerbPrimitiveStage::$stage, $hints, |clause| {
+            subject_verb_primitive_outcome(RuleId::new($id), clause, ($parser)(clause))
+        })
     };
 }
 

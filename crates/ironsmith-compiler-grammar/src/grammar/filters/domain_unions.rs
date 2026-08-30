@@ -114,11 +114,11 @@ fn branch_has_explicit_object_selector(filter: &ObjectFilter) -> bool {
 #[path = "domain_unions_inline_tests.rs"]
 mod tests;
 
-#[path = "domain_unions/domain_unions_choice_programs.rs"]
+#[path = "domain_unions/domain_unions_choice.rs"]
 mod domain_unions_choice_programs;
 use domain_unions_choice_programs::flatten_elided_shared_characteristic_selector;
 pub use domain_unions_choice_programs::parse_repeated_selector_domain_union_lexed;
-#[path = "domain_unions/domain_unions_reference_programs.rs"]
+#[path = "domain_unions/domain_unions_reference.rs"]
 mod domain_unions_reference_programs;
 use domain_unions_reference_programs::{
     contains_target_player_or_planeswalker_controller_relation,
@@ -127,7 +127,7 @@ use domain_unions_reference_programs::{
 pub use domain_unions_reference_programs::{
     parse_branch_scoped_object_filter_union_lexed, parse_domain_union_object_filter_lexed,
 };
-#[path = "domain_unions/domain_unions_core_programs.rs"]
+#[path = "domain_unions/domain_unions_core.rs"]
 mod domain_unions_core_programs;
 pub use domain_unions_core_programs::parse_elided_shared_domain_union;
 use domain_unions_core_programs::{
@@ -135,21 +135,21 @@ use domain_unions_core_programs::{
     contains_shared_characteristic_comparison_union, factor_common_domain_scope,
     propagate_leading_shared_state,
 };
-#[path = "domain_unions/domain_unions_zone_programs.rs"]
+#[path = "domain_unions/domain_unions_zone.rs"]
 mod domain_unions_zone_programs;
 use domain_unions_zone_programs::{parse_in_zone_at, possessive_zone_owner};
-#[path = "domain_unions/domain_unions_combat_programs.rs"]
+#[path = "domain_unions/domain_unions_combat.rs"]
 mod domain_unions_combat_programs;
 use domain_unions_combat_programs::{
     contains_attacking_player_or_planeswalker_relation, contains_current_block_partner_relation,
     contains_historical_block_partner_relation,
 };
-#[path = "domain_unions/domain_unions_object_action_programs.rs"]
+#[path = "domain_unions/domain_unions_object_action.rs"]
 mod domain_unions_object_action_programs;
 use domain_unions_object_action_programs::propagate_trailing_shared_attachment_scope;
-#[path = "domain_unions/domain_unions_library_programs.rs"]
+#[path = "domain_unions/domain_unions_library.rs"]
 mod domain_unions_library_programs;
 use domain_unions_library_programs::propagate_trailing_shared_card_zone_scope;
-#[path = "domain_unions/domain_unions_condition_programs.rs"]
+#[path = "domain_unions/domain_unions_condition.rs"]
 mod domain_unions_condition_programs;
 use domain_unions_condition_programs::propagate_leading_shared_set_modifiers;

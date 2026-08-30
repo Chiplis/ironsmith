@@ -19,7 +19,8 @@ fn typed_choice_object_clause_returns_filter_and_reference_facts() {
             .filter
             .tagged_constraints
             .iter()
-            .any(|constraint| constraint.tag.as_str() == IT_TAG)
+            .any(|constraint| constraint.tag.as_str()
+                == crate::tag::CompilerReferenceTag::It.as_str())
     );
 }
 
@@ -106,7 +107,7 @@ fn typed_choice_filter_excludes_the_accumulated_chosen_set() {
     };
 
     assert!(parsed.filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == CHOSEN_OBJECTS_TAG
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::ChosenObjects.as_str()
             && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
     }));
 }

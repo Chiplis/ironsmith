@@ -1,4 +1,4 @@
-use crate::cards::builders::{IT_TAG, TagKey};
+use crate::cards::builders::TagKey;
 use crate::effect::Value;
 use crate::lexer::{LexStream, OwnedLexToken, parser_token_word_refs};
 use crate::model::token_definition::{CreatureTokenRulesShape, TokenKeywordShape};

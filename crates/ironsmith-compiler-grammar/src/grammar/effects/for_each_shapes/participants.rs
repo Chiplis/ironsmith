@@ -475,18 +475,18 @@ pub fn parse_who_tagged_filter_shape(tokens: &[OwnedLexToken]) -> Option<&[Owned
 #[path = "participants_inline_tests.rs"]
 mod tests;
 
-#[path = "participants/core_programs.rs"]
+#[path = "participants/core.rs"]
 mod core_programs;
 use core_programs::{
     did_action_shape, did_this_way_shape, ignore_scry_or_surveil, negated_shape, tapped_land_shape,
 };
 pub use core_programs::{parse_opponent_special_shape, parse_who_clause_shape};
-#[path = "participants/counter_programs.rs"]
+#[path = "participants/counter.rs"]
 mod counter_programs;
 use counter_programs::poison_counters;
-#[path = "participants/resource_programs.rs"]
+#[path = "participants/resource.rs"]
 mod resource_programs;
 use resource_programs::less_life;
-#[path = "participants/choice_programs.rs"]
+#[path = "participants/choice.rs"]
 mod choice_programs;
 use choice_programs::choose_return_unless;

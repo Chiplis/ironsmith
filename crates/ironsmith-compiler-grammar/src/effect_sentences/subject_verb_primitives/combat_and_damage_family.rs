@@ -218,7 +218,7 @@ fn parse_put_sticker_then_becomes_aura(
     Ok(Some((
         parse_target_phrase(shape.sticker_target_tokens)?,
         TargetAst::Tagged(
-            TagKey::from(IT_TAG),
+            crate::tag::CompilerReferenceTag::It.key(),
             span_from_tokens(shape.sticker_target_tokens),
         ),
         parse_object_filter(shape.enchant_filter_tokens, false)?,
@@ -477,10 +477,10 @@ pub fn parse_sentence_for_each_of_target_objects(
             count,
             count_value: None,
             player: PlayerAst::Implicit,
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
         },
         EffectAst::ForEachTagged {
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
             effects: per_target_effects,
         },
     ]))

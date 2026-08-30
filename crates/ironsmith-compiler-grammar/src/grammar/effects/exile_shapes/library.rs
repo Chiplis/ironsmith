@@ -118,7 +118,7 @@ fn parse_position_count_without_owner(
 #[path = "library_inline_tests.rs"]
 mod tests;
 
-#[path = "library/library_programs.rs"]
+#[path = "library/library.rs"]
 mod library_programs;
 pub use library_programs::{
     parse_exile_bottom_library_shape, parse_exile_dynamic_top_library_shape,

@@ -54,7 +54,10 @@ fn assert_target_pump_and_must_be_blocked(text: &str, amount: i32) {
         matches!(target, TargetAst::Object(filter, _, _) if filter.card_types == vec![CardType::Creature]),
         "pump should keep the original target creature: {target:#?}"
     );
-    assert_eq!(filter, &ObjectFilter::tagged(TagKey::from(IT_TAG)));
+    assert_eq!(
+        filter,
+        &ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key())
+    );
 }
 
 #[test]
@@ -146,7 +149,10 @@ fn target_grant_and_must_be_blocked_share_one_target() {
     );
     assert_eq!(duration, &Until::EndOfTurn);
     assert_eq!(restriction_duration, &Until::EndOfTurn);
-    assert_eq!(filter, &ObjectFilter::tagged(TagKey::from(IT_TAG)));
+    assert_eq!(
+        filter,
+        &ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key())
+    );
     assert!(
         format!("{abilities:#?}").contains("Deathtouch"),
         "expected deathtouch grant, got {abilities:#?}"

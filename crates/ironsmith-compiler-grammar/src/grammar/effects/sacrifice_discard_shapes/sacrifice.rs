@@ -281,12 +281,12 @@ pub fn parse_sacrifice_fraction_rounded_shape(
 #[path = "sacrifice_inline_tests.rs"]
 mod tests;
 
-#[path = "sacrifice/resource_programs.rs"]
+#[path = "sacrifice/resource.rs"]
 mod resource_programs;
 pub use resource_programs::{
     parse_sacrifice_aggregate_shape, parse_sacrifice_attached_exclusion,
     parse_sacrifice_count_shape,
 };
-#[path = "sacrifice/reference_programs.rs"]
+#[path = "sacrifice/reference.rs"]
 mod reference_programs;
 pub use reference_programs::parse_sacrifice_object_shape;

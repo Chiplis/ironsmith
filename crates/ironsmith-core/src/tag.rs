@@ -50,6 +50,13 @@ pub const MANA_SOURCES_SPENT_TO_CAST_TAG: &str = "__mana_sources_spent_to_cast__
 /// The spell or ability whose transaction consumed one concrete mana unit.
 pub const MANA_PAID_OBJECT_TAG: &str = "__mana_paid_object__";
 
+/// The color shared by the most permanents on the battlefield.
+///
+/// This is a derived characteristic rather than a resolution-local result
+/// set, so runtime filter contexts compute it on demand under this canonical
+/// key instead of a tag written by an earlier effect.
+pub const MOST_COMMON_PERMANENT_COLOR_TAG: &str = "most_common_permanent_color";
+
 /// Runtime tag for the creature sacrificed to an exploit action.
 pub const EXPLOITED_TAG: &str = "exploited";
 

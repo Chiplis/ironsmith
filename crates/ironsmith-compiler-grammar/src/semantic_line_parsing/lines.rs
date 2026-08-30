@@ -149,8 +149,8 @@ use trigger_reconciliation::{
     authored_dynamic_token_creation_from_trigger,
     dynamic_static_ability_count_token_creation_from_authored_trigger,
     is_gate_partition_core_word_program, is_gate_partition_word_program, is_parley_word_program,
-    reconcile_authored_correlated_trigger_programs,
-    reconcile_dynamic_zone_change_group_token_creation, reconcile_serial_target_pt_modifiers,
+    recognize_authored_correlated_trigger_programs,
+    recognize_dynamic_zone_change_group_token_creation, recognize_serial_target_pt_modifiers,
     spell_or_activated_ability_x_cost_trigger_spec,
 };
 pub use trigger_reconciliation::{
@@ -158,7 +158,7 @@ pub use trigger_reconciliation::{
     end_of_combat_destroy_then_next_end_step_counter_program,
 };
 
-fn reconcile_open_attraction_reminder(line: &mut LineAst, raw_line: &str) {
+fn recognize_open_attraction_reminder(line: &mut LineAst, raw_line: &str) {
     if !raw_line.contains(STANDARD_OPEN_ATTRACTION_REMINDER) {
         return;
     }
@@ -260,7 +260,7 @@ pub fn linked_created_token_next_turn_sacrifice_effects(
         player: PlayerAst::You,
         effects: vec![EffectAst::subject_verb_sacrifice(
             PlayerAst::You,
-            ObjectFilter::tagged(TagKey::from(IT_TAG)),
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
             1,
             None,
         )],
@@ -746,7 +746,7 @@ fn grammar_proven_named_explore_surface(
     Some(surface.clone())
 }
 
-fn reconcile_named_explore_source_surface(
+fn recognize_named_explore_source_surface(
     chunk: &mut LineAst,
     effect_tokens: &[OwnedLexToken],
     raw_line: &str,
@@ -867,7 +867,7 @@ fn reconcile_named_explore_source_surface(
     apply_to_line(chunk, &surface)
 }
 
-fn reconcile_named_source_exile_surface(chunk: &mut LineAst, source: &[OwnedLexToken]) {
+fn recognize_named_source_exile_surface(chunk: &mut LineAst, source: &[OwnedLexToken]) {
     fn authored_surface(source: &[OwnedLexToken]) -> Option<crate::target::SourceReferenceSurface> {
         crate::grammar::source_surface_shapes::parse_unique_named_operand_after(
             None, source, "exile",
@@ -954,7 +954,7 @@ fn reconcile_named_source_exile_surface(chunk: &mut LineAst, source: &[OwnedLexT
     match chunk {
         LineAst::Multiple(chunks) => {
             for chunk in chunks {
-                reconcile_named_source_exile_surface(chunk, source);
+                recognize_named_source_exile_surface(chunk, source);
             }
         }
         LineAst::Triggered { effects, .. } if candidate_count(effects) == 1 => {
@@ -1078,11 +1078,11 @@ pub fn parse_statement_token_groups_to_chunks(
         parse_tokens,
         parse_groups,
     )?;
-    reconcile_as_transforms_copy_exception_surface(&mut chunks, &source_tokens);
+    recognize_as_transforms_copy_exception_surface(&mut chunks, &source_tokens);
     Ok(chunks)
 }
 
-fn reconcile_as_transforms_copy_exception_surface(
+fn recognize_as_transforms_copy_exception_surface(
     chunks: &mut [LineAst],
     source_tokens: &[OwnedLexToken],
 ) {
@@ -1449,7 +1449,7 @@ fn parse_statement_to_chunks_impl(
     }
     // Rewrites may replace the selected hand collection in the first
     // sentence with its later pronoun before the token-count followup is
-    // grouped. Give the grammar-proven source sequence first refusal so the
+    // grouped. The grammar-proven source sequence retains ownership so the
     // ChooseObjects tag remains available to the per-player revealed count.
     if let Some(effects) =
         typed_selected_hand_reveal_token_creation_statement(&line.info.source_tokens)
@@ -1784,7 +1784,7 @@ fn parse_villainous_choice_statement_chunk(
     else {
         return Ok(None);
     };
-    let target_tag = TagKey::from(IT_TAG);
+    let target_tag = crate::tag::CompilerReferenceTag::It.key();
     let mut effects = match shape.target {
         semantic_grammar::VillainousChoiceTarget::CreaturesYouDontControl => {
             let target = TargetAst::WithCount(
@@ -1802,7 +1802,9 @@ fn parse_villainous_choice_statement_chunk(
     let second_mode_effects = parse_villainous_choice_mode_program(shape.second_mode_program)?;
     let player = match shape.chooser {
         semantic_grammar::VillainousChoiceChooser::IteratedCreaturesController => {
-            PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged(IT_TAG))
+            PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged(
+                crate::tag::CompilerReferenceTag::It.key(),
+            ))
         }
     };
     let iteration_tag = match shape.iteration {
@@ -2020,7 +2022,7 @@ fn returned_object_static_followup_start<S: AsRef<[OwnedLexToken]>>(
 }
 
 fn filter_is_exact_tagged_it(filter: &ObjectFilter) -> bool {
-    filter == &ObjectFilter::tagged(TagKey::from(IT_TAG))
+    filter == &ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key())
 }
 
 fn push_returned_object_keyword_grant_effect(
@@ -2028,7 +2030,7 @@ fn push_returned_object_keyword_grant_effect(
     action: KeywordAction,
     condition: Option<crate::ConditionExpr>,
 ) {
-    let target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
+    let target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None);
     let ability = GrantedAbilityAst::from(action);
     let effect = if let Some(condition) = condition {
         EffectAst::subject_verb_grant_abilities_to_target_with_condition(
@@ -2101,7 +2103,7 @@ fn returned_object_static_followup_effects<S: AsRef<[OwnedLexToken]>>(
         }
         if let Some(colors) = grammar_facts.as_ref().and_then(|facts| facts.colors) {
             effects.push(EffectAst::subject_verb_add_colors(
-                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
                 colors,
                 Until::Forever,
             ));
@@ -2112,7 +2114,7 @@ fn returned_object_static_followup_effects<S: AsRef<[OwnedLexToken]>>(
             .filter(|subtypes| !subtypes.is_empty())
         {
             effects.push(EffectAst::subject_verb_add_subtypes(
-                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
                 subtypes,
                 Until::Forever,
             ));
@@ -2334,13 +2336,13 @@ fn parse_complete_self_replacement_statement(tokens: &[OwnedLexToken]) -> Option
 #[path = "lines/statement_grouping_tests.rs"]
 mod statement_grouping_tests;
 
-#[path = "lines/lines_choice_programs.rs"]
+#[path = "lines/lines_choice.rs"]
 mod lines_choice_programs;
 pub use lines_choice_programs::rewrite_modal_to_parsed_item;
 use lines_choice_programs::{
     specialize_modal_common_target_suffix, try_parse_chosen_type_behold_two_additional_cost,
 };
-#[path = "lines/lines_resource_programs.rs"]
+#[path = "lines/lines_resource.rs"]
 mod lines_resource_programs;
 use lines_resource_programs::{
     capitalize_first_equip_cost_alternative_display,
@@ -2349,7 +2351,7 @@ use lines_resource_programs::{
 pub use lines_resource_programs::{
     try_parse_optional_behold_additional_cost, try_parse_optional_waterbend_additional_cost,
 };
-#[path = "lines/lines_trigger_programs.rs"]
+#[path = "lines/lines_trigger.rs"]
 mod lines_trigger_programs;
 #[cfg(test)]
 use lines_trigger_programs::{
@@ -2368,18 +2370,18 @@ use lines_trigger_programs::{
     triggered_line_source_text_keeps_raw_do_this_only_once_suffix,
     triggered_semantic_split_keeps_effect_backed_static_surfaces_in_resolution,
 };
+use lines_trigger_programs::{
+    hoist_delayed_copy_retargeting_in_line, lower_special_rewrite_triggered_divvy,
+    lower_special_rewrite_triggered_head, lower_special_rewrite_triggered_oath,
+    lower_special_rewrite_triggered_tail, lower_spell_or_activated_ability_x_cost_trigger,
+    mark_non_mana_activated_trigger, parse_triggered_ability_line_impl, parse_triggered_line_impl,
+    recognize_triggered_effect_surfaces,
+};
 pub use lines_trigger_programs::{
     is_exact_correlated_trigger_effect_bundle, parse_special_triggered_line, parse_triggered_line,
     try_parse_optional_cost_with_cast_trigger,
 };
-use lines_trigger_programs::{
-    lower_special_rewrite_triggered_divvy, lower_special_rewrite_triggered_head,
-    lower_special_rewrite_triggered_oath, lower_special_rewrite_triggered_tail,
-    lower_spell_or_activated_ability_x_cost_trigger, mark_non_mana_activated_trigger,
-    parse_triggered_ability_line_impl, parse_triggered_line_impl,
-    preserve_triggered_effect_surfaces, transport_delayed_copy_retarget_in_line,
-};
-#[path = "lines/lines_object_action_programs.rs"]
+#[path = "lines/lines_object_action.rs"]
 mod lines_object_action_programs;
 #[cfg(test)]
 pub use lines_object_action_programs::parse_keyword_line_with_full_tokens_for_test;
@@ -2395,14 +2397,14 @@ use lines_object_action_programs::{
     partner_with_name_from_tokens, rewrite_copy_count_to_times_paid_label_rewrite,
     standard_gift_create_token_effect, try_lower_hideaway_tokens, try_lower_partner_with_tokens,
 };
-#[path = "lines/lines_core_programs.rs"]
+#[path = "lines/lines_core.rs"]
 mod lines_core_programs;
 use lines_core_programs::hideaway_line_ast;
 #[cfg(test)]
 use lines_core_programs::test_line_info;
 #[cfg(test)]
 pub use lines_core_programs::{parse_single_effect_lexed, strip_lexed_suffix_phrase};
-#[path = "lines/lines_ability_programs.rs"]
+#[path = "lines/lines_ability.rs"]
 mod lines_ability_programs;
 #[cfg(test)]
 pub use lines_ability_programs::parse_keyword_line_for_test;
@@ -2416,11 +2418,11 @@ use lines_ability_programs::{
     standard_flanking_reminder_is_typed_without_broad_keyword_expansion,
     standard_menace_reminder_is_typed_without_broad_keyword_expansion,
 };
-#[path = "lines/lines_condition_programs.rs"]
+#[path = "lines/lines_condition.rs"]
 mod lines_condition_programs;
 pub use lines_condition_programs::parse_gift_keyword_line;
 use lines_condition_programs::{fixed_standard_gift_creature_definition, standard_gift_effects};
-#[path = "lines/lines_combat_programs.rs"]
+#[path = "lines/lines_combat.rs"]
 mod lines_combat_programs;
 pub use lines_combat_programs::parse_exert_attack_keyword_line;
 #[cfg(test)]
@@ -2428,7 +2430,7 @@ use lines_combat_programs::{
     generic_triggered_source_pump_unblockable_keeps_both_effects,
     protected_battle_surface_binds_the_pre_lowering_damage_target_inside_opponent_loop,
 };
-#[path = "lines/lines_reference_programs.rs"]
+#[path = "lines/lines_reference.rs"]
 mod lines_reference_programs;
 use lines_reference_programs::membership_predicate_for_iterated_object;
 #[cfg(test)]
@@ -2443,7 +2445,7 @@ pub use lines_reference_programs::{
     exact_target_same_name_graveyard_may_cast_bundle,
     normalize_exert_followup_source_reference_tokens,
 };
-#[path = "lines/lines_counter_programs.rs"]
+#[path = "lines/lines_counter.rs"]
 mod lines_counter_programs;
 #[cfg(test)]
 use lines_counter_programs::{
@@ -2453,7 +2455,7 @@ use lines_counter_programs::{
 use lines_counter_programs::{
     lower_spell_cast_snow_mana_enter_counter_static_chunk, parse_exiled_last_counter_triggered_line,
 };
-#[path = "lines/lines_library_programs.rs"]
+#[path = "lines/lines_library.rs"]
 mod lines_library_programs;
 use lines_library_programs::starts_with_exact_graveyard_card_copy_cast_sequence;
 pub use lines_library_programs::{
@@ -2466,11 +2468,11 @@ use lines_library_programs::{
     library_origin_source_pump_unblockable_preemption_is_exact,
     looked_hand_optional_cast_authored_guard_keeps_possessive_and_may,
 };
-#[path = "lines/lines_permission_programs.rs"]
+#[path = "lines/lines_permission.rs"]
 mod lines_permission_programs;
 use lines_permission_programs::exact_dynamic_exile_permission_bundle;
 pub use lines_permission_programs::is_authored_dynamic_exile_permission_bundle;
-#[path = "lines/lines_zone_programs.rs"]
+#[path = "lines/lines_zone.rs"]
 mod lines_zone_programs;
 use lines_zone_programs::exact_atomic_return_as_aura_bundle;
 

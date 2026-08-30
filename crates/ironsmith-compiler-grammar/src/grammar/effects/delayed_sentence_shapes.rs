@@ -451,21 +451,21 @@ pub fn parse_delayed_target_deals_combat_damage_shape(
 #[path = "delayed_sentence_shapes_inline_tests.rs"]
 mod tests;
 
-#[path = "delayed_sentence_shapes/trigger_programs.rs"]
+#[path = "delayed_sentence_shapes/trigger.rs"]
 mod trigger_programs;
 pub use trigger_programs::{
     is_delayed_prior_object_put_into_a_graveyard, parse_delayed_dies_shape,
     parse_delayed_target_put_into_your_graveyard_subject,
 };
-#[path = "delayed_sentence_shapes/core_programs.rs"]
+#[path = "delayed_sentence_shapes/core.rs"]
 mod core_programs;
 use core_programs::dies_this_way_suffix;
-#[path = "delayed_sentence_shapes/counter_programs.rs"]
+#[path = "delayed_sentence_shapes/counter.rs"]
 mod counter_programs;
 pub use counter_programs::{
     delayed_trigger_has_first_time_marker, delayed_trigger_has_next_marker,
     is_next_cast_spell_or_loyalty_shape,
 };
-#[path = "delayed_sentence_shapes/object_action_programs.rs"]
+#[path = "delayed_sentence_shapes/object_action.rs"]
 mod object_action_programs;
 pub use object_action_programs::parse_copy_twice_shape;

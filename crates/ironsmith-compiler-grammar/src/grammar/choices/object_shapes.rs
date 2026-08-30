@@ -188,15 +188,15 @@ fn parse_target_player_choice_head(input: &mut LexStream<'_>) -> WResult<TargetP
 #[path = "object_shapes_inline_tests.rs"]
 mod tests;
 
-#[path = "object_shapes/core_programs.rs"]
+#[path = "object_shapes/core.rs"]
 mod core_programs;
 use core_programs::{phrase_occurs, trim_punctuation_edges, word_occurs};
-#[path = "object_shapes/zone_programs.rs"]
+#[path = "object_shapes/zone.rs"]
 mod zone_programs;
 use zone_programs::{parse_graveyard_word, parse_hand_word};
-#[path = "object_shapes/library_programs.rs"]
+#[path = "object_shapes/library.rs"]
 mod library_programs;
 use library_programs::parse_card_word;
-#[path = "object_shapes/reference_programs.rs"]
+#[path = "object_shapes/reference.rs"]
 mod reference_programs;
 use reference_programs::parse_player_target_prefix_words;

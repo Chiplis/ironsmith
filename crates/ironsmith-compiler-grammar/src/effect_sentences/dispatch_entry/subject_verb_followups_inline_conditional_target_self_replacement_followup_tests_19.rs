@@ -16,7 +16,7 @@ fn assert_it_characteristic_threshold(predicate: &PredicateAst, toughness: bool)
             assert!(
                 matches!(
                     spec.base(),
-                    ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG
+                    ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 ),
                 "the threshold must remain linked to the targeted object: {predicate:#?}"
             );

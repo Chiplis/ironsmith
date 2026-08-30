@@ -25,13 +25,10 @@ use super::super::util::{
 use super::primitives::{self, TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_or};
 use super::values::parse_mana_symbol;
 use crate::cards::builders::{
-    ABILITY_CONTROLLER_TARGET_CHOICE_TAG, ADDITIONAL_COST_OBJECT_TAG, CardTextError, IT_TAG,
-    OPPONENT_TARGET_CHOICE_TAG, PlayerAst, PredicateAst, THIS_WAY_SACRIFICED_TAG, TagKey,
-    TurnHistoryPredicateAst,
+    CardTextError, PlayerAst, PredicateAst, TagKey, TurnHistoryPredicateAst,
 };
 use crate::color::{Color, ColorSet};
 use crate::effect::Value;
-use crate::effects::VOTE_WINNERS_TAG;
 use crate::filter::TaggedObjectConstraint;
 use crate::grammar::shared_util::value_semantics::parse_filter_comparison_tokens;
 use crate::mana::ManaSymbol;

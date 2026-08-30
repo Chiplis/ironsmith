@@ -1,6 +1,6 @@
 use crate::cards::builders::{
-    CHOSEN_OBJECTS_TAG, CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate,
-    OwnedLexToken, PlayerAst, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
+    CardTextError, EffectAst, GrantedAbilityAst, IfResultPredicate, OwnedLexToken, PlayerAst,
+    PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
     RedirectNextTimeDamageDestinationAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
     TagKey, TargetAst, TextSpan, Verb,
 };
@@ -168,6 +168,18 @@ pub fn parse_verb_first_clause(
         _ => return Ok(None),
     };
 
+    // A comma-separated list of sibling actions ("draw two cards, lose 2
+    // life, then mill two cards") is a chain of effects, not one verb clause.
+    // Declining lets the effect-chain splitter own the sentence instead of
+    // handing the later actions to this verb's trailing-clause grammar.
+    if crate::grammar::effects::chain_splitting::split_segments_on_comma_effect_head_tokens(vec![
+        tokens,
+    ])
+    .len()
+        > 1
+    {
+        return Ok(None);
+    }
     let effect = parse_effect_with_verb(verb, None, &tokens[1..])?;
     Ok(Some(effect))
 }
@@ -299,11 +311,12 @@ pub fn parse_copy_spell_clause(
                 crate::tag::CompilerReferenceTag::TriggeringSource.key(),
                 None,
             )),
-            clause_shapes::CopyTargetShape::TaggedIt => {
-                Some(TargetAst::Tagged(TagKey::from(IT_TAG), None))
-            }
+            clause_shapes::CopyTargetShape::TaggedIt => Some(TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::It.key(),
+                None,
+            )),
             clause_shapes::CopyTargetShape::PriorExiledCard => Some(TargetAst::Tagged(
-                TagKey::from(crate::tag::PRIOR_EXILED_CARD_TAG),
+                crate::tag::CompilerReferenceTag::PriorExiledCard.key(),
                 None,
             )),
             clause_shapes::CopyTargetShape::Explicit(_) => None,
@@ -673,7 +686,9 @@ mod copy_all_tests {
         else {
             panic!("expected one typed copy action: {parsed:#?}");
         };
-        assert!(matches!(target, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG));
+        assert!(
+            matches!(target, TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
+        );
         assert!(target_reference_pronoun);
         let Value::DistinctCounterTypesAmong(filter) = count else {
             panic!("expected a distinct counter-type count: {count:#?}");
@@ -1285,7 +1300,10 @@ pub fn parse_can_attack_as_though_no_defender_clause(
     let target = if subject_tokens.is_empty()
         || crate::word_primitives::parse_sequence_complete(&subject_words, &["it"])
     {
-        TargetAst::Tagged(TagKey::from(IT_TAG), Some(TextSpan::synthetic()))
+        TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+            Some(TextSpan::synthetic()),
+        )
     } else if let Ok(target) = parse_target_phrase(subject_tokens) {
         target
     } else if let Ok(filter) = parse_object_filter(subject_tokens, false) {
@@ -1357,7 +1375,7 @@ pub fn parse_prevent_next_time_damage_sentence(
             card_type,
             source_tokens,
         } => {
-            let mut filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
+            let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
             if let Some(card_type) = card_type {
                 filter.card_types.push(card_type);
             }
@@ -1475,7 +1493,8 @@ pub fn parse_redirect_next_damage_sentence(
                     card_type,
                     source_tokens,
                 } => {
-                    let mut filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
+                    let mut filter =
+                        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
                     if let Some(card_type) = card_type {
                         filter.card_types.push(card_type);
                     }
@@ -1591,7 +1610,10 @@ pub fn parse_can_block_additional_creature_this_turn_clause(
         return Ok(None);
     };
     let target = if shape.subject_tokens.is_empty() {
-        TargetAst::Tagged(TagKey::from(IT_TAG), Some(TextSpan::synthetic()))
+        TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+            Some(TextSpan::synthetic()),
+        )
     } else {
         parse_target_phrase(shape.subject_tokens)?
     };
@@ -1734,7 +1756,7 @@ pub fn parse_choose_target_prelude_sentence(
                 .into_iter()
                 .map(|target| EffectAst::TagAffected {
                     effect: Box::new(EffectAst::subject_verb_explicit_target_only(target)),
-                    tag: TagKey::from(CHOSEN_OBJECTS_TAG),
+                    tag: crate::tag::CompilerReferenceTag::ChosenObjects.key(),
                 })
                 .collect(),
         ));
@@ -1770,7 +1792,10 @@ mod choose_target_prelude_tests {
             let EffectAst::TagAffected { effect, tag } = effect else {
                 panic!("expected a shared chosen-set wrapper, got {effect:#?}");
             };
-            assert_eq!(tag.as_str(), CHOSEN_OBJECTS_TAG);
+            assert_eq!(
+                tag.as_str(),
+                crate::tag::CompilerReferenceTag::ChosenObjects.as_str()
+            );
             let EffectAst::SubjectVerb(subject_verb) = effect.as_ref() else {
                 panic!("expected an explicit target-only action, got {effect:#?}");
             };

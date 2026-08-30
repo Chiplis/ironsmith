@@ -85,16 +85,16 @@ fn is_tagged_object_reference(words: &[&str]) -> bool {
 #[path = "ability_candidates_inline_tests.rs"]
 mod tests;
 
-#[path = "ability_candidates/ability_programs.rs"]
+#[path = "ability_candidates/ability.rs"]
 mod ability_programs;
 pub use ability_programs::parse_ability_candidate_shape;
 use ability_programs::simple_gain;
-#[path = "ability_candidates/condition_programs.rs"]
+#[path = "ability_candidates/condition.rs"]
 mod condition_programs;
 use condition_programs::{
     independent_action_precedes_ability_modifier,
     independent_gain_or_lose_arms_with_local_condition,
 };
-#[path = "ability_candidates/combat_programs.rs"]
+#[path = "ability_candidates/combat.rs"]
 mod combat_programs;
 use combat_programs::source_damage_then_tagged_loses_ability;

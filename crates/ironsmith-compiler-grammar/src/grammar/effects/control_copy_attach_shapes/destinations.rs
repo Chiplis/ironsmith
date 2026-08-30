@@ -384,12 +384,12 @@ pub fn parse_onto_clause_shape(tokens: &[OwnedLexToken]) -> Option<OntoClauseSha
 #[path = "destinations_inline_tests.rs"]
 mod tests;
 
-#[path = "destinations/zone_programs.rs"]
+#[path = "destinations/zone.rs"]
 mod zone_programs;
 pub use zone_programs::parse_onto_battlefield_destination_shape;
-#[path = "destinations/object_action_programs.rs"]
+#[path = "destinations/object_action.rs"]
 mod object_action_programs;
 use object_action_programs::{token_is_ignored, word_tokens};
-#[path = "destinations/reference_programs.rs"]
+#[path = "destinations/reference.rs"]
 mod reference_programs;
 pub use reference_programs::target_names_unowned_shared_zone;

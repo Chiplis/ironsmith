@@ -17,6 +17,7 @@ fn unsupported_line_ast(raw_line: &str, reason: impl Into<String>) -> LineAst {
     LineAst::StaticAbility(StaticAbility::unsupported_parser_line(raw_line, reason).into())
 }
 
+#[path = "semantic_document/core.rs"]
 mod core_programs;
 pub use core_programs::parse_semantic_document;
 use core_programs::{parse_rewrite_item, parse_rewrite_items};

@@ -1,4 +1,4 @@
-use crate::cards::builders::{CardTextError, IT_TAG, TagKey};
+use crate::cards::builders::{CardTextError, TagKey};
 use crate::effect::{Value, ValueComparisonOperator};
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::{ObjectFilter, Zone};
@@ -155,7 +155,9 @@ fn counter_reference_shape_value(shape: value_helper_shapes::CounterReferenceVal
             Value::counters_on_source_reference(shape.counter_type, surface)
         }
         value_helper_shapes::CounterValueReference::Tagged => Value::CountersOn(
-            Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+            Box::new(ChooseSpec::Tagged(
+                crate::tag::CompilerReferenceTag::It.key(),
+            )),
             shape.counter_type,
         ),
     }
@@ -334,7 +336,7 @@ fn aggregate_filter_value(
 fn source_linked_exiled_mana_value(object_words: &[&str]) -> Option<Value> {
     if words_match_any_phrase(object_words, SOURCE_LINKED_EXILED_CARD_PHRASES) {
         return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-            TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+            crate::tag::CompilerReferenceTag::SourceExiled.key(),
         ))));
     }
     None
@@ -481,34 +483,34 @@ pub fn parse_triggering_spell_history_count_value(tokens: &[OwnedLexToken]) -> O
 #[path = "value_semantics_inline_tests.rs"]
 mod tests;
 
-#[path = "value_semantics/value_semantics_reference_programs.rs"]
+#[path = "value_semantics/value_semantics_reference.rs"]
 mod value_semantics_reference_programs;
 pub use value_semantics_reference_programs::{
     parse_commander_cast_count_player, parse_equal_to_aggregate_filter_value,
     parse_equal_to_number_of_filter_plus_or_minus_fixed_value,
     parse_equal_to_number_of_filter_value, parse_filter_comparison_tokens,
 };
-#[path = "value_semantics/value_semantics_core_programs.rs"]
+#[path = "value_semantics/value_semantics_core.rs"]
 mod value_semantics_core_programs;
 use value_semantics_core_programs::parse_creatures_died_this_turn_count_value;
 pub use value_semantics_core_programs::{
     parse_equal_to_number_of_opponents_you_have_value, parse_turn_history_count_value,
     parse_turn_history_value_binding, starts_explicit_ordered_comparison,
 };
-#[path = "value_semantics/value_semantics_permission_programs.rs"]
+#[path = "value_semantics/value_semantics_permission.rs"]
 mod value_semantics_permission_programs;
 use value_semantics_permission_programs::parse_spells_cast_this_turn_matching_count_value;
 pub use value_semantics_permission_programs::parse_spells_cast_this_turn_matching_count_value_lexed;
-#[path = "value_semantics/value_semantics_zone_programs.rs"]
+#[path = "value_semantics/value_semantics_zone.rs"]
 mod value_semantics_zone_programs;
 use value_semantics_zone_programs::commander_owner_from_battlefield_or_command_zone_words;
-#[path = "value_semantics/value_semantics_resource_programs.rs"]
+#[path = "value_semantics/value_semantics_resource.rs"]
 mod value_semantics_resource_programs;
 pub use value_semantics_resource_programs::parse_where_x_greatest_commander_mana_value;
-#[path = "value_semantics/value_semantics_counter_programs.rs"]
+#[path = "value_semantics/value_semantics_counter.rs"]
 mod value_semantics_counter_programs;
 pub use value_semantics_counter_programs::parse_equal_to_number_of_counters_on_reference_value;
-#[path = "value_semantics/value_semantics_library_programs.rs"]
+#[path = "value_semantics/value_semantics_library.rs"]
 mod value_semantics_library_programs;
 use value_semantics_library_programs::parse_cards_discarded_this_turn_count_value;
 pub use value_semantics_library_programs::parse_players_with_cards_in_hand_at_least;

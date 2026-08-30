@@ -1,6 +1,6 @@
 use crate::cards::builders::{
-    CHOSEN_OBJECTS_TAG, CardTextError, EffectAst, EffectLoweringContext, IT_TAG, PlayerAst,
-    PredicateAst, SubjectVerbActionAst, TagKey, TargetAst,
+    CardTextError, EffectAst, EffectLoweringContext, PlayerAst, PredicateAst, SubjectVerbActionAst,
+    TagKey, TargetAst,
 };
 use crate::effect::{ChoiceCount, Condition, Effect, EffectPredicate, SearchSelectionMode, Value};
 use crate::filter::ObjectRef;
@@ -12,7 +12,7 @@ use super::{
     PreparedEffectsForLowering, PreparedPredicateForLowering, PreparedTriggeredEffectsForLowering,
     ReferenceEnv, ReferenceExports, ReferenceImports, compile_annotated_effects_with_context,
     compile_condition_from_predicate_ast, effects_reference_tag, merge_compiled_choices,
-    push_choice, rewrite_prepare_effects_for_lowering,
+    push_choice, stage_effects_for_lowering,
 };
 
 #[cfg(test)]
@@ -28,7 +28,7 @@ pub fn compile_statement_effects_with_imports(
     effects: &[EffectAst],
     imports: &ReferenceImports,
 ) -> Result<LoweredEffects, CardTextError> {
-    let prepared = rewrite_prepare_effects_for_lowering(effects, imports.clone())?;
+    let prepared = stage_effects_for_lowering(effects, imports.clone())?;
     materialize_prepared_statement_effects(&prepared)
 }
 
@@ -123,14 +123,14 @@ fn normalize_compiled_effects(mut compiled: Vec<Effect>) -> Vec<Effect> {
     let compiled = normalize_two_target_counter_then_fight(compiled);
     let compiled = normalize_random_destroy_across_target_groups(compiled);
     let compiled = normalize_mixed_target_exile_top_damage(compiled);
-    fold_local_zone_rewrite_self_replacements(compiled)
+    fold_local_zone_change_self_replacements(compiled)
 }
 
-fn rewrite_wrapped_damage_target(effect: &Effect, target: ChooseSpec) -> Option<Effect> {
+fn with_wrapped_damage_target(effect: &Effect, target: ChooseSpec) -> Option<Effect> {
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         return Some(Effect::new(crate::effects::TaggedEffect::new(
             tagged.tag.clone(),
-            rewrite_wrapped_damage_target(&tagged.effect, target)?,
+            with_wrapped_damage_target(&tagged.effect, target)?,
         )));
     }
     let mut damage = effect
@@ -266,13 +266,13 @@ fn normalize_mixed_target_exile_top_damage(mut compiled: Vec<Effect>) -> Vec<Eff
         .clone();
     let mut player_sequence = player_sequence;
     let mut object_sequence = object_sequence;
-    player_sequence.effects[1] = rewrite_wrapped_damage_target(
+    player_sequence.effects[1] = with_wrapped_damage_target(
         &player_sequence.effects[1],
         ChooseSpec::Player(PlayerFilter::IteratedPlayer),
     )
     .expect("validated player damage");
     object_sequence.effects[1] =
-        rewrite_wrapped_damage_target(&object_sequence.effects[1], ChooseSpec::Iterated)
+        with_wrapped_damage_target(&object_sequence.effects[1], ChooseSpec::Iterated)
             .expect("validated object damage");
     normalized_player.effects[0] = Effect::new(player_sequence);
     normalized_object.effects[0] = Effect::new(object_sequence);
@@ -357,7 +357,7 @@ fn coordinated_result_tags(
     Some((tags, type_noun))
 }
 
-fn rewrite_plural_result_reference(
+fn with_plural_result_reference(
     effect: &Effect,
     tags: &[TagKey],
     type_noun: Option<crate::types::CardType>,
@@ -365,7 +365,7 @@ fn rewrite_plural_result_reference(
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         return Effect::new(crate::effects::TaggedEffect::new(
             tagged.tag.clone(),
-            rewrite_plural_result_reference(&tagged.effect, tags, type_noun),
+            with_plural_result_reference(&tagged.effect, tags, type_noun),
         ));
     }
     let Some(apply) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>() else {
@@ -392,7 +392,7 @@ fn normalize_plural_coordinated_result_references(mut effects: Vec<Effect>) -> V
         else {
             continue;
         };
-        effects[index] = rewrite_plural_result_reference(&effects[index], &tags, type_noun);
+        effects[index] = with_plural_result_reference(&effects[index], &tags, type_noun);
     }
     effects
 }
@@ -417,7 +417,7 @@ fn normalize_cross_segment_plural_coordinated_result_references(
         let Some((tags, type_noun)) = coordinated_result_tags(producer, &final_tag) else {
             continue;
         };
-        *followup = rewrite_plural_result_reference(followup, &tags, type_noun);
+        *followup = with_plural_result_reference(followup, &tags, type_noun);
     }
 }
 
@@ -479,7 +479,7 @@ fn normalize_iterated_consult_exile_collection(compiled: Vec<Effect>) -> Vec<Eff
         || matches!(
             &consult.player,
             PlayerFilter::ControllerOf(ObjectRef::Tagged(tag))
-                if tag.as_str() == crate::cards::builders::IT_TAG
+                if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         );
     if consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal
         || !single_match_stop
@@ -536,13 +536,13 @@ fn normalize_iterated_consult_exile_collection(compiled: Vec<Effect>) -> Vec<Eff
             &shuffle.player,
             PlayerFilter::ControllerOf(ObjectRef::Tagged(tag))
                 if tag == &consult.match_tag
-                    || tag.as_str() == crate::cards::builders::IT_TAG
+                    || tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         );
     if !shuffle_uses_iterated_controller || shuffle.target_spec.is_some() {
         return compiled;
     }
 
-    let collection_tag = TagKey::from(format!("{}__exiled_collection", consult.match_tag.as_str()));
+    let collection_tag = crate::tag::CompilerDerivedTag::ExiledCollection.key(&consult.match_tag);
     let collected_loop = Effect::for_each_tagged(
         per_object.tag.clone(),
         vec![consult_effect.clone(), exile_effect.clone()],
@@ -621,18 +621,18 @@ fn normalize_coordinated_two_target_fight_sequences(effects: Vec<Effect>) -> Vec
     normalized
 }
 
-fn local_rewrite_fallback_target(effect: &Effect) -> Option<&ChooseSpec> {
+fn local_zone_change_fallback_target(effect: &Effect) -> Option<&ChooseSpec> {
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
-        return local_rewrite_fallback_target(&tagged.effect);
+        return local_zone_change_fallback_target(&tagged.effect);
     }
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
-        return local_rewrite_fallback_target(&with_id.effect);
+        return local_zone_change_fallback_target(&with_id.effect);
     }
     if let Some(unless_pays) = effect.downcast_ref::<crate::effects::UnlessPaysEffect<Effect>>() {
         let [inner] = unless_pays.effects.as_slice() else {
             return None;
         };
-        return local_rewrite_fallback_target(inner);
+        return local_zone_change_fallback_target(inner);
     }
     effect.target_spec()
 }
@@ -642,7 +642,7 @@ fn tagged_counter_spell_target(effect: &Effect) -> Option<(&TagKey, &ChooseSpec)
         return tagged_counter_spell_target(&with_id.effect);
     }
     let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
-    let target = local_rewrite_fallback_target(&tagged.effect)?;
+    let target = local_zone_change_fallback_target(&tagged.effect)?;
     let counter = {
         let mut current = tagged.effect.as_ref();
         loop {
@@ -940,7 +940,7 @@ fn normalize_cross_segment_correlated_created_result_fights(
             idx += 1;
             continue;
         };
-        let it_tag = TagKey::from(IT_TAG);
+        let it_tag = crate::tag::CompilerReferenceTag::It.key();
         if !matches!(fight.creature1.base(), ChooseSpec::Iterated)
             || source_reference.zone != Some(crate::zone::Zone::Battlefield)
             || !matches!(
@@ -954,9 +954,9 @@ fn normalize_cross_segment_correlated_created_result_fights(
         }
 
         let source_binding_tag =
-            TagKey::from(format!("{}_correlated_source", tagged_create.tag.as_str()));
+            crate::tag::CompilerDerivedTag::CorrelatedSource.key(&tagged_create.tag);
         let result_binding_tag =
-            TagKey::from(format!("{}_correlated_result", tagged_create.tag.as_str()));
+            crate::tag::CompilerDerivedTag::CorrelatedResult.key(&tagged_create.tag);
         let fixed_fight = Effect::fight(
             ChooseSpec::Tagged(result_binding_tag.clone()),
             ChooseSpec::Tagged(source_binding_tag.clone()),
@@ -1024,9 +1024,15 @@ fn normalize_coordinated_two_target_fight_window(
     let fight_effect = fight.downcast_ref::<crate::effects::FightEffect>()?;
     let both_authored_group =
         (choose_spec_has_authored_creature_group_surface(&fight_effect.creature1)
-            || choose_spec_references_tag(&fight_effect.creature1, CHOSEN_OBJECTS_TAG))
+            || choose_spec_references_tag(
+                &fight_effect.creature1,
+                crate::tag::CompilerReferenceTag::ChosenObjects.as_str(),
+            ))
             && (choose_spec_has_authored_creature_group_surface(&fight_effect.creature2)
-                || choose_spec_references_tag(&fight_effect.creature2, CHOSEN_OBJECTS_TAG));
+                || choose_spec_references_tag(
+                    &fight_effect.creature2,
+                    crate::tag::CompilerReferenceTag::ChosenObjects.as_str(),
+                ));
     if conditional_effect.if_false.is_empty()
         && both_authored_group
         && let Some(fixed_branch) = normalize_conditional_branch_target(
@@ -1120,7 +1126,7 @@ fn tagged_exile_attached_to<'a>(effect: &'a Effect, anchor: &TagKey) -> Option<&
 /// battlefield, so a battlefield-to-graveyard replacement cannot refer to
 /// it. Recover the independently encoded attachment anchor in that exact
 /// three-sentence shape.
-fn retarget_death_replacement_from_exiled_attachment(
+fn link_death_replacement_to_exiled_attachment(
     segments: &mut [crate::resolution::ResolutionSegment],
 ) {
     for idx in 0..segments.len().saturating_sub(2) {
@@ -1174,7 +1180,7 @@ fn retarget_death_replacement_from_exiled_attachment(
 /// a return-and-reattach procedure. The intervening Aura result becomes the
 /// destination reference, but it must not replace the historical object in
 /// the later "Equipment that were attached to it" filter.
-pub fn rebind_returned_attachment_history_to_triggering_object(
+pub fn bind_returned_attachment_history_to_triggering_object(
     segments: &mut [crate::resolution::ResolutionSegment],
 ) {
     for segment in segments {
@@ -1372,7 +1378,9 @@ fn normalize_controller_grouped_exile_search(compiled: Vec<Effect>) -> Vec<Effec
             [crate::types::Supertype::Basic]
         )
         || search.chooser
-            != PlayerFilter::ControllerOf(ObjectRef::tagged(crate::cards::builders::IT_TAG))
+            != PlayerFilter::ControllerOf(ObjectRef::tagged(
+                crate::tag::CompilerReferenceTag::It.key(),
+            ))
     {
         return compiled;
     }
@@ -1451,7 +1459,7 @@ fn materialize_source_sentence_segments(
         let end = start + source_segment.effect_count;
         let mut annotated_effects = prepared.annotated.effects[start..end].to_vec();
         if source_segment.leading_then && previous_sentence_was_only_you_draw {
-            rebind_implicit_discard_after_you_draw(&mut annotated_effects);
+            bind_implicit_discard_after_you_draw(&mut annotated_effects);
         }
         let final_env = annotated_effects
             .last()
@@ -1503,8 +1511,8 @@ fn materialize_source_sentence_segments(
     normalize_cross_segment_iterated_consult_exile_collections(&mut segments);
     normalize_cross_segment_correlated_created_result_fights(&mut segments);
     normalize_cross_segment_fight_sequences(&mut segments);
-    retarget_death_replacement_from_exiled_attachment(&mut segments);
-    rebind_returned_attachment_history_to_triggering_object(&mut segments);
+    link_death_replacement_to_exiled_attachment(&mut segments);
+    bind_returned_attachment_history_to_triggering_object(&mut segments);
     fold_cross_segment_counter_rewrites(&mut segments);
     if let Some(first) = segments.first_mut() {
         first.default_effects = prepend_effect_prelude(
@@ -1518,7 +1526,7 @@ fn materialize_source_sentence_segments(
     )))
 }
 
-fn rebind_implicit_discard_after_you_draw(annotated_effects: &mut [AnnotatedEffect]) {
+fn bind_implicit_discard_after_you_draw(annotated_effects: &mut [AnnotatedEffect]) {
     let [annotated] = annotated_effects else {
         return;
     };
@@ -1637,7 +1645,7 @@ fn bind_shared_counter_target_to_it(effects: &mut [EffectAst], shared_target: &T
             if let Some(target) = counter_target
                 && target == shared_target
             {
-                *target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
+                *target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None);
             }
         }
         for_each_nested_effects_mut(effect, true, |nested| {
@@ -1656,7 +1664,9 @@ fn self_replacement_branches_share_explicit_target(
     if_false: &[EffectAst],
     if_true: &[EffectAst],
 ) -> bool {
-    if !effects_reference_tag(if_false, IT_TAG) || !effects_reference_tag(if_true, IT_TAG) {
+    if !effects_reference_tag(if_false, crate::tag::CompilerReferenceTag::It.as_str())
+        || !effects_reference_tag(if_true, crate::tag::CompilerReferenceTag::It.as_str())
+    {
         return false;
     }
     let Some(default_target) = if_false
@@ -1785,7 +1795,7 @@ fn materialize_trailing_self_replacement(
         let compares_target_to_prior_choice = matches!(
             predicate,
             PredicateAst::TargetMatches(filter)
-                if super::filter_references_tag(filter, crate::cards::builders::IT_TAG)
+                if super::filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
         );
         let default_action_condition_tag =
             last_tagged_default_target(&default_effects).map(|(tag, _)| tag);
@@ -1838,7 +1848,7 @@ fn materialize_trailing_self_replacement(
             replacement_effects = replacement_effects
                 .into_iter()
                 .map(|effect| {
-                    crate::lower::rewrite_replacement_effect_target(&effect, &previous_target)
+                    crate::lower::replacement_effect_with_target(&effect, &previous_target)
                         .unwrap_or(effect)
                 })
                 .collect();
@@ -1957,7 +1967,7 @@ pub fn materialize_prepared_triggered_effects(
         .map(compile_prepared_predicate_for_lowering)
         .transpose()?;
     if let Some(condition) = intervening_if.as_ref() {
-        retarget_source_move_to_damaged_death_card(&mut lowered, condition);
+        link_source_move_to_damaged_death_card(&mut lowered, condition);
     }
     Ok((lowered, intervening_if))
 }
@@ -1981,7 +1991,7 @@ fn damaged_death_condition_target_filter(condition: &Condition) -> Option<Object
     }
 }
 
-fn retarget_source_move_to_damaged_death_card(lowered: &mut LoweredEffects, condition: &Condition) {
+fn link_source_move_to_damaged_death_card(lowered: &mut LoweredEffects, condition: &Condition) {
     let Some(filter) = damaged_death_condition_target_filter(condition) else {
         return;
     };
@@ -2185,7 +2195,7 @@ fn strip_erroneous_meld_player_exile_effect(lowered: &mut LoweredEffects) {
     lowered.effects = crate::resolution::ResolutionProgram::new(segments);
 }
 
-fn fold_local_zone_rewrite_self_replacements(effects: Vec<Effect>) -> Vec<Effect> {
+fn fold_local_zone_change_self_replacements(effects: Vec<Effect>) -> Vec<Effect> {
     let mut rewritten = Vec::new();
     let mut idx = 0usize;
 
@@ -2353,7 +2363,7 @@ fn normalize_two_target_counter_then_fight(effects: Vec<Effect>) -> Vec<Effect> 
         {
             let mut fixed_counters = counters.clone();
             fixed_counters.target = ChooseSpec::Tagged(first_tag.clone());
-            let fixed_counter_effect = Effect::new(fixed_counters).tag(counter_tag.as_str());
+            let fixed_counter_effect = Effect::new(fixed_counters).tag(counter_tag.clone());
             rewritten.push(effects[idx].clone());
             rewritten.push(effects[idx + 1].clone());
             rewritten.push(Effect::conditional(
@@ -2398,9 +2408,9 @@ fn normalize_two_target_conditional_then_fight(effects: Vec<Effect>) -> Vec<Effe
             && let Some(fixed_branch) =
                 normalize_conditional_branch_target(&conditional.if_true, first_tag, first_filter)
         {
-            let rebind_condition = single_conditional_result_is_continuous(conditional);
-            let fixed_condition = if rebind_condition {
-                rebind_tagged_condition(&conditional.condition, second_tag, first_tag)
+            let link_target_condition = single_conditional_result_is_continuous(conditional);
+            let fixed_condition = if link_target_condition {
+                substitute_condition_tag(&conditional.condition, second_tag, first_tag)
             } else {
                 conditional.condition.clone()
             };
@@ -2441,7 +2451,7 @@ fn normalize_targeted_conditional_action_then_fight(effects: Vec<Effect>) -> Vec
             && (fight_references_counter_tag(&effects[idx + 3], counter_tag.as_str())
                 || fight_references_authored_it_and_target(&effects[idx + 3], opposing_target))
         {
-            let opposing_tag = TagKey::from(format!("{}_opposing_target", friendly_tag.as_str()));
+            let opposing_tag = crate::tag::CompilerDerivedTag::OpposingTarget.key(friendly_tag);
             let mut fixed_counters = counters.clone();
             fixed_counters.target = ChooseSpec::Tagged(friendly_tag.clone());
             rewritten.push(effects[idx].clone());
@@ -2449,11 +2459,11 @@ fn normalize_targeted_conditional_action_then_fight(effects: Vec<Effect>) -> Vec
                 Effect::new(crate::effects::TargetOnlyEffect::new(
                     opposing_target.clone(),
                 ))
-                .tag(opposing_tag.as_str()),
+                .tag(opposing_tag.clone()),
             );
             rewritten.push(Effect::conditional(
-                rebind_tagged_condition(condition, counter_tag, friendly_tag),
-                vec![Effect::new(fixed_counters).tag(counter_tag.as_str())],
+                substitute_condition_tag(condition, counter_tag, friendly_tag),
+                vec![Effect::new(fixed_counters).tag(counter_tag.clone())],
                 Vec::new(),
             ));
             rewritten.push(Effect::fight(
@@ -2498,12 +2508,12 @@ fn normalize_targeted_conditional_action_then_fight(effects: Vec<Effect>) -> Vec
                 friendly_filter,
             )
         {
-            let opposing_tag = TagKey::from(format!("{}_opposing_target", friendly_tag.as_str()));
+            let opposing_tag = crate::tag::CompilerDerivedTag::OpposingTarget.key(friendly_tag);
             rewritten.push(
                 Effect::new(crate::effects::TargetOnlyEffect::new(
                     opposing_target.clone(),
                 ))
-                .tag(opposing_tag.as_str()),
+                .tag(opposing_tag.clone()),
             );
             rewritten.push(effects[idx].clone());
             rewritten.push(Effect::conditional(
@@ -2543,12 +2553,12 @@ fn normalize_targeted_conditional_action_then_fight(effects: Vec<Effect>) -> Vec
                 friendly_filter,
             )
         {
-            let opposing_tag = TagKey::from(format!("{}_opposing_target", friendly_tag.as_str()));
+            let opposing_tag = crate::tag::CompilerDerivedTag::OpposingTarget.key(friendly_tag);
             rewritten.push(
                 Effect::new(crate::effects::TargetOnlyEffect::new(
                     opposing_target.clone(),
                 ))
-                .tag(opposing_tag.as_str()),
+                .tag(opposing_tag.clone()),
             );
             rewritten.push(effects[idx + 1].clone());
             rewritten.push(Effect::conditional(
@@ -2671,7 +2681,7 @@ fn normalize_conditional_action_target(
 ) -> Option<Effect> {
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         return normalize_conditional_action_target(&tagged.effect, first_tag, first_filter)
-            .map(|effect| effect.tag(tagged.tag.as_str()));
+            .map(|effect| effect.tag(tagged.tag.clone()));
     }
 
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
@@ -2759,10 +2769,16 @@ fn fight_references_result_tag_or_authored_group(
     let first_is_result = choose_spec_references_tag(&fight.creature1, result_tag);
     let second_is_result = choose_spec_references_tag(&fight.creature2, result_tag);
     let first_is_authored_group = choose_spec_has_authored_creature_group_surface(&fight.creature1)
-        || choose_spec_references_tag(&fight.creature1, CHOSEN_OBJECTS_TAG);
+        || choose_spec_references_tag(
+            &fight.creature1,
+            crate::tag::CompilerReferenceTag::ChosenObjects.as_str(),
+        );
     let second_is_authored_group =
         choose_spec_has_authored_creature_group_surface(&fight.creature2)
-            || choose_spec_references_tag(&fight.creature2, CHOSEN_OBJECTS_TAG);
+            || choose_spec_references_tag(
+                &fight.creature2,
+                crate::tag::CompilerReferenceTag::ChosenObjects.as_str(),
+            );
     (first_is_result && (second_is_result || second_is_authored_group))
         || (first_is_authored_group && second_is_result)
         || (first_is_authored_group && second_is_authored_group)
@@ -2784,14 +2800,19 @@ fn single_conditional_result_is_continuous(
         .is_some()
 }
 
-fn rebind_tagged_condition(condition: &Condition, from_tag: &TagKey, to_tag: &TagKey) -> Condition {
+fn substitute_condition_tag(
+    condition: &Condition,
+    from_tag: &TagKey,
+    to_tag: &TagKey,
+) -> Condition {
     match condition {
         // Coordinated target declarations carry an authored collection tag
         // outside their independent target-slot tags. A singular trailing
         // predicate ("if it's a Knight") belongs to the creature receiving
         // the conditional action, not to that synthetic collection.
         Condition::TaggedObjectMatches(tag, filter)
-            if tag == from_tag || tag.as_str() == CHOSEN_OBJECTS_TAG =>
+            if tag == from_tag
+                || tag.as_str() == crate::tag::CompilerReferenceTag::ChosenObjects.as_str() =>
         {
             Condition::TaggedObjectMatches(to_tag.clone(), filter.clone())
         }
@@ -2920,7 +2941,7 @@ fn choose_spec_references_tag(spec: &ChooseSpec, tag: &str) -> bool {
 
 fn choose_spec_contains_it_tag(spec: &ChooseSpec) -> bool {
     match spec {
-        ChooseSpec::Tagged(tag) => tag.as_str() == IT_TAG,
+        ChooseSpec::Tagged(tag) => tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str(),
         ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
             choose_spec_contains_it_tag(inner)
         }
@@ -2968,7 +2989,7 @@ pub fn compile_condition_from_predicate_ast_with_env(
     let mut ctx = EffectLoweringContext::new();
     let reference_env: crate::cards::builders::ReferenceEnv = refs.clone();
     ctx.apply_reference_env(&reference_env);
-    let saved_last_tag = saved_last_object_tag.map(|tag| tag.as_str().to_string());
+    let saved_last_tag = saved_last_object_tag.cloned();
     compile_condition_from_predicate_ast(predicate, &mut ctx, &saved_last_tag)
 }
 

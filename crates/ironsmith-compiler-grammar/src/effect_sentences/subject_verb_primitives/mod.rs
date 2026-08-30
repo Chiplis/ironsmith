@@ -40,7 +40,7 @@ use super::{
     parse_target_player_exiles_creature_and_graveyard_sentence,
 };
 use crate::cards::builders::{
-    CardTextError, ClashOpponentAst, EffectAst, IT_TAG, IfResultPredicate, PlayerAst, PredicateAst,
+    CardTextError, ClashOpponentAst, EffectAst, IfResultPredicate, PlayerAst, PredicateAst,
     ReturnControllerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
     SubjectVerbRoleAst, TagKey, TargetAst, TextSpan,
 };
@@ -142,7 +142,7 @@ pub fn parse_if_any_tagged_cards_share_card_type_with_triggering_spell(
     let if_true = parse_effect_chain_inner(shape.effect_tokens)?;
 
     Ok(Some(vec![EffectAst::Conditional {
-        predicate: PredicateAst::TaggedMatches(TagKey::from(IT_TAG), filter),
+        predicate: PredicateAst::TaggedMatches(crate::tag::CompilerReferenceTag::It.key(), filter),
         if_true,
         if_false: Vec::new(),
     }]))

@@ -1,5 +1,4 @@
 use crate::TagKey;
-use crate::cards::builders::IT_TAG;
 use crate::effect::Value;
 use crate::grammar::filters::{parse_counter_type_from_tokens, parse_counter_type_words};
 use crate::lexer::synthetic_word_tokens;
@@ -129,14 +128,14 @@ fn parse_mana_from_source_spent_count(words: &[&str], item_start: usize) -> Opti
 #[path = "count_shapes_inline_tests.rs"]
 mod tests;
 
-#[path = "count_shapes/count_shapes_core_programs.rs"]
+#[path = "count_shapes/count_shapes_core.rs"]
 mod count_shapes_core_programs;
 pub use count_shapes_core_programs::parse_for_each_count_value_words;
 use count_shapes_core_programs::{
     exact_one_of, is_kick_count, parse_exact_dynamic_count_basis, parse_for_each_head,
     value_boundary,
 };
-#[path = "count_shapes/count_shapes_counter_programs.rs"]
+#[path = "count_shapes/count_shapes_counter.rs"]
 mod count_shapes_counter_programs;
 use count_shapes_counter_programs::{
     first_counter_word, is_source_counter_reference, is_tagged_counter_reference,

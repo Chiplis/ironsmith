@@ -361,11 +361,11 @@ fn target_choice_references_retain_the_authored_chooser() {
     for (mut words, expected_tag) in [
         (
             vec!["creature", "you", "chose"],
-            ABILITY_CONTROLLER_TARGET_CHOICE_TAG,
+            crate::tag::CompilerReferenceTag::AbilityControllerTargetChoice.as_str(),
         ),
         (
             vec!["creature", "your", "opponent", "chose"],
-            OPPONENT_TARGET_CHOICE_TAG,
+            crate::tag::CompilerReferenceTag::OpponentTargetChoice.as_str(),
         ),
     ] {
         let mut filter = ObjectFilter::default();
@@ -394,6 +394,6 @@ fn plural_demonstrative_reference_preserves_plural_noun_surface() {
     assert!(filter.has_plural_object_noun_surface());
     assert!(filter.tagged_constraints.iter().any(|constraint| {
         constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-            && constraint.tag.as_str() == IT_TAG
+            && constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     }));
 }

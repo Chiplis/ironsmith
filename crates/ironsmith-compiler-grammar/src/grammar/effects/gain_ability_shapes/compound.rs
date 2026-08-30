@@ -136,14 +136,14 @@ pub fn parse_gain_then_get_shape(tokens: &[OwnedLexToken]) -> Option<GainThenGet
 #[path = "compound/tests.rs"]
 mod tests;
 
-#[path = "compound/reference_programs.rs"]
+#[path = "compound/reference.rs"]
 mod reference_programs;
 use reference_programs::parse_attached_and_related_subject;
-#[path = "compound/object_action_programs.rs"]
+#[path = "compound/object_action.rs"]
 mod object_action_programs;
 pub use object_action_programs::{
     parse_attached_and_related_get_ability_shape, parse_attached_and_related_get_shape,
 };
-#[path = "compound/ability_programs.rs"]
+#[path = "compound/ability.rs"]
 mod ability_programs;
 pub use ability_programs::parse_get_then_ability_shape;

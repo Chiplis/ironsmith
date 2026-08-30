@@ -1,8 +1,8 @@
 use crate::ability::{Ability, AbilityKind};
 use crate::cards::builders::{
-    CardDefinitionBuilder, CardTextError, EffectAst, IT_TAG, KeywordAction, ParsedAbility,
-    PredicateAst, StaticAbilityAst, SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst,
-    TriggerSpec, ZoneReplacementDurationAst,
+    CardDefinitionBuilder, CardTextError, EffectAst, KeywordAction, ParsedAbility, PredicateAst,
+    StaticAbilityAst, SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst, TriggerSpec,
+    ZoneReplacementDurationAst,
 };
 use crate::effect::{Condition, Effect, EffectMode, EventValueSpec, Value};
 use crate::filter::{ObjectFilter, ObjectRef};
@@ -29,8 +29,8 @@ use super::condition_antecedent::{
     bind_condition_collection_antecedent_in_effects, bind_condition_counter_antecedent_in_effects,
     bind_random_count_condition_antecedent_in_effects,
     bind_trigger_antecedent_after_top_library_observation, predicate_object_filter_antecedent,
-    predicate_source_counter_antecedent, retarget_it_animations_to_source,
-    retarget_source_damage_attack_followups_to_source,
+    predicate_source_counter_antecedent, resolve_it_animations_to_source,
+    resolve_source_damage_attack_followups_to_source,
 };
 use super::effect_ast_normalization::{
     correlate_conditional_quantified_choice_followups, normalize_effects_ast,
@@ -280,7 +280,7 @@ fn damaged_death_condition_target_filter(condition: &Condition) -> Option<Object
     }
 }
 
-fn retarget_source_move_to_damaged_death_card(lowered: &mut LoweredEffects, condition: &Condition) {
+fn link_source_move_to_damaged_death_card(lowered: &mut LoweredEffects, condition: &Condition) {
     let Some(filter) = damaged_death_condition_target_filter(condition) else {
         return;
     };
@@ -316,7 +316,7 @@ fn retarget_source_move_to_damaged_death_card(lowered: &mut LoweredEffects, cond
 
 fn object_filter_is_it_reference(filter: &ObjectFilter) -> bool {
     filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == IT_TAG
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     })
 }
@@ -328,7 +328,7 @@ fn object_filter_has_single_tag_reference(filter: &ObjectFilter, tag: &crate::ta
         })
 }
 
-fn rewrite_delayed_return_control_loss_sacrifice_followup(lowered: &mut LoweredEffects) -> bool {
+fn fuse_delayed_return_control_loss_sacrifice_followup(lowered: &mut LoweredEffects) -> bool {
     let Some(first_segment) = lowered.effects.segments.first() else {
         return false;
     };
@@ -465,8 +465,8 @@ fn rewrite_delayed_return_control_loss_sacrifice_followup(lowered: &mut LoweredE
     true
 }
 
-fn rewrite_source_control_loss_sacrifice_followup(lowered: &mut LoweredEffects) {
-    if rewrite_delayed_return_control_loss_sacrifice_followup(lowered) {
+fn fuse_source_control_loss_sacrifice_followup(lowered: &mut LoweredEffects) {
+    if fuse_delayed_return_control_loss_sacrifice_followup(lowered) {
         return;
     }
     let split_followup_segment = match lowered.effects.segments.as_slice() {
@@ -587,7 +587,9 @@ fn rewrite_source_control_loss_sacrifice_followup(lowered: &mut LoweredEffects) 
 
 fn replace_it_target_with_filter(target: &mut TargetAst, filter: &ObjectFilter) -> bool {
     match target {
-        TargetAst::Tagged(tag, span) if tag.as_str() == IT_TAG => {
+        TargetAst::Tagged(tag, span)
+            if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() =>
+        {
             *target = TargetAst::Object(filter.clone(), *span, None);
             true
         }
@@ -768,7 +770,7 @@ fn replace_exile_top_event_count_with_triggering_counter_count(effect: &mut Effe
     for_each_nested_effects_mut(effect, false, replace_in_effects);
 }
 
-fn phase_step_trigger_object_reference_tag(trigger: &TriggerSpec) -> Option<&str> {
+fn phase_step_trigger_object_reference_tag(trigger: &TriggerSpec) -> Option<TagKey> {
     if let TriggerSpec::WithIntro { trigger, .. } = trigger {
         return phase_step_trigger_object_reference_tag(trigger);
     }
@@ -785,7 +787,7 @@ fn phase_step_trigger_object_reference_tag(trigger: &TriggerSpec) -> Option<&str
         PlayerFilter::ControllerOf(ObjectRef::Tagged(tag))
         | PlayerFilter::OwnerOf(ObjectRef::Tagged(tag))
         | PlayerFilter::AliasedControllerOf(ObjectRef::Tagged(tag))
-        | PlayerFilter::AliasedOwnerOf(ObjectRef::Tagged(tag)) => Some(tag.as_str()),
+        | PlayerFilter::AliasedOwnerOf(ObjectRef::Tagged(tag)) => Some(tag.clone()),
         _ => None,
     }
 }
@@ -835,7 +837,7 @@ fn this_blocks_or_becomes_blocked_other_filter(trigger: &TriggerSpec) -> Option<
     pair(left, right).or_else(|| pair(right, left))
 }
 
-pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<&str> {
+pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> {
     if let TriggerSpec::WithIntro { trigger, .. } = trigger {
         return default_trigger_last_object_tag(trigger);
     }
@@ -846,10 +848,10 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<&str> {
         return None;
     }
     if this_blocks_or_becomes_blocked_other_filter(trigger).is_some() {
-        return Some("blocking");
+        return Some(crate::tag::CompilerReferenceTag::Blocking.key());
     }
     if matches!(trigger, TriggerSpec::BlocksOrBecomesBlockedByObject { .. }) {
-        return Some("blocking");
+        return Some(crate::tag::CompilerReferenceTag::Blocking.key());
     }
     if match trigger {
         TriggerSpec::ThisBecomesBlockedByObject(_)
@@ -863,20 +865,20 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<&str> {
         }
         _ => false,
     } {
-        return Some("blocking");
+        return Some(crate::tag::CompilerReferenceTag::Blocking.key());
     }
     if matches!(
         trigger,
         TriggerSpec::ThisBlocksObject { .. } | TriggerSpec::BlocksObjectWithLesserPower { .. }
     ) {
-        return Some("blocked");
+        return Some(crate::tag::CompilerReferenceTag::Blocked.key());
     }
     if matches!(
         trigger,
         TriggerSpec::KeywordActionTaggedObject { object_tag, .. }
-            if object_tag.as_str() == IT_TAG
+            if object_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     ) {
-        return Some(IT_TAG);
+        return Some(crate::tag::CompilerReferenceTag::It.key());
     }
     if matches!(
         trigger,
@@ -885,7 +887,7 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<&str> {
             ..
         }
     ) {
-        return Some(crate::tag::MANIFEST_DREAD_GRAVEYARD_TAG);
+        return Some(crate::tag::CompilerReferenceTag::ManifestDreadGraveyard.key());
     }
     if matches!(
         trigger,
@@ -900,9 +902,9 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<&str> {
             | TriggerSpec::DealsExactDamageToObjectOrPlayer { .. }
             | TriggerSpec::DealsCombatDamageTo { .. }
     ) {
-        Some("damaged")
+        Some(crate::tag::CompilerReferenceTag::Damaged.key())
     } else {
-        Some("triggering")
+        Some(crate::tag::CompilerReferenceTag::Triggering.key())
     }
 }
 
@@ -951,7 +953,7 @@ fn default_trigger_last_object_prelude(
         TriggerSpec::KeywordAction {
             action: crate::events::KeywordActionKind::ManifestDread,
             ..
-        } if tag.as_str() == crate::tag::MANIFEST_DREAD_GRAVEYARD_TAG => {
+        } if tag.as_str() == crate::tag::CompilerReferenceTag::ManifestDreadGraveyard.as_str() => {
             Some(EffectPreludeTag::TriggeringObject(tag.clone()))
         }
         _ => None,
@@ -965,7 +967,7 @@ fn default_trigger_last_object_prelude(
 /// only this exact typed pair to a trigger participant for which we can build
 /// an executable snapshot prelude.
 fn bind_source_and_trigger_object_destroy_pair(effects: &mut [EffectAst], trigger: &TriggerSpec) {
-    let Some(tag) = default_trigger_last_object_tag(trigger).map(crate::tag::TagKey::from) else {
+    let Some(tag) = default_trigger_last_object_tag(trigger) else {
         return;
     };
     if default_trigger_last_object_prelude(trigger, &tag).is_none() {
@@ -994,7 +996,7 @@ fn bind_source_and_trigger_object_destroy_pair(effects: &mut [EffectAst], trigge
                     ..
                 }),
             ] = effects.as_mut_slice()
-            && second_tag.as_str() == IT_TAG
+            && second_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         {
             *second_tag = tag.clone();
             return;
@@ -1156,7 +1158,10 @@ fn triggering_stack_object_kind(trigger: &TriggerSpec) -> Option<crate::filter::
 
 fn copy_target_is_triggering_stack_object(target: &TargetAst) -> bool {
     match target {
-        TargetAst::Tagged(tag, _) => matches!(tag.as_str(), "triggering" | IT_TAG),
+        TargetAst::Tagged(tag, _) => {
+            tag.as_str() == "triggering"
+                || tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        }
         TargetAst::WithCount(target, _) | TargetAst::WithCountValue(target, _, _) => {
             copy_target_is_triggering_stack_object(target)
         }
@@ -1318,7 +1323,7 @@ fn bind_post_copy_cast_spell_exile_to_triggering_object(
     }
 }
 
-fn retarget_spell_cast_mana_spent_predicate(
+fn link_spell_cast_mana_spent_predicate(
     trigger: &TriggerSpec,
     predicate: PredicateAst,
 ) -> PredicateAst {
@@ -1340,21 +1345,21 @@ fn retarget_spell_cast_mana_spent_predicate(
             PredicateAst::TriggeringSpellColoredManaSpentToCastAtLeast(amount)
         }
         PredicateAst::Not(inner) => PredicateAst::Not(Box::new(
-            retarget_spell_cast_mana_spent_predicate(trigger, *inner),
+            link_spell_cast_mana_spent_predicate(trigger, *inner),
         )),
         PredicateAst::And(left, right) => PredicateAst::And(
-            Box::new(retarget_spell_cast_mana_spent_predicate(trigger, *left)),
-            Box::new(retarget_spell_cast_mana_spent_predicate(trigger, *right)),
+            Box::new(link_spell_cast_mana_spent_predicate(trigger, *left)),
+            Box::new(link_spell_cast_mana_spent_predicate(trigger, *right)),
         ),
         PredicateAst::Or(left, right) => PredicateAst::Or(
-            Box::new(retarget_spell_cast_mana_spent_predicate(trigger, *left)),
-            Box::new(retarget_spell_cast_mana_spent_predicate(trigger, *right)),
+            Box::new(link_spell_cast_mana_spent_predicate(trigger, *left)),
+            Box::new(link_spell_cast_mana_spent_predicate(trigger, *right)),
         ),
         other => other,
     }
 }
 
-fn retarget_spell_cast_mana_spent_predicates_in_effects(
+fn link_spell_cast_mana_spent_predicates_in_effects(
     trigger: &TriggerSpec,
     effects: &mut [EffectAst],
 ) {
@@ -1368,7 +1373,7 @@ fn retarget_spell_cast_mana_spent_predicates_in_effects(
             | EffectAst::TrailingIf { predicate, .. }
             | EffectAst::TrailingUnless { predicate, .. }
             | EffectAst::SelfReplacement { predicate, .. } => {
-                *predicate = retarget_spell_cast_mana_spent_predicate(trigger, predicate.clone());
+                *predicate = link_spell_cast_mana_spent_predicate(trigger, predicate.clone());
             }
             EffectAst::ControlFlow(control) => {
                 if let crate::model::control_flow::ControlFlowNodeAst::Condition {
@@ -1377,22 +1382,18 @@ fn retarget_spell_cast_mana_spent_predicates_in_effects(
                     && let crate::model::control_flow::ControlPredicateAst::State(predicate) =
                         &mut condition.predicate
                 {
-                    *predicate =
-                        retarget_spell_cast_mana_spent_predicate(trigger, predicate.clone());
+                    *predicate = link_spell_cast_mana_spent_predicate(trigger, predicate.clone());
                 }
             }
             _ => {}
         }
         for_each_nested_effects_mut(effect, true, |nested| {
-            retarget_spell_cast_mana_spent_predicates_in_effects(trigger, nested);
+            link_spell_cast_mana_spent_predicates_in_effects(trigger, nested);
         });
     }
 }
 
-fn retarget_spell_cast_mana_spent_condition(
-    trigger: &TriggerSpec,
-    condition: Condition,
-) -> Condition {
+fn link_spell_cast_mana_spent_condition(trigger: &TriggerSpec, condition: Condition) -> Condition {
     if !trigger_is_spell_cast(trigger) {
         return condition;
     }
@@ -1407,30 +1408,34 @@ fn retarget_spell_cast_mana_spent_condition(
         Condition::ColoredManaSpentToCastThisSpellAtLeast(amount) => {
             Condition::TriggeringSpellColoredManaSpentToCastAtLeast(amount)
         }
-        Condition::Not(inner) => Condition::Not(Box::new(
-            retarget_spell_cast_mana_spent_condition(trigger, *inner),
-        )),
+        Condition::Not(inner) => Condition::Not(Box::new(link_spell_cast_mana_spent_condition(
+            trigger, *inner,
+        ))),
         Condition::And(left, right) => Condition::And(
-            Box::new(retarget_spell_cast_mana_spent_condition(trigger, *left)),
-            Box::new(retarget_spell_cast_mana_spent_condition(trigger, *right)),
+            Box::new(link_spell_cast_mana_spent_condition(trigger, *left)),
+            Box::new(link_spell_cast_mana_spent_condition(trigger, *right)),
         ),
         Condition::Or(left, right) => Condition::Or(
-            Box::new(retarget_spell_cast_mana_spent_condition(trigger, *left)),
-            Box::new(retarget_spell_cast_mana_spent_condition(trigger, *right)),
+            Box::new(link_spell_cast_mana_spent_condition(trigger, *left)),
+            Box::new(link_spell_cast_mana_spent_condition(trigger, *right)),
         ),
         other => other,
     }
 }
 
-fn retarget_it_target_to_source(target: &mut TargetAst) {
+fn resolve_bare_it_target_to_source(target: &mut TargetAst) {
     match target {
-        TargetAst::Tagged(tag, span) if tag.as_str() == IT_TAG => {
+        TargetAst::Tagged(tag, span)
+            if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() =>
+        {
             *target = TargetAst::Source(*span);
         }
-        TargetAst::Object(filter, span, _) if *filter == ObjectFilter::tagged(IT_TAG) => {
+        TargetAst::Object(filter, span, _)
+            if *filter == ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()) =>
+        {
             *target = TargetAst::Source(*span);
         }
-        TargetAst::WithCount(inner, _) => retarget_it_target_to_source(inner),
+        TargetAst::WithCount(inner, _) => resolve_bare_it_target_to_source(inner),
         _ => {}
     }
 }
@@ -1479,10 +1484,14 @@ fn terminal_discard_filter(effect: &EffectAst) -> Option<Option<ObjectFilter>> {
 
 fn typed_demonstrative_noun(target: &TargetAst) -> Option<&'static str> {
     let surface = match target {
-        TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG => None,
+        TargetAst::Tagged(tag, _)
+            if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() =>
+        {
+            None
+        }
         TargetAst::Object(filter, _, span)
             if filter.tagged_constraints.iter().any(|constraint| {
-                constraint.tag.as_str() == IT_TAG
+                constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                     && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
             }) =>
         {
@@ -1522,19 +1531,21 @@ fn typed_demonstrative_noun(target: &TargetAst) -> Option<&'static str> {
     }
 }
 
-fn retarget_typed_demonstrative_it(target: &mut TargetAst, tag: &crate::tag::TagKey) -> bool {
+fn resolve_typed_demonstrative_it(target: &mut TargetAst, tag: &crate::tag::TagKey) -> bool {
     if typed_demonstrative_noun(target).is_none() {
         return false;
     }
     match target {
-        TargetAst::Tagged(current, _) if current.as_str() == IT_TAG => {
+        TargetAst::Tagged(current, _)
+            if current.as_str() == crate::tag::CompilerReferenceTag::It.as_str() =>
+        {
             *current = tag.clone();
             true
         }
         TargetAst::Object(filter, _, _) => {
             let mut rebound = false;
             for constraint in &mut filter.tagged_constraints {
-                if constraint.tag.as_str() == IT_TAG
+                if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                     && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
                 {
                     constraint.tag = tag.clone();
@@ -1544,7 +1555,7 @@ fn retarget_typed_demonstrative_it(target: &mut TargetAst, tag: &crate::tag::Tag
             rebound
         }
         TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
-            retarget_typed_demonstrative_it(inner, tag)
+            resolve_typed_demonstrative_it(inner, tag)
         }
         _ => false,
     }
@@ -1559,8 +1570,7 @@ fn bind_phase_step_trigger_untap_after_incompatible_discard(
     effects: &mut [EffectAst],
     trigger: &TriggerSpec,
 ) {
-    let Some(trigger_tag) = phase_step_trigger_object_reference_tag(trigger).map(TagKey::from)
-    else {
+    let Some(trigger_tag) = phase_step_trigger_object_reference_tag(trigger) else {
         return;
     };
     let mut prior_discard: Option<Option<ObjectFilter>> = None;
@@ -1576,7 +1586,7 @@ fn bind_phase_step_trigger_untap_after_incompatible_discard(
                     && let Some(noun) = typed_demonstrative_noun(target)
                     && !discard_filter_can_supply_demonstrative_noun(discard_filter, noun)
                 {
-                    retarget_typed_demonstrative_it(target, trigger_tag);
+                    resolve_typed_demonstrative_it(target, trigger_tag);
                 }
                 for_each_nested_effects_mut(effect, true, |nested| {
                     for child in nested {
@@ -1590,7 +1600,7 @@ fn bind_phase_step_trigger_untap_after_incompatible_discard(
     }
 }
 
-fn retarget_bare_it_effect_targets_to_source(effect: &mut EffectAst) {
+fn resolve_bare_it_effect_targets_to_source(effect: &mut EffectAst) {
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         match &mut subject_verb.action {
             SubjectVerbActionAst::ForEachCounterKindPutOrRemove {
@@ -1598,9 +1608,9 @@ fn retarget_bare_it_effect_targets_to_source(effect: &mut EffectAst) {
                 counter_source,
                 ..
             } => {
-                retarget_it_target_to_source(target);
+                resolve_bare_it_target_to_source(target);
                 if let Some(counter_source) = counter_source {
-                    retarget_it_target_to_source(counter_source);
+                    resolve_bare_it_target_to_source(counter_source);
                 }
             }
             SubjectVerbActionAst::PutCounters { target, .. }
@@ -1608,16 +1618,16 @@ fn retarget_bare_it_effect_targets_to_source(effect: &mut EffectAst) {
             | SubjectVerbActionAst::PutOrRemoveCounters { target, .. }
             | SubjectVerbActionAst::RemoveUpToAnyCounters { target, .. }
             | SubjectVerbActionAst::DoubleCountersOnTarget { target, .. } => {
-                retarget_it_target_to_source(target);
+                resolve_bare_it_target_to_source(target);
             }
             SubjectVerbActionAst::MoveToZone {
                 target,
                 attached_to,
                 ..
             } => {
-                retarget_it_target_to_source(target);
+                resolve_bare_it_target_to_source(target);
                 if let Some(attached_to) = attached_to {
-                    retarget_it_target_to_source(attached_to);
+                    resolve_bare_it_target_to_source(attached_to);
                 }
             }
             _ => {}
@@ -1632,7 +1642,7 @@ fn retarget_bare_it_effect_targets_to_source(effect: &mut EffectAst) {
     }
     for_each_nested_effects_mut(effect, true, |nested| {
         for effect in nested {
-            retarget_bare_it_effect_targets_to_source(effect);
+            resolve_bare_it_effect_targets_to_source(effect);
         }
     });
 }
@@ -1670,7 +1680,7 @@ fn bind_stack_retargets_to_triggering_object(effects: &mut [EffectAst]) {
             && matches!(
                 target,
                 TargetAst::Tagged(tag, _)
-                    if tag.as_str() == crate::cards::builders::IT_TAG
+                    if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             )
         {
             *target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None);
@@ -1687,9 +1697,9 @@ fn bind_stack_retargets_to_triggering_object(effects: &mut [EffectAst]) {
     }
 }
 
-fn retarget_phase_step_it_targets_to_source(effects: &mut [EffectAst]) {
+fn resolve_phase_step_it_targets_to_source(effects: &mut [EffectAst]) {
     for effect in effects {
-        retarget_bare_it_effect_targets_to_source(effect);
+        resolve_bare_it_effect_targets_to_source(effect);
     }
 }
 
@@ -1746,11 +1756,11 @@ fn tagged_target_key(target: &TargetAst) -> Option<&crate::cards::builders::TagK
 
 /// Rebind a plural "return them" back-reference to the concrete helper tag
 /// established by the preceding typed choose/exile chain.  The parser emits
-/// `SOURCE_EXILED_TAG` as a cross-sentence placeholder; resolving it only from
+/// `crate::tag::CompilerReferenceTag::SourceExiled.as_str()` as a cross-sentence placeholder; resolving it only from
 /// `last_object_tag` is too late because lowering the aggregate exile itself
 /// replaces that environment entry with the placeholder.  Preparing the
 /// typed chain here also lets the return remain explicitly plural.
-fn rebind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
+fn bind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
     fn direct_exile(effect: &EffectAst) -> bool {
         matches!(
             effect,
@@ -1766,10 +1776,7 @@ fn rebind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
             if effects.iter().filter(|effect| direct_exile(effect)).count() < 2 {
                 return;
             }
-            let tag = crate::cards::builders::TagKey::from(format!(
-                "__sentence_helper_exiled_aggregate_{}",
-                *next_aggregate
-            ));
+            let tag = crate::tag::CompilerIndexedTag::ExiledAggregate.key(*next_aggregate);
             *next_aggregate += 1;
             for effect in effects.iter_mut().filter(|effect| direct_exile(effect)) {
                 let inner = std::mem::replace(
@@ -1837,7 +1844,7 @@ fn rebind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
             _ => {}
         }
         if let EffectAst::ChooseObjects { tag, count, .. } = effect
-            && is_sentence_helper_exiled_collection_tag(tag.as_str())
+            && is_sentence_helper_exiled_collection_tag(tag)
         {
             let entry = helper_choices
                 .entry(tag.as_str().to_string())
@@ -1854,7 +1861,7 @@ fn rebind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
             *last_aggregate_exile = Some(tag.clone());
         }
         if let EffectAst::TagAffected { effect, tag } = effect
-            && is_sentence_helper_exiled_collection_tag(tag.as_str())
+            && is_sentence_helper_exiled_collection_tag(tag)
             && direct_exile(effect)
         {
             *last_aggregate_exile = Some(tag.clone());
@@ -1902,7 +1909,8 @@ fn rebind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
                     top_only,
                     ..
                 } if tagged_target_key(target).is_some_and(|target_tag| {
-                    matches!(target_tag.as_str(), crate::tag::SOURCE_EXILED_TAG | IT_TAG)
+                    target_tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
+                        || target_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 }) && !*transformed
                     && !*converted
                     && !*top_only
@@ -1934,7 +1942,7 @@ fn rebind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
     }
 }
 
-fn rewrite_prepare_effects_from_normalized(
+fn stage_effects_from_normalized(
     mut semantic_effects: Vec<EffectAst>,
     mut imports: ReferenceImports,
     config: EffectReferenceResolutionConfig,
@@ -1963,19 +1971,23 @@ fn rewrite_prepare_effects_from_normalized(
     } else {
         flattened_effects
     };
-    rebind_aggregate_source_exiled_returns(&mut semantic_effects);
+    bind_aggregate_source_exiled_returns(&mut semantic_effects);
     let mut prelude = Vec::new();
     for (tag, referenced) in [
-        ("equipped", references_equipped),
-        ("enchanted", references_enchanted),
+        (
+            crate::tag::CompilerReferenceTag::Equipped,
+            references_equipped,
+        ),
+        (
+            crate::tag::CompilerReferenceTag::Enchanted,
+            references_enchanted,
+        ),
     ] {
         if referenced {
             if imports.last_object_tag.is_none() {
-                imports.last_object_tag = Some(crate::cards::builders::TagKey::from(tag));
+                imports.last_object_tag = Some(tag.key());
             }
-            prelude.push(EffectPreludeTag::AttachedSource(
-                crate::cards::builders::TagKey::from(tag),
-            ));
+            prelude.push(EffectPreludeTag::AttachedSource(tag.key()));
         }
     }
 
@@ -2023,7 +2035,7 @@ fn rewrite_prepare_effects_from_normalized(
         if needs_triggering_prelude {
             let tag = default_last_object_tag
                 .as_ref()
-                .filter(|tag| tag.as_str() == IT_TAG)
+                .filter(|tag| tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
                 .cloned()
                 .unwrap_or_else(|| crate::tag::CompilerReferenceTag::Triggering.key());
             prelude.insert(0, EffectPreludeTag::TriggeringObject(tag));
@@ -2034,9 +2046,9 @@ fn rewrite_prepare_effects_from_normalized(
         if references_triggering_source {
             prelude.insert(
                 0,
-                EffectPreludeTag::TriggeringSource(crate::cards::builders::TagKey::from(
-                    "triggering_source",
-                )),
+                EffectPreludeTag::TriggeringSource(
+                    crate::tag::CompilerReferenceTag::TriggeringSource.key(),
+                ),
             );
         }
         let needs_damaged_prelude = default_last_object_tag
@@ -2046,9 +2058,9 @@ fn rewrite_prepare_effects_from_normalized(
         if needs_damaged_prelude {
             prelude.insert(
                 0,
-                EffectPreludeTag::TriggeringDamageTarget(crate::cards::builders::TagKey::from(
-                    "damaged",
-                )),
+                EffectPreludeTag::TriggeringDamageTarget(
+                    crate::tag::CompilerReferenceTag::Damaged.key(),
+                ),
             );
         }
     }
@@ -2234,7 +2246,7 @@ fn source_sentence_boundary_splits_implicit_object_pipeline(
     effects: &[EffectAst],
     boundary: usize,
 ) -> bool {
-    fn contains_local_rewrite_dependency(effect: &EffectAst) -> bool {
+    fn contains_local_replacement_dependency(effect: &EffectAst) -> bool {
         if matches!(
             effect,
             EffectAst::SelfReplacement { .. }
@@ -2250,7 +2262,7 @@ fn source_sentence_boundary_splits_implicit_object_pipeline(
         }
         let mut found = false;
         for_each_nested_effects(effect, true, |nested| {
-            found |= nested.iter().any(contains_local_rewrite_dependency);
+            found |= nested.iter().any(contains_local_replacement_dependency);
         });
         found
     }
@@ -2260,7 +2272,7 @@ fn source_sentence_boundary_splits_implicit_object_pipeline(
         .rev()
         .any(|effect| crate::effect_sentences::primary_target_from_effect(effect).is_some())
         && effects[boundary..].iter().any(|effect| {
-            effect_references_it_tag(effect) && contains_local_rewrite_dependency(effect)
+            effect_references_it_tag(effect) && contains_local_replacement_dependency(effect)
         })
 }
 
@@ -2475,13 +2487,13 @@ fn flatten_top_level_source_sentences(
     (flattened, Vec::new())
 }
 
-pub fn rewrite_prepare_effects_for_lowering(
+pub fn stage_effects_for_lowering(
     effects: &[EffectAst],
     imports: impl Into<ReferenceImports>,
 ) -> Result<PreparedEffectsForLowering, CardTextError> {
     let imports = imports.into();
     let normalized = normalize_effects_ast(effects);
-    rewrite_prepare_effects_from_normalized(
+    stage_effects_from_normalized(
         normalized,
         imports,
         EffectReferenceResolutionConfig {
@@ -2580,7 +2592,7 @@ fn effect_consumes_prior_damage_metric(effect: &EffectAst) -> bool {
 /// explicitly carries statement exports into the next source line. Assigning
 /// an ID to the final memory-producing effect is therefore required for typed
 /// followups such as "the creature they exiled" to bind across that boundary.
-pub fn rewrite_prepare_statement_effects_for_lowering(
+pub fn stage_statement_effects_for_lowering(
     effects: &[EffectAst],
     imports: impl Into<ReferenceImports>,
 ) -> Result<PreparedEffectsForLowering, CardTextError> {
@@ -2598,7 +2610,7 @@ pub fn rewrite_prepare_statement_effects_for_lowering(
                         .iter()
                         .any(effect_consumes_prior_damage_metric)
             });
-    rewrite_prepare_effects_from_normalized(
+    stage_effects_from_normalized(
         normalized,
         imports,
         EffectReferenceResolutionConfig {
@@ -2613,13 +2625,13 @@ pub fn rewrite_prepare_statement_effects_for_lowering(
     )
 }
 
-pub fn rewrite_prepare_additional_cost_effects_for_lowering(
+pub fn stage_additional_cost_effects_for_lowering(
     effects: &[EffectAst],
     imports: impl Into<ReferenceImports>,
 ) -> Result<PreparedEffectsForLowering, CardTextError> {
     let imports = imports.into();
     let normalized = normalize_effects_ast(effects);
-    rewrite_prepare_effects_from_normalized(
+    stage_effects_from_normalized(
         normalized,
         imports,
         EffectReferenceResolutionConfig {
@@ -2634,7 +2646,7 @@ pub fn rewrite_prepare_additional_cost_effects_for_lowering(
     )
 }
 
-pub fn rewrite_prepare_effects_with_trigger_context_for_lowering(
+pub fn stage_effects_with_trigger_context_for_lowering(
     trigger: Option<&TriggerSpec>,
     effects: &[EffectAst],
     imports: impl Into<ReferenceImports>,
@@ -2660,10 +2672,7 @@ pub fn rewrite_prepare_effects_with_trigger_context_for_lowering(
         replace_creature_death_event_amounts(&mut normalized);
     }
     if let Some(antecedent_tag) = trigger.and_then(default_trigger_last_object_tag) {
-        bind_trigger_antecedent_after_top_library_observation(
-            &mut normalized,
-            &crate::tag::TagKey::from(antecedent_tag),
-        );
+        bind_trigger_antecedent_after_top_library_observation(&mut normalized, &antecedent_tag);
     }
     carry_all_object_sweep_filter_to_it_followups(&mut normalized);
     let has_local_target_prelude = has_local_target_prelude_before_it_reference(&normalized);
@@ -2673,26 +2682,24 @@ pub fn rewrite_prepare_effects_with_trigger_context_for_lowering(
         && phase_step_trigger_has_no_object_reference(trigger)
         && !has_phase_step_it_prelude
     {
-        retarget_phase_step_it_targets_to_source(&mut normalized);
+        resolve_phase_step_it_targets_to_source(&mut normalized);
     }
     if let Some(trigger) = trigger
         && spell_cast_trigger_targets_source(trigger)
         && !has_phase_step_it_prelude
     {
-        retarget_phase_step_it_targets_to_source(&mut normalized);
+        resolve_phase_step_it_targets_to_source(&mut normalized);
     }
     let references_trigger_event_tag = trigger
         .and_then(default_trigger_last_object_tag)
-        .is_some_and(|tag| effects_reference_tag(&normalized, tag));
+        .is_some_and(|tag| effects_reference_tag(&normalized, tag.as_str()));
     let default_last_object_tag = if imports.last_object_tag.is_none()
         && !has_local_target_prelude
         && (effects_reference_it_tag(&normalized)
             || effects_reference_its_controller(&normalized)
             || references_trigger_event_tag)
     {
-        trigger
-            .and_then(default_trigger_last_object_tag)
-            .map(crate::cards::builders::TagKey::from)
+        trigger.and_then(default_trigger_last_object_tag)
     } else {
         None
     };
@@ -2702,7 +2709,7 @@ pub fn rewrite_prepare_effects_with_trigger_context_for_lowering(
     let allow_life_event_value = trigger.is_some_and(trigger_allows_event_derived_life_value)
         || effects_have_creature_death_gate(&normalized);
 
-    rewrite_prepare_effects_from_normalized(
+    stage_effects_from_normalized(
         normalized,
         imports,
         EffectReferenceResolutionConfig {
@@ -2716,15 +2723,15 @@ pub fn rewrite_prepare_effects_with_trigger_context_for_lowering(
     )
 }
 
-pub fn rewrite_prepare_triggered_effects_for_lowering(
+pub fn stage_triggered_effects_for_lowering(
     trigger: TriggerSpec,
     effects: &[EffectAst],
     imports: impl Into<ReferenceImports>,
 ) -> Result<(TriggerSpec, PreparedTriggeredEffectsForLowering), CardTextError> {
-    rewrite_prepare_owned_triggered_effects_for_lowering(trigger, effects.to_vec(), imports)
+    stage_owned_triggered_effects_for_lowering(trigger, effects.to_vec(), imports)
 }
 
-pub fn rewrite_prepare_owned_triggered_effects_for_lowering(
+pub fn stage_owned_triggered_effects_for_lowering(
     trigger: TriggerSpec,
     effects: Vec<EffectAst>,
     imports: impl Into<ReferenceImports>,
@@ -2823,7 +2830,8 @@ pub fn rewrite_prepare_owned_triggered_effects_for_lowering(
             | PredicateAst::ItMatchedLastKnown(_)
             | PredicateAst::TargetMatches(_) => true,
             PredicateAst::TaggedMatches(tag, _)
-                if matches!(tag.as_str(), IT_TAG | "triggering") =>
+                if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                    || tag.as_str() == "triggering" =>
             {
                 true
             }
@@ -2908,7 +2916,9 @@ pub fn rewrite_prepare_owned_triggered_effects_for_lowering(
                 continue;
             };
             if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
-                || !matches!(constraint.tag.as_str(), IT_TAG | "damaged" | "triggering")
+                || !(constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                    || constraint.tag.as_str() == "damaged"
+                    || constraint.tag.as_str() == "triggering")
             {
                 continue;
             }
@@ -2949,10 +2959,7 @@ pub fn rewrite_prepare_owned_triggered_effects_for_lowering(
         bind_stack_retargets_to_triggering_object(&mut normalized);
     }
     if let Some(antecedent_tag) = default_trigger_last_object_tag(&trigger) {
-        bind_trigger_antecedent_after_top_library_observation(
-            &mut normalized,
-            &crate::tag::TagKey::from(antecedent_tag),
-        );
+        bind_trigger_antecedent_after_top_library_observation(&mut normalized, &antecedent_tag);
     }
     carry_all_object_sweep_filter_to_it_followups(&mut normalized);
     let has_local_target_prelude = has_local_target_prelude_before_it_reference(&normalized);
@@ -3018,16 +3025,14 @@ pub fn rewrite_prepare_owned_triggered_effects_for_lowering(
         bind_exact_damage_recipient_followup(&trigger, &mut body_effects);
     }
     if let Some(predicate) = intervening_if.take() {
-        intervening_if = Some(retarget_spell_cast_mana_spent_predicate(
-            &trigger, predicate,
-        ));
+        intervening_if = Some(link_spell_cast_mana_spent_predicate(&trigger, predicate));
     }
     if trigger_provides_stack_object(&trigger)
         && let Some(predicate) = intervening_if.take()
     {
         intervening_if = Some(bind_stack_trigger_intervening_object(predicate));
     }
-    retarget_spell_cast_mana_spent_predicates_in_effects(&trigger, &mut body_effects);
+    link_spell_cast_mana_spent_predicates_in_effects(&trigger, &mut body_effects);
     if discard_one_or_more_trigger_uses_event_count(&trigger) {
         for effect in &mut body_effects {
             replace_it_count_with_event_count(effect);
@@ -3066,7 +3071,7 @@ pub fn rewrite_prepare_owned_triggered_effects_for_lowering(
         bind_condition_collection_antecedent_in_effects(&mut body_effects, predicate);
         bind_random_count_condition_antecedent_in_effects(&mut body_effects, predicate);
     }
-    retarget_source_damage_attack_followups_to_source(&mut body_effects);
+    resolve_source_damage_attack_followups_to_source(&mut body_effects);
     if let Some(counter_type) = intervening_if
         .as_ref()
         .and_then(predicate_source_counter_antecedent)
@@ -3074,17 +3079,17 @@ pub fn rewrite_prepare_owned_triggered_effects_for_lowering(
         bind_condition_counter_antecedent_in_effects(&mut body_effects, counter_type);
     }
     if phase_step_trigger_has_no_object_reference(&trigger) && !has_phase_step_it_prelude {
-        retarget_phase_step_it_targets_to_source(&mut body_effects);
+        resolve_phase_step_it_targets_to_source(&mut body_effects);
     }
     if spell_cast_trigger_targets_source(&trigger) && !has_phase_step_it_prelude {
-        retarget_phase_step_it_targets_to_source(&mut body_effects);
+        resolve_phase_step_it_targets_to_source(&mut body_effects);
     }
 
     if intervening_if
         .as_ref()
         .is_some_and(PredicateAst::establishes_source_object_antecedent)
     {
-        retarget_it_animations_to_source(&mut body_effects);
+        resolve_it_animations_to_source(&mut body_effects);
     }
 
     if (matches!(trigger, TriggerSpec::ThisAttacks)
@@ -3106,7 +3111,7 @@ pub fn rewrite_prepare_owned_triggered_effects_for_lowering(
         .as_ref()
         .is_some_and(predicate_uses_implicit_object_reference);
     let references_trigger_event_tag = default_trigger_last_object_tag(&trigger)
-        .is_some_and(|tag| effects_reference_tag(&body_effects, tag));
+        .is_some_and(|tag| effects_reference_tag(&body_effects, tag.as_str()));
     let (default_last_object_tag, default_last_object_prelude) = if !has_local_target_prelude
         && !body_it_binds_to_body_target
         && (effects_reference_it_tag(&body_effects)
@@ -3122,11 +3127,10 @@ pub fn rewrite_prepare_owned_triggered_effects_for_lowering(
             ) {
             // Exact single-partner attack triggers can bind "that creature"
             // to the other attacker snapshot captured at trigger time.
-            Some("other_attacker")
+            Some(crate::tag::CompilerReferenceTag::OtherAttacker.key())
         } else {
             default_trigger_last_object_tag(&trigger)
         };
-        let default_tag = default_tag.map(crate::cards::builders::TagKey::from);
         let default_prelude = default_tag
             .as_ref()
             .and_then(|tag| default_trigger_last_object_prelude(&trigger, tag));
@@ -3139,7 +3143,7 @@ pub fn rewrite_prepare_owned_triggered_effects_for_lowering(
         || intervening_if
             .as_ref()
             .is_some_and(predicate_counts_creature_deaths);
-    let mut prepared = rewrite_prepare_effects_from_normalized(
+    let mut prepared = stage_effects_from_normalized(
         body_effects,
         imports,
         EffectReferenceResolutionConfig {
@@ -3189,7 +3193,7 @@ pub fn rewrite_prepare_owned_triggered_effects_for_lowering(
     ))
 }
 
-pub fn rewrite_lower_prepared_statement_effects(
+pub fn lower_prepared_statement_effects(
     prepared: &PreparedEffectsForLowering,
 ) -> Result<LoweredEffects, CardTextError> {
     let mut lowered = materialize_prepared_statement_effects(prepared)?;
@@ -3197,14 +3201,14 @@ pub fn rewrite_lower_prepared_statement_effects(
     Ok(lowered)
 }
 
-pub fn rewrite_lower_prepared_additional_cost_choice_modes_with_exports(
+pub fn lower_prepared_additional_cost_choice_modes_with_exports(
     options: &[NormalizedAdditionalCostChoiceOptionAst],
 ) -> Result<(Vec<EffectMode>, ReferenceExports), CardTextError> {
     let mut exports = ReferenceExports::default();
     let mut first = true;
     let mut modes = Vec::with_capacity(options.len());
     for option in options {
-        let lowered = rewrite_lower_prepared_statement_effects(&option.prepared)?;
+        let lowered = lower_prepared_statement_effects(&option.prepared)?;
         if first {
             exports = lowered.exports.clone();
             first = false;
@@ -3219,7 +3223,7 @@ pub fn rewrite_lower_prepared_additional_cost_choice_modes_with_exports(
     Ok((modes, exports))
 }
 
-fn rewrite_prepare_parsed_ability_payload(
+fn stage_parsed_ability_payload(
     parsed: &ParsedAbility,
 ) -> Result<Option<NormalizedPreparedAbility>, CardTextError> {
     let Some(effects_ast) = parsed.effects_ast.as_ref() else {
@@ -3239,27 +3243,25 @@ fn rewrite_prepare_parsed_ability_payload(
 
     Ok(match (parsed.kind(), parsed.trigger_spec.as_ref()) {
         (crate::model::CompilerAbilityKindCore::Triggered(_), Some(trigger)) => {
-            let (trigger, prepared) = rewrite_prepare_triggered_effects_for_lowering(
+            let (trigger, prepared) = stage_triggered_effects_for_lowering(
                 (**trigger).clone(),
                 effects_ast,
                 parsed.reference_imports.clone(),
             )?;
             Some(NormalizedPreparedAbility::Triggered { trigger, prepared })
         }
-        (crate::model::CompilerAbilityKindCore::Activated(_), _) => {
-            Some(NormalizedPreparedAbility::Activated(
-                rewrite_prepare_effects_with_trigger_context_for_lowering(
-                    None,
-                    effects_ast,
-                    parsed.reference_imports.clone(),
-                )?,
-            ))
-        }
+        (crate::model::CompilerAbilityKindCore::Activated(_), _) => Some(
+            NormalizedPreparedAbility::Activated(stage_effects_with_trigger_context_for_lowering(
+                None,
+                effects_ast,
+                parsed.reference_imports.clone(),
+            )?),
+        ),
         _ => None,
     })
 }
 
-fn rewrite_merge_intervening_conditions(
+fn merge_intervening_conditions(
     existing: Option<crate::ConditionExpr>,
     additional: Option<crate::ConditionExpr>,
 ) -> Option<crate::ConditionExpr> {
@@ -3273,7 +3275,7 @@ fn rewrite_merge_intervening_conditions(
     }
 }
 
-fn rewrite_lower_parsed_ability_internal(
+fn lower_parsed_ability_internal(
     parsed: ParsedAbility,
     prepared: Option<NormalizedPreparedAbility>,
 ) -> Result<Ability, CardTextError> {
@@ -3281,7 +3283,7 @@ fn rewrite_lower_parsed_ability_internal(
 
     let prepared = match prepared {
         Some(prepared) => Some(prepared),
-        None => rewrite_prepare_parsed_ability_payload(&parsed)?,
+        None => stage_parsed_ability_payload(&parsed)?,
     };
 
     let mut ability = lower_compiler_ability_core(*parsed.ability)?;
@@ -3299,21 +3301,21 @@ fn rewrite_lower_parsed_ability_internal(
             };
             let (mut lowered, parsed_intervening_if) =
                 materialize_prepared_triggered_effects(&prepared)?;
-            rewrite_validate_iterated_player_bindings_in_lowered_effects(
+            validate_iterated_player_bindings_in_lowered_effects(
                 &lowered,
                 trigger_binds_player_reference_context(&trigger),
                 "triggered ability effects",
             )?;
-            let intervening_if = rewrite_merge_intervening_conditions(
+            let intervening_if = merge_intervening_conditions(
                 triggered.intervening_if.take(),
                 parsed_intervening_if,
             );
             let intervening_if = intervening_if
-                .map(|condition| retarget_spell_cast_mana_spent_condition(&trigger, condition));
+                .map(|condition| link_spell_cast_mana_spent_condition(&trigger, condition));
             if let Some(condition) = intervening_if.as_ref() {
-                retarget_source_move_to_damaged_death_card(&mut lowered, condition);
+                link_source_move_to_damaged_death_card(&mut lowered, condition);
             }
-            rewrite_source_control_loss_sacrifice_followup(&mut lowered);
+            fuse_source_control_loss_sacrifice_followup(&mut lowered);
             triggered.trigger = compile_trigger_spec(trigger);
             triggered.effects = lowered.effects;
             triggered.choices = lowered.choices;
@@ -3332,7 +3334,7 @@ fn rewrite_lower_parsed_ability_internal(
         return Ok(ability);
     };
     let lowered = materialize_prepared_effects_with_trigger_context(&prepared)?;
-    rewrite_validate_iterated_player_bindings_in_lowered_effects(
+    validate_iterated_player_bindings_in_lowered_effects(
         &lowered,
         false,
         "activated ability effects",
@@ -3360,17 +3362,17 @@ fn effect_produces_mana(effect: &crate::effect::Effect) -> bool {
     effect.contains_mana_production()
 }
 
-pub fn rewrite_lower_parsed_ability(parsed: ParsedAbility) -> Result<Ability, CardTextError> {
-    rewrite_lower_parsed_ability_internal(parsed, None)
+pub fn lower_parsed_ability(parsed: ParsedAbility) -> Result<Ability, CardTextError> {
+    lower_parsed_ability_internal(parsed, None)
 }
 
-pub fn rewrite_lower_prepared_ability(
+pub fn lower_prepared_ability(
     normalized: NormalizedParsedAbility,
 ) -> Result<Ability, CardTextError> {
-    rewrite_lower_parsed_ability_internal(normalized.parsed, normalized.prepared)
+    lower_parsed_ability_internal(normalized.parsed, normalized.prepared)
 }
 
-pub fn rewrite_apply_instead_followup_statement_to_last_ability(
+pub fn apply_instead_followup_statement_to_last_ability(
     builder: &mut CardDefinitionBuilder,
     last_restrictable_ability: Option<usize>,
     effects: &[EffectAst],
@@ -3394,9 +3396,10 @@ pub fn rewrite_apply_instead_followup_statement_to_last_ability(
         return Ok(false);
     }
 
-    let compiled = rewrite_lower_prepared_statement_effects(
-        &rewrite_prepare_effects_for_lowering(effects, ReferenceImports::default())?,
-    )?;
+    let compiled = lower_prepared_statement_effects(&stage_effects_for_lowering(
+        effects,
+        ReferenceImports::default(),
+    )?)?;
     if compiled.effects.len() != 1 {
         return Ok(false);
     }
@@ -3449,7 +3452,7 @@ pub fn rewrite_apply_instead_followup_statement_to_last_ability(
     Ok(true)
 }
 
-pub fn rewrite_apply_delayed_trigger_followup_statement_to_last_ability(
+pub fn apply_delayed_trigger_followup_statement_to_last_ability(
     builder: &mut CardDefinitionBuilder,
     last_restrictable_ability: Option<usize>,
     effects: &[EffectAst],
@@ -3480,11 +3483,11 @@ pub fn rewrite_apply_delayed_trigger_followup_statement_to_last_ability(
         return Ok(false);
     }
 
-    let prepared = rewrite_prepare_effects_for_lowering(
+    let prepared = stage_effects_for_lowering(
         effects,
         ReferenceImports::with_last_object_tag("targeted_0"),
     )?;
-    let compiled = rewrite_lower_prepared_statement_effects(&prepared)?;
+    let compiled = lower_prepared_statement_effects(&prepared)?;
     if compiled.effects.is_empty() {
         return Ok(false);
     }
@@ -3496,11 +3499,10 @@ pub fn rewrite_apply_delayed_trigger_followup_statement_to_last_ability(
     Ok(true)
 }
 
-pub fn rewrite_parsed_triggered_ability(
+pub fn assemble_parsed_triggered_ability(
     trigger: TriggerSpec,
     effects_ast: Vec<EffectAst>,
     functional_zones: Vec<Zone>,
-    text: Option<String>,
     intervening_if: Option<crate::ConditionExpr>,
     presentation_label: Option<&crate::ability::PresentationLabel>,
     reference_imports: impl Into<ReferenceImports>,
@@ -3520,14 +3522,13 @@ pub fn rewrite_parsed_triggered_ability(
             functional_zones,
         }
         .into(),
-        text,
         effects_ast: Some(effects_ast),
         trigger_spec: Some(Box::new(trigger)),
         reference_imports,
     }
 }
 
-pub fn rewrite_static_ability_for_keyword_action(action: KeywordAction) -> Option<StaticAbility> {
+pub fn runtime_static_ability_for_keyword_action(action: KeywordAction) -> Option<StaticAbility> {
     if !action.lowers_to_static_ability() {
         return None;
     }
@@ -3678,28 +3679,26 @@ pub fn rewrite_static_ability_for_keyword_action(action: KeywordAction) -> Optio
     }
 }
 
-fn rewrite_lower_keyword_action_or_err(
-    action: KeywordAction,
-) -> Result<StaticAbility, CardTextError> {
-    rewrite_static_ability_for_keyword_action(action).ok_or_else(|| {
+fn lower_keyword_action_or_err(action: KeywordAction) -> Result<StaticAbility, CardTextError> {
+    runtime_static_ability_for_keyword_action(action).ok_or_else(|| {
         CardTextError::InvariantViolation(
             "static-ability lowering received a non-static keyword action".to_string(),
         )
     })
 }
 
-pub fn rewrite_lower_keyword_action_to_object_abilities(
+pub fn lower_keyword_action_to_object_abilities(
     action: KeywordAction,
 ) -> Result<Vec<Ability>, CardTextError> {
     if let Some(abilities) = executable_object_abilities_for_keyword_action(&action) {
         return Ok(abilities);
     }
-    Ok(vec![Ability::static_ability(
-        rewrite_lower_keyword_action_or_err(action)?,
-    )])
+    Ok(vec![Ability::static_ability(lower_keyword_action_or_err(
+        action,
+    )?)])
 }
 
-fn rewrite_object_abilities_grant(
+fn object_abilities_grant(
     filter: ObjectFilter,
     abilities: Vec<Ability>,
     display: String,
@@ -3782,7 +3781,7 @@ fn preserve_named_granting_source(mut ability: Ability) -> Ability {
     ability
 }
 
-fn rewrite_attached_object_abilities_grant(
+fn attached_object_abilities_grant(
     abilities: Vec<Ability>,
     display: String,
     condition: Option<crate::ConditionExpr>,
@@ -3803,34 +3802,34 @@ fn rewrite_attached_object_abilities_grant(
     Ok(StaticAbility::new(grant))
 }
 
-fn rewrite_lower_attached_keyword_action_grant(
+fn lower_attached_keyword_action_grant(
     action: KeywordAction,
     display: String,
     condition: Option<crate::ConditionExpr>,
     protection_does_not_remove_controlled_attachments: bool,
 ) -> Result<StaticAbility, CardTextError> {
-    rewrite_attached_object_abilities_grant(
-        rewrite_lower_keyword_action_to_object_abilities(action)?,
+    attached_object_abilities_grant(
+        lower_keyword_action_to_object_abilities(action)?,
         display,
         condition,
         protection_does_not_remove_controlled_attachments,
     )
 }
 
-fn rewrite_lower_conditional_static_ability(
+fn lower_conditional_static_ability(
     ability: StaticAbilityAst,
     condition: crate::ConditionExpr,
 ) -> Result<StaticAbility, CardTextError> {
     if let StaticAbilityAst::KeywordAction(action) = ability {
         let display = action.display_text();
-        return rewrite_object_abilities_grant(
+        return object_abilities_grant(
             ObjectFilter::source(),
-            rewrite_lower_keyword_action_to_object_abilities(action)?,
+            lower_keyword_action_to_object_abilities(action)?,
             display,
             Some(condition),
         );
     }
-    let lowered = rewrite_lower_static_ability_ast(ability)?;
+    let lowered = lower_static_ability_ast(ability)?;
     Ok(lowered
         .clone()
         .with_condition(condition.clone())
@@ -3841,16 +3840,16 @@ fn rewrite_lower_conditional_static_ability(
         }))
 }
 
-fn rewrite_lower_grant_static_ability(
+fn lower_grant_static_ability(
     filter: crate::filter::ObjectFilter,
     ability: StaticAbilityAst,
     condition: Option<crate::ConditionExpr>,
 ) -> Result<StaticAbility, CardTextError> {
     if let StaticAbilityAst::KeywordAction(action) = ability {
         let display = action.display_text();
-        return rewrite_object_abilities_grant(
+        return object_abilities_grant(
             filter,
-            rewrite_lower_keyword_action_to_object_abilities(action)?,
+            lower_keyword_action_to_object_abilities(action)?,
             display,
             condition,
         );
@@ -3858,7 +3857,7 @@ fn rewrite_lower_grant_static_ability(
 
     let mut grant = crate::static_abilities::GrantAbility::new(
         filter,
-        rewrite_lower_static_ability_ast(ability)?.into(),
+        lower_static_ability_ast(ability)?.into(),
     );
     if let Some(condition) = condition {
         grant = grant.with_condition(condition);
@@ -3866,11 +3865,11 @@ fn rewrite_lower_grant_static_ability(
     Ok(StaticAbility::new(grant))
 }
 
-fn rewrite_lower_static_set_quantifier_surface(
+fn lower_static_set_quantifier_surface(
     ability: StaticAbilityAst,
     surface: ironsmith_core::SetQuantifierSurface,
 ) -> Result<StaticAbility, CardTextError> {
-    let mut lowered = rewrite_lower_static_ability_ast(ability)?;
+    let mut lowered = lower_static_ability_ast(ability)?;
     match &mut lowered.payload {
         crate::static_abilities::StaticAbilityPayload::GrantAbility(grant) => {
             grant.set_quantifier_surface = Some(surface);
@@ -3887,21 +3886,21 @@ fn rewrite_lower_static_set_quantifier_surface(
     Ok(lowered)
 }
 
-fn rewrite_lower_attached_static_ability_grant(
+fn lower_attached_static_ability_grant(
     ability: StaticAbilityAst,
     display: String,
     condition: Option<crate::ConditionExpr>,
 ) -> Result<StaticAbility, CardTextError> {
     if let StaticAbilityAst::KeywordAction(action) = ability {
-        return rewrite_attached_object_abilities_grant(
-            rewrite_lower_keyword_action_to_object_abilities(action)?,
+        return attached_object_abilities_grant(
+            lower_keyword_action_to_object_abilities(action)?,
             display,
             condition,
             false,
         );
     }
 
-    let granted = Ability::static_ability(rewrite_lower_static_ability_ast(ability)?);
+    let granted = Ability::static_ability(lower_static_ability_ast(ability)?);
     let mut grant = crate::static_abilities::AttachedAbilityGrant::new(granted, display);
     if let Some(condition) = condition {
         grant = grant.with_condition(condition);
@@ -3909,7 +3908,7 @@ fn rewrite_lower_attached_static_ability_grant(
     Ok(StaticAbility::new(grant))
 }
 
-fn rewrite_lower_attached_chosen_landwalk_grant(
+fn lower_attached_chosen_landwalk_grant(
     display: String,
     snow: bool,
     condition: Option<crate::ConditionExpr>,
@@ -3921,7 +3920,7 @@ fn rewrite_lower_attached_chosen_landwalk_grant(
     Ok(StaticAbility::new(grant))
 }
 
-fn rewrite_lower_pregame_reveal_from_opening_hand(
+fn lower_pregame_reveal_from_opening_hand(
     trigger: TriggerSpec,
     effects: Vec<EffectAst>,
     one_shot: bool,
@@ -3968,9 +3967,7 @@ fn rewrite_lower_pregame_reveal_from_opening_hand(
     ))
 }
 
-pub fn rewrite_lower_static_ability_ast(
-    ability: StaticAbilityAst,
-) -> Result<StaticAbility, CardTextError> {
+pub fn lower_static_ability_ast(ability: StaticAbilityAst) -> Result<StaticAbility, CardTextError> {
     match ability {
         StaticAbilityAst::Static(ability) => lower_compiler_static_ability_core(ability),
         StaticAbilityAst::KeywordAction(action) => {
@@ -3981,14 +3978,14 @@ pub fn rewrite_lower_static_ability_ast(
                 )
             {
                 let display = action.display_text();
-                rewrite_object_abilities_grant(
+                object_abilities_grant(
                     ObjectFilter::source(),
-                    rewrite_lower_keyword_action_to_object_abilities(action)?,
+                    lower_keyword_action_to_object_abilities(action)?,
                     display,
                     None,
                 )
             } else {
-                rewrite_lower_keyword_action_or_err(action)
+                lower_keyword_action_or_err(action)
             }
         }
         StaticAbilityAst::PregameRevealFromOpeningHand {
@@ -3998,7 +3995,7 @@ pub fn rewrite_lower_static_ability_ast(
             first_spell_of_game,
             effect_before_timing,
             display,
-        } => rewrite_lower_pregame_reveal_from_opening_hand(
+        } => lower_pregame_reveal_from_opening_hand(
             trigger,
             effects,
             one_shot,
@@ -4023,40 +4020,31 @@ pub fn rewrite_lower_static_ability_ast(
             ))
         }
         StaticAbilityAst::ConditionalStaticAbility { ability, condition } => {
-            rewrite_lower_conditional_static_ability(*ability, condition)
+            lower_conditional_static_ability(*ability, condition)
         }
         StaticAbilityAst::LabeledConditionalStaticAbility {
             ability,
             condition,
             label,
-        } => Ok(
-            rewrite_lower_static_ability_ast(*ability)?.with_labeled_condition(condition, label)
-        ),
+        } => Ok(lower_static_ability_ast(*ability)?.with_labeled_condition(condition, label)),
         StaticAbilityAst::ConditionalKeywordAction { action, condition } => {
-            rewrite_lower_conditional_static_ability(
-                StaticAbilityAst::KeywordAction(action),
-                condition,
-            )
+            lower_conditional_static_ability(StaticAbilityAst::KeywordAction(action), condition)
         }
         StaticAbilityAst::WithSetQuantifierSurface { ability, surface } => {
-            rewrite_lower_static_set_quantifier_surface(*ability, surface)
+            lower_static_set_quantifier_surface(*ability, surface)
         }
         StaticAbilityAst::GrantStaticAbility {
             filter,
             ability,
             condition,
-        } => rewrite_lower_grant_static_ability(filter, *ability, condition),
+        } => lower_grant_static_ability(filter, *ability, condition),
         StaticAbilityAst::GrantKeywordAction {
             filter,
             action,
             condition,
-        } => rewrite_lower_grant_static_ability(
-            filter,
-            StaticAbilityAst::KeywordAction(action),
-            condition,
-        ),
+        } => lower_grant_static_ability(filter, StaticAbilityAst::KeywordAction(action), condition),
         StaticAbilityAst::RemoveStaticAbility { filter, ability } => Ok(
-            StaticAbility::remove_ability(filter, rewrite_lower_static_ability_ast(*ability)?),
+            StaticAbility::remove_ability(filter, lower_static_ability_ast(*ability)?),
         ),
         StaticAbilityAst::RemoveKeywordAction {
             filter,
@@ -4072,14 +4060,14 @@ pub fn rewrite_lower_static_ability_ast(
                 let display = action.display_text();
                 return Ok(StaticAbility::remove_object_abilities_with_mode(
                     filter,
-                    rewrite_lower_keyword_action_to_object_abilities(action)?,
+                    lower_keyword_action_to_object_abilities(action)?,
                     display,
                     mode,
                 ));
             }
             Ok(StaticAbility::remove_ability_with_mode(
                 filter,
-                rewrite_lower_keyword_action_or_err(action)?,
+                lower_keyword_action_or_err(action)?,
                 mode,
             ))
         }
@@ -4087,13 +4075,13 @@ pub fn rewrite_lower_static_ability_ast(
             ability,
             display,
             condition,
-        } => rewrite_lower_attached_static_ability_grant(*ability, display, condition),
+        } => lower_attached_static_ability_grant(*ability, display, condition),
         StaticAbilityAst::AttachedKeywordActionGrant {
             action,
             display,
             condition,
             protection_does_not_remove_controlled_attachments,
-        } => rewrite_lower_attached_keyword_action_grant(
+        } => lower_attached_keyword_action_grant(
             action,
             display,
             condition,
@@ -4103,7 +4091,7 @@ pub fn rewrite_lower_static_ability_ast(
             snow,
             display,
             condition,
-        } => rewrite_lower_attached_chosen_landwalk_grant(display, snow, condition),
+        } => lower_attached_chosen_landwalk_grant(display, snow, condition),
         StaticAbilityAst::EquipmentKeywordActionsGrant { actions } => {
             let mut lowered = Vec::new();
             let mut names = Vec::with_capacity(actions.len());
@@ -4114,7 +4102,7 @@ pub fn rewrite_lower_static_ability_ast(
                     name = format!("{}{}", first.to_ascii_lowercase(), &display[1..]);
                 }
                 names.push(name);
-                lowered.extend(rewrite_lower_keyword_action_to_object_abilities(action)?);
+                lowered.extend(lower_keyword_action_to_object_abilities(action)?);
             }
             // The printed line for a multi-keyword equipment grant is a full
             // sentence ("Equipped creature has deathtouch and lifelink."),
@@ -4125,7 +4113,7 @@ pub fn rewrite_lower_static_ability_ast(
                 [first, second] => format!("{first} and {second}"),
                 [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
             };
-            rewrite_attached_object_abilities_grant(
+            attached_object_abilities_grant(
                 lowered,
                 format!("Equipped creature has {joined}."),
                 None,
@@ -4138,7 +4126,7 @@ pub fn rewrite_lower_static_ability_ast(
             display,
             condition,
         } => {
-            let lowered = rewrite_lower_parsed_ability(ability)?;
+            let lowered = lower_parsed_ability(ability)?;
             let mut grant =
                 crate::static_abilities::GrantObjectAbilityForFilter::new(filter, lowered, display);
             if let Some(condition) = condition {
@@ -4151,11 +4139,11 @@ pub fn rewrite_lower_static_ability_ast(
             display,
             condition,
         } => {
-            let lowered = rewrite_lower_parsed_ability(ability)?;
-            rewrite_attached_object_abilities_grant(vec![lowered], display, condition, false)
+            let lowered = lower_parsed_ability(ability)?;
+            attached_object_abilities_grant(vec![lowered], display, condition, false)
         }
         StaticAbilityAst::SoulbondSharedObjectAbility { ability } => {
-            let lowered = rewrite_lower_parsed_ability(ability)?;
+            let lowered = lower_parsed_ability(ability)?;
             Ok(StaticAbility::soulbond_shared_object_ability(lowered))
         }
         StaticAbilityAst::AttachmentRestriction { .. } => Err(CardTextError::InvariantViolation(
@@ -4436,16 +4424,16 @@ pub(crate) fn lower_compiler_grant_spec(
     )
 }
 
-pub fn rewrite_lower_static_abilities_ast(
+pub fn lower_static_abilities_ast(
     abilities: Vec<StaticAbilityAst>,
 ) -> Result<Vec<StaticAbility>, CardTextError> {
     abilities
         .into_iter()
-        .map(rewrite_lower_static_ability_ast)
+        .map(lower_static_ability_ast)
         .collect()
 }
 
-fn rewrite_validate_unbound_iterated_player<T: std::fmt::Debug + ?Sized>(
+fn validate_unbound_iterated_player<T: std::fmt::Debug + ?Sized>(
     mentions_iterated_player: bool,
     value: &T,
     context: &str,
@@ -4458,7 +4446,7 @@ fn rewrite_validate_unbound_iterated_player<T: std::fmt::Debug + ?Sized>(
     Ok(())
 }
 
-fn rewrite_validate_no_unresolved_dynamic_values<T: std::fmt::Debug + ?Sized>(
+fn validate_no_unresolved_dynamic_values<T: std::fmt::Debug + ?Sized>(
     contains_pending_effect_metric: bool,
     value: &T,
     context: &str,
@@ -4471,7 +4459,7 @@ fn rewrite_validate_no_unresolved_dynamic_values<T: std::fmt::Debug + ?Sized>(
     Ok(())
 }
 
-fn rewrite_validate_choose_specs_for_iterated_player(
+fn validate_choose_specs_for_iterated_player(
     choices: &[ChooseSpec],
     effects: &[Effect],
     iterated_player_bound: bool,
@@ -4498,7 +4486,7 @@ fn rewrite_validate_choose_specs_for_iterated_player(
         if bound_by_delegated_target {
             continue;
         }
-        rewrite_validate_unbound_iterated_player(
+        validate_unbound_iterated_player(
             choose_spec_mentions_iterated_player(choice),
             choice,
             context,
@@ -4507,7 +4495,7 @@ fn rewrite_validate_choose_specs_for_iterated_player(
     Ok(())
 }
 
-fn rewrite_validate_condition_for_iterated_player(
+fn validate_condition_for_iterated_player(
     condition: &Condition,
     iterated_player_bound: bool,
     context: &str,
@@ -4515,21 +4503,21 @@ fn rewrite_validate_condition_for_iterated_player(
     if iterated_player_bound {
         return Ok(());
     }
-    rewrite_validate_unbound_iterated_player(
+    validate_unbound_iterated_player(
         condition_mentions_iterated_player(condition),
         condition,
         context,
     )
 }
 
-fn rewrite_validate_effects_for_iterated_player(
+fn validate_effects_for_iterated_player(
     effects: &[Effect],
     iterated_player_bound: bool,
     context: &str,
 ) -> Result<(), CardTextError> {
     let mut iterated_player_bound = iterated_player_bound;
     for effect in effects {
-        rewrite_validate_effect_for_iterated_player(effect, iterated_player_bound, context)?;
+        validate_effect_for_iterated_player(effect, iterated_player_bound, context)?;
         fn delegates_iterated_target(effect: &Effect) -> bool {
             if let Some(target) = effect.downcast_ref::<crate::effects::TargetOnlyEffect>()
                 && target.chooser.is_some()
@@ -4546,7 +4534,7 @@ fn rewrite_validate_effects_for_iterated_player(
     Ok(())
 }
 
-fn rewrite_validate_effect_for_iterated_player(
+fn validate_effect_for_iterated_player(
     effect: &Effect,
     iterated_player_bound: bool,
     context: &str,
@@ -4558,7 +4546,7 @@ fn rewrite_validate_effect_for_iterated_player(
         return Ok(());
     }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
-        return rewrite_validate_effects_for_iterated_player(
+        return validate_effects_for_iterated_player(
             &sequence.effects,
             iterated_player_bound,
             context,
@@ -4566,29 +4554,21 @@ fn rewrite_validate_effect_for_iterated_player(
     }
     if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>() {
         if !iterated_player_bound && let Some(decider) = &may.decider {
-            rewrite_validate_unbound_iterated_player(
-                decider.mentions_iterated_player(),
-                decider,
-                context,
-            )?;
+            validate_unbound_iterated_player(decider.mentions_iterated_player(), decider, context)?;
         }
-        return rewrite_validate_effects_for_iterated_player(
-            &may.effects,
-            iterated_player_bound,
-            context,
-        );
+        return validate_effects_for_iterated_player(&may.effects, iterated_player_bound, context);
     }
     if let Some(unless_pays) =
         effect.downcast_ref::<crate::effects::UnlessPaysEffect<crate::effect::Effect>>()
     {
         if !iterated_player_bound {
-            rewrite_validate_unbound_iterated_player(
+            validate_unbound_iterated_player(
                 unless_pays.player.mentions_iterated_player(),
                 &unless_pays.player,
                 context,
             )?;
         }
-        return rewrite_validate_effects_for_iterated_player(
+        return validate_effects_for_iterated_player(
             &unless_pays.effects,
             iterated_player_bound,
             context,
@@ -4598,18 +4578,18 @@ fn rewrite_validate_effect_for_iterated_player(
         effect.downcast_ref::<crate::effects::UnlessActionEffect<crate::effect::Effect>>()
     {
         if !iterated_player_bound {
-            rewrite_validate_unbound_iterated_player(
+            validate_unbound_iterated_player(
                 unless_action.player.mentions_iterated_player(),
                 &unless_action.player,
                 context,
             )?;
         }
-        rewrite_validate_effects_for_iterated_player(
+        validate_effects_for_iterated_player(
             &unless_action.effects,
             iterated_player_bound,
             context,
         )?;
-        return rewrite_validate_effects_for_iterated_player(
+        return validate_effects_for_iterated_player(
             &unless_action.alternative,
             iterated_player_bound,
             context,
@@ -4619,67 +4599,47 @@ fn rewrite_validate_effect_for_iterated_player(
         effect.downcast_ref::<crate::effects::ForPlayersEffect<crate::effect::Effect>>()
     {
         if !iterated_player_bound {
-            rewrite_validate_unbound_iterated_player(
+            validate_unbound_iterated_player(
                 for_players.filter.mentions_iterated_player(),
                 &for_players.filter,
                 context,
             )?;
         }
-        return rewrite_validate_effects_for_iterated_player(&for_players.effects, true, context);
+        return validate_effects_for_iterated_player(&for_players.effects, true, context);
     }
     if let Some(for_each_object) = effect.downcast_ref::<crate::effects::ForEachObject>() {
         if !iterated_player_bound {
-            rewrite_validate_unbound_iterated_player(
+            validate_unbound_iterated_player(
                 object_filter_mentions_iterated_player(&for_each_object.filter),
                 &for_each_object.filter,
                 context,
             )?;
         }
-        return rewrite_validate_effects_for_iterated_player(
-            &for_each_object.effects,
-            true,
-            context,
-        );
+        return validate_effects_for_iterated_player(&for_each_object.effects, true, context);
     }
     if let Some(for_each_tagged) =
         effect.downcast_ref::<crate::effects::ForEachTaggedEffect<crate::effect::Effect>>()
     {
-        return rewrite_validate_effects_for_iterated_player(
-            &for_each_tagged.effects,
-            true,
-            context,
-        );
+        return validate_effects_for_iterated_player(&for_each_tagged.effects, true, context);
     }
     if let Some(for_each_controller) = effect
         .downcast_ref::<crate::effects::ForEachControllerOfTaggedEffect<crate::effect::Effect>>()
     {
-        return rewrite_validate_effects_for_iterated_player(
-            &for_each_controller.effects,
-            true,
-            context,
-        );
+        return validate_effects_for_iterated_player(&for_each_controller.effects, true, context);
     }
     if let Some(for_each_player) =
         effect.downcast_ref::<crate::effects::ForEachTaggedPlayerEffect<crate::effect::Effect>>()
     {
-        return rewrite_validate_effects_for_iterated_player(
-            &for_each_player.effects,
-            true,
-            context,
-        );
+        return validate_effects_for_iterated_player(&for_each_player.effects, true, context);
     }
     if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
-        rewrite_validate_condition_for_iterated_player(
+        validate_condition_for_iterated_player(
             &conditional.condition,
             iterated_player_bound,
             context,
         )?;
-        rewrite_validate_effects_for_iterated_player(
-            &conditional.if_true,
-            iterated_player_bound,
-            context,
-        )?;
-        return rewrite_validate_effects_for_iterated_player(
+        validate_effects_for_iterated_player(&conditional.if_true, iterated_player_bound, context)?;
+        return validate_effects_for_iterated_player(
             &conditional.if_false,
             iterated_player_bound,
             context,
@@ -4687,11 +4647,11 @@ fn rewrite_validate_effect_for_iterated_player(
     }
     if let Some(if_effect) = effect.downcast_ref::<crate::effects::IfEffect>() {
         // IfEffect can bind IteratedPlayer from PlayerCounts recorded by its antecedent.
-        rewrite_validate_effects_for_iterated_player(&if_effect.then, true, context)?;
-        return rewrite_validate_effects_for_iterated_player(&if_effect.else_, true, context);
+        validate_effects_for_iterated_player(&if_effect.then, true, context)?;
+        return validate_effects_for_iterated_player(&if_effect.else_, true, context);
     }
     if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatProcessEffect>() {
-        return rewrite_validate_effects_for_iterated_player(
+        return validate_effects_for_iterated_player(
             &repeat.effects,
             iterated_player_bound,
             context,
@@ -4699,27 +4659,23 @@ fn rewrite_validate_effect_for_iterated_player(
     }
     if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatEffectsEffect>() {
         if !iterated_player_bound {
-            rewrite_validate_unbound_iterated_player(
+            validate_unbound_iterated_player(
                 value_mentions_iterated_player(&repeat.count),
                 &repeat.count,
                 context,
             )?;
         }
-        return rewrite_validate_effects_for_iterated_player(
+        return validate_effects_for_iterated_player(
             &repeat.effects,
             iterated_player_bound,
             context,
         );
     }
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
-        return rewrite_validate_effect_for_iterated_player(
-            &tagged.effect,
-            iterated_player_bound,
-            context,
-        );
+        return validate_effect_for_iterated_player(&tagged.effect, iterated_player_bound, context);
     }
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
-        return rewrite_validate_effect_for_iterated_player(
+        return validate_effect_for_iterated_player(
             &with_id.effect,
             iterated_player_bound,
             context,
@@ -4727,82 +4683,66 @@ fn rewrite_validate_effect_for_iterated_player(
     }
     if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
         for mode in &choose_mode.modes {
-            rewrite_validate_effects_for_iterated_player(
-                &mode.effects,
-                iterated_player_bound,
-                context,
-            )?;
+            validate_effects_for_iterated_player(&mode.effects, iterated_player_bound, context)?;
         }
         return Ok(());
     }
     if let Some(vote) = effect.downcast_ref::<crate::effects::VoteEffect>() {
         if let crate::effects::VoteChoice::NamedOptions(options) = &vote.choice {
             for option in options {
-                rewrite_validate_effects_for_iterated_player(
-                    &option.effects_per_vote,
-                    true,
-                    context,
-                )?;
+                validate_effects_for_iterated_player(&option.effects_per_vote, true, context)?;
             }
         }
         return Ok(());
     }
     if let Some(reflexive) = effect.downcast_ref::<crate::effects::ReflexiveTriggerEffect>() {
-        rewrite_validate_choose_specs_for_iterated_player(
+        validate_choose_specs_for_iterated_player(
             &reflexive.choices,
             &reflexive.effects,
             false,
             context,
         )?;
-        return rewrite_validate_effects_for_iterated_player(&reflexive.effects, false, context);
+        return validate_effects_for_iterated_player(&reflexive.effects, false, context);
     }
     if let Some(schedule_delayed) =
         effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
     {
         if !iterated_player_bound {
-            rewrite_validate_unbound_iterated_player(
+            validate_unbound_iterated_player(
                 schedule_delayed.controller.mentions_iterated_player(),
                 &schedule_delayed.controller,
                 context,
             )?;
             if let Some(filter) = &schedule_delayed.target_filter {
-                rewrite_validate_unbound_iterated_player(
+                validate_unbound_iterated_player(
                     object_filter_mentions_iterated_player(filter),
                     filter,
                     context,
                 )?;
             }
         }
-        return rewrite_validate_effects_for_iterated_player(
-            &schedule_delayed.effects,
-            false,
-            context,
-        );
+        return validate_effects_for_iterated_player(&schedule_delayed.effects, false, context);
     }
     if let Some(schedule_when_leaves) =
         effect.downcast_ref::<crate::effects::ScheduleEffectsWhenTaggedLeavesEffect>()
     {
         if !iterated_player_bound {
-            rewrite_validate_unbound_iterated_player(
+            validate_unbound_iterated_player(
                 schedule_when_leaves.controller.mentions_iterated_player(),
                 &schedule_when_leaves.controller,
                 context,
             )?;
         }
-        return rewrite_validate_effects_for_iterated_player(
-            &schedule_when_leaves.effects,
-            false,
-            context,
-        );
+        return validate_effects_for_iterated_player(&schedule_when_leaves.effects, false, context);
     }
     if let Some(haunt) = effect.downcast_ref::<crate::effects::HauntExileEffect>() {
-        rewrite_validate_choose_specs_for_iterated_player(
+        validate_choose_specs_for_iterated_player(
             &haunt.haunt_choices,
             &haunt.haunt_effects,
             false,
             context,
         )?;
-        return rewrite_validate_effects_for_iterated_player(&haunt.haunt_effects, false, context);
+        return validate_effects_for_iterated_player(&haunt.haunt_effects, false, context);
     }
     if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
         && !iterated_player_bound
@@ -4812,79 +4752,75 @@ fn rewrite_validate_effect_for_iterated_player(
     }
     if let Some(create_token) = effect.downcast_ref::<crate::effects::CreateTokenEffect>() {
         if !iterated_player_bound {
-            rewrite_validate_unbound_iterated_player(
+            validate_unbound_iterated_player(
                 create_token.controller.mentions_iterated_player(),
                 &create_token.controller,
                 context,
             )?;
             if let Some(controller_target) = &create_token.controller_target {
-                rewrite_validate_unbound_iterated_player(
+                validate_unbound_iterated_player(
                     choose_spec_mentions_iterated_player(controller_target),
                     controller_target,
                     context,
                 )?;
             }
-            rewrite_validate_unbound_iterated_player(
+            validate_unbound_iterated_player(
                 value_mentions_iterated_player(&create_token.count),
                 &create_token.count,
                 context,
             )?;
         }
-        return rewrite_validate_card_definition_for_iterated_player(
+        return validate_card_definition_for_iterated_player(
             &create_token.token,
             "created token definition",
         );
     }
 
     if !iterated_player_bound {
-        rewrite_validate_unbound_iterated_player(
-            effect_mentions_iterated_player(effect),
-            effect,
-            context,
-        )?;
+        validate_unbound_iterated_player(effect_mentions_iterated_player(effect), effect, context)?;
     }
     Ok(())
 }
 
-fn rewrite_validate_ability_for_iterated_player(
+fn validate_ability_for_iterated_player(
     ability: &Ability,
     context: &str,
 ) -> Result<(), CardTextError> {
     match &ability.kind {
         AbilityKind::Triggered(triggered) => {
-            rewrite_validate_effects_for_iterated_player(
+            validate_effects_for_iterated_player(
                 triggered.effects.flattened_default_effects(),
                 false,
                 context,
             )?;
-            rewrite_validate_choose_specs_for_iterated_player(
+            validate_choose_specs_for_iterated_player(
                 &triggered.choices,
                 triggered.effects.flattened_default_effects(),
                 false,
                 context,
             )?;
             if let Some(intervening_if) = &triggered.intervening_if {
-                rewrite_validate_condition_for_iterated_player(intervening_if, false, context)?;
+                validate_condition_for_iterated_player(intervening_if, false, context)?;
             }
             Ok(())
         }
         AbilityKind::Activated(activated) => {
-            rewrite_validate_effects_for_iterated_player(
+            validate_effects_for_iterated_player(
                 activated.effects.flattened_default_effects(),
                 false,
                 context,
             )?;
-            rewrite_validate_choose_specs_for_iterated_player(
+            validate_choose_specs_for_iterated_player(
                 &activated.choices,
                 activated.effects.flattened_default_effects(),
                 false,
                 context,
             )?;
             for restriction in &activated.activation_restrictions {
-                rewrite_validate_condition_for_iterated_player(restriction, false, context)?;
+                validate_condition_for_iterated_player(restriction, false, context)?;
             }
             if let Some(condition) = &activated.activation_condition {
-                rewrite_validate_condition_for_iterated_player(condition, false, context)?;
+                validate_condition_for_iterated_player(condition, false, context)?;
             }
             Ok(())
         }
@@ -4897,15 +4833,15 @@ fn rewrite_validate_ability_for_iterated_player(
     }
 }
 
-fn rewrite_validate_card_definition_for_iterated_player(
+fn validate_card_definition_for_iterated_player(
     card_definition: &crate::cards::CardDefinition,
     context: &str,
 ) -> Result<(), CardTextError> {
     for ability in &card_definition.abilities {
-        rewrite_validate_ability_for_iterated_player(ability, context)?;
+        validate_ability_for_iterated_player(ability, context)?;
     }
     if let Some(spell_effect) = &card_definition.spell_effect {
-        rewrite_validate_effects_for_iterated_player(
+        validate_effects_for_iterated_player(
             spell_effect.flattened_default_effects(),
             false,
             context,
@@ -4914,19 +4850,19 @@ fn rewrite_validate_card_definition_for_iterated_player(
     Ok(())
 }
 
-pub fn rewrite_validate_iterated_player_bindings_in_lowered_effects(
+pub fn validate_iterated_player_bindings_in_lowered_effects(
     lowered: &LoweredEffects,
     initial_iterated_player_bound: bool,
     context: &str,
 ) -> Result<(), CardTextError> {
-    rewrite_validate_no_unresolved_dynamic_values(
+    validate_no_unresolved_dynamic_values(
         effects_contain_pending_effect_metric(&lowered.effects),
         &lowered.effects,
         context,
     )?;
     let iterated_player_bound = initial_iterated_player_bound || lowered.exports.iterated_player;
-    rewrite_validate_effects_for_iterated_player(&lowered.effects, iterated_player_bound, context)?;
-    rewrite_validate_choose_specs_for_iterated_player(
+    validate_effects_for_iterated_player(&lowered.effects, iterated_player_bound, context)?;
+    validate_choose_specs_for_iterated_player(
         &lowered.choices,
         lowered.effects.flattened_default_effects(),
         iterated_player_bound,
@@ -5025,12 +4961,9 @@ mod tests {
         let trigger = TriggerSpec::BeginningOfUpkeep(PlayerFilter::ControllerOf(
             ObjectRef::tagged("enchanted"),
         ));
-        let (_, prepared) = rewrite_prepare_triggered_effects_for_lowering(
-            trigger,
-            &effects,
-            ReferenceImports::default(),
-        )
-        .expect("attachment trigger should prepare");
+        let (_, prepared) =
+            stage_triggered_effects_for_lowering(trigger, &effects, ReferenceImports::default())
+                .expect("attachment trigger should prepare");
         fn untap_reference_tag(effect: &EffectAst) -> Option<TagKey> {
             if let EffectAst::SubjectVerb(subject_verb) = effect
                 && let SubjectVerbActionAst::Untap {
@@ -5070,9 +5003,8 @@ mod tests {
         .expect("partitioned exile statement should lex");
         let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
             .expect("partitioned exile statement should parse");
-        let prepared =
-            rewrite_prepare_statement_effects_for_lowering(&effects, ReferenceImports::default())
-                .expect("statement preparation should assign its terminal result producer");
+        let prepared = stage_statement_effects_for_lowering(&effects, ReferenceImports::default())
+            .expect("statement preparation should assign its terminal result producer");
 
         assert!(
             prepared.exports.to_imports().last_effect_id.is_some(),
@@ -5086,9 +5018,8 @@ mod tests {
             .expect("coordinated statement should lex");
         let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
             .expect("coordinated statement should parse");
-        let prepared =
-            rewrite_prepare_statement_effects_for_lowering(&effects, ReferenceImports::default())
-                .expect("coordinated statement should prepare");
+        let prepared = stage_statement_effects_for_lowering(&effects, ReferenceImports::default())
+            .expect("coordinated statement should prepare");
 
         assert!(
             prepared.exports.to_imports().last_effect_id.is_none(),
@@ -5122,12 +5053,9 @@ mod tests {
             .expect("shared combat body should lex");
         let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
             .expect("shared combat body should parse");
-        let (_, prepared) = rewrite_prepare_triggered_effects_for_lowering(
-            trigger,
-            &effects,
-            ReferenceImports::default(),
-        )
-        .expect("combat union should prepare a shared event-participant reference");
+        let (_, prepared) =
+            stage_triggered_effects_for_lowering(trigger, &effects, ReferenceImports::default())
+                .expect("combat union should prepare a shared event-participant reference");
         assert!(matches!(
             prepared.prepared.prelude.as_slice(),
             [EffectPreludeTag::OtherBlockParticipant(tag, candidate)]
@@ -5194,7 +5122,7 @@ mod tests {
         .expect("linked delayed return should lex");
         let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
             .expect("linked delayed return should parse");
-        let (_, prepared) = rewrite_prepare_triggered_effects_for_lowering(
+        let (_, prepared) = stage_triggered_effects_for_lowering(
             TriggerSpec::DiesCreatureDealtDamageByThisTurn {
                 victim: ObjectFilter::creature(),
                 damager: crate::cards::builders::DamageBySpec::ThisCreature,
@@ -5216,7 +5144,7 @@ mod tests {
                 followup_effects,
             ));
         lowered.effects.segments[1].starts_new_source_line = true;
-        rewrite_source_control_loss_sacrifice_followup(&mut lowered);
+        fuse_source_control_loss_sacrifice_followup(&mut lowered);
         assert_eq!(lowered.effects.segments.len(), 1, "{:#?}", lowered.effects);
 
         let schedule = lowered.effects.segments[0].default_effects[1]
@@ -5253,7 +5181,7 @@ mod tests {
         .expect("linked immediate return should lex");
         let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
             .expect("linked immediate return should parse");
-        let (_, prepared) = rewrite_prepare_triggered_effects_for_lowering(
+        let (_, prepared) = stage_triggered_effects_for_lowering(
             TriggerSpec::DiesCreatureDealtDamageByThisTurn {
                 victim: ObjectFilter::creature(),
                 damager: crate::cards::builders::DamageBySpec::ThisCreature,
@@ -5271,7 +5199,7 @@ mod tests {
             lowered.effects
         );
 
-        rewrite_source_control_loss_sacrifice_followup(&mut lowered);
+        fuse_source_control_loss_sacrifice_followup(&mut lowered);
         assert_eq!(lowered.effects.segments.len(), 1, "{:#?}", lowered.effects);
         let semantic_effects = lowered.effects.segments[0]
             .default_effects
@@ -5313,7 +5241,7 @@ mod tests {
             crate::object::CounterType::PlusOnePlusOne,
             Value::PendingPriorEffectMetric(query)
                 .with_surface_hint(ValueSurfaceHint::CountersRemovedThisWay),
-            TargetAst::Tagged(TagKey::from(IT_TAG), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
             None,
             false,
         )];
@@ -5363,17 +5291,17 @@ mod tests {
         let madness_filter = ObjectFilter::default()
             .with_alternative_cast(ironsmith_core::AlternativeCastKind::Madness);
         let effects = vec![EffectAst::Conditional {
-            predicate: PredicateAst::TaggedMatches(TagKey::from(IT_TAG), madness_filter.clone()),
+            predicate: PredicateAst::TaggedMatches(
+                crate::tag::CompilerReferenceTag::It.key(),
+                madness_filter.clone(),
+            ),
             if_true: body,
             if_false: Vec::new(),
         }];
 
-        let (_, prepared) = rewrite_prepare_triggered_effects_for_lowering(
-            trigger,
-            &effects,
-            ReferenceImports::default(),
-        )
-        .expect("discarded-card intervening predicate should prepare");
+        let (_, prepared) =
+            stage_triggered_effects_for_lowering(trigger, &effects, ReferenceImports::default())
+                .expect("discarded-card intervening predicate should prepare");
         assert!(prepared.prepared.prelude.iter().any(|prelude| {
             matches!(
                 prelude,
@@ -5403,12 +5331,9 @@ mod tests {
             ObjectFilter::creature()
                 .match_tagged("enchanted", TaggedOpbjectRelation::IsTaggedObject),
         );
-        let (_, prepared) = rewrite_prepare_triggered_effects_for_lowering(
-            trigger,
-            &effects,
-            ReferenceImports::default(),
-        )
-        .expect("unblocked-attacker body should prepare");
+        let (_, prepared) =
+            stage_triggered_effects_for_lowering(trigger, &effects, ReferenceImports::default())
+                .expect("unblocked-attacker body should prepare");
         let (lowered, intervening_if) = materialize_prepared_triggered_effects(&prepared)
             .expect("unblocked-attacker body should lower");
         assert!(intervening_if.is_none());
@@ -5503,7 +5428,7 @@ mod tests {
         .expect("power-sink probe should lex");
         let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
             .expect("power-sink probe should parse");
-        let prepared = rewrite_prepare_effects_for_lowering(&effects, ReferenceImports::default())
+        let prepared = stage_effects_for_lowering(&effects, ReferenceImports::default())
             .expect("power-sink probe should prepare");
         let lowered = materialize_prepared_statement_effects(&prepared)
             .expect("power-sink probe should lower");
@@ -5550,7 +5475,7 @@ mod tests {
             })
         ));
 
-        let prepared = rewrite_prepare_effects_for_lowering(&effects, ReferenceImports::default())
+        let prepared = stage_effects_for_lowering(&effects, ReferenceImports::default())
             .expect("prepare vote with cross-sentence option");
         let lowered = materialize_prepared_statement_effects(&prepared)
             .expect("lower vote with cross-sentence option");
@@ -5605,13 +5530,13 @@ mod tests {
         .expect("lex");
         let effects =
             crate::effect_sentences::parse_effect_sentences_lexed(&tokens).expect("parse");
-        let prepared = rewrite_prepare_effects_for_lowering(&effects, ReferenceImports::default())
-            .expect("prepare");
+        let prepared =
+            stage_effects_for_lowering(&effects, ReferenceImports::default()).expect("prepare");
         let debug = format!("{:#?}", prepared.annotated.effects);
 
         assert!(
             debug.contains("ReturnAllToBattlefield")
-                && !debug.contains(crate::tag::SOURCE_EXILED_TAG),
+                && !debug.contains(crate::tag::CompilerReferenceTag::SourceExiled.as_str()),
             "expected aggregate helper tag to replace the plural placeholder, got {debug}"
         );
     }
@@ -5661,7 +5586,7 @@ mod tests {
                 "expected canonical trailing-unless control flow for {text}: {effects:#?}"
             );
 
-            let (_, prepared) = rewrite_prepare_triggered_effects_for_lowering(
+            let (_, prepared) = stage_triggered_effects_for_lowering(
                 trigger,
                 &effects,
                 ReferenceImports::default(),

@@ -53,14 +53,14 @@ fn cant<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 #[path = "regeneration_inline_tests.rs"]
 mod tests;
 
-#[path = "regeneration/combat_programs.rs"]
+#[path = "regeneration/combat.rs"]
 mod combat_programs;
 pub use combat_programs::parse_damage_regeneration_exile_followup;
 use combat_programs::{
     damage_regeneration_exile_gate, damage_regeneration_subject,
     parse_damage_regeneration_exile_followup_lexed,
 };
-#[path = "regeneration/condition_programs.rs"]
+#[path = "regeneration/condition.rs"]
 mod condition_programs;
 pub use condition_programs::parse_cant_be_regenerated_followup;
 use condition_programs::parse_cant_be_regenerated_followup_lexed;

@@ -220,7 +220,7 @@ pub(super) fn spry_and_mighty_preserves_exact_choice_and_power_gap_value()
     );
     assert_eq!(
         choose.tag.as_str(),
-        crate::cards::builders::CHOSEN_OBJECTS_TAG
+        crate::tag::CompilerReferenceTag::ChosenObjects.as_str()
     );
 
     let draw = effects
@@ -237,7 +237,7 @@ pub(super) fn spry_and_mighty_preserves_exact_choice_and_power_gap_value()
     assert!(
         debug.contains("GreatestPower")
             && debug.contains("LeastPower")
-            && debug.contains(crate::cards::builders::CHOSEN_OBJECTS_TAG)
+            && debug.contains(crate::tag::CompilerReferenceTag::ChosenObjects.as_str())
             && debug.contains("Trample")
             && debug.contains("ModifyPowerToughness"),
         "the chosen pair must feed draw, pump, and trample: {debug}"

@@ -15,7 +15,7 @@ use super::parse_effect_chain_inner;
 #[cfg(test)]
 use super::parse_effect_chain_lexed;
 use crate::cards::builders::{
-    CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, TagKey, TargetAst,
+    CardTextError, EffectAst, PlayerAst, PredicateAst, TagKey, TargetAst,
 };
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::types::{CardType, Subtype, Supertype};
@@ -159,7 +159,7 @@ fn parse_negated_who_this_way_predicate(
 
     Ok(Some(PredicateAst::PlayerTaggedObjectMatches {
         player: PlayerAst::That,
-        tag: TagKey::from(IT_TAG),
+        tag: crate::tag::CompilerReferenceTag::It.key(),
         filter,
         mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
     }))

@@ -8,7 +8,7 @@ pub fn dynamic_zone_change_group_token_creation_from_authored_trigger(
             value.unhinted(),
             Value::TotalPower(filter)
                 if filter.tagged_constraints.iter().any(|constraint| {
-                    constraint.tag.as_str() == ironsmith_core::ZONE_CHANGE_GROUP_TAG
+                    constraint.tag.as_str() == crate::tag::CompilerReferenceTag::ZoneChangeGroup.as_str()
                         && constraint.relation
                             == crate::target::TaggedOpbjectRelation::IsTaggedObject
                 })
@@ -50,7 +50,7 @@ pub(super) fn dynamic_static_ability_count_token_creation_from_authored_trigger(
 ) -> Result<Option<EffectAst>, CardTextError> {
     // The authored aggregate itself contains commas (both after `tokens` and
     // throughout the ability list), so a generic comma split can start the
-    // reparse at `where X is ...` and silently miss the create action. Try
+    // re-recognize at `where X is ...` and silently miss the create action. Try
     // actual create-verb token boundaries, from the last one backwards; the
     // typed value guard below keeps quoted or trigger-side creates from being
     // claimed.
@@ -89,7 +89,7 @@ pub(super) fn authored_dynamic_token_creation_from_trigger(
     dynamic_static_ability_count_token_creation_from_authored_trigger(tokens)
 }
 
-pub(super) fn reconcile_dynamic_zone_change_group_token_creation(
+pub(super) fn recognize_dynamic_zone_change_group_token_creation(
     line: &mut LineAst,
     source_tokens: &[OwnedLexToken],
 ) -> Result<(), CardTextError> {
@@ -107,7 +107,7 @@ pub(super) fn reconcile_dynamic_zone_change_group_token_creation(
         }
         LineAst::Multiple(chunks) => {
             for chunk in chunks {
-                reconcile_dynamic_zone_change_group_token_creation(chunk, source_tokens)?;
+                recognize_dynamic_zone_change_group_token_creation(chunk, source_tokens)?;
             }
         }
         _ => {}
@@ -115,7 +115,7 @@ pub(super) fn reconcile_dynamic_zone_change_group_token_creation(
     Ok(())
 }
 
-fn replace_triggered_effects(
+fn set_triggered_effects(
     line: &mut LineAst,
     replacement: &[EffectAst],
 ) -> Result<(), CardTextError> {
@@ -131,7 +131,7 @@ fn replace_triggered_effects(
         }
         LineAst::Multiple(chunks) => {
             for chunk in chunks {
-                replace_triggered_effects(chunk, replacement)?;
+                set_triggered_effects(chunk, replacement)?;
             }
         }
         _ => {}
@@ -139,7 +139,7 @@ fn replace_triggered_effects(
     Ok(())
 }
 
-pub(super) fn reconcile_serial_target_pt_modifiers(
+pub(super) fn recognize_serial_target_pt_modifiers(
     line: &mut LineAst,
     source_tokens: &[OwnedLexToken],
 ) -> Result<(), CardTextError> {
@@ -151,7 +151,7 @@ pub(super) fn reconcile_serial_target_pt_modifiers(
     else {
         return Ok(());
     };
-    replace_triggered_effects(line, &replacement)
+    set_triggered_effects(line, &replacement)
 }
 
 fn replace_trigger_spec(line: &mut LineAst, replacement: &TriggerSpec) {
@@ -288,7 +288,7 @@ pub fn end_of_combat_destroy_then_next_end_step_counter_program(
     }])
 }
 
-pub(super) fn reconcile_authored_correlated_trigger_programs(
+pub(super) fn recognize_authored_correlated_trigger_programs(
     line: &mut LineAst,
     source_tokens: &[OwnedLexToken],
 ) -> Result<(), CardTextError> {
@@ -301,7 +301,7 @@ pub(super) fn reconcile_authored_correlated_trigger_programs(
         if let Some(effects) =
             end_of_combat_destroy_then_next_end_step_counter_program(physical_tail)
         {
-            replace_triggered_effects(line, &effects)?;
+            set_triggered_effects(line, &effects)?;
             return Ok(());
         }
     }
@@ -311,7 +311,7 @@ pub(super) fn reconcile_authored_correlated_trigger_programs(
     let words = crate::lexer::parser_token_word_refs(split.after);
 
     if let Some(effects) = end_of_combat_destroy_then_next_end_step_counter_program(split.after) {
-        replace_triggered_effects(line, &effects)?;
+        set_triggered_effects(line, &effects)?;
         return Ok(());
     }
 
@@ -338,7 +338,7 @@ pub(super) fn reconcile_authored_correlated_trigger_programs(
                 .collect::<Vec<_>>();
             let authored = crate::util::join_sentences_with_period(&authored);
             let effects = parse_effect_sentences_lexed(&authored)?;
-            replace_triggered_effects(line, &effects)?;
+            set_triggered_effects(line, &effects)?;
             return Ok(());
         }
     }
@@ -354,7 +354,7 @@ pub(super) fn reconcile_authored_correlated_trigger_programs(
             && let Some(effects) = crate::effect_sentences::
                 parse_look_at_top_optional_battlefield_then_conditional_remainder(&sentences, 0)?
         {
-            replace_triggered_effects(line, &effects)?;
+            set_triggered_effects(line, &effects)?;
             return Ok(());
         }
     }

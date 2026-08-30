@@ -1599,7 +1599,7 @@ pub(super) fn try_apply_was_dealt_damage_this_turn_clause(
 
 pub(super) fn push_it_tagged_object_constraint(filter: &mut ObjectFilter) {
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: TagKey::from(IT_TAG),
+        tag: crate::tag::CompilerReferenceTag::It.key(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
 }
@@ -1650,14 +1650,17 @@ pub(super) fn try_apply_target_choice_attribution_reference(
 ) -> bool {
     let (suffix, tag) =
         if crate::word_primitives::parse_sequence_suffix(all_words, &["you", "chose"]) {
-            (&["you", "chose"][..], ABILITY_CONTROLLER_TARGET_CHOICE_TAG)
+            (
+                &["you", "chose"][..],
+                crate::tag::CompilerReferenceTag::AbilityControllerTargetChoice,
+            )
         } else if crate::word_primitives::parse_sequence_suffix(
             all_words,
             &["your", "opponent", "chose"],
         ) {
             (
                 &["your", "opponent", "chose"][..],
-                OPPONENT_TARGET_CHOICE_TAG,
+                crate::tag::CompilerReferenceTag::OpponentTargetChoice,
             )
         } else {
             return false;
@@ -1669,7 +1672,7 @@ pub(super) fn try_apply_target_choice_attribution_reference(
         return false;
     }
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: TagKey::from(tag),
+        tag: tag.key(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
     all_words.truncate(all_words.len() - suffix.len());

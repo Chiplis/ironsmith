@@ -181,7 +181,7 @@ fn is_exact_single_source_copy(effect: &EffectAst) -> bool {
 
 fn exact_terminal_card_copy_tag(effect: &EffectAst) -> Option<TagKey> {
     exact_single_card_copy_tag(effect)
-        .filter(|tag| crate::util::is_sentence_helper_tag(tag.as_str(), "exiled"))
+        .filter(|tag| crate::util::is_sentence_helper_tag(tag, "exiled"))
 }
 
 fn retag_single_card_copy(effect: &mut EffectAst, tag: TagKey) -> bool {
@@ -337,19 +337,18 @@ pub fn parse_graveyard_exile_copy_then_may_cast_copy(
             Some(ironsmith_core::effect::CopyInstructionSurface::SeparateThatCard),
         )
     } else if exact_single_card_copy_tag(&copy_effect).is_some_and(|tag| {
-        matches!(
-            tag.as_str(),
-            crate::cards::builders::IT_TAG | crate::tag::PRIOR_EXILED_CARD_TAG
-        )
+        tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            || tag.as_str() == crate::tag::CompilerReferenceTag::PriorExiledCard.as_str()
     }) && is_exact_graveyard_exile(&exile_effect)
     {
-        let copy_reference_surface = if exact_single_card_copy_tag(&copy_effect)
-            .is_some_and(|tag| tag.as_str() == crate::tag::PRIOR_EXILED_CARD_TAG)
-        {
-            ironsmith_core::effect::CopyInstructionSurface::SeparateThatCard
-        } else {
-            ironsmith_core::effect::CopyInstructionSurface::SeparateIt
-        };
+        let copy_reference_surface =
+            if exact_single_card_copy_tag(&copy_effect).is_some_and(|tag| {
+                tag.as_str() == crate::tag::CompilerReferenceTag::PriorExiledCard.as_str()
+            }) {
+                ironsmith_core::effect::CopyInstructionSurface::SeparateThatCard
+            } else {
+                ironsmith_core::effect::CopyInstructionSurface::SeparateIt
+            };
         let tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "exiled");
         exile_effect = EffectAst::TagAffected {
             effect: Box::new(exile_effect),
@@ -421,10 +420,10 @@ pub fn parse_graveyard_exile_then_copy_then_may_cast_copy(
             let Some(copy_reference_tag) = exact_single_card_copy_tag(copy_effect) else {
                 return Ok(None);
             };
-            if !matches!(
-                copy_reference_tag.as_str(),
-                crate::cards::builders::IT_TAG | crate::tag::PRIOR_EXILED_CARD_TAG
-            ) {
+            if copy_reference_tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
+                && copy_reference_tag.as_str()
+                    != crate::tag::CompilerReferenceTag::PriorExiledCard.as_str()
+            {
                 return Ok(None);
             }
         }
@@ -443,10 +442,10 @@ pub fn parse_graveyard_exile_then_copy_then_may_cast_copy(
         let Some(copy_tag) = exact_single_card_copy_tag(copy_effect) else {
             return Ok(None);
         };
-        if copy_tag.as_str() != crate::cards::builders::IT_TAG
-            && copy_tag.as_str() != crate::tag::PRIOR_EXILED_CARD_TAG
+        if copy_tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
+            && copy_tag.as_str() != crate::tag::CompilerReferenceTag::PriorExiledCard.as_str()
             && copy_tag != exiled_tag
-            && !crate::util::is_sentence_helper_tag(copy_tag.as_str(), "exiled")
+            && !crate::util::is_sentence_helper_tag(&copy_tag, "exiled")
         {
             return Ok(None);
         }
@@ -529,9 +528,9 @@ pub fn parse_graveyard_exile_if_copy_then_may_cast_copy(
     let Some(copy_reference_tag) = exact_single_card_copy_tag(copy_effect) else {
         return Ok(None);
     };
-    if copy_reference_tag.as_str() != crate::cards::builders::IT_TAG
+    if copy_reference_tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
         && copy_reference_tag != exiled_tag
-        && !crate::util::is_sentence_helper_tag(copy_reference_tag.as_str(), "exiled")
+        && !crate::util::is_sentence_helper_tag(&copy_reference_tag, "exiled")
     {
         return Ok(None);
     }

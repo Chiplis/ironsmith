@@ -7,18 +7,21 @@ fn parse_return_back_reference_target(
     if let Some(reference) = crate::grammar::effects::parse_return_back_reference_shape(tokens) {
         let span = span_from_tokens(tokens);
         if reference == crate::grammar::effects::ReturnBackReferenceShape::Them {
-            let mut filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
+            let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
             filter.set_plural_pronoun_reference_surface(true);
             return Ok(TargetAst::Object(filter, None, span));
         }
         if reference == crate::grammar::effects::ReturnBackReferenceShape::Demonstrative {
-            let mut filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
+            let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
             filter.source_surface = Some(crate::target::SourceReferenceSurface::ThisPermanentType(
                 crate::lexer::render_token_slice(tokens).trim().to_string(),
             ));
             return Ok(TargetAst::Object(filter, None, span));
         }
-        Ok(TargetAst::Tagged(TagKey::from(IT_TAG), span))
+        Ok(TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+            span,
+        ))
     } else {
         parse_target_phrase(tokens)
     }
@@ -95,9 +98,9 @@ pub fn wrap_return_with_delayed_timing(
 #[path = "return_exchange_inline_tests.rs"]
 mod tests;
 
-#[path = "return_exchange/return_exchange_core_programs.rs"]
+#[path = "return_exchange/return_exchange_core.rs"]
 mod return_exchange_core_programs;
 pub use return_exchange_core_programs::parse_exchange;
-#[path = "return_exchange/return_exchange_zone_programs.rs"]
+#[path = "return_exchange/return_exchange_zone.rs"]
 mod return_exchange_zone_programs;
 pub use return_exchange_zone_programs::parse_return;

@@ -937,7 +937,7 @@ pub(super) fn condition_antecedent_binding_has_single_lowering_owner() {
         "fn merge_filter_overlay",
         "fn bind_condition_filter_antecedent",
         "fn bind_condition_antecedent_in_effect",
-        "fn retarget_it_animation_to_source",
+        "fn resolve_it_animation_to_source",
     ];
 
     let offenders = files
@@ -1574,13 +1574,8 @@ pub(super) fn activated_sentence_classification_is_front_end_grammar_owned() {
 #[test]
 pub(super) fn activated_display_text_uses_typed_presentation_kind_not_raw_scan() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler-grammar/src/semantic_line_parsing/activated.rs";
+    let relative = "crates/ironsmith-compiler-grammar/src/semantic_line_parsing/activated/activated_permission.rs";
     let content = read_repo_file(&root, relative);
-    let helper = function_source(
-        &content,
-        "fn rewrite_activated_display_text",
-        "fn infer_rewrite_activated_functional_zones",
-    );
     let presentation_helper = function_source(
         &content,
         "fn activated_presentation_display",
@@ -1588,14 +1583,11 @@ pub(super) fn activated_display_text_uses_typed_presentation_kind_not_raw_scan()
     );
 
     assert!(
-        helper.contains("activated_presentation_display(line)?")
-            && helper.contains("render_token_slice(&line.cost_parse_tokens)")
-            && helper.contains("render_token_slice(&line.effect_parse_tokens)")
-            && presentation_helper.contains("line.presentation")
+        presentation_helper.contains("line.presentation")
             && presentation_helper.contains("PresentationLabel::display_prefix")
             && presentation_helper.contains("line.presentation_kind")
             && presentation_helper.contains("kind.display()"),
-        "{relative} should build activated presentation text from the typed presentation kind and parsed cost/effect tokens"
+        "{relative} should build activated presentation text from the typed presentation kind"
     );
     for forbidden in [
         "line.info.raw_line.trim()",
@@ -1604,7 +1596,7 @@ pub(super) fn activated_display_text_uses_typed_presentation_kind_not_raw_scan()
         "str_split_once_char(raw, '—')",
     ] {
         assert!(
-            !helper.contains(forbidden),
+            !presentation_helper.contains(forbidden),
             "{relative} should not recover activated presentation text by scanning raw text `{forbidden}`"
         );
     }

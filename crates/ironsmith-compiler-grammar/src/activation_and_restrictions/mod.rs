@@ -28,8 +28,8 @@ use super::util::{
 };
 use crate::ability::ActivationTiming;
 use crate::cards::builders::{
-    CardTextError, DamageBySpec, EffectAst, IT_TAG, KeywordAction, ParsedAbility, PlayerAst,
-    PredicateAst, ReferenceImports, ReturnControllerAst, StaticAbilityAst, SubjectVerbActionAst,
+    CardTextError, DamageBySpec, EffectAst, KeywordAction, ParsedAbility, PlayerAst, PredicateAst,
+    ReferenceImports, ReturnControllerAst, StaticAbilityAst, SubjectVerbActionAst,
     SubjectVerbRoleAst, TagKey, TargetAst, TextSpan, TriggerSpec,
 };
 use crate::color::ColorSet;

@@ -583,7 +583,7 @@ fn normalize_damage_target_tokens(
 #[path = "damage_inline_tests.rs"]
 mod tests;
 
-#[path = "damage/combat_programs.rs"]
+#[path = "damage/combat.rs"]
 mod combat_programs;
 pub use combat_programs::{
     parse_combat_damage_target_shape_lexed, parse_combat_except_filter_shape_lexed,

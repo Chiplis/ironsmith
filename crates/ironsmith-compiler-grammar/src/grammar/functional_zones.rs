@@ -180,20 +180,20 @@ pub struct TriggerFunctionalZoneFacts {
 #[cfg(test)]
 mod tests;
 
-#[path = "functional_zones/trigger_programs.rs"]
+#[path = "functional_zones/trigger.rs"]
 mod trigger_programs;
 pub use trigger_programs::parse_trigger_functional_zone_facts_tokens;
 use trigger_programs::parse_trigger_zone_hint_tokens;
-#[path = "functional_zones/object_action_programs.rs"]
+#[path = "functional_zones/object_action.rs"]
 mod object_action_programs;
 pub use object_action_programs::parse_static_functional_zones_tokens;
-#[path = "functional_zones/core_programs.rs"]
+#[path = "functional_zones/core.rs"]
 mod core_programs;
 use core_programs::{has_any_phrase, has_phrase};
-#[path = "functional_zones/permission_programs.rs"]
+#[path = "functional_zones/permission.rs"]
 mod permission_programs;
 use permission_programs::normalized_activated_zone_words;
-#[path = "functional_zones/reference_programs.rs"]
+#[path = "functional_zones/reference.rs"]
 mod reference_programs;
 use reference_programs::{
     contains_named_source_command_zone_move, is_named_or_normalized_source_surface,

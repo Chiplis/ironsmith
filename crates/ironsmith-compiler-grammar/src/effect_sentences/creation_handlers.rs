@@ -1,11 +1,15 @@
 use crate::cards::builders::{
-    CardTextError, ChooseOneModeAst, EffectAst, GrantedAbilityAst, IT_TAG, KeywordAction,
-    ObjectRefAst, OwnedLexToken, PlayerAst, PredicateAst, StaticAbilityAst, SubjectAst,
-    SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst,
+    CardTextError, ChooseOneModeAst, EffectAst, GrantedAbilityAst, KeywordAction, ObjectRefAst,
+    OwnedLexToken, PlayerAst, PredicateAst, StaticAbilityAst, SubjectAst, SubjectVerbActionAst,
+    SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::color::ColorSet;
 use crate::effect::Value;
 use crate::model::CompilerStaticAbilityCore as StaticAbility;
+use crate::recognition::{ParseOutcome, RuleId};
+use crate::registry::{
+    HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_registry_candidates,
+};
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, Supertype};
 use ironsmith_core::ValueSurfaceHint;
@@ -25,24 +29,75 @@ use super::clause_pattern_helpers::extract_subject_player;
 use super::dispatch_entry::{target_references_it, with_where_x_surface_hints};
 use creation_grammar::{CreationPhrase as CreatePhrase, CreationWordClass as CreateWord};
 
-fn parse_create_value_binding(tokens: &[OwnedLexToken]) -> Option<Value> {
-    // Give only the complete typed static-ability count first refusal. Other
-    // number-of expressions still need the established aggregate dispatcher
-    // (notably counters on a referenced object).
-    crate::keyword_static::parse_where_x_is_number_of_filter_value(tokens)
-        .filter(|value| matches!(value.unhinted(), Value::StaticAbilitiesAmong { .. }))
-        .or_else(|| crate::keyword_static::parse_where_x_is_aggregate_filter_value(tokens))
-        .or_else(|| {
-            crate::grammar::shared_util::value_semantics::parse_turn_history_value_binding(tokens)
-        })
-        // This is a count of qualifying players, not of the objects named at
-        // the end of the clause. Keep it ahead of the broad number-of-filter
-        // parser, which can otherwise retain only "creatures" or "lands".
-        .or_else(|| {
-            crate::grammar::values::parse_players_who_control_more_than_you_value_lexed(tokens)
-        })
-        .or_else(|| crate::keyword_static::parse_where_x_is_number_of_filter_value(tokens))
-        .or_else(|| parse_value_binding_clause(tokens))
+fn parse_create_value_binding(tokens: &[OwnedLexToken]) -> Result<Option<Value>, CardTextError> {
+    let span = span_from_tokens(tokens);
+    let resolve = |registry: &'static str, values: Vec<(&'static str, Option<Value>)>| {
+        let mut candidates = Vec::new();
+        for (id, value) in values {
+            let Some(value) = value else { continue };
+            if candidates
+                .iter()
+                .any(|candidate: &RegistryCandidate<Value>| candidate.value == value)
+            {
+                continue;
+            }
+            candidates.push(RegistryCandidate::new(
+                RegistryRuleMetadata::distinct(RuleId::new(id), HeadDiscriminator::grammar(id)),
+                value,
+                span,
+            ));
+        }
+        match resolve_registry_candidates(RuleId::new(registry), candidates, Vec::new()) {
+            ParseOutcome::Match(matched) => Ok(Some(matched.value.value)),
+            ParseOutcome::NoMatch => Ok(None),
+            ParseOutcome::Error(diagnostic) => Err(diagnostic.into_card_text_error()),
+        }
+    };
+
+    let static_ability_count =
+        crate::keyword_static::parse_where_x_is_number_of_filter_value(tokens)
+            .filter(|value| matches!(value.unhinted(), Value::StaticAbilitiesAmong { .. }));
+    let specific = resolve(
+        "create-value-binding-specific-registry",
+        vec![
+            ("create-count-static-abilities", static_ability_count),
+            (
+                "create-count-relative-aggregate",
+                crate::keyword_static::parse_where_x_is_aggregate_filter_value(tokens),
+            ),
+            (
+                "create-count-turn-history",
+                crate::grammar::shared_util::value_semantics::parse_turn_history_value_binding(
+                    tokens,
+                ),
+            ),
+            (
+                "create-count-relative-players",
+                crate::grammar::values::parse_players_who_control_more_than_you_value_lexed(tokens),
+            ),
+        ],
+    )?;
+    if specific.is_some() {
+        return Ok(specific);
+    }
+
+    // The typed value-expression grammar owns every `where X` amount it can
+    // prove (it resolves hand counts, trigger references, and arithmetic to
+    // their canonical typed values). The broad object-filter count covers
+    // only the remainder, so the two candidates are structurally disjoint.
+    let value_expression = parse_value_binding_clause(tokens);
+    let object_filter_count = if value_expression.is_none() {
+        crate::keyword_static::parse_where_x_is_number_of_filter_value(tokens)
+    } else {
+        None
+    };
+    resolve(
+        "create-value-binding-generic-registry",
+        vec![
+            ("create-count-object-filter", object_filter_count),
+            ("create-count-value-expression", value_expression),
+        ],
+    )
 }
 
 fn reject_lossy_for_each_fallback(
@@ -147,7 +202,7 @@ fn parse_create_equal_to_dynamic_count(
         .any(|token| token.is_word("result"));
     let mut synthetic_tokens = super::super::lexer::synthetic_word_tokens(["where", "x", "is"]);
     synthetic_tokens.extend_from_slice(spec.value_tokens);
-    Ok(parse_create_value_binding(&synthetic_tokens).map(|value| {
+    Ok(parse_create_value_binding(&synthetic_tokens)?.map(|value| {
         let value = if references_prior_result {
             value.with_surface_hint(ValueSurfaceHint::PriorEffectResult)
         } else {
@@ -691,7 +746,7 @@ fn intrinsic_token_ability_represents_dynamic_power_toughness(
             })
 }
 
-fn reconcile_quoted_dynamic_power_toughness(
+fn incorporate_quoted_dynamic_power_toughness(
     definition: &crate::model::token_definition::TokenDefinitionSpec,
     granted_abilities: &mut Vec<GrantedAbilityAst>,
     dynamic_power_toughness: &mut Option<(Value, Value)>,
@@ -826,7 +881,7 @@ fn attach_inline_token_granted_abilities_to_effect(
             }
         }
         if let Some(dynamic) = parse_quoted_token_dynamic_power_toughness(tokens) {
-            reconcile_quoted_dynamic_power_toughness(
+            incorporate_quoted_dynamic_power_toughness(
                 definition,
                 granted_abilities,
                 dynamic_power_toughness,
@@ -877,7 +932,7 @@ pub fn attach_inline_token_granted_abilities_to_last_create(
 /// coordinated set grant. The final authored create sentence proves that the
 /// rule belongs to the replacement copy, so remove only those two exact
 /// duplicates after the replacement copy has retained the typed grant.
-pub fn reconcile_inline_copy_self_replacement_grants(
+pub fn recognize_inline_copy_self_replacement_grants(
     effects: &mut [EffectAst],
     tokens: &[OwnedLexToken],
 ) -> bool {
@@ -1123,7 +1178,7 @@ pub fn lower_complete_simple_create_shape(
             "complete simple create shape is missing a token head".to_string(),
         )
     })?;
-    let tail_tokens = crate::util::trim_edge_punctuation(&head.tail_tokens);
+    let tail_tokens = crate::util::trim_edge_punctuation(head.tail_tokens);
     let attached_to = if tail_tokens.is_empty() {
         None
     } else if let Some(attached) = creation_grammar::parse_attachment_clause_tokens(&tail_tokens)
@@ -1174,13 +1229,15 @@ pub fn parse_create(
     // Capture the authored actor before imperative/chain normalization can
     // turn an implicit create action into the same semantic `PlayerAst::You`.
     let actor_surface_explicit = matches!(subject, Some(SubjectAst::Player(PlayerAst::You)));
-    let authored_dynamic_count =
+    let authored_dynamic_count = if let Some(binding) =
         crate::grammar::effects::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(tokens)
-            .and_then(|binding| {
-                parse_create_value_binding(crate::util::trim_edge_punctuation_tokens(
-                    binding.binding_tokens,
-                ))
-            });
+    {
+        parse_create_value_binding(crate::util::trim_edge_punctuation_tokens(
+            binding.binding_tokens,
+        ))?
+    } else {
+        None
+    };
     let tokens = creation_grammar::creation_body_tokens(tokens);
     if let Some(choice) = parse_create_choice_of_options(tokens)? {
         return Ok(choice);
@@ -1198,7 +1255,7 @@ pub fn parse_create(
         let effect = match action {
             creation_grammar::DelayedCombatTokenAction::Exile => EffectAst::subject_verb_exile(
                 TargetAst::Object(
-                    ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                    ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
                     span_from_tokens(tokens),
                     None,
                 ),
@@ -1207,7 +1264,7 @@ pub fn parse_create(
             creation_grammar::DelayedCombatTokenAction::Sacrifice => {
                 EffectAst::subject_verb_sacrifice(
                     PlayerAst::Implicit,
-                    ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                    ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
                     1,
                     None,
                 )
@@ -1320,7 +1377,7 @@ pub fn parse_create(
         }
     }
     if let Some(where_tokens) = creation_grammar::parse_where_clause_tokens(&tail_tokens)
-        && let Some(where_value) = parse_create_value_binding(where_tokens)
+        && let Some(where_value) = parse_create_value_binding(where_tokens)?
         && (value_contains_unbound_x(&count_value)
             || matches!(where_value.unhinted(), Value::StaticAbilitiesAmong { .. }))
     {
@@ -1535,7 +1592,7 @@ pub fn parse_create(
                 SubjectVerbRoleAst::Actor,
                 player,
                 SubjectVerbActionAst::CreateTokenCopy {
-                    object: ObjectRefAst::Tagged(TagKey::from(IT_TAG)),
+                    object: ObjectRefAst::Tagged(crate::tag::CompilerReferenceTag::It.key()),
                     count: resolve_create_count(references_iterated_object),
                     player,
                     enters_tapped,
@@ -1752,7 +1809,7 @@ pub fn parse_create(
     let mut inline_granted_abilities =
         parse_inline_token_granted_abilities(&mut definition, tokens);
     if let Some(quoted_dynamic) = parse_quoted_token_dynamic_power_toughness(tokens) {
-        reconcile_quoted_dynamic_power_toughness(
+        incorporate_quoted_dynamic_power_toughness(
             &definition,
             &mut inline_granted_abilities,
             &mut dynamic_power_toughness,
@@ -1789,7 +1846,7 @@ pub fn parse_create(
     }
 
     if let Some(where_tokens) = creation_grammar::parse_where_clause_tokens(&tail_tokens) {
-        let where_value = parse_create_value_binding(where_tokens).ok_or_else(|| {
+        let where_value = parse_create_value_binding(where_tokens)?.ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "unsupported where-x clause in create clause (clause: '{}')",
                 clause_words.join(" ")
@@ -2101,7 +2158,7 @@ pub fn parse_investigate(
     if matches!(count, Value::X)
         && creation_grammar::CreationWords::new(&trailing_words).first_is(CreateWord::Time)
         && let Some(where_tokens) = creation_grammar::parse_where_clause_tokens(&trailing)
-        && let Some(where_count) = parse_create_value_binding(where_tokens)
+        && let Some(where_count) = parse_create_value_binding(where_tokens)?
     {
         count = where_count;
         return Ok(EffectAst::subject_verb_investigate(player, count));
@@ -2154,7 +2211,7 @@ pub fn parse_incubate(
     }
 
     if let Some(where_tokens) = creation_grammar::parse_where_clause_tokens(&trailing) {
-        let Some(where_value) = parse_create_value_binding(where_tokens) else {
+        let Some(where_value) = parse_create_value_binding(where_tokens)? else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported trailing incubate where clause (clause: '{}')",
                 token_word_refs(tokens).join(" ")
@@ -2714,7 +2771,8 @@ mod tests {
             assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
             assert!(filter.tagged_constraints.iter().any(|constraint| {
                 constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
-                    && constraint.tag.as_str() == ironsmith_core::ZONE_CHANGE_GROUP_TAG
+                    && constraint.tag.as_str()
+                        == crate::tag::CompilerReferenceTag::ZoneChangeGroup.as_str()
             }));
         }
     }

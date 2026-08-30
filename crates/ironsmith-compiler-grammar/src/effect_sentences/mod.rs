@@ -59,6 +59,7 @@ pub enum TokenCopyFollowup {
     SacrificeAtEndOfCombat,
 }
 
+#[path = "effect_composition.rs"]
 mod bundle_rules;
 mod chain_carry;
 mod clause_dispatch;
@@ -71,6 +72,7 @@ pub(crate) use clause_primitives::{
 pub mod conditionals;
 mod consult_family;
 mod creation_handlers;
+#[path = "delegated_partition.rs"]
 mod delegated_partition_programs;
 mod dispatch_entry;
 mod dispatch_inner;
@@ -84,6 +86,12 @@ mod next_spell_family;
 mod optional_companion_fanout;
 mod player_subject_sequences;
 mod search_library;
+#[cfg(test)]
+pub(crate) fn parse_shuffle_graveyard_into_library_sentence_probe(
+    tokens: &[crate::lexer::OwnedLexToken],
+) -> Result<Option<Vec<crate::cards::builders::EffectAst>>, crate::cards::builders::CardTextError> {
+    search_library::parse_shuffle_graveyard_into_library_sentence(tokens)
+}
 mod sentence_helpers;
 mod sentence_registry;
 mod sentence_unsupported;
@@ -115,7 +123,7 @@ pub use conditionals::*;
 pub use creation_handlers::{
     attach_inline_token_granted_abilities_to_last_create,
     attach_mixed_pronoun_token_rules_to_last_create, lower_complete_simple_create_shape,
-    mixed_pronoun_token_rule_list, parse_create, reconcile_inline_copy_self_replacement_grants,
+    mixed_pronoun_token_rule_list, parse_create, recognize_inline_copy_self_replacement_grants,
 };
 pub use dispatch_entry::SentenceInput;
 pub(crate) use dispatch_entry::parse_complete_simple_subject_verb_sentence;

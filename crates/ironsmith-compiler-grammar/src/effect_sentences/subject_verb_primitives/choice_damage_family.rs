@@ -304,7 +304,7 @@ pub fn parse_sentence_destroy_multi_target(
                         PlayerAst::Opponent,
                     ),
                     EffectAst::subject_verb_destroy(TargetAst::Tagged(
-                        TagKey::from(IT_TAG),
+                        crate::tag::CompilerReferenceTag::It.key(),
                         segment_clause.span(),
                     )),
                 ],
@@ -694,6 +694,6 @@ pub fn parse_sentence_damage_to_that_player_unless_enchanted_attacked(
 #[path = "choice_damage_family_inline_opponent_choice_target_tests.rs"]
 mod opponent_choice_target_tests;
 
-#[path = "choice_damage_family/resource_programs.rs"]
+#[path = "choice_damage_family/resource.rs"]
 mod resource_programs;
 pub use resource_programs::parse_sentence_unless_pays;

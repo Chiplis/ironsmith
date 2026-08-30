@@ -226,9 +226,15 @@ fn explicit_copy_subject_uses_the_copy_result_tag() {
         .expect("copy-result grant should produce effects");
     let debug = format!("{effects:#?}");
 
-    assert!(debug.contains(COPIED_STACK_OBJECT_TAG), "{debug}");
     assert!(
-        !debug.contains(&format!("TagKey(\n                    \"{IT_TAG}\"")),
+        debug.contains(crate::tag::CompilerReferenceTag::CopiedStackObject.as_str()),
+        "{debug}"
+    );
+    assert!(
+        !debug.contains(&format!(
+            "TagKey(\n                    \"{}\"",
+            crate::tag::CompilerReferenceTag::It.as_str()
+        )),
         "{debug}"
     );
 }
@@ -631,7 +637,7 @@ fn shared_target_where_x_possessive_binds_only_the_bare_pronoun() {
         matches!(
             target_relative.unhinted(),
             Value::PowerOf(spec)
-                if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG)
+                if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
         ),
         "a bare possessive must use the shared target: {target_relative:#?}"
     );

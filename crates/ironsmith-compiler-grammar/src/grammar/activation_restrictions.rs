@@ -271,15 +271,23 @@ fn parse_activation_negation_span_lexed<'a>(
 ) -> WResult<ActivationNegationSpan> {
     let initial_len = input.len();
     let mut previous_words = Vec::new();
+    let mut inside_quotes = false;
     loop {
         let first = initial_len.saturating_sub(input.len());
-        let mut candidate = input.clone();
-        if let Some(end) = parse_negation_candidate(&mut candidate, initial_len, &previous_words) {
-            *input = candidate;
-            return Ok(ActivationNegationSpan { first, end });
+        if !inside_quotes {
+            let mut candidate = input.clone();
+            if let Some(end) =
+                parse_negation_candidate(&mut candidate, initial_len, &previous_words)
+            {
+                *input = candidate;
+                return Ok(ActivationNegationSpan { first, end });
+            }
         }
         let token: &OwnedLexToken = any.parse_next(input)?;
-        if let Some(word) = token.as_word() {
+        if token.is_quote() {
+            inside_quotes = !inside_quotes;
+            previous_words.clear();
+        } else if !inside_quotes && let Some(word) = token.as_word() {
             previous_words.push(word);
             if previous_words.len() > 2 {
                 previous_words.remove(0);

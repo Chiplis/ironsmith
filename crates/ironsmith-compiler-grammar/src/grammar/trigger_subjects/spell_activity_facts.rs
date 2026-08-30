@@ -377,14 +377,14 @@ fn second_spell_turn_surface(words: &[&str]) -> bool {
 #[path = "spell_activity_facts_inline_tests.rs"]
 mod tests;
 
-#[path = "spell_activity_facts/core_programs.rs"]
+#[path = "spell_activity_facts/core.rs"]
 mod core_programs;
 use core_programs::{
     all_words_present, any_sequence_present, opponent_turn_phrases, ordinal_counts,
 };
-#[path = "spell_activity_facts/resource_programs.rs"]
+#[path = "spell_activity_facts/resource.rs"]
 mod resource_programs;
 use resource_programs::draw_except_first_surface;
-#[path = "spell_activity_facts/permission_programs.rs"]
+#[path = "spell_activity_facts/permission.rs"]
 mod permission_programs;
 use permission_programs::cast_from_outside_hand_surface;

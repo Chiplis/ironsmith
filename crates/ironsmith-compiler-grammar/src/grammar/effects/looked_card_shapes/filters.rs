@@ -13,8 +13,6 @@ use winnow::combinator::alt;
 use winnow::prelude::*;
 
 use super::super::super::{permission_shapes, primitives};
-
-const CHOSEN_NAME_TAG: &str = "__chosen_name__";
 const SAME_NAME_SUFFIXES: &[&[&str]] = &[
     &["with", "that", "name"],
     &["with", "the", "chosen", "name"],
@@ -43,7 +41,7 @@ fn push_excluded_type(filter: &mut ObjectFilter, card_type: CardType) {
 fn apply_same_name(mut filter: ObjectFilter, same_name: bool) -> ObjectFilter {
     if same_name {
         filter = filter.match_tagged(
-            TagKey::from(CHOSEN_NAME_TAG),
+            crate::tag::CompilerReferenceTag::ChosenName.key(),
             TaggedOpbjectRelation::SameNameAsTagged,
         );
     }
@@ -403,7 +401,7 @@ fn parse_generic_disjunction_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFi
 #[path = "filters_inline_tests.rs"]
 mod tests;
 
-#[path = "filters/library_programs.rs"]
+#[path = "filters/library.rs"]
 mod library_programs;
 pub use library_programs::{
     parse_looked_card_reveal_filter_shape, strip_up_to_one_looked_card_choice_tokens,

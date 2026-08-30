@@ -1,8 +1,7 @@
 use crate::TagKey;
 use crate::cards::builders::{
-    ADDITIONAL_COST_OBJECT_TAG, CHOSEN_OBJECTS_TAG, CardTextError, EffectAst, IT_TAG, IdGenContext,
-    IfResultPredicate, PlayerAst, PredicateAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    THIS_WAY_SACRIFICED_TAG, TargetAst, TriggerSpec,
+    CardTextError, EffectAst, IdGenContext, IfResultPredicate, PlayerAst, PredicateAst,
+    SubjectVerbActionAst, SubjectVerbEffectAst, TargetAst, TriggerSpec,
 };
 use crate::effect::{EffectId, EventValueSpec};
 use crate::filter::TaggedOpbjectRelation;
@@ -31,8 +30,8 @@ use super::effect_ast_traversal::{
     for_each_nested_effect_vec_mut, for_each_nested_effects, try_for_each_nested_effects_mut,
 };
 use super::reference_helpers::{
-    as_followup_player_alias, choose_spec_targets_object, infer_player_filter_from_object_filter,
-    is_sacrificed_object_reference_tag, is_you_player_filter, object_filter_as_tagged_reference,
+    as_followup_player_alias, choose_spec_targets_object, is_sacrificed_object_reference_tag,
+    is_you_player_filter, object_filter_as_tagged_reference, player_filter_from_object_filter,
     resolve_it_tag, resolve_non_target_player_filter, resolve_target_spec_with_choices,
 };
 use crate::model::reference_state::{
@@ -182,26 +181,27 @@ fn lowering_reference_frame(frame: &ReferenceFrame) -> ReferenceEnv {
     ReferenceEnv::from_frame(frame)
 }
 
-fn next_reference_tag(id_gen: &mut IdGenContext, prefix: &str) -> String {
+fn next_reference_tag(id_gen: &mut IdGenContext, prefix: &str) -> TagKey {
     let tag = if matches!(prefix, "exiled" | "looked" | "chosen" | "revealed") {
         format!("__sentence_helper_{prefix}_l0_s0_e{}", id_gen.next_tag_id)
     } else {
         format!("{prefix}_{}", id_gen.next_tag_id)
     };
     id_gen.next_tag_id += 1;
-    tag
+    TagKey::new(tag)
 }
 
-fn remember_chosen_object_alias(frame: &mut ReferenceFrame, tag: &str) {
+fn remember_chosen_object_alias(frame: &mut ReferenceFrame, tag: &TagKey) {
     frame
         .snapshot_tag_aliases
-        .retain(|(alias, _)| alias != CHOSEN_OBJECTS_TAG);
-    frame
-        .snapshot_tag_aliases
-        .push((CHOSEN_OBJECTS_TAG.to_string(), tag.to_string()));
+        .retain(|(alias, _)| alias != &crate::tag::CompilerReferenceTag::ChosenObjects.key());
+    frame.snapshot_tag_aliases.push((
+        crate::tag::CompilerReferenceTag::ChosenObjects.key(),
+        tag.clone(),
+    ));
 }
 
-fn remember_local_sacrifice_alias_if_unbound(frame: &mut ReferenceFrame, tag: &str) {
+fn remember_local_sacrifice_alias_if_unbound(frame: &mut ReferenceFrame, tag: &TagKey) {
     // The filter grammar uses this stable alias for an explicit noun such as
     // "the sacrificed creature." A spell's prepared additional-cost export
     // remains authoritative when one exists; otherwise a sacrifice performed
@@ -209,23 +209,25 @@ fn remember_local_sacrifice_alias_if_unbound(frame: &mut ReferenceFrame, tag: &s
     if frame
         .snapshot_tag_aliases
         .iter()
-        .any(|(alias, _)| alias == ADDITIONAL_COST_OBJECT_TAG)
+        .any(|(alias, _)| alias == &crate::tag::CompilerReferenceTag::AdditionalCostObject.key())
     {
         return;
     }
-    frame
-        .snapshot_tag_aliases
-        .push((ADDITIONAL_COST_OBJECT_TAG.to_string(), tag.to_string()));
+    frame.snapshot_tag_aliases.push((
+        crate::tag::CompilerReferenceTag::AdditionalCostObject.key(),
+        tag.clone(),
+    ));
 }
 
-fn remember_public_revealed_alias(frame: &mut ReferenceFrame, tag: Option<&str>) {
+fn remember_public_revealed_alias(frame: &mut ReferenceFrame, tag: Option<&TagKey>) {
     frame
         .snapshot_tag_aliases
-        .retain(|(alias, _)| alias != "__public_revealed");
+        .retain(|(alias, _)| alias != &crate::tag::CompilerReferenceTag::PublicRevealed.key());
     if let Some(tag) = tag {
-        frame
-            .snapshot_tag_aliases
-            .push(("__public_revealed".to_string(), tag.to_string()));
+        frame.snapshot_tag_aliases.push((
+            crate::tag::CompilerReferenceTag::PublicRevealed.key(),
+            tag.clone(),
+        ));
     }
 }
 
@@ -401,7 +403,7 @@ fn resolved_explicit_target_player_filter(spec: &ChooseSpec) -> Option<PlayerFil
 }
 
 fn track_player_from_object_filter(filter: &ObjectFilter, frame: &mut ReferenceFrame) {
-    let preserves_existing_non_you = infer_player_filter_from_object_filter(filter)
+    let preserves_existing_non_you = player_filter_from_object_filter(filter)
         .as_ref()
         .is_some_and(is_you_player_filter)
         && frame
@@ -416,9 +418,10 @@ fn track_player_from_object_filter(filter: &ObjectFilter, frame: &mut ReferenceF
         // chosen opponent available to the second half.
         return;
     }
-    if let Some(tag) = frame.last_object_tag.as_deref() {
+    if let Some(tag) = frame.last_object_tag.as_ref() {
         if filter.owner.is_some() {
-            frame.last_player_filter = Some(PlayerFilter::AliasedOwnerOf(ObjectRef::tagged(tag)));
+            frame.last_player_filter =
+                Some(PlayerFilter::AliasedOwnerOf(ObjectRef::tagged(tag.clone())));
             return;
         }
         if filter.tagged_constraints.iter().any(|constraint| {
@@ -427,17 +430,19 @@ fn track_player_from_object_filter(filter: &ObjectFilter, frame: &mut ReferenceF
                 crate::filter::TaggedOpbjectRelation::SameControllerAsTagged
             )
         }) {
-            frame.last_player_filter =
-                Some(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(tag)));
+            frame.last_player_filter = Some(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
+                tag.clone(),
+            )));
             return;
         }
         if filter.controller.is_some() {
-            frame.last_player_filter =
-                Some(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(tag)));
+            frame.last_player_filter = Some(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
+                tag.clone(),
+            )));
             return;
         }
     }
-    if let Some(player_filter) = infer_player_filter_from_object_filter(filter) {
+    if let Some(player_filter) = player_filter_from_object_filter(filter) {
         frame.last_player_filter = Some(player_filter);
     }
 }
@@ -446,7 +451,7 @@ fn chooser_bound_followup_player_filter(
     filter: &ObjectFilter,
     chooser: Option<&PlayerFilter>,
 ) -> Option<PlayerFilter> {
-    let inferred = infer_player_filter_from_object_filter(filter);
+    let inferred = player_filter_from_object_filter(filter);
     if inferred
         .as_ref()
         .is_some_and(PlayerFilter::mentions_iterated_player)
@@ -528,7 +533,7 @@ fn remember_explicit_object_target_binding(target: &TargetAst, frame: &mut Refer
     ) else {
         return;
     };
-    let binding = ObjectTargetBinding::new(TagKey::from(tag), filter);
+    let binding = ObjectTargetBinding::new(tag.clone(), filter);
     let bindings = std::sync::Arc::make_mut(&mut frame.recent_object_target_bindings);
     bindings.retain(|existing| existing.tag != binding.tag);
     bindings.push(binding);
@@ -644,13 +649,13 @@ fn propagated_or_generated_object_tag(
     spec: &ChooseSpec,
     id_gen: &mut IdGenContext,
     prefix: &str,
-) -> Option<String> {
+) -> Option<TagKey> {
     if !choose_spec_targets_object(spec) {
         return None;
     }
 
     match spec.base() {
-        ChooseSpec::Tagged(tag) => Some(tag.as_str().to_string()),
+        ChooseSpec::Tagged(tag) => Some(tag.clone()),
         ChooseSpec::Object(_)
         | ChooseSpec::ObjectOrPlayer(_, _)
         | ChooseSpec::SpecificObject(_) => Some(next_reference_tag(id_gen, prefix)),
@@ -687,7 +692,7 @@ fn advance_effects_in_iterated_player_context(
     effects: &[EffectAst],
     id_gen: &mut IdGenContext,
     frame: &mut ReferenceFrame,
-    tagged_object: Option<String>,
+    tagged_object: Option<TagKey>,
 ) -> Result<(), CardTextError> {
     let saved = frame.clone();
     let mut nested = saved.clone();
@@ -764,7 +769,7 @@ fn advance_reference_frame_for_effect(
                     && matches!(
                         &condition.predicate,
                         crate::model::ControlPredicateAst::State(predicate)
-                            if predicate_references_tag(predicate, IT_TAG)
+                            if predicate_references_tag(predicate, crate::tag::CompilerReferenceTag::It.as_str())
                     ) =>
                 {
                     // Targets named by a trailing condition are announced
@@ -1010,14 +1015,14 @@ fn advance_reference_frame_for_effect(
                     if frame.auto_tag_object_targets
                         && choose_spec_targets_object(&spec) {
                             if let ChooseSpec::Tagged(tag) = spec.base()
-                                && (is_sentence_helper_consult_match_tag(tag.as_str())
-                                    || is_sentence_helper_exiled_collection_tag(tag.as_str()))
+                                && (is_sentence_helper_consult_match_tag(tag)
+                                    || is_sentence_helper_exiled_collection_tag(tag))
                             {
                                 // Consult matches and typed exiled collections keep
                                 // their identity across this move. Other tagged
                                 // selections use the canonical source-linked exile
                                 // bucket expected by search-and-play permissions.
-                                frame.last_object_tag = Some(tag.as_str().to_string());
+                                frame.last_object_tag = Some(tag.clone());
                             } else if spec.is_target() {
                                 if let Some(tag) =
                                     propagated_or_generated_object_tag(&spec, id_gen, "exiled")
@@ -1029,7 +1034,7 @@ fn advance_reference_frame_for_effect(
                                 // relationship, so a non-target exile keeps the
                                 // canonical source-exiled identity.
                                 frame.last_object_tag =
-                                    Some(crate::tag::SOURCE_EXILED_TAG.to_string());
+                                    Some(crate::tag::CompilerReferenceTag::SourceExiled.key());
                             }
                         }
                     track_target_player(target, frame);
@@ -1053,9 +1058,9 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::Counter { target }
                 | SubjectVerbActionAst::CounterUnlessPays { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "countered")?;
-                    if let Some(tag) = frame.last_object_tag.as_deref() {
+                    if let Some(tag) = frame.last_object_tag.as_ref() {
                         frame.last_player_filter = Some(PlayerFilter::AliasedControllerOf(
-                            ObjectRef::tagged(tag.to_string()),
+                            ObjectRef::tagged(tag.clone()),
                         ));
                     }
                 }
@@ -1088,9 +1093,9 @@ fn advance_reference_frame_for_effect(
                 }
                 SubjectVerbActionAst::ReturnToHand { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "returned")?;
-                    if let Some(tag) = frame.last_object_tag.as_deref() {
+                    if let Some(tag) = frame.last_object_tag.as_ref() {
                         frame.last_player_filter =
-                            Some(PlayerFilter::AliasedOwnerOf(ObjectRef::tagged(tag)));
+                            Some(PlayerFilter::AliasedOwnerOf(ObjectRef::tagged(tag.clone())));
                     }
                 }
                 SubjectVerbActionAst::ReturnAllToHandOfChosenColor { filter } => {
@@ -1165,7 +1170,7 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::Discard { tag, .. } => {
                     frame.last_object_tag = Some(
                         tag.as_ref()
-                            .map(|tag| tag.as_str().to_string())
+                            .cloned()
                             .unwrap_or_else(|| next_reference_tag(id_gen, "discarded")),
                     );
                 }
@@ -1197,7 +1202,7 @@ fn advance_reference_frame_for_effect(
                             Ok(resolved) => resolved,
                             Err(_)
                                 if filter.tagged_constraints.len() == 1
-                                    && filter.tagged_constraints[0].tag.as_str() == IT_TAG =>
+                                    && filter.tagged_constraints[0].tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() =>
                             {
                                 ObjectFilter::source()
                             }
@@ -1226,17 +1231,17 @@ fn advance_reference_frame_for_effect(
                     frame.last_player_filter = Some(PlayerFilter::TaggedPlayer(tag.clone()));
                     frame
                         .recent_player_choice_tags
-                        .push(tag.as_str().to_string());
+                        .push(tag.clone());
                 }
                 SubjectVerbActionAst::ControlPlayer { player, .. } => {
                     frame.last_player_filter = Some(player.clone());
                 }
                 SubjectVerbActionAst::ChooseCardName { tag, .. } => {
-                    frame.last_object_tag = Some(tag.as_str().to_string());
+                    frame.last_object_tag = Some(tag.clone());
                 }
                 SubjectVerbActionAst::ChooseSpellCastHistory { filter, tag, .. } => {
                     track_player_from_object_filter(filter, frame);
-                    frame.last_object_tag = Some(tag.as_str().to_string());
+                    frame.last_object_tag = Some(tag.clone());
                 }
                 SubjectVerbActionAst::ExchangeLifeTotals { player2 } => {
                     track_effect_player(*player2, frame, true, true)?;
@@ -1393,9 +1398,9 @@ fn advance_reference_frame_for_effect(
                     // Preserve that producer across sentence/conditional
                     // boundaries so "choose ... from it" cannot widen into an
                     // owner-only hand filter.
-                    let tag = crate::tag::REVEALED_THIS_WAY_TAG;
-                    frame.last_object_tag = Some(tag.to_string());
-                    remember_public_revealed_alias(frame, Some(tag));
+                    let tag = crate::tag::CompilerReferenceTag::RevealedThisWay.key();
+                    frame.last_object_tag = Some(tag.clone());
+                    remember_public_revealed_alias(frame, Some(&tag));
                 }
                 SubjectVerbActionAst::RevealTop => {
                     let tag = next_reference_tag(id_gen, "revealed");
@@ -1408,39 +1413,39 @@ fn advance_reference_frame_for_effect(
                     ..
                 } => {
                     if let Some(tag) = tags.first().or_else(|| accumulated_tags.first()) {
-                        frame.last_object_tag = Some(if tag.as_str() == IT_TAG {
+                        frame.last_object_tag = Some(if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                             next_reference_tag(id_gen, "exiled")
                         } else {
-                            tag.as_str().to_string()
+                            tag.clone()
                         });
                     }
                 }
                 SubjectVerbActionAst::RevealCardsFromHand { tag, .. } => {
-                    let tag = if tag.as_str() == IT_TAG {
+                    let tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                         next_reference_tag(id_gen, "revealed")
                     } else {
-                        tag.as_str().to_string()
+                        tag.clone()
                     };
                     remember_public_revealed_alias(frame, Some(&tag));
                     frame.last_object_tag = Some(tag);
                 }
                 SubjectVerbActionAst::RevealTagged { tag } => {
-                    let tag = if tag.as_str() == IT_TAG {
+                    let tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                         frame
                             .last_object_tag
                             .clone()
                             .unwrap_or_else(|| next_reference_tag(id_gen, "revealed"))
                     } else {
-                        tag.as_str().to_string()
+                        tag.clone()
                     };
                     remember_public_revealed_alias(frame, Some(&tag));
                     frame.last_object_tag = Some(tag);
                 }
                 SubjectVerbActionAst::LookAtTopCards { tag, .. } => {
-                    frame.last_object_tag = Some(if tag.as_str() == IT_TAG {
+                    frame.last_object_tag = Some(if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                         next_reference_tag(id_gen, "revealed")
                     } else {
-                        tag.as_str().to_string()
+                        tag.clone()
                     });
                 }
                 SubjectVerbActionAst::MoveToZone {
@@ -1502,7 +1507,7 @@ fn advance_reference_frame_for_effect(
                 }
                 SubjectVerbActionAst::TagMatchingObjects { filter, tag, .. } => {
                     track_player_from_object_filter(filter, frame);
-                    frame.last_object_tag = Some(tag.as_str().to_string());
+                    frame.last_object_tag = Some(tag.clone());
                 }
                 SubjectVerbActionAst::Pump { target, .. }
                 | SubjectVerbActionAst::PumpForEach { target, .. } => {
@@ -1579,8 +1584,8 @@ fn advance_reference_frame_for_effect(
                     // revealed collection ("cards revealed this way"). Keep the
                     // match as ordinary object memory while preserving the public
                     // revealed alias for later typed collection counts.
-                    remember_public_revealed_alias(frame, Some(all_tag.as_str()));
-                    frame.last_object_tag = Some(match_tag.as_str().to_string());
+                    remember_public_revealed_alias(frame, Some(all_tag));
+                    frame.last_object_tag = Some(match_tag.clone());
                 }
                 SubjectVerbActionAst::SearchLibrary { filter, player, .. } => {
                     if matches!(*player, PlayerAst::That)
@@ -1674,7 +1679,7 @@ fn advance_reference_frame_for_effect(
                 && filter.owner.is_none()
                 && filter.controller.is_none()
                 && filter.tagged_constraints.iter().any(|constraint| {
-                    constraint.tag.as_str() == IT_TAG
+                    constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                         && matches!(
                             constraint.relation,
                             crate::filter::TaggedOpbjectRelation::IsTaggedObject
@@ -1707,7 +1712,7 @@ fn advance_reference_frame_for_effect(
             {
                 frame.last_player_filter = Some(player_filter);
             }
-            let chosen_tag = tag.as_str().to_string();
+            let chosen_tag = tag.clone();
             if resolved_filter.as_ref().is_some_and(|resolved_filter| {
                 should_alias_followup_player_to_chosen_owner(
                     resolved_filter,
@@ -1715,14 +1720,15 @@ fn advance_reference_frame_for_effect(
                 )
             }) {
                 frame.last_player_filter = Some(PlayerFilter::AliasedOwnerOf(ObjectRef::tagged(
-                    chosen_tag.as_str(),
+                    chosen_tag.clone(),
                 )));
             }
             if tag.as_str() != "__condition_collection_choice" {
                 frame.last_object_tag = Some(chosen_tag);
             }
-            frame.last_it_choice_is_set = tag.as_str() == IT_TAG;
-            remember_chosen_object_alias(frame, tag.as_str());
+            frame.last_it_choice_is_set =
+                tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str();
+            remember_chosen_object_alias(frame, tag);
         }
         EffectAst::ChooseObjectsAcrossZones {
             filter,
@@ -1734,7 +1740,7 @@ fn advance_reference_frame_for_effect(
                 && filter.owner.is_none()
                 && filter.controller.is_none()
                 && filter.tagged_constraints.iter().any(|constraint| {
-                    constraint.tag.as_str() == IT_TAG
+                    constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                         && matches!(
                             constraint.relation,
                             crate::filter::TaggedOpbjectRelation::IsTaggedObject
@@ -1767,7 +1773,7 @@ fn advance_reference_frame_for_effect(
             {
                 frame.last_player_filter = Some(player_filter);
             }
-            let chosen_tag = tag.as_str().to_string();
+            let chosen_tag = tag.clone();
             if resolved_filter.as_ref().is_some_and(|resolved_filter| {
                 should_alias_followup_player_to_chosen_owner(
                     resolved_filter,
@@ -1775,12 +1781,13 @@ fn advance_reference_frame_for_effect(
                 )
             }) {
                 frame.last_player_filter = Some(PlayerFilter::AliasedOwnerOf(ObjectRef::tagged(
-                    chosen_tag.as_str(),
+                    chosen_tag.clone(),
                 )));
             }
             frame.last_object_tag = Some(chosen_tag);
-            frame.last_it_choice_is_set = tag.as_str() == IT_TAG;
-            remember_chosen_object_alias(frame, tag.as_str());
+            frame.last_it_choice_is_set =
+                tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str();
+            remember_chosen_object_alias(frame, tag);
         }
         EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}
         EffectAst::May { effects } => {
@@ -1893,7 +1900,7 @@ fn advance_reference_frame_for_effect(
             {
                 nested.last_effect_id = None;
             }
-            nested.last_object_tag = Some(IT_TAG.to_string());
+            nested.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.key());
             nested.iterated_object = true;
             advance_reference_frames(effects, id_gen, &mut nested)?;
             if saved.last_object_tag != nested.last_object_tag {
@@ -1904,18 +1911,18 @@ fn advance_reference_frame_for_effect(
             }
         }
         EffectAst::ForEachTagged { tag, effects } => {
-            let tagged_object = if tag.as_str() == IT_TAG {
+            let tagged_object = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                 frame.last_object_tag.clone()
             } else {
-                Some(tag.as_str().to_string())
+                Some(tag.clone())
             };
             advance_effects_in_iterated_player_context(effects, id_gen, frame, tagged_object)?;
         }
         EffectAst::ForEachTaggedWithControllerAtLastBlockedBy { tag, effects, .. } => {
-            let tagged_object = if tag.as_str() == IT_TAG {
+            let tagged_object = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                 frame.last_object_tag.clone()
             } else {
-                Some(tag.as_str().to_string())
+                Some(tag.clone())
             };
             advance_effects_in_iterated_player_context(effects, id_gen, frame, tagged_object)?;
         }
@@ -1930,10 +1937,8 @@ fn advance_reference_frame_for_effect(
             if let Some(concrete) = frame.last_object_tag.clone() {
                 frame
                     .snapshot_tag_aliases
-                    .retain(|(alias, _)| alias != into.as_str());
-                frame
-                    .snapshot_tag_aliases
-                    .push((into.as_str().to_string(), concrete));
+                    .retain(|(alias, _)| alias != into);
+                frame.snapshot_tag_aliases.push((into.clone(), concrete));
             }
         }
         EffectAst::RepeatProcess { effects, .. } => {
@@ -1965,14 +1970,15 @@ fn advance_reference_frame_for_effect(
             if let Some((_, chosen_tag)) = nested
                 .snapshot_tag_aliases
                 .iter()
-                .find(|(alias, _)| alias == CHOSEN_OBJECTS_TAG)
+                .find(|(alias, _)| alias == &crate::tag::CompilerReferenceTag::ChosenObjects.key())
             {
-                frame
-                    .snapshot_tag_aliases
-                    .retain(|(alias, _)| alias != CHOSEN_OBJECTS_TAG);
-                frame
-                    .snapshot_tag_aliases
-                    .push((CHOSEN_OBJECTS_TAG.to_string(), chosen_tag.clone()));
+                frame.snapshot_tag_aliases.retain(|(alias, _)| {
+                    alias != &crate::tag::CompilerReferenceTag::ChosenObjects.key()
+                });
+                frame.snapshot_tag_aliases.push((
+                    crate::tag::CompilerReferenceTag::ChosenObjects.key(),
+                    chosen_tag.clone(),
+                ));
             }
         }
         EffectAst::ManaRestricted { effects, .. } => {
@@ -2005,7 +2011,7 @@ fn advance_reference_frame_for_effect(
             // affected by the nested effect. Subsequent demonstratives must
             // bind to that stable alias rather than to an implementation tag
             // introduced while lowering the nested action.
-            frame.last_object_tag = Some(tag.as_str().to_string());
+            frame.last_object_tag = Some(tag.clone());
         }
         EffectAst::RepeatThisProcess
         | EffectAst::SolveCase
@@ -2051,7 +2057,7 @@ fn cost_tag_index_from_env(env: &ReferenceEnv, prefix: &str) -> Option<u32> {
             env.snapshot_tag_aliases
                 .iter()
                 .rev()
-                .filter_map(|(_, tag)| tag.strip_prefix(prefix))
+                .filter_map(|(_, tag)| tag.as_str().strip_prefix(prefix))
                 .find_map(|index| index.parse().ok())
         })
 }
@@ -2072,8 +2078,8 @@ fn explicit_exiled_object_tag(effects: &[EffectAst]) -> Option<crate::TagKey> {
             action: SubjectVerbActionAst::CastTagged { tag, .. },
             ..
         }) = effect
-            && (tag.as_str() == crate::tag::SOURCE_EXILED_TAG
-                || is_sentence_helper_exiled_collection_tag(tag.as_str()))
+            && (tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
+                || is_sentence_helper_exiled_collection_tag(tag))
         {
             return Some(tag.clone());
         }
@@ -2168,14 +2174,22 @@ fn annotate_effect_sequence_with_env_internal(
         } else {
             effects_reference_it_tag(remaining)
                 || effects_reference_its_controller(remaining)
-                || effects_reference_tag(remaining, crate::tag::SOURCE_EXILED_TAG)
+                || effects_reference_tag(
+                    remaining,
+                    crate::tag::CompilerReferenceTag::SourceExiled.as_str(),
+                )
                 || effects_reference_tag(remaining, "damaged_0")
-                || effects_reference_tag(remaining, THIS_WAY_SACRIFICED_TAG)
+                || effects_reference_tag(
+                    remaining,
+                    crate::tag::CompilerReferenceTag::ThisWaySacrificed.as_str(),
+                )
         };
         let auto_tag_object_targets_for_env = if effect_exports_damage_each_object_set(&effect) {
             !suppress_for_power_self_damage
-                && (effects_reference_tag_in_object_position(remaining, IT_TAG)
-                    || effects_reference_tag_in_object_position(remaining, "damaged_0"))
+                && (effects_reference_tag_in_object_position(
+                    remaining,
+                    crate::tag::CompilerReferenceTag::It.as_str(),
+                ) || effects_reference_tag_in_object_position(remaining, "damaged_0"))
         } else {
             auto_tag_object_targets
         };
@@ -2203,7 +2217,10 @@ fn annotate_effect_sequence_with_env_internal(
         let preserves_sacrifice_cost_reference = in_env
             .known_last_object_tag()
             .is_some_and(|tag| is_sacrificed_object_reference_tag(tag.as_str()))
-            && effects_reference_tag(remaining, THIS_WAY_SACRIFICED_TAG);
+            && effects_reference_tag(
+                remaining,
+                crate::tag::CompilerReferenceTag::ThisWaySacrificed.as_str(),
+            );
         if preserves_sacrifice_cost_reference
             && out_env.known_last_object_tag().is_none()
             && out_env.source_object_antecedent
@@ -2285,9 +2302,9 @@ pub fn preserves_existing_it_for_power_self_damage_followup(
             ..
         })),
     ) = (effect, next_effect)
-        && next_source_tag.as_str() == IT_TAG
+        && next_source_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         && (matches!(source, TargetAst::Source(_))
-            || matches!(source, TargetAst::Tagged(source_tag, _) if source_tag.as_str() == IT_TAG))
+            || matches!(source, TargetAst::Tagged(source_tag, _) if source_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()))
     {
         // An elided conjoined damage clause ("... to target player and that
         // much damage to ...") repeats the same source. The parser represents
@@ -2322,7 +2339,8 @@ pub fn preserves_existing_it_for_power_self_damage_followup(
         return false;
     };
 
-    source_tag.as_str() == IT_TAG && target_tag.as_str() == IT_TAG
+    source_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        && target_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
 }
 
 fn maybe_assign_effect_result_id(
@@ -4408,7 +4426,7 @@ pub fn bind_unresolved_it_references_with_imports(
 ) -> BoundEffectsAst {
     let seed_tag = seed_last_object_tag
         .map(TagKey::from)
-        .unwrap_or_else(|| TagKey::from(IT_TAG));
+        .unwrap_or_else(|| crate::tag::CompilerReferenceTag::It.key());
     let unresolved_it_before = count_unresolved_it_occurrences(effects);
     let mut resolved = effects.to_vec();
     for effect in &mut resolved {
@@ -4440,7 +4458,7 @@ fn count_unresolved_it_occurrences(effects: &[EffectAst]) -> usize {
 fn bind_unresolved_it_in_effect(effect: &mut EffectAst, seed_tag: &TagKey) -> usize {
     let mut replacements = bind_unresolved_it_in_effect_fields(effect, seed_tag);
     let nested_seed = match effect {
-        EffectAst::ForEachObject { .. } => TagKey::from(IT_TAG),
+        EffectAst::ForEachObject { .. } => crate::tag::CompilerReferenceTag::It.key(),
         _ => seed_tag.clone(),
     };
     for_each_nested_effects_mut(effect, true, |nested| {
@@ -5300,7 +5318,7 @@ fn bind_unresolved_it_in_object_ref_ast(reference: &mut ObjectRefAst, seed_tag: 
 
 #[cfg(test)]
 fn bind_unresolved_it_in_tag(tag: &mut TagKey, seed_tag: &TagKey) -> usize {
-    if tag.as_str() == IT_TAG {
+    if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
         *tag = seed_tag.clone();
         1
     } else {
@@ -5604,7 +5622,7 @@ mod tests {
                 predicate: PredicateAst::ItMatches(ObjectFilter::spell()),
                 if_true: vec![EffectAst::May {
                     effects: vec![EffectAst::subject_verb_cast_tagged(
-                        TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+                        crate::tag::CompilerReferenceTag::SourceExiled.key(),
                         PlayerAst::You,
                         false,
                         false,
@@ -5615,7 +5633,7 @@ mod tests {
                 if_false: Vec::new(),
             },
             EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-                TagKey::from(IT_TAG),
+                crate::tag::CompilerReferenceTag::It.key(),
                 PlayerAst::You,
                 false,
                 false,
@@ -5627,7 +5645,9 @@ mod tests {
             &ModelReferenceImports {
                 last_object_tag: Some(TagKey::from("created_treasure")),
                 snapshot_tag_aliases: vec![(
-                    crate::tag::SOURCE_EXILED_TAG.to_string(),
+                    crate::tag::CompilerReferenceTag::SourceExiled
+                        .as_str()
+                        .to_string(),
                     concrete.as_str().to_string(),
                 )],
                 ..Default::default()
@@ -5669,7 +5689,7 @@ mod tests {
         ));
         let mut predicate = PredicateAst::PlayerTaggedObjectMatches {
             player: PlayerAst::You,
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
             filter,
             mode: ironsmith_core::TaggedObjectMatchMode::LastKnown,
         };
@@ -5696,13 +5716,13 @@ mod tests {
     fn binding_reports_typed_unresolved_it_counts() {
         let mut filter = ObjectFilter::default();
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
 
         let effects = vec![EffectAst::subject_verb_damage(
             Value::Count(filter),
-            TargetAst::Tagged(TagKey::from(IT_TAG), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
         )];
 
         let bound = bind_unresolved_it_references_with_imports(&effects, Some("bound_target"));
@@ -5989,7 +6009,7 @@ mod tests {
         let producer = EffectAst::ForEachTagged {
             tag: chosen_tag,
             effects: vec![EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
                 Zone::Battlefield,
                 false,
                 ReturnControllerAst::Preserve,
@@ -6061,7 +6081,7 @@ mod tests {
     fn annotate_effect_sequence_tracks_player_from_same_controller_filter() {
         let mut filter = ObjectFilter::creature();
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
             relation: TaggedOpbjectRelation::SameControllerAsTagged,
         });
 
@@ -6310,7 +6330,7 @@ mod tests {
                 None,
             )),
             EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-                TagKey::from(IT_TAG),
+                crate::tag::CompilerReferenceTag::It.key(),
                 PlayerAst::You,
                 false,
                 false,
@@ -6334,7 +6354,7 @@ mod tests {
 
     #[test]
     fn reveal_hand_exports_its_typed_result_set_to_a_from_it_choice() {
-        let mut revealed_nonland = ObjectFilter::tagged(TagKey::from(IT_TAG));
+        let mut revealed_nonland = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
         revealed_nonland.zone = Some(Zone::Hand);
         revealed_nonland.excluded_card_types.push(CardType::Land);
         let effects = vec![
@@ -6344,7 +6364,7 @@ mod tests {
                 count: ChoiceCount::exactly(1),
                 count_value: None,
                 player: PlayerAst::You,
-                tag: TagKey::from(IT_TAG),
+                tag: crate::tag::CompilerReferenceTag::It.key(),
             },
         ];
 
@@ -6358,7 +6378,7 @@ mod tests {
 
         assert_eq!(
             annotated.effects[1].in_env.last_object_tag,
-            ModelRefState::Known(TagKey::from(crate::tag::REVEALED_THIS_WAY_TAG))
+            ModelRefState::Known(crate::tag::CompilerReferenceTag::RevealedThisWay.key())
         );
         let EffectAst::ChooseObjects { filter, .. } = &annotated.effects[1].effect else {
             panic!(
@@ -6369,7 +6389,8 @@ mod tests {
         assert!(
             filter.tagged_constraints.iter().any(|constraint| {
                 constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-                    && constraint.tag.as_str() == crate::tag::REVEALED_THIS_WAY_TAG
+                    && constraint.tag.as_str()
+                        == crate::tag::CompilerReferenceTag::RevealedThisWay.as_str()
             }),
             "the followup choice must consume the reveal's exact object set: {filter:#?}"
         );
@@ -6380,7 +6401,7 @@ mod tests {
         let effects = vec![
             EffectAst::subject_verb_sacrifice(PlayerAst::You, ObjectFilter::source(), 1, None),
             EffectAst::subject_verb_damage_with_source(
-                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
                 Value::Fixed(6),
                 TargetAst::Player(PlayerFilter::You, None),
             ),
@@ -6428,7 +6449,7 @@ mod tests {
                 None,
             )),
             EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-                TagKey::from(IT_TAG),
+                crate::tag::CompilerReferenceTag::It.key(),
                 PlayerAst::You,
                 false,
                 false,
@@ -6454,7 +6475,7 @@ mod tests {
     fn return_to_battlefield_followup_uses_the_new_zone_change_object() {
         let effects = vec![
             EffectAst::subject_verb_return_to_battlefield(
-                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
                 false,
                 false,
                 false,
@@ -6465,7 +6486,7 @@ mod tests {
                 SubjectVerbRoleAst::Actor,
                 PlayerAst::Implicit,
                 SubjectVerbActionAst::SetCardTypes {
-                    target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    target: TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
                     card_types: vec![CardType::Enchantment],
                     duration: Until::Forever,
                 },
@@ -6508,7 +6529,7 @@ mod tests {
                 SubjectVerbRoleAst::Actor,
                 PlayerAst::Implicit,
                 SubjectVerbActionAst::SetCardTypes {
-                    target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    target: TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
                     card_types: vec![CardType::Enchantment],
                     duration: Until::EndOfTurn,
                 },
@@ -6516,7 +6537,7 @@ mod tests {
             EffectAst::DelayedUntilNextEndStep {
                 player: PlayerFilter::Any,
                 effects: vec![EffectAst::subject_verb_exile(
-                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
                     false,
                 )],
             },
@@ -6604,7 +6625,9 @@ mod tests {
                             "1/1 colorless Thopter artifact creature token with flying",
                         )
                         .expect("test Thopter token definition should parse"),
-                    count: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
+                    count: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
+                        crate::tag::CompilerReferenceTag::It.key(),
+                    ))),
                     dynamic_power_toughness: None,
                     player: PlayerAst::Implicit,
                     actor_surface_explicit: false,
@@ -6643,7 +6666,7 @@ mod tests {
         tapped_filter
             .tagged_constraints
             .push(TaggedObjectConstraint {
-                tag: TagKey::from(IT_TAG),
+                tag: crate::tag::CompilerReferenceTag::It.key(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
             });
         let effects = vec![
@@ -6682,7 +6705,9 @@ mod tests {
         let effects = vec![
             EffectAst::subject_verb_damage_each(Value::Fixed(1), ObjectFilter::creature()),
             EffectAst::subject_verb_damage_each(
-                Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
+                Value::PowerOf(Box::new(ChooseSpec::Tagged(
+                    crate::tag::CompilerReferenceTag::It.key(),
+                ))),
                 ObjectFilter::planeswalker(),
             ),
         ];
@@ -6714,7 +6739,7 @@ mod tests {
         let effects = vec![
             EffectAst::subject_verb_amass(Some(Subtype::Orc), Value::Fixed(2)),
             EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-                TagKey::from(IT_TAG),
+                crate::tag::CompilerReferenceTag::It.key(),
                 PlayerAst::You,
                 false,
                 false,
@@ -7636,7 +7661,7 @@ mod tests {
                     None,
                 )),
                 EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-                    TagKey::from(IT_TAG),
+                    crate::tag::CompilerReferenceTag::It.key(),
                     PlayerAst::You,
                     false,
                     false,
@@ -7649,7 +7674,7 @@ mod tests {
                     false,
                 ),
                 EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-                    TagKey::from(IT_TAG),
+                    crate::tag::CompilerReferenceTag::It.key(),
                     PlayerAst::You,
                     false,
                     false,
@@ -7674,7 +7699,10 @@ mod tests {
 
     #[test]
     fn conjoined_damage_preserves_anaphoric_source_pronoun() {
-        let source_it = TargetAst::Tagged(TagKey::from(IT_TAG), Some(TextSpan::synthetic()));
+        let source_it = TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+            Some(TextSpan::synthetic()),
+        );
         let first = EffectAst::subject_verb_damage_with_source(
             source_it.clone(),
             Value::Fixed(3),

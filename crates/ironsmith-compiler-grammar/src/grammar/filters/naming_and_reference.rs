@@ -1121,7 +1121,7 @@ fn apply_spell_filter_tagged_relations(filter: &mut ObjectFilter, words: &[&str]
 
     if shares_card_type && references_exiled_card {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+            tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
             relation: shared_type_relation(words),
         });
     }
@@ -1393,6 +1393,6 @@ fn drain_source_reference_prefix_tokens(
     segment_tokens.drain(..end_token_idx);
 }
 
-#[path = "naming_and_reference/naming_and_reference_reference_programs.rs"]
+#[path = "naming_and_reference/naming_and_reference_reference.rs"]
 mod naming_and_reference_reference_programs;
 pub(super) use naming_and_reference_reference_programs::apply_reference_and_tag_stage;

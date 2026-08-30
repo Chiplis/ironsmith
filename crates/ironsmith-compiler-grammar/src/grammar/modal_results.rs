@@ -277,7 +277,7 @@ fn parse_typed_prior_effect_result_surface(
     // For example, "a card with the chosen name was milled this way" must
     // retain its SameNameAsTagged(__chosen_name__) comparison.
     filter.tagged_constraints.retain(|constraint| {
-        !(constraint.tag.as_str() == crate::cards::builders::IT_TAG
+        !(constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
     });
     filter.zone = None;
@@ -364,11 +364,11 @@ fn parse_prior_result_object_filter(
 #[path = "modal_results_inline_tests.rs"]
 mod tests;
 
-#[path = "modal_results/modal_results_object_action_programs.rs"]
+#[path = "modal_results/modal_results_object_action.rs"]
 mod modal_results_object_action_programs;
 pub use modal_results_object_action_programs::{
     parse_if_result_predicate_lexed_tokens, parse_if_result_predicate_tokens,
 };
-#[path = "modal_results/modal_results_core_programs.rs"]
+#[path = "modal_results/modal_results_core.rs"]
 mod modal_results_core_programs;
 use modal_results_core_programs::parse_direct_prior_effect_result_surface;

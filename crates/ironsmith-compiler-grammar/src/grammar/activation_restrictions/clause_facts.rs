@@ -260,11 +260,11 @@ pub fn parse_player_restriction_subject_words(words: &[&str]) -> Option<PlayerFi
         Some(PlayerFilter::Attacking)
     } else if exact_any(words, &[&["its", "controller"], &["their", "controller"]]) {
         Some(PlayerFilter::ControllerOf(
-            crate::filter::ObjectRef::tagged(TagKey::from(crate::cards::builders::IT_TAG)),
+            crate::filter::ObjectRef::tagged(crate::tag::CompilerReferenceTag::It.key()),
         ))
     } else if exact_any(words, &[&["its", "owner"], &["their", "owner"]]) {
         Some(PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(
-            TagKey::from(crate::cards::builders::IT_TAG),
+            crate::tag::CompilerReferenceTag::It.key(),
         )))
     } else {
         None
@@ -482,22 +482,22 @@ pub fn parse_dealt_damage_this_way_words(words: &[&str]) -> Option<DealtDamageTh
     contains(words, &["dealt", "damage", "this", "way"]).then_some(DealtDamageThisWay)
 }
 
-#[path = "clause_facts/core_programs.rs"]
+#[path = "clause_facts/core.rs"]
 mod core_programs;
 pub(super) use core_programs::{
     contains, exact, exact_any, prefix, prefix_any, prefix_remainder, suffix, suffix_remainder,
 };
-#[path = "clause_facts/reference_programs.rs"]
+#[path = "clause_facts/reference.rs"]
 mod reference_programs;
 pub use reference_programs::parse_leading_if_restriction_subject_words;
-#[path = "clause_facts/condition_programs.rs"]
+#[path = "clause_facts/condition.rs"]
 mod condition_programs;
 pub use condition_programs::parse_effect_action_restriction_tail_words;
-#[path = "clause_facts/resource_programs.rs"]
+#[path = "clause_facts/resource.rs"]
 mod resource_programs;
 pub use resource_programs::{
     parse_mana_retention_negated_clause_words, parse_mana_retention_tail_words,
 };
-#[path = "clause_facts/combat_programs.rs"]
+#[path = "clause_facts/combat.rs"]
 mod combat_programs;
 pub use combat_programs::parse_dealt_damage_by_source_subject_words;

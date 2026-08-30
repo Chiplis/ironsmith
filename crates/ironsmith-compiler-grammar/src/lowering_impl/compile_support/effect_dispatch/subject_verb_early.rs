@@ -252,11 +252,11 @@ pub(super) fn compile_exile_top_of_library(
     }
     if let Some(tag) = tags.first().or_else(|| accumulated_tags.first()) {
         let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
-        if is_sentence_helper_exiled_collection_tag(resolved_tag.as_str()) {
-            ctx.last_exiled_collection_tag = Some(resolved_tag.as_str().to_string());
+        if is_sentence_helper_exiled_collection_tag(&resolved_tag) {
+            ctx.last_exiled_collection_tag = Some(resolved_tag.clone());
         }
         ctx.last_exiled_collection_is_plural = exiled_is_plural;
-        ctx.last_object_tag = Some(resolved_tag.as_str().to_string());
+        ctx.last_object_tag = Some(resolved_tag.clone());
     }
     ctx.last_player_filter = Some(player_filter);
     Ok((vec![Effect::new(effect)], subject.into_choices()))
@@ -393,15 +393,18 @@ pub(super) fn compile_subject_verb_early(
                 PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
                 _ => player_filter.clone(),
             });
-            let revealed_tag = crate::tag::REVEALED_THIS_WAY_TAG.to_string();
+            let revealed_tag = crate::tag::CompilerReferenceTag::RevealedThisWay.key();
             ctx.last_object_tag = Some(revealed_tag.clone());
             ctx.last_revealed_tag = Some(revealed_tag.clone());
             ctx.last_revealed_zone = Some(Zone::Hand);
             ctx.last_revealed_player_filter = Some(player_filter.clone());
-            ctx.snapshot_tag_aliases
-                .retain(|(alias, _)| alias != "__public_revealed");
-            ctx.snapshot_tag_aliases
-                .push(("__public_revealed".to_string(), revealed_tag));
+            ctx.snapshot_tag_aliases.retain(|(alias, _)| {
+                alias != &crate::tag::CompilerReferenceTag::PublicRevealed.key()
+            });
+            ctx.snapshot_tag_aliases.push((
+                crate::tag::CompilerReferenceTag::PublicRevealed.key(),
+                revealed_tag,
+            ));
             let effect = Effect::new(crate::effects::LookAtHandEffect::reveal(spec));
             Ok((vec![effect], choices))
         }
@@ -693,8 +696,8 @@ pub(super) fn compile_subject_verb_early(
                         Effect::may(vec![Effect::sacrifice_with_event_tags(
                             ObjectFilter::creature(),
                             1,
-                            crate::tag::EXPLOITED_TAG,
-                            crate::tag::EXPLOITER_TAG,
+                            crate::tag::CompilerReferenceTag::Exploited.as_str(),
+                            crate::tag::CompilerReferenceTag::Exploiter.as_str(),
                         )]),
                     ),
                     Effect::if_then(
@@ -704,7 +707,7 @@ pub(super) fn compile_subject_verb_early(
                             crate::events::KeywordActionKind::Exploit,
                             1,
                             id,
-                            crate::tag::EXPLOITED_TAG,
+                            crate::tag::CompilerReferenceTag::Exploited.as_str(),
                         )],
                     ),
                 ],
@@ -743,7 +746,10 @@ pub(super) fn compile_subject_verb_early(
                     tag: crate::tag::CompilerReferenceTag::It.key(),
                     relation: TaggedOpbjectRelation::SameStableId,
                 });
-            let in_it = Condition::TaggedObjectMatches(TagKey::from(IT_TAG), membership_filter);
+            let in_it = Condition::TaggedObjectMatches(
+                crate::tag::CompilerReferenceTag::It.key(),
+                membership_filter,
+            );
             let move_rest = Effect::for_each_tagged(
                 looked_tag,
                 vec![Effect::conditional(
@@ -949,7 +955,7 @@ pub(super) fn compile_subject_verb_early(
                 filter.clone(),
                 tag.clone(),
             ));
-            ctx.last_object_tag = Some(tag.as_str().to_string());
+            ctx.last_object_tag = Some(tag.clone());
             ctx.last_player_filter = Some(chooser);
             Ok((effects, subject.into_choices()))
         }
@@ -961,8 +967,8 @@ pub(super) fn compile_subject_verb_early(
         } => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let resolved_filter = filter.clone();
-            let resolved_tag = if tag.as_str() == IT_TAG {
-                TagKey::from(ctx.next_tag("chosen_player").as_str())
+            let resolved_tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+                ctx.next_tag("chosen_player")
             } else {
                 tag.clone()
             };
@@ -973,7 +979,6 @@ pub(super) fn compile_subject_verb_early(
                 ctx.recent_player_choice_tags[len.saturating_sub(*exclude_previous_choices)..]
                     .iter()
                     .cloned()
-                    .map(TagKey::from)
                     .collect::<Vec<_>>()
             };
             let (effects, choices) = compile_choose_player_with_subject(
@@ -984,8 +989,7 @@ pub(super) fn compile_subject_verb_early(
                 excluded_tags,
             );
             ctx.last_player_filter = Some(PlayerFilter::TaggedPlayer(resolved_tag.clone()));
-            ctx.recent_player_choice_tags
-                .push(resolved_tag.as_str().to_string());
+            ctx.recent_player_choice_tags.push(resolved_tag.clone());
             Ok((effects, choices))
         }
         SubjectVerbActionAst::NoteLifeTotal => Ok((vec![Effect::note_life_total()], Vec::new())),
@@ -1014,7 +1018,7 @@ pub(super) fn compile_subject_verb_early(
                 .map(|spec| Effect::new(crate::effects::TargetOnlyEffect::new(spec)))
                 .collect();
             effects.push(effect);
-            ctx.last_object_tag = Some(tag.as_str().to_string());
+            ctx.last_object_tag = Some(tag.clone());
             Ok((effects, choices))
         }
         SubjectVerbActionAst::AddMana { mana } => {
@@ -1335,15 +1339,14 @@ pub(super) fn compile_subject_verb_early(
                 // effect itself would export the attached objects (its
                 // affected set), not the destination, so declare the target
                 // once and make the executable Attach consume that identity.
-                let tag =
-                    TagKey::from(reserved_or_next_object_tag(ctx, "attachment_target").as_str());
+                let tag = reserved_or_next_object_tag(ctx, "attachment_target");
                 effects.push(
                     Effect::new(crate::effects::TargetOnlyEffect::new(target.clone()))
                         .tag(tag.clone()),
                 );
                 target =
                     with_target_reference_surface_hint(ChooseSpec::Tagged(tag.clone()), target_ast);
-                ctx.last_object_tag = Some(tag.as_str().to_string());
+                ctx.last_object_tag = Some(tag.clone());
             } else if !individual_targets
                 && !target.is_target()
                 && target.count().is_single()
@@ -1357,7 +1360,7 @@ pub(super) fn compile_subject_verb_early(
             {
                 let mut filter = filter.clone();
                 filter.zone.get_or_insert(Zone::Battlefield);
-                let tag = TagKey::from(ctx.next_tag("attachment_target").as_str());
+                let tag = ctx.next_tag("attachment_target");
                 effects.push(Effect::choose_objects(
                     filter,
                     ChoiceCount::exactly(1),
@@ -1712,7 +1715,7 @@ pub(super) fn compile_subject_verb_early(
             compile_exile_top_of_library(subject_verb, ctx)
         }
         SubjectVerbActionAst::RevealTagged { tag } => {
-            let resolved_tag = if tag.as_str() == IT_TAG {
+            let resolved_tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                 if let Some(existing) = ctx.last_object_tag.clone() {
                     existing
                 } else {
@@ -1721,7 +1724,7 @@ pub(super) fn compile_subject_verb_early(
                     generated
                 }
             } else {
-                let explicit = tag.as_str().to_string();
+                let explicit = tag.clone();
                 ctx.last_object_tag = Some(explicit.clone());
                 explicit
             };
@@ -1740,8 +1743,8 @@ pub(super) fn compile_subject_verb_early(
         } => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let player_filter = subject.clone_player_filter();
-            let resolved_tag = if tag.as_str() == IT_TAG {
-                TagKey::from(ctx.next_tag("revealed").as_str())
+            let resolved_tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+                ctx.next_tag("revealed")
             } else {
                 tag.clone()
             };
@@ -1757,8 +1760,8 @@ pub(super) fn compile_subject_verb_early(
             .with_count_value_opt(count_value.clone())
             .in_zone(Zone::Hand)
             .reveal();
-            ctx.last_object_tag = Some(resolved_tag.as_str().to_string());
-            ctx.last_revealed_tag = Some(resolved_tag.as_str().to_string());
+            ctx.last_object_tag = Some(resolved_tag.clone());
+            ctx.last_revealed_tag = Some(resolved_tag.clone());
             ctx.last_revealed_zone = Some(Zone::Hand);
             ctx.last_revealed_player_filter = Some(player_filter.clone());
             ctx.last_player_filter = Some(player_filter);
@@ -1767,14 +1770,14 @@ pub(super) fn compile_subject_verb_early(
         SubjectVerbActionAst::LookAtTopCards { count, tag, reveal } => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let player_filter = subject.clone_player_filter();
-            let resolved_tag = if tag.as_str() == IT_TAG {
-                TagKey::from(ctx.next_tag("revealed").as_str())
+            let resolved_tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+                ctx.next_tag("revealed")
             } else {
                 tag.clone()
             };
-            ctx.last_object_tag = Some(resolved_tag.as_str().to_string());
+            ctx.last_object_tag = Some(resolved_tag.clone());
             if *reveal {
-                ctx.last_revealed_tag = Some(resolved_tag.as_str().to_string());
+                ctx.last_revealed_tag = Some(resolved_tag.clone());
                 ctx.last_revealed_zone = Some(Zone::Library);
                 ctx.last_revealed_player_filter = Some(player_filter.clone());
             }
@@ -1855,8 +1858,8 @@ pub(super) fn compile_subject_verb_early(
                     "look-at-target object clause requires an object target".to_string(),
                 ));
             }
-            let tag = TagKey::from(ctx.next_tag("targeted").as_str());
-            ctx.last_object_tag = Some(tag.as_str().to_string());
+            let tag = ctx.next_tag("targeted");
+            ctx.last_object_tag = Some(tag.clone());
             Ok((
                 vec![
                     Effect::new(crate::effects::TargetOnlyEffect::new(spec)).tag(tag.clone()),
@@ -1907,14 +1910,14 @@ pub(super) fn compile_subject_verb_early(
             })
         }
         SubjectVerbActionAst::ReorderTopOfLibrary { tag } => {
-            let effective_tag = if tag.as_str() == IT_TAG {
+            let effective_tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                 ctx.last_object_tag.clone().ok_or_else(|| {
                     CardTextError::ParseError(
                         "cannot resolve 'them' without prior tagged object".to_string(),
                     )
                 })?
             } else {
-                tag.as_str().to_string()
+                tag.clone()
             };
             Ok((
                 vec![Effect::new(crate::effects::ReorderLibraryTopEffect::new(

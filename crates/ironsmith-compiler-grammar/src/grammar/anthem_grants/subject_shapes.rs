@@ -118,41 +118,48 @@ fn parse_attachment_state_qualified_subject(tokens: &[OwnedLexToken]) -> Option<
         return Some(filter);
     }
 
-    let attachment_tags: &[&str] = if crate::word_primitives::parse_choice_sequence_suffix(
-        &words,
-        &[
-            &["that"],
-            &["is", "are"],
-            &["enchanted"],
-            &["or"],
-            &["equipped"],
-        ],
-    ) {
-        &["enchanted", "equipped"]
-    } else if crate::word_primitives::parse_choice_sequence_suffix(
-        &words,
-        &[
-            &["that"],
-            &["is", "are"],
-            &["equipped"],
-            &["or"],
-            &["enchanted"],
-        ],
-    ) {
-        &["equipped", "enchanted"]
-    } else if crate::word_primitives::parse_choice_sequence_suffix(
-        &words,
-        &[&["that"], &["is", "are"], &["enchanted"]],
-    ) {
-        &["enchanted"]
-    } else if crate::word_primitives::parse_choice_sequence_suffix(
-        &words,
-        &[&["that"], &["is", "are"], &["equipped"]],
-    ) {
-        &["equipped"]
-    } else {
-        return None;
-    };
+    let attachment_tags: &[crate::tag::CompilerReferenceTag] =
+        if crate::word_primitives::parse_choice_sequence_suffix(
+            &words,
+            &[
+                &["that"],
+                &["is", "are"],
+                &["enchanted"],
+                &["or"],
+                &["equipped"],
+            ],
+        ) {
+            &[
+                crate::tag::CompilerReferenceTag::Enchanted,
+                crate::tag::CompilerReferenceTag::Equipped,
+            ]
+        } else if crate::word_primitives::parse_choice_sequence_suffix(
+            &words,
+            &[
+                &["that"],
+                &["is", "are"],
+                &["equipped"],
+                &["or"],
+                &["enchanted"],
+            ],
+        ) {
+            &[
+                crate::tag::CompilerReferenceTag::Equipped,
+                crate::tag::CompilerReferenceTag::Enchanted,
+            ]
+        } else if crate::word_primitives::parse_choice_sequence_suffix(
+            &words,
+            &[&["that"], &["is", "are"], &["enchanted"]],
+        ) {
+            &[crate::tag::CompilerReferenceTag::Enchanted]
+        } else if crate::word_primitives::parse_choice_sequence_suffix(
+            &words,
+            &[&["that"], &["is", "are"], &["equipped"]],
+        ) {
+            &[crate::tag::CompilerReferenceTag::Equipped]
+        } else {
+            return None;
+        };
 
     let suffix_word_count = if attachment_tags.len() == 2 { 5 } else { 3 };
     let base_word_count = words.len().checked_sub(suffix_word_count)?;
@@ -168,7 +175,7 @@ fn parse_attachment_state_qualified_subject(tokens: &[OwnedLexToken]) -> Option<
         .map(|tag| {
             let mut branch = base_filter.clone();
             branch.tagged_constraints.push(TaggedObjectConstraint {
-                tag: TagKey::from(*tag),
+                tag: tag.key(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
             });
             branch

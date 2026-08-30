@@ -803,6 +803,17 @@ fn audit_patterns(
             files.dedup();
             files
         };
+        if rule.id == "parser-boundary-option-protocol" {
+            audit_registry_option_protocol(
+                manifest,
+                completed_pr,
+                rule,
+                repo_root,
+                &files,
+                findings,
+            );
+            continue;
+        }
         for path in files {
             let relative = relative_path(repo_root, &path);
             scan_lines(&path, |line_number, line| {
@@ -823,6 +834,105 @@ fn audit_patterns(
             });
         }
     }
+}
+
+fn audit_registry_option_protocol(
+    manifest: &OwnershipManifest,
+    completed_pr: u8,
+    rule: &PatternRule,
+    repo_root: &Path,
+    files: &[PathBuf],
+    findings: &mut Vec<Finding>,
+) {
+    for path in files {
+        let relative = relative_path(repo_root, path);
+        let source = fs::read_to_string(path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        for line in registry_option_protocol_lines(&source) {
+            push_scanned_finding(
+                manifest,
+                completed_pr,
+                findings,
+                &rule.kind,
+                &rule.id,
+                &relative,
+                line,
+                "registered recognizer function pointer uses Option as its match protocol",
+            );
+        }
+    }
+}
+
+/// Find only type declarations that can be stored in a recognizer registry.
+/// Optional leaf values remain valid after a rule has committed; the
+/// architecture boundary is the function pointer carried by a `Rule`,
+/// `Registry`, `Recognizer`, `Handler`, or explicitly named parser type.
+fn registry_option_protocol_lines(source: &str) -> Vec<usize> {
+    let sanitized = mask_comments_and_literals(source);
+    let lines = sanitized.lines().collect::<Vec<_>>();
+    let mut findings = Vec::new();
+    let mut index = 0usize;
+    let mut registry_type_depth = None::<usize>;
+    let mut brace_depth = 0usize;
+
+    while index < lines.len() {
+        let line = lines[index];
+        let trimmed = line.trim();
+        if (trimmed.contains("enum ") || trimmed.contains("struct "))
+            && ["Rule", "Registry", "Recognizer", "Handler"]
+                .iter()
+                .any(|marker| trimmed.contains(marker))
+            && trimmed.contains('{')
+        {
+            registry_type_depth = Some(brace_depth + line.matches('{').count());
+        }
+
+        let type_alias = trimmed.contains("type ")
+            && trimmed.contains('=')
+            && [
+                "Rule",
+                "Registry",
+                "Recognizer",
+                "Handler",
+                "Parser",
+                "ParseFn",
+            ]
+            .iter()
+            .any(|marker| trimmed.contains(marker));
+        let stored_function_pointer = registry_type_depth.is_some() && trimmed.contains("fn(");
+        if type_alias || stored_function_pointer {
+            let start = index;
+            let mut declaration = String::new();
+            loop {
+                declaration.push_str(lines[index]);
+                let complete = if type_alias {
+                    lines[index].contains(';')
+                } else {
+                    lines[index].contains(',') || lines[index].contains(';')
+                };
+                if complete || index + 1 == lines.len() {
+                    break;
+                }
+                index += 1;
+            }
+            let compact = declaration
+                .chars()
+                .filter(|character| !character.is_whitespace())
+                .collect::<String>();
+            if compact.contains("Result<Option<") || compact.contains("->Option<") {
+                findings.push(start + 1);
+            }
+        }
+
+        brace_depth += line.matches('{').count();
+        brace_depth = brace_depth.saturating_sub(line.matches('}').count());
+        if registry_type_depth.is_some_and(|depth| brace_depth < depth) {
+            registry_type_depth = None;
+        }
+        index += 1;
+    }
+
+    findings
 }
 
 fn invariant_pattern_is_global(rule_id: &str) -> bool {

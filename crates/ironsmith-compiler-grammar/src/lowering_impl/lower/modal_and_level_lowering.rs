@@ -81,7 +81,7 @@ pub fn try_merge_modal_into_remove_mode(
     true
 }
 
-pub fn rewrite_lower_parsed_modal(
+pub fn lower_parsed_modal(
     mut builder: CardDefinitionBuilder,
     pending_modal: NormalizedModalAst,
     allow_unsupported: bool,
@@ -123,7 +123,6 @@ pub fn rewrite_lower_parsed_modal(
         .provenance
         .and_then(|id| provenance.slice(id))
         .unwrap_or("modal ability");
-    let line_text = header_source.to_string();
     let common_suffix_effect_count = common_suffix_effects_ast.len();
     let modal_spell_presentation = trigger
         .is_none()
@@ -143,7 +142,7 @@ pub fn rewrite_lower_parsed_modal(
                 Err(err) => return Err(err),
             }
         } else {
-            match rewrite_lower_prepared_statement_effects(prepared_prefix) {
+            match lower_prepared_statement_effects(prepared_prefix) {
                 Ok(lowered) => (lowered.effects, lowered.choices),
                 Err(err) if allow_unsupported => {
                     builder = push_unsupported_marker(builder, header_source, format!("{err:?}"));
@@ -169,7 +168,7 @@ pub fn rewrite_lower_parsed_modal(
                 Err(err) => return Err(err),
             }
         } else {
-            match rewrite_lower_prepared_statement_effects(prepared_common_prefix) {
+            match lower_prepared_statement_effects(prepared_common_prefix) {
                 Ok(lowered) => (lowered.effects, lowered.choices),
                 Err(err) if allow_unsupported => {
                     builder = push_unsupported_marker(builder, header_source, format!("{err:?}"));
@@ -190,7 +189,7 @@ pub fn rewrite_lower_parsed_modal(
         let point_cost = mode.point_cost.unwrap_or(1);
         let additional_mana_cost = mode.additional_mana_cost;
         let mode_description = mode.description;
-        let effects = match rewrite_lower_prepared_statement_effects(&mode.prepared) {
+        let effects = match lower_prepared_statement_effects(&mode.prepared) {
             Ok(lowered) => lowered.effects,
             Err(err) if allow_unsupported => {
                 builder =
@@ -469,11 +468,11 @@ pub fn rewrite_lower_parsed_modal(
         choices: prefix_choices.clone(),
         exports: ReferenceExports::default(),
     };
-    rewrite_validate_iterated_player_bindings_in_lowered_effects(
+    validate_iterated_player_bindings_in_lowered_effects(
         &modal_lowered,
         trigger
             .as_ref()
-            .is_some_and(rewrite_trigger_binds_player_reference_context),
+            .is_some_and(trigger_binds_player_reference_context),
         if trigger.is_some() {
             "triggered modal ability effects"
         } else if activated.is_some() {
@@ -484,11 +483,10 @@ pub fn rewrite_lower_parsed_modal(
     )?;
 
     if let Some(trigger) = trigger {
-        let mut ability = rewrite_lower_parsed_ability(rewrite_parsed_triggered_ability(
+        let mut ability = lower_parsed_ability(assemble_parsed_triggered_ability(
             trigger,
             Vec::new(),
             vec![Zone::Battlefield],
-            Some(line_text),
             None,
             None,
             ReferenceImports::default(),

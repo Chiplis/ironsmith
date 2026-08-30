@@ -81,7 +81,7 @@ pub fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if let Some(filter_tokens) = parse_chosen_object_set_filter_tokens(tokens) {
         let mut filter = parse_object_filter(filter_tokens, false)?;
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from(crate::cards::builders::CHOSEN_OBJECTS_TAG),
+            tag: crate::tag::CompilerReferenceTag::ChosenObjects.key(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         return Ok(EffectAst::subject_verb_tap_all(filter));
@@ -110,7 +110,10 @@ pub fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
         &crate::lexer::parser_token_word_refs(tokens),
         &["it"],
     ) {
-        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens))
+        TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+            span_from_tokens(tokens),
+        )
     } else {
         parse_target_phrase(tokens)?
     };

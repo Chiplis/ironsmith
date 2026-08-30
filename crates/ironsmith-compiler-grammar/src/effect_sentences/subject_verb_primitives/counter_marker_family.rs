@@ -15,11 +15,13 @@ fn subject_verb_put_counters_target(effect: &EffectAst) -> Option<TargetAst> {
 
 fn retarget_it_target_for_counter_followup(target: &mut TargetAst, source_target: &TargetAst) {
     match target {
-        TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG => {
+        TargetAst::Tagged(tag, _)
+            if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() =>
+        {
             *target = source_target.clone();
         }
         TargetAst::Object(filter, _, _)
-            if *filter == ObjectFilter::tagged(TagKey::from(IT_TAG)) =>
+            if *filter == ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()) =>
         {
             *target = source_target.clone();
         }
@@ -34,7 +36,7 @@ fn retarget_it_filter_for_counter_followup(
     filter: &mut ObjectFilter,
     source_filter: &ObjectFilter,
 ) {
-    if *filter == ObjectFilter::tagged(TagKey::from(IT_TAG)) {
+    if *filter == ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()) {
         *filter = source_filter.clone();
         return;
     }
@@ -211,7 +213,7 @@ pub fn parse_sentence_sacrifice_at_end_of_combat(
         return Ok(None);
     };
     let filter = if shape.tagged_object {
-        ObjectFilter::tagged(TagKey::from(IT_TAG))
+        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key())
     } else {
         parse_object_filter(shape.object_tokens, false)?
     };
@@ -458,7 +460,8 @@ pub fn parse_return_with_counters_on_it_sentence(
         )
     };
     let mut effects = vec![return_effect];
-    let tagged_target = TargetAst::Tagged(TagKey::from(IT_TAG), clause.span());
+    let tagged_target =
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), clause.span());
     for descriptor in shape.descriptors {
         let count = Value::Fixed(descriptor.count as i32)
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter);
@@ -570,7 +573,7 @@ pub fn parse_return_with_dynamic_entry_counters_sentence(
     let counter_effect = EffectAst::subject_verb_put_counters(
         counter_type,
         counter_amount,
-        TargetAst::Tagged(TagKey::from(IT_TAG), clause.span()),
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), clause.span()),
         None,
         false,
     );
@@ -626,7 +629,8 @@ pub fn parse_put_onto_battlefield_with_counters_on_it_sentence(
         move_effect
     };
     let mut effects = vec![move_effect];
-    let tagged_target = TargetAst::Tagged(TagKey::from(IT_TAG), clause.span());
+    let tagged_target =
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), clause.span());
     for descriptor in shape.descriptors {
         let count = Value::Fixed(descriptor.count as i32)
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter);
@@ -786,7 +790,7 @@ pub fn replace_target_subtype(target: &mut TargetAst, subtype: Subtype) -> bool 
 #[path = "counter_marker_family_inline_dynamic_entry_counter_tests.rs"]
 mod dynamic_entry_counter_tests;
 
-#[path = "counter_marker_family/counter_programs.rs"]
+#[path = "counter_marker_family/counter.rs"]
 mod counter_programs;
 use counter_programs::lower_put_with_additional_counter;
 pub use counter_programs::{
@@ -798,10 +802,10 @@ pub use counter_programs::{
     parse_tagged_conditional_entry_counters_sentence,
     parse_tagged_enters_with_additional_counter_sentence,
 };
-#[path = "counter_marker_family/resource_programs.rs"]
+#[path = "counter_marker_family/resource.rs"]
 mod resource_programs;
 use resource_programs::lower_sacrifice_then_put_additional;
 pub use resource_programs::{parse_draw_then_connive_sentence, parse_sentence_draw_then_connive};
-#[path = "counter_marker_family/zone_programs.rs"]
+#[path = "counter_marker_family/zone.rs"]
 mod zone_programs;
 pub use zone_programs::clone_return_effect_with_subtype;

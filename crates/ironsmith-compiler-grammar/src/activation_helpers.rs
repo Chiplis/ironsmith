@@ -1,5 +1,5 @@
 use crate::effect::Value;
-use crate::host::{CardTextError, EffectAst, IT_TAG, OwnedLexToken, PlayerAst, SubjectAst, TagKey};
+use crate::host::{CardTextError, EffectAst, OwnedLexToken, PlayerAst, SubjectAst, TagKey};
 use crate::mana::ManaSymbol;
 use crate::target::ObjectFilter;
 
@@ -22,15 +22,14 @@ pub use super::util::{
 pub use crate::grammar::shared_util::value_semantics::{
     parse_equal_to_aggregate_filter_value, parse_filter_comparison_tokens,
 };
-
-const PUBLIC_REVEALED_TAG: &str = "__public_revealed";
-
 fn bind_revealed_this_way_count_to_last_object(value: Value) -> Value {
     match value {
         Value::Count(mut filter) => {
             for constraint in &mut filter.tagged_constraints {
-                if constraint.tag.as_str() == PUBLIC_REVEALED_TAG {
-                    constraint.tag = TagKey::from(IT_TAG);
+                if constraint.tag.as_str()
+                    == crate::tag::CompilerReferenceTag::PublicRevealed.as_str()
+                {
+                    constraint.tag = crate::tag::CompilerReferenceTag::It.key();
                 }
             }
             Value::Count(filter)
@@ -431,18 +430,18 @@ fn parse_add_mana_colors_among_filter(
     Ok(Some(filter))
 }
 
-#[path = "activation_helpers/reference_programs.rs"]
+#[path = "activation_helpers/reference.rs"]
 mod reference_programs;
 use reference_programs::parse_add_one_mana_any_color_among_filter;
 pub use reference_programs::parse_land_could_produce_filter;
-#[path = "activation_helpers/resource_programs.rs"]
+#[path = "activation_helpers/resource.rs"]
 mod resource_programs;
 pub use resource_programs::{
     is_mana_pool_tail_tokens, mana_symbol_to_color, parse_any_combination_mana_colors,
 };
-#[path = "activation_helpers/core_programs.rs"]
+#[path = "activation_helpers/core.rs"]
 mod core_programs;
 pub use core_programs::trim_leading_commas;
-#[path = "activation_helpers/choice_programs.rs"]
+#[path = "activation_helpers/choice.rs"]
 mod choice_programs;
 pub use choice_programs::parse_or_mana_color_choices;

@@ -140,6 +140,43 @@ fn parse_create_more_prior_tokens_lexed<'a>(
     })
 }
 
+/// Does this sentence restate an action as a replacement of the preceding one?
+///
+/// An ability-word ladder writes the replacement in full ("Morbid — Create
+/// three 2/2 green Wolf creature tokens instead if a creature died this turn")
+/// instead of referring back to the objects it replaces.
+pub fn is_instead_replacement_sentence(tokens: &[OwnedLexToken]) -> bool {
+    let tokens = super::split_labeled_effect_prefix_lexed(tokens).unwrap_or(tokens);
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    // An ordinary replacement effect states its own event first ("If a card
+    // would be put into a graveyard, exile it instead") and is a complete
+    // statement. Only a restated action — one that opens with the action
+    // itself — replaces what the preceding sentence did.
+    if words
+        .first()
+        .is_some_and(|word| matches!(*word, "if" | "when" | "whenever" | "at" | "as"))
+    {
+        return false;
+    }
+    let Some(instead) = words.iter().rposition(|word| *word == "instead") else {
+        return false;
+    };
+    if instead == 0 {
+        return false;
+    }
+    // A trigger header anywhere in the sentence means this line states its own
+    // ability (an ability word may precede it, as in "Opus — Whenever ...");
+    // a restatement carries only the action it replaces.
+    if words[..instead]
+        .iter()
+        .any(|word| matches!(*word, "if" | "when" | "whenever"))
+    {
+        return false;
+    }
+    matches!(words.get(instead + 1..), Some([]) | None)
+        || words.get(instead + 1).is_some_and(|word| *word == "if")
+}
+
 pub fn parse_create_more_prior_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CreateMorePriorTokensShape<'_>> {
@@ -155,19 +192,19 @@ pub fn parse_create_more_prior_tokens(
 #[path = "followup_shapes/tests.rs"]
 mod tests;
 
-#[path = "followup_shapes/object_action_programs.rs"]
+#[path = "followup_shapes/object_action.rs"]
 mod object_action_programs;
 pub use object_action_programs::token_reminder_followup_facts;
-#[path = "followup_shapes/trigger_programs.rs"]
+#[path = "followup_shapes/trigger.rs"]
 mod trigger_programs;
 use trigger_programs::pronoun_trigger_prefix;
-#[path = "followup_shapes/resource_programs.rs"]
+#[path = "followup_shapes/resource.rs"]
 mod resource_programs;
 use resource_programs::lifecycle_head;
-#[path = "followup_shapes/combat_programs.rs"]
+#[path = "followup_shapes/combat.rs"]
 mod combat_programs;
 pub use combat_programs::is_anaphoric_damage_self_replacement;
-#[path = "followup_shapes/condition_programs.rs"]
+#[path = "followup_shapes/condition.rs"]
 mod condition_programs;
 pub use condition_programs::parse_conditional_followup;
 use condition_programs::{conditional_followup_prefix, parse_conditional_followup_lexed};

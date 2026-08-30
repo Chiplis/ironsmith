@@ -75,7 +75,7 @@ fn exact_surface_reparse_preserves_specialized_cast_time_count_tag() {
     assert!(matches!(
         filter.tagged_constraints.as_slice(),
         [constraint]
-            if constraint.tag.as_str() == ironsmith_core::CAST_MODIFIED_CREATURES_TAG
+            if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::CastModifiedCreatures.as_str()
                 && constraint.relation
                     == crate::target::TaggedOpbjectRelation::IsTaggedObject
     ));

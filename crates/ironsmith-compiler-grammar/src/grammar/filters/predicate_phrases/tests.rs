@@ -163,7 +163,7 @@ fn parse_past_control_predicate_preserves_lki_mode_and_authored_noun() -> Result
         panic!("expected a tagged-object player predicate");
     };
     assert_eq!(player, PlayerAst::You);
-    assert_eq!(tag.as_str(), IT_TAG);
+    assert_eq!(tag.as_str(), crate::tag::CompilerReferenceTag::It.as_str());
     assert_eq!(mode, ironsmith_core::TaggedObjectMatchMode::LastKnown);
     assert_eq!(
         filter.demonstrative_antecedent_surface(),
@@ -416,7 +416,7 @@ fn parse_predicate_you_control_that_creature_keeps_tagged_reference() -> Result<
             );
             assert!(
                 filter.tagged_constraints.iter().any(|constraint| {
-                    constraint.tag.as_str() == IT_TAG
+                    constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                         && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
                 }),
                 "{filter:?}"
@@ -885,7 +885,7 @@ fn control_or_returned_to_hand_keeps_independent_tagged_result() -> Result<(), C
         panic!("right side should observe the returned result: {right:#?}");
     };
     assert_eq!(*player, PlayerAst::You);
-    assert_eq!(tag.as_str(), IT_TAG);
+    assert_eq!(tag.as_str(), crate::tag::CompilerReferenceTag::It.as_str());
     assert_eq!(filter.subtypes, [Subtype::Squirrel]);
     assert_eq!(filter.zone, Some(Zone::Hand));
     assert_eq!(
@@ -1283,8 +1283,10 @@ fn parse_predicate_neither_control_keeps_tagged_relation() -> Result<(), CardTex
     let parsed = parse_predicate(&predicate_tokens)?;
 
     let mut expected_filter = ObjectFilter::creature().controlled_by(PlayerFilter::You);
-    expected_filter =
-        expected_filter.match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
+    expected_filter = expected_filter.match_tagged(
+        crate::tag::CompilerReferenceTag::It.key(),
+        TaggedOpbjectRelation::IsTaggedObject,
+    );
     assert_eq!(
         parsed,
         PredicateAst::PlayerControlsNo {
@@ -1433,7 +1435,7 @@ fn parse_predicate_supports_if_you_dont_put_card_into_your_hand() -> Result<(), 
         parsed,
         PredicateAst::Not(Box::new(PredicateAst::PlayerTaggedObjectMatches {
             player: PlayerAst::You,
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
             filter: ObjectFilter::default().in_zone(Zone::Hand),
             mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
         }))
@@ -1461,7 +1463,7 @@ fn parse_predicate_negative_put_tagged_object_uses_shared_capture_parser()
             parsed,
             PredicateAst::Not(Box::new(PredicateAst::PlayerTaggedObjectMatches {
                 player: PlayerAst::You,
-                tag: TagKey::from(IT_TAG),
+                tag: crate::tag::CompilerReferenceTag::It.key(),
                 filter: ObjectFilter::default().in_zone(zone),
                 mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
             })),
@@ -1515,7 +1517,7 @@ fn parse_predicate_supports_if_you_dont_put_it_into_your_hand() -> Result<(), Ca
         parsed,
         PredicateAst::Not(Box::new(PredicateAst::PlayerTaggedObjectMatches {
             player: PlayerAst::You,
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
             filter: ObjectFilter::default().in_zone(Zone::Hand),
             mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
         }))
@@ -1542,7 +1544,7 @@ fn parse_predicate_passive_battlefield_this_way_uses_capture_parser() -> Result<
 
         assert_eq!(
             parsed,
-            PredicateAst::TaggedMatches(TagKey::from(IT_TAG), filter),
+            PredicateAst::TaggedMatches(crate::tag::CompilerReferenceTag::It.key(), filter),
             "{text}"
         );
     }
@@ -1556,12 +1558,12 @@ fn parse_predicate_chosen_name_milled_this_way_uses_capture_parser() -> Result<(
 
     let mut filter = ObjectFilter::default();
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: TagKey::from(CHOSEN_NAME_TAG),
+        tag: crate::tag::CompilerReferenceTag::ChosenName.key(),
         relation: TaggedOpbjectRelation::SameNameAsTagged,
     });
     assert_eq!(
         parsed,
-        PredicateAst::TaggedMatches(TagKey::from(IT_TAG), filter)
+        PredicateAst::TaggedMatches(crate::tag::CompilerReferenceTag::It.key(), filter)
     );
     Ok(())
 }
@@ -1574,7 +1576,10 @@ fn parse_predicate_passive_sacrifice_keeps_event_reference() -> Result<(), CardT
     let PredicateAst::TaggedMatches(tag, filter) = parsed else {
         panic!("expected tagged sacrifice predicate");
     };
-    assert_eq!(tag, TagKey::from(THIS_WAY_SACRIFICED_TAG));
+    assert_eq!(
+        tag,
+        crate::tag::CompilerReferenceTag::ThisWaySacrificed.key()
+    );
     assert_eq!(filter.subtypes, vec![Subtype::Saproling]);
     Ok(())
 }
@@ -1591,7 +1596,7 @@ fn parse_predicate_supports_you_put_filtered_object_onto_battlefield_this_way()
         parsed,
         PredicateAst::PlayerTaggedObjectMatches {
             player: PlayerAst::You,
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
             filter,
             mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
         }
@@ -1614,7 +1619,7 @@ fn parse_predicate_supports_that_player_discards_filtered_card_this_way()
         parsed,
         PredicateAst::PlayerTaggedObjectMatches {
             player: PlayerAst::That,
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
             filter: artifact_filter,
             mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
         }
@@ -1975,7 +1980,7 @@ fn parse_predicate_tagged_state_uses_shared_capture_parser() -> Result<(), CardT
         (
             "If those cards remain exiled",
             PredicateAst::TaggedMatches(
-                TagKey::from(IT_TAG),
+                crate::tag::CompilerReferenceTag::It.key(),
                 ObjectFilter::default().in_zone(Zone::Exile),
             ),
         ),
@@ -1995,7 +2000,7 @@ fn parse_predicate_tagged_state_uses_shared_capture_parser() -> Result<(), CardT
             "If you controlled that permanent",
             PredicateAst::PlayerTaggedObjectMatches {
                 player: PlayerAst::You,
-                tag: TagKey::from(IT_TAG),
+                tag: crate::tag::CompilerReferenceTag::It.key(),
                 filter: ObjectFilter::default(),
                 mode: ironsmith_core::TaggedObjectMatchMode::LastKnown,
             },
@@ -2004,13 +2009,13 @@ fn parse_predicate_tagged_state_uses_shared_capture_parser() -> Result<(), CardT
             "If that card entered under your control",
             PredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn {
                 player: PlayerAst::You,
-                tag: TagKey::from(IT_TAG),
+                tag: crate::tag::CompilerReferenceTag::It.key(),
             },
         ),
         (
             "If that creature was not blocking",
             PredicateAst::TaggedMatches(
-                TagKey::from(IT_TAG),
+                crate::tag::CompilerReferenceTag::It.key(),
                 ObjectFilter {
                     nonblocking: true,
                     ..Default::default()
@@ -2205,7 +2210,7 @@ fn parse_predicate_spell_lifecycle_uses_shared_capture_parser() -> Result<(), Ca
         ("If you cast it", PredicateAst::SourceWasCast),
         (
             "If it was cast",
-            PredicateAst::TaggedWasCast(TagKey::from(IT_TAG)),
+            PredicateAst::TaggedWasCast(crate::tag::CompilerReferenceTag::It.key()),
         ),
         (
             "If this spell was cast from a graveyard",
@@ -3323,7 +3328,8 @@ fn parse_predicate_counted_source_exiled_objects_uses_capture_parser() -> Result
             filter
                 .tagged_constraints
                 .iter()
-                .any(|constraint| constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG),
+                .any(|constraint| constraint.tag.as_str()
+                    == crate::tag::CompilerReferenceTag::SourceExiled.as_str()),
             "{text}"
         );
         if let Some(card_type) = expected_card_type {
@@ -3467,7 +3473,9 @@ fn parse_predicate_source_counters_use_shared_capture_parser() -> Result<(), Car
         )),
         Some(PredicateAst::ValueComparison {
             left: Value::CountersOn(
-                Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+                Box::new(crate::target::ChooseSpec::Tagged(
+                    crate::tag::CompilerReferenceTag::It.key()
+                )),
                 Some(CounterType::PlusOnePlusOne),
             ),
             operator: ValueComparisonOperator::GreaterThanOrEqual,
@@ -3522,7 +3530,9 @@ fn parse_predicate_source_counters_use_shared_capture_parser() -> Result<(), Car
             "If it has three or more +1/+1 counters on it",
             PredicateAst::ValueComparison {
                 left: Value::CountersOn(
-                    Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+                    Box::new(crate::target::ChooseSpec::Tagged(
+                        crate::tag::CompilerReferenceTag::It.key(),
+                    )),
                     Some(CounterType::PlusOnePlusOne),
                 ),
                 operator: ValueComparisonOperator::GreaterThanOrEqual,
@@ -3533,7 +3543,9 @@ fn parse_predicate_source_counters_use_shared_capture_parser() -> Result<(), Car
             "If it has a +1/+1 counter on it",
             PredicateAst::ValueComparison {
                 left: Value::CountersOn(
-                    Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+                    Box::new(crate::target::ChooseSpec::Tagged(
+                        crate::tag::CompilerReferenceTag::It.key(),
+                    )),
                     Some(CounterType::PlusOnePlusOne),
                 ),
                 operator: ValueComparisonOperator::GreaterThanOrEqual,
@@ -3544,7 +3556,9 @@ fn parse_predicate_source_counters_use_shared_capture_parser() -> Result<(), Car
             "If it has exactly one +1/+1 counter on it",
             PredicateAst::ValueComparison {
                 left: Value::CountersOn(
-                    Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+                    Box::new(crate::target::ChooseSpec::Tagged(
+                        crate::tag::CompilerReferenceTag::It.key(),
+                    )),
                     Some(CounterType::PlusOnePlusOne),
                 ),
                 operator: ValueComparisonOperator::Equal,
@@ -3808,7 +3822,11 @@ fn explicit_additional_cost_object_predicates_use_stable_alias() -> Result<(), C
         let PredicateAst::TaggedMatches(tag, filter) = parse_predicate(&tokens)? else {
             panic!("expected tagged cost-object predicate for {text}");
         };
-        assert_eq!(tag.as_str(), ADDITIONAL_COST_OBJECT_TAG, "{text}");
+        assert_eq!(
+            tag.as_str(),
+            crate::tag::CompilerReferenceTag::AdditionalCostObject.as_str(),
+            "{text}"
+        );
         assert_eq!(
             filter.additional_cost_object_surface(),
             Some(ironsmith_core::AdditionalCostObjectSurface::new(

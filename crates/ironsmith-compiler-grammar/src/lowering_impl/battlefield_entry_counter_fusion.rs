@@ -644,15 +644,15 @@ impl OptionalObjectFilter for BattlefieldEntryCounterSpec {
     }
 }
 
-fn rewrite_nested_effect(effect: &Effect) -> Effect {
+fn fuse_nested_effect(effect: &Effect) -> Effect {
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         return Effect::new(crate::effects::TaggedEffect::new(
             tagged.tag.clone(),
-            rewrite_nested_effect(&tagged.effect),
+            fuse_nested_effect(&tagged.effect),
         ));
     }
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
-        return Effect::with_id(with_id.id.0, rewrite_nested_effect(&with_id.effect));
+        return Effect::with_id(with_id.id.0, fuse_nested_effect(&with_id.effect));
     }
     if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
         let mut replacement = conditional.clone();
@@ -825,7 +825,7 @@ fn fuse_source_bound_battlefield_entry_counters(effects: &mut Vec<Effect>) {
 
 fn fuse_effect_list(effects: &mut Vec<Effect>) {
     for effect in effects.iter_mut() {
-        *effect = rewrite_nested_effect(effect);
+        *effect = fuse_nested_effect(effect);
     }
 
     fuse_source_zone_move_entry_counters(effects);
@@ -965,7 +965,7 @@ mod tests {
     fn source_linked_battlefield_move() -> Effect {
         let mut filter = ObjectFilter::creature().in_zone(Zone::Exile);
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+            tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         Effect::new(crate::effects::MoveToZoneEffect::new(

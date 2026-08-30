@@ -60,8 +60,8 @@ fn parse_possessive_stat_rhs(words: &[&str], is_power: bool) -> Option<Value> {
             Value::SourceToughness
         }
     };
-    let tagged_value = |tag: &str| {
-        let spec = Box::new(ChooseSpec::Tagged(TagKey::from(tag)));
+    let tagged_value = |tag: crate::tag::CompilerReferenceTag| {
+        let spec = Box::new(ChooseSpec::Tagged(tag.key()));
         if is_power {
             Value::PowerOf(spec)
         } else {
@@ -87,7 +87,7 @@ fn parse_possessive_stat_rhs(words: &[&str], is_power: bool) -> Option<Value> {
         .any(|expected| common::phrase_exact(owner_words, expected))
     {
         return Some(tagged_value(
-            crate::model::token_definition::TOKEN_DYNAMIC_THAT_CARD_TAG,
+            crate::tag::CompilerReferenceTag::TokenDynamicThatCard,
         ));
     }
     if [
@@ -99,7 +99,7 @@ fn parse_possessive_stat_rhs(words: &[&str], is_power: bool) -> Option<Value> {
     .iter()
     .any(|expected| common::phrase_exact(owner_words, expected))
     {
-        return Some(tagged_value(IT_TAG));
+        return Some(tagged_value(crate::tag::CompilerReferenceTag::It));
     }
     None
 }
@@ -114,7 +114,7 @@ fn parse_dynamic_rhs(words: &[&str]) -> Option<Value> {
             ..Default::default()
         }
         .match_tagged(
-            ironsmith_core::ZONE_CHANGE_GROUP_TAG,
+            crate::tag::CompilerReferenceTag::ZoneChangeGroup.as_str(),
             TaggedOpbjectRelation::IsTaggedObject,
         );
         return Some(Value::TotalPower(filter));

@@ -122,13 +122,13 @@ pub fn join_object_target_bindings(
 pub struct ReferenceFrame {
     pub last_effect_id: Option<EffectId>,
     pub last_library_search_effect_id: Option<EffectId>,
-    pub last_object_tag: Option<String>,
+    pub last_object_tag: Option<TagKey>,
     pub recent_object_target_bindings: Arc<Vec<ObjectTargetBinding>>,
-    pub snapshot_tag_aliases: Vec<(String, String)>,
+    pub snapshot_tag_aliases: Vec<(TagKey, TagKey)>,
     pub last_it_choice_is_set: bool,
     pub last_player_filter: Option<PlayerFilter>,
     pub source_object_antecedent: bool,
-    pub recent_player_choice_tags: Vec<String>,
+    pub recent_player_choice_tags: Vec<TagKey>,
     pub iterated_player: bool,
     pub iterated_object: bool,
     pub auto_tag_object_targets: bool,
@@ -217,7 +217,7 @@ pub struct ReferenceImports {
     /// context. Nested lowering must import these alongside `last_object_tag`;
     /// otherwise compiling a conditional branch can erase an alias before the
     /// condition itself is lowered.
-    pub snapshot_tag_aliases: Vec<(String, String)>,
+    pub snapshot_tag_aliases: Vec<(TagKey, TagKey)>,
     pub last_it_choice_is_set: bool,
     pub iterated_object: bool,
     pub last_player_filter: Option<PlayerFilter>,
@@ -250,7 +250,7 @@ impl ReferenceImports {
 
     pub fn from_frame(frame: &ReferenceFrame) -> Self {
         Self {
-            last_object_tag: frame.last_object_tag.as_ref().map(TagKey::from),
+            last_object_tag: frame.last_object_tag.clone(),
             recent_object_target_bindings: frame.recent_object_target_bindings.clone(),
             snapshot_tag_aliases: frame.snapshot_tag_aliases.clone(),
             last_it_choice_is_set: frame.last_it_choice_is_set,
@@ -275,7 +275,7 @@ pub struct ReferenceEnv {
     /// parse-time placeholder tag to the concrete tag captured from
     /// `last_object_tag` at snapshot time. Survives later `last_object_tag`
     /// clobbers so composed effects can still reference an earlier looked pool.
-    pub snapshot_tag_aliases: Vec<(String, String)>,
+    pub snapshot_tag_aliases: Vec<(TagKey, TagKey)>,
     pub last_it_choice_is_set: bool,
     pub last_player_filter: RefState<PlayerFilter>,
     pub source_object_antecedent: bool,
@@ -336,9 +336,7 @@ impl ReferenceEnv {
 
     pub fn from_frame(frame: &ReferenceFrame) -> Self {
         Self {
-            last_object_tag: RefState::from_option(
-                frame.last_object_tag.as_ref().map(TagKey::from),
-            ),
+            last_object_tag: RefState::from_option(frame.last_object_tag.clone()),
             recent_object_target_bindings: frame.recent_object_target_bindings.clone(),
             snapshot_tag_aliases: frame.snapshot_tag_aliases.clone(),
             last_it_choice_is_set: frame.last_it_choice_is_set,
@@ -367,11 +365,7 @@ impl ReferenceEnv {
         ReferenceFrame {
             last_effect_id: self.last_effect_id.clone().into_option(),
             last_library_search_effect_id: self.last_library_search_effect_id.clone().into_option(),
-            last_object_tag: self
-                .last_object_tag
-                .clone()
-                .into_option()
-                .map(|tag| tag.as_str().to_string()),
+            last_object_tag: self.last_object_tag.clone().into_option(),
             recent_object_target_bindings: self.recent_object_target_bindings.clone(),
             snapshot_tag_aliases: self.snapshot_tag_aliases.clone(),
             last_it_choice_is_set: self.last_it_choice_is_set,

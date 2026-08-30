@@ -2,7 +2,7 @@
 mod hideaway;
 #[path = "semantic_lowering/keyword_shapes.rs"]
 mod keyword_shapes;
-#[path = "semantic_lowering/special_triggered_programs.rs"]
+#[path = "semantic_lowering/special_triggered.rs"]
 mod special_triggered_programs;
 #[path = "semantic_lowering/statement_shapes.rs"]
 mod statement_shapes;

@@ -152,9 +152,10 @@ pub fn parse_switch(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
     };
     let target = match shape.target {
         SwitchTargetSurface::Source(tokens) => TargetAst::Source(span_from_tokens(tokens)),
-        SwitchTargetSurface::Tagged(tokens) => {
-            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens))
-        }
+        SwitchTargetSurface::Tagged(tokens) => TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+            span_from_tokens(tokens),
+        ),
         SwitchTargetSurface::Explicit(tokens) => parse_target_phrase(tokens)?,
     };
 
@@ -608,7 +609,7 @@ pub fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError>
         let mut filter = parse_object_filter(filter_tokens, false)?;
         constrain_untap_filter_to_battlefield(&mut filter);
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from(crate::cards::builders::CHOSEN_OBJECTS_TAG),
+            tag: crate::tag::CompilerReferenceTag::ChosenObjects.key(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         return Ok(EffectAst::subject_verb_untap_all(filter));
@@ -641,7 +642,7 @@ pub fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError>
             constrain_untap_filter_to_battlefield(&mut filter);
             filter.set_plural_pronoun_reference_surface(filter_tokens.is_none());
             filter.tagged_constraints.push(TaggedObjectConstraint {
-                tag: IT_TAG.into(),
+                tag: crate::tag::CompilerReferenceTag::It.as_str().into(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
             });
             Ok(EffectAst::subject_verb_untap_all(filter))
@@ -698,6 +699,6 @@ pub fn parse_surveil(
 #[path = "misc_actions_inline_tests.rs"]
 mod tests;
 
-#[path = "misc_actions/resource_programs.rs"]
+#[path = "misc_actions/resource.rs"]
 mod resource_programs;
 pub use resource_programs::parse_pay;

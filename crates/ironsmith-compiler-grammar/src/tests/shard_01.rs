@@ -123,7 +123,7 @@ pub(super) fn attach_up_to_one_target_equipment_to_it_parses_target_object() {
     assert!(matches!(
         target,
         crate::cards::builders::TargetAst::Tagged(tag, _)
-            if tag.as_str() == crate::cards::builders::IT_TAG
+            if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     ));
 }
 
@@ -448,7 +448,7 @@ pub(super) fn attach_any_number_equipment_to_it_parses_counted_object_set() {
     assert!(matches!(
         target,
         crate::cards::builders::TargetAst::Tagged(tag, _)
-            if tag.as_str() == crate::cards::builders::IT_TAG
+            if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     ));
 }
 
@@ -773,7 +773,7 @@ pub(super) fn rewrite_if_clause_binds_it_was_cast_to_tagged_object() {
     assert!(matches!(
         predicate,
         crate::cards::builders::PredicateAst::TaggedWasCast(tag)
-            if tag.as_str() == crate::cards::builders::IT_TAG
+            if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     ));
 }
 
@@ -2793,7 +2793,7 @@ pub(super) fn rewrite_lexed_permission_helpers_parse_once_each_turn_top_library_
             && matches!(spec.grantable, crate::model::CompilerGrantableCore::PlayFrom)
             && spec.usage_limit == Some(crate::grant::GrantUsageLimit::OnceEachTurn)
             && spec.filter.tagged_constraints.iter().any(|constraint|
-                constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                constraint.tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
                     && constraint.relation == crate::target::TaggedOpbjectRelation::SharesCardType
             )
     ));
@@ -3306,7 +3306,7 @@ pub(super) fn rewrite_lexed_parse_counterpoint_followup_clause_with_tagged_mana_
     );
     assert!(
         filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag == crate::cards::builders::TagKey::from(crate::cards::builders::IT_TAG)
+            constraint.tag == crate::tag::CompilerReferenceTag::It.key()
                 && constraint.relation == crate::filter::TaggedOpbjectRelation::ManaValueLteTagged
         }),
         "expected mana-value-to-tagged constraint, got {filter:#?}"
@@ -4030,7 +4030,7 @@ pub(super) fn rewrite_lowering_choose_from_opponent_graveyard_or_hand_keeps_choi
         .expect("chosen card should be exiled");
     assert!(matches!(
         &exile.target,
-        crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == crate::cards::builders::IT_TAG
+        crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     ));
 
     Ok(())
@@ -4174,7 +4174,7 @@ pub(super) fn blue_dragon_keeps_three_independent_target_slots() -> Result<(), C
         ),
         "reference resolution must not introduce redundant coordination: {parsed_effects:#?}"
     );
-    let normalized_card = crate::compiler_pipeline::prepare_parsed_document(parsed_card)?;
+    let normalized_card = crate::compiler_pipeline::normalize_parsed_document(parsed_card)?;
     let normalized_prepared = normalized_card
         .items
         .iter()
@@ -4553,6 +4553,21 @@ pub(super) fn spell_life_cost_per_target_uses_typed_nonmana_cost_parser() {
         "{debug}"
     );
     assert!(!debug.contains("ManaCost"), "{debug}");
+
+    let routed = super::super::keyword_static::parse_static_ability_ast_line_lexed(&tokens)
+        .expect("static registry should resolve the nonmana cost uniquely")
+        .expect("static registry should claim the nonmana cost");
+    assert!(
+        matches!(
+            routed.as_slice(),
+            [crate::cards::builders::StaticAbilityAst::Static(ability)]
+                if matches!(
+                    ability.payload,
+                    ironsmith_core::StaticAbilityPayload::AdditionalLifeCostPerTarget(3)
+                )
+        ),
+        "{routed:#?}"
+    );
 }
 
 #[test]

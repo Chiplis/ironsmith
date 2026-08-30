@@ -164,9 +164,9 @@ pub(super) fn compile_return_to_hand(
         && !ctx.iterated_object
         && set_reference_surface.is_some()
         && matches!(spec.base(), ChooseSpec::Iterated)
-        && let Some(tag) = ctx.last_object_tag.as_deref()
+        && let Some(tag) = ctx.last_object_tag.as_ref()
     {
-        spec = ChooseSpec::Tagged(TagKey::from(tag));
+        spec = ChooseSpec::Tagged(tag.clone());
     }
     let destination_player_surface = destination_player_surface
         .map(|player| resolve_non_target_player_filter(player, &current_reference_env(ctx)))
@@ -211,7 +211,7 @@ pub(super) fn compile_return_to_hand(
     ctx.last_player_filter = Some(if spec.is_target() {
         PlayerFilter::AliasedOwnerOf(ObjectRef::Target)
     } else if let Some(tag) = ctx.last_object_tag.clone() {
-        PlayerFilter::AliasedOwnerOf(ObjectRef::tagged(TagKey::from(tag.as_str())))
+        PlayerFilter::AliasedOwnerOf(ObjectRef::tagged(tag))
     } else {
         PlayerFilter::AliasedOwnerOf(ObjectRef::Target)
     });
@@ -447,7 +447,7 @@ pub(super) fn compile_subject_verb_late(
             // the pronoun must not inherit it as the damage source.
             let source_spec = if matches!(
                 source,
-                TargetAst::Tagged(tag, _) if tag.as_str() == crate::host::IT_TAG
+                TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             ) && matches!(
                 &source_spec,
                 ChooseSpec::Tagged(tag) if tag.as_str() == "blocking"
@@ -486,10 +486,10 @@ pub(super) fn compile_subject_verb_late(
             // concrete identity into `its power`/`its toughness` values.
             let damage_amount = if matches!(
                 source,
-                TargetAst::Tagged(tag, _) if tag.as_str() == crate::host::IT_TAG
+                TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             ) && !matches!(
                 source_spec.base(),
-                ChooseSpec::Tagged(tag) if tag.as_str() == crate::host::IT_TAG
+                ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             ) {
                 bind_source_value_to_damage_source(&amount, &source_spec)
             } else {
@@ -628,7 +628,7 @@ pub(super) fn compile_subject_verb_late(
             let refs = current_reference_env(ctx);
             let unresolved_demonstrative_set = refs.known_last_object_tag().is_none()
                 && filter.tagged_constraints.iter().any(|constraint| {
-                    constraint.tag.as_str() == IT_TAG
+                    constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                         && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
                 });
             let resolved_filter = resolve_it_tag(filter, &refs)?;
@@ -868,7 +868,7 @@ pub(super) fn compile_subject_verb_late(
                 ctx.last_object_tag = None;
             } else {
                 let target_tag = if let Some(tag) = attachment_reference_tag(&target_spec) {
-                    tag.as_str().to_string()
+                    tag.clone()
                 } else {
                     if !choose_spec_targets_object(&target_spec) || !target_spec.is_target() {
                         return Err(CardTextError::ParseError(
@@ -888,7 +888,7 @@ pub(super) fn compile_subject_verb_late(
                 resolved_filter
                     .tagged_constraints
                     .push(TaggedObjectConstraint {
-                        tag: TagKey::from(target_tag.as_str()),
+                        tag: target_tag,
                         relation: TaggedOpbjectRelation::AttachedToTaggedObject,
                     });
             }
@@ -920,7 +920,7 @@ pub(super) fn compile_subject_verb_late(
             let mut choices = choices;
             let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             let target_tag = if let Some(tag) = attachment_reference_tag(&target_spec) {
-                tag.as_str().to_string()
+                tag.clone()
             } else {
                 if !choose_spec_targets_object(&target_spec) || !target_spec.is_target() {
                     return Err(CardTextError::ParseError(
@@ -940,7 +940,7 @@ pub(super) fn compile_subject_verb_late(
             resolved_filter
                 .tagged_constraints
                 .push(TaggedObjectConstraint {
-                    tag: TagKey::from(target_tag.as_str()),
+                    tag: target_tag.clone(),
                     relation: TaggedOpbjectRelation::AttachedToTaggedObject,
                 });
 
@@ -954,7 +954,7 @@ pub(super) fn compile_subject_verb_late(
                 crate::effects::ExileEffect::all(resolved_filter).with_face_down(*face_down),
             ));
 
-            let tagged_target = ChooseSpec::Tagged(TagKey::from(target_tag.as_str()));
+            let tagged_target = ChooseSpec::Tagged(target_tag);
             let target_exile = if *face_down {
                 Effect::new(
                     crate::effects::ExileEffect::with_spec(tagged_target).with_face_down(true),
@@ -981,7 +981,7 @@ pub(super) fn compile_subject_verb_late(
                     ChooseSpec::Tagged(tag) => tag.clone(),
                     _ => unreachable!("ordered source choice always lowers to a tagged object"),
                 };
-                ctx.last_exiled_collection_tag = Some(chosen_tag.as_str().to_string());
+                ctx.last_exiled_collection_tag = Some(chosen_tag.clone());
                 ctx.last_exiled_collection_is_plural = collection_is_plural;
                 let exile = Effect::new(
                     crate::effects::ExileEffect::with_spec(chosen_spec).with_face_down(*face_down),
@@ -1023,10 +1023,10 @@ pub(super) fn compile_subject_verb_late(
             };
             if ctx.auto_tag_object_targets {
                 if let ChooseSpec::Tagged(tag) = spec.base()
-                    && is_sentence_helper_exiled_collection_tag(tag.as_str())
+                    && is_sentence_helper_exiled_collection_tag(tag)
                 {
                     effect = effect.tag(tag.clone());
-                    ctx.last_object_tag = Some(tag.as_str().to_string());
+                    ctx.last_object_tag = Some(tag.clone());
                 } else if spec.is_target() {
                     let tag = ctx.next_tag("exiled");
                     effect = effect.tag(tag.clone());
@@ -1036,7 +1036,8 @@ pub(super) fn compile_subject_verb_late(
                 {
                     // MoveToZone/Exile populate the source-exiled link without
                     // needing a second runtime tag wrapper.
-                    ctx.last_object_tag = Some(crate::tag::SOURCE_EXILED_TAG.to_string());
+                    ctx.last_object_tag =
+                        Some(crate::tag::CompilerReferenceTag::SourceExiled.key());
                 }
             }
             Ok((vec![effect], choices))
@@ -1044,7 +1045,7 @@ pub(super) fn compile_subject_verb_late(
         SubjectVerbActionAst::ExileAll { filter, face_down } => {
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             let (mut prelude, choices) = target_context_prelude_for_filter(&resolved_filter);
-            if let Some(player_filter) = infer_player_filter_from_object_filter(&resolved_filter) {
+            if let Some(player_filter) = player_filter_from_object_filter(&resolved_filter) {
                 ctx.last_player_filter = Some(player_filter);
             }
             let keep_last_object_tag =
@@ -1479,7 +1480,7 @@ pub(super) fn compile_subject_verb_late(
                 let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
                 let choice_zone = resolved_filter.ensure_zone(Zone::Battlefield);
                 let tag = ctx.next_tag("stickered");
-                let tag_key = TagKey::from(tag.as_str());
+                let tag_key = tag.clone();
                 let choose_effect = crate::effects::ChooseObjectsEffect::new(
                     resolved_filter,
                     ChoiceCount::exactly(1),
@@ -1487,7 +1488,7 @@ pub(super) fn compile_subject_verb_late(
                     tag_key.clone(),
                 )
                 .in_zone(choice_zone);
-                ctx.last_object_tag = Some(tag.as_str().to_string());
+                ctx.last_object_tag = Some(tag.clone());
                 Ok((
                     vec![
                         Effect::new(choose_effect),
@@ -1574,7 +1575,8 @@ pub(super) fn compile_subject_verb_late(
                 matches!(count.unhinted(), Value::Count(count_filter) if count_filter == filter)
             });
             let discard_references_revealed_hand_choice = filter.as_ref().is_some_and(|filter| {
-                filter.zone == Some(Zone::Hand) && filter_references_tag(filter, IT_TAG)
+                filter.zone == Some(Zone::Hand)
+                    && filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
             });
             let resolved_filter = if let Some(filter) = filter {
                 let mut resolved = resolve_it_tag(filter, &current_reference_env(ctx))?;
@@ -1610,7 +1612,7 @@ pub(super) fn compile_subject_verb_late(
                             {
                                 ctx.last_revealed_player_filter.clone()
                             } else {
-                                infer_player_filter_from_object_filter(filter)
+                                player_filter_from_object_filter(filter)
                             }
                         })
                         // An explicit possessive full-hand phrase supplies its
@@ -1637,7 +1639,7 @@ pub(super) fn compile_subject_verb_late(
                 } else if matches!(subject_verb.subject.player, PlayerAst::That)
                     && let Some(inferred_player) = resolved_filter
                         .as_ref()
-                        .and_then(infer_player_filter_from_object_filter)
+                        .and_then(player_filter_from_object_filter)
                 {
                     (inferred_player, Vec::new())
                 } else {
@@ -1659,10 +1661,8 @@ pub(super) fn compile_subject_verb_late(
             if count_names_complete_discard_set && let Some(filter) = resolved_filter.as_ref() {
                 replace_complete_discard_count_filter(&mut resolved_count, filter);
             }
-            let tag = tag
-                .clone()
-                .unwrap_or_else(|| TagKey::from(ctx.next_tag("discarded").as_str()));
-            ctx.last_object_tag = Some(tag.as_str().to_string());
+            let tag = tag.clone().unwrap_or_else(|| ctx.next_tag("discarded"));
+            ctx.last_object_tag = Some(tag.clone());
             let effect = Effect::new(
                 crate::effects::DiscardEffect::new_with_filter(
                     resolved_count,
@@ -2197,7 +2197,7 @@ pub(super) fn compile_subject_verb_late(
             let mut follow_ups = Vec::new();
             if !follow_up_effects.is_empty() {
                 let saved_last_object_tag = ctx.last_object_tag.clone();
-                ctx.last_object_tag = Some(IT_TAG.to_string());
+                ctx.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.key());
                 let (compiled_follow_ups, follow_up_choices) =
                     compile_effects(follow_up_effects, ctx)?;
                 follow_ups = compiled_follow_ups;
@@ -2249,11 +2249,13 @@ pub(super) fn compile_subject_verb_late(
             let bare_it_with_source_antecedent = !*one_of_referenced_set
                 && !refs.iterated_object
                 && refs.has_source_object_antecedent()
-                && refs
-                    .known_last_object_tag()
-                    .is_none_or(|tag| tag.as_str() == IT_TAG && !refs.last_it_choice_is_set)
-                && object_filter_as_tagged_reference(filter)
-                    .is_some_and(|tag| tag.as_str() == IT_TAG);
+                && refs.known_last_object_tag().is_none_or(|tag| {
+                    tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                        && !refs.last_it_choice_is_set
+                })
+                && object_filter_as_tagged_reference(filter).is_some_and(|tag| {
+                    tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                });
             let mut resolved_filter = if bare_it_with_source_antecedent {
                 ObjectFilter::source()
             } else {
@@ -2261,7 +2263,8 @@ pub(super) fn compile_subject_verb_late(
                     Ok(resolved) => resolved,
                     Err(_)
                         if filter.tagged_constraints.len() == 1
-                            && filter.tagged_constraints[0].tag.as_str() == IT_TAG =>
+                            && filter.tagged_constraints[0].tag.as_str()
+                                == crate::tag::CompilerReferenceTag::It.as_str() =>
                     {
                         ObjectFilter::source()
                     }

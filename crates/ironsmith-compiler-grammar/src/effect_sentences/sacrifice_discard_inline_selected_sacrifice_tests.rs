@@ -99,7 +99,10 @@ fn one_of_them_is_a_choice_from_the_referenced_set() {
     assert!(target.is_none());
     assert!(one_of_referenced_set);
     assert_eq!(filter.tagged_constraints.len(), 1);
-    assert_eq!(filter.tagged_constraints[0].tag.as_str(), IT_TAG);
+    assert_eq!(
+        filter.tagged_constraints[0].tag.as_str(),
+        crate::tag::CompilerReferenceTag::It.as_str()
+    );
 }
 
 #[test]
@@ -117,7 +120,7 @@ fn those_permanents_sacrifices_the_complete_referenced_set() {
         panic!("expected all-of-result-set sacrifice AST");
     };
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == IT_TAG
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
     }));
     assert!(

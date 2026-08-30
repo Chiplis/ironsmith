@@ -26,8 +26,8 @@ pub fn parse_semantic_document(
     crate::semantic_document::parse_semantic_document(doc)
 }
 
-pub fn prepare_parsed_document(ast: ParsedCardAst) -> Result<NormalizedCardAst, CardTextError> {
-    lower::prepare_parsed_card_ast_for_lowering(ast)
+pub fn normalize_parsed_document(ast: ParsedCardAst) -> Result<NormalizedCardAst, CardTextError> {
+    lower::normalize_parsed_card_ast_for_lowering(ast)
 }
 
 pub fn lower_prepared_document_with_facts(
@@ -76,7 +76,7 @@ impl CardAstMaterializer for RuntimeCardAstMaterializer {
     fn materialize(&mut self, ast: ParsedCardAst) -> Result<Self::RuntimeDocument, Self::Error> {
         let prepared = {
             let _scope = parse_trace::scope("prepare lowering input");
-            prepare_parsed_document(ast)?
+            normalize_parsed_document(ast)?
         };
         let _scope = parse_trace::scope("lower runtime definition");
         lower_prepared_document_with_facts(prepared)
@@ -111,7 +111,7 @@ mod tests {
             "canonical semantic AST lost exhaustive exile cardinality:\n{parsed_debug}"
         );
 
-        let prepared = prepare_parsed_document(parsed)?;
+        let prepared = normalize_parsed_document(parsed)?;
         let prepared_debug = format!("{prepared:#?}");
         assert!(
             prepared_debug.contains("ExileAll"),
@@ -141,7 +141,7 @@ mod tests {
             Some(1)
         );
 
-        let prepared = prepare_parsed_document(parsed)?;
+        let prepared = normalize_parsed_document(parsed)?;
         assert_eq!(
             prepared
                 .overload_branch
@@ -168,7 +168,7 @@ mod tests {
         let text = "If you would begin your turn while this artifact is tapped, you may skip that turn instead. If you do, untap this artifact.";
         let (semantic, _) = parse_text_to_semantic_document(builder, text.to_string(), false)?;
         let parsed = parse_semantic_document(semantic)?;
-        prepare_parsed_document(parsed)?;
+        normalize_parsed_document(parsed)?;
         Ok(())
     }
 
@@ -179,7 +179,7 @@ mod tests {
         let text = "Choose a nonbasic land type. Each land you control of that type becomes a copy of target creature you control until end of turn and gains haste until end of turn.";
         let (semantic, _) = parse_text_to_semantic_document(builder, text.to_string(), false)?;
         let parsed = parse_semantic_document(semantic)?;
-        let prepared = prepare_parsed_document(parsed)?;
+        let prepared = normalize_parsed_document(parsed)?;
         let lowered = lower_prepared_document_with_facts(prepared)?;
         let spell_effect = lowered
             .definition
@@ -414,7 +414,7 @@ mod tests {
         );
         let expected_facts = parsed_line.semantic_facts.clone();
 
-        let prepared = prepare_parsed_document(parsed)?;
+        let prepared = normalize_parsed_document(parsed)?;
         let [NormalizedCardItem::Line(prepared_line)] = prepared.items.as_slice() else {
             panic!("expected one normalized line, got {:?}", prepared.items);
         };

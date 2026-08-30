@@ -579,16 +579,16 @@ pub fn parse_life_advantage_player(words: &[&str]) -> Option<PlayerFilter> {
 #[path = "reference_shapes_inline_tests.rs"]
 mod tests;
 
-#[path = "reference_shapes/core_programs.rs"]
+#[path = "reference_shapes/core.rs"]
 mod core_programs;
 use core_programs::{
     exact_one_of, find_one_of, first_word_offset, has_one_of_words, prefix_at_one_of,
     prefix_one_of, starts_with_one_of_words, suffix_one_of, word_has_char_suffix,
 };
-#[path = "reference_shapes/object_action_programs.rs"]
+#[path = "reference_shapes/object_action.rs"]
 mod object_action_programs;
 use object_action_programs::is_controller_or_owner;
-#[path = "reference_shapes/reference_programs.rs"]
+#[path = "reference_shapes/reference.rs"]
 mod reference_programs;
 use reference_programs::{
     filter_keyword_constraint_for_words, is_controlled_object_plural,

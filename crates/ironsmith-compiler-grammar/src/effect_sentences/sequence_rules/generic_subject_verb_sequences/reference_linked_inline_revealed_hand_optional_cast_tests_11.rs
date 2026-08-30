@@ -59,7 +59,7 @@ fn optional_cast_chooses_from_the_exact_target_opponents_revealed_hand() {
     );
     assert_eq!(filter.card_types, [CardType::Instant, CardType::Sorcery]);
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == crate::tag::REVEALED_THIS_WAY_TAG
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::RevealedThisWay.as_str()
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
 }

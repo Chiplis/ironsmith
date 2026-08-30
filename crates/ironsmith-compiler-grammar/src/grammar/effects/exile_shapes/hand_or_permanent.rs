@@ -84,18 +84,18 @@ fn each_opponent_exiles(input: &mut LexStream<'_>) -> WResult<()> {
 #[path = "hand_or_permanent_inline_tests.rs"]
 mod tests;
 
-#[path = "hand_or_permanent/reference_programs.rs"]
+#[path = "hand_or_permanent/reference.rs"]
 mod reference_programs;
 use reference_programs::each_player_or_opponent_exiles;
 pub use reference_programs::parse_each_player_exile_counted_hand_permanent_shape;
-#[path = "hand_or_permanent/choice_programs.rs"]
+#[path = "hand_or_permanent/choice.rs"]
 mod choice_programs;
 pub use choice_programs::{
     is_exile_hand_or_permanent_choice_shape, parse_each_opponent_exile_choice_shape,
 };
-#[path = "hand_or_permanent/library_programs.rs"]
+#[path = "hand_or_permanent/library.rs"]
 mod library_programs;
 use library_programs::counted_permanents_and_or_hand_cards;
-#[path = "hand_or_permanent/core_programs.rs"]
+#[path = "hand_or_permanent/core.rs"]
 mod core_programs;
 use core_programs::and_or;

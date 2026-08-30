@@ -1,11 +1,14 @@
 use super::SentenceInput;
 
+#[path = "branching_selection.rs"]
 pub mod branching_selection_programs;
 pub mod exile_permission_followups;
 pub mod exiled_collections;
 pub mod graveyard_copy_cast;
 pub mod optional_sacrifice_discard;
+#[path = "ordered_control_flow.rs"]
 pub mod ordered_control_flow_programs;
+#[path = "reference_linked.rs"]
 pub mod reference_linked_programs;
 
 use crate::cards::builders::{
@@ -367,7 +370,7 @@ pub fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(
     let mut shuffled_filter = ObjectFilter::permanent_card();
     shuffled_filter.zone = Some(Zone::Battlefield);
     shuffled_filter.owner = Some(PlayerFilter::IteratedPlayer);
-    let iterated = TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None);
+    let iterated = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None);
 
     Ok(Some(vec![EffectAst::ForEachPlayer {
         effects: vec![
@@ -678,19 +681,19 @@ pub fn parse_reveal_then_exile_noncreature_nonland_hand_graveyard_sequence(
     Ok(Some(effects))
 }
 
-#[path = "trigger_programs.rs"]
+#[path = "trigger.rs"]
 mod trigger_programs;
 pub use trigger_programs::parse_delayed_upkeep_unless_pays_sequence;
-#[path = "library_programs.rs"]
+#[path = "library.rs"]
 mod library_programs;
 pub use library_programs::{
     parse_next_damage_prevention_exile_top_sequence,
     parse_search_delayed_upkeep_unless_pays_sequence,
 };
-#[path = "core_programs.rs"]
+#[path = "core.rs"]
 mod core_programs;
 pub use core_programs::parse_tap_lock_sequence;
-#[path = "combat_programs.rs"]
+#[path = "combat.rs"]
 mod combat_programs;
 pub use combat_programs::{
     parse_damage_prevention_reflect_to_any_target_sequence,

@@ -9,8 +9,6 @@ use crate::types::{CardType, Subtype};
 /// dynamic token definition. Lowering binds it to the retained card reference
 /// (for example, the last exiled card) without letting an intervening token
 /// creation steal the reference.
-pub const TOKEN_DYNAMIC_THAT_CARD_TAG: &str = "__token_dynamic_that_card";
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuiltinTokenShape {
     Treasure,

@@ -524,9 +524,9 @@ pub fn parse_token_definition_shape_text(source_text: &str) -> Option<TokenDefin
 #[path = "surface_inline_tests.rs"]
 mod tests;
 
-#[path = "surface/choice_programs.rs"]
+#[path = "surface/choice.rs"]
 mod choice_programs;
 pub use choice_programs::source_chosen_token_characteristics;
-#[path = "surface/object_action_programs.rs"]
+#[path = "surface/object_action.rs"]
 mod object_action_programs;
 pub use object_action_programs::parse_token_definition_shape_tokens;

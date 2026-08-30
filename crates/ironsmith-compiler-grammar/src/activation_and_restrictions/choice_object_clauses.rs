@@ -91,9 +91,9 @@ pub fn parse_target_player_choose_objects_clause_with_count_value(
             PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
             PlayerAst::Opponent => PlayerFilter::Opponent,
             PlayerAst::That => PlayerFilter::IteratedPlayer,
-            PlayerAst::ItsController => {
-                PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(IT_TAG))
-            }
+            PlayerAst::ItsController => PlayerFilter::ControllerOf(
+                crate::filter::ObjectRef::tagged(crate::tag::CompilerReferenceTag::It.key()),
+            ),
             _ => PlayerFilter::target_player(),
         });
     }
@@ -109,7 +109,7 @@ fn choice_count_value(
 ) -> Result<Option<Value>, CardTextError> {
     match count_source {
         Some(ChoiceObjectCountSource::CardsDiscardedThisWay) => Ok(Some(Value::Count(
-            ObjectFilter::tagged(TagKey::from(IT_TAG)),
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
         ))),
         Some(ChoiceObjectCountSource::ThatMany) => Ok(Some(Value::EventValue(
             crate::effect::EventValueSpec::Amount,
@@ -188,14 +188,14 @@ pub fn parse_you_choose_objects_clause_with_count_value(
 
     if references_it
         && !choose_filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag.as_str() == IT_TAG
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
         })
     {
         choose_filter
             .tagged_constraints
             .push(TaggedObjectConstraint {
-                tag: TagKey::from(IT_TAG),
+                tag: crate::tag::CompilerReferenceTag::It.key(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
             });
     }
@@ -288,14 +288,14 @@ pub fn parse_target_player_chooses_then_other_cant_block(
             .tagged_constraints
             .iter()
             .any(|constraint| {
-                constraint.tag.as_str() == IT_TAG
+                constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                     && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
             })
     {
         restriction_filter
             .tagged_constraints
             .push(TaggedObjectConstraint {
-                tag: TagKey::from(IT_TAG),
+                tag: crate::tag::CompilerReferenceTag::It.key(),
                 relation: TaggedOpbjectRelation::IsNotTaggedObject,
             });
     }
@@ -306,7 +306,7 @@ pub fn parse_target_player_chooses_then_other_cant_block(
             count: choose_count,
             count_value: None,
             player: chooser,
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
         },
         EffectAst::subject_verb_cant(
             crate::effect::Restriction::block(restriction_filter),
@@ -377,11 +377,11 @@ fn compose_reveal_top_choose_card_type_put_to_hand_rest_bottom(
                     tag: looked_tag,
                     effects: vec![EffectAst::Conditional {
                         predicate: PredicateAst::TaggedMatches(
-                            TagKey::from(IT_TAG),
+                            crate::tag::CompilerReferenceTag::It.key(),
                             card_type_filter,
                         ),
                         if_true: vec![EffectAst::subject_verb_move_to_zone(
-                            TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
                             Zone::Hand,
                             false,
                             ReturnControllerAst::Preserve,
@@ -389,7 +389,7 @@ fn compose_reveal_top_choose_card_type_put_to_hand_rest_bottom(
                             None,
                         )],
                         if_false: vec![EffectAst::subject_verb_move_to_zone(
-                            TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
                             Zone::Library,
                             false,
                             ReturnControllerAst::Preserve,
@@ -573,7 +573,10 @@ pub fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
     };
 
     let target = if shape.moved_is_tagged_choice {
-        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(shape.second_clause))
+        TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+            span_from_tokens(shape.second_clause),
+        )
     } else {
         parse_target_phrase(shape.moved_tokens)?
     };
@@ -584,7 +587,7 @@ pub fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
             count: choose_count,
             count_value: None,
             player: chooser,
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
         },
         EffectAst::subject_verb_move_to_zone(
             target,
@@ -621,10 +624,13 @@ pub fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefield(
             count: choose_count,
             count_value: None,
             player: chooser,
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
         },
         EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(shape.second_clause)),
+            TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::It.key(),
+                span_from_tokens(shape.second_clause),
+            ),
             Zone::Battlefield,
             false,
             battlefield_controller,

@@ -1097,7 +1097,7 @@ pub fn split_if_clause_lexed(
         let mut effects = vec![EffectAst::subject_verb_choose_player(
             PlayerAst::You,
             tied_players.clone(),
-            crate::tag::TagKey::from(crate::cards::builders::IT_TAG),
+            crate::tag::CompilerReferenceTag::It.key(),
             false,
             0,
         )];
@@ -1565,24 +1565,24 @@ pub fn parse_conditional_predicate_tail_lexed(
 #[path = "structure_inline_leading_result_prefix_regressions.rs"]
 mod leading_result_prefix_regressions;
 
-#[path = "structure/structure_choice_programs.rs"]
+#[path = "structure/structure_choice.rs"]
 mod structure_choice_programs;
 use structure_choice_programs::parse_modal_header_choose_spec_inner;
 pub use structure_choice_programs::{
     parse_modal_header_choose_spec, split_trailing_modal_gate_clause,
 };
-#[path = "structure/structure_trigger_programs.rs"]
+#[path = "structure/structure_trigger.rs"]
 mod structure_trigger_programs;
 pub use structure_trigger_programs::{
     split_state_triggered_clause_lexed, split_triggered_conditional_clause_lexed,
 };
-#[path = "structure/structure_condition_programs.rs"]
+#[path = "structure/structure_condition.rs"]
 mod structure_condition_programs;
 pub use structure_condition_programs::parse_trailing_instead_if_predicate_lexed;
 use structure_condition_programs::split_trailing_predicate_clause_lexed;
-#[path = "structure/structure_reference_programs.rs"]
+#[path = "structure/structure_reference.rs"]
 mod structure_reference_programs;
 pub use structure_reference_programs::parse_who_player_predicate_lexed;
-#[path = "structure/structure_core_programs.rs"]
+#[path = "structure/structure_core.rs"]
 mod structure_core_programs;
 use structure_core_programs::rfind_unquoted_dynamic_word;

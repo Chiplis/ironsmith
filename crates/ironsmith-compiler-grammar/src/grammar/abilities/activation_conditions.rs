@@ -569,7 +569,7 @@ fn parse_sources_damage_condition(tokens: &[OwnedLexToken]) -> Option<ConditionE
 #[path = "activation_conditions_inline_tests.rs"]
 mod tests;
 
-#[path = "activation_conditions/object_action_programs.rs"]
+#[path = "activation_conditions/object_action.rs"]
 mod object_action_programs;
 use object_action_programs::{
     activate_only_you_control_options, parse_activate_only_if_tail_tokens,
@@ -577,10 +577,10 @@ use object_action_programs::{
     parse_controlled_creature_power_shape, parse_land_subtype_control_condition,
     token_slice_for_words,
 };
-#[path = "activation_conditions/core_programs.rs"]
+#[path = "activation_conditions/core.rs"]
 mod core_programs;
 use core_programs::{exact_tail_offset, matches_exact_word_slice};
-#[path = "activation_conditions/condition_programs.rs"]
+#[path = "activation_conditions/condition.rs"]
 mod condition_programs;
 use condition_programs::{
     parse_activate_count_each_turn_condition, parse_activate_only_count_per_turn_condition,

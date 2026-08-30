@@ -388,16 +388,16 @@ pub struct TargetOnlyShape<'a> {
 #[path = "direct/tests.rs"]
 mod tests;
 
-#[path = "direct/choice_programs.rs"]
+#[path = "direct/choice.rs"]
 mod choice_programs;
 use choice_programs::target_phrase_excludes_chooser_controller;
 pub use choice_programs::{
     parse_choose_target_shape, parse_embedded_choose_target_shape, parse_protection_choice_shape,
     strip_optional_you_choice_tokens,
 };
-#[path = "direct/reference_programs.rs"]
+#[path = "direct/reference.rs"]
 mod reference_programs;
 pub use reference_programs::parse_target_only_shape;
-#[path = "direct/combat_programs.rs"]
+#[path = "direct/combat.rs"]
 mod combat_programs;
 pub use combat_programs::parse_assigns_no_combat_damage_shape;

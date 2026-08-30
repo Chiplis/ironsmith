@@ -2375,7 +2375,8 @@ pub(super) fn triggered_label_source_selection_uses_lexed_dash_tokens() {
         "trigger presentation recognition must not return to deleted parser-owned lowering module {legacy_lowering_relative}"
     );
 
-    let semantic_relative = "crates/ironsmith-compiler-grammar/src/semantic_line_parsing/lines/lines_object_action_programs.rs";
+    let semantic_relative =
+        "crates/ironsmith-compiler-grammar/src/semantic_line_parsing/lines/lines_object_action.rs";
     let semantic = read_repo_file(&root, semantic_relative);
     assert!(
         !semantic.contains("presentation_label_from_raw_trigger_line")
@@ -2416,7 +2417,7 @@ pub(super) fn chosen_option_context_flow_uses_typed_cst_ir_fact() {
     for lowering_relative in [
         "crates/ironsmith-compiler-grammar/src/semantic_line_parsing/lines.rs",
         "crates/ironsmith-compiler-grammar/src/semantic_line_parsing/activated.rs",
-        "crates/ironsmith-compiler-grammar/src/lowering_impl/lower/rewrite_text_helpers.rs",
+        "crates/ironsmith-compiler-grammar/src/lowering_impl/lower/line_ast_helpers.rs",
     ] {
         let lowering = read_repo_file(&root, lowering_relative);
         assert!(
@@ -2495,7 +2496,8 @@ pub(super) fn partner_parenthetical_trims_are_typed_grammar_owned() {
         );
     }
 
-    let semantic_relative = "crates/ironsmith-compiler-grammar/src/semantic_line_parsing/lines/lines_object_action_programs.rs";
+    let semantic_relative =
+        "crates/ironsmith-compiler-grammar/src/semantic_line_parsing/lines/lines_object_action.rs";
     let semantic = read_repo_file(&root, semantic_relative);
     let adapter = function_source(
         &semantic,
@@ -2531,7 +2533,8 @@ pub(super) fn partner_parenthetical_trims_are_typed_grammar_owned() {
 #[test]
 pub(super) fn semantic_line_hideaway_special_case_uses_token_words() {
     let root = workspace_root();
-    let relative = "crates/ironsmith-compiler-grammar/src/semantic_line_parsing/lines/lines_object_action_programs.rs";
+    let relative =
+        "crates/ironsmith-compiler-grammar/src/semantic_line_parsing/lines/lines_object_action.rs";
     let content = read_repo_file(&root, relative);
     let helper = function_source(
         &content,

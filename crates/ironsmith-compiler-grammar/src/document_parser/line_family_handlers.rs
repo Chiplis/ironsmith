@@ -2300,10 +2300,10 @@ pub(super) fn run_static_line_family(
     {
         return ParseOutcome::NoMatch;
     }
-    // The statement probe already performs the static-vs-statement ownership
-    // checks (including typed static preemption). If it accepts the complete
-    // line, a later permissive static parse is an overlapping fallback, not a
-    // second semantic interpretation.
+    // The statement probe already resolves static-vs-statement ownership from
+    // typed line facts. If it accepts the complete line, a permissive static
+    // parse is the same overlapping candidate rather than a second semantic
+    // interpretation.
     if line_family_claimed!(rule, run_statement_probe_line_family(ctx)) {
         crate::parse_trace::event("static-line: declined for statement-probe owner");
         return ParseOutcome::NoMatch;

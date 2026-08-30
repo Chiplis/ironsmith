@@ -433,8 +433,8 @@ fn recognize_statement_line_general(
     // This is only a family probe. A static parser may commit to a prefix and
     // reject the remaining effect text (for example, a temporary "can't
     // block ... and becomes ..." chain). Preserve that diagnostic for the
-    // eventual static route, but do not let it preempt a complete typed
-    // statement parser below.
+    // static candidate while the complete typed statement candidate remains
+    // independently available below.
     let typed_source_gain_ability =
         super::super::grammar::effects::gain_ability_shapes::parse_source_gain_ability_shape(
             &line.tokens,
@@ -696,10 +696,19 @@ pub(super) fn extend_triggered_line_with_result_followups(
     let mut next_idx = idx + 1;
 
     while let Some(PreprocessedItem::Line(line)) = items.get(next_idx) {
-        if super::is_nonkeyword_choice_labeled_line(line) {
+        // A following `... instead[ if ...]` line replaces the action this
+        // statement performed. It carries no subject of its own, so keeping
+        // it as a separate line strands the replacement as an independent
+        // effect and drops the authored `instead` — including when an ability
+        // word labels it ("Morbid — ... instead if ...").
+        let instead_replacement =
+            super::super::grammar::effects::followup_shapes::is_instead_replacement_sentence(
+                &line.tokens,
+            );
+        if !instead_replacement && super::is_nonkeyword_choice_labeled_line(line) {
             break;
         }
-        if !is_trigger_result_followup_line(line) {
+        if !instead_replacement && !is_trigger_result_followup_line(line) {
             break;
         }
 
@@ -1072,6 +1081,18 @@ pub(super) fn normalize_statement_parse_groups_lexed(
     // Keep it as one semantic parse group so generic statement grouping cannot
     // sever that typed relationship.
     if super::super::grammar::effects::parse_energy_pay_any_destroy_tokens(tokens).is_some() {
+        return vec![tokens.to_vec()];
+    }
+    // A trailing `... instead[ if ...]` sentence replaces the action the
+    // preceding sentence performed. Splitting the line first strands that
+    // replacement as an independent effect and drops the authored `instead`.
+    if authored_sentences.len() >= 2
+        && authored_sentences.last().is_some_and(|sentence| {
+            super::super::grammar::effects::followup_shapes::is_instead_replacement_sentence(
+                sentence,
+            )
+        })
+    {
         return vec![tokens.to_vec()];
     }
     let sentence_tokens = normalize_statement_parse_sentences_lexed(tokens);

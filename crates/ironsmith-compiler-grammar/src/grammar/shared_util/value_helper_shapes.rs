@@ -264,7 +264,7 @@ pub fn parse_number_of_prefix(words: &[&str]) -> Option<NumberOfPrefix> {
 #[path = "value_helper_shapes/tests.rs"]
 mod tests;
 
-#[path = "value_helper_shapes/core_programs.rs"]
+#[path = "value_helper_shapes/core.rs"]
 mod core_programs;
 use core_programs::{has_any, has_word};
 pub use core_programs::{

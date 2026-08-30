@@ -2779,8 +2779,16 @@ pub(crate) fn describe_alternative_costs(costs: &[crate::costs::Cost]) -> String
         && let Some(return_to_hand) = costs[1]
             .effect_ref()
             .and_then(|effect| effect.downcast_ref::<crate::effects::ReturnToHandEffect>())
-        && let ChooseSpec::Target(inner) = &return_to_hand.spec
-        && let ChooseSpec::Object(filter) = inner.as_ref()
+        && let Some(filter) = match &return_to_hand.spec {
+            // A payment written as an authored cost keeps its chosen object
+            // directly; a targeted return wraps the same filter.
+            ChooseSpec::Object(filter) => Some(filter),
+            ChooseSpec::Target(inner) => match inner.as_ref() {
+                ChooseSpec::Object(filter) => Some(filter),
+                _ => None,
+            },
+            _ => None,
+        }
     {
         let references_chosen = filter.tagged_constraints.len() == 1
             && filter.tagged_constraints[0].tag == choose.tag
@@ -2800,7 +2808,7 @@ pub(crate) fn describe_alternative_costs(costs: &[crate::costs::Cost]) -> String
             .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
             .is_some()
     }) {
-        return describe_cost_list(costs);
+        return uncapitalize_cost_phrase(describe_cost_list(costs));
     }
 
     let mut clauses = Vec::new();
@@ -2840,10 +2848,35 @@ pub(crate) fn describe_alternative_costs(costs: &[crate::costs::Cost]) -> String
     }
 
     if clauses.is_empty() {
-        describe_cost_list(costs)
+        uncapitalize_cost_phrase(describe_cost_list(costs))
     } else {
         join_with_and(&clauses)
     }
+}
+
+/// Lower an activation-cost phrase into mid-sentence form.
+///
+/// Cost components are written as standalone activation costs ("Tap an
+/// untapped artifact you control"), but an alternative cost reads inside the
+/// `You may ... rather than pay ...` sentence. A leading mana symbol or an
+/// authored proper noun keeps its own casing.
+fn uncapitalize_cost_phrase(phrase: String) -> String {
+    let mut chars = phrase.chars();
+    let Some(first) = chars.next() else {
+        return phrase;
+    };
+    if !first.is_ascii_uppercase() {
+        return phrase;
+    }
+    if !chars
+        .next()
+        .is_some_and(|second| second.is_ascii_lowercase())
+    {
+        return phrase;
+    }
+    let mut lowered = first.to_ascii_lowercase().to_string();
+    lowered.push_str(&phrase[first.len_utf8()..]);
+    lowered
 }
 
 pub(crate) fn describe_exile_from_hand_as_cost_phrase(

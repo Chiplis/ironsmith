@@ -1,4 +1,8 @@
 use super::super::grammar::effects::combat_shapes as combat_grammar;
+use crate::recognition::{ParseOutcome, RuleId};
+use crate::registry::{
+    HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_registry_candidates,
+};
 
 fn attach_tagged_filter(
     shape: combat_grammar::CombatAttachTaggedObjectShape,
@@ -23,7 +27,7 @@ fn attach_tagged_filter(
     }
     filter.zone = Some(Zone::Battlefield);
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: TagKey::from(IT_TAG),
+        tag: crate::tag::CompilerReferenceTag::It.key(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
     Some(filter)
@@ -90,7 +94,9 @@ fn combat_simple_damage_target_ast(
             TargetAst::PlayerOrPlaneswalker(PlayerFilter::Any, None)
         }
         combat_grammar::CombatSimpleDamageTargetShape::CreatureController => TargetAst::Player(
-            PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged(IT_TAG)),
+            PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged(
+                crate::tag::CompilerReferenceTag::It.key(),
+            )),
             span_from_tokens(tokens),
         ),
         combat_grammar::CombatSimpleDamageTargetShape::IteratedPlayer => {
@@ -120,7 +126,9 @@ fn damage_to_embedded_target_controller(
             }
         };
     let recipient = TargetAst::Player(
-        PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged(IT_TAG)),
+        PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+        )),
         None,
     );
     Some(EffectAst::Sequence {
@@ -144,7 +152,10 @@ pub fn parse_attach_object_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst,
             if let Some(tagged_filter) = attach_tagged_filter(shape) {
                 Ok(TargetAst::Object(tagged_filter, None, None))
             } else {
-                Ok(TargetAst::Tagged(TagKey::from(IT_TAG), object_span))
+                Ok(TargetAst::Tagged(
+                    crate::tag::CompilerReferenceTag::It.key(),
+                    object_span,
+                ))
             }
         }
         combat_grammar::CombatAttachObjectShape::All { object_tokens } => {
@@ -200,7 +211,10 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             tagged_tokens,
             object_tokens,
         } => {
-            let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tagged_tokens));
+            let target = TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::It.key(),
+                span_from_tokens(tagged_tokens),
+            );
             let object = parse_attach_object_phrase(object_tokens)?;
             Ok(EffectAst::subject_verb_attach(object, target))
         }
@@ -216,7 +230,10 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                         crate::tag::CompilerReferenceTag::Triggering.key(),
                         span_from_tokens(object_tokens),
                     ),
-                    TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(target_tokens)),
+                    TargetAst::Tagged(
+                        crate::tag::CompilerReferenceTag::It.key(),
+                        span_from_tokens(target_tokens),
+                    ),
                 ));
             }
             if let Some(host_tokens) =
@@ -234,7 +251,7 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                     let mut aura_filter = ObjectFilter::permanent().in_zone(Zone::Battlefield);
                     aura_filter.subtypes.push(Subtype::Aura);
                     aura_filter.tagged_constraints.push(TaggedObjectConstraint {
-                        tag: TagKey::from(IT_TAG),
+                        tag: crate::tag::CompilerReferenceTag::It.key(),
                         relation: TaggedOpbjectRelation::AttachedToTaggedObject,
                     });
 
@@ -244,7 +261,7 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                         TaggedOpbjectRelation::IsNotTaggedObject,
                     ] {
                         destination.tagged_constraints.push(TaggedObjectConstraint {
-                            tag: TagKey::from(IT_TAG),
+                            tag: crate::tag::CompilerReferenceTag::It.key(),
                             relation,
                         });
                     }
@@ -262,7 +279,10 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             }
             let object = parse_attach_object_phrase(object_tokens)?;
             let mut target = if target_is_tagged {
-                TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(target_tokens))
+                TargetAst::Tagged(
+                    crate::tag::CompilerReferenceTag::It.key(),
+                    span_from_tokens(target_tokens),
+                )
             } else {
                 parse_target_phrase(target_tokens)?
             };
@@ -280,8 +300,12 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
 fn parse_attached_object_reference(tokens: &[OwnedLexToken]) -> Option<TargetAst> {
     let shape = combat_grammar::parse_attached_object_reference_tokens(tokens)?;
     let tag = match shape.tag {
-        combat_grammar::AttachedObjectReferenceTag::Enchanted => "enchanted",
-        combat_grammar::AttachedObjectReferenceTag::Equipped => "equipped",
+        combat_grammar::AttachedObjectReferenceTag::Enchanted => {
+            crate::tag::CompilerReferenceTag::Enchanted.key()
+        }
+        combat_grammar::AttachedObjectReferenceTag::Equipped => {
+            crate::tag::CompilerReferenceTag::Equipped.key()
+        }
     };
     let mut filter = match shape.kind {
         combat_grammar::AttachedObjectReferenceKind::Equipment => {
@@ -304,7 +328,7 @@ fn parse_attached_object_reference(tokens: &[OwnedLexToken]) -> Option<TargetAst
         combat_grammar::AttachedObjectReferenceKind::Land => ObjectFilter::land(),
         combat_grammar::AttachedObjectReferenceKind::Permanent => ObjectFilter::permanent(),
     }
-    .match_tagged(TagKey::from(tag), TaggedOpbjectRelation::IsTaggedObject);
+    .match_tagged(tag, TaggedOpbjectRelation::IsTaggedObject);
     filter.zone = Some(Zone::Battlefield);
     Some(TargetAst::Object(filter, None, None))
 }
@@ -334,7 +358,7 @@ pub fn parse_unattach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErr
         equipment_filter
             .tagged_constraints
             .push(TaggedObjectConstraint {
-                tag: TagKey::from(IT_TAG),
+                tag: crate::tag::CompilerReferenceTag::It.key(),
                 relation: TaggedOpbjectRelation::AttachedToTaggedObject,
             });
 
@@ -540,6 +564,27 @@ fn parse_divided_damage_equal_to_amount(
     ))
 }
 
+/// `equal to <n> plus the number of <spells cast ...> this turn` sums a fixed
+/// base with a typed turn-history count.
+fn parse_fixed_plus_turn_history_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let equal_idx = (0..tokens.len().saturating_sub(3)).find(|&idx| {
+        tokens[idx].is_word("equal") && tokens[idx + 1].is_word("to")
+    })?;
+    let base_token = tokens.get(equal_idx + 2)?;
+    let base_word = base_token.parser_word_pieces().first()?.text.as_str();
+    let base = crate::util::parse_number_word_u32(base_word)?;
+    if !tokens.get(equal_idx + 3)?.is_word("plus") {
+        return None;
+    }
+    let tail = crate::lexer::trim_lexed_commas(tokens.get(equal_idx + 4..)?);
+    let history =
+        crate::grammar::shared_util::value_semantics::parse_turn_history_count_value(tail)?;
+    Some(Value::Add(
+        Box::new(Value::Fixed(base as i32)),
+        Box::new(history),
+    ))
+}
+
 fn preserve_equal_to_surface(value: Value) -> Value {
     if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo) {
         value
@@ -581,19 +626,74 @@ pub fn parse_deal_damage_to_target_equal_to_clause(
         return Ok(None);
     };
     let clause_words = crate::lexer::token_word_refs(tokens);
-    // A relative-controller count must preempt the tolerant generic value
-    // parser, which otherwise absorbs the antecedent noun into the counted
-    // object filter (for example, Land + Creature).
-    let amount = parse_equal_to_aggregate_filter_value(tokens)
-        .or(parse_equal_to_number_of_filter_value(tokens))
-        .or(parse_add_mana_equal_amount_value(tokens))
-        .or(parse_devotion_value_from_add_clause(tokens)?)
-        .or_else(|| {
-            shape
-                .amount_is_event_result
-                .then_some(Value::EventValue(EventValueSpec::Amount))
-        })
-        .or(parse_dynamic_cost_modifier_value(tokens)?)
+    let mut candidates = Vec::new();
+    let span = span_from_tokens(tokens);
+    let mut add_candidate = |id: &'static str, value: Option<Value>| {
+        let Some(value) = value else { return };
+        // Independently written grammars can prove the same typed amount.
+        // Semantic identity ignores presentation-only surface hints: equal
+        // unhinted values are one semantic candidate (the first authored
+        // surface wins); unequal values remain an explicit ambiguity
+        // diagnosed by the registry resolver.
+        if candidates
+            .iter()
+            .any(|candidate: &RegistryCandidate<Value>| {
+                candidate.value.unhinted() == value.unhinted()
+            })
+        {
+            return;
+        }
+        candidates.push(RegistryCandidate::new(
+            RegistryRuleMetadata::distinct(RuleId::new(id), HeadDiscriminator::grammar(id)),
+            value,
+            span,
+        ));
+    };
+    add_candidate(
+        "damage-amount-relative-aggregate",
+        parse_equal_to_aggregate_filter_value(tokens),
+    );
+    let object_count = parse_equal_to_number_of_filter_value(tokens);
+    add_candidate("damage-amount-object-count", object_count.clone());
+    add_candidate(
+        "damage-amount-devotion",
+        parse_devotion_value_from_add_clause(tokens)?,
+    );
+    add_candidate(
+        "damage-amount-event-result",
+        shape
+            .amount_is_event_result
+            .then_some(Value::EventValue(EventValueSpec::Amount)),
+    );
+    let fixed_plus_history = parse_fixed_plus_turn_history_value(tokens);
+    // The plain `equal to the number of <filter>` shape and the summed
+    // `equal to <n> plus <history>` shape each own their complete amount
+    // phrase; the dynamic cost-modifier grammar recovers fragments of the
+    // same words (a bare history count, a re-derived filter count bound to
+    // a nearby reference) and therefore covers only what those shapes
+    // cannot prove.
+    if fixed_plus_history.is_none() && object_count.is_none() {
+        add_candidate(
+            "damage-amount-dynamic-cost-modifier",
+            parse_dynamic_cost_modifier_value(tokens)?,
+        );
+    }
+    add_candidate("damage-amount-fixed-plus-turn-history", fixed_plus_history);
+
+    let specific_amount = match resolve_registry_candidates(
+        RuleId::new("damage-equal-amount-registry"),
+        candidates,
+        Vec::new(),
+    ) {
+        ParseOutcome::Match(matched) => Some(matched.value.value),
+        ParseOutcome::NoMatch => None,
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
+    };
+    // The generic equal-to value grammar is an explicit fallback phase. It
+    // cannot compete with a relationship-, aggregate-, event-, devotion-, or
+    // cost-specific amount proven by the registry above.
+    let amount = specific_amount
+        .or_else(|| parse_add_mana_equal_amount_value(tokens))
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing damage amount (clause: '{}')",
@@ -631,10 +731,10 @@ pub fn parse_deal_damage_to_target_equal_to_clause(
 #[path = "combat_verbs_inline_equal_to_damage_surface_tests.rs"]
 mod equal_to_damage_surface_tests;
 
-#[path = "combat_verbs/combat_verbs_object_action_programs.rs"]
+#[path = "combat_verbs/combat_verbs_object_action.rs"]
 mod combat_verbs_object_action_programs;
 pub use combat_verbs_object_action_programs::parse_instead_if_control_predicate;
-#[path = "combat_verbs/combat_verbs_combat_programs.rs"]
+#[path = "combat_verbs/combat_verbs_combat.rs"]
 mod combat_verbs_combat_programs;
 pub use combat_verbs_combat_programs::{
     parse_deal_damage_equal_to_clause, parse_deal_damage_with_amount,

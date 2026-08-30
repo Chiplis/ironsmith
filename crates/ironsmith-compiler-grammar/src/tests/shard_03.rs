@@ -16,14 +16,32 @@ pub(super) fn rewrite_keyword_craft_line_uses_supported_activated_keyword_loweri
     let parsed = super::super::activation_and_restrictions::parse_craft_line_lexed(&tokens)
         .expect("craft line should parse")
         .expect("craft line should produce an activated ability");
-    let debug = format!("{parsed:?}");
-
+    let crate::model::CompilerAbilityKindCore::Activated(activated) = &parsed.ability.kind else {
+        panic!("craft line should lower to an activated ability: {parsed:#?}");
+    };
+    let [
+        crate::model::CompilerCost::Mana(mana),
+        crate::model::CompilerCost::ExileChosen { filter, .. },
+        crate::model::CompilerCost::EmitKeywordAction {
+            kind: crate::events::KeywordActionKind::Craft,
+            amount: 1,
+        },
+        crate::model::CompilerCost::ExileSelf {
+            from_graveyard: false,
+        },
+    ] = activated
+        .mana_cost
+        .as_all()
+        .expect("craft should lower to a typed sequential cost")
+    else {
+        panic!("craft should keep typed mana, material, action, and self-exile costs: {parsed:#?}");
+    };
+    assert_eq!(mana.to_oracle(), "{3}{W}{W}");
     assert!(
-        debug.contains("Activated")
-            && debug.contains("EmitKeywordAction")
-            && debug.contains("Craft")
-            && debug.contains("Craft with artifact {3}{W}{W}"),
-        "{debug}"
+        filter
+            .any_of
+            .iter()
+            .all(|arm| arm.card_types == [CardType::Artifact])
     );
 }
 
@@ -35,14 +53,32 @@ pub(super) fn rewrite_keyword_craft_line_supports_creature_material_clause() {
     let parsed = super::super::activation_and_restrictions::parse_craft_line_lexed(&tokens)
         .expect("craft line should parse")
         .expect("craft line should produce an activated ability");
-    let debug = format!("{parsed:?}");
-
+    let crate::model::CompilerAbilityKindCore::Activated(activated) = &parsed.ability.kind else {
+        panic!("craft line should lower to an activated ability: {parsed:#?}");
+    };
+    let [
+        crate::model::CompilerCost::Mana(mana),
+        crate::model::CompilerCost::ExileChosen { filter, .. },
+        crate::model::CompilerCost::EmitKeywordAction {
+            kind: crate::events::KeywordActionKind::Craft,
+            amount: 1,
+        },
+        crate::model::CompilerCost::ExileSelf {
+            from_graveyard: false,
+        },
+    ] = activated
+        .mana_cost
+        .as_all()
+        .expect("craft should lower to a typed sequential cost")
+    else {
+        panic!("craft should keep typed mana, material, action, and self-exile costs: {parsed:#?}");
+    };
+    assert_eq!(mana.to_oracle(), "{5}{G}{G}");
     assert!(
-        debug.contains("Activated")
-            && debug.contains("EmitKeywordAction")
-            && debug.contains("Craft")
-            && debug.contains("Craft with creature {5}{G}{G}"),
-        "{debug}"
+        filter
+            .any_of
+            .iter()
+            .all(|arm| arm.card_types == [CardType::Creature])
     );
 }
 

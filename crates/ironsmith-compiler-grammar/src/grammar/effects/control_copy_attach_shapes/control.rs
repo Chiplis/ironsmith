@@ -180,7 +180,7 @@ fn counter_duration_type(tokens: &[OwnedLexToken]) -> Option<crate::object::Coun
 #[path = "control_inline_tests.rs"]
 mod tests;
 
-#[path = "control/object_action_programs.rs"]
+#[path = "control/object_action.rs"]
 mod object_action_programs;
 pub use object_action_programs::{
     parse_control_duration_shape, parse_permanent_control_duration_shape,

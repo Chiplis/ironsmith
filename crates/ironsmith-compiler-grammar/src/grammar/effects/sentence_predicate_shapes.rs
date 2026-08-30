@@ -1137,12 +1137,12 @@ fn removed_counters_this_way(tokens: &[OwnedLexToken]) -> bool {
 #[path = "sentence_predicate_shapes/tests.rs"]
 mod tests;
 
-#[path = "sentence_predicate_shapes/object_action_programs.rs"]
+#[path = "sentence_predicate_shapes/object_action.rs"]
 mod object_action_programs;
 pub use object_action_programs::parse_where_x_value_shape_tokens;
-#[path = "sentence_predicate_shapes/counter_programs.rs"]
+#[path = "sentence_predicate_shapes/counter.rs"]
 mod counter_programs;
 use counter_programs::parse_counter_reference_where_lexed;
-#[path = "sentence_predicate_shapes/core_programs.rs"]
+#[path = "sentence_predicate_shapes/core.rs"]
 mod core_programs;
 use core_programs::parse_prior_effect_where_lexed;

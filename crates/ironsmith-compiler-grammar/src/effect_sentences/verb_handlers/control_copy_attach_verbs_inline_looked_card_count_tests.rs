@@ -299,7 +299,7 @@
         assert_eq!(count, ChoiceCount::exactly(1));
         assert!(matches!(
             inner.as_ref(),
-            TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG
+            TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         ));
         assert_eq!(zone, Zone::Hand);
         assert_eq!(destination_player_surface, Some(PlayerAst::You));

@@ -236,7 +236,7 @@ pub fn compile_delayed_trigger_spec(
 /// replacement tied to that spell's stable identity. A counter put directly
 /// on the stack object would be cleared by the later zone change and is not
 /// equivalent to "that creature enters with an additional counter."
-fn rewrite_next_cast_entry_counter_body(
+fn fuse_next_cast_entry_counter_body(
     trigger: &TriggerSpec,
     one_shot: bool,
     effects: &mut [Effect],
@@ -370,7 +370,7 @@ fn split_delayed_prepayment(
     )
 }
 
-fn rewrite_filter_tag_relation(
+fn set_filter_tag_relation(
     filter: &mut ObjectFilter,
     tag: &str,
     from: TaggedOpbjectRelation,
@@ -383,7 +383,7 @@ fn rewrite_filter_tag_relation(
     }
 }
 
-fn rewrite_choose_spec_tag_relation(
+fn set_choose_spec_tag_relation(
     spec: &mut ChooseSpec,
     tag: &str,
     from: TaggedOpbjectRelation,
@@ -394,16 +394,16 @@ fn rewrite_choose_spec_tag_relation(
         | ChooseSpec::Target(spec)
         | ChooseSpec::WithCount(spec, _)
         | ChooseSpec::WithCountValue(spec, _, _) => {
-            rewrite_choose_spec_tag_relation(spec, tag, from, to);
+            set_choose_spec_tag_relation(spec, tag, from, to);
         }
         ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
-            rewrite_filter_tag_relation(filter, tag, from, to);
+            set_filter_tag_relation(filter, tag, from, to);
         }
         _ => {}
     }
 }
 
-fn rewrite_effect_tag_relation(
+fn set_effect_tag_relation(
     effect: Effect,
     tag: &str,
     from: TaggedOpbjectRelation,
@@ -412,7 +412,7 @@ fn rewrite_effect_tag_relation(
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         return Effect::new(crate::effects::TaggedEffect::new(
             tagged.tag.clone(),
-            rewrite_effect_tag_relation((*tagged.effect).clone(), tag, from, to),
+            set_effect_tag_relation((*tagged.effect).clone(), tag, from, to),
         ));
     }
 
@@ -420,8 +420,8 @@ fn rewrite_effect_tag_relation(
         return Effect::new(
             crate::effects::ConditionalEffect::new(
                 conditional.condition.clone(),
-                rewrite_effects_tag_relation(conditional.if_true.clone(), tag, from, to),
-                rewrite_effects_tag_relation(conditional.if_false.clone(), tag, from, to),
+                set_effects_tag_relation(conditional.if_true.clone(), tag, from, to),
+                set_effects_tag_relation(conditional.if_false.clone(), tag, from, to),
             )
             .with_surface(conditional.surface),
         );
@@ -430,10 +430,10 @@ fn rewrite_effect_tag_relation(
     if let Some(apply) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>() {
         let mut rewritten = apply.clone();
         if let crate::continuous::EffectTarget::Filter(filter) = &mut rewritten.target {
-            rewrite_filter_tag_relation(filter, tag, from, to);
+            set_filter_tag_relation(filter, tag, from, to);
         }
         if let Some(spec) = &mut rewritten.target_spec {
-            rewrite_choose_spec_tag_relation(spec, tag, from, to);
+            set_choose_spec_tag_relation(spec, tag, from, to);
         }
         return Effect::new(rewritten);
     }
@@ -441,7 +441,7 @@ fn rewrite_effect_tag_relation(
     effect
 }
 
-fn rewrite_effects_tag_relation(
+fn set_effects_tag_relation(
     effects: Vec<Effect>,
     tag: &str,
     from: TaggedOpbjectRelation,
@@ -449,7 +449,7 @@ fn rewrite_effects_tag_relation(
 ) -> Vec<Effect> {
     effects
         .into_iter()
-        .map(|effect| rewrite_effect_tag_relation(effect, tag, from, to))
+        .map(|effect| set_effect_tag_relation(effect, tag, from, to))
         .collect()
 }
 
@@ -503,7 +503,7 @@ fn compile_duration_scoped_delayed_trigger(
                         .to_string(),
                 )
             })?;
-            watched_tag = Some(TagKey::from(prior_result_tag));
+            watched_tag = Some(prior_result_tag);
             ironsmith_core::DelayedTriggerSpec::ThisEntersBattlefieldWithSurface {
                 surface: crate::target::SourceReferenceSurface::ThisPermanentType(surface.clone()),
                 subject_number: *subject_number,
@@ -819,7 +819,7 @@ pub(super) fn try_compile_timing_and_control_effect(
         } => {
             let (mut delayed_effects, _delayed_choices) =
                 compile_trigger_effects(Some(trigger), effects)?;
-            rewrite_next_cast_entry_counter_body(trigger, *one_shot, &mut delayed_effects);
+            fuse_next_cast_entry_counter_body(trigger, *one_shot, &mut delayed_effects);
             let choices = Vec::new();
             match trigger {
                 TriggerSpec::Dies(filter)
@@ -919,7 +919,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                 | TriggerSpec::PutIntoGraveyardOneOrMore(filter) => {
                     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
                     let watched_tag = watch_tag_from_filter(&resolved_filter).or_else(|| {
-                        filter_references_tag(filter, IT_TAG)
+                        filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
                             .then(|| ctx.last_object_tag.clone())
                             .flatten()
                             .map(TagKey::from)
@@ -965,7 +965,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                 TriggerSpec::Dies(filter) | TriggerSpec::DiesOneOrMore(filter) => {
                     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
                     let watched_tag = watch_tag_from_filter(&resolved_filter).or_else(|| {
-                        filter_references_tag(filter, IT_TAG)
+                        filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
                             .then(|| ctx.last_object_tag.clone())
                             .flatten()
                             .map(TagKey::from)
@@ -1009,7 +1009,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                 TriggerSpec::LeavesBattlefield(filter) => {
                     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
                     let watched_tag = watch_tag_from_filter(&resolved_filter).or_else(|| {
-                        filter_references_tag(filter, IT_TAG)
+                        filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
                             .then(|| crate::tag::CompilerReferenceTag::Targeted0.key())
                     });
                     if let Some(watched_tag) = watched_tag {
@@ -1219,7 +1219,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                 )
             })?;
             let previous_last = ctx.last_object_tag.clone();
-            ctx.last_object_tag = Some("triggering".to_string());
+            ctx.last_object_tag = Some(crate::tag::CompilerReferenceTag::Triggering.key());
             let compiled = compile_effects_preserving_last_effect(effects, ctx);
             ctx.last_object_tag = previous_last;
             let (delayed_effects, choices) = compiled?;
@@ -1247,7 +1247,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                 )
             })?;
             let previous_last = ctx.last_object_tag.clone();
-            ctx.last_object_tag = Some("triggering".to_string());
+            ctx.last_object_tag = Some(crate::tag::CompilerReferenceTag::Triggering.key());
             let compiled = compile_effects_preserving_last_effect(effects, ctx);
             ctx.last_object_tag = previous_last;
             let (delayed_effects, choices) = compiled?;
@@ -1274,13 +1274,6 @@ pub(super) fn try_compile_timing_and_control_effect(
     };
 
     Ok(Some(compiled))
-}
-
-pub(super) fn try_compile_destroy_and_exile_effect(
-    _effect: &EffectAst,
-    _ctx: &mut EffectLoweringContext,
-) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
-    Ok(None)
 }
 
 pub(super) fn try_compile_stack_and_condition_effect(
@@ -1419,7 +1412,10 @@ pub(super) fn try_compile_stack_and_condition_effect(
             let (false_effects, false_choices) = compile_effects(if_false, ctx)?;
             ctx.source_object_antecedent = saved_source_object_antecedent;
             let predicate_references_it = predicate_uses_implicit_object_reference(predicate)
-                || predicate_references_tag(predicate, IT_TAG);
+                || predicate_references_tag(
+                    predicate,
+                    crate::tag::CompilerReferenceTag::It.as_str(),
+                );
 
             let antecedent_choice = if saved_last_tag.is_none() && predicate_references_it {
                 let mut antecedent_choice = None;
@@ -1465,11 +1461,11 @@ pub(super) fn try_compile_stack_and_condition_effect(
             ctx.source_object_antecedent = original_source_object_antecedent;
 
             let true_effects = if matches!(predicate, PredicateAst::ItIsSoulbondPaired)
-                && let Some(reference_tag) = condition_reference_tag.as_deref()
+                && let Some(reference_tag) = condition_reference_tag.as_ref()
             {
-                rewrite_effects_tag_relation(
+                set_effects_tag_relation(
                     true_effects,
-                    reference_tag,
+                    reference_tag.as_str(),
                     TaggedOpbjectRelation::IsTaggedObject,
                     TaggedOpbjectRelation::SoulbondPartnerOfTagged,
                 )
@@ -1521,11 +1517,4 @@ fn predicate_uses_implicit_object_reference(predicate: &PredicateAst) -> bool {
         }
         _ => false,
     }
-}
-
-pub(super) fn try_compile_attachment_and_setup_effect(
-    _effect: &EffectAst,
-    _ctx: &mut EffectLoweringContext,
-) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
-    Ok(None)
 }

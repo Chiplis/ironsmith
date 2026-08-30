@@ -1005,6 +1005,84 @@ fn module_protocol_findings(file: &str, source: &str) -> Vec<(usize, AuditKind, 
             "<module-whole-program-recipe>",
         ));
     }
+    findings.extend(
+        registry_option_protocol_lines(&sanitized)
+            .into_iter()
+            .map(|line| {
+                (
+                    line,
+                    AuditKind::OptionalParserBoundary,
+                    "<registry-option-protocol>",
+                )
+            }),
+    );
+
+    findings
+}
+
+fn registry_option_protocol_lines(source: &str) -> Vec<usize> {
+    let lines = source.lines().collect::<Vec<_>>();
+    let mut findings = Vec::new();
+    let mut index = 0usize;
+    let mut registry_type_depth = None::<usize>;
+    let mut brace_depth = 0usize;
+
+    while index < lines.len() {
+        let line = lines[index];
+        let trimmed = line.trim();
+        if (trimmed.contains("enum ") || trimmed.contains("struct "))
+            && ["Rule", "Registry", "Recognizer", "Handler"]
+                .iter()
+                .any(|marker| trimmed.contains(marker))
+            && trimmed.contains('{')
+        {
+            registry_type_depth = Some(brace_depth + line.matches('{').count());
+        }
+
+        let type_alias = trimmed.contains("type ")
+            && trimmed.contains('=')
+            && [
+                "Rule",
+                "Registry",
+                "Recognizer",
+                "Handler",
+                "Parser",
+                "ParseFn",
+            ]
+            .iter()
+            .any(|marker| trimmed.contains(marker));
+        let stored_function_pointer = registry_type_depth.is_some() && trimmed.contains("fn(");
+        if type_alias || stored_function_pointer {
+            let start = index;
+            let mut declaration = String::new();
+            loop {
+                declaration.push_str(lines[index]);
+                let complete = if type_alias {
+                    lines[index].contains(';')
+                } else {
+                    lines[index].contains(',') || lines[index].contains(';')
+                };
+                if complete || index + 1 == lines.len() {
+                    break;
+                }
+                index += 1;
+            }
+            let compact = declaration
+                .chars()
+                .filter(|character| !character.is_whitespace())
+                .collect::<String>();
+            if compact.contains("Result<Option<") || compact.contains("->Option<") {
+                findings.push(start + 1);
+            }
+        }
+
+        brace_depth += line.matches('{').count();
+        brace_depth = brace_depth.saturating_sub(line.matches('}').count());
+        if registry_type_depth.is_some_and(|depth| brace_depth < depth) {
+            registry_type_depth = None;
+        }
+        index += 1;
+    }
 
     findings
 }
@@ -1033,16 +1111,6 @@ fn classify_parser_protocol(name: &str, body: &str) -> BTreeSet<AuditKind> {
     }
 
     let sanitized = sanitize_source(body);
-    let signature = sanitized
-        .split_once('{')
-        .map_or(sanitized.as_str(), |(head, _)| head);
-    let compact_signature = signature
-        .chars()
-        .filter(|ch| !ch.is_whitespace())
-        .collect::<String>();
-    if compact_signature.contains("->Option<") || compact_signature.contains("Result<Option<") {
-        kinds.insert(AuditKind::OptionalParserBoundary);
-    }
     if sanitized.contains(".ok()") {
         kinds.insert(AuditKind::SilentCandidateFailure);
     }
@@ -1257,12 +1325,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parser_protocol_detection_covers_optional_and_discarded_candidates() {
+    fn parser_protocol_detection_covers_discarded_candidates_only_at_function_level() {
         let kinds = classify_parser_protocol(
             "parse_candidate",
             "fn parse_candidate() -> Result<Option<Value>, Error> { probe().ok(); todo!() }",
         );
-        assert!(kinds.contains(&AuditKind::OptionalParserBoundary));
         assert!(kinds.contains(&AuditKind::SilentCandidateFailure));
         assert!(
             classify_parser_protocol(
@@ -1271,6 +1338,16 @@ mod tests {
             )
             .is_empty()
         );
+    }
+
+    #[test]
+    fn registry_protocol_detection_covers_stored_option_recognizers_only() {
+        let source = r#"
+type RuleFn = fn(&Input) -> Result<Option<Value>, Error>;
+fn parse_optional_element() -> Option<Value> { None }
+enum ParserRule { Structured(fn(&Input) -> Option<Value>) }
+"#;
+        assert_eq!(registry_option_protocol_lines(source), vec![2, 4]);
     }
 
     #[test]

@@ -34,13 +34,13 @@ fn parses_resource_look_shapes() {
     assert!(matches!(count.unhinted(), Value::PowerOf(_)));
 }
 
-#[path = "tests/reference_programs.rs"]
+#[path = "tests/reference.rs"]
 mod reference_programs;
 use reference_programs::parses_all_unspent_mana_resource_shape;
-#[path = "tests/choice_programs.rs"]
+#[path = "tests/choice.rs"]
 mod choice_programs;
 use choice_programs::parses_resource_chosen_name_target_shape;
-#[path = "tests/library_programs.rs"]
+#[path = "tests/library.rs"]
 mod library_programs;
 use library_programs::{
     parses_hyphenated_face_down_look_shapes, parses_resource_shuffle_shapes,

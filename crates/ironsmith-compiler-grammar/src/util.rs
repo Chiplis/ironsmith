@@ -3,9 +3,8 @@ use crate::PtValue;
 use crate::ability::ActivationTiming;
 use crate::cards::TextSpan;
 use crate::cards::builders::{
-    ADDITIONAL_COST_OBJECT_TAG, AdditionalCostChoiceOptionAst, CardTextError, KeywordAction,
-    ParsedAbility, PlayerAst, ReferenceImports, SubjectVerbActionAst, SubjectVerbRoleAst,
-    TargetAst,
+    AdditionalCostChoiceOptionAst, CardTextError, KeywordAction, ParsedAbility, PlayerAst,
+    ReferenceImports, SubjectVerbActionAst, SubjectVerbRoleAst, TargetAst,
 };
 use crate::cost::TotalCost;
 use crate::costs::Cost;
@@ -59,13 +58,6 @@ use super::grammar::targets::parse_target_envelope;
 use super::lexer::lex_line;
 use super::lexer::{OwnedLexToken, TokenKind, render_token_slice};
 use super::token_primitives as shared_tokens;
-const SACRIFICE_COST_TAG_PREFIX: &str = "sacrifice_cost_";
-const EXILE_COST_TAG_PREFIX: &str = "exile_cost_";
-const UNATTACH_COST_TAG_PREFIX: &str = "unattach_cost_";
-const TAP_COST_TAG_PREFIX: &str = "tap_cost_";
-const RETURN_COST_TAG_PREFIX: &str = "return_cost_";
-const DISCARD_COST_TAG_PREFIX: &str = "discard_cost_";
-const DISCARDED_COST_TAG: &str = "discarded_cost";
 #[cfg(test)]
 type SourceReferenceAlias = leaf::LeafSourceReferenceAlias;
 #[cfg(test)]
@@ -187,7 +179,7 @@ pub fn authored_named_source_reference_surface(
 /// otherwise be lost. Requiring exactly one proper-name exile operand and one
 /// plain source-exile action keeps this transport structural and prevents a
 /// name-like ordinary object from being attached to the wrong effect.
-pub fn reconcile_unique_named_source_exile_surface(
+pub fn recognize_unique_named_source_exile_surface(
     effects: &mut [crate::cards::builders::EffectAst],
     authored_tokens: &[OwnedLexToken],
 ) {
@@ -292,7 +284,7 @@ fn unique_named_source_exile_surface_requires_one_authored_name_and_one_source_a
         || crate::cards::builders::EffectAst::subject_verb_exile(TargetAst::Source(None), false);
 
     let mut effects = vec![source_exile()];
-    reconcile_unique_named_source_exile_surface(&mut effects, &authored);
+    recognize_unique_named_source_exile_surface(&mut effects, &authored);
     let [crate::cards::builders::EffectAst::SubjectVerb(effect)] = effects.as_slice() else {
         panic!("expected one source exile: {effects:#?}");
     };
@@ -309,7 +301,7 @@ fn unique_named_source_exile_surface_requires_one_authored_name_and_one_source_a
     );
 
     let mut ambiguous = vec![source_exile(), source_exile()];
-    reconcile_unique_named_source_exile_surface(&mut ambiguous, &authored);
+    recognize_unique_named_source_exile_surface(&mut ambiguous, &authored);
     assert!(ambiguous.iter().all(|effect| {
         matches!(
             effect,
@@ -507,7 +499,6 @@ pub fn possessive_normalized_word_refs<'a>(words: &[&'a str]) -> Vec<&'a str> {
         .collect()
 }
 
-const SENTENCE_HELPER_TAG_PREFIX: &str = "__sentence_helper_";
 pub fn helper_tag_for_tokens(tokens: &[OwnedLexToken], prefix: &str) -> TagKey {
     let span = span_from_tokens(tokens).unwrap_or(TextSpan {
         line: 0,
@@ -515,40 +506,11 @@ pub fn helper_tag_for_tokens(tokens: &[OwnedLexToken], prefix: &str) -> TagKey {
         end: 0,
     });
 
-    TagKey::from(format!(
-        "{SENTENCE_HELPER_TAG_PREFIX}{prefix}_l{}_s{}_e{}",
-        span.line, span.start, span.end
-    ))
+    crate::tag::sentence_helper_tag(prefix, span.line, span.start, span.end)
 }
 
-pub fn is_sentence_helper_tag(tag: &str, prefix: &str) -> bool {
-    let Some(rest) = tag.strip_prefix(SENTENCE_HELPER_TAG_PREFIX) else {
-        return false;
-    };
-    let Some(rest) = rest.strip_prefix(prefix) else {
-        return false;
-    };
-    let Some(rest) = rest.strip_prefix("_l") else {
-        return false;
-    };
-    let mut parts = rest.split("_s");
-    let Some(line) = parts.next() else {
-        return false;
-    };
-    let Some(rest) = parts.next() else {
-        return false;
-    };
-    let mut parts = rest.split("_e");
-    let Some(start) = parts.next() else {
-        return false;
-    };
-    let Some(end) = parts.next() else {
-        return false;
-    };
-    parts.next().is_none()
-        && line.parse::<usize>().is_ok()
-        && start.parse::<usize>().is_ok()
-        && end.parse::<usize>().is_ok()
+pub fn is_sentence_helper_tag(tag: &TagKey, prefix: &str) -> bool {
+    crate::tag::is_sentence_helper_tag(tag, prefix)
 }
 
 pub fn classify_instead_followup_tokens(
@@ -586,7 +548,7 @@ fn compiler_activation_cost_component_reference(
         | CompilerCost::ExileSelf { .. }
         | CompilerCost::ReturnSelfToHand => Some(CompilerActivationCostObjectReference::Source),
         CompilerCost::TapChosen { .. } => {
-            let tag = TagKey::from(format!("{TAP_COST_TAG_PREFIX}{}", counters.tap));
+            let tag = crate::tag::CompilerCostObjectTag::Tap.key(counters.tap);
             counters.tap += 1;
             Some(CompilerActivationCostObjectReference::Tagged(tag))
         }
@@ -606,30 +568,27 @@ fn compiler_activation_cost_component_reference(
             ..
         } => {
             if *random || name.is_some() || *other || filter.is_some() || !supertypes.is_empty() {
-                let tag = TagKey::from(format!("{DISCARD_COST_TAG_PREFIX}{}", counters.discard));
+                let tag = crate::tag::CompilerCostObjectTag::Discard.key(counters.discard);
                 counters.discard += 1;
                 Some(CompilerActivationCostObjectReference::Tagged(tag))
             } else {
-                Some(CompilerActivationCostObjectReference::Tagged(TagKey::from(
-                    DISCARDED_COST_TAG,
-                )))
+                Some(CompilerActivationCostObjectReference::Tagged(
+                    crate::tag::CompilerReferenceTag::DiscardedCost.key(),
+                ))
             }
         }
         CompilerCost::Sacrifice { .. } => {
-            let tag = TagKey::from(format!("{SACRIFICE_COST_TAG_PREFIX}{}", counters.sacrifice));
+            let tag = crate::tag::CompilerCostObjectTag::Sacrifice.key(counters.sacrifice);
             counters.sacrifice += 1;
             Some(CompilerActivationCostObjectReference::Tagged(tag))
         }
         CompilerCost::Unattach { .. } => {
-            let tag = TagKey::from(format!(
-                "{UNATTACH_COST_TAG_PREFIX}{}",
-                counters.return_to_hand
-            ));
+            let tag = crate::tag::CompilerCostObjectTag::Unattach.key(counters.return_to_hand);
             counters.return_to_hand += 1;
             Some(CompilerActivationCostObjectReference::Tagged(tag))
         }
         CompilerCost::ExileChosen { .. } => {
-            let tag = TagKey::from(format!("{EXILE_COST_TAG_PREFIX}{}", counters.exile));
+            let tag = crate::tag::CompilerCostObjectTag::Exile.key(counters.exile);
             counters.exile += 1;
             Some(CompilerActivationCostObjectReference::Tagged(tag))
         }
@@ -637,24 +596,21 @@ fn compiler_activation_cost_component_reference(
             // Materialization emits one source choice followed by the paid
             // object choice. The latter is the authored antecedent.
             counters.exile += 1;
-            let tag = TagKey::from(format!("{EXILE_COST_TAG_PREFIX}{}", counters.exile));
+            let tag = crate::tag::CompilerCostObjectTag::Exile.key(counters.exile);
             counters.exile += 1;
             Some(CompilerActivationCostObjectReference::Tagged(tag))
         }
         CompilerCost::ExileSelfAndNamedArtifacts { names } => {
             let mut reference = Some(CompilerActivationCostObjectReference::Source);
             for _ in names {
-                let tag = TagKey::from(format!("{EXILE_COST_TAG_PREFIX}{}", counters.exile));
+                let tag = crate::tag::CompilerCostObjectTag::Exile.key(counters.exile);
                 counters.exile += 1;
                 reference = Some(CompilerActivationCostObjectReference::Tagged(tag));
             }
             reference
         }
         CompilerCost::ReturnChosenToHand { .. } => {
-            let tag = TagKey::from(format!(
-                "{RETURN_COST_TAG_PREFIX}{}",
-                counters.return_to_hand
-            ));
+            let tag = crate::tag::CompilerCostObjectTag::ReturnToHand.key(counters.return_to_hand);
             counters.return_to_hand += 1;
             Some(CompilerActivationCostObjectReference::Tagged(tag))
         }
@@ -700,10 +656,10 @@ pub fn compiler_activation_cost_reference_imports(
     match compiler_activation_cost_object_reference(cost) {
         Some(CompilerActivationCostObjectReference::Tagged(tag)) => {
             let mut imports = ReferenceImports::with_last_object_tag(tag.clone());
-            if tag_has_prefix(&tag, SACRIFICE_COST_TAG_PREFIX) {
+            if crate::tag::CompilerCostObjectTag::Sacrifice.matches(&tag) {
                 imports.snapshot_tag_aliases.push((
-                    ADDITIONAL_COST_OBJECT_TAG.to_string(),
-                    tag.as_str().to_string(),
+                    crate::tag::CompilerReferenceTag::AdditionalCostObject.key(),
+                    tag,
                 ));
             }
             imports
@@ -1655,7 +1611,8 @@ mod tests {
         assert!(
             !filter.tagged_constraints.iter().any(|constraint| {
                 constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-                    && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                    && constraint.tag.as_str()
+                        == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
             }),
             "explicit exiled-card target should not be source-linked: {filter:?}"
         );
@@ -2227,7 +2184,6 @@ pub fn parse_level_up_line(
     let mana_cost = fact
         .mana_cost
         .ok_or_else(|| CardTextError::ParseError("level up missing mana cost".to_string()))?;
-    let level_up_text = format!("Level up {}", mana_cost.to_oracle());
     Ok(Some(ParsedAbility {
         ability: Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
@@ -2253,7 +2209,6 @@ pub fn parse_level_up_line(
             functional_zones: vec![Zone::Battlefield],
         }
         .into(),
-        text: Some(level_up_text),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,
@@ -2850,9 +2805,6 @@ pub fn parse_reinforce_line(
     let mut merged_costs = base_cost.costs().to_vec();
     merged_costs.push(crate::model::CompilerCost::DiscardSource);
     let mana_cost = ironsmith_core::TotalCost::from_costs(merged_costs);
-    let cost_text = base_mana_cost.to_oracle();
-    let render_text = format!("Reinforce {amount} {cost_text}");
-
     let mut creature_filter = ObjectFilter::default();
     creature_filter.zone = Some(Zone::Battlefield);
     creature_filter.card_types.push(CardType::Creature);
@@ -2886,7 +2838,6 @@ pub fn parse_reinforce_line(
             functional_zones: vec![Zone::Hand],
         }
         .into(),
-        text: Some(render_text),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,

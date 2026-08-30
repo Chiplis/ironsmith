@@ -453,6 +453,9 @@ pub fn parse_or_action_splits_tokens(tokens: &[OwnedLexToken]) -> Vec<OrActionSp
         if inside_quotes
             || comma_belongs_to_card_type_list(tokens, idx)
             || or_belongs_to_card_type_list(tokens, idx)
+            || crate::util::starts_filter_keyword_list_continuation_words(
+                &crate::lexer::parser_token_word_refs(&tokens[idx..]),
+            )
         {
             continue;
         }
@@ -736,13 +739,13 @@ fn comparison_or_delimiter(tokens: &[OwnedLexToken], idx: usize) -> bool {
 #[path = "chain_carry_inline_tests.rs"]
 mod tests;
 
-#[path = "chain_carry/core_programs.rs"]
+#[path = "chain_carry/core.rs"]
 mod core_programs;
 use core_programs::{
     contains_semantic_word, find_semantic_phrase, last_semantic_word, normalize_action_option,
     semantic_finish, semantic_kw, semantic_noise, semantic_phrase,
 };
-#[path = "chain_carry/object_action_programs.rs"]
+#[path = "chain_carry/object_action.rs"]
 mod object_action_programs;
 use object_action_programs::{
     contains_beginning_end_step_tokens, contains_beginning_upkeep_tokens,

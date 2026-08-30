@@ -1628,11 +1628,8 @@ pub fn compile_trigger_effects_with_imports(
     effects: &[EffectAst],
     imports: &ReferenceImports,
 ) -> Result<LoweredEffects, CardTextError> {
-    let prepared = super::rewrite_prepare_effects_with_trigger_context_for_lowering(
-        trigger,
-        effects,
-        imports.clone(),
-    )?;
+    let prepared =
+        super::stage_effects_with_trigger_context_for_lowering(trigger, effects, imports.clone())?;
     super::materialize_prepared_effects_with_trigger_context(&prepared)
 }
 

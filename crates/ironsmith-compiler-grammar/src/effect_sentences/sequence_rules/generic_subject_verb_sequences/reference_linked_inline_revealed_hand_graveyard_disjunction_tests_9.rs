@@ -26,7 +26,7 @@ fn exact_choice_keeps_branch_specific_nonland_and_opponent_constraints() {
     assert_eq!(hand.zone, Some(Zone::Hand));
     assert_eq!(hand.excluded_card_types, [CardType::Land]);
     assert!(hand.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == IT_TAG
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
     assert_eq!(graveyard.zone, Some(Zone::Graveyard));

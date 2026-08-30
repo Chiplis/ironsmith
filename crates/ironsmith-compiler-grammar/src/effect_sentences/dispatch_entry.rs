@@ -33,12 +33,11 @@ use super::{
     trim_edge_punctuation, try_build_unless,
 };
 use crate::cards::builders::{
-    CHOSEN_OBJECTS_TAG, CardTextError, CarryContext, EffectAst, GrantedAbilityAst, IT_TAG,
-    IfResultPredicate, InsteadSemantics, KeywordAction, LibraryBottomOrderAst,
-    LibraryConsultModeAst, LibraryConsultStopRuleAst, PlayerAst, PredicateAst,
-    PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, ReturnControllerAst,
-    SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst,
-    TokenCopyFollowup, ZoneReplacementDurationAst,
+    CardTextError, CarryContext, EffectAst, GrantedAbilityAst, IfResultPredicate, InsteadSemantics,
+    KeywordAction, LibraryBottomOrderAst, LibraryConsultModeAst, LibraryConsultStopRuleAst,
+    PlayerAst, PredicateAst, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
+    ReturnControllerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    SubjectVerbRoleAst, TagKey, TargetAst, TokenCopyFollowup, ZoneReplacementDurationAst,
 };
 use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
 use crate::model::CompilerStaticAbilityCore as StaticAbility;
@@ -147,7 +146,8 @@ fn preserve_revealed_same_mana_value_as_another_iterator(
     };
     let conditional_effects = match iterator {
         EffectAst::ForEachTagged { tag, effects }
-            if tag.as_str() == IT_TAG && !effects.is_empty() =>
+            if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                && !effects.is_empty() =>
         {
             std::mem::take(effects)
         }
@@ -456,7 +456,7 @@ fn summarize_effects(effects: &[EffectAst]) -> String {
         .join(", ")
 }
 
-fn repair_that_object_power_damage_subject(
+fn bind_that_object_power_damage_subject(
     effects: &mut [EffectAst],
     tokens: &[OwnedLexToken],
     previous_damage_target: Option<TargetAst>,
@@ -467,8 +467,13 @@ fn repair_that_object_power_damage_subject(
     }
     let source_target = previous_damage_target
         .or_else(|| effects.iter().find_map(primary_damage_target_from_effect))
-        .unwrap_or_else(|| TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)));
-    fn repair_effect(effect: &mut EffectAst, source_target: &TargetAst) {
+        .unwrap_or_else(|| {
+            TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::It.key(),
+                span_from_tokens(tokens),
+            )
+        });
+    fn bind_source_target_in_effect(effect: &mut EffectAst, source_target: &TargetAst) {
         if let EffectAst::SubjectVerb(subject_verb) = effect {
             match &subject_verb.action {
                 SubjectVerbActionAst::DealDamage {
@@ -491,7 +496,7 @@ fn repair_that_object_power_damage_subject(
                     target,
                     unpreventable,
                 } if (matches!(source, TargetAst::Source(_))
-                    || matches!(source, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG))
+                    || matches!(source, TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()))
                     && matches!(target, TargetAst::Source(_)) =>
                 {
                     subject_verb.action = SubjectVerbActionAst::DealDamageEqualToPower {
@@ -507,17 +512,17 @@ fn repair_that_object_power_damage_subject(
 
         for_each_nested_effects_mut(effect, true, |nested| {
             for nested_effect in nested {
-                repair_effect(nested_effect, source_target);
+                bind_source_target_in_effect(nested_effect, source_target);
             }
         });
     }
 
     for effect in effects {
-        repair_effect(effect, &source_target);
+        bind_source_target_in_effect(effect, &source_target);
     }
 }
 
-fn repair_target_controlled_source_damage_to_that_player(
+fn bind_target_controlled_source_damage_to_that_player(
     effects: &mut [EffectAst],
     tokens: &[OwnedLexToken],
 ) {
@@ -917,7 +922,7 @@ fn future_zone_replacement_counters(
 }
 
 pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
-    let target = || TargetAst::Tagged(TagKey::from(IT_TAG), None);
+    let target = || TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None);
     if tokens.first().is_some_and(|token| token.is_word("if"))
         && sentence_contains(tokens, WOULD_LEAVE_THE_BATTLEFIELD_PHRASE)
         && sentence_contains(tokens, EXILE_PHRASE)
@@ -1034,7 +1039,10 @@ pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) ->
             TargetAst::Object(
                 ObjectFilter::creature()
                     .controlled_by(PlayerFilter::Opponent)
-                    .match_tagged(IT_TAG, TaggedOpbjectRelation::IsTaggedObject),
+                    .match_tagged(
+                        crate::tag::CompilerReferenceTag::It.key(),
+                        TaggedOpbjectRelation::IsTaggedObject,
+                    ),
                 None,
                 None,
             )
@@ -1168,7 +1176,7 @@ fn damage_regeneration_exile_followup_from_sentence_tokens(
 ) -> Option<Vec<EffectAst>> {
     let shape = effect_grammar::followup_shapes::parse_damage_regeneration_exile_followup(tokens)?;
     let replacement = future_zone_replacement_from_sentence_tokens(tokens)?;
-    let tagged_target = TagKey::from(IT_TAG);
+    let tagged_target = crate::tag::CompilerReferenceTag::It.key();
     let regeneration_filter = ObjectFilter::creature()
         .match_tagged(tagged_target.clone(), TaggedOpbjectRelation::IsTaggedObject);
     let cant_regenerate = EffectAst::subject_verb_cant(
@@ -1494,7 +1502,7 @@ fn append_reexile_returned_objects_if_missing(effects: &mut Vec<EffectAst>) {
     }
 
     effects.push(EffectAst::subject_verb_exile(
-        TargetAst::Tagged(TagKey::from(IT_TAG), None),
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
         false,
     ));
 }
@@ -1509,7 +1517,7 @@ fn effect_is_life_loss(effect: &EffectAst) -> bool {
     )
 }
 
-fn maybe_repair_that_player_gain_control_if_do_rewards(
+fn maybe_bind_that_player_gain_control_if_do_rewards(
     effects: &mut Vec<EffectAst>,
     tokens: &[OwnedLexToken],
 ) {
@@ -1898,8 +1906,6 @@ fn parse_effect_sentences_from_sentence_inputs(
         sentence_tokens: &[OwnedLexToken],
         effects: &mut Vec<EffectAst>,
     ) {
-        const PLURAL_ANTECEDENT_ALIAS: &str = "plural_antecedent_cards";
-
         let sentence_words = crate::lexer::parser_token_word_refs(sentence_tokens);
         if !crate::word_primitives::sequence_occurs(&sentence_words, &["among", "those", "cards"]) {
             return;
@@ -1926,7 +1932,7 @@ fn parse_effect_sentences_from_sentence_inputs(
 
             let mut rebound = false;
             for constraint in &mut filter.tagged_constraints {
-                if constraint.tag.as_str() == IT_TAG {
+                if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                     constraint.tag = alias.clone();
                     rebound = true;
                 }
@@ -1951,7 +1957,7 @@ fn parse_effect_sentences_from_sentence_inputs(
             rebound
         }
 
-        let alias = TagKey::from(PLURAL_ANTECEDENT_ALIAS);
+        let alias = crate::tag::CompilerReferenceTag::PluralAntecedentCards.key();
         let rebound = effects.iter_mut().fold(false, |rebound, effect| {
             rebound | bind_effect(effect, &alias)
         });
@@ -2034,7 +2040,7 @@ fn parse_effect_sentences_from_sentence_inputs(
         let Some(keyword) = parse_single_word_keyword_action(shape.ability_word) else {
             return Ok(None);
         };
-        let target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
+        let target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None);
         let mut effects = Vec::new();
         if !shape.colors.is_empty() {
             effects.push(EffectAst::subject_verb_add_colors(
@@ -2100,7 +2106,10 @@ fn parse_effect_sentences_from_sentence_inputs(
             ));
         }
 
-        let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens));
+        let target = TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+            span_from_tokens(tokens),
+        );
         let mut effects = vec![EffectAst::subject_verb_set_card_types(
             target.clone(),
             shape.card_types,
@@ -2212,10 +2221,10 @@ fn parse_effect_sentences_from_sentence_inputs(
             continue;
         }
         // A complete target declaration can contain a historical `put`
-        // relative clause. The outer single-sentence entrypoint gives that
-        // declaration first refusal, but a multi-sentence program reaches
-        // this loop directly. Apply the same typed proof here so the embedded
-        // history verb cannot be reinterpreted as a second zone-change action.
+        // relative clause. A multi-sentence program reaches this loop without
+        // the outer single-sentence boundary, so apply the same typed ownership
+        // proof here. The embedded history verb is then part of the target
+        // declaration rather than a second zone-change action.
         if let Some(declarations) =
             super::clause_pattern_helpers::parse_choose_target_prelude_sentence(authored_sentence)?
         {
@@ -2827,12 +2836,12 @@ fn parse_effect_sentences_from_sentence_inputs(
         maybe_append_trailing_that_much_life_loss(&mut sentence_effects, &parse_plan.tokens);
         maybe_append_reexile_returned_objects(&mut sentence_effects, &parse_plan.tokens);
         let previous_damage_target = effects.last().and_then(primary_damage_target_from_effect);
-        repair_that_object_power_damage_subject(
+        bind_that_object_power_damage_subject(
             &mut sentence_effects,
             &sentence_tokens,
             previous_damage_target,
         );
-        repair_target_controlled_source_damage_to_that_player(
+        bind_target_controlled_source_damage_to_that_player(
             &mut sentence_effects,
             &sentence_tokens,
         );
@@ -2936,20 +2945,21 @@ fn parse_effect_sentences_from_sentence_inputs(
                 effects: &mut effects,
                 carried_context: &mut carried_context,
             };
-            if let Some(PostParseFollowupResult::Handled { consumed_sentences }) =
-                run_post_parse_followup_registry(
-                    &mut state,
-                    &sentences,
-                    sentence_idx,
-                    &sentence_tokens,
-                    &mut sentence_effects,
-                )?
-            {
-                parse_trace::event(format!(
-                    "post-parse followup handled sentence(s): {consumed_sentences}"
-                ));
-                sentence_idx += consumed_sentences;
-                continue;
+            match run_post_parse_followup_registry(
+                &mut state,
+                &sentences,
+                sentence_idx,
+                &sentence_tokens,
+                &mut sentence_effects,
+            )? {
+                Some(PostParseFollowupResult::Handled { consumed_sentences }) => {
+                    parse_trace::event(format!(
+                        "post-parse followup handled sentence(s): {consumed_sentences}"
+                    ));
+                    sentence_idx += consumed_sentences;
+                    continue;
+                }
+                Some(PostParseFollowupResult::Annotated) | None => {}
             }
         }
         scope_partitioned_prior_metric_followup(
@@ -3420,6 +3430,11 @@ fn parse_complete_simple_draw_sentence(
     if super::lex_chain_helpers::has_authored_comma_then_surface_lexed(tokens)
         || super::lex_chain_helpers::split_segments_on_comma_then_lexed(vec![tokens]).len() > 1
         || super::lex_chain_helpers::split_effect_chain_on_and_lexed(tokens).len() > 1
+        // A comma-separated sibling action ("draw two cards, lose 2 life")
+        // continues the chain; this shortcut owns only a single draw
+        // sentence, and its trailing-clause grammar cannot read that action.
+        || super::lex_chain_helpers::split_segments_on_comma_effect_head_lexed(vec![tokens]).len()
+            > 1
     {
         return Ok(None);
     }
@@ -3463,6 +3478,12 @@ pub(crate) fn parse_complete_simple_subject_verb_sentence(
     if super::lex_chain_helpers::has_authored_comma_then_surface_lexed(tokens)
         || super::lex_chain_helpers::split_segments_on_comma_then_lexed(vec![tokens]).len() > 1
         || super::lex_chain_helpers::split_effect_chain_on_and_lexed(tokens).len() > 1
+        // A comma-separated sibling action ("gain 2 life, draw two cards")
+        // continues the chain; these shortcuts own only a single-action
+        // sentence and would feed the later action to the first verb's
+        // trailing-clause grammar.
+        || super::lex_chain_helpers::split_segments_on_comma_effect_head_lexed(vec![tokens]).len()
+            > 1
     {
         return Ok(None);
     }
@@ -3480,6 +3501,11 @@ pub(crate) fn parse_complete_simple_subject_verb_sentence(
         .iter()
         .any(|token| token.kind == TokenKind::Comma)
     {
+        return Ok(None);
+    }
+    if tokens[..gain_idx].iter().any(|token| token.is_word("may")) {
+        // An optional action keeps its `may` scope; the may-aware chain
+        // routes own the wrapper.
         return Ok(None);
     }
     let subject = if gain_idx == 0 {
@@ -3594,14 +3620,14 @@ fn push_simple_controlled_object_choice(effects: &mut Vec<EffectAst>, card_type:
         count: ChoiceCount::exactly(1),
         count_value: None,
         player: PlayerAst::You,
-        tag: TagKey::from(CHOSEN_OBJECTS_TAG),
+        tag: crate::tag::CompilerReferenceTag::ChosenObjects.key(),
     });
 }
 
 fn push_plain_iterated_copy_of_it(effects: &mut Vec<EffectAst>) {
     effects.push(EffectAst::subject_verb_become_copy(
-        TargetAst::Tagged(TagKey::from(IT_TAG), None),
-        TargetAst::Tagged(TagKey::from(IT_TAG), None),
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
         Until::EndOfTurn,
         false,
         None,
@@ -3797,12 +3823,10 @@ fn build_complete_simple_otherwise_face_down_exile_top(
 ) -> Vec<EffectAst> {
     let mut nested = Vec::with_capacity(1);
     push_complete_simple_face_down_exile_top(&mut nested, exile_tokens, count);
-    let mut effects = Vec::with_capacity(1);
-    effects.push(EffectAst::IfResult {
+    vec![EffectAst::IfResult {
         predicate: IfResultPredicate::Otherwise,
         effects: nested,
-    });
-    effects
+    }]
 }
 
 fn secret_choices_match_conditional_source_type(tokens: &[OwnedLexToken]) -> Option<&str> {
@@ -3849,25 +3873,24 @@ fn push_secret_choices_match_sacrifice(
     members: &mut Vec<crate::model::CoordinationMemberAst>,
     source_type: &str,
 ) {
-    let mut effects = Vec::with_capacity(1);
-    effects.push(EffectAst::subject_verb_sacrifice(
+    let effects = vec![EffectAst::subject_verb_sacrifice(
         PlayerAst::You,
         ObjectFilter::source_with_surface(SourceReferenceSurface::ThisPermanentType(format!(
             "this {source_type}"
         ))),
         1,
         None,
-    ));
+    )];
     members.push(crate::model::CoordinationMemberAst::new(effects));
 }
 
 fn push_secret_choices_match_return(members: &mut Vec<crate::model::CoordinationMemberAst>) {
     let mut source_exiled =
-        ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile);
+        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.key())
+            .in_zone(Zone::Exile);
     source_exiled.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::All));
     source_exiled.set_explicit_card_noun(true);
-    let mut effects = Vec::with_capacity(1);
-    effects.push(
+    let effects = vec![
         EffectAst::subject_verb_move_all_to_zone(
             TargetAst::Object(source_exiled, None, None),
             Zone::Hand,
@@ -3877,7 +3900,7 @@ fn push_secret_choices_match_return(members: &mut Vec<crate::model::Coordination
             None,
         )
         .with_move_to_zone_actor_surface(PlayerAst::You),
-    );
+    ];
     members.push(crate::model::CoordinationMemberAst::new(effects));
 }
 
@@ -3885,8 +3908,7 @@ fn build_secret_choices_match_conditional(source_type: &str) -> EffectAst {
     let mut members = Vec::with_capacity(2);
     push_secret_choices_match_sacrifice(&mut members, source_type);
     push_secret_choices_match_return(&mut members);
-    let mut if_true = Vec::with_capacity(1);
-    if_true.push(EffectAst::Coordination(crate::model::CoordinationAst {
+    let if_true = vec![EffectAst::Coordination(crate::model::CoordinationAst {
         kind: crate::model::CoordinationKindAst::Carry,
         members,
         boundaries: vec![crate::model::CoordinationBoundaryAst {
@@ -3897,7 +3919,7 @@ fn build_secret_choices_match_conditional(source_type: &str) -> EffectAst {
             provenance: None,
         }],
         provenance: None,
-    }));
+    })];
     EffectAst::Conditional {
         predicate: PredicateAst::SecretChoicesMatch,
         if_true,
@@ -3906,9 +3928,7 @@ fn build_secret_choices_match_conditional(source_type: &str) -> EffectAst {
 }
 
 fn build_secret_choices_match_conditional_effects(source_type: &str) -> Vec<EffectAst> {
-    let mut effects = Vec::with_capacity(1);
-    effects.push(build_secret_choices_match_conditional(source_type));
-    effects
+    vec![build_secret_choices_match_conditional(source_type)]
 }
 
 fn parse_complete_serial_create_statement(
@@ -3980,6 +4000,21 @@ fn parse_complete_serial_create_statement(
 pub(crate) fn parse_complete_create_statement(
     sentence: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    {
+        let sentences = crate::lexer::split_lexed_sentences(sentence);
+        if sentences.len() > 1
+            && sentences.first().is_some_and(|first| {
+                !first
+                    .iter()
+                    .any(|token| token.is_any_word(&["create", "creates"]))
+            })
+        {
+            // The complete create program owns lines that begin with the
+            // creation (optionally followed by quoted token rules). A leading
+            // unrelated resolution sentence belongs to sentence dispatch.
+            return Ok(None);
+        }
+    }
     if crate::lexer::split_lexed_sentences(sentence).len() == 1
         && let Some(participant) =
             effect_grammar::for_each_shapes::parse_participant_clause_shape(sentence)
@@ -4041,6 +4076,17 @@ pub(crate) fn parse_complete_create_statement(
                 // program to the sentence planner so it can bind the tagged
                 // followup while preserving its authored duration.
                 return Ok(None);
+            }
+            // Eldrazi Spawn/Scion tokens carry their mana ability in the
+            // token blueprint, so the authored restatement adds nothing. The
+            // followup registry treats it as a no-op; this fast path must
+            // agree, or the ability is appended a second time as a grant.
+            if crate::activation_and_restrictions::is_spawn_scion_token_mana_reminder(followup)
+                && effects.last().is_some_and(
+                    crate::activation_and_restrictions::effect_creates_eldrazi_spawn_or_scion,
+                )
+            {
+                continue;
             }
             // A complete create statement may absorb only grammar-proven
             // token reminder sentences. Conditional `create ... instead`
@@ -4174,7 +4220,12 @@ fn parse_complete_get_pump_statement(
         || sentence[..verb_idx]
             .iter()
             .any(|token| token.kind == TokenKind::Comma)
+        || sentence[..verb_idx]
+            .iter()
+            .any(|token| token.is_word("may"))
     {
+        // An optional pump keeps its `may` scope; the may-aware chain routes
+        // own the wrapper.
         return Ok(None);
     }
     super::clause_dispatch::parse_get_pump_clause(
@@ -4271,12 +4322,11 @@ fn parse_independent_typed_statement(
     {
         return Ok(Some(effects));
     }
-    if effect_grammar::clause_dispatch_shapes::parse_leading_may_shape(sentence).is_none() {
-        if let Some(effect) =
+    if effect_grammar::clause_dispatch_shapes::parse_leading_may_shape(sentence).is_none()
+        && let Some(effect) =
             super::clause_primitives::parse_deal_damage_equal_to_power_clause(sentence)?
-        {
-            return Ok(Some(vec![effect]));
-        }
+    {
+        return Ok(Some(vec![effect]));
     }
     if let Some(effects) =
         super::fanout_family::parse_serial_target_pt_modifiers_sentence(sentence)?
@@ -4789,11 +4839,11 @@ fn parse_composable_typed_statements(
             preserve_source_sentence_boundary(&mut effects, sentence_start, sentence, is_document);
             continue;
         }
-        let statement_tokens = sentence
-            .first()
-            .is_some_and(|token| token.is_word("then"))
-            .then_some(&sentence[1..])
-            .unwrap_or(sentence);
+        let statement_tokens = if sentence.first().is_some_and(|token| token.is_word("then")) {
+            &sentence[1..]
+        } else {
+            sentence
+        };
         let statement_words = crate::lexer::parser_token_word_refs(statement_tokens);
         if statement_words.first() == Some(&"put")
             && crate::word_primitives::sequence_occurs(&statement_words, &["counter"])
@@ -4865,7 +4915,9 @@ fn parse_composable_typed_statements(
                     effects: vec![base_effect],
                 })
             } else if is_document {
-                super::zone_counter_helpers::parse_put_counters(statement_tokens).ok()
+                Some(super::zone_counter_helpers::parse_put_counters(
+                    statement_tokens,
+                )?)
             } else {
                 None
             };
@@ -4886,11 +4938,11 @@ fn parse_composable_typed_statements(
             continue;
         }
         if is_document {
-            let fight_tokens = sentence
-                .first()
-                .is_some_and(|token| token.is_word("then"))
-                .then_some(&sentence[1..])
-                .unwrap_or(sentence);
+            let fight_tokens = if sentence.first().is_some_and(|token| token.is_word("then")) {
+                &sentence[1..]
+            } else {
+                sentence
+            };
             if let Some(effect) = super::clause_primitives::parse_fight_clause(fight_tokens)? {
                 effects.push(effect);
                 preserve_source_sentence_boundary(
@@ -5331,6 +5383,10 @@ fn parse_effect_sentences_lexed_after_direct(
         && let Some(shape) =
             effect_grammar::gain_ability_shapes::parse_simple_gain_ability_shape(tokens)
         && shape.complete
+        && !crate::word_primitives::sequence_occurs(
+            &crate::lexer::parser_token_word_refs(tokens),
+            &["as", "long", "as"],
+        )
         && super::lex_chain_helpers::split_effect_chain_on_and_lexed(tokens).len() == 1
         && super::lex_chain_helpers::split_segments_on_comma_then_lexed(vec![tokens]).len() == 1
         && let Some(effects) = super::gain_ability::parse_gain_ability_sentence(tokens)?
@@ -6255,7 +6311,7 @@ mod quoted_token_coin_flip_outcome_tests {
             ),
             "{public:#?}"
         );
-        let prepared = crate::lowering_support::rewrite_prepare_effects_for_lowering(
+        let prepared = crate::lowering_support::stage_effects_for_lowering(
             &public,
             crate::cards::builders::ReferenceImports::default(),
         )
@@ -6381,7 +6437,7 @@ fn parse_reveal_hand_then_put_same_name_as_permanent(
             if_true: vec![EffectAst::ForEachTagged {
                 tag: selected_tag,
                 effects: vec![EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
                     Zone::Battlefield,
                     false,
                     ReturnControllerAst::Preserve,
@@ -6587,7 +6643,7 @@ fn direct_all_object_filter_mut(effect: &mut EffectAst) -> Option<&mut ObjectFil
 
 fn filter_has_linked_it_constraint(filter: &ObjectFilter) -> bool {
     filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag.as_str() == IT_TAG
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             && matches!(
                 constraint.relation,
                 TaggedOpbjectRelation::SameNameAsTagged
@@ -6600,7 +6656,7 @@ fn filter_has_it_reference(filter: &ObjectFilter) -> bool {
     filter
         .tagged_constraints
         .iter()
-        .any(|constraint| constraint.tag.as_str() == IT_TAG)
+        .any(|constraint| constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
 }
 
 fn linked_fanout_group_tag(effect: &EffectAst) -> Option<TagKey> {
@@ -6625,7 +6681,7 @@ fn linked_fanout_group_tag(effect: &EffectAst) -> Option<TagKey> {
 fn retag_linked_fanout_followup(effect: &mut EffectAst, group: &TagKey) {
     if let Some(filter) = direct_all_object_filter_mut(effect) {
         for constraint in &mut filter.tagged_constraints {
-            if constraint.tag.as_str() == IT_TAG {
+            if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                 constraint.tag = group.clone();
             }
         }
@@ -6682,7 +6738,7 @@ fn preserve_linked_target_fanout_group(tokens: &[OwnedLexToken], effects: &mut V
         };
         let excludes_primary = linked_filter.other
             || linked_filter.tagged_constraints.iter().any(|constraint| {
-                constraint.tag.as_str() == IT_TAG
+                constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                     && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
             });
         if !filter_has_linked_it_constraint(linked_filter) || !excludes_primary {
@@ -6701,13 +6757,13 @@ fn preserve_linked_target_fanout_group(tokens: &[OwnedLexToken], effects: &mut V
             trailing_filter
                 .tagged_constraints
                 .push(TaggedObjectConstraint {
-                    tag: TagKey::from(IT_TAG),
+                    tag: crate::tag::CompilerReferenceTag::It.key(),
                     relation: TaggedOpbjectRelation::SameNameAsTagged,
                 });
         }
 
-        let primary_alias = TagKey::from(format!("linked_fanout_primary_{first_idx}"));
-        let group_alias = TagKey::from(format!("linked_fanout_group_{first_idx}"));
+        let primary_alias = crate::tag::CompilerIndexedTag::LinkedFanoutPrimary.key(first_idx);
+        let group_alias = crate::tag::CompilerIndexedTag::LinkedFanoutGroup.key(first_idx);
 
         // Give the explicit target a real runtime tag before the linked
         // fanout is lowered. A lowering-only snapshot cannot safely back
@@ -6733,7 +6789,7 @@ fn preserve_linked_target_fanout_group(tokens: &[OwnedLexToken], effects: &mut V
             .retain(|constraint| constraint.relation != TaggedOpbjectRelation::IsNotTaggedObject);
         related_filter.other = false;
         for constraint in &mut related_filter.tagged_constraints {
-            if constraint.tag.as_str() == IT_TAG {
+            if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                 constraint.tag = primary_alias.clone();
             }
         }
@@ -6763,7 +6819,7 @@ fn preserve_linked_target_fanout_group(tokens: &[OwnedLexToken], effects: &mut V
         for effect in &mut effects[second_idx + 1..] {
             if let Some(filter) = direct_all_object_filter_mut(effect) {
                 for constraint in &mut filter.tagged_constraints {
-                    if constraint.tag.as_str() == IT_TAG {
+                    if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                         constraint.tag = group_alias.clone();
                     }
                 }
@@ -6863,7 +6919,7 @@ fn preserve_linked_target_fanout_group_across_coordination(
         };
         let excludes_primary = linked_filter.other
             || linked_filter.tagged_constraints.iter().any(|constraint| {
-                constraint.tag.as_str() == IT_TAG
+                constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                     && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
             });
         if !filter_has_linked_it_constraint(linked_filter) || !excludes_primary {
@@ -6880,7 +6936,7 @@ fn preserve_linked_target_fanout_group_across_coordination(
                         trailing_filter
                             .tagged_constraints
                             .push(TaggedObjectConstraint {
-                                tag: TagKey::from(IT_TAG),
+                                tag: crate::tag::CompilerReferenceTag::It.key(),
                                 relation: TaggedOpbjectRelation::SameNameAsTagged,
                             });
                     }
@@ -6889,8 +6945,9 @@ fn preserve_linked_target_fanout_group_across_coordination(
             }
         }
 
-        let primary_alias = TagKey::from(format!("linked_fanout_primary_{first_member_idx}"));
-        let group_alias = TagKey::from(format!("linked_fanout_group_{first_member_idx}"));
+        let primary_alias =
+            crate::tag::CompilerIndexedTag::LinkedFanoutPrimary.key(first_member_idx);
+        let group_alias = crate::tag::CompilerIndexedTag::LinkedFanoutGroup.key(first_member_idx);
 
         let primary = coordination.members[first_member_idx]
             .effects
@@ -6916,7 +6973,7 @@ fn preserve_linked_target_fanout_group_across_coordination(
             .retain(|constraint| constraint.relation != TaggedOpbjectRelation::IsNotTaggedObject);
         related_filter.other = false;
         for constraint in &mut related_filter.tagged_constraints {
-            if constraint.tag.as_str() == IT_TAG {
+            if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                 constraint.tag = primary_alias.clone();
             }
         }
@@ -6967,8 +7024,6 @@ fn preserve_tapped_this_way_group_for_later_distribution(
     tokens: &[OwnedLexToken],
     effects: &mut Vec<EffectAst>,
 ) {
-    const TAPPED_GROUP_ALIAS: &str = "tapped_this_way_group";
-
     let words = crate::lexer::token_word_refs(tokens);
     if !crate::word_primitives::sequence_occurs(&words, &["tapped", "this", "way"])
         || !crate::word_primitives::sequence_occurs(&words, &["any", "number", "of", "those"])
@@ -7000,7 +7055,7 @@ fn preserve_tapped_this_way_group_for_later_distribution(
         return;
     };
 
-    let alias = TagKey::from(TAPPED_GROUP_ALIAS);
+    let alias = crate::tag::CompilerReferenceTag::TappedThisWayGroup.key();
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action: SubjectVerbActionAst::DealDistributedDamage { target, .. },
         ..
@@ -7010,7 +7065,8 @@ fn preserve_tapped_this_way_group_for_later_distribution(
             match target {
                 TargetAst::Object(filter, _, _) => {
                     for constraint in &mut filter.tagged_constraints {
-                        if constraint.tag.as_str() == IT_TAG {
+                        if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                        {
                             constraint.tag = alias.clone();
                         }
                     }
@@ -7322,6 +7378,21 @@ fn parse_effect_sentences_lexed_inner(
     }
     if effect_grammar::sentence_predicate_shapes::parse_quoted_ability_sentence_tokens(tokens)
         .is_some()
+        && {
+            // Count sentence boundaries only before the first quote: nested
+            // quoted abilities legitimately contain their own periods, but a
+            // resolution sentence ahead of the grant must reach ordinary
+            // sentence dispatch.
+            let first_quote = tokens
+                .iter()
+                .position(|token| token.kind == TokenKind::Quote)
+                .unwrap_or(tokens.len());
+            crate::lexer::split_lexed_sentences(&tokens[..first_quote]).len() <= 1
+        }
+        && !crate::word_primitives::sequence_occurs(
+            &crate::lexer::parser_token_word_refs(tokens),
+            &["as", "long", "as"],
+        )
         && effect_grammar::delayed_sentence_shapes::parse_delayed_this_turn_shape(tokens).is_none()
         && super::lex_chain_helpers::split_effect_chain_on_and_lexed(tokens).len() == 1
         && super::lex_chain_helpers::split_segments_on_comma_then_lexed(vec![tokens]).len() == 1
@@ -7401,8 +7472,9 @@ fn dispatch_effect_sentences_lexed_inner_remaining(
         return Ok(effects);
     }
 
-    // The full as-though permission must win before the broad `spells ... have
-    // shroud` gain-ability route can reinterpret the source/controller words.
+    // The targeting-relation classifier owns this complete as-though
+    // permission. Gain-ability grammar explicitly rejects this domain, so
+    // the ignored ability cannot be reinterpreted as an ability grant.
     if let Some(effect) = super::clause_dispatch::parse_hexproof_targeting_override_clause(tokens)?
     {
         return Ok(vec![effect]);
@@ -7677,19 +7749,6 @@ fn dispatch_effect_sentences_lexed_inner_remaining(
         return Ok(vec![effect]);
     }
 
-    // Complete effect bodies enter here before the direct single-sentence
-    // dispatcher. Give a grammar-proven mixed action/restriction conjunction
-    // its coordinated route before tolerant whole-body probes can fold the
-    // affirmative arm into the restriction's subject filter.
-    if sentence_parts.len() == 1
-        && let Some(effects) =
-            super::dispatch_inner::parse_fully_typed_mixed_restriction_action_chain(tokens)?
-    {
-        return Ok(super::preserve_coordinated_effect_chain_surface(
-            tokens, effects,
-        ));
-    }
-
     if let Some(effect) = super::zone_handlers::parse_quoted_emblem_then_action(tokens) {
         return Ok(vec![effect]);
     }
@@ -7772,8 +7831,10 @@ fn dispatch_effect_sentences_lexed_inner_remaining(
     // Keep the hand/graveyard/permanents-to-library bundle intact.  Generic
     // comma splitting can otherwise hand the resource verb only `your hand,
     // your graveyard`, losing the destination and the owned-permanents part.
-    if let Some(effects) =
-        super::search_library::parse_shuffle_graveyard_into_library_sentence(tokens)?
+    // An optional shuffle keeps its `may` scope through the may-aware routes.
+    if super::chain_carry::parse_leading_player_may_lexed(tokens).is_none()
+        && let Some(effects) =
+            super::search_library::parse_shuffle_graveyard_into_library_sentence(tokens)?
     {
         return Ok(effects);
     }
@@ -7788,7 +7849,7 @@ fn dispatch_effect_sentences_lexed_inner_remaining(
     let mut effects = parse_effect_sentences_from_sentence_inputs(sentences)?;
     group_this_way_copy_cast_followups(tokens, &mut effects);
     apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
-    maybe_repair_that_player_gain_control_if_do_rewards(&mut effects, tokens);
+    maybe_bind_that_player_gain_control_if_do_rewards(&mut effects, tokens);
     Ok(effects)
 }
 
@@ -7972,7 +8033,7 @@ fn parse_restart_game_sentence(
     let mut filter = super::parse_object_filter(&object_tokens, false)?;
     filter.zone = Some(Zone::Exile);
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+        tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
 
@@ -8202,10 +8263,10 @@ pub fn apply_cant_be_regenerated_to_last_target_effect(effects: &mut Vec<EffectA
     if !filter
         .tagged_constraints
         .iter()
-        .any(|constraint| constraint.tag.as_str() == IT_TAG)
+        .any(|constraint| constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
     {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from(IT_TAG),
+            tag: crate::tag::CompilerReferenceTag::It.key(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }
@@ -9212,7 +9273,8 @@ mod tests {
             filter
                 .tagged_constraints
                 .iter()
-                .any(|constraint| constraint.tag.as_str() == crate::cards::builders::IT_TAG),
+                .any(|constraint| constraint.tag.as_str()
+                    == crate::tag::CompilerReferenceTag::It.as_str()),
             "the definite creature should reference the established object\n{debug}"
         );
     }
@@ -9295,7 +9357,7 @@ mod tests {
                 .contains(&crate::types::Subtype::Aura)
         );
         assert!(filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
         }));
         assert_eq!(source_surface, "Karn");
@@ -10603,7 +10665,7 @@ mod tests {
                 else {
                     panic!("expected creature gate for {text:?}: {parsed:#?}");
                 };
-                assert_eq!(tag.as_str(), crate::cards::builders::IT_TAG);
+                assert_eq!(tag.as_str(), crate::tag::CompilerReferenceTag::It.as_str());
                 assert_eq!(filter, &crate::target::ObjectFilter::creature());
             }
             assert!(if_false.is_empty());
@@ -11276,7 +11338,8 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 | Value::ToughnessOf(spec)
                 | Value::ManaValueOf(spec)
                 | Value::CountersOn(spec, _) => {
-                    if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG) {
+                    if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
+                    {
                         *spec = Box::new(ChooseSpec::Source.with_surface_hint(
                             ironsmith_core::ChooseSpecSurfaceHint::SourceReference(
                                 SourceReferenceSurface::ThisPermanentType("it".to_string()),
@@ -11806,7 +11869,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 target, abilities, ..
             } => {
                 let rebase_it_to_ability_source =
-                    matches!(target, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG);
+                    matches!(target, TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str());
                 replace_values_in_granted_abilities(
                     abilities,
                     replacement,
@@ -11933,9 +11996,9 @@ pub fn target_has_authored_it_qualification(target: &TargetAst) -> bool {
         }
         TargetAst::Object(filter, _, _) if target_references_it(target) => {
             let mut residual = filter.clone();
-            residual
-                .tagged_constraints
-                .retain(|constraint| constraint.tag.as_str() != IT_TAG);
+            residual.tagged_constraints.retain(|constraint| {
+                constraint.tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
+            });
             residual.union_surface = Default::default();
             residual != ObjectFilter::default()
         }
@@ -11946,14 +12009,16 @@ pub fn target_has_authored_it_qualification(target: &TargetAst) -> bool {
 pub fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
     fn rebind_qualified_it_reference(effect_target: &mut TargetAst, tag: &TagKey) -> bool {
         match effect_target {
-            TargetAst::Tagged(reference, _) if reference.as_str() == IT_TAG => {
+            TargetAst::Tagged(reference, _)
+                if reference.as_str() == crate::tag::CompilerReferenceTag::It.as_str() =>
+            {
                 *reference = tag.clone();
                 true
             }
             TargetAst::Object(filter, _, _) => {
                 let mut rebound = false;
                 for constraint in &mut filter.tagged_constraints {
-                    if constraint.tag.as_str() == IT_TAG {
+                    if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                         constraint.tag = tag.clone();
                         rebound = true;
                     }
@@ -11978,7 +12043,7 @@ pub fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
         // antecedent target wholesale.
         if target_has_authored_it_qualification(effect_target)
             && let TargetAst::Tagged(tag, _) = target
-            && tag.as_str() != IT_TAG
+            && tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
         {
             rebind_qualified_it_reference(effect_target, tag);
             return false;
@@ -11997,7 +12062,7 @@ pub fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
                 filter,
             } = &subject_verb.action
                 && filter.tagged_constraints.iter().any(|constraint| {
-                    constraint.tag.as_str() == IT_TAG
+                    constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                         && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
                 })
             {
@@ -12233,11 +12298,10 @@ pub fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
 
 pub fn target_references_it(target: &TargetAst) -> bool {
     match target {
-        TargetAst::Tagged(tag, _) => tag.as_str() == IT_TAG,
-        TargetAst::Object(filter, _, _) => filter
-            .tagged_constraints
-            .iter()
-            .any(|constraint| constraint.tag.as_str() == IT_TAG),
+        TargetAst::Tagged(tag, _) => tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str(),
+        TargetAst::Object(filter, _, _) => filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        }),
         TargetAst::WithCount(inner, _) => target_references_it(inner),
         _ => false,
     }
@@ -12631,11 +12695,11 @@ fn apply_unapplied_token_copy_followup(
                     it_span,
                 );
             }
-            let mut filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
+            let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
             filter.source_surface = Some(surface);
             return TargetAst::Object(filter, None, span);
         }
-        TargetAst::Tagged(TagKey::from(IT_TAG), span)
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), span)
     };
     let effects = match followup {
         TokenCopyFollowup::HasHaste(surface) => {
@@ -12675,7 +12739,7 @@ fn apply_unapplied_token_copy_followup(
                 player: PlayerFilter::Any,
                 effects: vec![EffectAst::subject_verb_sacrifice(
                     PlayerAst::Implicit,
-                    ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                    ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
                     1,
                     None,
                 )],
@@ -12685,7 +12749,7 @@ fn apply_unapplied_token_copy_followup(
             player: PlayerAst::Any,
             effects: vec![EffectAst::subject_verb_sacrifice(
                 PlayerAst::Implicit,
-                ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
                 1,
                 None,
             )],
@@ -12693,20 +12757,28 @@ fn apply_unapplied_token_copy_followup(
         TokenCopyFollowup::ExileAtNextEndStep(_) => vec![EffectAst::DelayedUntilNextEndStep {
             player: PlayerFilter::Any,
             effects: vec![EffectAst::subject_verb_exile(
-                TargetAst::Object(ObjectFilter::tagged(TagKey::from(IT_TAG)), span, None),
+                TargetAst::Object(
+                    ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
+                    span,
+                    None,
+                ),
                 false,
             )],
         }],
         TokenCopyFollowup::ExileAtEndOfCombat(_) => vec![EffectAst::DelayedUntilEndOfCombat {
             effects: vec![EffectAst::subject_verb_exile(
-                TargetAst::Object(ObjectFilter::tagged(TagKey::from(IT_TAG)), span, None),
+                TargetAst::Object(
+                    ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
+                    span,
+                    None,
+                ),
                 false,
             )],
         }],
         TokenCopyFollowup::SacrificeAtEndOfCombat => vec![EffectAst::DelayedUntilEndOfCombat {
             effects: vec![EffectAst::subject_verb_sacrifice(
                 PlayerAst::Implicit,
-                ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
                 1,
                 None,
             )],

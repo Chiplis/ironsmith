@@ -1880,7 +1880,7 @@ fn initiative_holder_attack_target_keeps_dynamic_player_reference() {
         panic!("expected a group attack trigger, got {parsed:#?}");
     };
     let expected =
-        PlayerFilter::TaggedPlayer(crate::TagKey::from(ironsmith_core::INITIATIVE_HOLDER_TAG));
+        PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::InitiativeHolder.key());
     assert_eq!(
         filter
             .attacking_player_or_planeswalker_controlled_by
@@ -2051,7 +2051,7 @@ fn chosen_object_leaves_keeps_the_persistent_choice_tag() {
     );
     assert!(
         filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag.as_str() == crate::cards::builders::CHOSEN_OBJECTS_TAG
+            constraint.tag.as_str() == crate::tag::CompilerReferenceTag::ChosenObjects.as_str()
                 && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
         }),
         "{filter:#?}"

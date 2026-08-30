@@ -9,10 +9,10 @@ use crate::ability::{ActivationTiming, PresentationLabel};
 #[cfg(test)]
 use crate::cards::builders::NormalizedLine;
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, IT_TAG, LibraryBottomOrderAst, LineAst, LineInfo,
-    ParsedAbility, ParsedCardItem, ParsedModalAst, ParsedModalModeAst, ParsedRestrictions,
-    PlayerAst, PredicateAst, ReferenceImports, ReturnControllerAst, SubjectVerbActionAst,
-    SubjectVerbRoleAst, TagKey, TargetAst, TextSpan, TriggerSpec,
+    CardTextError, ChoiceCount, EffectAst, LibraryBottomOrderAst, LineAst, LineInfo, ParsedAbility,
+    ParsedCardItem, ParsedModalAst, ParsedModalModeAst, ParsedRestrictions, PlayerAst,
+    PredicateAst, ReferenceImports, ReturnControllerAst, SubjectVerbActionAst, SubjectVerbRoleAst,
+    TagKey, TargetAst, TextSpan, TriggerSpec,
 };
 use crate::color::ColorSet;
 use crate::cost::TotalCost;
@@ -31,17 +31,19 @@ use ironsmith_core::CostComponent;
 
 mod activated;
 mod chosen_options;
+#[path = "effect.rs"]
 mod effect_programs;
 mod lines;
 mod static_chunks;
 mod triggered_chunks;
+pub(crate) use triggered_chunks::apply_trigger_intro_surface;
 
 pub use chosen_options::{condition_for_chosen_option, wrap_chosen_option_static_chunk};
 use effect_programs::*;
 use static_chunks::*;
 pub use triggered_chunks::{
     apply_chosen_option_to_triggered_chunk, apply_explicit_intervening_if_to_triggered_chunk,
-    infer_triggered_ability_functional_zones_from_facts,
+    derive_triggered_ability_functional_zones_from_facts,
 };
 
 pub use activated::parse_activated_line;
@@ -98,7 +100,7 @@ use super::lexer::{
 #[cfg(test)]
 use super::lexer::{TokenWordView, lex_line};
 use super::lowering_support::{
-    rewrite_parsed_triggered_ability, rewrite_prepare_effects_with_trigger_context_for_lowering,
+    assemble_parsed_triggered_ability, stage_effects_with_trigger_context_for_lowering,
 };
 use super::modal_support::{parse_modal_header, replace_modal_header_x_in_effects_ast};
 use super::parser_support::split_tokens_for_parse;
@@ -112,12 +114,12 @@ use crate::model::reference_state::ReferenceEnv;
 #[path = "mod_inline_source_boundary_surface_tests.rs"]
 mod source_boundary_surface_tests;
 
-#[path = "reference_programs.rs"]
+#[path = "reference.rs"]
 mod reference_programs;
 pub(crate) use reference_programs::parse_effect_sentences_preserving_source_boundaries;
 use reference_programs::{
     first_for_each_object_filter, mark_matching_for_each_object_leading_then,
 };
-#[path = "core_programs.rs"]
+#[path = "core.rs"]
 mod core_programs;
 use core_programs::preserve_flat_leading_then_for_each_surface;

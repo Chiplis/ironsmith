@@ -1,7 +1,191 @@
-pub use ironsmith_core::{
-    EXPLOITED_TAG, EXPLOITER_TAG, MANIFEST_DREAD_GRAVEYARD_TAG, PRIOR_EXILED_CARD_TAG,
-    REVEALED_THIS_WAY_TAG, SOURCE_EXILED_TAG, SOURCE_OBJECT_TAG, TagKey,
-};
+pub use ironsmith_core::TagKey;
+
+const SENTENCE_HELPER_ROOT: &str = "__sentence_helper_";
+
+pub fn sentence_helper_tag(purpose: &str, line: usize, start: usize, end: usize) -> TagKey {
+    TagKey::new(format!(
+        "{SENTENCE_HELPER_ROOT}{purpose}_l{line}_s{start}_e{end}"
+    ))
+}
+
+pub fn is_sentence_helper_tag(tag: &TagKey, purpose: &str) -> bool {
+    let Some(rest) = tag.as_str().strip_prefix(SENTENCE_HELPER_ROOT) else {
+        return false;
+    };
+    let Some(rest) = rest.strip_prefix(purpose) else {
+        return false;
+    };
+    let Some(rest) = rest.strip_prefix("_l") else {
+        return false;
+    };
+    let Some((line, rest)) = rest.split_once("_s") else {
+        return false;
+    };
+    let Some((start, end)) = rest.split_once("_e") else {
+        return false;
+    };
+    line.parse::<usize>().is_ok() && start.parse::<usize>().is_ok() && end.parse::<usize>().is_ok()
+}
+
+pub fn generated_result_tag(purpose: &str, ordinal: u32) -> TagKey {
+    if matches!(purpose, "exiled" | "looked" | "chosen" | "revealed") {
+        sentence_helper_tag(purpose, 0, 0, ordinal as usize)
+    } else {
+        TagKey::new(format!("{purpose}_{ordinal}"))
+    }
+}
+
+/// Compiler-owned roles for objects selected while paying a cost.
+///
+/// The runtime key spelling is an interchange detail centralized here; grammar
+/// and resolution carry the role and ordinal instead of assembling prefixes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CompilerCostObjectTag {
+    Tap,
+    Discard,
+    Sacrifice,
+    Unattach,
+    Exile,
+    ReturnToHand,
+    Blight,
+}
+
+impl CompilerCostObjectTag {
+    const fn stem(self) -> &'static str {
+        match self {
+            Self::Tap => "tap_cost",
+            Self::Discard => "discard_cost",
+            Self::Sacrifice => "sacrifice_cost",
+            Self::Unattach => "unattach_cost",
+            Self::Exile => "exile_cost",
+            Self::ReturnToHand => "return_cost",
+            Self::Blight => "blight_cost",
+        }
+    }
+
+    pub fn key(self, ordinal: usize) -> TagKey {
+        TagKey::new(format!("{}_{ordinal}", self.stem()))
+    }
+
+    pub fn matches(self, tag: &TagKey) -> bool {
+        let stem = self.stem();
+        tag.as_str()
+            .strip_prefix(stem)
+            .and_then(|suffix| suffix.strip_prefix('_'))
+            .is_some_and(|ordinal| ordinal.parse::<usize>().is_ok())
+    }
+}
+
+/// Typed relationships used to derive one compiler binding from another.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CompilerDerivedTag {
+    DelegatedSubset,
+    ExiledCollection,
+    CorrelatedSource,
+    CorrelatedResult,
+    OpposingTarget,
+}
+
+impl CompilerDerivedTag {
+    const fn serialized_suffix(self) -> &'static str {
+        match self {
+            Self::DelegatedSubset => "__delegated_subset",
+            Self::ExiledCollection => "__exiled_collection",
+            Self::CorrelatedSource => "_correlated_source",
+            Self::CorrelatedResult => "_correlated_result",
+            Self::OpposingTarget => "_opposing_target",
+        }
+    }
+
+    pub fn key(self, source: &TagKey) -> TagKey {
+        TagKey::new(format!("{}{}", source.as_str(), self.serialized_suffix()))
+    }
+}
+
+/// Generated bindings whose identity is an authored member or replacement
+/// ordinal rather than a free-form name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CompilerIndexedTag {
+    LinkedFanoutPrimary,
+    LinkedFanoutGroup,
+    DrawReplacementAll,
+    DrawReplacementMatch,
+    WaterbendCost,
+    ExiledAggregate,
+}
+
+impl CompilerIndexedTag {
+    const fn stem(self) -> &'static str {
+        match self {
+            Self::LinkedFanoutPrimary => "linked_fanout_primary",
+            Self::LinkedFanoutGroup => "linked_fanout_group",
+            Self::DrawReplacementAll => "draw_replacement_all",
+            Self::DrawReplacementMatch => "draw_replacement_match",
+            Self::WaterbendCost => "waterbend_cost",
+            Self::ExiledAggregate => "__sentence_helper_exiled_aggregate",
+        }
+    }
+
+    pub fn key(self, ordinal: impl std::fmt::Display) -> TagKey {
+        TagKey::new(format!("{}_{ordinal}", self.stem()))
+    }
+
+    pub fn key_in_scope(self, scope: impl std::fmt::Display) -> TagKey {
+        match self {
+            Self::DrawReplacementAll => TagKey::new(format!("draw_replacement_{scope}_all")),
+            Self::DrawReplacementMatch => TagKey::new(format!("draw_replacement_{scope}_match")),
+            _ => self.key(scope),
+        }
+    }
+}
+
+/// Compiler-level semantic classes for generated collection bindings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CompilerTagClass {
+    RevealedCollection,
+    SearchedCollection,
+    ExiledCollection,
+    SentenceHelperExiledCollection,
+    SentenceHelperConsultMatch,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CompilerProvenanceTag {
+    ParticipantChoice { line: usize, start: usize },
+}
+
+impl CompilerProvenanceTag {
+    pub fn key(self) -> TagKey {
+        match self {
+            Self::ParticipantChoice { line, start } => {
+                TagKey::new(format!("participant_choice_l{line}_s{start}"))
+            }
+        }
+    }
+}
+
+impl CompilerTagClass {
+    pub fn contains(self, tag: &TagKey) -> bool {
+        let value = tag.as_str();
+        match self {
+            Self::RevealedCollection => {
+                value.starts_with("revealed")
+                    || value.starts_with("__sentence_helper_revealed")
+                    || value == CompilerReferenceTag::RevealedThisWay.as_str()
+            }
+            Self::SearchedCollection => value.starts_with("searched"),
+            Self::ExiledCollection => {
+                value.starts_with("exiled_")
+                    || Self::SentenceHelperExiledCollection.contains(tag)
+                    || value == CompilerReferenceTag::SourceExiled.as_str()
+            }
+            Self::SentenceHelperExiledCollection => value.starts_with("__sentence_helper_exiled"),
+            Self::SentenceHelperConsultMatch => {
+                value.starts_with("__sentence_helper_consult_match")
+            }
+        }
+    }
+}
 
 /// Stable compiler-owned identities for recurring semantic bindings.
 ///
@@ -10,6 +194,21 @@ pub use ironsmith_core::{
 /// dynamic [`TagKey`] is confined to this explicit materialization boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CompilerReferenceTag {
+    AdditionalCostObject,
+    ThisWaySacrificed,
+    PriorExiledCard,
+    RevealedThisWay,
+    SourceObject,
+    Exploited,
+    Exploiter,
+    ManifestDreadGraveyard,
+    ManaPaidObject,
+    AttackingGroup,
+    ZoneChangeGroup,
+    InitiativeHolder,
+    PreviousIteratedObjects,
+    CastModifiedCreatures,
+    CastControlledObjects,
     Triggering,
     Enchanted,
     Equipped,
@@ -98,11 +297,39 @@ pub enum CompilerReferenceTag {
     ChosenHandSpellToCast,
     ChosenCastFromGraveyard,
     ChosenCastFromAmong,
+    AbilityControllerTargetChoice,
+    OpponentTargetChoice,
+    VoteWinners,
+    VotedObjects,
+    TokenDynamicThatCard,
+    ConditionCollectionChoice,
+    DamagedThisWay,
+    ReturnedSourceExiled,
+    TwistYourCreatures,
+    TwistOpponentCreatures,
+    PluralAntecedentCards,
+    TappedThisWayGroup,
+    OtherAttacker,
 }
 
 impl CompilerReferenceTag {
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::AdditionalCostObject => "__additional_cost_object__",
+            Self::ThisWaySacrificed => "__this_way_sacrificed__",
+            Self::PriorExiledCard => "__prior_exiled_card__",
+            Self::RevealedThisWay => "__revealed_this_way__",
+            Self::SourceObject => "__source_object__",
+            Self::Exploited => "exploited",
+            Self::Exploiter => "exploiter",
+            Self::ManifestDreadGraveyard => "__manifest_dread_graveyard__",
+            Self::ManaPaidObject => "__mana_paid_object__",
+            Self::AttackingGroup => "__attacking_group__",
+            Self::ZoneChangeGroup => "__zone_change_group__",
+            Self::InitiativeHolder => "__initiative_holder__",
+            Self::PreviousIteratedObjects => "__previous_iterated_objects__",
+            Self::CastModifiedCreatures => "__cast_modified_creatures__",
+            Self::CastControlledObjects => "__cast_controlled_objects__",
             Self::Triggering => "triggering",
             Self::Enchanted => "enchanted",
             Self::Equipped => "equipped",
@@ -191,10 +418,27 @@ impl CompilerReferenceTag {
             Self::ChosenHandSpellToCast => "__chosen_hand_spell_to_cast",
             Self::ChosenCastFromGraveyard => "__chosen_cast_from_graveyard",
             Self::ChosenCastFromAmong => "__chosen_cast_from_among",
+            Self::AbilityControllerTargetChoice => "__ability_controller_target_choice_0",
+            Self::OpponentTargetChoice => "__opponent_target_choice_1",
+            Self::VoteWinners => "__vote_winners__",
+            Self::VotedObjects => "__voted_objects__",
+            Self::TokenDynamicThatCard => "__token_dynamic_that_card",
+            Self::ConditionCollectionChoice => "__condition_collection_choice",
+            Self::DamagedThisWay => "damaged_0",
+            Self::ReturnedSourceExiled => "source_exiled_returned",
+            Self::TwistYourCreatures => "__twist_your_creatures__",
+            Self::TwistOpponentCreatures => "__twist_opponent_creatures__",
+            Self::PluralAntecedentCards => "plural_antecedent_cards",
+            Self::TappedThisWayGroup => "tapped_this_way_group",
+            Self::OtherAttacker => "other_attacker",
         }
     }
 
     pub fn key(self) -> TagKey {
         TagKey::new(self.as_str())
+    }
+
+    pub fn matches(self, tag: &TagKey) -> bool {
+        tag.as_str() == self.as_str()
     }
 }

@@ -831,17 +831,17 @@ fn parse_unsupported_permission_lexed<'a>(
 #[path = "tagged_surface_inline_tests.rs"]
 mod tests;
 
-#[path = "tagged_surface/object_action_programs.rs"]
+#[path = "tagged_surface/object_action.rs"]
 mod object_action_programs;
 use object_action_programs::sentence_body_tokens;
-#[path = "tagged_surface/resource_programs.rs"]
+#[path = "tagged_surface/resource.rs"]
 mod resource_programs;
 use resource_programs::lifetime_from_turn_duration;
-#[path = "tagged_surface/library_programs.rs"]
+#[path = "tagged_surface/library.rs"]
 mod library_programs;
 use library_programs::{
     parse_for_as_long_as_look_at_tagged_lexed, parse_revealed_top_library_permission_lexed,
 };
-#[path = "tagged_surface/permission_programs.rs"]
+#[path = "tagged_surface/permission.rs"]
 mod permission_programs;
 use permission_programs::parse_for_as_long_as_play_cast_lexed;

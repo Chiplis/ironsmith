@@ -136,10 +136,8 @@ pub fn parse_morph(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility>, Ca
             kind.parser_name()
         )));
     }
-    let text = format!("{}—{}", kind.display_name(), cost.display());
     Ok(Some(ParsedAbility {
         ability: Ability::static_ability(kind.static_ability(cost)).into(),
-        text: Some(text),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,
@@ -349,7 +347,6 @@ pub fn parse_transmute(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility>
             Value::ManaValueOf(Box::new(ChooseSpec::Source)),
         )))
     };
-    let text = format!("Transmute {}", base_mana_cost.to_oracle());
     let effects_ast = vec![
         crate::cards::builders::EffectAst::subject_verb_search_library(
             filter,
@@ -388,7 +385,6 @@ pub fn parse_transmute(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility>
             functional_zones: vec![Zone::Hand],
         }
         .into(),
-        text: Some(text),
         effects_ast: Some(effects_ast),
         reference_imports: ReferenceImports::default(),
         trigger_spec: None,
@@ -401,13 +397,13 @@ enum ReminderBoundary {
     MayPayOrPeriod,
 }
 
-#[path = "keyword_cost_lines/core_programs.rs"]
+#[path = "keyword_cost_lines/core.rs"]
 mod core_programs;
 pub use core_programs::parse_transfigure;
 use core_programs::{first_kind_after, parse_fixed_word, trim_edge_commas, unsupported_escape};
-#[path = "keyword_cost_lines/ability_programs.rs"]
+#[path = "keyword_cost_lines/ability.rs"]
 mod ability_programs;
 use ability_programs::starts_with_keyword;
-#[path = "keyword_cost_lines/resource_programs.rs"]
+#[path = "keyword_cost_lines/resource.rs"]
 mod resource_programs;
 use resource_programs::{ensure_mana_component, keyword_cost_clause, morph_cost_clause};

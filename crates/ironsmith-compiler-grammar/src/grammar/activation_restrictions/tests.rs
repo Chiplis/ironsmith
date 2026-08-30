@@ -21,6 +21,32 @@ fn negation_span_and_or_split_are_typed() {
 }
 
 #[test]
+fn negation_span_ignores_quoted_granted_rules() {
+    let quoted_only = lex_line(
+        "It gains \"This creature can't be blocked.\" until end of turn.",
+        0,
+    )
+    .unwrap();
+    assert_eq!(parse_activation_negation_span_tokens(&quoted_only), None);
+
+    let outer_restriction = lex_line(
+        "It gains \"This creature can't be blocked,\" and it can't attack.",
+        0,
+    )
+    .unwrap();
+    let negation = parse_activation_negation_span_tokens(&outer_restriction).unwrap();
+    assert_eq!(
+        TokenWordView::new(&outer_restriction[negation.first..negation.end]).word_refs(),
+        ["cant"]
+    );
+    assert!(
+        outer_restriction[..negation.first]
+            .iter()
+            .any(|token| token.is_quote())
+    );
+}
+
+#[test]
 fn attack_or_block_is_one_restriction_tail() {
     let tokens = lex_line("this creature can't attack or block", 0).unwrap();
     assert!(parse_cant_restriction_or_split_tokens(&tokens).is_none());
