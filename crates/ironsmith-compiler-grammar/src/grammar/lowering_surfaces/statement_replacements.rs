@@ -11,7 +11,7 @@ use super::super::primitives;
 pub fn parse_statement_replacement_surface_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<StatementReplacementSurfaceKind> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         alt((
             parse_bargained_return_replacement,
@@ -22,7 +22,6 @@ pub fn parse_statement_replacement_surface_tokens(
         )),
         "statement replacement surface",
     )
-    .ok()
 }
 
 fn parse_bargained_return_replacement(

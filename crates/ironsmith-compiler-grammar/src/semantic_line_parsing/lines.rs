@@ -737,7 +737,9 @@ fn grammar_proven_named_explore_surface(
         }
     }
 
-    let surfaced = parse_effect_sentences_preserving_source_boundaries(effect_tokens).ok()?;
+    let surfaced = crate::grammar::primitives::probe_shape(
+        parse_effect_sentences_preserving_source_boundaries(effect_tokens),
+    )?;
     let mut surfaces = Vec::new();
     collect(&surfaced, &mut surfaces);
     let [surface] = surfaces.as_slice() else {
@@ -1173,10 +1175,11 @@ fn exact_hidden_partition_permission_statement(tokens: &[OwnedLexToken]) -> Opti
     if sentences.len() != 3 {
         return None;
     }
-    crate::effect_sentences::parse_look_at_top_partition_face_down_then_filtered_permission(
-        &sentences, 0,
-    )
-    .ok()?
+    crate::grammar::primitives::probe_shape(
+        crate::effect_sentences::parse_look_at_top_partition_face_down_then_filtered_permission(
+            &sentences, 0,
+        ),
+    )?
 }
 
 fn exact_historical_target_return_statement(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
@@ -1298,8 +1301,12 @@ fn typed_selected_hand_reveal_token_creation_statement(
     {
         return None;
     }
-    let selected = crate::effect_sentences::parse_effect_chain_lexed(first).ok()?;
-    let mut effects = parse_effect_sentences_preserving_source_boundaries(tokens).ok()?;
+    let selected = crate::grammar::primitives::probe_shape(
+        crate::effect_sentences::parse_effect_chain_lexed(first),
+    )?;
+    let mut effects = crate::grammar::primitives::probe_shape(
+        parse_effect_sentences_preserving_source_boundaries(tokens),
+    )?;
     let Some(EffectAst::SourceSentence {
         effects: first_effects,
         ..
@@ -2199,28 +2206,29 @@ fn linked_statement_should_stay_grouped(tokens: &[OwnedLexToken]) -> bool {
     let sentences = split_lexed_sentences(tokens);
     if let [first_sentence, fallback_sentence] = sentences.as_slice()
         && matches!(
-            parse_effect_sentences_lexed(fallback_sentence)
-                .ok()
-                .as_deref(),
+            crate::grammar::primitives::probe_shape(parse_effect_sentences_lexed(
+                fallback_sentence
+            ))
+            .as_deref(),
             Some([EffectAst::IfResult {
                 predicate: crate::cards::builders::IfResultPredicate::DidNot,
                 ..
             }])
         )
         && matches!(
-            parse_effect_sentences_lexed(first_sentence).ok().as_deref(),
+            crate::grammar::primitives::probe_shape(parse_effect_sentences_lexed(first_sentence))
+                .as_deref(),
             Some([EffectAst::CommaThen { .. }])
         )
         && (matches!(
-            parse_effect_sentences_lexed(tokens).ok().as_deref(),
+            crate::grammar::primitives::probe_shape(parse_effect_sentences_lexed(tokens)).as_deref(),
             Some([EffectAst::CommaThen { effects }])
                 if matches!(effects.last(), Some(EffectAst::IfResult {
                     predicate: crate::cards::builders::IfResultPredicate::DidNot,
                     ..
                 }))
         ) || matches!(
-            parse_effect_sentences_preserving_source_boundaries(tokens)
-                .ok()
+            crate::grammar::primitives::probe_shape(parse_effect_sentences_preserving_source_boundaries(tokens))
                 .as_deref(),
             Some([
                 EffectAst::SourceSentence {
@@ -2326,9 +2334,9 @@ fn parse_complete_self_replacement_statement(tokens: &[OwnedLexToken]) -> Option
     {
         return None;
     }
-    let effects = crate::parse_loss::capture(|| parse_effect_sentences_lexed(tokens))
-        .0
-        .ok()?;
+    let effects = crate::grammar::primitives::probe_shape(
+        crate::parse_loss::capture(|| parse_effect_sentences_lexed(tokens)).0,
+    )?;
     matches!(effects.as_slice(), [EffectAst::SelfReplacement { .. }]).then_some(effects)
 }
 

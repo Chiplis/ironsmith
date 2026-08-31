@@ -4549,4 +4549,3 @@ pub(super) fn definite_player_damage_followup_keeps_the_end_step_participant() {
     assert!(compact.contains("target:Player(IteratedPlayer"), "{debug}");
     assert!(!compact.contains("target:Player(Any"), "{debug}");
 }
-

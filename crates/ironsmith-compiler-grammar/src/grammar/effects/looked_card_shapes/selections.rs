@@ -156,9 +156,9 @@ fn counted_looked_hand_remainder(
 pub fn parse_counted_looked_hand_remainder_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<CountedLookedHandRemainderShape> {
-    counted_looked_hand_remainder
-        .parse(LexStream::new(trim_lexed_commas(tokens)))
-        .ok()
+    crate::grammar::primitives::probe_shape(
+        counted_looked_hand_remainder.parse(LexStream::new(trim_lexed_commas(tokens))),
+    )
 }
 
 fn optional_looked_top_selection(input: &mut LexStream<'_>) -> WResult<ChoiceCount> {
@@ -186,12 +186,13 @@ pub fn parse_optional_looked_top_remainder_shape(
     selection_tokens: &[OwnedLexToken],
     remainder_tokens: &[OwnedLexToken],
 ) -> Option<OptionalLookedTopRemainderShape> {
-    let count = optional_looked_top_selection
-        .parse(LexStream::new(trim_lexed_commas(selection_tokens)))
-        .ok()?;
-    let remainder_order = standalone_library_bottom_remainder
-        .parse(LexStream::new(trim_lexed_commas(remainder_tokens)))
-        .ok()?;
+    let count = crate::grammar::primitives::probe_shape(
+        optional_looked_top_selection.parse(LexStream::new(trim_lexed_commas(selection_tokens))),
+    )?;
+    let remainder_order = crate::grammar::primitives::probe_shape(
+        standalone_library_bottom_remainder
+            .parse(LexStream::new(trim_lexed_commas(remainder_tokens))),
+    )?;
     Some(OptionalLookedTopRemainderShape {
         count,
         remainder_order,
@@ -259,9 +260,9 @@ fn exact_looked_card_move(input: &mut LexStream<'_>) -> WResult<ExactLookedCardM
 pub fn parse_exact_looked_card_move_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ExactLookedCardMoveShape> {
-    exact_looked_card_move
-        .parse(LexStream::new(trim_lexed_commas(tokens)))
-        .ok()
+    crate::grammar::primitives::probe_shape(
+        exact_looked_card_move.parse(LexStream::new(trim_lexed_commas(tokens))),
+    )
 }
 
 fn three_way_disposition(input: &mut LexStream<'_>) -> WResult<ThreeWayLookedCardDispositionShape> {
@@ -296,9 +297,9 @@ fn three_way_disposition(input: &mut LexStream<'_>) -> WResult<ThreeWayLookedCar
 pub fn parse_three_way_looked_card_disposition_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ThreeWayLookedCardDispositionShape> {
-    three_way_disposition
-        .parse(LexStream::new(trim_lexed_commas(tokens)))
-        .ok()
+    crate::grammar::primitives::probe_shape(
+        three_way_disposition.parse(LexStream::new(trim_lexed_commas(tokens))),
+    )
 }
 
 fn revealed_card_chooser(input: &mut LexStream<'_>) -> WResult<RevealedCardChooserShape> {
@@ -332,9 +333,9 @@ fn revealed_card_choice(input: &mut LexStream<'_>) -> WResult<RevealedCardChoice
 pub fn parse_revealed_card_choice_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<RevealedCardChoiceShape> {
-    revealed_card_choice
-        .parse(LexStream::new(trim_lexed_commas(tokens)))
-        .ok()
+    crate::grammar::primitives::probe_shape(
+        revealed_card_choice.parse(LexStream::new(trim_lexed_commas(tokens))),
+    )
 }
 
 pub fn is_one_looked_card_into_hand_shape(tokens: &[OwnedLexToken]) -> bool {
@@ -342,7 +343,8 @@ pub fn is_one_looked_card_into_hand_shape(tokens: &[OwnedLexToken]) -> bool {
     if looked_one_reference.parse_next(&mut input).is_err() {
         return false;
     }
-    if looked_card_destination.parse_next(&mut input).ok() != Some(LookedCardDestinationShape::Hand)
+    if crate::grammar::primitives::take_leaf(&mut input, looked_card_destination)
+        != Some(LookedCardDestinationShape::Hand)
     {
         return false;
     }
@@ -354,11 +356,11 @@ pub fn parse_chosen_card_move_followup_shape(
 ) -> Option<ChosenCardMoveFollowupShape> {
     let tokens = trim_lexed_commas(tokens);
     let mut input = LexStream::new(tokens);
-    primitives::kw("put").parse_next(&mut input).ok()?;
-    tagged_card_reference.parse_next(&mut input).ok()?;
-    let destination = looked_card_destination.parse_next(&mut input).ok()?;
-    opt(primitives::comma()).parse_next(&mut input).ok()?;
-    primitives::kw("then").parse_next(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::kw("put"))?;
+    crate::grammar::primitives::take_leaf(&mut input, tagged_card_reference)?;
+    let destination = crate::grammar::primitives::take_leaf(&mut input, looked_card_destination)?;
+    crate::grammar::primitives::take_leaf(&mut input, opt(primitives::comma()))?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::kw("then"))?;
     let followup_start = tokens.len().saturating_sub(input.len());
     (followup_start < tokens.len()).then_some(ChosenCardMoveFollowupShape {
         destination,
@@ -424,9 +426,9 @@ fn chosen_card_partition(input: &mut LexStream<'_>) -> WResult<ChosenCardPartiti
 pub fn parse_chosen_card_partition_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ChosenCardPartitionShape> {
-    chosen_card_partition
-        .parse(LexStream::new(trim_lexed_commas(tokens)))
-        .ok()
+    crate::grammar::primitives::probe_shape(
+        chosen_card_partition.parse(LexStream::new(trim_lexed_commas(tokens))),
+    )
 }
 
 #[cfg(test)]

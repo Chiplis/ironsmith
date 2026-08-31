@@ -44,34 +44,31 @@ pub fn parse_characteristic_shared_value_tail_tokens(
         return None;
     }
 
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_characteristic_shared_value_tail_lexed,
         "shared characteristic P/T value",
     )
-    .ok()
 }
 
 pub fn parse_characteristic_source_value_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CharacteristicSourceValueKind> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_characteristic_source_value_lexed,
         "characteristic source value",
     )
-    .ok()
 }
 
 pub fn parse_characteristic_relative_value_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CharacteristicRelativeValue> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_characteristic_relative_value_lexed,
         "relative characteristic value",
     )
-    .ok()
 }
 
 pub fn strip_characteristic_number_of_prefix_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {

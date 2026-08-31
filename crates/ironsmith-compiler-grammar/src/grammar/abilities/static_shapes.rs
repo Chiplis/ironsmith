@@ -80,8 +80,8 @@ pub fn parse_can_block_subtype_as_though_reach_line_lexed(
 ) -> Option<Subtype> {
     let words = TokenWordView::new(tokens).word_refs();
     let mut input: primitives::WordSliceInput<'_> = &words;
-    let subtype = parse_can_block_subtype_words(&mut input).ok()?;
-    primitives::word_slice_eof(&mut input).ok()?;
+    let subtype = crate::grammar::primitives::take_leaf(&mut input, parse_can_block_subtype_words)?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::word_slice_eof)?;
     Some(subtype)
 }
 
@@ -99,66 +99,76 @@ pub fn is_prevent_all_combat_damage_to_matching_permanents_line_lexed(
 
 fn parse_land_reveal_enters_shape(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let mut input = LexStream::new(tokens);
-    primitives::phrase(&["as", "this", "land", "enters"])
-        .parse_next(&mut input)
-        .ok()?;
-    repeat_till(
-        0..,
-        any.void(),
-        peek(primitives::phrase(&["you", "may", "reveal"])).void(),
-    )
-    .map(|((), ())| ())
-    .parse_next(&mut input)
-    .ok()?;
-    primitives::phrase(&["you", "may", "reveal"])
-        .parse_next(&mut input)
-        .ok()?;
-    let object: &[OwnedLexToken] = repeat_till(
-        1..,
-        any.void(),
-        peek(primitives::phrase(&["from", "your", "hand"])).void(),
-    )
-    .map(|((), ())| ())
-    .take()
-    .parse_next(&mut input)
-    .ok()?;
-    primitives::phrase(&["from", "your", "hand"])
-        .parse_next(&mut input)
-        .ok()?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        primitives::phrase(&["as", "this", "land", "enters"]),
+    )?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till(
+            0..,
+            any.void(),
+            peek(primitives::phrase(&["you", "may", "reveal"])).void(),
+        )
+        .map(|((), ())| ()),
+    )?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        primitives::phrase(&["you", "may", "reveal"]),
+    )?;
+    let object: &[OwnedLexToken] = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till(
+            1..,
+            any.void(),
+            peek(primitives::phrase(&["from", "your", "hand"])).void(),
+        )
+        .map(|((), ())| ())
+        .take(),
+    )?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        primitives::phrase(&["from", "your", "hand"]),
+    )?;
     token_words_present(object).then_some(object)
 }
 
 fn parse_opening_hand_begin_game_shape(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let mut input = LexStream::new(tokens);
-    primitives::phrase(&["if", "this", "card", "is", "in", "your", "opening", "hand"])
-        .parse_next(&mut input)
-        .ok()?;
-    repeat_till(
-        0..,
-        any.void(),
-        peek(primitives::phrase(&[
-            "you", "may", "begin", "the", "game", "with",
-        ]))
-        .void(),
-    )
-    .map(|((), ())| ())
-    .parse_next(&mut input)
-    .ok()?;
-    primitives::phrase(&["you", "may", "begin", "the", "game", "with"])
-        .parse_next(&mut input)
-        .ok()?;
-    let object: &[OwnedLexToken] = repeat_till(
-        1..,
-        any.void(),
-        peek(primitives::phrase(&["on", "the", "battlefield"])).void(),
-    )
-    .map(|((), ())| ())
-    .take()
-    .parse_next(&mut input)
-    .ok()?;
-    primitives::phrase(&["on", "the", "battlefield"])
-        .parse_next(&mut input)
-        .ok()?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        primitives::phrase(&["if", "this", "card", "is", "in", "your", "opening", "hand"]),
+    )?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till(
+            0..,
+            any.void(),
+            peek(primitives::phrase(&[
+                "you", "may", "begin", "the", "game", "with",
+            ]))
+            .void(),
+        )
+        .map(|((), ())| ()),
+    )?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        primitives::phrase(&["you", "may", "begin", "the", "game", "with"]),
+    )?;
+    let object: &[OwnedLexToken] = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till(
+            1..,
+            any.void(),
+            peek(primitives::phrase(&["on", "the", "battlefield"])).void(),
+        )
+        .map(|((), ())| ())
+        .take(),
+    )?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        primitives::phrase(&["on", "the", "battlefield"]),
+    )?;
     token_words_present(object).then_some(object)
 }
 

@@ -12,7 +12,7 @@ pub enum CopyCardReferenceShape {
 }
 
 pub fn parse_copy_card_reference_shape(tokens: &[OwnedLexToken]) -> Option<CopyCardReferenceShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         (
             primitives::kw("copy"),
@@ -26,7 +26,6 @@ pub fn parse_copy_card_reference_shape(tokens: &[OwnedLexToken]) -> Option<CopyC
             .map(|(_, shape, ())| shape),
         "copy card reference",
     )
-    .ok()
 }
 
 pub fn parse_atomic_token_copy_exception_shape(tokens: &[OwnedLexToken]) -> bool {

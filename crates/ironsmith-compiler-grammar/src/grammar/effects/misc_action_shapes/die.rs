@@ -31,7 +31,7 @@ fn suffixed_die_size(input: &mut &str) -> WResult<u32> {
 }
 
 fn parse_die_word(word: &str) -> Option<u32> {
-    compact_die_size.parse(word).ok()
+    crate::grammar::primitives::probe_shape(compact_die_size.parse(word))
 }
 
 fn die_noun(token: &OwnedLexToken) -> Option<DieNoun> {
@@ -71,7 +71,7 @@ pub fn parse_roll_die_tokens(tokens: &[OwnedLexToken]) -> Option<RollDieShape> {
     if tokens.get(1).is_some_and(|token| token.is_word("sided"))
         && let Some(noun) = tokens.get(2).and_then(die_noun)
     {
-        let sides = leaf::parse_number_complete(&first).ok()?;
+        let sides = crate::grammar::primitives::probe_shape(leaf::parse_number_complete(&first))?;
         return Some(RollDieShape {
             sides,
             surface: Some(DieSurface::Sided(noun)),

@@ -55,14 +55,15 @@ pub fn parse_activated_mana_effect_kind(
     if parse_colors_among_mana_surface(tokens) {
         return Some(ActivatedManaEffectKind::ColorsAmong);
     }
-    alt((
-        primitives::kw("add").void(),
-        primitives::phrase(&["you", "add"]),
-        primitives::phrase(&["that", "player", "add"]),
-        primitives::phrase(&["target", "player", "add"]),
-    ))
-    .parse_peek(LexStream::new(tokens))
-    .ok()
+    crate::grammar::primitives::probe_shape(
+        alt((
+            primitives::kw("add").void(),
+            primitives::phrase(&["you", "add"]),
+            primitives::phrase(&["that", "player", "add"]),
+            primitives::phrase(&["target", "player", "add"]),
+        ))
+        .parse_peek(LexStream::new(tokens)),
+    )
     .map(|_| ActivatedManaEffectKind::AddMana)
 }
 
@@ -200,12 +201,11 @@ fn exiled_card_mana_value_tail(tokens: &[OwnedLexToken]) -> bool {
 pub fn parse_activated_x_definition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivatedXDefinitionShape<'_>> {
-    let (intro, value_tokens) = primitives::parse_all(
+    let (intro, value_tokens) = crate::grammar::primitives::probe_all(
         tokens,
         parse_activated_x_definition_lexed,
         "activated-x-definition",
-    )
-    .ok()?;
+    )?;
     Some(ActivatedXDefinitionShape {
         intro,
         value_tokens,

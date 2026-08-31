@@ -16,12 +16,11 @@ use super::ActivationCostSegmentCst;
 pub fn parse_bare_symbol_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivationCostSegmentCst> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_bare_symbol_segment_lexed,
         "activation-bare-symbol-segment",
     )
-    .ok()
 }
 
 pub fn parse_pay_segment_tokens(

@@ -83,23 +83,21 @@ fn parse_player_life_tie_choice_conditional_lexed<'a>(
 pub fn parse_player_life_tie_condition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerLifeTieConditionShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_player_life_tie_condition_lexed,
         "player life-total tie condition",
     )
-    .ok()
 }
 
 pub fn parse_player_life_tie_choice_conditional_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerLifeTieChoiceConditionalShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_player_life_tie_choice_conditional_lexed,
         "player life-total tie choice conditional",
     )
-    .ok()
 }
 
 #[cfg(test)]

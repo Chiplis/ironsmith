@@ -25,5 +25,7 @@ pub fn parse_who_player_predicate_lexed(tokens: &[OwnedLexToken]) -> Option<Pred
     ));
     predicate_tokens.extend(predicate_tail.iter().cloned());
 
-    parse_predicate_with_grammar_entrypoint_lexed(&predicate_tokens).ok()
+    crate::grammar::primitives::probe_shape(parse_predicate_with_grammar_entrypoint_lexed(
+        &predicate_tokens,
+    ))
 }

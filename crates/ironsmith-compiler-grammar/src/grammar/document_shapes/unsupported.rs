@@ -327,18 +327,19 @@ pub fn parse_unsupported_rewrite_line_kind(
     }
 
     let mut input: WordSliceInput<'_> = &words;
-    alt((
-        parse_choose_leading_spell,
-        parse_loses_abilities_becomes,
-        parse_for_as_long_as_permission,
-        parse_multi_step_each_player,
-        parse_artifact_creature_player_target,
-        parse_creature_token_player_planeswalker_target,
-        parse_villainous_choice,
-        parse_legendary_copy_exception,
-    ))
-    .parse_next(&mut input)
-    .ok()
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        alt((
+            parse_choose_leading_spell,
+            parse_loses_abilities_becomes,
+            parse_for_as_long_as_permission,
+            parse_multi_step_each_player,
+            parse_artifact_creature_player_target,
+            parse_creature_token_player_planeswalker_target,
+            parse_villainous_choice,
+            parse_legendary_copy_exception,
+        )),
+    )
 }
 
 fn supported_static_loses_abilities_becomes_sentence(tokens: &[OwnedLexToken]) -> bool {
@@ -382,12 +383,16 @@ fn parse_static_rule<'a>(
 ) -> Option<UnsupportedRewriteLineKind> {
     let mut input: WordSliceInput<'a> = words;
     match rule.match_kind {
-        UnsupportedRuleMatch::Prefix => rule_phrase(rule).parse_next(&mut input).ok(),
-        UnsupportedRuleMatch::Exact => (rule_phrase(rule), eof)
-            .map(|(kind, _)| kind)
-            .parse_next(&mut input)
-            .ok(),
-        UnsupportedRuleMatch::Contains => scan_rule(rule).parse_next(&mut input).ok(),
+        UnsupportedRuleMatch::Prefix => {
+            crate::grammar::primitives::take_leaf(&mut input, rule_phrase(rule))
+        }
+        UnsupportedRuleMatch::Exact => crate::grammar::primitives::take_leaf(
+            &mut input,
+            (rule_phrase(rule), eof).map(|(kind, _)| kind),
+        ),
+        UnsupportedRuleMatch::Contains => {
+            crate::grammar::primitives::take_leaf(&mut input, scan_rule(rule))
+        }
     }
 }
 

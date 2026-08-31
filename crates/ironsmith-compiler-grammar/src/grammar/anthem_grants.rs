@@ -407,24 +407,22 @@ pub fn parse_first_spell_each_turn_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<FirstSpellEachTurnClause<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_first_spell_each_turn_clause_lexed,
         "first-spell-each-turn-clause",
     )
-    .ok()
 }
 
 pub fn parse_cant_be_blocked_as_long_as_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<CantBeBlockedAsLongAsClause<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_cant_be_blocked_as_long_as_clause_lexed,
         "cant-be-blocked-as-long-as-clause",
     )
-    .ok()
 }
 
 pub fn parse_defending_player_controls_most_creatures_or_tied_condition(
@@ -555,60 +553,55 @@ pub fn parse_landwalk_block_override_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<LandwalkBlockOverrideClause<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_landwalk_block_override_clause_lexed,
         "landwalk-block-override-clause",
     )
-    .ok()
 }
 
 pub fn parse_granted_escape_cost_tail_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<GrantedEscapeCostTail<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_granted_escape_cost_tail_clause_lexed,
         "granted-escape-cost-tail",
     )
-    .ok()
 }
 
 pub fn parse_granted_miracle_cost_reduction_tail_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<GrantedMiracleCostReductionTail<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_granted_miracle_cost_reduction_tail_clause_lexed,
         "granted-miracle-cost-reduction-tail",
     )
-    .ok()
 }
 
 pub fn parse_cant_be_blocked_by_more_than_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<CantBeBlockedByMoreThanClause<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_cant_be_blocked_by_more_than_clause_lexed,
         "cant-be-blocked-by-more-than-clause",
     )
-    .ok()
 }
 
 pub fn parse_can_block_additional_creature_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<CanBlockAdditionalCreatureClause<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_can_block_additional_creature_clause_lexed,
         "can-block-additional-creature-clause",
     )
-    .ok()
 }
 
 pub fn parse_cant_be_blocked_subject_facts(tokens: &[OwnedLexToken]) -> CantBeBlockedSubjectFacts {
@@ -929,13 +922,12 @@ pub fn parse_additional_creature_count(tokens: &[OwnedLexToken]) -> Option<usize
     if primitives::parse_all(tokens, primitives::kw("an"), "additional-creature-article").is_ok() {
         return Some(1);
     }
-    let count = primitives::parse_all(
+    let count = crate::grammar::primitives::probe_all(
         tokens,
         leaf::parse_leaf_number_prefix_lexed,
         "additional-creature-count",
-    )
-    .ok()?;
-    usize::try_from(count).ok()
+    )?;
+    crate::util::narrowed_usize(count)
 }
 
 pub fn parse_indestructible_grant_clause(
@@ -1026,11 +1018,17 @@ pub fn parse_lose_all_abilities_shape(tokens: &[OwnedLexToken]) -> Option<LoseAl
     let base_power_toughness_word = first_word_offset(&words, &["have", "has"]).and_then(|have| {
         let tail = words.get(have + 1..)?;
         let mut input: primitives::WordSliceInput<'_> = tail;
-        parse_word_phrase_input(&mut input, &["base", "power", "and", "toughness"]).ok()?;
+        crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+            parse_word_phrase_input(input, &["base", "power", "and", "toughness"])
+        })?;
         let candidate = words.len().saturating_sub(input.len());
         words
             .get(candidate)
-            .and_then(|word| leaf::parse_leaf_power_toughness_complete(word).ok())
+            .and_then(|word| {
+                crate::grammar::primitives::probe_shape(leaf::parse_leaf_power_toughness_complete(
+                    word,
+                ))
+            })
             .map(|_| candidate)
     });
     Some(LoseAllAbilitiesShape {
@@ -1083,7 +1081,7 @@ pub fn split_keyword_and_type_addition(
                 },
             );
         }
-        take_token(&mut input).ok()?;
+        crate::grammar::primitives::take_leaf(&mut input, take_token)?;
     }
 }
 
@@ -1204,15 +1202,14 @@ pub fn parse_permanent_card_count_facts(
 ) -> Option<PermanentCardCountFacts> {
     let words = TokenWordView::new(tokens).word_refs();
     let mut input: primitives::WordSliceInput<'_> = &words;
-    primitives::word_slice_exact("permanent")
-        .parse_next(&mut input)
-        .ok()?;
-    alt((
-        primitives::word_slice_exact("card"),
-        primitives::word_slice_exact("cards"),
-    ))
-    .parse_next(&mut input)
-    .ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::word_slice_exact("permanent"))?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        alt((
+            primitives::word_slice_exact("card"),
+            primitives::word_slice_exact("cards"),
+        )),
+    )?;
     for (index, word) in words.iter().enumerate() {
         let Ok(zone) = leaf::parse_leaf_zone_complete(word) else {
             continue;
@@ -1468,28 +1465,30 @@ pub fn parse_anthem_modifier_head(tokens: &[OwnedLexToken]) -> Option<AnthemModi
 /// Parses the complete static-condition shape
 /// "<player> (has|have) drawn N or more card(s) this turn".
 pub fn parse_cards_drawn_this_turn_threshold(tokens: &[OwnedLexToken]) -> Option<TurnThreshold> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_cards_drawn_this_turn_threshold_lexed,
         "cards-drawn-this-turn-threshold",
     )
-    .ok()
 }
 
 /// Parses the complete static-condition shape
 /// "<player> (has|have) rolled N or more die/dice this turn".
 pub fn parse_dice_rolled_this_turn_threshold(tokens: &[OwnedLexToken]) -> Option<TurnThreshold> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_dice_rolled_this_turn_threshold_lexed,
         "dice-rolled-this-turn-threshold",
     )
-    .ok()
 }
 
 /// Parses the complete granted-keyword color condition after `if`.
 pub fn parse_if_source_is_color(tokens: &[OwnedLexToken]) -> Option<ColorSet> {
-    primitives::parse_all(tokens, parse_if_source_is_color_lexed, "if-source-is-color").ok()
+    crate::grammar::primitives::probe_all(
+        tokens,
+        parse_if_source_is_color_lexed,
+        "if-source-is-color",
+    )
 }
 
 /// Parses the structural tail of an anthem count such as
@@ -1917,7 +1916,7 @@ fn first_token_word(tokens: &[OwnedLexToken], expected: AnthemWordClass) -> Opti
         if parse_anthem_word_class(&mut candidate, expected).is_ok() {
             return Some(offset);
         }
-        take_token(&mut input).ok()?;
+        crate::grammar::primitives::take_leaf(&mut input, take_token)?;
     }
 }
 

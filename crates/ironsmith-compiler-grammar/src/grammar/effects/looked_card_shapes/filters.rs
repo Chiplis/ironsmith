@@ -211,9 +211,9 @@ fn parse_noncreature_nonland_permanent(
             elided.push(token.clone());
         }
     }
-    let mut filter = parse_object_filter_lexed(&elided, false)
-        .ok()
-        .unwrap_or_else(ObjectFilter::permanent_card);
+    let mut filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter_lexed(&elided, false))
+            .unwrap_or_else(ObjectFilter::permanent_card);
     if filter.card_types.is_empty() && filter.all_card_types.is_empty() {
         filter.card_types = ObjectFilter::permanent_card().card_types;
     }
@@ -243,7 +243,7 @@ fn parse_conjunctive_negated_card_filter(
     {
         return None;
     }
-    let filter = parse_object_filter_lexed(tokens, false).ok()?;
+    let filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(tokens, false))?;
     let exclusion_count = filter.excluded_card_types.len()
         + filter.excluded_subtypes.len()
         + filter.excluded_supertypes.len()
@@ -271,7 +271,7 @@ fn parse_land_or_legendary_permanent(
     if words.get(prefix_len).is_some_and(|word| *word != "with") {
         return None;
     }
-    let base = parse_object_filter_lexed(tokens, false).ok()?;
+    let base = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(tokens, false))?;
     let mut land = base.clone();
     land.card_types = vec![CardType::Land];
     land.supertypes.clear();
@@ -307,9 +307,9 @@ fn parse_modified_permanent_cards(
     })?;
     let mut elided = tokens.to_vec();
     elided.remove(permanent);
-    let mut filter = parse_object_filter_lexed(&elided, false)
-        .ok()
-        .filter(|filter| filter.card_types.is_empty() && filter.all_card_types.is_empty())?;
+    let mut filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter_lexed(&elided, false))
+            .filter(|filter| filter.card_types.is_empty() && filter.all_card_types.is_empty())?;
     filter.card_types = ObjectFilter::permanent_card().card_types;
     Some(filter)
 }
@@ -353,12 +353,11 @@ fn parse_filter_disjunction(tokens: &[OwnedLexToken], words: &[&str]) -> Option<
         // (for example, `doctor's` in `with doctor's companion`) as ordinary
         // subtype atoms before the predicate grammar gets a chance to own
         // them.
-        let parsed = (if explicit_branch_articles {
-            parse_object_filter(&segment, false)
+        let parsed = if explicit_branch_articles {
+            crate::grammar::primitives::probe_shape(parse_object_filter(&segment, false))
         } else {
-            parse_object_filter_lexed(&segment, false)
-        })
-        .ok()
+            crate::grammar::primitives::probe_shape(parse_object_filter_lexed(&segment, false))
+        }
         .filter(|filter| *filter != ObjectFilter::default())
         .or_else(|| parse_named_card_filter_segment(&segment))?;
         branches.push(parsed);
@@ -384,7 +383,9 @@ fn parse_generic_disjunction_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFi
         if segment.is_empty() {
             return None;
         }
-        branches.push(parse_object_filter_lexed(segment, false).ok()?);
+        branches.push(crate::grammar::primitives::probe_shape(
+            parse_object_filter_lexed(segment, false),
+        )?);
     }
     if branches.len() < 2 {
         return None;

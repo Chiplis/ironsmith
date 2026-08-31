@@ -269,12 +269,11 @@ pub fn parse_create_fragment_tokens(tokens: &[OwnedLexToken]) -> bool {
 pub fn parse_exile_library_shuffle_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ExileLibraryShuffleSpec> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_exile_library_shuffle_lexed,
         "exile library then shuffle graveyard",
     )
-    .ok()
 }
 
 pub fn count_token_mentions(tokens: &[OwnedLexToken]) -> usize {
@@ -300,7 +299,7 @@ pub fn count_token_mentions(tokens: &[OwnedLexToken]) -> usize {
 }
 
 pub fn parse_meld_them_into_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    primitives::parse_all(tokens, parse_meld_them_into_lexed, "meld-them chain").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_meld_them_into_lexed, "meld-them chain")
 }
 
 pub fn parse_leading_chain_scope_tokens(tokens: &[OwnedLexToken]) -> Option<ChainPlayerScope> {

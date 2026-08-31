@@ -191,16 +191,17 @@ fn parse_optional_reveal_count<'a>(input: &mut LexStream<'a>) -> WResult<Value> 
 
 fn parse_optional_color<'a>(input: &mut LexStream<'a>) -> Option<crate::color::ColorSet> {
     let mut probe = input.clone();
-    let word = primitives::word_parser_text.parse_next(&mut probe).ok()?;
-    let color = leaf::parse_leaf_color_complete(word).ok()?;
+    let word = crate::grammar::primitives::take_leaf(&mut probe, primitives::word_parser_text)?;
+    let color = crate::grammar::primitives::probe_shape(leaf::parse_leaf_color_complete(word))?;
     *input = probe;
     Some(color)
 }
 
 fn parse_optional_card_type<'a>(input: &mut LexStream<'a>) -> Option<crate::types::CardType> {
     let mut probe = input.clone();
-    let word = primitives::word_parser_text.parse_next(&mut probe).ok()?;
-    let card_type = leaf::parse_leaf_card_type_complete(word).ok()?;
+    let word = crate::grammar::primitives::take_leaf(&mut probe, primitives::word_parser_text)?;
+    let card_type =
+        crate::grammar::primitives::probe_shape(leaf::parse_leaf_card_type_complete(word))?;
     *input = probe;
     Some(card_type)
 }

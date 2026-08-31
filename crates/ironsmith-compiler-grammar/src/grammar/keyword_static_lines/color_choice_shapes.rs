@@ -41,12 +41,11 @@ pub fn parse_pregame_choose_color_tokens(tokens: &[OwnedLexToken]) -> bool {
 pub fn parse_source_is_chosen_color_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<(ChosenColorSubjectSurface, bool)> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_source_is_chosen_color_lexed,
         "source is chosen-color line",
     )
-    .ok()
 }
 
 fn parse_pregame_choose_color_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {

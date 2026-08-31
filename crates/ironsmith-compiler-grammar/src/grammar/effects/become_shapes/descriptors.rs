@@ -86,7 +86,9 @@ fn parse_pt_value_words(words: &[&str]) -> Option<(Value, Value, usize)> {
     }
     let (first, second) = (words.first()?, words.get(1)?);
     let joined = format!("{first}/{second}");
-    let (power, toughness) = leaf::parse_leaf_pt_modifier_values_complete(&joined).ok()?;
+    let (power, toughness) = crate::grammar::primitives::probe_shape(
+        leaf::parse_leaf_pt_modifier_values_complete(&joined),
+    )?;
     Some((power, toughness, 2))
 }
 
@@ -196,7 +198,9 @@ pub fn parse_become_creature_descriptor_words(words: &[&str]) -> Option<BecomeCr
             index += 1;
         } else if let Some(next) = words.get(index + 1) {
             let compound = format!("{word}-{next}");
-            let subtype = leaf::parse_leaf_subtype_flexible_complete(&compound).ok()?;
+            let subtype = crate::grammar::primitives::probe_shape(
+                leaf::parse_leaf_subtype_flexible_complete(&compound),
+            )?;
             push_unique(&mut subtypes, subtype);
             saw_subtype = true;
             index += 2;
@@ -266,7 +270,9 @@ fn split_still_a_card_type_tail_tokens(
 ) -> Option<(&[OwnedLexToken], CardType)> {
     let positions = parser_token_word_positions(tokens);
     let (_, card_type_word) = positions.last()?;
-    let card_type = leaf::parse_leaf_card_type_complete(card_type_word).ok()?;
+    let card_type = crate::grammar::primitives::probe_shape(leaf::parse_leaf_card_type_complete(
+        card_type_word,
+    ))?;
     let words = positions.iter().map(|(_, word)| *word).collect::<Vec<_>>();
     for prefix in STILL_A_CARD_TYPE_PREFIXES {
         let suffix_len = prefix.len() + 1;

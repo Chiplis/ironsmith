@@ -42,12 +42,11 @@ pub fn parse_prior_created_token_reference_words(
 pub fn parse_creature_type_choice_buff_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CreatureTypeChoiceBuff> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_creature_type_choice_buff_lexed,
         "creature-type choice buff",
     )
-    .ok()
 }
 
 fn parse_creature_type_choice_buff_lexed(
@@ -85,12 +84,11 @@ fn parse_generic_mana_cap(input: &mut LexStream<'_>) -> WResult<i32> {
 pub fn parse_this_spell_cost_surface_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ThisSpellCostSurface> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_this_spell_cost_surface_lexed,
         "this-spell cost surface",
     )
-    .ok()
 }
 
 fn parse_this_spell_cost_surface_lexed(input: &mut LexStream<'_>) -> WResult<ThisSpellCostSurface> {

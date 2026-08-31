@@ -119,12 +119,11 @@ pub fn etb_tokens_have_copy_marker(tokens: &[OwnedLexToken]) -> bool {
 pub fn parse_etb_played_by_opponent_suffix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EtbPlayedByOpponentSuffix<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_etb_played_by_opponent_suffix_lexed,
         "ETB played-by-opponent suffix",
     )
-    .ok()
 }
 
 pub fn parse_as_this_land_enters_prefix_tokens(
@@ -200,12 +199,11 @@ pub fn parse_same_name_as_triggering_spell_graveyard_value_tokens(
 pub fn parse_tagged_mana_value_reference_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EtbTaggedManaValueReference> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_tagged_mana_value_reference_lexed,
         "tagged mana-value reference",
     )
-    .ok()
 }
 
 pub fn etb_tokens_have_your_hand_count_value(tokens: &[OwnedLexToken]) -> bool {
@@ -224,18 +222,17 @@ pub fn etb_tokens_have_common_creature_type_value(tokens: &[OwnedLexToken]) -> b
 }
 
 pub fn parse_etb_among_scope_tokens(tokens: &[OwnedLexToken]) -> Option<EtbAmongScope<'_>> {
-    primitives::parse_all(tokens, parse_etb_among_scope_lexed, "ETB among scope").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_etb_among_scope_lexed, "ETB among scope")
 }
 
 pub fn parse_etb_static_abilities_among_scope_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EtbStaticAbilitiesAmongScope<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_etb_static_abilities_among_scope_lexed,
         "ETB static-abilities-among scope",
     )
-    .ok()
 }
 
 pub fn etb_tokens_have_graveyard_marker(tokens: &[OwnedLexToken]) -> bool {
@@ -275,12 +272,11 @@ pub fn parse_etb_graveyard_owner_tokens(tokens: &[OwnedLexToken]) -> Option<EtbG
 pub fn parse_etb_as_long_as_clause_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EtbAsLongAsClause<'_>> {
-    let parsed = primitives::parse_all(
+    let parsed = crate::grammar::primitives::probe_all(
         tokens,
         parse_etb_as_long_as_clause_lexed,
         "ETB as-long-as clause",
-    )
-    .ok()?;
+    )?;
     if primitives::parse_all(
         parsed.condition_tokens,
         parse_this_in_your_graveyard_condition_lexed,
@@ -316,25 +312,23 @@ pub fn parse_it_becomes_your_choice_of_prefix_tokens(
 pub fn parse_it_becomes_additional_type_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EtbBecomesAdditionalTypeTail<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_it_becomes_additional_type_tail_lexed,
         "ETB becomes-additional-type tail",
     )
-    .ok()
 }
 
 pub fn parse_etb_self_subject_tokens(tokens: &[OwnedLexToken]) -> Option<EtbSelfSubject> {
-    primitives::parse_all(tokens, parse_etb_self_subject_lexed, "ETB self subject").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_etb_self_subject_lexed, "ETB self subject")
 }
 
 pub fn parse_face_up_choice_tail_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_face_up_choice_tail_lexed,
         "ETB face-up choice tail",
     )
-    .ok()
 }
 
 pub fn etb_tokens_have_your_party_size_value(tokens: &[OwnedLexToken]) -> bool {

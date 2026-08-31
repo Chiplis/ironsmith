@@ -324,7 +324,9 @@ fn words_start_with_phrase(words: &[&str], phrase: &[&str]) -> bool {
 
 fn words_start_with_any_phrase(words: &[&str], phrases: &[&[&str]]) -> Option<usize> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    parse_any_word_phrase(&mut input, phrases).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        parse_any_word_phrase(input, phrases)
+    })?;
     words.len().checked_sub(input.len())
 }
 
@@ -556,7 +558,7 @@ pub(super) fn strip_single_graveyard_phrase(filter: &mut ObjectFilter, all_words
 fn parse_color_count_number_words(words: &[&str]) -> Option<(u32, usize)> {
     let word = words.first().copied()?;
     parse_number_word_u32(word)
-        .or_else(|| word.parse::<u32>().ok())
+        .or_else(|| crate::util::decimal_count(word))
         .map(|count| (count, 1))
 }
 
@@ -1031,9 +1033,12 @@ pub(super) fn apply_spell_filter_comparisons(
         } else {
             &[]
         };
-        let parsed = parse_filter_comparison_tokens(axis.as_str(), value_tokens, clause_words)
-            .ok()
-            .flatten();
+        let parsed = crate::grammar::primitives::probe_shape(parse_filter_comparison_tokens(
+            axis.as_str(),
+            value_tokens,
+            clause_words,
+        ))
+        .flatten();
         let Some((cmp, consumed)) = parsed else {
             cmp_idx += 1;
             continue;
@@ -1058,10 +1063,10 @@ pub(super) fn build_spell_filter_power_or_toughness_disjunction(
         } else {
             &[]
         };
-        let Some((cmp, _)) = parse_filter_comparison_tokens("power", value_tokens, clause_words)
-            .ok()
-            .flatten()
-        else {
+        let Some((cmp, _)) = crate::grammar::primitives::probe_shape(
+            parse_filter_comparison_tokens("power", value_tokens, clause_words),
+        )
+        .flatten() else {
             continue;
         };
 

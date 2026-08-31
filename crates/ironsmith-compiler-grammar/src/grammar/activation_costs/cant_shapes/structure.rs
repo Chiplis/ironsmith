@@ -114,12 +114,11 @@ pub struct NegatedUntapRemainder<'a> {
 pub fn parse_multi_sentence_cant_decline_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<MultiSentenceCantDecline<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_multi_sentence_cant_decline_lexed,
         "multi-sentence cant decline",
     )
-    .ok()
 }
 
 pub fn parse_direct_temporary_cast_decline_tokens(
@@ -127,18 +126,16 @@ pub fn parse_direct_temporary_cast_decline_tokens(
 ) -> Option<DirectTemporaryCastDecline<'_>> {
     let negation = activation_restrictions::parse_activation_negation_span_tokens(tokens)?;
     let subject_tokens = trim_lexed_commas(tokens.get(..negation.first)?);
-    let subject = primitives::parse_all(
+    let subject = crate::grammar::primitives::probe_all(
         subject_tokens,
         parse_direct_temporary_cast_subject_lexed,
         "temporary cast subject",
-    )
-    .ok()?;
-    let tail = primitives::parse_all(
+    )?;
+    let tail = crate::grammar::primitives::probe_all(
         tokens.get(negation.end..)?,
         parse_direct_temporary_cast_tail_lexed,
         "temporary cast tail",
-    )
-    .ok()?;
+    )?;
     Some(DirectTemporaryCastDecline {
         subject,
         subject_tokens,
@@ -151,35 +148,32 @@ pub fn parse_direct_temporary_cast_decline_tokens(
 pub fn parse_iterated_player_who_decline_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<IteratedPlayerWhoDecline<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_iterated_player_who_decline_lexed,
         "iterated player-who decline",
     )
-    .ok()
 }
 
 pub fn parse_leading_if_cant_decline_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LeadingIfCantDecline<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_leading_if_cant_decline_lexed,
         "leading-if cant decline",
     )
-    .ok()
 }
 
 pub fn parse_stat_modifier_conjunction_decline_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<StatModifierConjunctionDecline<'_>> {
     let negation = activation_restrictions::parse_activation_negation_span_tokens(tokens)?;
-    let parsed = primitives::parse_all(
+    let parsed = crate::grammar::primitives::probe_all(
         tokens.get(..negation.first)?,
         parse_stat_modifier_prefix_lexed,
         "stat-modifier cant prefix",
-    )
-    .ok()?;
+    )?;
     Some(StatModifierConjunctionDecline {
         verb: parsed.verb,
         subject_tokens: parsed.subject_tokens,
@@ -330,12 +324,11 @@ pub fn parse_generic_negated_cant_action_tokens(
         });
     }
 
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tail_tokens,
         parse_transform_tail_lexed,
         "cant transform tail",
-    )
-    .ok()?;
+    )?;
     if subject_tokens.is_empty() {
         return None;
     }
@@ -353,12 +346,11 @@ pub fn parse_negated_untap_remainder_tokens(
     if subject_tokens.is_empty() {
         return None;
     }
-    let parsed = primitives::parse_all(
+    let parsed = crate::grammar::primitives::probe_all(
         tokens.get(negation.end..)?,
         parse_untap_tail_lexed,
         "negated untap remainder",
-    )
-    .ok()?;
+    )?;
     Some(NegatedUntapRemainder {
         subject_tokens,
         negation_tokens: tokens.get(negation.first..negation.end)?,

@@ -41,7 +41,7 @@ fn parse_exact_life_surface(tokens: &[OwnedLexToken]) -> Option<ExactLifeSurface
     let parsed = leaf::parse_leaf_number_prefix_tokens(tokens)?;
     let (amount, consumed) = parsed.into_fixed()?;
     let mut rest = LexStream::new(tokens.get(consumed..)?);
-    primitives::kw("life").parse_next(&mut rest).ok()?;
+    crate::grammar::primitives::take_leaf(&mut rest, primitives::kw("life"))?;
     if !rest.is_empty() {
         return None;
     }

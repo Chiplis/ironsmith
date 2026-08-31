@@ -169,7 +169,10 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
             // first arm; once all arms are parsed, the shared-suffix analysis
             // below decides whether it scopes the coordinated set or remains
             // local to this independently nouned arm.
-            parse_object_filter(segment, authored_other || (other && index == 0)).ok()
+            crate::grammar::primitives::probe_shape(parse_object_filter(
+                segment,
+                authored_other || (other && index == 0),
+            ))
         })
         .collect::<Option<Vec<_>>>()?;
     let mut branches = branches

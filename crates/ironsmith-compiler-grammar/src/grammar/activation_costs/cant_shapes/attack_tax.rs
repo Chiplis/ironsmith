@@ -18,12 +18,11 @@ pub struct PerAttackerCantTaxFact {
 pub fn parse_per_attacker_cant_tax_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PerAttackerCantTaxFact> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_per_attacker_cant_tax_lexed,
         "per-attacker cant tax",
     )
-    .ok()
 }
 
 fn parse_per_attacker_cant_tax_lexed(input: &mut LexStream<'_>) -> WResult<PerAttackerCantTaxFact> {

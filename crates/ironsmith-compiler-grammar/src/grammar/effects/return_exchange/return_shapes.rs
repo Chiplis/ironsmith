@@ -119,11 +119,12 @@ fn zone_word<'a>(input: &mut LexStream<'a>) -> WResult<ReturnZoneShape> {
 
 fn first_zone(tokens: &[OwnedLexToken]) -> Option<(usize, ReturnZoneShape)> {
     let mut input = LexStream::new(tokens);
-    let (zone, taken) = repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), zone_word)
-        .map(|((), zone)| zone)
-        .with_taken()
-        .parse_next(&mut input)
-        .ok()?;
+    let (zone, taken) = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), zone_word)
+            .map(|((), zone)| zone)
+            .with_taken(),
+    )?;
     Some((taken.len().checked_sub(1)?, zone))
 }
 
@@ -157,10 +158,10 @@ fn normalize_destination_first(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexT
 
 fn first_word_offset(tokens: &[OwnedLexToken], expected: &'static str) -> Option<usize> {
     let mut input = LexStream::new(tokens);
-    let (_, taken) = repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), primitives::kw(expected))
-        .with_taken()
-        .parse_next(&mut input)
-        .ok()?;
+    let (_, taken) = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), primitives::kw(expected)).with_taken(),
+    )?;
     taken.len().checked_sub(1)
 }
 
@@ -239,7 +240,7 @@ pub fn parse_return_timing_words_shape(words: &[&str]) -> Option<ReturnTimingSha
         .iter()
         .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
         .collect::<Vec<_>>();
-    primitives::parse_all(&tokens, parse_return_timing_lexed, "return timing words").ok()
+    crate::grammar::primitives::probe_all(&tokens, parse_return_timing_lexed, "return timing words")
 }
 
 fn split_timing(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], Option<ReturnTimingShape>) {
@@ -261,11 +262,11 @@ fn split_phrase<'a>(
     phrase: &'static [&'static str],
 ) -> Option<(&'a [OwnedLexToken], &'a [OwnedLexToken])> {
     let mut input = LexStream::new(tokens);
-    let (_, taken) =
+    let (_, taken) = crate::grammar::primitives::take_leaf(
+        &mut input,
         repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), primitives::phrase(phrase))
-            .with_taken()
-            .parse_next(&mut input)
-            .ok()?;
+            .with_taken(),
+    )?;
     let marker_start = taken.len().checked_sub(phrase.len())?;
     Some((&tokens[..marker_start], &tokens[taken.len()..]))
 }
@@ -487,7 +488,7 @@ pub enum ReturnBackReferenceShape {
 pub fn parse_return_back_reference_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ReturnBackReferenceShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         (
             alt((
@@ -510,7 +511,6 @@ pub fn parse_return_back_reference_shape(
             .map(|(shape, ())| shape),
         "return back-reference",
     )
-    .ok()
 }
 
 pub fn is_return_back_reference_shape(tokens: &[OwnedLexToken]) -> bool {

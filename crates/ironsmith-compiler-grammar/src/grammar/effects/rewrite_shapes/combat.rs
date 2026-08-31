@@ -56,10 +56,9 @@ pub(super) fn parse_cant_blocked_base_power_toughness_lexed<'a>(
 pub fn parse_cant_blocked_base_power_toughness_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CantBlockedBasePowerToughnessShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_cant_blocked_base_power_toughness_lexed,
         "cant-be-blocked base-power/toughness",
     )
-    .ok()
 }

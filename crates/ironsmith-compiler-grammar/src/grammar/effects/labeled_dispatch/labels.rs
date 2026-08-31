@@ -96,7 +96,7 @@ fn supported_procedure_label(input: &mut LexStream<'_>) -> WResult<()> {
 pub fn parse_leading_effect_label_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LeadingEffectLabelShape<'_>> {
-    primitives::parse_all(tokens, leading_effect_label, "leading effect label").ok()
+    crate::grammar::primitives::probe_all(tokens, leading_effect_label, "leading effect label")
 }
 
 #[cfg(test)]

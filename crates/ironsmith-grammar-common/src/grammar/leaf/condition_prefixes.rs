@@ -84,9 +84,8 @@ pub fn parse_leaf_condition_intro_prefix_words(
     words: &[&str],
 ) -> Option<LeafConditionIntroWordPrefix> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    let intro = parse_leaf_condition_intro_word_slice
-        .parse_next(&mut input)
-        .ok()?;
+    let intro =
+        crate::grammar::primitives::take_leaf(&mut input, parse_leaf_condition_intro_word_slice)?;
     Some(LeafConditionIntroWordPrefix {
         intro,
         consumed: words.len().checked_sub(input.len())?,

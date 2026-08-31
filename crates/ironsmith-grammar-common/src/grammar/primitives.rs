@@ -188,6 +188,102 @@ fn format_parse_error(
     ))
 }
 
+thread_local! {
+    static COMMITTED_LEAF_OBSERVER: Cell<Option<fn(&str)>> = const { Cell::new(None) };
+}
+
+/// Register where committed leaf failures are reported.
+///
+/// A leaf that commits has already claimed its position, so its failure is a
+/// diagnostic about malformed input rather than an answer to "is this shape
+/// present?". Recognition returns `None` either way, so the diagnostic needs a
+/// channel of its own; the compiler front end installs one at pipeline entry.
+pub fn set_committed_leaf_observer(observer: fn(&str)) {
+    COMMITTED_LEAF_OBSERVER.with(|cell| cell.set(Some(observer)));
+}
+
+fn report_committed_leaf_failure(error: &ContextError) {
+    let Some(observer) = COMMITTED_LEAF_OBSERVER.with(Cell::get) else {
+        return;
+    };
+    observer(&error.to_string());
+}
+
+/// Take a recognizer's outcome as the answer to "does this shape appear here?".
+///
+/// A recognizer reports an absent shape with the same error type it uses for a
+/// malformed one, so a caller that is only testing for the shape has to say
+/// which question it asked. `probe_shape` is that statement: the error being
+/// dropped is the recognizer describing the shape it looked for and did not
+/// find, not a defect in the card text.
+///
+/// Use it only where the recognizer's failure really is an absent shape. Where
+/// the surrounding parser has already committed to the shape, propagate the
+/// error instead — that failure is a diagnostic the card deserves to see. A
+/// grammar leaf reading a token stream belongs in `take_leaf`, which keeps the
+/// backtrack/commit distinction winnow already draws.
+pub fn probe_shape<T, E>(outcome: Result<T, E>) -> Option<T> {
+    match outcome {
+        Ok(value) => Some(value),
+        Err(_) => None,
+    }
+}
+
+/// Take a grammar leaf from the front of `input`.
+///
+/// Leaves report absence by backtracking, so `None` means "this shape is not
+/// here" — a typed answer rather than a discarded diagnostic — and `input` is
+/// left exactly as it was. A committed (`Cut`) failure means the leaf claimed
+/// this position and the input is malformed; that diagnostic is reported to the
+/// observer installed by `set_committed_leaf_observer` instead of vanishing.
+///
+/// Use it with `?` where the leaf is required by the shape being recognized,
+/// and without `?` where the leaf is optional.
+pub fn take_leaf<I, O>(
+    input: &mut I,
+    mut parser: impl Parser<I, O, ErrMode<ContextError>>,
+) -> Option<O>
+where
+    I: Stream + Clone,
+{
+    let mut probe = input.clone();
+    match parser.parse_next(&mut probe) {
+        Ok(value) => {
+            *input = probe;
+            Some(value)
+        }
+        Err(ErrMode::Backtrack(_)) | Err(ErrMode::Incomplete(_)) => None,
+        Err(ErrMode::Cut(error)) => {
+            report_committed_leaf_failure(&error);
+            None
+        }
+    }
+}
+
+/// Recognize a complete token slice as one shape.
+///
+/// This is `parse_all_or_none` for callers that answer with `Option`. A
+/// backtracking parser and a match that leaves trailing tokens both mean "not
+/// this shape" — the slice simply is not what this grammar describes. Only a
+/// committed (`Cut`) failure is a diagnostic about malformed input, and it goes
+/// to the observer installed by `set_committed_leaf_observer`.
+pub fn probe_all<'a, O>(
+    tokens: &'a [LexToken],
+    parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
+    label: &str,
+) -> Option<O> {
+    let mut input = LexStream::new(tokens);
+    let mut parser = maybe_trace(label, parser);
+    match parser.parse_next(&mut input) {
+        Ok(value) => input.is_empty().then_some(value),
+        Err(ErrMode::Backtrack(_)) | Err(ErrMode::Incomplete(_)) => None,
+        Err(ErrMode::Cut(error)) => {
+            report_committed_leaf_failure(&error);
+            None
+        }
+    }
+}
+
 pub fn parse_all<'a, O>(
     tokens: &'a [LexToken],
     parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
@@ -211,11 +307,29 @@ pub fn parse_all_with_display_line<'a, O>(
         .map_err(|err| format_parse_error(label, err, Some(display_line_index)))
 }
 
+/// Peek a leaf at the front of `tokens` without consuming the caller's slice.
+///
+/// Absence is a backtrack and yields `None`; a committed failure is reported to
+/// the observer installed by `set_committed_leaf_observer`.
+fn peek_leaf<'a, O>(
+    parser: &mut impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
+    tokens: &'a [LexToken],
+) -> Option<(LexStream<'a>, O)> {
+    match parser.parse_peek(LexStream::new(tokens)) {
+        Ok(parsed) => Some(parsed),
+        Err(ErrMode::Backtrack(_)) | Err(ErrMode::Incomplete(_)) => None,
+        Err(ErrMode::Cut(error)) => {
+            report_committed_leaf_failure(&error);
+            None
+        }
+    }
+}
+
 pub fn parse_prefix<'a, O>(
     tokens: &'a [LexToken],
     mut parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
 ) -> Option<(O, &'a [LexToken])> {
-    let (rest, parsed) = parser.parse_peek(LexStream::new(tokens)).ok()?;
+    let (rest, parsed) = peek_leaf(&mut parser, tokens)?;
     let remaining = tokens.get(tokens.len().checked_sub(rest.len())?..)?;
     Some((parsed, remaining))
 }
@@ -726,9 +840,7 @@ pub fn split_lexed_once_on_delimiter(
     delimiter: TokenKind,
 ) -> Option<(&[LexToken], &[LexToken])> {
     let parser = take_till(0.., move |token: &LexToken| token.kind == delimiter).with_taken();
-    let (rest, ((_, head), _)) = (parser, token_kind(delimiter))
-        .parse_peek(LexStream::new(tokens))
-        .ok()?;
+    let (rest, ((_, head), _)) = peek_leaf(&mut (parser, token_kind(delimiter)), tokens)?;
     let remaining = tokens.get(tokens.len().checked_sub(rest.len())?..)?;
     Some((head, remaining))
 }
@@ -1047,10 +1159,10 @@ fn dynamic_word_sequence<'a, 'p>(
 
 pub fn parse_word_sequence_complete(words: &[&str], expected: &[&str]) -> Option<()> {
     let mut input: WordSliceInput<'_> = words;
-    (dynamic_word_sequence(expected), word_slice_eof)
-        .void()
-        .parse_next(&mut input)
-        .ok()
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        (dynamic_word_sequence(expected), word_slice_eof).void(),
+    )
 }
 
 pub fn parse_word_sequence_prefix<'a>(
@@ -1058,9 +1170,7 @@ pub fn parse_word_sequence_prefix<'a>(
     expected: &[&str],
 ) -> Option<&'a [&'a str]> {
     let mut input: WordSliceInput<'a> = words;
-    dynamic_word_sequence(expected)
-        .parse_next(&mut input)
-        .ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, dynamic_word_sequence(expected))?;
     Some(input)
 }
 
@@ -1121,10 +1231,10 @@ pub fn parse_full_word_slice<'a, O>(
     parser: impl Parser<WordSliceInput<'a>, O, ErrMode<ContextError>>,
 ) -> Option<O> {
     let mut input: WordSliceInput<'a> = words;
-    (parser, word_slice_eof)
-        .map(|(parsed, ())| parsed)
-        .parse_next(&mut input)
-        .ok()
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        (parser, word_slice_eof).map(|(parsed, ())| parsed),
+    )
 }
 
 #[cfg(test)]

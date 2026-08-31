@@ -493,7 +493,8 @@ pub fn parse_hand_advantage_player(words: &[&str]) -> Option<PlayerFilter> {
     if permission_shapes::starts_at_words(words, idx, &["at", "least"]) {
         idx += 2;
     }
-    let count = leaf::parse_number_complete(words.get(idx)?).ok()?;
+    let count =
+        crate::grammar::primitives::probe_shape(leaf::parse_number_complete(words.get(idx)?))?;
     idx += 1;
     if !prefix_at_one_of(
         words,

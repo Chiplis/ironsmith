@@ -98,11 +98,13 @@ pub fn parse_consult_cast_shape(tokens: &[OwnedLexToken]) -> Option<ConsultCastS
     }
 
     let mut may_input = LexStream::new(clause);
-    let may_start = seek_sequence_phrase(&mut may_input, &[&["may"]]).ok()?;
+    let may_start = crate::grammar::primitives::take_leaf(&mut may_input, |input: &mut _| {
+        seek_sequence_phrase(input, &[&["may"]])
+    })?;
     if may_start == 0 {
         return None;
     }
-    sequence_phrase(&["may"]).parse_next(&mut may_input).ok()?;
+    crate::grammar::primitives::take_leaf(&mut may_input, sequence_phrase(&["may"]))?;
     let after_may = clause.len().saturating_sub(may_input.len());
     let caster = trim_commas(&clause[..may_start]);
     if caster.is_empty() {

@@ -53,10 +53,9 @@ fn attached_land_ability_reset_lexed<'a>(
 pub fn parse_attached_land_ability_reset_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedLandAbilityResetSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         attached_land_ability_reset_lexed,
         "attached land loses types and abilities then gains abilities",
     )
-    .ok()
 }

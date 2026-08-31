@@ -58,7 +58,10 @@ fn source_filtered_target_restriction(
             let spell_filter = if let Some(range) = spell_descriptor_tokens {
                 let spell_tokens = trim_commas(&tokens[range]);
                 Some(
-                    match parse_object_filter(&spell_tokens, false).ok() {
+                    match crate::grammar::primitives::probe_shape(parse_object_filter(
+                        &spell_tokens,
+                        false,
+                    )) {
                         Some(filter) => Some(filter),
                         None => parse_subject_object_filter(&spell_tokens)?,
                     }
@@ -68,7 +71,10 @@ fn source_filtered_target_restriction(
                 None
             };
             let source_tokens = trim_commas(&tokens[source_descriptor_tokens]);
-            let source_filter = match parse_object_filter(&source_tokens, false).ok() {
+            let source_filter = match crate::grammar::primitives::probe_shape(parse_object_filter(
+                &source_tokens,
+                false,
+            )) {
                 Some(filter) => Some(filter),
                 None => parse_subject_object_filter(&source_tokens)?,
             }
@@ -87,18 +93,23 @@ fn source_filtered_target_restriction(
         } => {
             let source_tokens = trim_commas(&tokens[full_source_tokens]);
             let descriptor_tokens = trim_commas(&tokens[descriptor_tokens]);
-            let mut source_filter = match parse_object_filter(&source_tokens, false).ok() {
+            let mut source_filter = match crate::grammar::primitives::probe_shape(
+                parse_object_filter(&source_tokens, false),
+            ) {
                 Some(filter) => Some(filter),
                 None => parse_subject_object_filter(&source_tokens)?,
             }
-            .or_else(
-                || match parse_object_filter(&descriptor_tokens, false).ok() {
+            .or_else(|| {
+                match crate::grammar::primitives::probe_shape(parse_object_filter(
+                    &descriptor_tokens,
+                    false,
+                )) {
                     Some(filter) => Some(filter),
                     None => parse_subject_object_filter(&descriptor_tokens)
                         .ok()
                         .flatten(),
-                },
-            )
+                }
+            })
             .ok_or_else(error)?;
             source_filter.zone = Some(crate::zone::Zone::Stack);
             source_filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
@@ -635,9 +646,9 @@ fn parse_and_or_disjunction_filter(
 
     let mut filters = Vec::with_capacity(segments.len());
     for segment in segments {
-        let Some(filter) = parse_subject_object_filter(&segment)?
-            .or_else(|| parse_object_filter(&segment, false).ok())
-        else {
+        let Some(filter) = parse_subject_object_filter(&segment)?.or_else(|| {
+            crate::grammar::primitives::probe_shape(parse_object_filter(&segment, false))
+        }) else {
             return Ok(None);
         };
         filters.push(filter);
@@ -870,10 +881,11 @@ pub fn parse_negated_object_restriction_clause(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    let bare_other_choice = crate::grammar::choices::parse_chosen_cant_block_shape(tokens)
-        .ok()
-        .flatten()
-        .is_some_and(|shape| shape.bare_other_reference);
+    let bare_other_choice = crate::grammar::primitives::probe_shape(
+        crate::grammar::choices::parse_chosen_cant_block_shape(tokens),
+    )
+    .flatten()
+    .is_some_and(|shape| shape.bare_other_reference);
     if restriction_grammar::parse_leading_if_restriction_subject_words(&subject_words).is_some() {
         return Ok(None);
     }
@@ -1051,7 +1063,12 @@ pub fn parse_negated_object_restriction_clause(
             let blocker_tokens = trim_commas(&remainder_tokens[payload_words..]);
             let allowed_blocker_filter = parse_and_or_disjunction_filter(&blocker_tokens)?
                 .or(parse_subject_object_filter(&blocker_tokens)?)
-                .or_else(|| parse_object_filter(&blocker_tokens, false).ok())
+                .or_else(|| {
+                    crate::grammar::primitives::probe_shape(parse_object_filter(
+                        &blocker_tokens,
+                        false,
+                    ))
+                })
                 .ok_or_else(|| {
                     CardTextError::ParseError(format!(
                         "unsupported negated restriction tail (clause: '{}')",
@@ -1073,7 +1090,12 @@ pub fn parse_negated_object_restriction_clause(
             let blocker_tokens = trim_commas(&remainder_tokens[payload_words..]);
             let blocker_filter = parse_and_or_disjunction_filter(&blocker_tokens)?
                 .or(parse_subject_object_filter(&blocker_tokens)?)
-                .or_else(|| parse_object_filter(&blocker_tokens, false).ok())
+                .or_else(|| {
+                    crate::grammar::primitives::probe_shape(parse_object_filter(
+                        &blocker_tokens,
+                        false,
+                    ))
+                })
                 .ok_or_else(|| {
                     CardTextError::ParseError(format!(
                         "unsupported negated restriction tail (clause: '{}')",
@@ -1109,7 +1131,12 @@ pub fn parse_negated_object_restriction_clause(
             let attacker_tokens = trim_commas(&remainder_tokens[payload_words..]);
             let attacker_filter = parse_and_or_disjunction_filter(&attacker_tokens)?
                 .or(parse_subject_object_filter(&attacker_tokens)?)
-                .or_else(|| parse_object_filter(&attacker_tokens, false).ok())
+                .or_else(|| {
+                    crate::grammar::primitives::probe_shape(parse_object_filter(
+                        &attacker_tokens,
+                        false,
+                    ))
+                })
                 .ok_or_else(|| {
                     CardTextError::ParseError(format!(
                         "unsupported negated restriction tail (clause: '{}')",
@@ -1209,9 +1236,12 @@ pub fn parse_activated_ability_subject(
         }));
     }
 
-    let Some(filter) = parse_subject_object_filter(&normalized_owner_tokens)?
-        .or_else(|| parse_object_filter(&normalized_owner_tokens, false).ok())
-    else {
+    let Some(filter) = parse_subject_object_filter(&normalized_owner_tokens)?.or_else(|| {
+        crate::grammar::primitives::probe_shape(parse_object_filter(
+            &normalized_owner_tokens,
+            false,
+        ))
+    }) else {
         return Err(CardTextError::ParseError(format!(
             "unsupported subject in negated restriction clause (clause: '{}')",
             crate::lexer::token_word_refs(tokens).join(" ")

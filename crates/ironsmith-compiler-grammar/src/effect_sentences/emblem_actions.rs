@@ -16,9 +16,9 @@ fn parse_complete_typed_emblem_trigger(tokens: &[OwnedLexToken]) -> Option<Emble
     if intro.body_first == 0 || split_idx <= intro.body_first || split_idx + 1 >= tokens.len() {
         return None;
     }
-    let trigger =
-        crate::clause_support::parse_trigger_clause_lexed(&tokens[intro.body_first..split_idx])
-            .ok()?;
+    let trigger = crate::grammar::primitives::probe_shape(
+        crate::clause_support::parse_trigger_clause_lexed(&tokens[intro.body_first..split_idx]),
+    )?;
     let effect_tokens = crate::lexer::trim_lexed_commas(&tokens[split_idx + 1..]);
     if effect_tokens
         .iter()
@@ -28,7 +28,9 @@ fn parse_complete_typed_emblem_trigger(tokens: &[OwnedLexToken]) -> Option<Emble
     {
         return None;
     }
-    let effects = crate::effect_sentences::parse_effect_sentences_lexed(effect_tokens).ok()?;
+    let effects = crate::grammar::primitives::probe_shape(
+        crate::effect_sentences::parse_effect_sentences_lexed(effect_tokens),
+    )?;
     if effects.is_empty() {
         return None;
     }
@@ -90,8 +92,7 @@ fn parse_emblem_ability_tokens(tokens: &[OwnedLexToken]) -> Option<EmblemAbility
         return Some(EmblemAbilityAst::Activated(ability));
     }
 
-    parse_static_ability_ast_line_lexed(tokens)
-        .ok()
+    crate::grammar::primitives::probe_shape(parse_static_ability_ast_line_lexed(tokens))
         .flatten()
         .filter(|abilities| !abilities.is_empty())
         .map(EmblemAbilityAst::Static)

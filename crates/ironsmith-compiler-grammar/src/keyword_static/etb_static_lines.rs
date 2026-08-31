@@ -594,7 +594,7 @@ fn parse_mana_from_source_spent_to_cast_value(tokens: &[OwnedLexToken]) -> Optio
     if source_tokens.is_empty() {
         return None;
     }
-    let source_filter = parse_object_filter(&source_tokens, false).ok()?;
+    let source_filter = crate::grammar::primitives::probe_shape(parse_object_filter(&source_tokens, false))?;
     Some(Value::ManaFromSourceSpentToCastThisSpell {
         source_filter,
         include_source_noun,
@@ -656,8 +656,7 @@ fn parse_enters_with_counter_colors_mana_spent_condition_tokens(
     };
 
     let (comparison, used) =
-        parse_quantity_comparison_prefix(amount_tokens, false, false, "enters-with condition")
-            .ok()?;
+        crate::grammar::primitives::probe_shape(parse_quantity_comparison_prefix(amount_tokens, false, false, "enters-with condition"))?;
     if used != amount_tokens.len() {
         return None;
     }
@@ -674,8 +673,7 @@ fn parse_enters_with_counter_you_cast_spells_this_turn_condition_tokens(
     };
 
     let (comparison, used) =
-        parse_quantity_comparison_prefix(amount_tokens, false, false, "enters-with condition")
-            .ok()?;
+        crate::grammar::primitives::probe_shape(parse_quantity_comparison_prefix(amount_tokens, false, false, "enters-with condition"))?;
     if used != amount_tokens.len() {
         return None;
     }
@@ -691,8 +689,7 @@ fn parse_enters_with_counter_x_value_threshold_condition_tokens(
         return None;
     };
     let (comparison, used) =
-        parse_quantity_comparison_prefix(amount_tokens, false, false, "enters-with condition")
-            .ok()?;
+        crate::grammar::primitives::probe_shape(parse_quantity_comparison_prefix(amount_tokens, false, false, "enters-with condition"))?;
     if used != amount_tokens.len() {
         return None;
     }
@@ -792,13 +789,13 @@ fn parse_enters_with_counter_condition_clause(
         return Some(crate::ConditionExpr::SameColorManaSpentToCastThisSpellAtLeast(amount));
     }
 
-    parse_static_condition_clause(&condition_tokens).ok()
+    crate::grammar::primitives::probe_shape(parse_static_condition_clause(&condition_tokens))
 }
 
 fn parse_enters_with_counter_object_filter_tokens(
     subject_tokens: &[OwnedLexToken],
 ) -> Option<ObjectFilter> {
-    let mut filter = parse_object_filter(subject_tokens, false).ok()?;
+    let mut filter = crate::grammar::primitives::probe_shape(parse_object_filter(subject_tokens, false))?;
     let plural_noun = subject_tokens
         .iter()
         .filter_map(OwnedLexToken::as_word)
@@ -1376,7 +1373,7 @@ pub fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Opti
                     if trimmed.is_empty() {
                         return None;
                     }
-                    branches.push(parse_object_filter_lexed(&trimmed, false).ok()?);
+                    branches.push(crate::grammar::primitives::probe_shape(parse_object_filter_lexed(&trimmed, false))?);
                 }
                 if branches.len() < 2 {
                     return None;
@@ -1388,7 +1385,7 @@ pub fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Opti
                 None
             }
         })
-        .or_else(|| parse_object_filter_lexed(filter_tokens, false).ok())?;
+        .or_else(|| crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false)))?;
 
     if etb_grammar::etb_tokens_have_sacrificed_marker(filter_tokens) {
         if matches!(filter.zone, Some(Zone::Battlefield)) {
@@ -1453,7 +1450,7 @@ fn parse_cast_time_controlled_objects_filter(tokens: &[OwnedLexToken]) -> Option
         return None;
     }
 
-    let mut filter = parse_object_filter_lexed(&filter_tokens, false).ok()?;
+    let mut filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(&filter_tokens, false))?;
     if filter.zone.is_none() {
         filter.zone = Some(Zone::Battlefield);
     }
@@ -1542,7 +1539,7 @@ pub fn parse_where_x_is_number_of_differently_named_filter_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     let filter_tokens = etb_grammar::parse_where_x_differently_named_filter_tokens(tokens)?;
-    let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
+    let filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false))?;
     Some(Value::DistinctNames(filter))
 }
 
@@ -1550,7 +1547,7 @@ pub fn parse_where_x_is_number_of_different_powers_filter_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     let filter_tokens = etb_grammar::parse_where_x_different_powers_filter_tokens(tokens)?;
-    let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
+    let filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false))?;
     Some(Value::DistinctPowers(filter))
 }
 
@@ -1567,7 +1564,7 @@ pub fn parse_where_x_is_greatest_number_of_filter_value(tokens: &[OwnedLexToken]
     } else {
         (filter_tokens, false)
     };
-    let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
+    let filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false))?;
     filter.controller.as_ref()?;
     Some(if shared_creature_type {
         Value::GreatestSharedCreatureTypeCount(filter)
@@ -1617,7 +1614,7 @@ fn parse_shared_domain_relative_selector_filter(
         return None;
     }
 
-    let mut shared = parse_object_filter_lexed(&base_tokens, false).ok()?;
+    let mut shared = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(&base_tokens, false))?;
     if !shared.any_of.is_empty()
         || !shared.card_types.is_empty()
         || !shared.subtypes.is_empty()
@@ -1627,7 +1624,7 @@ fn parse_shared_domain_relative_selector_filter(
         return None;
     }
 
-    let parsed = parse_object_filter_lexed(filter_tokens, false).ok()?;
+    let parsed = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false))?;
     if parsed.any_of.len() < 2 {
         return None;
     }
@@ -1819,7 +1816,7 @@ pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Opti
                 Some(Value::CardTypesAmong(filter))
             }
             EtbAmongMetric::CardTypesAmong => {
-                let filter = parse_object_filter_lexed(among.scope_tokens, false).ok()?;
+                let filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(among.scope_tokens, false))?;
                 Some(Value::CardTypesAmong(filter))
             }
             _ => None,
@@ -1864,7 +1861,7 @@ pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Opti
     {
         return Some(scale_where_x_number_value(value, multiplier));
     }
-    let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
+    let filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false))?;
     Some(scale_where_x_number_value(Value::Count(filter), multiplier))
 }
 
@@ -1872,7 +1869,7 @@ pub fn parse_static_abilities_among_scope_value(filter_tokens: &[OwnedLexToken])
     let parsed = etb_grammar::parse_etb_static_abilities_among_scope_tokens(filter_tokens)?;
     let ability_ids = etb_grammar::parse_etb_static_ability_ids_tokens(parsed.ability_tokens)?;
 
-    let filter = parse_object_filter_lexed(parsed.scope_tokens, false).ok()?;
+    let filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(parsed.scope_tokens, false))?;
     Some(Value::StaticAbilitiesAmong {
         filter,
         abilities: ability_ids,
@@ -1881,7 +1878,7 @@ pub fn parse_static_abilities_among_scope_value(filter_tokens: &[OwnedLexToken])
 
 fn parse_among_types_scope_value(filter_tokens: &[OwnedLexToken]) -> Option<Value> {
     let parsed = etb_grammar::parse_etb_among_scope_tokens(filter_tokens)?;
-    let filter = parse_object_filter_lexed(parsed.scope_tokens, false).ok()?;
+    let filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(parsed.scope_tokens, false))?;
     match parsed.metric {
         EtbAmongMetric::BasicLandTypesAmong => Some(Value::BasicLandTypesAmong(filter)),
         EtbAmongMetric::CreatureTypesAmong => Some(Value::CreatureTypesAmong(filter)),
@@ -1933,7 +1930,7 @@ pub fn parse_where_x_is_fixed_plus_number_of_filter_value(
             Box::new(value),
         ));
     }
-    let filter = parse_object_filter(filter_tokens, false).ok()?;
+    let filter = crate::grammar::primitives::probe_shape(parse_object_filter(filter_tokens, false))?;
     Some(Value::Add(
         Box::new(Value::Fixed(fixed_value as i32)),
         Box::new(Value::Count(filter)),
@@ -1975,7 +1972,7 @@ pub fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
     } else if etb_grammar::etb_tokens_have_your_hand_count_value(&filter_tokens) {
         Value::CardsInHand(PlayerFilter::You)
     } else {
-        let filter = parse_object_filter(&filter_tokens, false).ok()?;
+        let filter = crate::grammar::primitives::probe_shape(parse_object_filter(&filter_tokens, false))?;
         Value::Count(filter)
     };
 
@@ -2142,8 +2139,7 @@ pub fn parse_x_at_most_enters_tapped_line(
         return Ok(None);
     };
     let Some((comparison, used)) =
-        parse_quantity_comparison_prefix(amount_tokens, false, false, "conditional tapped entry")
-            .ok()
+        crate::grammar::primitives::probe_shape(parse_quantity_comparison_prefix(amount_tokens, false, false, "conditional tapped entry"))
     else {
         return Ok(None);
     };
@@ -2299,7 +2295,7 @@ fn parse_revealed_this_way_or_control_condition(
     if reveal_filter_tokens.is_empty() {
         return None;
     }
-    let mut reveal_filter = parse_object_filter(&reveal_filter_tokens, false).ok()?;
+    let mut reveal_filter = crate::grammar::primitives::probe_shape(parse_object_filter(&reveal_filter_tokens, false))?;
     reveal_filter.zone = None;
 
     let control_tokens = trim_edge_punctuation(parsed.control_condition_tokens);

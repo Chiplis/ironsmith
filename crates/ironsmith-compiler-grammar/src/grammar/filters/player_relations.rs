@@ -367,19 +367,20 @@ fn parse_drawn_this_turn_word_slice(input: &mut primitives::WordSliceInput<'_>) 
 
 fn parse_relation_axis_shape(words: &[&str]) -> Option<(SpellFilterComparisonAxis, usize)> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    let axis = parse_relation_axis_word_slice(&mut input).ok()?;
+    let axis = crate::grammar::primitives::take_leaf(&mut input, parse_relation_axis_word_slice)?;
     Some((axis, words.len().saturating_sub(input.len())))
 }
 
 fn parse_relation_verb_shape(words: &[&str]) -> Option<(PlayerRelationVerb, usize)> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    let verb = parse_relation_verb_word_slice(&mut input).ok()?;
+    let verb = crate::grammar::primitives::take_leaf(&mut input, parse_relation_verb_word_slice)?;
     Some((verb, words.len().saturating_sub(input.len())))
 }
 
 fn parse_passive_relation_verb_shape(words: &[&str]) -> Option<(PlayerRelationVerb, usize)> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    let verb = parse_passive_relation_verb_word_slice(&mut input).ok()?;
+    let verb =
+        crate::grammar::primitives::take_leaf(&mut input, parse_passive_relation_verb_word_slice)?;
     Some((verb, words.len().saturating_sub(input.len())))
 }
 
@@ -388,43 +389,59 @@ fn parse_relation_subject_shape(
     pronoun_player_filter: &PlayerFilter,
 ) -> Option<(PlayerFilter, usize)> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    let player = parse_relation_subject_word_slice(&mut input, pronoun_player_filter).ok()?;
+    let player = crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        parse_relation_subject_word_slice(input, pronoun_player_filter)
+    })?;
     Some((player, words.len().saturating_sub(input.len())))
 }
 
 fn parse_negated_you_relation_shape(words: &[&str]) -> Option<(PlayerRelationVerb, usize)> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    let verb = parse_negated_you_relation_word_slice(&mut input).ok()?;
+    let verb =
+        crate::grammar::primitives::take_leaf(&mut input, parse_negated_you_relation_word_slice)?;
     Some((verb, words.len().saturating_sub(input.len())))
 }
 
 fn parse_chosen_player_graveyard_shape(words: &[&str]) -> Option<(PlayerFilter, Zone, usize)> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    let (owner, zone) = parse_chosen_player_graveyard_word_slice(&mut input).ok()?;
+    let (owner, zone) = crate::grammar::primitives::take_leaf(
+        &mut input,
+        parse_chosen_player_graveyard_word_slice,
+    )?;
     Some((owner, zone, words.len().saturating_sub(input.len())))
 }
 
 fn parse_joint_owner_controller_shape(words: &[&str]) -> Option<usize> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    parse_owner_controller_pair_word_slice(&mut input, "and", true).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        parse_owner_controller_pair_word_slice(input, "and", true)
+    })?;
     Some(words.len().saturating_sub(input.len()))
 }
 
 fn parse_owner_or_controller_shape(words: &[&str]) -> Option<usize> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    parse_owner_controller_pair_word_slice(&mut input, "or", false).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        parse_owner_controller_pair_word_slice(input, "or", false)
+    })?;
     Some(words.len().saturating_sub(input.len()))
 }
 
 fn parse_put_there_from_battlefield_this_turn_shape(words: &[&str]) -> Option<usize> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    parse_put_there_from_battlefield_this_turn_word_slice(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        parse_put_there_from_battlefield_this_turn_word_slice,
+    )?;
     Some(words.len().saturating_sub(input.len()))
 }
 
 fn parse_put_there_from_anywhere_this_turn_shape(words: &[&str]) -> Option<usize> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    parse_put_there_from_anywhere_this_turn_word_slice(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        parse_put_there_from_anywhere_this_turn_word_slice,
+    )?;
     Some(words.len().saturating_sub(input.len()))
 }
 
@@ -444,7 +461,10 @@ fn parse_put_there_from_their_library_this_turn_shape(words: &[&str]) -> Option<
 
 fn parse_graveyard_from_battlefield_this_turn_shape(words: &[&str]) -> Option<usize> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    parse_graveyard_from_battlefield_this_turn_word_slice(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        parse_graveyard_from_battlefield_this_turn_word_slice,
+    )?;
     Some(words.len().saturating_sub(input.len()))
 }
 
@@ -452,13 +472,16 @@ fn parse_entered_battlefield_this_turn_shape(
     words: &[&str],
 ) -> Option<(Option<PlayerFilter>, usize)> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    let controller = parse_entered_battlefield_this_turn_word_slice(&mut input).ok()?;
+    let controller = crate::grammar::primitives::take_leaf(
+        &mut input,
+        parse_entered_battlefield_this_turn_word_slice,
+    )?;
     Some((controller, words.len().saturating_sub(input.len())))
 }
 
 fn parse_drawn_this_turn_shape(words: &[&str]) -> Option<usize> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    parse_drawn_this_turn_word_slice(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, parse_drawn_this_turn_word_slice)?;
     Some(words.len().saturating_sub(input.len()))
 }
 

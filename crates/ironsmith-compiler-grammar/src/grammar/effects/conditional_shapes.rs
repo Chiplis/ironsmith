@@ -107,12 +107,11 @@ fn parse_for_each_no_control_lose_game_lexed<'a>(
 pub fn parse_for_each_no_control_lose_game_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ForEachNoControlLoseGameShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_for_each_no_control_lose_game_lexed,
         "for-each-no-control-lose-game",
     )
-    .ok()
 }
 
 fn second_spell_cast_tail<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -152,12 +151,11 @@ fn parse_counter_spell_conditional_lexed<'a>(
 pub fn parse_counter_spell_conditional_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CounterSpellConditionalShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_counter_spell_conditional_lexed,
         "counter-spell-conditional",
     )
-    .ok()
 }
 
 fn battlefield_phrase<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -200,12 +198,11 @@ fn parse_exile_greatest_power_creature_lexed<'a>(
 pub fn parse_exile_greatest_power_creature_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ExileGreatestPowerCreatureShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_exile_greatest_power_creature_lexed,
         "exile-greatest-power-creature",
     )
-    .ok()
 }
 
 #[cfg(test)]

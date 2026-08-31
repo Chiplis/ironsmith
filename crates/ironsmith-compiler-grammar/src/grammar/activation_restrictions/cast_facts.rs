@@ -151,7 +151,9 @@ pub fn parse_spell_restriction_subject_filter_words(words: &[&str]) -> Option<Ob
     while !input.is_empty() {
         input = prefix_remainder(input, &["with"])?;
         if let Some(rest) = prefix_remainder(input, &["mana", "value"]) {
-            let value = leaf::parse_number_i32_complete(rest.first().copied()?).ok()?;
+            let value = crate::grammar::primitives::probe_shape(leaf::parse_number_i32_complete(
+                rest.first().copied()?,
+            ))?;
             let after_value = &rest[1..];
             if let Some(tail) = prefix_remainder(after_value, &["or", "greater"]) {
                 filter = filter.with_mana_value(Comparison::GreaterThanOrEqual(value));
@@ -255,7 +257,9 @@ pub fn parse_card_type_list_filter_words(
         if is_card_type_list_noise_word(word) {
             continue;
         }
-        let card_type = leaf::parse_leaf_card_type_complete(singular(word)).ok()?;
+        let card_type = crate::grammar::primitives::probe_shape(
+            leaf::parse_leaf_card_type_complete(singular(word)),
+        )?;
         let mut filter = ObjectFilter::default();
         filter.zone = zone;
         filter.card_types.push(card_type);

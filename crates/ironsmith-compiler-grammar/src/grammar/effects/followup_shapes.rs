@@ -180,12 +180,11 @@ pub fn is_instead_replacement_sentence(tokens: &[OwnedLexToken]) -> bool {
 pub fn parse_create_more_prior_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CreateMorePriorTokensShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_create_more_prior_tokens_lexed,
         "create more prior tokens",
     )
-    .ok()
 }
 
 #[cfg(test)]

@@ -40,20 +40,21 @@ fn parse_damage_clause(input: &mut primitives::WordSliceInput<'_>) -> WResult<i3
 
 pub(super) fn damage_amount(words: &[&str]) -> Option<i32> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    let (_, amount) = repeat_till::<_, _, (), _, _, _, _>(
-        0..,
-        any.void(),
-        |candidate: &mut primitives::WordSliceInput<'_>| parse_damage_clause(candidate),
-    )
-    .parse_next(&mut input)
-    .ok()?;
+    let (_, amount) = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till::<_, _, (), _, _, _, _>(
+            0..,
+            any.void(),
+            |candidate: &mut primitives::WordSliceInput<'_>| parse_damage_clause(candidate),
+        ),
+    )?;
     Some(amount)
 }
 
 fn unsigned_amount_after(words: &[&str], marker: &str) -> Option<u32> {
     let marker_idx = common::first_word_offset(words, marker)?;
     let amount_word = words.get(marker_idx + 1)?;
-    leaf::parse_number_complete(amount_word).ok()
+    crate::grammar::primitives::probe_shape(leaf::parse_number_complete(amount_word))
 }
 
 pub fn parse_token_crew_shape_words(words: &[&str]) -> Option<TokenCrewShape> {
@@ -72,7 +73,9 @@ pub fn parse_token_power_as_though_greater_shape_words(
     words: &[&str],
 ) -> Option<TokenPowerAsThoughGreaterShape> {
     let were_idx = common::first_word_offset(words, "were")?;
-    let amount = leaf::parse_number_complete(words.get(were_idx + 1)?).ok()?;
+    let amount = crate::grammar::primitives::probe_shape(leaf::parse_number_complete(
+        words.get(were_idx + 1)?,
+    ))?;
     if words.get(were_idx + 2).copied() != Some("greater") {
         return None;
     }
@@ -95,7 +98,7 @@ fn parse_token_power_as_though_greater_shape_lexed<'a>(
 pub fn parse_token_power_as_though_greater_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenPowerAsThoughGreaterShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         (
             parse_token_power_as_though_greater_shape_lexed,
@@ -104,7 +107,6 @@ pub fn parse_token_power_as_though_greater_shape_tokens(
             .map(|(shape, ())| shape),
         "token saddle/crew power bonus",
     )
-    .ok()
 }
 
 #[path = "rules/embedded_rules.rs"]

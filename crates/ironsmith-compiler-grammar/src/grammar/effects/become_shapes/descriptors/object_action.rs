@@ -133,7 +133,7 @@ pub fn parse_become_color_words(words: &[&str]) -> Option<ColorSet> {
         if matches!(*word, "and" | "or") {
             continue;
         }
-        let color = leaf::parse_leaf_color_complete(word).ok()?;
+        let color = crate::grammar::primitives::probe_shape(leaf::parse_leaf_color_complete(word))?;
         colors = colors.union(color);
         saw_color = true;
     }

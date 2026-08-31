@@ -630,12 +630,11 @@ pub fn parse_put_or_remove_counter_shape(
         }
         filters::parse_counter_type_from_tokens(descriptor_tokens)
     };
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         trim_shape_edges(remove_target_tokens),
         (referential_remove_target, primitives::sentence_end()).void(),
         "put or remove referential target",
-    )
-    .ok()?;
+    )?;
     Some(PutOrRemoveCounterShape {
         base_target_tokens,
         remove_count,

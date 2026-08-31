@@ -79,8 +79,11 @@ struct ParsedRequirement {
 pub fn parse_attack_unless_condition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttackUnlessConditionFact<'_>> {
-    let capture =
-        primitives::parse_all(tokens, parse_attack_unless_line_lexed, "attack-unless-line").ok()?;
+    let capture = crate::grammar::primitives::probe_all(
+        tokens,
+        parse_attack_unless_line_lexed,
+        "attack-unless-line",
+    )?;
 
     if capture.scope == AttackUnlessScope::AttackOrBlock
         && primitives::parse_all(
@@ -93,12 +96,11 @@ pub fn parse_attack_unless_condition_tokens(
         return None;
     }
 
-    let parsed = primitives::parse_all(
+    let parsed = crate::grammar::primitives::probe_all(
         capture.tail_tokens,
         move |input: &mut LexStream<'_>| parse_requirement_lexed(input, capture.scope),
         "attack-unless-requirement",
-    )
-    .ok()?;
+    )?;
 
     Some(AttackUnlessConditionFact {
         scope: capture.scope,

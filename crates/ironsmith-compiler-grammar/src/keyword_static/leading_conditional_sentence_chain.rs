@@ -31,9 +31,9 @@ fn selectors_for_borrowed_keyword(phrase: &str) -> Option<Vec<StaticAbilityVaria
 }
 
 fn words_without_exact_phrase(text: &str, phrase: &str) -> Option<Vec<String>> {
-    let tokens = crate::lexer::lex_line(text, 0).ok()?;
+    let tokens = crate::util::lex_fragment(text, 0)?;
     let words = parser_token_word_refs(&tokens);
-    let phrase_tokens = crate::lexer::lex_line(phrase, 0).ok()?;
+    let phrase_tokens = crate::util::lex_fragment(phrase, 0)?;
     let phrase_words = parser_token_word_refs(&phrase_tokens);
     let start = crate::word_primitives::parse_sequence_start(&words, &phrase_words)?;
     if crate::word_primitives::parse_sequence_start(&words[start + 1..], &phrase_words).is_some() {
@@ -59,8 +59,9 @@ fn condition_matching_filter(
     // Re-running the pre-rewrite surface parser here rejects both shapes even
     // though the semantic condition parser below has proved the exact typed
     // matching-filter form we need.
-    let tokens = crate::lexer::lex_line(condition_text, 0).ok()?;
-    let condition = parse_static_condition_clause(&tokens).ok()?;
+    let tokens = crate::util::lex_fragment(condition_text, 0)?;
+    let condition =
+        crate::grammar::primitives::probe_shape(parse_static_condition_clause(&tokens))?;
     let crate::ConditionExpr::CountComparison {
         count: AnthemCountExpression::MatchingFilter(mut filter),
         ..
@@ -181,9 +182,10 @@ pub(super) fn parse_independent_leading_conditional_static_sentence_chain(
         let mut terminated_sentence = sentence.to_vec();
         terminated_sentence.push(OwnedLexToken::period(TextSpan::synthetic()));
 
-        let parsed = parse_static_ability_ast_line_lexed_single(&terminated_sentence)
-            .ok()
-            .flatten()?;
+        let parsed = crate::grammar::primitives::probe_shape(
+            parse_static_ability_ast_line_lexed_single(&terminated_sentence),
+        )
+        .flatten()?;
         if parsed.is_empty() || !parsed.iter().all(static_ability_ast_has_explicit_condition) {
             return None;
         }

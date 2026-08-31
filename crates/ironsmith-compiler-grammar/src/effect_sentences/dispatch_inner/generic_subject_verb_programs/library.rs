@@ -51,7 +51,7 @@ pub fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
     let look_clause = matched
         .capture_clause("look_clause", sentence_clause)?
         .trimmed();
-    let look_effect = super::super::verb_handlers::parse_look(look_clause.tokens(), None).ok()?;
+    let look_effect = crate::grammar::primitives::probe_shape(super::super::verb_handlers::parse_look(look_clause.tokens(), None))?;
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         subject: SubjectVerbSubjectAst { player, .. },
         action: SubjectVerbActionAst::LookAtTopCards { count, .. },

@@ -149,10 +149,10 @@ fn split_on<'a>(
     words: &'static [&'static str],
 ) -> Option<(&'a [OwnedLexToken], &'a [OwnedLexToken])> {
     let mut input = LexStream::new(tokens);
-    let (_, taken) = repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), dynamic_phrase(words))
-        .with_taken()
-        .parse_next(&mut input)
-        .ok()?;
+    let (_, taken) = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), dynamic_phrase(words)).with_taken(),
+    )?;
     let marker_start = taken.len().checked_sub(words.len())?;
     Some((
         trim_lexed_commas(&tokens[..marker_start]),
@@ -168,12 +168,11 @@ fn split_shared_type(
     else {
         return (tokens, None);
     };
-    let shared = primitives::parse_all(
+    let shared = crate::grammar::primitives::probe_all(
         tail,
         parse_shared_type_tail_lexed,
         "exchange shared-type relation",
-    )
-    .ok();
+    );
     (head, shared)
 }
 
@@ -212,7 +211,7 @@ fn parse_control_shape(tokens: &[OwnedLexToken]) -> Option<ExchangeControlShape<
     let count = leaf::parse_leaf_number_prefix_lexed
         .parse_next(&mut input)
         .unwrap_or(2);
-    opt(primitives::kw("target")).parse_next(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, opt(primitives::kw("target")))?;
     let consumed = body.len().checked_sub(input.len())?;
     let (filter_tokens, shared_type) = split_shared_type(&body[consumed..]);
     Some(ExchangeControlShape {

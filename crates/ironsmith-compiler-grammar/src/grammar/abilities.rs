@@ -822,10 +822,9 @@ pub fn parse_prototype_keyword_tokens(tokens: &[OwnedLexToken]) -> Option<Protot
     };
     Some(PrototypeKeywordSpec {
         cost: cost.cost,
-        power_toughness: super::leaf::parse_leaf_power_toughness_complete(
-            power_toughness.parser_text(),
-        )
-        .ok()?,
+        power_toughness: crate::grammar::primitives::probe_shape(
+            super::leaf::parse_leaf_power_toughness_complete(power_toughness.parser_text()),
+        )?,
     })
 }
 

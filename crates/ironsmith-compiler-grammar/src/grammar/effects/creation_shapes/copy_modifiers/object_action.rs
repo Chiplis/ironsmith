@@ -92,7 +92,7 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
     if let Some(amount) =
         crate::slice_primitives::find_window_by(modifier_words, 2, |pair| pair[0] == "toxic")
             .and_then(|start| modifier_words.get(start..start + 2))
-            .and_then(|pair| pair[1].parse::<u32>().ok())
+            .and_then(|pair| crate::util::decimal_count(pair[1]))
     {
         push_unique(
             &mut spec.granted_abilities,

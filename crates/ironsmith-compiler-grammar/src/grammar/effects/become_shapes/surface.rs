@@ -201,7 +201,10 @@ fn find_copy_exception_followup(
 
 fn parse_fixed_power_toughness(word: &str) -> Option<(i32, i32)> {
     let (power, toughness) = word.split_once('/')?;
-    Some((power.parse().ok()?, toughness.parse().ok()?))
+    Some((
+        crate::util::decimal_amount(power)?,
+        crate::util::decimal_amount(toughness)?,
+    ))
 }
 
 #[cfg(test)]

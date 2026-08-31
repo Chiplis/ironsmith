@@ -90,7 +90,7 @@ pub(super) fn parse_phrase_at_head<'p>(
     expected: &'p [&'p str],
 ) -> Option<PhraseFact<'p>> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    expected_phrase(expected).parse_next(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, expected_phrase(expected))?;
     Some(PhraseFact {
         phrase: expected,
         span: WordSpan {
@@ -105,9 +105,8 @@ pub(super) fn parse_phrase_choice_at_head<'p>(
     expected: &'p [&'p [&'p str]],
 ) -> Option<PhraseFact<'p>> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    let phrase = expected_phrase_choice(expected)
-        .parse_next(&mut input)
-        .ok()?;
+    let phrase =
+        crate::grammar::primitives::take_leaf(&mut input, expected_phrase_choice(expected))?;
     Some(PhraseFact {
         phrase,
         span: WordSpan {
@@ -122,12 +121,13 @@ pub(super) fn parse_phrase_anywhere<'p>(
     expected: &'p [&'p str],
 ) -> Option<PhraseFact<'p>> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    let skipped = repeat_till(0.., any.void(), peek(expected_phrase(expected)).void())
-        .map(|((), ())| ())
-        .take()
-        .parse_next(&mut input)
-        .ok()?;
-    expected_phrase(expected).parse_next(&mut input).ok()?;
+    let skipped = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till(0.., any.void(), peek(expected_phrase(expected)).void())
+            .map(|((), ())| ())
+            .take(),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, expected_phrase(expected))?;
     Some(PhraseFact {
         phrase: expected,
         span: WordSpan {
@@ -142,18 +142,18 @@ pub(super) fn parse_phrase_choice_anywhere<'p>(
     expected: &'p [&'p [&'p str]],
 ) -> Option<PhraseFact<'p>> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    let skipped = repeat_till(
-        0..,
-        any.void(),
-        peek(expected_phrase_choice(expected)).void(),
-    )
-    .map(|((), ())| ())
-    .take()
-    .parse_next(&mut input)
-    .ok()?;
-    let phrase = expected_phrase_choice(expected)
-        .parse_next(&mut input)
-        .ok()?;
+    let skipped = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till(
+            0..,
+            any.void(),
+            peek(expected_phrase_choice(expected)).void(),
+        )
+        .map(|((), ())| ())
+        .take(),
+    )?;
+    let phrase =
+        crate::grammar::primitives::take_leaf(&mut input, expected_phrase_choice(expected))?;
     Some(PhraseFact {
         phrase,
         span: WordSpan {
@@ -182,10 +182,7 @@ pub(super) fn parse_phrase_choice_whole<'p>(
 pub(super) fn parse_word_choice<'i>(word: &'i str, expected: &[&str]) -> Option<WordFact<'i>> {
     let words = [word];
     let mut input: primitives::WordSliceInput<'_> = &words;
-    expected_word_choice(expected)
-        .void()
-        .parse_next(&mut input)
-        .ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, expected_word_choice(expected).void())?;
     input.is_empty().then_some(WordFact { word, index: 0 })
 }
 
@@ -194,12 +191,13 @@ pub(super) fn parse_word_choice_anywhere<'i>(
     expected: &[&str],
 ) -> Option<WordFact<'i>> {
     let mut input: primitives::WordSliceInput<'i> = words;
-    let skipped = repeat_till(0.., any.void(), peek(expected_word_choice(expected)).void())
-        .map(|((), ())| ())
-        .take()
-        .parse_next(&mut input)
-        .ok()?;
-    let word = expected_word_choice(expected).parse_next(&mut input).ok()?;
+    let skipped = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till(0.., any.void(), peek(expected_word_choice(expected)).void())
+            .map(|((), ())| ())
+            .take(),
+    )?;
+    let word = crate::grammar::primitives::take_leaf(&mut input, expected_word_choice(expected))?;
     Some(WordFact {
         word,
         index: skipped.len(),

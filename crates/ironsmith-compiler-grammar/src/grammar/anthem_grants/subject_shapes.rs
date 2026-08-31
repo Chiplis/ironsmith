@@ -26,7 +26,7 @@ pub fn parse_exact_anthem_subject_grammar(
     if let Some(filter) = parse_attachment_state_qualified_subject(trim_lexed_commas(tokens)) {
         return Some(AnthemSubjectGrammarMatch::Filter(filter));
     }
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         trim_lexed_commas(tokens),
         alt((
             parse_commander_subject,
@@ -39,7 +39,6 @@ pub fn parse_exact_anthem_subject_grammar(
         )),
         "anthem subject",
     )
-    .ok()
 }
 
 fn parse_instant_and_sorcery_spells(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
@@ -56,7 +55,9 @@ fn parse_instant_and_sorcery_spells(tokens: &[OwnedLexToken]) -> Option<ObjectFi
         {
             (
                 rest,
-                Some(leaf::parse_leaf_color_complete(color_word).ok()?),
+                Some(crate::grammar::primitives::probe_shape(
+                    leaf::parse_leaf_color_complete(color_word),
+                )?),
             )
         }
         _ => (words.as_slice(), None),
@@ -108,11 +109,12 @@ fn parse_attachment_state_qualified_subject(tokens: &[OwnedLexToken]) -> Option<
         if base_tokens.is_empty() || attachment_tokens.is_empty() {
             return None;
         }
-        let mut filter =
-            filters::parse_object_filter_with_grammar_entrypoint_lexed(base_tokens, false).ok()?;
-        let attachment =
-            filters::parse_object_filter_with_grammar_entrypoint_lexed(attachment_tokens, false)
-                .ok()?;
+        let mut filter = crate::grammar::primitives::probe_shape(
+            filters::parse_object_filter_with_grammar_entrypoint_lexed(base_tokens, false),
+        )?;
+        let attachment = crate::grammar::primitives::probe_shape(
+            filters::parse_object_filter_with_grammar_entrypoint_lexed(attachment_tokens, false),
+        )?;
         filter.with_attached_object = Some(Box::new(attachment));
         filter.set_relative_attachment_state_surface(true);
         return Some(filter);
@@ -168,8 +170,9 @@ fn parse_attachment_state_qualified_subject(tokens: &[OwnedLexToken]) -> Option<
     if base_tokens.is_empty() {
         return None;
     }
-    let base_filter =
-        filters::parse_object_filter_with_grammar_entrypoint_lexed(base_tokens, false).ok()?;
+    let base_filter = crate::grammar::primitives::probe_shape(
+        filters::parse_object_filter_with_grammar_entrypoint_lexed(base_tokens, false),
+    )?;
     let mut branches = attachment_tags
         .iter()
         .map(|tag| {
@@ -199,7 +202,9 @@ fn parse_distributive_filter_subject(
     let filter_tokens = rest.parse_next(input)?;
     let filter = parse_shared_suffix_filter(filter_tokens)
         .or_else(|| {
-            filters::parse_object_filter_with_grammar_entrypoint_lexed(filter_tokens, false).ok()
+            crate::grammar::primitives::probe_shape(
+                filters::parse_object_filter_with_grammar_entrypoint_lexed(filter_tokens, false),
+            )
         })
         .ok_or_else(|| primitives::backtrack_err("distributive anthem subject", "object filter"))?;
     Ok(AnthemSubjectGrammarMatch::Filter(filter))

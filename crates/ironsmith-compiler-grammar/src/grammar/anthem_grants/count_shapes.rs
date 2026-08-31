@@ -116,7 +116,7 @@ fn parse_graveyard_card_threshold(input: &mut LexStream<'_>) -> WResult<u32> {
 
 pub fn parse_sticker_count_shape(tokens: &[OwnedLexToken]) -> Option<StickerCountShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
-    primitives::parse_all(tokens, parse_sticker_count_lexed, "sticker count shape").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_sticker_count_lexed, "sticker count shape")
 }
 
 pub fn parse_compound_count_segments(tokens: &[OwnedLexToken]) -> Option<Vec<&[OwnedLexToken]>> {

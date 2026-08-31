@@ -62,16 +62,15 @@ pub(super) fn parse_triggered_line_impl(
         {
             return None;
         }
-        let cost =
-            crate::grammar::leaf::parse_leaf_mana_cost_tokens(trim_lexed_commas(cost_tokens))
-                .ok()?;
+        let cost = crate::grammar::primitives::probe_shape(
+            crate::grammar::leaf::parse_leaf_mana_cost_tokens(trim_lexed_commas(cost_tokens)),
+        )?;
         Some(ironsmith_core::TotalCost::<crate::model::CompilerCost>::mana(cost))
     };
     let nested_combat_payment = parse_nested_combat_payment(full_parse_tokens)
         .or_else(|| parse_nested_combat_payment(&line.info.source_tokens))
         .or_else(|| {
-            crate::lexer::lex_line(&line.info.raw_line, line.info.line_index)
-                .ok()
+            crate::util::lex_fragment(&line.info.raw_line, line.info.line_index)
                 .and_then(|tokens| parse_nested_combat_payment(&tokens))
         });
     let mut parsed = parse_triggered_ability_line_impl(
@@ -723,10 +722,11 @@ pub(super) fn parse_triggered_ability_line_impl(
             .or_else(|| {
                 crate::grammar::semantic_lowering::parse_comma_split_tokens(&authored_raw_tokens)
                     .and_then(|split| {
-                        crate::effect_sentences::parse_serial_target_pt_modifiers_sentence(
-                            split.after,
+                        crate::grammar::primitives::probe_shape(
+                            crate::effect_sentences::parse_serial_target_pt_modifiers_sentence(
+                                split.after,
+                            ),
                         )
-                        .ok()
                         .flatten()
                     })
             });

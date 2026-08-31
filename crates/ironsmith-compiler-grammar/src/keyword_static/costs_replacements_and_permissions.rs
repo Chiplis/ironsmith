@@ -271,7 +271,7 @@ pub fn parse_optional_life_additional_cost_reduction_line(
     let Some(life_cost) = payment_words
         .first()
         .and_then(|word| parse_number_word_i32(word))
-        .and_then(|amount| u32::try_from(amount).ok())
+        .and_then(|amount| crate::util::narrowed_u32(amount))
     else {
         return Ok(None);
     };
@@ -1575,7 +1575,11 @@ pub fn parse_dynamic_cost_modifier_value(
                     .and_then(|idx| {
                         let subject = &history_tokens[..idx];
                         (!subject.is_empty())
-                            .then(|| parse_object_filter(subject, false).ok())
+                            .then(|| {
+                                crate::grammar::primitives::probe_shape(parse_object_filter(
+                                    subject, false,
+                                ))
+                            })
                             .flatten()
                     })
                     .unwrap_or_default();
@@ -2234,7 +2238,7 @@ pub fn parse_filter_is_pt_creature_in_addition_and_has_line(
     let granted_tail_tokens = &tokens[has_idx + 1..];
     let (base_power_toughness, subtype_start_word, granted_tail) = match before_has_words
         .first()
-        .and_then(|word| parse_pt_modifier(word).ok())
+        .and_then(|word| crate::grammar::primitives::probe_shape(parse_pt_modifier(word)))
     {
         Some((power, toughness)) => {
             if creature_idx == 0 {
@@ -2366,7 +2370,9 @@ pub fn parse_filter_is_pt_creature_in_addition_line(
     let raw_words = predicate_clause.word_refs();
     let words = strip_leading_article_word_refs(&raw_words);
     let skipped_article_words = raw_words.len().saturating_sub(words.len());
-    let Some((power, toughness)) = words.first().and_then(|word| parse_pt_modifier(word).ok())
+    let Some((power, toughness)) = words
+        .first()
+        .and_then(|word| crate::grammar::primitives::probe_shape(parse_pt_modifier(word)))
     else {
         return Ok(None);
     };

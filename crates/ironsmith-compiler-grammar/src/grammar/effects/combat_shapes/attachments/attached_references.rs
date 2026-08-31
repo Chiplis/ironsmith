@@ -62,10 +62,9 @@ fn attached_object_reference<'a>(
 pub fn parse_attached_object_reference_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedObjectReferenceShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         attached_object_reference,
         "enchanted or equipped object reference",
     )
-    .ok()
 }

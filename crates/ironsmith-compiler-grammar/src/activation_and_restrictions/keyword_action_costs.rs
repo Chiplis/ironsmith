@@ -1646,7 +1646,7 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
         && words.first().copied() == Some("outlast")
         && let Some(cost) = words.get(1)
     {
-        let parsed_cost = parse_scryfall_mana_cost(cost).ok()?;
+        let parsed_cost = crate::grammar::primitives::probe_shape(parse_scryfall_mana_cost(cost))?;
         return Some(KeywordAction::Outlast(parsed_cost));
     }
 

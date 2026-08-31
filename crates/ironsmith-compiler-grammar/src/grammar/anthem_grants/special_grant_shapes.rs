@@ -38,7 +38,7 @@ pub struct AnthemNoDefenderGrantShape {
 pub fn parse_commander_creature_subject_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CommanderCreatureSubject> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         alt((
             primitives::phrase(&["commander", "creature", "you", "own"]),
@@ -48,18 +48,21 @@ pub fn parse_commander_creature_subject_tokens(
         )),
         "commander creature anthem subject",
     )
-    .ok()
     .map(|()| CommanderCreatureSubject)
 }
 
 pub fn parse_anthem_goaded_shape(tokens: &[OwnedLexToken]) -> Option<AnthemGoadedShape> {
-    primitives::parse_all(tokens, parse_anthem_goaded_lexed, "anthem and goaded line").ok()
+    crate::grammar::primitives::probe_all(
+        tokens,
+        parse_anthem_goaded_lexed,
+        "anthem and goaded line",
+    )
 }
 
 pub fn parse_colored_spell_protection_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ColoredSpellProtectionShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         (
             primitives::phrase(&[
@@ -77,7 +80,6 @@ pub fn parse_colored_spell_protection_tokens(
         ),
         "protection from colored spells",
     )
-    .ok()
     .map(|_| ColoredSpellProtectionShape)
 }
 
@@ -94,12 +96,11 @@ pub fn parse_subject_color_and_grant_tokens(
             )
                 .void()
         })?;
-    let (subject_tokens, color) = primitives::parse_all(
+    let (subject_tokens, color) = crate::grammar::primitives::probe_all(
         color_tokens,
         parse_subject_color_assignment,
         "subject color assignment",
-    )
-    .ok()?;
+    )?;
     let ability_tokens = super::trim_anthem_clause_tokens(ability_tokens);
     (!subject_tokens.is_empty() && !ability_tokens.is_empty()).then_some(
         SubjectColorAndGrantShape {
@@ -160,7 +161,7 @@ pub fn parse_no_defender_granted_fragment_tokens(tokens: &[OwnedLexToken]) -> bo
 pub fn parse_unblockable_keyword_fragment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<KeywordAction> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         (
             alt((
@@ -172,7 +173,6 @@ pub fn parse_unblockable_keyword_fragment_tokens(
         ),
         "unblockable granted keyword fragment",
     )
-    .ok()
     .map(|_| KeywordAction::Unblockable)
 }
 

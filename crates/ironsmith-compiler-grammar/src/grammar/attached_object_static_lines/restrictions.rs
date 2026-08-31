@@ -51,65 +51,59 @@ impl AttachedTapAbilitySubject {
 pub fn parse_attached_combat_restriction_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedCombatRestrictionSpec> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_attached_combat_restriction_lexed,
         "attached combat restriction",
     )
-    .ok()
 }
 
 pub fn parse_attached_combat_restriction_grant_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedCombatRestrictionGrantSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_attached_combat_restriction_grant_lexed,
         "attached combat restriction and grant",
     )
-    .ok()
 }
 
 pub fn parse_all_creatures_block_attached_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedSubject> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_all_creatures_block_attached_lexed,
         "all creatures block attached object",
     )
-    .ok()
 }
 
 pub fn parse_attached_tap_ability_restriction_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedTapAbilitySubject> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_attached_tap_ability_restriction_lexed,
         "attached tap-ability restriction",
     )
-    .ok()
 }
 
 pub fn parse_you_control_attached_tokens(tokens: &[OwnedLexToken]) -> Option<AttachedSubject> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_you_control_attached_lexed,
         "control attached object",
     )
-    .ok()
 }
 
 pub fn parse_attached_restriction_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedCombatRestrictionKind> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         (parse_attached_restriction_tail_lexed, semantic_finish).map(|(kind, ())| kind),
         "attached restriction tail",
     )
-    .ok()
 }
 
 fn parse_attached_combat_restriction_lexed<'a>(

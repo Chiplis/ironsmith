@@ -54,12 +54,11 @@ fn exile_permission_followup<'a>(
 pub fn parse_exile_permission_followup_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ExilePermissionFollowupShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         LexedClause::new(tokens).trimmed().tokens(),
         exile_permission_followup,
         "exile/play permission followup",
     )
-    .ok()
 }
 
 #[cfg(test)]

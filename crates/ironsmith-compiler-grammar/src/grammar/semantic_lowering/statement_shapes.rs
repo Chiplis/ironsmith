@@ -118,9 +118,10 @@ fn fixed_leaf_number(words: &[&str]) -> Option<u32> {
 }
 
 fn fixed_leaf_mana_symbol(word: &str) -> Option<crate::mana::ManaSymbol> {
-    leaf::parse_leaf_bare_mana_symbol_complete(word)
-        .or_else(|_| leaf::parse_leaf_spelled_mana_word_complete(word))
-        .ok()
+    crate::grammar::primitives::probe_shape(
+        leaf::parse_leaf_bare_mana_symbol_complete(word)
+            .or_else(|_| leaf::parse_leaf_spelled_mana_word_complete(word)),
+    )
 }
 
 pub fn parse_die_roll_adjustment_tokens(tokens: &[OwnedLexToken]) -> Option<DieRollAdjustmentSpec> {
@@ -464,7 +465,7 @@ fn parse_comma_split<'a>(input: &mut LexStream<'a>) -> WResult<CommaSplit<'a>> {
 }
 
 pub fn parse_comma_split_tokens(tokens: &[OwnedLexToken]) -> Option<CommaSplit<'_>> {
-    primitives::parse_all(tokens, parse_comma_split, "semantic-comma-split").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_comma_split, "semantic-comma-split")
 }
 
 fn parse_adamant_condition(tokens: &[OwnedLexToken]) -> Option<(ConditionExpr, String)> {
@@ -607,7 +608,9 @@ fn parse_snow_condition(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
     {
         return None;
     }
-    let symbol = crate::grammar::values::parse_mana_symbol(body_words[0]).ok()?;
+    let symbol = crate::grammar::primitives::probe_shape(
+        crate::grammar::values::parse_mana_symbol(body_words[0]),
+    )?;
     (symbol == crate::mana::ManaSymbol::Snow)
         .then_some(ConditionExpr::SnowManaOfAnySpellColorSpentToCastThisSpell)
 }

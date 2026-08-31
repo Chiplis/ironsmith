@@ -46,7 +46,9 @@ pub fn parse_quoted_emblem_then_action(tokens: &[OwnedLexToken]) -> Option<Effec
         return None;
     }
     let mut effects = vec![emblem];
-    effects.extend(crate::effect_sentences::parse_effect_chain_lexed(trailing).ok()?);
+    effects.extend(crate::grammar::primitives::probe_shape(
+        crate::effect_sentences::parse_effect_chain_lexed(trailing),
+    )?);
     (effects.len() > 1).then_some(EffectAst::Sequence { effects })
 }
 
@@ -96,7 +98,9 @@ pub fn parse_unquoted_emblem_action(
     let Some(trailing_tokens) = trailing_tokens else {
         return Some(emblem);
     };
-    let trailing = clause_dispatch::parse_effect_clause_lexed(trailing_tokens).ok()?;
+    let trailing = crate::grammar::primitives::probe_shape(
+        clause_dispatch::parse_effect_clause_lexed(trailing_tokens),
+    )?;
     Some(EffectAst::Sequence {
         effects: vec![emblem, trailing],
     })

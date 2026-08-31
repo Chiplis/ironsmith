@@ -208,23 +208,23 @@ pub fn parse_choice_library_move_shape(
     }
 
     let mut input = LexStream::new(second_clause);
-    alt((primitives::kw("put"), primitives::kw("puts")))
-        .parse_next(&mut input)
-        .ok()?;
-    let moved: &[OwnedLexToken] = repeat_till(0.., any.void(), peek(primitives::kw("on")).void())
-        .map(|((), ())| ())
-        .take()
-        .parse_next(&mut input)
-        .ok()?;
-    primitives::kw("on").parse_next(&mut input).ok()?;
-    primitives::phrase(&["top", "of"])
-        .parse_next(&mut input)
-        .ok()?;
-    repeat_till(0.., any.void(), peek(primitives::kw("library")).void())
-        .map(|((), ())| ())
-        .parse_next(&mut input)
-        .ok()?;
-    primitives::kw("library").parse_next(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        alt((primitives::kw("put"), primitives::kw("puts"))),
+    )?;
+    let moved: &[OwnedLexToken] = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till(0.., any.void(), peek(primitives::kw("on")).void())
+            .map(|((), ())| ())
+            .take(),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::kw("on"))?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::phrase(&["top", "of"]))?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till(0.., any.void(), peek(primitives::kw("library")).void()).map(|((), ())| ()),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::kw("library"))?;
 
     let moved_tokens = trim_punctuation_edges(moved);
     Some(ChoiceLibraryMoveShape {

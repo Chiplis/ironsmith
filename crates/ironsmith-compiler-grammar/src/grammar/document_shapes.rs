@@ -283,13 +283,12 @@ pub fn parse_source_alias_effect_verb_surface(
     alias: &str,
     remainder: &str,
 ) -> Option<SourceAliasEffectVerbSurface> {
-    let alias_tokens = lex_line(alias.trim(), 0).ok()?;
+    let alias_tokens = crate::util::lex_fragment(alias.trim(), 0)?;
     let mut alias_input = LexStream::new(&alias_tokens);
-    source_alias_effect_verb.parse_next(&mut alias_input).ok()?;
-    let ended: WResult<()> = eof.void().parse_next(&mut alias_input);
-    ended.ok()?;
+    crate::grammar::primitives::take_leaf(&mut alias_input, source_alias_effect_verb)?;
+    crate::grammar::primitives::take_leaf(&mut alias_input, eof.void())?;
 
-    let remainder_tokens = lex_line(remainder.trim(), 0).ok()?;
+    let remainder_tokens = crate::util::lex_fragment(remainder.trim(), 0)?;
     let (_, next_word, _) =
         primitives::find_prefix(&remainder_tokens, || primitives::word_parser_text)?;
     (!matches!(
@@ -316,8 +315,8 @@ pub fn parse_source_alias_effect_verb_surface(
 }
 
 pub fn parse_named_source_prefix(text: &str, name: &str) -> Option<NamedSourcePrefixSurface> {
-    let text_tokens = lex_line(text.trim(), 0).ok()?;
-    let name_tokens = lex_line(name.trim(), 0).ok()?;
+    let text_tokens = crate::util::lex_fragment(text.trim(), 0)?;
+    let name_tokens = crate::util::lex_fragment(name.trim(), 0)?;
     let name_words = TokenWordView::new(&name_tokens).word_refs();
     if name_words.is_empty() {
         return None;
@@ -334,7 +333,7 @@ pub fn parse_named_source_prefix(text: &str, name: &str) -> Option<NamedSourcePr
 }
 
 pub fn parse_first_comma(text: &str) -> Option<CommaSplitSurface> {
-    let tokens = lex_line(text.trim(), 0).ok()?;
+    let tokens = crate::util::lex_fragment(text.trim(), 0)?;
     let (comma_index, _, _) = primitives::find_prefix(&tokens, || primitives::comma().void())?;
     let head = render_token_slice(tokens.get(..comma_index)?)
         .trim()
@@ -346,13 +345,13 @@ pub fn parse_first_comma(text: &str) -> Option<CommaSplitSurface> {
 }
 
 pub fn parse_named_reference(text: &str) -> Option<NamedReferenceSurface> {
-    let tokens = lex_line(text.trim(), 0).ok()?;
+    let tokens = crate::util::lex_fragment(text.trim(), 0)?;
     primitives::find_prefix(&tokens, || primitives::kw("named")).map(|_| NamedReferenceSurface)
 }
 
 pub fn parse_alias_face_separator(alias: &str) -> Option<AliasFaceSeparatorSurface> {
     let mut input = alias;
-    alias_face_separator.parse_next(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, alias_face_separator)?;
     Some(AliasFaceSeparatorSurface)
 }
 
@@ -500,7 +499,7 @@ pub fn parse_when_one_or_more_this_way_followup_surface(
 }
 
 pub fn parse_named_source_enters_surface(text: &str) -> Option<NamedSourceEntersSurface> {
-    let tokens = lex_line(text.trim(), 0).ok()?;
+    let tokens = crate::util::lex_fragment(text.trim(), 0)?;
     let (_, _, tail_tokens) = primitives::find_prefix(&tokens, || primitives::kw("enters").void())?;
     if tail_tokens
         .first()

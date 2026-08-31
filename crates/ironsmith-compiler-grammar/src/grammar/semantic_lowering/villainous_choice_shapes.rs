@@ -293,23 +293,21 @@ fn parse_villainous_choice_player_statement_lexed<'a>(
 pub fn parse_villainous_choice_statement_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<VillainousChoiceStatementShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_villainous_choice_statement_lexed,
         "villainous-choice statement",
     )
-    .ok()
 }
 
 pub fn parse_villainous_choice_player_statement_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<VillainousChoicePlayerStatementShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_villainous_choice_player_statement_lexed,
         "villainous-choice player statement",
     )
-    .ok()
 }
 
 #[cfg(test)]

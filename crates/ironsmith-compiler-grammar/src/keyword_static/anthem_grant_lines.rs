@@ -35,8 +35,7 @@ fn with_leading_set_quantifier_surface(
 }
 
 fn first_spell_each_turn_subject(filter_tokens: &[OwnedLexToken]) -> Option<AnthemSubjectAst> {
-    first_spell_each_turn_subject_tokens(filter_tokens)
-        .ok()
+    crate::grammar::primitives::probe_shape(first_spell_each_turn_subject_tokens(filter_tokens))
         .flatten()
 }
 fn first_spell_each_turn_subject_tokens(
@@ -2330,7 +2329,7 @@ pub fn parse_anthem_subject(tokens: &[OwnedLexToken]) -> Result<AnthemSubjectAst
     if is_source_reference_words(&subject_words) {
         return Ok(AnthemSubjectAst::Source);
     }
-    let generic_filter = parse_object_filter(tokens, false).ok();
+    let generic_filter = crate::grammar::primitives::probe_shape(parse_object_filter(tokens, false));
     if let Some(filter) = generic_filter.as_ref()
         && (filter.in_combat_with_source
             || filter.attached_to_object.is_some()
@@ -2429,7 +2428,7 @@ fn infer_attached_subject_filter_from_condition_tokens(
 ) -> Option<ObjectFilter> {
     let condition_tokens = trim_edge_punctuation(tokens);
     let subject_tokens = anthem_grant_grammar::parse_attached_condition_subject(&condition_tokens)?;
-    parse_object_filter(subject_tokens, false).ok()
+    crate::grammar::primitives::probe_shape(parse_object_filter(subject_tokens, false))
 }
 
 fn parse_anthem_subject_with_attached_fallback(
@@ -2946,7 +2945,7 @@ pub fn parse_static_condition_clause(
                         )));
                     }
                     let filter = parse_permanent_card_count_filter(filter_tokens)
-                        .or_else(|| parse_object_filter(filter_tokens, false).ok())
+                        .or_else(|| crate::grammar::primitives::probe_shape(parse_object_filter(filter_tokens, false)))
                         .ok_or_else(|| {
                             CardTextError::ParseError(format!(
                                 "unsupported counted object phrase in static condition (clause: '{display}')"
@@ -3104,7 +3103,7 @@ fn parse_independently_articled_graveyard_cards_static_condition(
             && filter.card_types.len() == 1
     }
 
-    let predicate = crate::grammar::filters::parse_condition_predicate_lexed(tokens).ok()?;
+    let predicate = crate::grammar::primitives::probe_shape(crate::grammar::filters::parse_condition_predicate_lexed(tokens))?;
     let crate::cards::builders::PredicateAst::And(left, right) = &predicate else {
         return None;
     };
@@ -3112,12 +3111,7 @@ fn parse_independently_articled_graveyard_cards_static_condition(
         return None;
     }
 
-    crate::compile_support::compile_condition_from_predicate_ast_with_env(
-        &predicate,
-        &crate::model::reference_state::ReferenceEnv::default(),
-        None,
-    )
-    .ok()
+    crate::grammar::primitives::probe_shape(crate::compile_support::compile_condition_from_predicate_ast_with_env( &predicate, &crate::model::reference_state::ReferenceEnv::default(), None, ))
 }
 
 fn parse_devotion_static_condition(
@@ -3190,7 +3184,7 @@ fn parse_conjoined_static_condition_clause(
             continue;
         };
         let right = parse_conjoined_static_condition_clause(split.right_tokens)
-            .or_else(|| parse_static_condition_clause(split.right_tokens).ok());
+            .or_else(|| crate::grammar::primitives::probe_shape(parse_static_condition_clause(split.right_tokens)));
         if let Some(right) = right {
             return Some(crate::ConditionExpr::And(Box::new(left), Box::new(right)));
         }
@@ -3443,7 +3437,7 @@ fn parse_compound_anthem_count_filter(tokens: &[OwnedLexToken]) -> Option<Object
         if segment.is_empty() {
             return None;
         }
-        branches.push(parse_object_filter(&segment, false).ok()?);
+        branches.push(crate::grammar::primitives::probe_shape(parse_object_filter(&segment, false))?);
     }
 
     if branches.len() < 2 {
@@ -3916,7 +3910,7 @@ fn parse_dynamic_xy_anthem_values(
     modifier_token: &str,
     tail_tokens: &[OwnedLexToken],
 ) -> Option<(AnthemValue, AnthemValue)> {
-    let (power_raw, toughness_raw) = split_pt_modifier_components(modifier_token).ok()?;
+    let (power_raw, toughness_raw) = crate::grammar::primitives::probe_shape(split_pt_modifier_components(modifier_token))?;
     let power_var = pt_modifier_variable(power_raw)?;
     let toughness_var = pt_modifier_variable(toughness_raw)?;
     let bindings = parse_where_x_y_bindings(tail_tokens)?;

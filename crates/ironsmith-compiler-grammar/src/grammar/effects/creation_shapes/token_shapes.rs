@@ -496,7 +496,7 @@ fn parse_named_token_clause(input: &mut LexStream<'_>) -> WResult<NamedTokenClau
 
 pub fn parse_named_token_clause_tokens(tokens: &[OwnedLexToken]) -> Option<NamedTokenClauseShape> {
     let mut input = LexStream::new(tokens);
-    parse_named_token_clause.parse_next(&mut input).ok()
+    crate::grammar::primitives::take_leaf(&mut input, parse_named_token_clause)
 }
 
 pub fn parse_attachment_clause_tokens(tokens: &[OwnedLexToken]) -> Option<AttachmentClause<'_>> {
@@ -525,10 +525,11 @@ pub fn parse_for_each_clause_tokens(tokens: &[OwnedLexToken]) -> Option<ForEachC
     let surface = CreationWords::new(&words);
     let marker = primitives::parse_prefix(tokens, parse_unquoted_for_each_marker)?.0;
     let word_view = TokenWordView::new(tokens);
-    let start_word = word_view
-        .token_start_indices()
-        .binary_search(&marker.start_token)
-        .ok()?;
+    let start_word = crate::grammar::primitives::probe_shape(
+        word_view
+            .token_start_indices()
+            .binary_search(&marker.start_token),
+    )?;
     let prefix_words = &words[..start_word];
     let prefix = CreationWords::new(prefix_words);
     if prefix.has_phrase(CreationPhrase::TokenRulesText)

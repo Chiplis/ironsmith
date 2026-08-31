@@ -638,13 +638,14 @@ fn parse_copy_activated_marker_lexed(input: &mut LexStream<'_>) -> WResult<bool>
 
 fn semantic_word_count(tokens: &[OwnedLexToken]) -> Option<usize> {
     let mut input = LexStream::new(tokens);
-    let counts = repeat::<_, _, Vec<usize>, ErrMode<ContextError>, _>(
-        0..,
-        any.map(|token: &OwnedLexToken| token.parser_word_pieces().len()),
-    )
-    .parse_next(&mut input)
-    .ok()?;
-    semantic_finish(&mut input).ok()?;
+    let counts = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat::<_, _, Vec<usize>, ErrMode<ContextError>, _>(
+            0..,
+            any.map(|token: &OwnedLexToken| token.parser_word_pieces().len()),
+        ),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, semantic_finish)?;
     Some(counts.into_iter().sum())
 }
 
@@ -653,8 +654,8 @@ where
     P: Parser<LexStream<'a>, O, ErrMode<ContextError>>,
 {
     let mut input = LexStream::new(tokens);
-    let output = parser.parse_next(&mut input).ok()?;
-    semantic_finish.parse_next(&mut input).ok()?;
+    let output = crate::grammar::primitives::take_leaf(&mut input, parser)?;
+    crate::grammar::primitives::take_leaf(&mut input, semantic_finish)?;
     Some(output)
 }
 

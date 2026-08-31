@@ -1401,7 +1401,7 @@ fn parse_bare_card_type_subtype_union_filter(tokens: &[OwnedLexToken]) -> Option
             return None;
         }
 
-        let branch = parse_object_filter(segment, false).ok()?;
+        let branch = crate::grammar::primitives::probe_shape(parse_object_filter(segment, false))?;
         if !branch.any_of.is_empty() {
             return None;
         }

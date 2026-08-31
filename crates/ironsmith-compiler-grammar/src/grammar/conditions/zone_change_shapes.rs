@@ -56,7 +56,7 @@ pub(super) enum EntryShape<'a> {
 
 pub(super) fn parse_battlefield_change(tokens: &[OwnedLexToken]) -> Option<BattlefieldChangeShape> {
     let tokens = trim_clause(tokens);
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         alt((
             parse_no_permanent_left,
@@ -67,7 +67,6 @@ pub(super) fn parse_battlefield_change(tokens: &[OwnedLexToken]) -> Option<Battl
         )),
         "battlefield-change condition",
     )
-    .ok()
 }
 
 pub(super) fn parse_death(tokens: &[OwnedLexToken]) -> Option<DeathShape<'_>> {
@@ -157,16 +156,19 @@ fn parse_nonland_left_or_warped(input: &mut LexStream<'_>) -> WResult<Battlefiel
 
 fn parse_damaged_death(tokens: &[OwnedLexToken]) -> Option<DiedShape<'_>> {
     let mut input = LexStream::new(tokens);
-    let amount_tokens = take_until_creature_noun(&mut input).ok()?;
-    parse_creature_noun(&mut input).ok()?;
-    primitives::phrase(&["dealt", "damage", "by"])
-        .parse_next(&mut input)
-        .ok()?;
-    let damaged_by = parse_damager(&mut input).ok()?;
-    primitives::phrase(&["this", "turn", "died"])
-        .parse_next(&mut input)
-        .ok()?;
-    parse_end(&mut input).ok()?;
+    let amount_tokens =
+        crate::grammar::primitives::take_leaf(&mut input, take_until_creature_noun)?;
+    crate::grammar::primitives::take_leaf(&mut input, parse_creature_noun)?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        primitives::phrase(&["dealt", "damage", "by"]),
+    )?;
+    let damaged_by = crate::grammar::primitives::take_leaf(&mut input, parse_damager)?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        primitives::phrase(&["this", "turn", "died"]),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, parse_end)?;
     Some(DiedShape {
         amount_tokens,
         under_your_control: false,
@@ -176,12 +178,14 @@ fn parse_damaged_death(tokens: &[OwnedLexToken]) -> Option<DiedShape<'_>> {
 
 fn parse_controlled_death(tokens: &[OwnedLexToken]) -> Option<DiedShape<'_>> {
     let mut input = LexStream::new(tokens);
-    let amount_tokens = take_until_creature_noun(&mut input).ok()?;
-    parse_creature_noun(&mut input).ok()?;
-    primitives::phrase(&["died", "under", "your", "control", "this", "turn"])
-        .parse_next(&mut input)
-        .ok()?;
-    parse_end(&mut input).ok()?;
+    let amount_tokens =
+        crate::grammar::primitives::take_leaf(&mut input, take_until_creature_noun)?;
+    crate::grammar::primitives::take_leaf(&mut input, parse_creature_noun)?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        primitives::phrase(&["died", "under", "your", "control", "this", "turn"]),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, parse_end)?;
     Some(DiedShape {
         amount_tokens,
         under_your_control: true,
@@ -191,12 +195,14 @@ fn parse_controlled_death(tokens: &[OwnedLexToken]) -> Option<DiedShape<'_>> {
 
 fn parse_plain_death(tokens: &[OwnedLexToken]) -> Option<DiedShape<'_>> {
     let mut input = LexStream::new(tokens);
-    let amount_tokens = take_until_creature_noun(&mut input).ok()?;
-    parse_creature_noun(&mut input).ok()?;
-    primitives::phrase(&["died", "this", "turn"])
-        .parse_next(&mut input)
-        .ok()?;
-    parse_end(&mut input).ok()?;
+    let amount_tokens =
+        crate::grammar::primitives::take_leaf(&mut input, take_until_creature_noun)?;
+    crate::grammar::primitives::take_leaf(&mut input, parse_creature_noun)?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        primitives::phrase(&["died", "this", "turn"]),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, parse_end)?;
     Some(DiedShape {
         amount_tokens,
         under_your_control: false,
@@ -232,16 +238,15 @@ fn parse_land_entry(input: &mut LexStream<'_>) -> WResult<()> {
 
 fn parse_object_entry_last_turn(tokens: &[OwnedLexToken]) -> Option<EntryShape<'_>> {
     let mut input = LexStream::new(tokens);
-    primitives::phrase(&["you", "had"])
-        .parse_next(&mut input)
-        .ok()?;
-    let object_tokens = take_until_entry_verb(&mut input).ok()?;
-    parse_entry_verb(&mut input).ok()?;
-    opt(primitives::kw("the")).parse_next(&mut input).ok()?;
-    primitives::phrase(&["battlefield", "under", "your", "control", "last", "turn"])
-        .parse_next(&mut input)
-        .ok()?;
-    parse_end(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::phrase(&["you", "had"]))?;
+    let object_tokens = crate::grammar::primitives::take_leaf(&mut input, take_until_entry_verb)?;
+    crate::grammar::primitives::take_leaf(&mut input, parse_entry_verb)?;
+    crate::grammar::primitives::take_leaf(&mut input, opt(primitives::kw("the")))?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        primitives::phrase(&["battlefield", "under", "your", "control", "last", "turn"]),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, parse_end)?;
     Some(EntryShape::Object {
         object_tokens,
         window: EntryWindowShape::LastTurn,
@@ -255,16 +260,18 @@ fn parse_object_entry_this_turn(tokens: &[OwnedLexToken]) -> Option<EntryShape<'
     // Some conditions phrase the same controller-relative history as
     // "you had another ... enter". Consume that grammatical subject before
     // capturing the object phrase so `another` remains the filter head.
-    let you_had_surface = opt(primitives::phrase(&["you", "had"]))
-        .parse_next(&mut input)
-        .ok()?;
-    let object_tokens = take_until_entry_verb(&mut input).ok()?;
-    parse_entry_verb(&mut input).ok()?;
-    opt(primitives::kw("the")).parse_next(&mut input).ok()?;
-    primitives::phrase(&["battlefield", "under", "your", "control", "this", "turn"])
-        .parse_next(&mut input)
-        .ok()?;
-    parse_end(&mut input).ok()?;
+    let you_had_surface = crate::grammar::primitives::take_leaf(
+        &mut input,
+        opt(primitives::phrase(&["you", "had"])),
+    )?;
+    let object_tokens = crate::grammar::primitives::take_leaf(&mut input, take_until_entry_verb)?;
+    crate::grammar::primitives::take_leaf(&mut input, parse_entry_verb)?;
+    crate::grammar::primitives::take_leaf(&mut input, opt(primitives::kw("the")))?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        primitives::phrase(&["battlefield", "under", "your", "control", "this", "turn"]),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, parse_end)?;
     Some(EntryShape::Object {
         object_tokens,
         window: EntryWindowShape::ThisTurn,

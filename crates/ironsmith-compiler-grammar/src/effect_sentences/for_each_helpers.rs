@@ -248,7 +248,8 @@ pub fn parse_get_for_each_count_value(
     // Parse the authored object phrase at the grammar boundary before the
     // broad value vocabulary is considered. This preserves punctuation and
     // subtype-list provenance without a downstream semantic repair pass.
-    let authored_filter = parse_object_filter(shape.target_tokens, false).ok();
+    let authored_filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter(shape.target_tokens, false));
     let words = LexedClause::new(tokens).word_refs();
     let Some((value, _)) = parse_for_each_count_value_words(&words) else {
         return Err(CardTextError::ParseError(
@@ -433,7 +434,8 @@ fn stabilize_standalone_participant_choice_tag(
 }
 
 fn tagged_predicate(filter_tokens: Option<&[OwnedLexToken]>) -> Option<PredicateAst> {
-    let filter = parse_object_filter(filter_tokens?, false).ok()?;
+    let filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter(filter_tokens?, false))?;
     Some(PredicateAst::PlayerTaggedObjectMatches {
         player: PlayerAst::That,
         tag: crate::tag::CompilerReferenceTag::It.key(),

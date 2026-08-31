@@ -51,10 +51,9 @@ pub(super) fn parse_damage_regeneration_exile_followup_lexed<'a>(
 pub fn parse_damage_regeneration_exile_followup(
     tokens: &[OwnedLexToken],
 ) -> Option<DamageRegenerationExileFollowupShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_damage_regeneration_exile_followup_lexed,
         "damage regeneration/exile followup",
     )
-    .ok()
 }

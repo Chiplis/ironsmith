@@ -31,12 +31,11 @@ fn parse_players_lose_life_one_or_more_lexed<'a>(
 pub fn parse_players_lose_life_one_or_more_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayersLoseLifeOneOrMoreClause> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_players_lose_life_one_or_more_lexed,
         "one-or-more players lose life trigger",
     )
-    .ok()
 }
 
 #[cfg(test)]

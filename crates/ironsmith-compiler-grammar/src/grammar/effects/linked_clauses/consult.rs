@@ -178,15 +178,13 @@ pub fn parse_conditional_consult_shape(
         .is_err()
     {
         input = LexStream::new(tokens);
-        sequence_phrase(&["if"]).parse_next(&mut input).ok()?;
+        crate::grammar::primitives::take_leaf(&mut input, sequence_phrase(&["if"]))?;
     }
     let predicate_start = initial_len.saturating_sub(input.len());
     let mut comma_at = None;
     while !input.is_empty() {
         let offset = initial_len.saturating_sub(input.len());
-        let parsed: winnow::error::ModalResult<&OwnedLexToken> =
-            winnow::token::any.parse_next(&mut input);
-        let token = parsed.ok()?;
+        let token = crate::grammar::primitives::take_leaf(&mut input, winnow::token::any)?;
         if token.kind == TokenKind::Comma {
             comma_at = Some(offset);
             break;
@@ -286,9 +284,7 @@ pub fn parse_consult_battlefield_graveyard_shape(
 ) -> Option<ConsultBattlefieldGraveyardShape> {
     let mut input = LexStream::new(tokens);
     if let Ok(then_at) = seek_sequence_phrase(&mut input, &[&["then"]]) {
-        sequence_any_phrase(&[&["then"]])
-            .parse_next(&mut input)
-            .ok()?;
+        crate::grammar::primitives::take_leaf(&mut input, sequence_any_phrase(&[&["then"]]))?;
         let after_then = tokens.len().saturating_sub(input.len());
         let remainder = &tokens[..then_at];
         let matched = &tokens[after_then..];

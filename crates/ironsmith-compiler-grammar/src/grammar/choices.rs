@@ -133,19 +133,18 @@ pub fn parse_choice_clause_separator_tokens(
     separator: ChoiceClauseSeparator,
 ) -> Option<ChoiceClauseSeparatorSpan> {
     let mut input = LexStream::new(tokens);
-    let skipped = repeat_till(
-        0..,
-        any.void(),
-        peek(choice_separator_lexed(separator)).void(),
-    )
-    .map(|((), ())| ())
-    .take()
-    .parse_next(&mut input)
-    .ok()?;
+    let skipped = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till(
+            0..,
+            any.void(),
+            peek(choice_separator_lexed(separator)).void(),
+        )
+        .map(|((), ())| ())
+        .take(),
+    )?;
     let first = skipped.len();
-    choice_separator_lexed(separator)
-        .parse_next(&mut input)
-        .ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, choice_separator_lexed(separator))?;
     Some(ChoiceClauseSeparatorSpan {
         first,
         end: tokens.len().checked_sub(input.len())?,
@@ -268,7 +267,7 @@ pub fn parse_choice_clause_head_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ChoiceClauseHeadShape<'_>> {
     let mut input = LexStream::new(tokens);
-    let actor = parse_choice_head_lexed.parse_next(&mut input).ok()?;
+    let actor = crate::grammar::primitives::take_leaf(&mut input, parse_choice_head_lexed)?;
     let actor_token_count = match actor {
         ChoiceClauseActor::Implicit => 0,
         ChoiceClauseActor::You => 1,
@@ -320,54 +319,58 @@ pub fn parse_choice_card_type_reveal_shape_words(
     second: &[&str],
 ) -> Option<ChoiceCardTypeRevealShape> {
     let mut first_input: primitives::WordSliceInput<'_> = first;
-    repeat_till(
-        0..,
-        any.void(),
-        peek(alt((
+    crate::grammar::primitives::take_leaf(
+        &mut first_input,
+        repeat_till(
+            0..,
+            any.void(),
+            peek(alt((
+                primitives::word_slice_exact("choose"),
+                primitives::word_slice_exact("chooses"),
+            )))
+            .void(),
+        )
+        .map(|((), ())| ()),
+    )?;
+    crate::grammar::primitives::take_leaf(
+        &mut first_input,
+        alt((
             primitives::word_slice_exact("choose"),
             primitives::word_slice_exact("chooses"),
-        )))
-        .void(),
-    )
-    .map(|((), ())| ())
-    .parse_next(&mut first_input)
-    .ok()?;
-    alt((
-        primitives::word_slice_exact("choose"),
-        primitives::word_slice_exact("chooses"),
-    ))
-    .parse_next(&mut first_input)
-    .ok()?;
-    opt(alt((
-        primitives::word_slice_exact("a"),
-        primitives::word_slice_exact("an"),
-        primitives::word_slice_exact("the"),
-    )))
-    .parse_next(&mut first_input)
-    .ok()?;
-    word_phrase(&["card", "type"])
-        .parse_next(&mut first_input)
-        .ok()?;
-    word_phrase(&["then", "reveal", "the", "top"])
-        .parse_next(&mut first_input)
-        .ok()?;
+        )),
+    )?;
+    crate::grammar::primitives::take_leaf(
+        &mut first_input,
+        opt(alt((
+            primitives::word_slice_exact("a"),
+            primitives::word_slice_exact("an"),
+            primitives::word_slice_exact("the"),
+        ))),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut first_input, word_phrase(&["card", "type"]))?;
+    crate::grammar::primitives::take_leaf(
+        &mut first_input,
+        word_phrase(&["then", "reveal", "the", "top"]),
+    )?;
     let parsed_count = leaf::parse_leaf_number_prefix_words(first_input)?.into_fixed()?;
     first_input = first_input.get(parsed_count.1..)?;
-    alt((
-        primitives::word_slice_exact("card"),
-        primitives::word_slice_exact("cards"),
-    ))
-    .parse_next(&mut first_input)
-    .ok()?;
+    crate::grammar::primitives::take_leaf(
+        &mut first_input,
+        alt((
+            primitives::word_slice_exact("card"),
+            primitives::word_slice_exact("cards"),
+        )),
+    )?;
     word_phrase_at_end(first_input, &["of", "your", "library"])?;
 
     let mut second_input: primitives::WordSliceInput<'_> = second;
-    alt((
-        primitives::word_slice_exact("put"),
-        primitives::word_slice_exact("puts"),
-    ))
-    .parse_next(&mut second_input)
-    .ok()?;
+    crate::grammar::primitives::take_leaf(
+        &mut second_input,
+        alt((
+            primitives::word_slice_exact("put"),
+            primitives::word_slice_exact("puts"),
+        )),
+    )?;
     word_phrase_occurs(second, &["chosen", "type"])?;
     word_phrase_occurs(second, &["revealed", "this", "way"])?;
     word_phrase_occurs(second, &["into", "your", "hand"])?;
@@ -431,20 +434,21 @@ fn strip_discarded_this_way_count_suffix(
     let refs = string_word_refs(words);
     let tail = refs.get(refs.len().checked_sub(6)?..)?;
     let mut input: primitives::WordSliceInput<'_> = tail;
-    (
-        primitives::word_slice_exact("for"),
-        primitives::word_slice_exact("each"),
-        alt((
-            primitives::word_slice_exact("card"),
-            primitives::word_slice_exact("cards"),
-        )),
-        primitives::word_slice_exact("discarded"),
-        primitives::word_slice_exact("this"),
-        primitives::word_slice_exact("way"),
-        primitives::word_slice_eof,
-    )
-        .parse_next(&mut input)
-        .ok()?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        (
+            primitives::word_slice_exact("for"),
+            primitives::word_slice_exact("each"),
+            alt((
+                primitives::word_slice_exact("card"),
+                primitives::word_slice_exact("cards"),
+            )),
+            primitives::word_slice_exact("discarded"),
+            primitives::word_slice_exact("this"),
+            primitives::word_slice_exact("way"),
+            primitives::word_slice_eof,
+        ),
+    )?;
     words.truncate(words.len().saturating_sub(6));
     Some(ChoiceObjectCountSource::CardsDiscardedThisWay)
 }
@@ -524,29 +528,31 @@ fn parse_random_modifier_span(words: &[&str]) -> Option<ChoiceWordSpan> {
 
 fn parse_embedded_container_reference_span(words: &[&str]) -> Option<ChoiceWordSpan> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    let skipped = repeat_till(
-        0..,
-        any.void(),
-        peek(alt((
+    let skipped = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till(
+            0..,
+            any.void(),
+            peek(alt((
+                word_phrase(&["from", "it"]),
+                word_phrase(&["from", "them"]),
+                word_phrase(&["in", "it"]),
+                word_phrase(&["in", "them"]),
+            )))
+            .void(),
+        )
+        .map(|((), ())| ())
+        .take(),
+    )?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        alt((
             word_phrase(&["from", "it"]),
             word_phrase(&["from", "them"]),
             word_phrase(&["in", "it"]),
             word_phrase(&["in", "them"]),
-        )))
-        .void(),
-    )
-    .map(|((), ())| ())
-    .take()
-    .parse_next(&mut input)
-    .ok()?;
-    alt((
-        word_phrase(&["from", "it"]),
-        word_phrase(&["from", "them"]),
-        word_phrase(&["in", "it"]),
-        word_phrase(&["in", "them"]),
-    ))
-    .parse_next(&mut input)
-    .ok()?;
+        )),
+    )?;
     Some(ChoiceWordSpan {
         first: skipped.len(),
         end: words.len().checked_sub(input.len())?,
@@ -558,12 +564,13 @@ fn parse_specific_phrase_span(
     phrase: &'static [&'static str],
 ) -> Option<ChoiceWordSpan> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    let skipped = repeat_till(0.., any.void(), peek(word_phrase(phrase)).void())
-        .map(|((), ())| ())
-        .take()
-        .parse_next(&mut input)
-        .ok()?;
-    word_phrase(phrase).parse_next(&mut input).ok()?;
+    let skipped = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till(0.., any.void(), peek(word_phrase(phrase)).void())
+            .map(|((), ())| ())
+            .take(),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, word_phrase(phrase))?;
     Some(ChoiceWordSpan {
         first: skipped.len(),
         end: words.len().checked_sub(input.len())?,
@@ -701,20 +708,20 @@ fn word_phrase<'a>(
 
 fn word_phrase_at_end(words: &[&str], expected: &'static [&'static str]) -> Option<()> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    repeat_till(0.., any.void(), peek((word_phrase(expected), eof)).void())
-        .map(|((), ())| ())
-        .parse_next(&mut input)
-        .ok()?;
-    word_phrase(expected).parse_next(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till(0.., any.void(), peek((word_phrase(expected), eof)).void()).map(|((), ())| ()),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, word_phrase(expected))?;
     input.is_empty().then_some(())
 }
 
 fn word_phrase_occurs(words: &[&str], expected: &'static [&'static str]) -> Option<()> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    repeat_till(0.., any.void(), peek(word_phrase(expected)).void())
-        .map(|((), ())| ())
-        .parse_next(&mut input)
-        .ok()?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till(0.., any.void(), peek(word_phrase(expected)).void()).map(|((), ())| ()),
+    )?;
     word_phrase(expected).parse_next(&mut input).ok()
 }
 

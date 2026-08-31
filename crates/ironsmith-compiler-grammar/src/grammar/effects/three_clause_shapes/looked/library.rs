@@ -154,11 +154,14 @@ pub fn parse_any_number_revealed_choice_shape(
         return None;
     }
     let mut input = LexStream::new(after_count);
-    let filter_end = seek_sequence_phrase(&mut input, &[&["revealed", "this", "way"]]).ok()?;
-    sequence_phrase(&["revealed", "this", "way"])
-        .parse_next(&mut input)
-        .ok()?;
-    finish_sequence_words(&mut input).ok()?;
+    let filter_end = crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        seek_sequence_phrase(input, &[&["revealed", "this", "way"]])
+    })?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        sequence_phrase(&["revealed", "this", "way"]),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, finish_sequence_words)?;
     let filter_start =
         tokens.len().saturating_sub(tail.len()) + tail.len().saturating_sub(after_count.len());
     (filter_end > 0).then_some(AnyNumberRevealedChoiceShape {
@@ -210,8 +213,10 @@ pub fn parse_reveal_one_gain_mana_value_shape(
     third: &[OwnedLexToken],
 ) -> Option<RevealOneGainManaValueShape> {
     let mut input = LexStream::new(first);
-    let view_end = seek_sequence_phrase(&mut input, &[&["and", "put"]]).ok()?;
-    sequence_phrase(&["and"]).parse_next(&mut input).ok()?;
+    let view_end = crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        seek_sequence_phrase(input, &[&["and", "put"]])
+    })?;
+    crate::grammar::primitives::take_leaf(&mut input, sequence_phrase(&["and"]))?;
     let tail_start = first.len().saturating_sub(input.len());
     if !starts_sequence(&first[tail_start..], PUT_ONE_INTO_HAND)
         || !starts_sequence(second, &[&["you", "gain", "life"]])

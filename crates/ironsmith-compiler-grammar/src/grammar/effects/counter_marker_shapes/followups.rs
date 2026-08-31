@@ -47,12 +47,11 @@ fn parse_shared_counter_target_lexed<'a>(
 pub fn parse_shared_counter_target_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SharedCounterTargetShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_shared_counter_target_lexed,
         "shared counter target",
     )
-    .ok()
 }
 
 fn parse_counter_followup_lexed<'a>(
@@ -76,7 +75,7 @@ fn parse_counter_followup_lexed<'a>(
 }
 
 pub fn parse_counter_followup_tokens(tokens: &[OwnedLexToken]) -> Option<CounterFollowupShape<'_>> {
-    primitives::parse_all(tokens, parse_counter_followup_lexed, "counter followup").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_counter_followup_lexed, "counter followup")
 }
 
 fn parse_counter_pair_lexed<'a>(input: &mut LexStream<'a>) -> WResult<CounterPairShape<'a>> {
@@ -98,5 +97,5 @@ fn parse_counter_pair_lexed<'a>(input: &mut LexStream<'a>) -> WResult<CounterPai
 }
 
 pub fn parse_counter_pair_tokens(tokens: &[OwnedLexToken]) -> Option<CounterPairShape<'_>> {
-    primitives::parse_all(tokens, parse_counter_pair_lexed, "counter pair").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_counter_pair_lexed, "counter pair")
 }

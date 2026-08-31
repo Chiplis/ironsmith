@@ -52,8 +52,11 @@ pub fn parse_partner_with_name_tokens(tokens: &[OwnedLexToken]) -> Option<String
 }
 
 pub fn parse_partner_visible_label_tokens(tokens: &[OwnedLexToken]) -> Option<String> {
-    let shape =
-        primitives::parse_all(tokens, parse_partner_visible_label_lexed, "partner-label").ok()?;
+    let shape = crate::grammar::primitives::probe_all(
+        tokens,
+        parse_partner_visible_label_lexed,
+        "partner-label",
+    )?;
     let label = match shape {
         PartnerVisibleLabelShape::Separated {
             separator: PartnerLabelSeparator::Dash,
@@ -88,26 +91,25 @@ enum PartnerLabelSeparator {
 pub fn parse_optional_cost_with_cast_trigger_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<OptionalCostWithCastTriggerShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_optional_cost_with_cast_trigger_lexed,
         "optional-cost-with-cast-trigger",
     )
-    .ok()
 }
 
 pub fn parse_optional_keyword_additional_cost_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<OptionalKeywordAdditionalCostShape<'_>> {
-    let mut shape = primitives::parse_all(
+    let mut shape = crate::grammar::primitives::probe_all(
         tokens,
         parse_optional_keyword_additional_cost_lexed,
         "optional-keyword-additional-cost",
-    )
-    .ok()?;
+    )?;
     if shape.kind == OptionalKeywordCostKind::Behold {
-        let parsed =
-            super::activation_costs::parse_behold_segment_tokens(shape.cost_tokens).ok()?;
+        let parsed = crate::grammar::primitives::probe_shape(
+            super::activation_costs::parse_behold_segment_tokens(shape.cost_tokens),
+        )?;
         let super::activation_costs::ActivationCostSegmentCst::Behold { subtype, .. } = parsed
         else {
             return None;
@@ -120,13 +122,14 @@ pub fn parse_optional_keyword_additional_cost_tokens(
 pub fn parse_behold_and_exile_additional_cost_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<BeholdAndExileAdditionalCostShape> {
-    let behold_tokens = primitives::parse_all(
+    let behold_tokens = crate::grammar::primitives::probe_all(
         tokens,
         parse_behold_and_exile_additional_cost_lexed,
         "behold-and-exile-additional-cost",
-    )
-    .ok()?;
-    let parsed = super::activation_costs::parse_behold_segment_tokens(behold_tokens).ok()?;
+    )?;
+    let parsed = crate::grammar::primitives::probe_shape(
+        super::activation_costs::parse_behold_segment_tokens(behold_tokens),
+    )?;
     let super::activation_costs::ActivationCostSegmentCst::Behold { subtype, count } = parsed
     else {
         return None;

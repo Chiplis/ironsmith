@@ -263,29 +263,30 @@ fn parse_all_phase_subject(
     direction: PhaseDirectionShape,
 ) -> Option<&[OwnedLexToken]> {
     let mut input = LexStream::new(tokens);
-    let simultaneously = opt(primitives::kw("simultaneously"))
-        .parse_next(&mut input)
-        .ok()?
-        .is_some();
+    let simultaneously =
+        crate::grammar::primitives::take_leaf(&mut input, opt(primitives::kw("simultaneously")))?
+            .is_some();
     if simultaneously {
-        opt(primitives::comma()).parse_next(&mut input).ok()?;
+        crate::grammar::primitives::take_leaf(&mut input, opt(primitives::comma()))?;
     }
-    primitives::kw("all").parse_next(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::kw("all"))?;
     if direction == PhaseDirectionShape::In {
-        opt(phased_word).parse_next(&mut input).ok()?;
+        crate::grammar::primitives::take_leaf(&mut input, opt(phased_word))?;
     }
-    let filter_tokens = tokens_before(&mut input, 1, eof.void()).ok()?;
-    primitives::end_of_block().parse_next(&mut input).ok()?;
+    let filter_tokens = crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        tokens_before(input, 1, eof.void())
+    })?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::end_of_block())?;
     Some(filter_tokens)
 }
 
 fn parse_target_phase_subject(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let mut input = LexStream::new(tokens);
-    opt(primitives::kw("simultaneously"))
-        .parse_next(&mut input)
-        .ok()?;
-    let target_tokens = tokens_before(&mut input, 1, eof.void()).ok()?;
-    primitives::end_of_block().parse_next(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, opt(primitives::kw("simultaneously")))?;
+    let target_tokens = crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        tokens_before(input, 1, eof.void())
+    })?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::end_of_block())?;
     Some(target_tokens)
 }
 

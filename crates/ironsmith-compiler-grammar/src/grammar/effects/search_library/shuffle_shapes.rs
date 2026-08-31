@@ -58,12 +58,11 @@ fn each_chosen_player_search_put_top<'a>(input: &mut LexStream<'a>) -> WResult<(
 pub fn parse_each_chosen_player_search_put_top_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<EachChosenPlayerSearchPutTopShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         each_chosen_player_search_put_top,
         "each chosen player searches then puts on top",
     )
-    .ok()
     .map(|()| EachChosenPlayerSearchPutTopShape)
 }
 

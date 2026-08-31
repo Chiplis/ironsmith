@@ -96,12 +96,11 @@ pub struct WhereXSourceStatSpec<'a> {
 }
 
 pub fn parse_equal_to_value_body_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_equal_to_value_body_lexed,
         "equal-to-value-body",
     )
-    .ok()
 }
 
 pub fn parse_equal_to_mana_spent_to_cast_tokens(tokens: &[OwnedLexToken]) -> bool {
@@ -129,32 +128,29 @@ pub fn parse_where_x_prefix_tokens(tokens: &[OwnedLexToken]) -> bool {
 pub fn parse_where_x_fixed_plus_reference_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<WhereXFixedPlusReferenceSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_where_x_fixed_plus_reference_lexed,
         "where-x-fixed-plus-reference",
     )
-    .ok()
 }
 
 pub fn parse_where_x_player_metric_tokens(tokens: &[OwnedLexToken]) -> Option<WhereXPlayerMetric> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_where_x_player_metric_lexed,
         "where-x-player-metric",
     )
-    .ok()
 }
 
 pub fn parse_where_x_aggregate_filter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<WhereXAggregateFilterSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_where_x_aggregate_filter_lexed,
         "where-x-aggregate-filter",
     )
-    .ok()
 }
 
 pub fn parse_commander_battlefield_or_command_zone_tokens(tokens: &[OwnedLexToken]) -> bool {
@@ -169,78 +165,71 @@ pub fn parse_commander_battlefield_or_command_zone_tokens(tokens: &[OwnedLexToke
 pub fn parse_where_x_differently_named_filter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_where_x_differently_named_filter_lexed,
         "where-x-differently-named-filter",
     )
-    .ok()
 }
 
 pub fn parse_where_x_different_powers_filter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_where_x_different_powers_filter_lexed,
         "where-x-different-powers-filter",
     )
-    .ok()
 }
 
 pub fn parse_where_x_greatest_number_filter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_where_x_greatest_number_filter_lexed,
         "where-x-greatest-number-filter",
     )
-    .ok()
 }
 
 pub fn parse_where_x_number_of_filter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<WhereXNumberOfFilterSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_where_x_number_of_filter_lexed,
         "where-x-number-of-filter",
     )
-    .ok()
 }
 
 pub fn parse_where_x_fixed_plus_number_of_filter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<WhereXFixedPlusNumberOfFilterSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_where_x_fixed_plus_number_of_filter_lexed,
         "where-x-fixed-plus-number-of-filter",
     )
-    .ok()
 }
 
 pub fn parse_where_x_number_of_filter_offset_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<WhereXNumberOfFilterOffsetSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_where_x_number_of_filter_offset_lexed,
         "where-x-number-of-filter-offset",
     )
-    .ok()
 }
 
 pub fn parse_where_x_source_stat_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<WhereXSourceStatSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_where_x_source_stat_lexed,
         "where-x source statistic",
     )
-    .ok()
 }
 
 fn parse_equal_to_value_body_lexed<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken]> {

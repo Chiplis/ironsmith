@@ -23,7 +23,7 @@ where
 {
     let mut input = LexStream::new(tokens);
     let (prefix, parsed): (Vec<&OwnedLexToken>, O) =
-        repeat_till(0.., any, parser).parse_next(&mut input).ok()?;
+        crate::grammar::primitives::take_leaf(&mut input, repeat_till(0.., any, parser))?;
     Some((prefix.len(), parsed))
 }
 
@@ -33,14 +33,15 @@ fn word_boundary(tokens: &[OwnedLexToken], expected: &'static str) -> Option<usi
 
 fn word_slice_boundary(words: &[&str], expected: &'static str) -> Option<usize> {
     let mut input = words;
-    let (((), ()), prefix) = repeat_till::<_, _, (), _, _, _, _>(
-        0..,
-        any.void(),
-        primitives::word_slice_exact(expected).void(),
-    )
-    .with_taken()
-    .parse_next(&mut input)
-    .ok()?;
+    let (((), ()), prefix) = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till::<_, _, (), _, _, _, _>(
+            0..,
+            any.void(),
+            primitives::word_slice_exact(expected).void(),
+        )
+        .with_taken(),
+    )?;
     Some(prefix.len())
 }
 
@@ -219,12 +220,11 @@ fn parse_copy_retarget_lexed<'a>(input: &mut LexStream<'a>) -> WResult<CopyRetar
 }
 
 pub fn parse_copy_retarget_shape_tokens(tokens: &[OwnedLexToken]) -> Option<CopyRetargetShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         trim_lexed_commas(tokens),
         parse_copy_retarget_lexed,
         "copy retarget",
     )
-    .ok()
     .or_else(|| {
         // Sentence splitting can leave authored punctuation around this
         // follow-up. Recover the same narrow shape from normalized words

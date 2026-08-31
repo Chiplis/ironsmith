@@ -23,7 +23,9 @@ pub fn parse_modal_point_header_tokens(tokens: &[OwnedLexToken]) -> Option<Modal
         return None;
     }
     let mut input = LexStream::new(tokens);
-    find_phrase_lexed(&mut input, &["worth", "of", "modes"]).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        find_phrase_lexed(input, &["worth", "of", "modes"])
+    })?;
     Some(ModalPointHeaderShape)
 }
 

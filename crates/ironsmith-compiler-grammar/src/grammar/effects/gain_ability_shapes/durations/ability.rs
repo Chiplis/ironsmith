@@ -32,7 +32,7 @@ pub fn parse_gain_ability_duration_shape(words: &[&str]) -> Option<GainAbilityDu
 
 pub fn parse_leading_gain_duration_shape(words: &[&str]) -> Option<LeadingGainDurationShape> {
     let mut input: WordSliceInput<'_> = words;
-    let duration = continuous_duration.parse_next(&mut input).ok()?;
+    let duration = crate::grammar::primitives::take_leaf(&mut input, continuous_duration)?;
     Some(LeadingGainDurationShape {
         consumed_words: words.len().saturating_sub(input.len()),
         duration,

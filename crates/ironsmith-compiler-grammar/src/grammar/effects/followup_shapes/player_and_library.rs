@@ -35,7 +35,11 @@ fn library_shuffle_followup<'a>(input: &mut LexStream<'a>) -> WResult<LibraryShu
 pub fn parse_library_shuffle_followup_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LibraryShuffleFollowupShape> {
-    primitives::parse_all(tokens, library_shuffle_followup, "library shuffle followup").ok()
+    crate::grammar::primitives::probe_all(
+        tokens,
+        library_shuffle_followup,
+        "library shuffle followup",
+    )
 }
 
 fn cant<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -77,7 +81,11 @@ fn damaged_player_followup<'a>(input: &mut LexStream<'a>) -> WResult<DamagedPlay
 pub fn parse_damaged_player_followup_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DamagedPlayerFollowupShape> {
-    primitives::parse_all(tokens, damaged_player_followup, "damaged player followup").ok()
+    crate::grammar::primitives::probe_all(
+        tokens,
+        damaged_player_followup,
+        "damaged player followup",
+    )
 }
 
 pub fn is_tap_damaged_creatures_followup(tokens: &[OwnedLexToken]) -> bool {

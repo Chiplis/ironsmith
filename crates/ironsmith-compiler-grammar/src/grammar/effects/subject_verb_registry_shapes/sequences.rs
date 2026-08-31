@@ -165,19 +165,19 @@ pub fn parse_choose_player_to_effect_shape(
 pub fn parse_return_half_controlled_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ReturnHalfControlledShape<'_>> {
-    primitives::parse_all(tokens, return_half, "registry-return-half").ok()
+    crate::grammar::primitives::probe_all(tokens, return_half, "registry-return-half")
 }
 
 pub fn parse_historical_half_damage_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<HistoricalHalfDamageShape<'_>> {
-    primitives::parse_all(tokens, historical_half_damage, "registry-half-damage").ok()
+    crate::grammar::primitives::probe_all(tokens, historical_half_damage, "registry-half-damage")
 }
 
 pub fn parse_draw_for_exiled_hand_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DrawForExiledHandShape<'_>> {
-    primitives::parse_all(tokens, draw_for_exiled_hand, "registry-draw-exiled-hand").ok()
+    crate::grammar::primitives::probe_all(tokens, draw_for_exiled_hand, "registry-draw-exiled-hand")
 }
 
 #[cfg(test)]

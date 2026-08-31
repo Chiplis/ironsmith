@@ -66,13 +66,12 @@ fn parse_same_is_true_surface_lexed(input: &mut LexStream<'_>) -> WResult<SameIs
 }
 
 pub fn parse_same_is_true_surface(sentence: &str) -> Option<SameIsTrueSurface> {
-    let tokens = lex_line(sentence.trim(), 0).ok()?;
-    primitives::parse_all(
+    let tokens = crate::util::lex_fragment(sentence.trim(), 0)?;
+    crate::grammar::primitives::probe_all(
         &tokens,
         parse_same_is_true_surface_lexed,
         "same-is-true target list",
     )
-    .ok()
 }
 
 fn same_token_phrase(actual: &[OwnedLexToken], expected: &[OwnedLexToken]) -> bool {
@@ -102,8 +101,8 @@ pub fn parse_borrow_phrase_occurrences(
     phrase: &str,
 ) -> Option<BorrowPhraseOccurrencesSurface> {
     let sentence = sentence.trim();
-    let tokens = lex_line(sentence, 0).ok()?;
-    let expected = lex_line(phrase.trim(), 0).ok()?;
+    let tokens = crate::util::lex_fragment(sentence, 0)?;
+    let expected = crate::util::lex_fragment(phrase.trim(), 0)?;
     if expected.is_empty() {
         return None;
     }

@@ -22,12 +22,12 @@ pub fn parse_counted_those_cards(tokens: &[OwnedLexToken]) -> Option<u32> {
     let parsed = leaf::parse_leaf_number_prefix_tokens(tail)?;
     let after_count = tail.get(parsed.consumed..)?;
     let mut input = LexStream::new(after_count);
-    opt(primitives::kw("of")).parse_next(&mut input).ok()?;
-    primitives::kw("those").parse_next(&mut input).ok()?;
-    alt((primitives::kw("card"), primitives::kw("cards")))
-        .void()
-        .parse_next(&mut input)
-        .ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, opt(primitives::kw("of")))?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::kw("those"))?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        alt((primitives::kw("card"), primitives::kw("cards"))).void(),
+    )?;
     if !input.is_empty() {
         return None;
     }

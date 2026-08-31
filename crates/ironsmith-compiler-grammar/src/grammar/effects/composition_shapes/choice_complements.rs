@@ -77,12 +77,11 @@ fn parse_aggregate_choice_complement_lexed<'a>(
 pub fn parse_aggregate_choice_complement_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<AggregateChoiceComplementShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_aggregate_choice_complement_lexed,
         "aggregate-choice-complement",
     )
-    .ok()
 }
 
 fn parse_party_choice_complement_lexed<'a>(
@@ -125,12 +124,11 @@ fn parse_party_choice_complement_lexed<'a>(
 pub fn parse_party_choice_complement_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DistinctSlotChoiceComplementShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_party_choice_complement_lexed,
         "party-choice-complement",
     )
-    .ok()
 }
 
 #[cfg(test)]

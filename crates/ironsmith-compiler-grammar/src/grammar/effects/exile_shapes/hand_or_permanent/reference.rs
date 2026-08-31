@@ -21,10 +21,8 @@ pub fn parse_each_player_exile_counted_hand_permanent_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<EachPlayerExileCountedHandPermanentShape> {
     let mut input = LexStream::new(tokens);
-    let group = each_player_or_opponent_exiles.parse_next(&mut input).ok()?;
-    counted_permanents_and_or_hand_cards
-        .parse_next(&mut input)
-        .ok()?;
+    let group = crate::grammar::primitives::take_leaf(&mut input, each_player_or_opponent_exiles)?;
+    crate::grammar::primitives::take_leaf(&mut input, counted_permanents_and_or_hand_cards)?;
     input
         .is_empty()
         .then_some(EachPlayerExileCountedHandPermanentShape { group })

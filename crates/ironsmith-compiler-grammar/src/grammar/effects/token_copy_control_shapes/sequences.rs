@@ -83,8 +83,11 @@ fn subtype_list<'a>(input: &mut LexStream<'a>) -> WResult<Vec<Subtype>> {
                     primitives::comma().void(),
                 )),
             ),
-            primitives::word_parser_text
-                .verify_map(|word| leaf::parse_leaf_subtype_flexible_complete(word).ok()),
+            primitives::word_parser_text.verify_map(|word| {
+                crate::grammar::primitives::probe_shape(leaf::parse_leaf_subtype_flexible_complete(
+                    word,
+                ))
+            }),
         )
             .map(|(_, subtype)| subtype),
     )
@@ -104,12 +107,11 @@ pub fn parse_return_same_subtypes_shape(
 ) -> Option<ReturnSameSubtypesShape<'_>> {
     primitives::parse_prefix(tokens, primitives::kw("return"))?;
     let (return_tokens, subtype_tokens) = split_once(tokens, &["do", "the", "same", "for"])?;
-    let subtypes = primitives::parse_all(
+    let subtypes = crate::grammar::primitives::probe_all(
         subtype_tokens,
         (subtype_list, primitives::sentence_end()).map(|(subtypes, _)| subtypes),
         "return same subtype list",
-    )
-    .ok()?;
+    )?;
     (!subtypes.is_empty()).then_some(ReturnSameSubtypesShape {
         return_tokens,
         subtypes,
@@ -241,18 +243,18 @@ fn shuffle_graveyard_into_library<'a>(input: &mut LexStream<'a>) -> WResult<()> 
 
 pub fn parse_exile_shuffle_shape(tokens: &[OwnedLexToken]) -> Option<ExileShuffleShape<'_>> {
     let sequence = parse_then_sequence_shape(tokens)?;
-    alt((
-        primitives::phrase(&["you", "exile"]).void(),
-        primitives::kw("exile").void(),
-    ))
-    .parse_peek(LexStream::new(sequence.head_tokens))
-    .ok()?;
-    primitives::parse_all(
+    crate::grammar::primitives::probe_shape(
+        alt((
+            primitives::phrase(&["you", "exile"]).void(),
+            primitives::kw("exile").void(),
+        ))
+        .parse_peek(LexStream::new(sequence.head_tokens)),
+    )?;
+    crate::grammar::primitives::probe_all(
         sequence.tail_tokens,
         shuffle_graveyard_into_library,
         "shuffle graveyard into library",
-    )
-    .ok()?;
+    )?;
     Some(ExileShuffleShape {
         head_tokens: sequence.head_tokens,
         tail_tokens: sequence.tail_tokens,
@@ -294,12 +296,11 @@ pub fn parse_destroy_land_damage_shape(
 ) -> Option<DestroyLandDamageShape<'_>> {
     let sequence = parse_then_sequence_shape(tokens)?;
     primitives::parse_prefix(sequence.head_tokens, primitives::kw("destroy"))?;
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         sequence.tail_tokens,
         land_controller_graveyard_damage,
         "destroyed land controller graveyard damage",
-    )
-    .ok()?;
+    )?;
     Some(DestroyLandDamageShape {
         destroy_tokens: sequence.head_tokens,
         damage_tokens: sequence.tail_tokens,

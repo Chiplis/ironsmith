@@ -350,7 +350,12 @@ fn protection_from_each_mana_value_among_action(tokens: &[OwnedLexToken]) -> Opt
     let filter_token_first = *view.token_start_indices().get(filter_word_first)?;
     let filter_tokens = trim_commas(&tokens[filter_token_first..]);
     (!filter_tokens.is_empty())
-        .then(|| parse_object_filter_lexed(&filter_tokens, false).ok())
+        .then(|| {
+            crate::grammar::primitives::probe_shape(parse_object_filter_lexed(
+                &filter_tokens,
+                false,
+            ))
+        })
         .flatten()
         .map(KeywordAction::ProtectionFromEachManaValueAmong)
 }
@@ -366,9 +371,11 @@ pub fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAct
                     .token_start_indices()
                     .get(filter_word_first)?;
                 let filter_tokens = trim_commas(&tokens[filter_token_first..]);
-                parse_object_filter_lexed(&filter_tokens, false)
-                    .ok()
-                    .map(KeywordAction::ProtectionFromEachManaValueAmong)
+                crate::grammar::primitives::probe_shape(parse_object_filter_lexed(
+                    &filter_tokens,
+                    false,
+                ))
+                .map(KeywordAction::ProtectionFromEachManaValueAmong)
             }
             ProtectionTargetKind::Spell => {
                 Some(KeywordAction::ProtectionFromFilter(ObjectFilter::spell()))
@@ -382,9 +389,9 @@ pub fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAct
                 comparison_word_first,
             } => {
                 let comparison_tail = words.get(comparison_word_first..)?;
-                let (comparison, consumed) =
-                    parse_filter_comparison_tokens("mana value", comparison_tail, &words)
-                        .ok()??;
+                let (comparison, consumed) = crate::grammar::primitives::probe_shape(
+                    parse_filter_comparison_tokens("mana value", comparison_tail, &words),
+                )??;
                 (consumed == comparison_tail.len()).then(|| {
                     let mut filter = ObjectFilter::default();
                     filter.mana_value = Some(comparison);
@@ -452,7 +459,10 @@ fn parse_hexproof_from_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordActi
     // "hexproof from monocolored/multicolored/planeswalkers" — the same
     // non-color qualities the granted-ability path accepts.
     let filter_token_first = *words_view.token_start_indices().get(first_word_idx + 2)?;
-    let filter = parse_object_filter_lexed(&tokens[filter_token_first..], false).ok()?;
+    let filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(
+        &tokens[filter_token_first..],
+        false,
+    ))?;
     Some(vec![KeywordAction::HexproofFrom(filter)])
 }
 

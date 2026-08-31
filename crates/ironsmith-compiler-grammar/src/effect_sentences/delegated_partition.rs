@@ -47,7 +47,7 @@ pub(super) fn parse_revealed_top_delegated_partition_program(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
     let shape = crate::grammar::effects::delegated_partition_shapes::parse_revealed_top_delegated_partition_shape(tokens)?;
-    let pool_count = i32::try_from(shape.pool_count).ok()?;
+    let pool_count = crate::util::narrowed_i32(shape.pool_count)?;
     let pool_tag = crate::util::helper_tag_for_tokens(tokens, "delegated_collection_pool");
     let subset_tag = crate::tag::CompilerDerivedTag::DelegatedSubset.key(&pool_tag);
     let exiled_tag = crate::util::helper_tag_for_tokens(tokens, "delegated_complement_exiled");
@@ -161,10 +161,11 @@ pub(super) fn parse_conditional_delegated_graveyard_partition_program(
 
     let condition = sentences[1];
     let return_idx = condition.iter().position(|token| token.is_word("return"))?;
-    let predicate = crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(
-        &condition[1..return_idx],
-    )
-    .ok()?;
+    let predicate = crate::grammar::primitives::probe_shape(
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(
+            &condition[1..return_idx],
+        ),
+    )?;
 
     let pool = tagged_graveyard_target_pool(
         sentences[0],

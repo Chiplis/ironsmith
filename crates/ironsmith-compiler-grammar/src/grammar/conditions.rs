@@ -198,9 +198,10 @@ pub fn parse_removed_from_draft_condition(
     let has_authored_zone = filter_words
         .iter()
         .any(|word| crate::util::parse_zone_word(word).is_some());
-    let mut filter = parse_object_filter_with_grammar_entrypoint(filter_tokens, false)
-        .or_else(|_| parse_object_filter_words(&filter_words, false))
-        .ok()?;
+    let mut filter = crate::grammar::primitives::probe_shape(
+        parse_object_filter_with_grammar_entrypoint(filter_tokens, false)
+            .or_else(|_| parse_object_filter_words(&filter_words, false)),
+    )?;
     if has_authored_zone {
         return None;
     }
@@ -854,8 +855,9 @@ fn finish_control_condition(
     options: ControlConditionOptions,
 ) -> Option<ControlConditionAst> {
     let tail_tokens = trim_edge_punctuation_tokens(tail_tokens);
-    let (comparison, quantity_len) =
-        parse_quantity_comparison_prefix(tail_tokens, true, true, "control condition").ok()?;
+    let (comparison, quantity_len) = crate::grammar::primitives::probe_shape(
+        parse_quantity_comparison_prefix(tail_tokens, true, true, "control condition"),
+    )?;
     let quantity_words = tail_tokens
         .get(..quantity_len)?
         .iter()
@@ -889,7 +891,10 @@ fn finish_control_condition(
                 .chain(filter_tokens.iter())
                 .cloned()
                 .collect::<Vec<_>>();
-            parse_object_filter_with_grammar_entrypoint(&prefixed_filter_tokens, false).ok()?
+            crate::grammar::primitives::probe_shape(parse_object_filter_with_grammar_entrypoint(
+                &prefixed_filter_tokens,
+                false,
+            ))?
         }
     };
     if filter.zone.is_none() {
@@ -926,8 +931,9 @@ fn finish_control_condition_words(
     captured_requires_different_powers: bool,
     options: ControlConditionOptions,
 ) -> Option<ControlConditionAst> {
-    let (comparison, quantity_word_count) =
-        parse_quantity_comparison_prefix_words(tail_words, true, true, "control condition").ok()?;
+    let (comparison, quantity_word_count) = crate::grammar::primitives::probe_shape(
+        parse_quantity_comparison_prefix_words(tail_words, true, true, "control condition"),
+    )?;
     let quantity_words = tail_words
         .get(..quantity_word_count)?
         .iter()
@@ -959,7 +965,10 @@ fn finish_control_condition_words(
                 .chain(filter_words.iter())
                 .copied()
                 .collect::<Vec<_>>();
-            parse_object_filter_words(&prefixed_filter_words, false).ok()?
+            crate::grammar::primitives::probe_shape(parse_object_filter_words(
+                &prefixed_filter_words,
+                false,
+            ))?
         }
     };
     if filter.zone.is_none() {
@@ -1027,8 +1036,9 @@ fn finish_ownership_condition(
     options: OwnershipConditionOptions,
 ) -> Option<OwnershipConditionAst> {
     let tail_tokens = trim_edge_punctuation_tokens(tail_tokens);
-    let (comparison, quantity_len) =
-        parse_quantity_comparison_prefix(tail_tokens, true, true, "ownership condition").ok()?;
+    let (comparison, quantity_len) = crate::grammar::primitives::probe_shape(
+        parse_quantity_comparison_prefix(tail_tokens, true, true, "ownership condition"),
+    )?;
     let quantity_words = tail_tokens
         .get(..quantity_len)?
         .iter()
@@ -1091,14 +1101,16 @@ pub fn parse_object_attached_to_object_condition(
         primitives::phrase(&["attached", "to"]),
     )?;
     let subject_tokens = relation.subject_clause.tokens();
-    let (comparison, quantity_tokens) =
-        parse_quantity_comparison_prefix(subject_tokens, true, true, "attachment condition")
-            .ok()?;
+    let (comparison, quantity_tokens) = crate::grammar::primitives::probe_shape(
+        parse_quantity_comparison_prefix(subject_tokens, true, true, "attachment condition"),
+    )?;
     let attachment_tokens = subject_tokens.get(quantity_tokens..)?;
-    let mut attachment_filter =
-        parse_object_filter_with_grammar_entrypoint(attachment_tokens, false).ok()?;
-    let mut attached_to_filter =
-        parse_object_filter_with_grammar_entrypoint(attached_to_tokens, false).ok()?;
+    let mut attachment_filter = crate::grammar::primitives::probe_shape(
+        parse_object_filter_with_grammar_entrypoint(attachment_tokens, false),
+    )?;
+    let mut attached_to_filter = crate::grammar::primitives::probe_shape(
+        parse_object_filter_with_grammar_entrypoint(attached_to_tokens, false),
+    )?;
     attachment_filter.zone.get_or_insert(Zone::Battlefield);
     attached_to_filter.zone.get_or_insert(Zone::Battlefield);
     Some(ObjectAttachedToObjectConditionAst {
@@ -1115,9 +1127,9 @@ fn parse_subject_descriptor_shape(
     let relation = parse_copula_relation_clauses(tokens)?;
     let subject = parse_subject_descriptor_subject_clause(relation.subject_clause)?;
     let descriptor = parse_object_descriptor_clause(relation.tail_clause)?;
-    let filter =
-        parse_object_filter_with_grammar_entrypoint(relation.subject_clause.tokens(), false)
-            .ok()?;
+    let filter = crate::grammar::primitives::probe_shape(
+        parse_object_filter_with_grammar_entrypoint(relation.subject_clause.tokens(), false),
+    )?;
 
     Some(SubjectDescriptorConditionAst {
         subject,
@@ -1247,8 +1259,9 @@ pub fn parse_player_has_quantity_object_condition(
     let player = parse_player_has_quantity_subject_clause(relation.subject_clause)?;
     let shape =
         event_shapes::parse_quantity_object_tail(relation.tail_clause.tokens(), object_phrases)?;
-    let (comparison, used) =
-        parse_quantity_comparison_prefix(shape.amount_tokens, false, false, context).ok()?;
+    let (comparison, used) = crate::grammar::primitives::probe_shape(
+        parse_quantity_comparison_prefix(shape.amount_tokens, false, false, context),
+    )?;
     (used == shape.amount_tokens.len())
         .then_some(PlayerHasQuantityObjectConditionAst { player, comparison })
 }
@@ -1377,13 +1390,13 @@ fn parse_cards_drawn_this_turn_shape(
 ) -> Option<PlayerTurnEventConditionAst> {
     let shape = event_shapes::parse_cards_drawn_this_turn(tokens)?;
     let player = parse_life_relation_player_subject_clause(LexedClause::new(shape.subject_tokens))?;
-    let (comparison, used) = parse_quantity_comparison_prefix(
-        shape.amount_tokens,
-        false,
-        false,
-        "cards-drawn condition",
-    )
-    .ok()?;
+    let (comparison, used) =
+        crate::grammar::primitives::probe_shape(parse_quantity_comparison_prefix(
+            shape.amount_tokens,
+            false,
+            false,
+            "cards-drawn condition",
+        ))?;
     (used == shape.amount_tokens.len()).then_some(PlayerTurnEventConditionAst {
         player,
         event: PlayerTurnEventAst::CardsDrawn,
@@ -1396,20 +1409,20 @@ fn parse_lands_entered_this_turn_shape(
 ) -> Option<PlayerTurnEventConditionAst> {
     let shape = event_shapes::parse_lands_entered_this_turn(tokens)?;
     let player = parse_life_relation_player_subject_clause(LexedClause::new(shape.subject_tokens))?;
-    let comparison =
-        super::leaf::parse_leaf_another_event_count_comparison_tokens(shape.amount_tokens)
-            .ok()
-            .flatten()
-            .or_else(|| {
-                let (comparison, used) = parse_quantity_comparison_prefix(
-                    shape.amount_tokens,
-                    false,
-                    false,
-                    "lands-entered condition",
-                )
-                .ok()?;
-                (used == shape.amount_tokens.len()).then_some(comparison)
-            })?;
+    let comparison = crate::grammar::primitives::probe_shape(
+        super::leaf::parse_leaf_another_event_count_comparison_tokens(shape.amount_tokens),
+    )
+    .flatten()
+    .or_else(|| {
+        let (comparison, used) =
+            crate::grammar::primitives::probe_shape(parse_quantity_comparison_prefix(
+                shape.amount_tokens,
+                false,
+                false,
+                "lands-entered condition",
+            ))?;
+        (used == shape.amount_tokens.len()).then_some(comparison)
+    })?;
     Some(PlayerTurnEventConditionAst {
         player,
         event: PlayerTurnEventAst::LandsEnteredBattlefieldUnderControl,
@@ -1475,14 +1488,14 @@ fn parse_player_spell_cast_this_turn_shape(
         return Some(PlayerSpellCastThisTurnConditionAst::CountAtLeast { player, count: 2 });
     }
     if !shape.negated
-        && let Some((count, used)) = parse_greater_than_or_equal_quantity_prefix(
-            shape.object_tokens,
-            false,
-            false,
-            "spell-cast condition",
-        )
-        .ok()
-        .flatten()
+        && let Some((count, used)) =
+            crate::grammar::primitives::probe_shape(parse_greater_than_or_equal_quantity_prefix(
+                shape.object_tokens,
+                false,
+                false,
+                "spell-cast condition",
+            ))
+            .flatten()
     {
         if shape
             .object_tokens
@@ -1529,13 +1542,13 @@ fn parse_player_life_change_this_turn_shape(
     let comparison = if shape.amount_tokens.is_empty() {
         Comparison::GreaterThanOrEqual(1)
     } else {
-        let (comparison, used) = parse_quantity_comparison_prefix(
-            shape.amount_tokens,
-            false,
-            false,
-            "life-change condition",
-        )
-        .ok()?;
+        let (comparison, used) =
+            crate::grammar::primitives::probe_shape(parse_quantity_comparison_prefix(
+                shape.amount_tokens,
+                false,
+                false,
+                "life-change condition",
+            ))?;
         if used != shape.amount_tokens.len() {
             return None;
         }
@@ -1656,8 +1669,9 @@ fn parse_object_death_amount(tokens: &[OwnedLexToken]) -> Option<Comparison> {
     {
         return Some(Comparison::GreaterThanOrEqual(1));
     }
-    let (comparison, used) =
-        parse_quantity_comparison_prefix(tokens, false, false, "object-death condition").ok()?;
+    let (comparison, used) = crate::grammar::primitives::probe_shape(
+        parse_quantity_comparison_prefix(tokens, false, false, "object-death condition"),
+    )?;
     (used == tokens.len()).then_some(comparison)
 }
 
@@ -1710,8 +1724,9 @@ fn parse_battlefield_entry_shape(tokens: &[OwnedLexToken]) -> Option<Battlefield
                     min_count = Some(count);
                 }
             }
-            let mut filter =
-                parse_object_filter_with_grammar_entrypoint(object_tokens, false).ok()?;
+            let mut filter = crate::grammar::primitives::probe_shape(
+                parse_object_filter_with_grammar_entrypoint(object_tokens, false),
+            )?;
             filter.controller = Some(PlayerFilter::You);
             if other {
                 filter.other = true;
@@ -1824,7 +1839,9 @@ fn split_both_spell_cast_filter_tokens(
 }
 
 fn parse_spell_cast_filter_tokens_single(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
-    parse_object_filter_with_grammar_entrypoint(tokens, false).ok()
+    crate::grammar::primitives::probe_shape(parse_object_filter_with_grammar_entrypoint(
+        tokens, false,
+    ))
 }
 
 fn parse_life_change_subject_clause(clause: LexedClause<'_>) -> Option<PlayerFilter> {

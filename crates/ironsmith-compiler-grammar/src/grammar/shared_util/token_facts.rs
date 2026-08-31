@@ -114,10 +114,10 @@ pub fn non_article_token_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
 
 pub fn parse_outlaw_word(word: &str) -> Option<OutlawWord> {
     let mut input = word;
-    (parse_outlaw_text, eof)
-        .map(|(outlaw, _)| outlaw)
-        .parse_next(&mut input)
-        .ok()
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        (parse_outlaw_text, eof).map(|(outlaw, _)| outlaw),
+    )
 }
 
 pub fn parse_choice_count_before_target_tokens(

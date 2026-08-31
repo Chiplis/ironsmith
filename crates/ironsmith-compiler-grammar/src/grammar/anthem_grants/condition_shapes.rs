@@ -121,12 +121,11 @@ pub fn parse_fixed_static_condition_kind(
     tokens: &[OwnedLexToken],
 ) -> Option<FixedStaticConditionKind> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_fixed_static_condition_lexed,
         "fixed anthem condition",
     )
-    .ok()
 }
 
 pub fn parse_life_total_or_less_condition(tokens: &[OwnedLexToken]) -> Option<u32> {

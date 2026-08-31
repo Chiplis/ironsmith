@@ -90,23 +90,21 @@ pub use grant_loss::*;
 pub fn parse_attached_has_and_loses_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedHasAndLosesSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_attached_has_and_loses_lexed,
         "attached has-and-loses keywords",
     )
-    .ok()
 }
 
 pub fn parse_attached_keywords_and_trigger_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedKeywordsAndTriggerSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_attached_keywords_and_trigger_lexed,
         "attached keywords and trigger",
     )
-    .ok()
 }
 
 pub fn parse_attached_gets_tail_tokens(
@@ -143,7 +141,7 @@ pub fn parse_attached_legendary_gets_has_tokens(
 ) -> Option<AttachedLegendaryGetsHasSpec<'_>> {
     let initial_len = tokens.len();
     let mut input = LexStream::new(tokens);
-    let subject = parse_attached_subject_lexed(&mut input).ok()?;
+    let subject = crate::grammar::primitives::take_leaf(&mut input, parse_attached_subject_lexed)?;
     if !matches!(
         subject,
         AttachedSubject::EnchantedCreature | AttachedSubject::EquippedCreature
@@ -151,8 +149,8 @@ pub fn parse_attached_legendary_gets_has_tokens(
         return None;
     }
     let subject_end = initial_len.checked_sub(input.len())?;
-    semantic_kw("is").parse_next(&mut input).ok()?;
-    semantic_kw("legendary").parse_next(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, semantic_kw("is"))?;
+    crate::grammar::primitives::take_leaf(&mut input, semantic_kw("legendary"))?;
     let search_start = initial_len.checked_sub(input.len())?;
     let get_token = search_start + find_get(tokens.get(search_start..)?)?;
     let modifier_token = tokens.get(get_token + 1)?;

@@ -112,9 +112,7 @@ pub enum SpecialAbilityPhraseKind {
 
 pub fn parse_dynamic_soulshift_words(words: &[&str]) -> Option<DynamicSoulshiftShape> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    parse_dynamic_soulshift_word_slice
-        .parse_next(&mut input)
-        .ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, parse_dynamic_soulshift_word_slice)?;
     Some(DynamicSoulshiftShape {
         count_filter: ObjectFilter::default()
             .with_subtype(Subtype::Spirit)
@@ -222,9 +220,7 @@ fn parse_exact_special_ability_phrase_words(
 
 pub fn parse_keyword_untap_restriction_words(words: &[&str]) -> Option<KeywordUntapRestriction> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    parse_keyword_untap_restriction_lexed_words
-        .parse_next(&mut input)
-        .ok()
+    crate::grammar::primitives::take_leaf(&mut input, parse_keyword_untap_restriction_lexed_words)
         .filter(|_| input.is_empty())
 }
 
@@ -329,12 +325,11 @@ pub fn parse_keyword_ability_surface_tokens(
             (0, tokens)
         };
 
-    let facts = primitives::parse_all(
+    let facts = crate::grammar::primitives::probe_all(
         phrase_tokens,
         parse_keyword_ability_facts_lexed,
         "keyword-ability-facts",
-    )
-    .ok()?;
+    )?;
     if facts.word_count == 0 {
         return None;
     }
@@ -397,8 +392,7 @@ pub fn parse_keyword_trigger_object_head(word: &str) -> Option<KeywordTriggerObj
     if let Ok(card_type) = leaf::parse_leaf_card_type_complete(word) {
         return Some(KeywordTriggerObjectHead::CardType(card_type));
     }
-    leaf::parse_leaf_subtype_flexible_complete(word)
-        .ok()
+    crate::grammar::primitives::probe_shape(leaf::parse_leaf_subtype_flexible_complete(word))
         .map(KeywordTriggerObjectHead::Subtype)
 }
 

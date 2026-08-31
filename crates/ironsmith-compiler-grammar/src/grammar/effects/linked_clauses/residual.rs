@@ -45,7 +45,7 @@ fn rest_action(input: &mut LexStream<'_>) -> WResult<RestActionShape> {
 }
 
 pub fn parse_rest_action_shape(tokens: &[OwnedLexToken]) -> Option<RestActionShape> {
-    primitives::parse_all(tokens, rest_action, "sequence-rest-action").ok()
+    crate::grammar::primitives::probe_all(tokens, rest_action, "sequence-rest-action")
 }
 
 fn optional_may_prefix(input: &mut LexStream<'_>) -> WResult<()> {

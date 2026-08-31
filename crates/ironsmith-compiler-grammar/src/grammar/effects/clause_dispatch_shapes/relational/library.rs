@@ -4,11 +4,13 @@ pub fn parse_discarded_this_way_modifier_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DiscardedThisWayModifierShape> {
     let first = tokens.first()?.parser_text();
-    let (power, toughness) = leaf::parse_leaf_pt_modifier_values_complete(first).ok()?;
+    let (power, toughness) = crate::grammar::primitives::probe_shape(
+        leaf::parse_leaf_pt_modifier_values_complete(first),
+    )?;
     let (Value::Fixed(power), Value::Fixed(toughness)) = (power, toughness) else {
         return None;
     };
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens.get(1..)?,
         (
             primitives::phrase(&[
@@ -27,8 +29,7 @@ pub fn parse_discarded_this_way_modifier_shape(
         )
             .void(),
         "discarded this way modifier",
-    )
-    .ok()?;
+    )?;
     Some(DiscardedThisWayModifierShape { power, toughness })
 }
 

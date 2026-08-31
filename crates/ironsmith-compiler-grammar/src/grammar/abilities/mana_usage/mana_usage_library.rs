@@ -6,5 +6,5 @@ pub(super) fn parse_simple_bonus_card_type(tokens: &[OwnedLexToken]) -> Option<C
     let [word] = words.as_slice() else {
         return None;
     };
-    leaf::parse_leaf_card_type_complete(word).ok()
+    crate::grammar::primitives::probe_shape(leaf::parse_leaf_card_type_complete(word))
 }

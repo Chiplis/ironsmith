@@ -458,7 +458,10 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
         let start = 8;
         let end = words.len().saturating_sub(2);
         let range = word_view.token_span_for_words(start, end)?;
-        let sources = parse_object_filter(&trim_edge_punctuation(&tokens[range]), false).ok()?;
+        let sources = crate::grammar::primitives::probe_shape(parse_object_filter(
+            &trim_edge_punctuation(&tokens[range]),
+            false,
+        ))?;
         return Some(Value::TurnHistoryCount(
             TurnHistoryCount::PlayersDealtCombatDamageBy {
                 players: PlayerFilter::Opponent,
@@ -515,7 +518,10 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
         let start = put_on + 2;
         let end = words.len().saturating_sub(5);
         let range = word_view.token_span_for_words(start, end)?;
-        let mut filter = parse_object_filter(&trim_edge_punctuation(&tokens[range]), false).ok()?;
+        let mut filter = crate::grammar::primitives::probe_shape(parse_object_filter(
+            &trim_edge_punctuation(&tokens[range]),
+            false,
+        ))?;
         filter.zone = None;
         filter.controller = Some(PlayerFilter::You);
         return Some(Value::TurnHistoryCount(TurnHistoryCount::CountersPutOn {

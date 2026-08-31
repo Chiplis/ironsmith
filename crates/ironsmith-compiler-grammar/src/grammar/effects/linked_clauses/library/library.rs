@@ -59,25 +59,26 @@ pub(super) fn looked_card_optional_one_top_remainder_bottom(
 pub fn parse_looked_card_partition_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LookedCardPartitionShape> {
-    alt((
-        looked_card_optional_one_top_remainder_bottom,
-        looked_card_partition,
-    ))
-    .parse(LexStream::new(tokens))
-    .ok()
+    crate::grammar::primitives::probe_shape(
+        alt((
+            looked_card_optional_one_top_remainder_bottom,
+            looked_card_partition,
+        ))
+        .parse(LexStream::new(tokens)),
+    )
 }
 
 pub fn parse_looked_card_into_hand_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LookedCardIntoHandShape> {
     let mut input = LexStream::new(tokens);
-    let filter_end = seek_sequence_phrase(&mut input, FROM_AMONG).ok()?;
+    let filter_end = crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        seek_sequence_phrase(input, FROM_AMONG)
+    })?;
     if filter_end == 0 || is_keyword_bundle_choice_filter(&tokens[..filter_end]) {
         return None;
     }
-    sequence_any_phrase(FROM_AMONG)
-        .parse_next(&mut input)
-        .ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, sequence_any_phrase(FROM_AMONG))?;
     let tail_start = tokens.len().saturating_sub(input.len());
     let tail = &tokens[tail_start..];
     if !starts_sequence(tail, &[&["into"]]) || !contains_sequence_word(tail, "hand") {
@@ -93,9 +94,11 @@ pub fn parse_reveal_top_matching_followup_shape(
 ) -> Option<RevealTopMatchingFollowupShape> {
     let mut input = LexStream::new(tokens);
     let initial_len = input.len();
-    sequence_any_phrase(PUT_ALL).parse_next(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, sequence_any_phrase(PUT_ALL))?;
     let filter_start = initial_len.saturating_sub(input.len());
-    seek_sequence_phrase(&mut input, &[&["revealed", "this", "way"]]).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        seek_sequence_phrase(input, &[&["revealed", "this", "way"]])
+    })?;
     let filter_end = initial_len.saturating_sub(input.len());
     if filter_start >= filter_end {
         return None;
@@ -104,9 +107,10 @@ pub fn parse_reveal_top_matching_followup_shape(
     if is_keyword_bundle_choice_filter(filter) {
         return None;
     }
-    sequence_phrase(&["revealed", "this", "way"])
-        .parse_next(&mut input)
-        .ok()?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        sequence_phrase(&["revealed", "this", "way"]),
+    )?;
     let tail_start = initial_len.saturating_sub(input.len());
     let tail = &tokens[tail_start..];
     if !contains_sequence_phrase(tail, &[&["into", "your", "hand"]]) {

@@ -1006,9 +1006,10 @@ fn parse_choose_objects_then_for_each_of_those_bundle(
 
     let Some((player, filter, count)) = parse_you_choose_objects_clause(&normalized_first)?
         .or_else(|| {
-            parse_target_player_choose_objects_clause(&normalized_first)
-                .ok()
-                .flatten()
+            crate::grammar::primitives::probe_shape(parse_target_player_choose_objects_clause(
+                &normalized_first,
+            ))
+            .flatten()
         })
     else {
         return Ok(None);

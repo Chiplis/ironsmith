@@ -114,67 +114,61 @@ pub fn parse_etb_trigger_intro_prefix_tokens(tokens: &[OwnedLexToken]) -> Option
 }
 
 pub fn parse_etb_source_reference_tokens(tokens: &[OwnedLexToken]) -> Option<EtbSourceReference> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_etb_source_reference_lexed,
         "etb-source-reference",
     )
-    .ok()
 }
 
 pub fn parse_enters_with_counter_condition_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EntersWithCounterConditionTail<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_enters_with_counter_condition_tail_lexed,
         "enters-with-counter-condition-tail",
     )
-    .ok()
 }
 
 pub fn parse_enters_with_counters_clause_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EntersWithCountersClause<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_enters_with_counters_clause_lexed,
         "enters-with-counters-clause",
     )
-    .ok()
 }
 
 pub fn parse_enters_tapped_with_counters_clause_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EntersTappedWithCountersClause<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_enters_tapped_with_counters_clause_lexed,
         "enters-tapped-with-counters-clause",
     )
-    .ok()
 }
 
 pub fn parse_enters_with_counter_choice_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EntersWithCounterChoice> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_enters_with_counter_choice_lexed,
         "enters-with-counter-choice",
     )
-    .ok()
 }
 
 pub fn parse_enters_with_dual_for_each_counter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EntersWithDualForEachCounterShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_enters_with_dual_for_each_counter,
         "enters-with dual for-each counter",
     )
-    .ok()
 }
 
 fn counter_noun(input: &mut LexStream<'_>) -> WResult<()> {
@@ -273,12 +267,11 @@ fn parse_enters_with_dual_for_each_counter(
 pub fn parse_enters_with_added_abilities_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EntersWithAddedAbilitiesTail<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_enters_with_added_abilities_tail_lexed,
         "enters-with-added-abilities-tail",
     )
-    .ok()
     .or_else(|| {
         // The enclosing ETB-counter capture owns terminal punctuation and
         // may hand this leaf parser a quote-open fragment without the closing
@@ -304,56 +297,51 @@ pub fn parse_enters_with_added_abilities_tail_tokens(
 pub fn parse_enters_with_counter_known_for_each_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EntersWithCounterKnownForEachKind> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_enters_with_counter_known_for_each_tail_lexed,
         "enters-with-counter-known-for-each-tail",
     )
-    .ok()
 }
 
 pub fn parse_enters_with_counter_for_each_payload_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_enters_with_counter_for_each_payload_lexed,
         "enters-with-counter-for-each-tail",
     )
-    .ok()
 }
 
 pub fn parse_enters_with_counter_equal_to_body_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_enters_with_counter_equal_to_body_lexed,
         "enters-with-counter-equal-to-tail",
     )
-    .ok()
 }
 
 pub fn parse_enters_with_counter_plus_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EntersWithCounterPlusTail<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_enters_with_counter_plus_tail_lexed,
         "enters-with-counter-plus-tail",
     )
-    .ok()
 }
 
 pub fn parse_enters_with_counter_condition_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EntersWithCounterConditionShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_enters_with_counter_condition_shape_lexed,
         "enters-with-counter-condition",
     )
-    .ok()
 }
 
 fn parse_etb_trigger_intro_lexed<'a>(input: &mut LexStream<'a>) -> WResult<EtbTriggerIntro> {

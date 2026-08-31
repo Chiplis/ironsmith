@@ -108,8 +108,10 @@ pub fn parse_exchange(
             }
             let constraint = shared_type(control.shared_type);
             if let Some((left_tokens, right_tokens)) = control.heterogeneous {
-                let left_target = parse_target_phrase(left_tokens).ok();
-                let right_target = parse_target_phrase(right_tokens).ok();
+                let left_target =
+                    crate::grammar::primitives::probe_shape(parse_target_phrase(left_tokens));
+                let right_target =
+                    crate::grammar::primitives::probe_shape(parse_target_phrase(right_tokens));
                 if let (Some(permanent1), Some(permanent2)) = (left_target, right_target) {
                     return Ok(EffectAst::subject_verb_exchange_control_heterogeneous(
                         permanent1, permanent2, constraint,

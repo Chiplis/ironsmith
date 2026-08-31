@@ -16,7 +16,7 @@ pub fn parse_protection_choice_shape(tokens: &[OwnedLexToken]) -> Option<Protect
         primitives::phrase(&["the", "color", "of", "its", "controllers", "choice"])
             .value((ProtectionChoiceChooserShape::TargetController, false)),
     ));
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         (
             primitives::phrase(&["protection", "from"]),
@@ -43,7 +43,6 @@ pub fn parse_protection_choice_shape(tokens: &[OwnedLexToken]) -> Option<Protect
             ),
         "protection choice shape",
     )
-    .ok()
 }
 
 pub fn strip_optional_you_choice_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {

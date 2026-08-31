@@ -22,16 +22,19 @@ pub enum CantFallbackFact {
 pub fn parse_mana_value_parity_cant_fact_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaValueParityCantFact> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_mana_value_parity_cant_fact_lexed,
         "mana-value parity cant fact",
     )
-    .ok()
 }
 
 pub fn parse_cant_fallback_fact_tokens(tokens: &[OwnedLexToken]) -> Option<CantFallbackFact> {
-    primitives::parse_all(tokens, parse_cant_fallback_fact_lexed, "cant fallback fact").ok()
+    crate::grammar::primitives::probe_all(
+        tokens,
+        parse_cant_fallback_fact_lexed,
+        "cant fallback fact",
+    )
 }
 
 fn parse_mana_value_parity_cant_fact_lexed<'a>(

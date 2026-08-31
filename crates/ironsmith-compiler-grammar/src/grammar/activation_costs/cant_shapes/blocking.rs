@@ -46,7 +46,11 @@ pub enum BlockingCantFact {
 }
 
 pub fn parse_blocking_cant_fact_tokens(tokens: &[OwnedLexToken]) -> Option<BlockingCantFact> {
-    primitives::parse_all(tokens, parse_blocking_cant_fact_lexed, "blocking cant fact").ok()
+    crate::grammar::primitives::probe_all(
+        tokens,
+        parse_blocking_cant_fact_lexed,
+        "blocking cant fact",
+    )
 }
 
 #[derive(Debug, Clone, PartialEq)]

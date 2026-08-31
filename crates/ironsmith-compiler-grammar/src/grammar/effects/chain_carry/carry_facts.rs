@@ -38,7 +38,7 @@ pub enum CarryClauseHead {
 }
 
 pub fn parse_rest_action_tokens(tokens: &[OwnedLexToken]) -> Option<RestActionShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         (
             opt(semantic_kw("then")),
@@ -54,7 +54,6 @@ pub fn parse_rest_action_tokens(tokens: &[OwnedLexToken]) -> Option<RestActionSh
             .map(|(_, action, _, _)| action),
         "rest-action chain segment",
     )
-    .ok()
 }
 
 pub fn parse_carry_duration_prefix_tokens(
@@ -93,15 +92,15 @@ pub fn parse_carryable_subject_tokens(tokens: &[OwnedLexToken]) -> Option<Carrya
     if crate::util::is_source_reference_words(&TokenWordView::new(tokens).word_refs()) {
         return Some(CarryableSubjectShape::Source);
     }
-    if leaf::parse_leaf_target_head_tokens(tokens)
-        .ok()
+    if crate::grammar::primitives::probe_shape(leaf::parse_leaf_target_head_tokens(tokens))
         .is_some_and(|head| head.prefix.explicit_target_span.is_some())
     {
         return Some(CarryableSubjectShape::ExplicitTarget);
     }
-    filters::parse_object_filter_with_grammar_entrypoint_lexed(tokens, false)
-        .ok()
-        .map(|_| CarryableSubjectShape::ObjectFilter)
+    crate::grammar::primitives::probe_shape(
+        filters::parse_object_filter_with_grammar_entrypoint_lexed(tokens, false),
+    )
+    .map(|_| CarryableSubjectShape::ObjectFilter)
 }
 
 pub fn parse_carry_clause_head_tokens(tokens: &[OwnedLexToken]) -> CarryClauseHead {

@@ -50,7 +50,8 @@ pub fn parse_graveyard_cast_replacement_shape(
     } else {
         (cast, ironsmith_core::value_model::ManaSpendMode::Normal)
     };
-    let additional_mana_cost = additional_cast_mana_cost(cast).ok()?;
+    let additional_mana_cost =
+        crate::grammar::primitives::probe_shape(additional_cast_mana_cost(cast))?;
     Some(GraveyardCastReplacementShape {
         until_end_of_turn,
         without_paying_mana_cost: contains_sequence_phrase(cast, WITHOUT_MANA),

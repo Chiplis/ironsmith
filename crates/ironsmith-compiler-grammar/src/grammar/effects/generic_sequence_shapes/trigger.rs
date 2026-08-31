@@ -11,6 +11,7 @@ pub fn parse_delayed_upkeep_payment_shape(
     {
         return None;
     }
-    let mana = leaf::parse_leaf_mana_cost_tokens(mana_tokens).ok()?;
+    let mana =
+        crate::grammar::primitives::probe_shape(leaf::parse_leaf_mana_cost_tokens(mana_tokens))?;
     Some(DelayedUpkeepPaymentShape { mana })
 }

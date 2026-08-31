@@ -181,12 +181,11 @@ pub fn parse_pregame_begin_on_battlefield_tokens(
 }
 
 pub fn parse_can_block_additional_creature_tokens(tokens: &[OwnedLexToken]) -> Option<usize> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_can_block_additional_creature_lexed,
         "can block additional creature",
     )
-    .ok()
 }
 
 fn parse_pregame_intro_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {

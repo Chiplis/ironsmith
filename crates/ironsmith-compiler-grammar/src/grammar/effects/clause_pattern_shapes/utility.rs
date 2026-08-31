@@ -212,7 +212,7 @@ fn parse_double_counters_lexed<'a>(input: &mut LexStream<'a>) -> WResult<DoubleC
 }
 
 pub fn parse_double_counters_tokens(tokens: &[OwnedLexToken]) -> Option<DoubleCountersShape<'_>> {
-    primitives::parse_all(tokens, parse_double_counters_lexed, "double counters").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_double_counters_lexed, "double counters")
 }
 
 #[path = "utility/copy_shapes.rs"]
@@ -270,12 +270,11 @@ fn parse_can_block_additional_lexed<'a>(
     let additional = count_tokens
         .last()
         .and_then(|token| {
-            primitives::parse_all(
+            crate::grammar::primitives::probe_all(
                 std::slice::from_ref(token),
                 (leaf::parse_leaf_number_prefix_lexed, eof).map(|(count, _)| count),
                 "additional blocker count",
             )
-            .ok()
         })
         .unwrap_or(1);
     Ok(CanBlockAdditionalShape {
@@ -287,12 +286,11 @@ fn parse_can_block_additional_lexed<'a>(
 pub fn parse_can_block_additional_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CanBlockAdditionalShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_can_block_additional_lexed,
         "can block additional creature",
     )
-    .ok()
 }
 
 fn zone_markers<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -354,7 +352,7 @@ fn parse_win_game_lexed<'a>(input: &mut LexStream<'a>) -> WResult<WinGameShape<'
 }
 
 pub fn parse_win_game_shape_tokens(tokens: &[OwnedLexToken]) -> Option<WinGameShape<'_>> {
-    primitives::parse_all(tokens, parse_win_game_lexed, "win the game").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_win_game_lexed, "win the game")
 }
 
 #[cfg(test)]
@@ -424,12 +422,11 @@ fn parse_kicked_targets_lexed<'a>(
 pub fn parse_kicked_additional_targets_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<KickedAdditionalTargetsShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_kicked_targets_lexed,
         "kicked additional targets",
     )
-    .ok()
 }
 
 fn connive_verb<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -482,7 +479,7 @@ fn parse_connive_clause_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ConniveC
 pub fn parse_connive_clause_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ConniveClauseShape<'_>> {
-    primitives::parse_all(tokens, parse_connive_clause_lexed, "connive clause").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_connive_clause_lexed, "connive clause")
 }
 
 #[cfg(test)]

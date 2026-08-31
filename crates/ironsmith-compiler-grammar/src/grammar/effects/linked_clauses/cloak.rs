@@ -110,8 +110,10 @@ pub fn parse_cloak_pile_sequence_shape<'a>(
     exile: &'a [OwnedLexToken],
     entry: &[OwnedLexToken],
 ) -> Option<CloakPileSequenceShape<'a>> {
-    let exile = primitives::parse_all(exile, parse_cloak_pile_exile, "cloak-pile-exile").ok()?;
-    let enters_tapped = primitives::parse_all(entry, parse_cloak_entry, "cloak-pile-entry").ok()?;
+    let exile =
+        crate::grammar::primitives::probe_all(exile, parse_cloak_pile_exile, "cloak-pile-exile")?;
+    let enters_tapped =
+        crate::grammar::primitives::probe_all(entry, parse_cloak_entry, "cloak-pile-entry")?;
     Some(CloakPileSequenceShape {
         target_tokens: exile.target_tokens,
         library_count: exile.library_count,

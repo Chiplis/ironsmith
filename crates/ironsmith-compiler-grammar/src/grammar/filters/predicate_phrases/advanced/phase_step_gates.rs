@@ -612,7 +612,8 @@ fn parse_counter_total_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     }
     let (operator, amount) = comparison_to_value_comparison_operator(comparison)?;
     let objects = matched.capture_clause("objects", clause)?;
-    let mut filter = parse_object_filter(objects.tokens(), false).ok()?;
+    let mut filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter(objects.tokens(), false))?;
     filter.controller = Some(PlayerFilter::You);
     filter.zone.get_or_insert(Zone::Battlefield);
     Some(PredicateAst::ValueComparison {
@@ -808,7 +809,8 @@ fn parse_all_controlled_objects_share_color_gate(tokens: &[OwnedLexToken]) -> Op
             .parser_text(),
     )?;
     let objects = matched.capture_clause("objects", clause)?;
-    let mut filter = parse_object_filter(objects.tokens(), false).ok()?;
+    let mut filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter(objects.tokens(), false))?;
     filter.controller = Some(PlayerFilter::You);
     filter = filter.without_colors(color);
     Some(PredicateAst::PlayerControlsNo {

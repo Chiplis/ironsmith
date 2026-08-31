@@ -84,9 +84,8 @@ pub fn parse_leading_unless_clause_split_tokens(
 ) -> Option<LeadingUnlessClauseSplit> {
     primitives::parse_prefix(tokens, primitives::kw("unless"))?;
     let mut input = LexStream::new(tokens);
-    let boundary = parse_unless_effect_boundary_lexed
-        .parse_next(&mut input)
-        .ok()?;
+    let boundary =
+        crate::grammar::primitives::take_leaf(&mut input, parse_unless_effect_boundary_lexed)?;
     Some(LeadingUnlessClauseSplit {
         condition: 0..boundary,
         effect: boundary + usize::from(tokens[boundary].kind == TokenKind::Comma)..tokens.len(),

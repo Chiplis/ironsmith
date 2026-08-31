@@ -222,12 +222,11 @@ fn parse_trailing_counter_constraint_lexed<'a>(
 pub fn parse_trailing_counter_constraint_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TrailingCounterConstraintShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_trailing_counter_constraint_lexed,
         "trailing counter constraint",
     )
-    .ok()
 }
 
 fn damage_verb<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -271,12 +270,11 @@ fn parse_power_damage_self_lexed<'a>(
 pub fn parse_power_damage_self_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PowerDamageSelfShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_power_damage_self_lexed,
         "power damage to another target and self",
     )
-    .ok()
 }
 
 fn parse_attacking_doesnt_tap_if_source_untapped_lexed<'a>(
@@ -312,12 +310,11 @@ fn parse_attacking_doesnt_tap_if_source_untapped_lexed<'a>(
 pub fn parse_attacking_doesnt_tap_if_source_untapped_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttackingDoesntTapIfSourceUntappedShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_attacking_doesnt_tap_if_source_untapped_lexed,
         "attacking does not tap while source is untapped",
     )
-    .ok()
 }
 
 fn parse_tapped_this_way_where_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -337,12 +334,11 @@ pub fn parse_tapped_this_way_binding_tokens(
     stripped_tokens: &[OwnedLexToken],
     where_tokens: &[OwnedLexToken],
 ) -> Option<TappedThisWayBindingShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         where_tokens,
         parse_tapped_this_way_where_lexed,
         "where X is number tapped this way",
-    )
-    .ok()?;
+    )?;
     let damage_to_active_player = marker_anywhere(
         stripped_tokens,
         primitives::phrase(&["to", "the", "player"]),
@@ -460,12 +456,11 @@ fn aura_ability_tokens(tail_tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
 }
 
 pub fn parse_aura_enchantment_tokens(tokens: &[OwnedLexToken]) -> Option<AuraEnchantmentShape<'_>> {
-    let (attachment_tokens, tail_tokens) = primitives::parse_all(
+    let (attachment_tokens, tail_tokens) = crate::grammar::primitives::probe_all(
         tokens,
         parse_aura_enchantment_lexed,
         "it is an aura enchantment",
-    )
-    .ok()?;
+    )?;
     let attachment_mentions_you_control = primitives::find_prefix(attachment_tokens, || {
         primitives::phrase(&["you", "control"]).void()
     })
@@ -522,12 +517,11 @@ fn parse_tagged_exact_type_with_quoted_ability_lexed<'a>(
 pub fn parse_tagged_exact_type_with_quoted_ability_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TaggedExactTypeWithQuotedAbilityShape<'_>> {
-    let (descriptor, ability_tokens) = primitives::parse_all(
+    let (descriptor, ability_tokens) = crate::grammar::primitives::probe_all(
         tokens,
         parse_tagged_exact_type_with_quoted_ability_lexed,
         "tagged exact type with quoted ability",
-    )
-    .ok()?;
+    )?;
     let mut card_types = Vec::new();
     let mut subtypes = Vec::new();
     for token in descriptor {
@@ -538,7 +532,9 @@ pub fn parse_tagged_exact_type_with_quoted_ability_tokens(
             }
             continue;
         }
-        let subtype = leaf::parse_leaf_subtype_flexible_complete(word).ok()?;
+        let subtype = crate::grammar::primitives::probe_shape(
+            leaf::parse_leaf_subtype_flexible_complete(word),
+        )?;
         if !crate::slice_primitives::contains(&subtypes, &subtype) {
             subtypes.push(subtype);
         }
@@ -634,12 +630,11 @@ pub fn parse_delayed_sentence_tokens(tokens: &[OwnedLexToken]) -> Option<Delayed
     if primitives::parse_prefix(tokens, parse_next_combat_prefix_lexed).is_some() {
         return Some(DelayedSentenceShape::NextCombat);
     }
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_end_combat_delayed_lexed,
         "delayed end of combat sentence",
     )
-    .ok()
     .map(|remainder_tokens| DelayedSentenceShape::EndOfCombat { remainder_tokens })
 }
 
@@ -747,12 +742,11 @@ fn parse_source_blocked_library_shuffle_lexed<'a>(input: &mut LexStream<'a>) -> 
 pub fn parse_source_blocked_library_shuffle_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SourceBlockedLibraryShuffleShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_source_blocked_library_shuffle_lexed,
         "source and blocked creatures library shuffle",
     )
-    .ok()
     .map(|()| SourceBlockedLibraryShuffleShape)
 }
 
@@ -791,12 +785,11 @@ fn parse_single_graveyard_library_bottom_lexed<'a>(input: &mut LexStream<'a>) ->
 pub fn parse_single_graveyard_library_bottom_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SingleGraveyardLibraryBottomShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_single_graveyard_library_bottom_lexed,
         "single graveyard cards to library bottom",
     )
-    .ok()
     .map(|count| SingleGraveyardLibraryBottomShape { count })
 }
 

@@ -14,7 +14,7 @@ pub struct KeywordAbilityNameSurface;
 pub struct VoteChoiceSurface;
 
 pub fn parse_single_keyword_verb(name: &str) -> Option<SingleKeywordVerbSurface> {
-    let tokens = lex_line(name.trim(), 0).ok()?;
+    let tokens = crate::util::lex_fragment(name.trim(), 0)?;
     let words = TokenWordView::new(&tokens).word_refs();
     let [word] = words.as_slice() else {
         return None;
@@ -55,7 +55,7 @@ pub fn parse_single_keyword_verb(name: &str) -> Option<SingleKeywordVerbSurface>
 }
 
 pub fn parse_keyword_ability_name(name: &str) -> Option<KeywordAbilityNameSurface> {
-    let tokens = lex_line(name.trim(), 0).ok()?;
+    let tokens = crate::util::lex_fragment(name.trim(), 0)?;
     let words = TokenWordView::new(&tokens).word_refs();
     if permission_shapes::exact_words(&words, &["first", "strike"])
         || permission_shapes::exact_words(&words, &["double", "strike"])
@@ -71,7 +71,7 @@ pub fn parse_keyword_ability_name(name: &str) -> Option<KeywordAbilityNameSurfac
 }
 
 pub fn parse_vote_choice_surface(text: &str) -> Option<VoteChoiceSurface> {
-    let tokens = lex_line(text.trim(), 0).ok()?;
+    let tokens = crate::util::lex_fragment(text.trim(), 0)?;
     let words = TokenWordView::new(&tokens).word_refs();
     (permission_shapes::find_words(&words, &["vote", "for"]).is_some()
         || permission_shapes::find_words(&words, &["votes", "for"]).is_some())

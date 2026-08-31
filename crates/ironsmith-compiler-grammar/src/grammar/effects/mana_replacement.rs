@@ -63,12 +63,11 @@ fn parse_mana_replacement_clause<'a>(
 pub fn parse_mana_replacement_clause_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaReplacementClauseSpec> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_mana_replacement_clause,
         "mana-replacement-clause",
     )
-    .ok()
 }
 
 #[cfg(test)]

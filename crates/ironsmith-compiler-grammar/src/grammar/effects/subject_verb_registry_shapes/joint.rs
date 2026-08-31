@@ -175,12 +175,11 @@ pub use entrypoints::*;
 pub fn parse_joint_object_each_actions_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<JointObjectEachActionsShape<'_>> {
-    let shape = primitives::parse_all(
+    let shape = crate::grammar::primitives::probe_all(
         tokens,
         joint_object_each_actions,
         "registry-joint-object-each-actions",
-    )
-    .ok()?;
+    )?;
     let source_kind = shape.source_tokens.get(1)?.as_word()?;
     let tagged_kind = shape.tagged_tokens.get(1)?.as_word()?;
     source_kind

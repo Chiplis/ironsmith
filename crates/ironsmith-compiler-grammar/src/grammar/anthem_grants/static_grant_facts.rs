@@ -28,29 +28,27 @@ pub fn parse_granted_alternative_cast_keyword_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<GrantedAlternativeCastKeyword> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         granted_alternative_cast_keyword,
         "granted-alternative-cast-keyword",
     )
-    .ok()
 }
 
 pub fn parse_first_spell_each_turn_subject_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<FirstSpellEachTurnSubject> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         first_spell_each_turn_subject,
         "first-spell-each-turn-subject",
     )
-    .ok()
 }
 
 pub fn parse_every_subtype_family_tokens(tokens: &[OwnedLexToken]) -> Option<SubtypeFamily> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
-    primitives::parse_all(tokens, every_subtype_family, "every-subtype-family").ok()
+    crate::grammar::primitives::probe_all(tokens, every_subtype_family, "every-subtype-family")
 }
 
 pub fn parse_static_grant_duration_fact(

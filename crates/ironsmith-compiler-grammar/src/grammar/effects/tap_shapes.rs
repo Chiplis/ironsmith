@@ -59,7 +59,7 @@ fn parse_tap_or_untap_all_lexed<'a>(input: &mut LexStream<'a>) -> WResult<TapOrU
 pub fn parse_tap_or_untap_all_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TapOrUntapAllShape<'_>> {
-    primitives::parse_all(tokens, parse_tap_or_untap_all_lexed, "tap or untap all").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_tap_or_untap_all_lexed, "tap or untap all")
 }
 
 fn parse_tap_quantified_filter_lexed<'a>(
@@ -75,12 +75,11 @@ fn parse_tap_quantified_filter_lexed<'a>(
 }
 
 pub fn parse_tap_quantified_filter_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_tap_quantified_filter_lexed,
         "quantified tap filter",
     )
-    .ok()
 }
 
 fn parse_tap_or_untap_target_lexed<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken]> {
@@ -94,12 +93,11 @@ fn parse_tap_or_untap_target_lexed<'a>(input: &mut LexStream<'a>) -> WResult<&'a
 }
 
 pub fn parse_tap_or_untap_target_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_tap_or_untap_target_lexed,
         "tap or untap target",
     )
-    .ok()
 }
 
 /// A coordinated tap followed by another effect, for example
@@ -153,12 +151,11 @@ fn parse_tap_object_union_then_lexed<'a>(
 pub fn parse_tap_object_union_then_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TapObjectUnionThenShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_tap_object_union_then_lexed,
         "tap object union then followup",
     )
-    .ok()
 }
 
 fn parse_tap_then_return_lexed<'a>(input: &mut LexStream<'a>) -> WResult<TapThenReturnShape<'a>> {
@@ -182,7 +179,7 @@ fn parse_tap_then_return_lexed<'a>(input: &mut LexStream<'a>) -> WResult<TapThen
 }
 
 pub fn parse_tap_then_return_tokens(tokens: &[OwnedLexToken]) -> Option<TapThenReturnShape<'_>> {
-    primitives::parse_all(tokens, parse_tap_then_return_lexed, "tap-then-return").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_tap_then_return_lexed, "tap-then-return")
 }
 
 #[path = "tap_shapes/control_and_type.rs"]

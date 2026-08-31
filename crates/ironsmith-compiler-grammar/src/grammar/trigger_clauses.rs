@@ -466,14 +466,17 @@ pub fn parse_trigger_clause_atom_token(
     atom: TriggerClauseAtom,
 ) -> Option<usize> {
     let mut input = LexStream::new(tokens);
-    parse_atom_token_lexed(&mut input, atom).ok()
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        parse_atom_token_lexed(input, atom)
+    })
 }
 
 pub fn parse_players_attacked_clause(tokens: &[OwnedLexToken]) -> Option<PlayersAttackedClause> {
     let view = primitives::TokenWordView::new(tokens);
     let words = view.word_refs();
     let mut input: primitives::WordSliceInput<'_> = &words;
-    let player_words = parse_players_attacked_words(&mut input).ok()?;
+    let player_words =
+        crate::grammar::primitives::take_leaf(&mut input, parse_players_attacked_words)?;
     let player_end = view.token_start_indices().get(player_words).copied()?;
     Some(PlayersAttackedClause {
         player: 0..player_end,
@@ -492,7 +495,9 @@ pub fn parse_fully_unlock_room_trigger(tokens: &[OwnedLexToken]) -> Option<Fully
 
 pub fn parse_trigger_clause_atom_word(words: &[&str], atom: TriggerClauseAtom) -> Option<usize> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    parse_atom_word_slice(&mut input, atom).ok()
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        parse_atom_word_slice(input, atom)
+    })
 }
 
 pub fn parse_trigger_keyword_action_word(
@@ -500,7 +505,9 @@ pub fn parse_trigger_keyword_action_word(
     action: KeywordActionKind,
 ) -> Option<usize> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    parse_keyword_action_word_slice(&mut input, action).ok()
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        parse_keyword_action_word_slice(input, action)
+    })
 }
 
 pub fn parse_trigger_word_span_tokens(
@@ -519,7 +526,10 @@ pub fn parse_activation_cost_tap_condition(
     let view = primitives::TokenWordView::new(tokens);
     let words = view.word_refs();
     let mut input: primitives::WordSliceInput<'_> = &words;
-    let (condition_word, required) = parse_activation_cost_tap_condition_words(&mut input).ok()?;
+    let (condition_word, required) = crate::grammar::primitives::take_leaf(
+        &mut input,
+        parse_activation_cost_tap_condition_words,
+    )?;
     let condition_token = view.token_start_indices().get(condition_word).copied()?;
     Some(ActivationCostTapCondition {
         required,
@@ -595,7 +605,9 @@ pub fn parse_transform_destination_span(
 
 pub fn parse_trigger_or_split(tokens: &[OwnedLexToken]) -> Option<TriggerOrSplit> {
     let mut input = LexStream::new(tokens);
-    parse_trigger_or_split_lexed(&mut input, tokens).ok()
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        parse_trigger_or_split_lexed(input, tokens)
+    })
 }
 
 pub fn parse_loyalty_ability_tail(tokens: &[OwnedLexToken]) -> Option<LoyaltyAbilityTail> {

@@ -154,9 +154,14 @@ impl<'p> WinnowSequence<'p> {
     ) -> Option<WinnowSequenceMatch<'p>> {
         let mut input: WordSliceInput<'_> = words.get(start..)?;
         let mut captures = Vec::new();
-        parse_atoms(self.atoms, words.len(), &mut input, &mut captures).ok()?;
+        crate::grammar::primitives::probe_shape(parse_atoms(
+            self.atoms,
+            words.len(),
+            &mut input,
+            &mut captures,
+        ))?;
         if require_end {
-            parse_end(&mut input).ok()?;
+            crate::grammar::primitives::take_leaf(&mut input, parse_end)?;
         }
         let end = words.len().checked_sub(input.len())?;
         Some(WinnowSequenceMatch {

@@ -76,8 +76,11 @@ pub fn parse_enter_as_copy_tokens(tokens: &[OwnedLexToken]) -> Option<EnterAsCop
         return Some(EnterAsCopyShape::LinkedExilePair(shape));
     }
     if primitives::parse_prefix(tokens, primitives::phrase(&["you", "may", "have"])).is_some() {
-        return primitives::parse_all(tokens, parse_may_enter_as_copy_lexed, "may enter-as-copy")
-            .ok();
+        return crate::grammar::primitives::probe_all(
+            tokens,
+            parse_may_enter_as_copy_lexed,
+            "may enter-as-copy",
+        );
     }
     if primitives::parse_prefix(tokens, primitives::kw("as")).is_some()
         && let Ok(shape) = primitives::parse_all(
@@ -88,16 +91,15 @@ pub fn parse_enter_as_copy_tokens(tokens: &[OwnedLexToken]) -> Option<EnterAsCop
     {
         return Some(shape);
     }
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_direct_enter_as_copy_lexed,
         "direct enter-as-copy",
     )
-    .ok()
 }
 
 pub fn parse_copy_exception_tokens(tokens: &[OwnedLexToken]) -> Option<CopyExceptionShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         alt((
             parse_copy_name_exception_lexed,
@@ -106,7 +108,6 @@ pub fn parse_copy_exception_tokens(tokens: &[OwnedLexToken]) -> Option<CopyExcep
         )),
         "enter-as-copy exception",
     )
-    .ok()
 }
 
 fn parse_direct_enter_as_copy_lexed<'a>(

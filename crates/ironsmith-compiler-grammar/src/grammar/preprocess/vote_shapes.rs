@@ -25,8 +25,8 @@ pub enum VoteCountRewriteSurface {
 }
 
 pub fn parse_vote_count_rewrite_surface(sentence: &str) -> Option<VoteCountRewriteSurface> {
-    let tokens = lex_line(sentence.trim(), 0).ok()?;
-    primitives::parse_all(
+    let tokens = crate::util::lex_fragment(sentence.trim(), 0)?;
+    crate::grammar::primitives::probe_all(
         &tokens,
         alt((
             parse_shared_subject_vote_pair_lexed,
@@ -35,7 +35,6 @@ pub fn parse_vote_count_rewrite_surface(sentence: &str) -> Option<VoteCountRewri
         )),
         "vote-count rewrite",
     )
-    .ok()
 }
 
 fn parse_draw_for_each_vote_lexed(input: &mut LexStream<'_>) -> WResult<VoteCountRewriteSurface> {

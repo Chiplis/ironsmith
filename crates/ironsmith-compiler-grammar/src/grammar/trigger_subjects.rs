@@ -192,7 +192,9 @@ pub fn parse_token_lifecycle_sentence_tokens(
 
 pub fn parse_trigger_word_token(tokens: &[OwnedLexToken], expected: &[&str]) -> Option<usize> {
     let mut input = LexStream::new(tokens);
-    parse_word_token_lexed(&mut input, expected).ok()
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        parse_word_token_lexed(input, expected)
+    })
 }
 
 pub fn parse_trigger_word_span(
@@ -350,7 +352,7 @@ pub fn parse_trigger_control_phrase(words: &[&str]) -> Option<TriggerControlPhra
                 });
             }
         }
-        take_word_slice_any(&mut input).ok()?;
+        crate::grammar::primitives::take_leaf(&mut input, take_word_slice_any)?;
     }
 }
 
@@ -441,9 +443,7 @@ pub fn parse_spell_filter_envelope(tokens: &[OwnedLexToken]) -> SpellFilterEnvel
         if word == "from" && !checked_from {
             checked_from = true;
             let mut tail = input.clone();
-            let next: WResult<&OwnedLexToken> = any.parse_next(&mut tail);
-            if next
-                .ok()
+            if crate::grammar::primitives::take_leaf(&mut tail, any)
                 .and_then(OwnedLexToken::as_word)
                 .is_some_and(|next| next == "anywhere")
             {
@@ -456,7 +456,7 @@ pub fn parse_spell_filter_envelope(tokens: &[OwnedLexToken]) -> SpellFilterEnvel
 pub fn parse_clause_before_first_comma(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let trimmed = trim_commas_ref(tokens);
     let mut input = LexStream::new(trimmed);
-    let first_comma = parse_comma_offset_lexed(&mut input).ok();
+    let first_comma = crate::grammar::primitives::take_leaf(&mut input, parse_comma_offset_lexed);
     let clause = first_comma
         .map(|index| &trimmed[..index])
         .unwrap_or(trimmed);
@@ -617,7 +617,7 @@ fn parse_word_slice_index(words: &[&str], expected: &[&str]) -> Option<usize> {
     let initial_len = input.len();
     loop {
         let index = initial_len.saturating_sub(input.len());
-        let word = take_word_slice_any(&mut input).ok()?;
+        let word = crate::grammar::primitives::take_leaf(&mut input, take_word_slice_any)?;
         if expected.contains(&word) {
             return Some(index);
         }

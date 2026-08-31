@@ -350,12 +350,11 @@ fn parse_return_with_counters_lexed<'a>(
 pub fn parse_return_with_counters_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<MoveWithCountersShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_return_with_counters_lexed,
         "return with counters",
     )
-    .ok()
 }
 
 fn parse_put_onto_battlefield_with_counters_lexed<'a>(
@@ -385,12 +384,11 @@ fn parse_put_onto_battlefield_with_counters_lexed<'a>(
 pub fn parse_put_onto_battlefield_with_counters_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<MoveWithCountersShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_put_onto_battlefield_with_counters_lexed,
         "put onto battlefield with counters",
     )
-    .ok()
 }
 
 fn end_of_combat<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -437,12 +435,11 @@ fn parse_sacrifice_at_end_of_combat_lexed<'a>(
 pub fn parse_sacrifice_at_end_of_combat_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SacrificeAtEndOfCombatShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_sacrifice_at_end_of_combat_lexed,
         "sacrifice at end of combat",
     )
-    .ok()
 }
 
 fn put_or_remove_counter_kind_tail<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -474,12 +471,11 @@ fn parse_for_each_counter_kind_lexed<'a>(
 pub fn parse_for_each_counter_kind_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ForEachCounterKindShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_for_each_counter_kind_lexed,
         "for each counter kind",
     )
-    .ok()
 }
 
 fn parse_counter_kind_distribution_lexed<'a>(
@@ -507,12 +503,11 @@ fn parse_counter_kind_distribution_lexed<'a>(
 pub fn parse_counter_kind_distribution_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CounterKindDistributionShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_counter_kind_distribution_lexed,
         "counter kind distribution",
     )
-    .ok()
 }
 
 pub fn parse_created_token_distribution_target(tokens: &[OwnedLexToken]) -> bool {
@@ -576,7 +571,7 @@ fn parse_gets_then_fights_lexed<'a>(input: &mut LexStream<'a>) -> WResult<GetsTh
 }
 
 pub fn parse_gets_then_fights_tokens(tokens: &[OwnedLexToken]) -> Option<GetsThenFightsShape<'_>> {
-    primitives::parse_all(tokens, parse_gets_then_fights_lexed, "gets then fights").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_gets_then_fights_lexed, "gets then fights")
 }
 
 fn parse_draw_then_connive_lexed<'a>(
@@ -602,7 +597,11 @@ fn parse_draw_then_connive_lexed<'a>(
 pub fn parse_draw_then_connive_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DrawThenConniveShape<'_>> {
-    primitives::parse_all(tokens, parse_draw_then_connive_lexed, "draw then connive").ok()
+    crate::grammar::primitives::probe_all(
+        tokens,
+        parse_draw_then_connive_lexed,
+        "draw then connive",
+    )
 }
 
 fn additional_descriptor_on_tagged<'a>(
@@ -648,12 +647,11 @@ fn parse_if_enters_additional_lexed<'a>(
 pub fn parse_if_enters_additional_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AdditionalCounterShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_if_enters_additional_lexed,
         "if enters with additional counter",
     )
-    .ok()
 }
 
 fn tagged_enters_prefix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -683,12 +681,11 @@ fn parse_tagged_enters_additional_lexed<'a>(
 pub fn parse_tagged_enters_additional_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AdditionalCounterShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_tagged_enters_additional_lexed,
         "tagged enters with additional counter",
     )
-    .ok()
 }
 
 fn conditional_entry_object_type<'a>(input: &mut LexStream<'a>) -> WResult<CardType> {
@@ -746,12 +743,11 @@ fn parse_tagged_conditional_entry_counters_lexed<'a>(
 pub fn parse_tagged_conditional_entry_counters_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TaggedConditionalEntryCountersShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_tagged_conditional_entry_counters_lexed,
         "tagged conditional entry counters",
     )
-    .ok()
 }
 
 fn move_onto_battlefield<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -801,12 +797,11 @@ fn parse_put_with_additional_lexed<'a>(
 pub fn parse_put_with_additional_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PutWithAdditionalCounterShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_put_with_additional_lexed,
         "put with additional counter",
     )
-    .ok()
 }
 
 fn sacrifice_word<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -856,12 +851,11 @@ fn parse_sacrifice_then_put_additional_lexed<'a>(
 pub fn parse_sacrifice_then_put_additional_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SacrificeThenPutAdditionalShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_sacrifice_then_put_additional_lexed,
         "sacrifice then put with additional counter",
     )
-    .ok()
 }
 
 fn parse_if_sacrifice_then_put_additional_lexed<'a>(
@@ -882,12 +876,11 @@ fn parse_if_sacrifice_then_put_additional_lexed<'a>(
 pub fn parse_if_sacrifice_then_put_additional_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<IfSacrificeThenPutAdditionalShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_if_sacrifice_then_put_additional_lexed,
         "if sacrifice then put with additional counter",
     )
-    .ok()
 }
 
 fn each_player_prefix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -928,12 +921,11 @@ fn parse_each_player_return_additional_lexed<'a>(
 pub fn parse_each_player_return_additional_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EachPlayerReturnAdditionalShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_each_player_return_additional_lexed,
         "each player return with additional counter",
     )
-    .ok()
 }
 
 fn choice_counter_type<'a>(input: &mut LexStream<'a>) -> WResult<CounterType> {
@@ -987,7 +979,11 @@ fn parse_put_counter_choice_lexed<'a>(
 pub fn parse_put_counter_choice_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PutCounterChoiceShape<'_>> {
-    primitives::parse_all(tokens, parse_put_counter_choice_lexed, "put counter choice").ok()
+    crate::grammar::primitives::probe_all(
+        tokens,
+        parse_put_counter_choice_lexed,
+        "put counter choice",
+    )
 }
 
 fn parse_put_fixed_and_counter_choice_lexed<'a>(
@@ -1014,12 +1010,11 @@ fn parse_put_fixed_and_counter_choice_lexed<'a>(
 pub fn parse_put_fixed_and_counter_choice_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PutFixedAndCounterChoiceShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_put_fixed_and_counter_choice_lexed,
         "put fixed and counter choice",
     )
-    .ok()
 }
 
 fn contains_counter_noun<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -1076,7 +1071,7 @@ fn parse_plain_put_counter_sequence_lexed<'a>(
 pub fn parse_put_counter_sequence_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PutCounterSequenceShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         alt((
             parse_put_counter_then_sequence_lexed,
@@ -1084,7 +1079,6 @@ pub fn parse_put_counter_sequence_tokens(
         )),
         "put counter sequence",
     )
-    .ok()
 }
 
 fn counter_placement<'a>(input: &mut LexStream<'a>) -> WResult<CounterPlacementShape<'a>> {
@@ -1135,12 +1129,11 @@ fn parse_counter_placement_sequence_lexed<'a>(
 pub fn parse_counter_placement_sequence_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<CounterPlacementShape<'_>>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_counter_placement_sequence_lexed,
         "counter placement sequence",
     )
-    .ok()
 }
 
 #[cfg(test)]

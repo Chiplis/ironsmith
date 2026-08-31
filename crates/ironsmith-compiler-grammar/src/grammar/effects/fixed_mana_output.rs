@@ -32,12 +32,11 @@ fn parse_fixed_mana_output_clause<'a>(
 pub fn parse_fixed_mana_output_clause_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<FixedManaOutputClauseSpec> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_fixed_mana_output_clause,
         "fixed-mana-output-clause",
     )
-    .ok()
 }
 
 #[cfg(test)]

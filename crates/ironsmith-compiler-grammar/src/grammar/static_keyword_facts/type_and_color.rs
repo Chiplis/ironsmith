@@ -129,29 +129,27 @@ pub fn parse_skip_your_upkeep_tokens(tokens: &[OwnedLexToken]) -> Option<SkipYou
 pub fn parse_subject_type_addition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SubjectTypeAdditionFact<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_subject_type_addition,
         "static subject type addition",
     )
-    .ok()
 }
 
 pub fn parse_subject_card_type_identity_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SubjectCardTypeIdentityFact<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_subject_card_type_identity,
         "static subject card-type identity",
     )
-    .ok()
 }
 
 pub fn parse_all_cards_chosen_color_addition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ChosenColorAdditionFact> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         (
             semantic_phrase(&[
@@ -181,39 +179,41 @@ pub fn parse_all_cards_chosen_color_addition_tokens(
             .value(ChosenColorAdditionFact),
         "all cards chosen-color addition",
     )
-    .ok()
 }
 
 pub fn parse_power_toughness_type_addition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PowerToughnessTypeAdditionFact<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_power_toughness_type_addition,
         "static power-toughness type addition",
     )
-    .ok()
 }
 
 pub fn parse_color_type_addition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ColorTypeAdditionFact<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_color_type_addition,
         "static color type addition",
     )
-    .ok()
 }
 
 pub fn parse_subjects_are_basic_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SubjectsAreBasicFact<'_>> {
-    primitives::parse_all(tokens, parse_subjects_are_basic, "static basic supertype").ok()
+    crate::grammar::primitives::probe_all(
+        tokens,
+        parse_subjects_are_basic,
+        "static basic supertype",
+    )
 }
 
 pub fn parse_subject_color_tokens(tokens: &[OwnedLexToken]) -> Option<SubjectColorFact<'_>> {
-    let fact = primitives::parse_all(tokens, parse_subject_color, "static subject color").ok()?;
+    let fact =
+        crate::grammar::primitives::probe_all(tokens, parse_subject_color, "static subject color")?;
     let trailing_subject_word = fact
         .subject_tokens
         .iter()
@@ -232,12 +232,11 @@ pub fn parse_subject_color_tokens(tokens: &[OwnedLexToken]) -> Option<SubjectCol
 pub fn parse_basic_land_subtype_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<BasicLandSubtypeFact<'_>> {
-    let fact = primitives::parse_all(
+    let fact = crate::grammar::primitives::probe_all(
         tokens,
         parse_basic_land_subtype,
         "static basic-land subtype",
-    )
-    .ok()?;
+    )?;
     primitives::find_prefix(fact.subject_tokens, || {
         alt((semantic_kw("land"), semantic_kw("lands")))
     })?;
@@ -247,27 +246,25 @@ pub fn parse_basic_land_subtype_tokens(
 pub fn parse_land_type_addition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LandTypeAdditionFact<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_land_type_addition,
         "static land-type addition",
     )
-    .ok()
 }
 
 pub fn parse_land_animation_tokens(tokens: &[OwnedLexToken]) -> Option<LandAnimationFact<'_>> {
-    primitives::parse_all(tokens, parse_land_animation, "static land animation").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_land_animation, "static land animation")
 }
 
 pub fn parse_other_type_addition_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<OtherTypeAdditionTailFact> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         (other_type_addition_tail, semantic_finish).value(OtherTypeAdditionTailFact),
         "other-type addition tail",
     )
-    .ok()
 }
 
 pub fn find_loses_other_creature_types_tokens(

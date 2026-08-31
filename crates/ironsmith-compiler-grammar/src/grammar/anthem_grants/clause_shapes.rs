@@ -94,7 +94,7 @@ pub fn parse_modifier_shape(
     .unwrap_or((false, modifier_tokens));
     let modifier_token = modifier_start + usize::from(article_additional) * 2;
     let mut input = LexStream::new(modifier_tokens);
-    let modifier_word = primitives::word_text(&mut input).ok()?;
+    let modifier_word = crate::grammar::primitives::take_leaf(&mut input, primitives::word_text)?;
     let consumed = modifier_tokens.len().saturating_sub(input.len());
     let tail_tokens = modifier_tokens.get(consumed..)?;
     Some(AnthemModifierShape {

@@ -49,7 +49,9 @@ pub fn parse_consult_condition_value_shape(tokens: &[OwnedLexToken]) -> Option<V
     if TokenWordView::new(filter_tokens).is_empty() {
         return None;
     }
-    let filter = filters::parse_object_filter_with_grammar_entrypoint(filter_tokens, false).ok()?;
+    let filter = crate::grammar::primitives::probe_shape(
+        filters::parse_object_filter_with_grammar_entrypoint(filter_tokens, false),
+    )?;
     Some(Value::Count(filter))
 }
 

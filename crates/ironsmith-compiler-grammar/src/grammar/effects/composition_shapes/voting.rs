@@ -136,10 +136,9 @@ fn parse_named_vote_option_effects_lexed<'a>(
 pub fn parse_named_vote_option_effects_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<NamedVoteOptionEffectsShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_named_vote_option_effects_lexed,
         "named vote option effects",
     )
-    .ok()
 }

@@ -108,9 +108,10 @@ fn creature_subtypes(words: &[&str]) -> Vec<Subtype> {
         if leaf::parse_leaf_card_type_complete(word).is_ok() {
             continue;
         }
-        if let Some(subtype) = leaf::parse_leaf_subtype_flexible_complete(word)
-            .ok()
-            .or_else(|| leaf::classify_token_definition_subtype(word))
+        if let Some(subtype) = crate::grammar::primitives::probe_shape(
+            leaf::parse_leaf_subtype_flexible_complete(word),
+        )
+        .or_else(|| leaf::classify_token_definition_subtype(word))
             && !subtypes.contains(&subtype)
         {
             subtypes.push(subtype);
@@ -223,13 +224,13 @@ pub(super) fn token_keywords(words: &[&str]) -> Vec<TokenKeywordShape> {
     }
     if let Some(amount) = crate::word_primitives::parse_sequence_start(words, &["ward"])
         .and_then(|idx| words.get(idx + 1))
-        .and_then(|word| word.parse::<u32>().ok())
+        .and_then(|word| crate::util::decimal_count(word))
     {
         keywords.push(TokenKeywordShape::WardGeneric(amount));
     }
     if let Some(amount) = crate::word_primitives::parse_sequence_start(words, &["firebending"])
         .and_then(|idx| words.get(idx + 1))
-        .and_then(|word| word.parse::<u32>().ok())
+        .and_then(|word| crate::util::decimal_count(word))
     {
         keywords.push(TokenKeywordShape::Firebending(amount));
     }
@@ -279,7 +280,7 @@ fn inline_rule_self_surface(
         ));
     }
     let named_token = named_token?;
-    let name_tokens = lex_line(named_token, 0).ok()?;
+    let name_tokens = crate::util::lex_fragment(named_token, 0)?;
     let name_words = parser_token_word_refs(&name_tokens);
     crate::word_primitives::parse_sequence_prefix(subject_words, &name_words)
         .then(|| SourceReferenceSurface::FullName(named_token.to_string()))
@@ -516,7 +517,7 @@ pub(super) fn creature_rules(
 
 pub fn parse_token_definition_shape_text(source_text: &str) -> Option<TokenDefinitionSpec> {
     let trimmed = source_text.trim();
-    let tokens = lex_line(trimmed, 0).ok()?;
+    let tokens = crate::util::lex_fragment(trimmed, 0)?;
     parse_token_definition_shape_tokens(&tokens)
 }
 

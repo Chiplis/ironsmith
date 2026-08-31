@@ -320,7 +320,7 @@ fn add_cycling_filter_atom(
 
 fn parse_cycling_root_complete(word: &str) -> Option<&str> {
     let mut input = word;
-    parse_cycling_root_surface.parse_next(&mut input).ok()
+    crate::grammar::primitives::take_leaf(&mut input, parse_cycling_root_surface)
 }
 
 fn parse_cycling_root_surface<'a>(input: &mut &'a str) -> WResult<&'a str> {

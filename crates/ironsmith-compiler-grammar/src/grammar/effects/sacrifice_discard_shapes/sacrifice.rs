@@ -126,7 +126,9 @@ pub fn parse_sacrifice_mana_spent_symbol(tokens: &[OwnedLexToken]) -> Option<Man
     ) {
         return None;
     }
-    let symbols = leaf::parse_leaf_mana_symbol_group_complete(mana_token.slice.as_str()).ok()?;
+    let symbols = crate::grammar::primitives::probe_shape(
+        leaf::parse_leaf_mana_symbol_group_complete(mana_token.slice.as_str()),
+    )?;
     let [symbol] = symbols.as_slice() else {
         return None;
     };

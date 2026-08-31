@@ -63,12 +63,11 @@ fn parse_triggered_spell_opponent_damage_lexed<'a>(
 pub fn parse_triggered_spell_opponent_damage_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<TriggeredSpellOpponentDamageShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_triggered_spell_opponent_damage_lexed,
         "triggered-spell-opponent-damage",
     )
-    .ok()
 }
 
 #[cfg(test)]

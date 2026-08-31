@@ -75,7 +75,7 @@ fn next_end_step<'a>(input: &mut LexStream<'a>) -> WResult<RegistryNextEndStepSh
 pub fn parse_registry_next_end_step_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<RegistryNextEndStepShape<'_>> {
-    primitives::parse_all(tokens, next_end_step, "registry-next-end-step").ok()
+    crate::grammar::primitives::probe_all(tokens, next_end_step, "registry-next-end-step")
 }
 
 pub fn parse_remain_exiled_tail(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {

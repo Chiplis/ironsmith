@@ -73,16 +73,15 @@ pub enum ExileWouldDieSpec {
 pub fn parse_exile_to_graveyard_replacement_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ExileToGraveyardReplacementSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_exile_to_graveyard_replacement_lexed,
         "exile instead of graveyard replacement",
     )
-    .ok()
 }
 
 pub fn parse_exile_would_die_tokens(tokens: &[OwnedLexToken]) -> Option<ExileWouldDieSpec> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         alt((
             parse_nontoken_exile_would_die_lexed,
@@ -92,7 +91,6 @@ pub fn parse_exile_would_die_tokens(tokens: &[OwnedLexToken]) -> Option<ExileWou
         )),
         "exile would-die replacement",
     )
-    .ok()
 }
 
 pub fn parse_you_controlled_source_filter_tokens(tokens: &[OwnedLexToken]) -> bool {

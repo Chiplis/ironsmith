@@ -214,7 +214,7 @@ fn parse_filter_counter_constraint_word_slice(
     .and_then(|start| descriptor.get(start..start + 3))
     .and_then(|words| {
         crate::word_primitives::parse_sequence_complete(&words[1..], &["or", "more"])
-            .then(|| leaf::parse_number_complete(words[0]).ok())
+            .then(|| crate::grammar::primitives::probe_shape(leaf::parse_number_complete(words[0])))
             .flatten()
     });
     let constraint = match (base_constraint, minimum) {
@@ -261,9 +261,7 @@ pub fn parse_counter_type_word(word: &str) -> Option<CounterType> {
 
 pub fn parse_counter_type_words(words: &[&str]) -> Option<CounterType> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    parse_counter_type_words_spec_word_slice
-        .parse_next(&mut input)
-        .ok()
+    crate::grammar::primitives::take_leaf(&mut input, parse_counter_type_words_spec_word_slice)
         .map(|spec| spec.counter_type)
 }
 
@@ -288,9 +286,7 @@ pub fn parse_filter_counter_constraint_spec_words(
     words: &[&str],
 ) -> Option<FilterCounterConstraintSpec> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    parse_filter_counter_constraint_word_slice
-        .parse_next(&mut input)
-        .ok()
+    crate::grammar::primitives::take_leaf(&mut input, parse_filter_counter_constraint_word_slice)
 }
 
 fn apply_filter_counter_constraint_surface(

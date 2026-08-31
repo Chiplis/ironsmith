@@ -15,7 +15,9 @@ pub fn parse_possessive_target_stat(tokens: &[OwnedLexToken]) -> Option<Possessi
     let target_end = TokenWordView::new(tokens).token_index_after_words(target_word_count)?;
     let mut target_tokens = tokens.get(..target_end)?.to_vec();
     let possessive = target_tokens.last_mut()?;
-    let stem = parse_possessive_stem.parse(possessive.as_word()?).ok()?;
+    let stem = crate::grammar::primitives::probe_shape(
+        parse_possessive_stem.parse(possessive.as_word()?),
+    )?;
     if !possessive.replace_word(stem) {
         return None;
     }

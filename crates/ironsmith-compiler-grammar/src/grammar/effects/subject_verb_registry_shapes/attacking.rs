@@ -42,5 +42,9 @@ fn attacking_draw_lose<'a>(input: &mut LexStream<'a>) -> WResult<AttackingPlayer
 pub fn parse_attacking_player_draw_lose_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<AttackingPlayerDrawLoseShape<'_>> {
-    primitives::parse_all(tokens, attacking_draw_lose, "registry-attacking-draw-lose").ok()
+    crate::grammar::primitives::probe_all(
+        tokens,
+        attacking_draw_lose,
+        "registry-attacking-draw-lose",
+    )
 }

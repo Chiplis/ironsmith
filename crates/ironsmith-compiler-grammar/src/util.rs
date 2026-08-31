@@ -839,7 +839,74 @@ impl Drop for ParserTraceOverrideGuard {
     }
 }
 
+/// Lex a fragment as rules text.
+///
+/// Recognizers hand this text that may not be rules text at all — a card name
+/// (`Aang, at the Crossroads // Aang, Destined Savior`), a label, a leftover
+/// mana symbol. The rules lexer rejects those, and that rejection is the
+/// answer the caller asked for: this fragment is not a rules clause, so the
+/// shape being recognized does not apply. There is no diagnostic to surface.
+pub fn lex_fragment(text: &str, line_index: usize) -> Option<Vec<OwnedLexToken>> {
+    match crate::lexer::lex_line(text, line_index) {
+        Ok(tokens) => Some(tokens),
+        Err(_) => None,
+    }
+}
+
+/// Narrow a counted amount to the runtime's signed amount type.
+///
+/// Counts that do not fit are outside the range the runtime models, so the
+/// shape carrying them is not one this grammar can represent.
+pub fn narrowed_i32<T: TryInto<i32>>(value: T) -> Option<i32> {
+    match value.try_into() {
+        Ok(value) => Some(value),
+        Err(_) => None,
+    }
+}
+
+/// Narrow a counted amount to an index-sized count.
+pub fn narrowed_usize<T: TryInto<usize>>(value: T) -> Option<usize> {
+    match value.try_into() {
+        Ok(value) => Some(value),
+        Err(_) => None,
+    }
+}
+
+/// Narrow a counted amount to an unsigned runtime count.
+pub fn narrowed_u32<T: TryInto<u32>>(value: T) -> Option<u32> {
+    match value.try_into() {
+        Ok(value) => Some(value),
+        Err(_) => None,
+    }
+}
+
+/// Read a decimal digit word as a signed amount.
+pub fn decimal_amount(word: &str) -> Option<i32> {
+    match word.parse::<i32>() {
+        Ok(value) => Some(value),
+        Err(_) => None,
+    }
+}
+
+/// Read a decimal digit word as a count.
+///
+/// A word that is not a decimal number simply is not a count; there is no
+/// separate malformed case for a single word.
+pub fn decimal_count(word: &str) -> Option<u32> {
+    match word.parse::<u32>() {
+        Ok(value) => Some(value),
+        Err(_) => None,
+    }
+}
+
 pub fn with_cached_parser_trace<T>(callback: impl FnOnce() -> T) -> T {
+    // A grammar leaf that commits has claimed its position, so its failure is a
+    // diagnostic about malformed input rather than the answer to "is this shape
+    // present?". Recognition still declines, so route that diagnostic to the
+    // parse-loss channel where the corpus tooling can see it.
+    crate::grammar::primitives::set_committed_leaf_observer(|message| {
+        crate::parse_loss::record("committed_leaf_failure", message);
+    });
     let raw = std::env::var_os("IRONSMITH_PARSER_TRACE");
     let enabled = raw
         .as_deref()
@@ -920,43 +987,43 @@ pub fn map_span_to_original(
 }
 
 pub fn parse_card_type(word: &str) -> Option<CardType> {
-    leaf::parse_leaf_card_type_complete(word).ok()
+    crate::grammar::primitives::probe_shape(leaf::parse_leaf_card_type_complete(word))
 }
 
 pub fn parse_supertype_word(word: &str) -> Option<Supertype> {
-    leaf::parse_leaf_supertype_complete(word).ok()
+    crate::grammar::primitives::probe_shape(leaf::parse_leaf_supertype_complete(word))
 }
 
 pub fn parse_subtype_word(word: &str) -> Option<Subtype> {
-    leaf::parse_leaf_subtype_complete(word).ok()
+    crate::grammar::primitives::probe_shape(leaf::parse_leaf_subtype_complete(word))
 }
 
 pub fn parse_mana_symbol_word_flexible(word: &str) -> Option<ManaSymbol> {
-    leaf::parse_leaf_spelled_mana_word_complete(word).ok()
+    crate::grammar::primitives::probe_shape(leaf::parse_leaf_spelled_mana_word_complete(word))
 }
 
 pub fn parse_color(word: &str) -> Option<crate::color::ColorSet> {
-    leaf::parse_leaf_color_complete(word).ok()
+    crate::grammar::primitives::probe_shape(leaf::parse_leaf_color_complete(word))
 }
 
 pub fn parse_non_type(word: &str) -> Option<CardType> {
-    leaf::parse_leaf_non_card_type_complete(word).ok()
+    crate::grammar::primitives::probe_shape(leaf::parse_leaf_non_card_type_complete(word))
 }
 
 pub fn parse_non_supertype(word: &str) -> Option<Supertype> {
-    leaf::parse_leaf_non_supertype_complete(word).ok()
+    crate::grammar::primitives::probe_shape(leaf::parse_leaf_non_supertype_complete(word))
 }
 
 pub fn parse_non_color(word: &str) -> Option<crate::color::ColorSet> {
-    leaf::parse_leaf_non_color_complete(word).ok()
+    crate::grammar::primitives::probe_shape(leaf::parse_leaf_non_color_complete(word))
 }
 
 pub fn parse_non_subtype(word: &str) -> Option<Subtype> {
-    leaf::parse_leaf_non_subtype_complete(word).ok()
+    crate::grammar::primitives::probe_shape(leaf::parse_leaf_non_subtype_complete(word))
 }
 
 pub fn parse_subtype_flexible(word: &str) -> Option<Subtype> {
-    leaf::parse_leaf_subtype_flexible_complete(word).ok()
+    crate::grammar::primitives::probe_shape(leaf::parse_leaf_subtype_flexible_complete(word))
 }
 
 pub fn is_source_reference_words(words: &[&str]) -> bool {
@@ -1006,7 +1073,7 @@ pub fn is_permanent_type(card_type: CardType) -> bool {
 }
 
 pub fn parse_zone_word(word: &str) -> Option<Zone> {
-    leaf::parse_leaf_zone_complete(word).ok()
+    crate::grammar::primitives::probe_shape(leaf::parse_leaf_zone_complete(word))
 }
 
 pub fn parse_alternative_cast_words(words: &[&str]) -> Option<(AlternativeCastKind, usize)> {
@@ -1015,7 +1082,7 @@ pub fn parse_alternative_cast_words(words: &[&str]) -> Option<(AlternativeCastKi
 }
 
 pub fn parse_unsigned_pt_word(word: &str) -> Option<(i32, i32)> {
-    leaf::parse_leaf_unsigned_pt_complete(word).ok()
+    crate::grammar::primitives::probe_shape(leaf::parse_leaf_unsigned_pt_complete(word))
 }
 
 pub fn parse_filter_keyword_constraint_words(
@@ -1122,11 +1189,11 @@ pub fn parse_scryfall_mana_cost(raw: &str) -> Result<ManaCost, CardTextError> {
 }
 
 pub fn parse_number_word_i32(word: &str) -> Option<i32> {
-    leaf::parse_number_i32_complete(word).ok()
+    crate::grammar::primitives::probe_shape(leaf::parse_number_i32_complete(word))
 }
 
 pub fn parse_number_word_u32(word: &str) -> Option<u32> {
-    parse_number_word_i32(word).and_then(|value| value.try_into().ok())
+    parse_number_word_i32(word).and_then(narrowed_u32)
 }
 
 pub fn parse_value_expr_words(words: &[&str]) -> Option<(Value, usize)> {
@@ -2172,7 +2239,7 @@ pub fn parse_level_header(line: &str) -> Option<(u32, Option<u32>)> {
 }
 
 pub fn parse_power_toughness(raw: &str) -> Option<PowerToughness> {
-    leaf::parse_leaf_power_toughness_complete(raw).ok()
+    crate::grammar::primitives::probe_shape(leaf::parse_leaf_power_toughness_complete(raw))
 }
 
 pub fn parse_level_up_line(

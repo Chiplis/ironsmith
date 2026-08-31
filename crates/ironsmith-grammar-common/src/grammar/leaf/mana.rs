@@ -226,7 +226,9 @@ pub fn parse_leaf_pawprint_label_count_complete(raw: &str) -> Result<u32, CardTe
 
 pub fn parse_leaf_pawprint_label_count_token(token: &OwnedLexToken) -> Option<u32> {
     match token.kind {
-        TokenKind::ManaGroup => parse_leaf_pawprint_label_count_complete(token.parser_text()).ok(),
+        TokenKind::ManaGroup => super::super::primitives::probe_shape(
+            parse_leaf_pawprint_label_count_complete(token.parser_text()),
+        ),
         TokenKind::Word if token.parser_text() == "p" => Some(1),
         _ => None,
     }
@@ -239,36 +241,32 @@ fn parse_leaf_pawprint_label_count(input: &mut &str) -> WResult<u32> {
 }
 
 pub fn parse_leaf_surface_mana_pip_token(token: &OwnedLexToken) -> Option<LeafManaPipToken> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         std::slice::from_ref(token),
         parse_leaf_surface_mana_pip_lexed,
         "leaf-surface-mana-pip",
     )
-    .ok()
 }
 
 pub fn parse_leaf_mana_cost_prefix_tokens(tokens: &[OwnedLexToken]) -> Option<LeafManaCostPrefix> {
     let mut input = LexStream::new(tokens);
-    parse_leaf_mana_cost_prefix_lexed
-        .parse_next(&mut input)
-        .ok()
+    crate::grammar::primitives::take_leaf(&mut input, parse_leaf_mana_cost_prefix_lexed)
 }
 
 pub fn parse_leaf_fixed_mana_cost_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LeafManaCostPrefix> {
     let mut input = LexStream::new(tokens);
-    parse_leaf_fixed_mana_cost_prefix_lexed
-        .parse_next(&mut input)
-        .ok()
+    crate::grammar::primitives::take_leaf(&mut input, parse_leaf_fixed_mana_cost_prefix_lexed)
 }
 
 #[cfg(test)]
 pub fn parse_leaf_legacy_mana_cost_prefix_words(words: &[&str]) -> Option<LeafManaCostPrefix> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    let cost = parse_leaf_legacy_mana_cost_prefix_word_slice
-        .parse_next(&mut input)
-        .ok()?;
+    let cost = crate::grammar::primitives::take_leaf(
+        &mut input,
+        parse_leaf_legacy_mana_cost_prefix_word_slice,
+    )?;
     Some(LeafManaCostPrefix {
         cost,
         consumed: words.len().checked_sub(input.len())?,
@@ -286,12 +284,11 @@ pub fn parse_leaf_mana_cost_tokens(tokens: &[OwnedLexToken]) -> Result<ManaCost,
 }
 
 pub fn parse_leaf_fixed_mana_output_tokens(tokens: &[OwnedLexToken]) -> Option<Vec<ManaSymbol>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_leaf_fixed_mana_output_lexed,
         "leaf-fixed-mana-output",
     )
-    .ok()
 }
 
 fn parse_leaf_mana_symbol_spaced(input: &mut &str) -> WResult<ManaSymbol> {

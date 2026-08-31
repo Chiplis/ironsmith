@@ -290,8 +290,7 @@ pub(super) fn parse_atom_word_from(words: &[&str], first: usize, expected: &str)
     let initial_len = input.len();
     loop {
         let offset = initial_len.saturating_sub(input.len());
-        let word: WResult<&str> = any.parse_next(&mut input);
-        let word = word.ok()?;
+        let word = crate::grammar::primitives::take_leaf(&mut input, any)?;
         if word == expected {
             return Some(first + offset);
         }

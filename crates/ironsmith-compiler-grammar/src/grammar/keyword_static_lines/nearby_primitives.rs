@@ -61,27 +61,25 @@ pub fn parse_ward_abilities_dont_trigger_marker_tokens(tokens: &[OwnedLexToken])
 }
 
 pub fn parse_ward_cost_tokens(tokens: &[OwnedLexToken]) -> Option<WardCostSpec<'_>> {
-    primitives::parse_all(tokens, parse_ward_cost_lexed, "ward cost").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_ward_cost_lexed, "ward cost")
 }
 
 pub fn parse_additional_vote_tokens(tokens: &[OwnedLexToken]) -> Option<AdditionalVoteKind> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_additional_vote_lexed,
         "additional vote static line",
     )
-    .ok()
 }
 
 pub fn parse_dont_untap_during_controllers_step_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DontUntapDuringControllersStepSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_dont_untap_during_controllers_step_lexed,
         "don't-untap during controller step",
     )
-    .ok()
 }
 
 pub fn parse_there_is_or_are_quantified_tokens(
@@ -98,7 +96,7 @@ pub fn parse_there_is_or_are_quantified_tokens(
 }
 
 pub fn parse_graveyard_metric_tokens(tokens: &[OwnedLexToken]) -> Option<GraveyardMetricKind> {
-    primitives::parse_all(tokens, parse_graveyard_metric_lexed, "graveyard metric").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_graveyard_metric_lexed, "graveyard metric")
 }
 
 pub fn parse_damage_not_removed_cleanup_tokens(tokens: &[OwnedLexToken]) -> bool {

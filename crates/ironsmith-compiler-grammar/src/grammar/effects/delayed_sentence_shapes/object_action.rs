@@ -18,7 +18,7 @@ pub fn parse_copy_twice_shape(tokens: &[OwnedLexToken]) -> Option<CopyTwiceShape
             may_choose_new_targets: false,
         });
     }
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tail,
         (
             semantic_phrase(&[
@@ -30,7 +30,6 @@ pub fn parse_copy_twice_shape(tokens: &[OwnedLexToken]) -> Option<CopyTwiceShape
             .void(),
         "copy twice target tail",
     )
-    .ok()
     .map(|()| CopyTwiceShape {
         may_choose_new_targets: true,
     })

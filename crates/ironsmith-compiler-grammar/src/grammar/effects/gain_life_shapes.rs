@@ -46,12 +46,11 @@ fn parse_gain_life_equal_power_lexed<'a>(
 pub fn parse_gain_life_equal_power_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<GainLifeEqualPowerShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_gain_life_equal_power_lexed,
         "gain-life-equal-power",
     )
-    .ok()
 }
 
 fn subject_is_not_negated(subject_tokens: &[OwnedLexToken]) -> bool {
@@ -86,7 +85,7 @@ fn parse_gain_x_plus_life_lexed<'a>(
 }
 
 pub fn parse_gain_x_plus_life_tokens(tokens: &[OwnedLexToken]) -> Option<GainXPlusLifeShape<'_>> {
-    primitives::parse_all(tokens, parse_gain_x_plus_life_lexed, "gain-x-plus-life").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_gain_x_plus_life_lexed, "gain-x-plus-life")
 }
 
 #[cfg(test)]

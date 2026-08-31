@@ -83,8 +83,9 @@ pub fn parse_mana_symbol_spent_to_cast_value(tokens: &[OwnedLexToken]) -> Option
         return None;
     }
 
-    let symbols =
-        super::super::values::parse_mana_symbol_group(tokens[mana_index].parser_text()).ok()?;
+    let symbols = crate::grammar::primitives::probe_shape(
+        super::super::values::parse_mana_symbol_group(tokens[mana_index].parser_text()),
+    )?;
     let [symbol] = symbols.as_slice() else {
         return None;
     };
@@ -115,7 +116,7 @@ struct EqualToStart {
 
 fn parse_equal_to_start(words: &[&str]) -> Option<EqualToStart> {
     let mut input: WordSliceInput<'_> = words;
-    parse_equal_to_start_words.parse_next(&mut input).ok()
+    crate::grammar::primitives::take_leaf(&mut input, parse_equal_to_start_words)
 }
 
 fn parse_equal_to_start_words(
@@ -207,7 +208,8 @@ pub fn parse_aggregate_scope_value_lexed(tokens: &[OwnedLexToken]) -> Option<Val
     let scope_start = words.len().checked_sub(surface.scope_words.len())?;
     let scope_token_range = word_view.token_span_for_words(scope_start, words.len())?;
     let scope_tokens = trim_edge_punctuation_tokens(&tokens[scope_token_range]);
-    let filter = parse_object_filter_lexed(scope_tokens, false).ok()?;
+    let filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter_lexed(scope_tokens, false))?;
 
     match surface.metric {
         AggregateValueMetric::BasicLandTypes => Some(Value::BasicLandTypesAmong(filter)),
@@ -289,7 +291,9 @@ pub fn parse_prior_effect_aggregate_metric_value(
                 ironsmith_core::PriorEffectMetricQuery::new(source, metric).with_action(action);
             let filter_words = &subject[..action_start];
             if !filter_words.is_empty() {
-                let mut filter = parse_object_filter_words(filter_words, false).ok()?;
+                let mut filter = crate::grammar::primitives::probe_shape(
+                    parse_object_filter_words(filter_words, false),
+                )?;
                 if filter_words
                     .iter()
                     .any(|word| matches!(*word, "card" | "cards"))
@@ -348,7 +352,10 @@ fn history_filter_from_word_prefix(
     end_word: usize,
 ) -> Option<ObjectFilter> {
     let range = words.token_span_for_words(0, end_word)?;
-    let mut filter = parse_object_filter(&trim_edge_punctuation(&tokens[range]), false).ok()?;
+    let mut filter = crate::grammar::primitives::probe_shape(parse_object_filter(
+        &trim_edge_punctuation(&tokens[range]),
+        false,
+    ))?;
     // Historical values match the event snapshot, not the object's current
     // zone.  Zone transitions are carried by the query variant itself.
     filter.zone = None;

@@ -113,7 +113,7 @@ pub fn parse_choice_color_phrase_words(
 
 pub fn parse_choice_card_type_phrase_words(words: &[&str]) -> Option<ChoiceCardTypePhrase> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    parse_choose_prefix(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, parse_choose_prefix)?;
 
     let mut generic_probe = input;
     if parse_word_phrase(&mut generic_probe, &["card", "type"]).is_ok() {
@@ -193,12 +193,15 @@ pub fn parse_choice_basic_land_type_phrase_words(words: &[&str]) -> Option<Choic
 
 pub fn parse_choice_land_type_phrase_words(words: &[&str]) -> Option<ChoiceLandTypePhrase> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    parse_choose_prefix(&mut input).ok()?;
-    let exclude_basic = opt(primitives::word_slice_exact("nonbasic"))
-        .parse_next(&mut input)
-        .ok()?
-        .is_some();
-    parse_word_phrase(&mut input, &["land", "type"]).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, parse_choose_prefix)?;
+    let exclude_basic = crate::grammar::primitives::take_leaf(
+        &mut input,
+        opt(primitives::word_slice_exact("nonbasic")),
+    )?
+    .is_some();
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        parse_word_phrase(input, &["land", "type"])
+    })?;
     Some(ChoiceLandTypePhrase {
         consumed: words.len().saturating_sub(input.len()),
         exclude_basic,
@@ -209,8 +212,8 @@ pub fn parse_choice_subtype_family_phrase_words(
     words: &[&str],
 ) -> Option<ChoiceSubtypeFamilyPhrase> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    parse_choose_prefix(&mut input).ok()?;
-    let family = match take_word(&mut input).ok()? {
+    crate::grammar::primitives::take_leaf(&mut input, parse_choose_prefix)?;
+    let family = match crate::grammar::primitives::take_leaf(&mut input, take_word)? {
         "land" => SubtypeFamily::Land,
         "creature" => SubtypeFamily::Creature,
         "artifact" => SubtypeFamily::Artifact,
@@ -220,9 +223,7 @@ pub fn parse_choice_subtype_family_phrase_words(
         "battle" => SubtypeFamily::Battle,
         _ => return None,
     };
-    primitives::word_slice_exact("type")
-        .parse_next(&mut input)
-        .ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::word_slice_exact("type"))?;
     Some(ChoiceSubtypeFamilyPhrase {
         consumed: words.len().saturating_sub(input.len()),
         family,
@@ -234,8 +235,10 @@ fn parse_simple_choice_phrase(
     phrase: &'static [&'static str],
 ) -> Option<ChoiceSimpleTypePhrase> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    parse_choose_prefix(&mut input).ok()?;
-    parse_word_phrase(&mut input, phrase).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, parse_choose_prefix)?;
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        parse_word_phrase(input, phrase)
+    })?;
     Some(ChoiceSimpleTypePhrase {
         consumed: words.len().saturating_sub(input.len()),
     })

@@ -94,7 +94,7 @@ pub(super) fn parse_put_cards_from_single_graveyard_on_bottom_owner_library_sent
     tokens: &[OwnedLexToken],
 ) -> Option<EffectAst> {
     let shape = sentence_shapes::parse_single_graveyard_library_bottom_tokens(tokens)?;
-    let count = usize::try_from(shape.count).ok()?;
+    let count = crate::util::narrowed_usize(shape.count)?;
 
     let filter = ObjectFilter::default()
         .in_zone(Zone::Graveyard)

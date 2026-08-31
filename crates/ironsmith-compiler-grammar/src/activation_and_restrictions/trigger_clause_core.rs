@@ -702,7 +702,8 @@ fn parse_attacks_player_who_controls_at_least_tail(words: &[&str]) -> Option<(u3
         && words[6] == "more"
         && matches!(words[7], "land" | "lands")
     {
-        let count = parse_number_word_u32(words[4]).or_else(|| words[4].parse::<u32>().ok())?;
+        let count =
+            parse_number_word_u32(words[4]).or_else(|| crate::util::decimal_count(words[4]))?;
         return Some((count, ObjectFilter::land()));
     }
     None
@@ -1785,7 +1786,8 @@ fn parse_source_or_another_trigger_subject_filters(
         source_reference_surface_for_trigger_subject(&subject_tokens[..source_token_end])
             .map(ObjectFilter::source_with_surface)
             .unwrap_or_else(ObjectFilter::source);
-    let other_filter = parse_object_filter_lexed(&other_tokens, true).ok()?;
+    let other_filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter_lexed(&other_tokens, true))?;
     Some((source_filter, other_filter))
 }
 
@@ -1878,20 +1880,20 @@ pub fn has_leading_one_or_more(tokens: &[OwnedLexToken]) -> bool {
 }
 
 pub fn leading_one_or_more_prefix_len(tokens: &[OwnedLexToken]) -> Option<usize> {
-    let (count, used) =
-        parse_greater_than_or_equal_quantity_prefix(tokens, false, false, "trigger subject")
-            .ok()
-            .flatten()?;
+    let (count, used) = crate::grammar::primitives::probe_shape(
+        parse_greater_than_or_equal_quantity_prefix(tokens, false, false, "trigger subject"),
+    )
+    .flatten()?;
     (count == 1).then_some(used)
 }
 
 pub fn parse_leading_or_more_quantifier(
     tokens: &[OwnedLexToken],
 ) -> Option<(u32, &[OwnedLexToken])> {
-    let (count, used) =
-        parse_greater_than_or_equal_quantity_prefix(tokens, false, false, "trigger quantifier")
-            .ok()
-            .flatten()?;
+    let (count, used) = crate::grammar::primitives::probe_shape(
+        parse_greater_than_or_equal_quantity_prefix(tokens, false, false, "trigger quantifier"),
+    )
+    .flatten()?;
     Some((count, &tokens[used..]))
 }
 
@@ -2594,7 +2596,9 @@ fn try_parse_repeated_intro_attack_union_lexed(tokens: &[OwnedLexToken]) -> Opti
 
         let left_raw = &tokens[..or_idx];
         let right_raw = &tokens[or_idx + 1..];
-        let left = parse_trigger_clause_lexed(strip_leading_trigger_intro(left_raw)).ok()?;
+        let left = crate::grammar::primitives::probe_shape(parse_trigger_clause_lexed(
+            strip_leading_trigger_intro(left_raw),
+        ))?;
         let antecedent = attacked_player_from_attack_trigger(&left)?;
         let right = try_parse_relative_player_attack_branch(right_raw, antecedent)?;
         return Some(TriggerSpec::Either(

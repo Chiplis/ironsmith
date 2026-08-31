@@ -66,23 +66,21 @@ pub enum CombatMaximumKind {
 pub fn parse_damage_multiplier_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DamageMultiplierSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_damage_multiplier_lexed,
         "damage multiplier line",
     )
-    .ok()
 }
 
 pub fn parse_additive_damage_amount_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AdditiveDamageAmountSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_additive_damage_amount_lexed,
         "additive damage amount replacement",
     )
-    .ok()
 }
 
 pub fn parse_minimum_red_noncombat_damage_tokens(tokens: &[OwnedLexToken]) -> bool {
@@ -97,32 +95,29 @@ pub fn parse_minimum_red_noncombat_damage_tokens(tokens: &[OwnedLexToken]) -> bo
 pub fn parse_prevent_damage_to_you_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PreventDamageToYouSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_prevent_damage_to_you_lexed,
         "prevent damage to you from source filter",
     )
-    .ok()
 }
 
 pub fn parse_damage_redirect_controller_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DamageRedirectControllerSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_damage_redirect_controller_lexed,
         "damage redirect to source controller",
     )
-    .ok()
 }
 
 pub fn parse_combat_maximum_tail_tokens(tokens: &[OwnedLexToken]) -> Option<CombatMaximumKind> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_combat_maximum_tail_lexed,
         "combat maximum tail",
     )
-    .ok()
 }
 
 fn parse_damage_multiplier_lexed<'a>(

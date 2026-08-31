@@ -158,10 +158,11 @@ pub fn parse_trailing_counter_constraint_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CounterConstraint> {
     let mut input = LexStream::new(tokens);
-    repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), trailing_counter_constraint)
-        .parse_next(&mut input)
-        .ok()
-        .map(|(_, constraint)| constraint)
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), trailing_counter_constraint),
+    )
+    .map(|(_, constraint)| constraint)
 }
 
 fn top_library_action<'a>(input: &mut LexStream<'a>) -> WResult<TopLibraryAction> {
@@ -184,12 +185,11 @@ fn parse_top_library_count_lexed<'a>(input: &mut LexStream<'a>) -> WResult<TopLi
 }
 
 pub fn parse_top_library_count_tokens(tokens: &[OwnedLexToken]) -> Option<TopLibraryCountShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         trim_lexed_commas(tokens),
         parse_top_library_count_lexed,
         "top cards of your library",
     )
-    .ok()
 }
 
 fn future_zone_counter<'a>(input: &mut LexStream<'a>) -> WResult<FutureZoneCounterShape> {
@@ -221,10 +221,11 @@ pub fn parse_future_zone_counter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<FutureZoneCounterShape> {
     let mut input = LexStream::new(tokens);
-    repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), future_zone_counter)
-        .parse_next(&mut input)
-        .ok()
-        .map(|(_, parsed)| parsed)
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), future_zone_counter),
+    )
+    .map(|(_, parsed)| parsed)
 }
 
 fn where_x_split<'a>(
@@ -250,7 +251,7 @@ fn where_x_split<'a>(
 
 pub fn parse_where_x_usage_shape_tokens(tokens: &[OwnedLexToken]) -> Option<WhereXUsageShape<'_>> {
     let (leading, full_binding_tokens) =
-        primitives::parse_all(tokens, where_x_split, "where X binding").ok()?;
+        crate::grammar::primitives::probe_all(tokens, where_x_split, "where X binding")?;
     let binding_tokens =
         crate::slice_primitives::find_window_by(full_binding_tokens, 2, |window| {
             window[0].is_comma() && window[1].is_word("then")
@@ -303,7 +304,7 @@ fn parse_flip_result_lexed<'a>(
 pub fn parse_flip_result_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<(IfResultPredicate, &[OwnedLexToken])> {
-    primitives::parse_all(tokens, parse_flip_result_lexed, "flip result sentence").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_flip_result_lexed, "flip result sentence")
 }
 
 fn tagged_characteristics_prefix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -391,12 +392,11 @@ fn parse_tagged_characteristics_lexed<'a>(
 pub fn parse_tagged_characteristics_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TaggedCharacteristicsShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_tagged_characteristics_lexed,
         "tagged characteristics and keyword",
     )
-    .ok()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -462,7 +462,7 @@ fn direct_atomic_action<'a>(input: &mut LexStream<'a>) -> WResult<DirectAtomicAc
 pub fn parse_direct_atomic_action_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DirectAtomicActionShape> {
-    primitives::parse_all(tokens, direct_atomic_action, "direct atomic action").ok()
+    crate::grammar::primitives::probe_all(tokens, direct_atomic_action, "direct atomic action")
 }
 
 fn otherwise_referential_subject<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -522,7 +522,7 @@ fn token_granted_ability<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLex
 }
 
 pub fn parse_token_granted_ability_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    primitives::parse_all(tokens, token_granted_ability, "token granted ability").ok()
+    crate::grammar::primitives::probe_all(tokens, token_granted_ability, "token granted ability")
 }
 
 #[cfg(test)]

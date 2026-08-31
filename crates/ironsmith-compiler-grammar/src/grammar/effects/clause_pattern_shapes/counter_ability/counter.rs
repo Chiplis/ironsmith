@@ -113,10 +113,9 @@ pub(super) fn parse_counter_ability_target_lexed<'a>(
 pub fn parse_counter_ability_target_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CounterAbilityTargetShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_counter_ability_target_lexed,
         "counter ability target",
     )
-    .ok()
 }

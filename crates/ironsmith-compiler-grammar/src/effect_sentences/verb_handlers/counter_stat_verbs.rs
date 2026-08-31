@@ -980,7 +980,7 @@ fn parse_possessive_target_stat_value(tokens: &[OwnedLexToken]) -> Option<Value>
         counter_grammar::TargetStatKind::Toughness => Value::ToughnessOf,
         counter_grammar::TargetStatKind::ManaValue => Value::ManaValueOf,
     };
-    let target = parse_target_phrase(&shape.target_tokens).ok()?;
+    let target = crate::grammar::primitives::probe_shape(parse_target_phrase(&shape.target_tokens))?;
     let spec = crate::reference_helpers::choose_spec_for_target(&target);
     Some(constructor(Box::new(spec)))
 }

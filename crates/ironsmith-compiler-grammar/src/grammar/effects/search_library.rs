@@ -1646,12 +1646,12 @@ pub fn parse_search_library_object_filter_lexed(
             &[&["or", "less"], &["or", "more"], &["or", "greater"]],
         );
         let mut filter = if comparison_or {
-            parse_object_filter(&filter_tokens, false)
-                .ok()
+            crate::grammar::primitives::probe_shape(parse_object_filter(&filter_tokens, false))
                 .or_else(|| parse_search_library_disjunction_filter(&filter_tokens))
         } else {
-            parse_search_library_disjunction_filter(&filter_tokens)
-                .or_else(|| parse_object_filter(&filter_tokens, false).ok())
+            parse_search_library_disjunction_filter(&filter_tokens).or_else(|| {
+                crate::grammar::primitives::probe_shape(parse_object_filter(&filter_tokens, false))
+            })
         }
         .ok_or_else(|| {
             CardTextError::ParseError(format!(

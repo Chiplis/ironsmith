@@ -39,7 +39,9 @@ fn parse_for_each_object_filter_words(
     {
         return Some(filter);
     }
-    crate::object_filters::parse_object_filter_lexed(&tokens, false).ok()
+    crate::grammar::primitives::probe_shape(crate::object_filters::parse_object_filter_lexed(
+        &tokens, false,
+    ))
 }
 
 pub fn mana_from_source_spent_to_cast_value(source_words: &[&str]) -> Option<Value> {
@@ -65,7 +67,8 @@ pub fn mana_from_source_spent_to_cast_value_with_reference(
     if source_words.is_empty() {
         return None;
     }
-    let source_filter = parse_object_filter_words(source_words, false).ok()?;
+    let source_filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter_words(source_words, false))?;
     Some(Value::ManaFromSourceSpentToCastThisSpell {
         source_filter,
         include_source_noun,

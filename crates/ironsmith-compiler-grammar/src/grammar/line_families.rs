@@ -122,7 +122,9 @@ pub fn parse_station_threshold(tokens: &[OwnedLexToken]) -> Option<StationThresh
     {
         return None;
     }
-    let threshold = leaf::parse_number_i32_complete(threshold_token.parser_text()).ok()?;
+    let threshold = crate::grammar::primitives::probe_shape(leaf::parse_number_i32_complete(
+        threshold_token.parser_text(),
+    ))?;
     let body_tokens = trim_commas(tokens.get(pipe + 1..)?);
     (!TokenWordView::new(body_tokens).is_empty()).then_some(StationThresholdShape {
         threshold,
@@ -144,11 +146,11 @@ pub fn parse_sticker_ticket_marker(tokens: &[OwnedLexToken]) -> Option<StickerTi
         return None;
     }
     let mut input = LexStream::new(cost_tokens);
-    let _: Vec<()> = winnow::combinator::repeat(1.., ticket_symbol)
-        .parse_next(&mut input)
-        .ok()?;
-    let ended: WResult<()> = eof.void().parse_next(&mut input);
-    ended.ok()?;
+    let _: Vec<()> = crate::grammar::primitives::take_leaf(
+        &mut input,
+        winnow::combinator::repeat(1.., ticket_symbol),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, eof.void())?;
     Some(StickerTicketMarkerShape)
 }
 
@@ -167,7 +169,7 @@ pub fn parse_kicker_branches(tokens: &[OwnedLexToken]) -> Option<KickerBranchSha
         tail = tail.get(1..)?;
     }
     let mut input = LexStream::new(tail);
-    let cost_tokens = kicker_cost_tokens(&mut input).ok()?;
+    let cost_tokens = crate::grammar::primitives::take_leaf(&mut input, kicker_cost_tokens)?;
     let (separator, _, _) =
         primitives::find_prefix(cost_tokens, || primitives::kw("and/or").void())?;
     let first_cost = trim_commas(cost_tokens.get(..separator)?);

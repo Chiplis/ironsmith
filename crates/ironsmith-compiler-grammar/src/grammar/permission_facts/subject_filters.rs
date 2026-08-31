@@ -55,7 +55,11 @@ pub fn parse_spell_subject_facts(tokens: &[OwnedLexToken]) -> SpellSubjectFacts 
 }
 
 pub fn parse_exact_permission_subject(tokens: &[OwnedLexToken]) -> Option<ExactPermissionSubject> {
-    primitives::parse_all(tokens, exact_permission_subject, "exact permission subject").ok()
+    crate::grammar::primitives::probe_all(
+        tokens,
+        exact_permission_subject,
+        "exact permission subject",
+    )
 }
 
 pub fn parse_permission_subject_filter_tokens(
@@ -124,8 +128,11 @@ pub fn parse_cast_permission_filter_tokens(
 pub fn parse_simple_spell_type_list_filter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ObjectFilter> {
-    let card_types =
-        primitives::parse_all(tokens, simple_spell_type_list, "permission spell type list").ok()?;
+    let card_types = crate::grammar::primitives::probe_all(
+        tokens,
+        simple_spell_type_list,
+        "permission spell type list",
+    )?;
     Some(ObjectFilter {
         card_types,
         ..ObjectFilter::default()
@@ -235,7 +242,7 @@ fn article<'a>(input: &mut LexStream<'a>) -> WResult<&'a OwnedLexToken> {
 }
 
 fn parse_aura_enchant_creature_subject(tokens: &[OwnedLexToken]) -> Option<()> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         (
             primitives::kw("aura"),
@@ -245,7 +252,6 @@ fn parse_aura_enchant_creature_subject(tokens: &[OwnedLexToken]) -> Option<()> {
             .void(),
         "aura enchant-creature permission subject",
     )
-    .ok()
 }
 
 fn simple_spell_type_list(input: &mut LexStream<'_>) -> WResult<Vec<CardType>> {

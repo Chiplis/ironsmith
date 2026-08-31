@@ -58,8 +58,8 @@ pub fn parse_looked_card_battlefield_shape(
         return None;
     }
     let mut destination = LexStream::new(trim_lexed_commas(destination_tokens));
-    let tapped = battlefield_destination.parse_next(&mut destination).ok()?;
-    end_of_tokens.parse_next(&mut destination).ok()?;
+    let tapped = crate::grammar::primitives::take_leaf(&mut destination, battlefield_destination)?;
+    crate::grammar::primitives::take_leaf(&mut destination, end_of_tokens)?;
     Some(LookedCardBattlefieldShape {
         filter_tokens,
         tapped,
@@ -78,8 +78,8 @@ pub fn parse_looked_card_battlefield_and_hand_shape(
     }
 
     let mut destination = LexStream::new(trim_lexed_commas(after_first_reference));
-    let tapped = battlefield_destination.parse_next(&mut destination).ok()?;
-    primitives::kw("and").parse_next(&mut destination).ok()?;
+    let tapped = crate::grammar::primitives::take_leaf(&mut destination, battlefield_destination)?;
+    crate::grammar::primitives::take_leaf(&mut destination, primitives::kw("and"))?;
     let second_start = after_first_reference
         .len()
         .saturating_sub(destination.len());
@@ -131,7 +131,7 @@ pub fn parse_counted_looked_cards_into_hand_shape(
     let reference_tokens = trim_lexed_commas(count_tokens.get(used..)?);
     let (_, tail) = primitives::parse_prefix(reference_tokens, looked_cards_reference)?;
     let mut input = LexStream::new(trim_lexed_commas(tail));
-    into_your_hand_tail.parse_next(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, into_your_hand_tail)?;
     Some(CountedLookedCardsIntoHandShape { count })
 }
 

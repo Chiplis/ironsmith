@@ -65,7 +65,10 @@ pub fn parse_each_player_reveal_permanents_shape(
                 primitives::phrase(&["number", "of"]),
             )),
         )?;
-        let count_filter = parse_object_filter_lexed(count_filter_tokens, false).ok()?;
+        let count_filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(
+            count_filter_tokens,
+            false,
+        ))?;
         Some(Value::Count(count_filter))
     });
     let fixed_count = || {
@@ -76,7 +79,7 @@ pub fn parse_each_player_reveal_permanents_shape(
         let count_tokens = trim_lexed_commas(count_tokens);
         let (count, used) =
             crate::grammar::shared_util::value_semantics::parse_value_prefix_lexed(count_tokens)?;
-        primitives::parse_all(
+        crate::grammar::primitives::probe_all(
             &count_tokens[used..],
             (
                 primitives::phrase(&["cards", "of", "their", "library"]),
@@ -84,8 +87,7 @@ pub fn parse_each_player_reveal_permanents_shape(
             )
                 .void(),
             "each-player fixed reveal count",
-        )
-        .ok()?;
+        )?;
         Some(count)
     };
     let count = dynamic_count.or_else(fixed_count)?;
@@ -105,8 +107,10 @@ pub fn parse_each_player_reveal_permanents_shape(
             primitives::split_lexed_once_on_separator(after_all, || {
                 primitives::phrase(&["revealed", "this", "way"]).void()
             })?;
-        let matching_filter =
-            parse_object_filter_lexed(trim_lexed_commas(filter_tokens), false).ok()?;
+        let matching_filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(
+            trim_lexed_commas(filter_tokens),
+            false,
+        ))?;
         let matching_enters_tapped = if primitives::parse_all(
             battlefield_tokens,
             (

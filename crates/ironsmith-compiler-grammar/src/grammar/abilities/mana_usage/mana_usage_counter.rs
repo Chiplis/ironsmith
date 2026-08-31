@@ -14,9 +14,7 @@ pub(super) fn parse_mana_spend_counter_shape(
         return None;
     }
     let mut tail: primitives::WordSliceInput<'_> = words.get(enter + 1..)?;
-    primitives::word_slice_exact("with")
-        .parse_next(&mut tail)
-        .ok()?;
+    crate::grammar::primitives::take_leaf(&mut tail, primitives::word_slice_exact("with"))?;
     if tail.is_empty() {
         return None;
     }

@@ -52,12 +52,11 @@ fn parse_each_player_creatures_damage_lexed<'a>(
 pub fn parse_each_player_creatures_damage_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EachPlayerCreaturesDamageShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_each_player_creatures_damage_lexed,
         "each-player-creatures-damage",
     )
-    .ok()
 }
 
 fn parse_unblockable_conjunction_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -101,12 +100,11 @@ fn parse_compound_buff_unblockable_lexed<'a>(
 pub fn parse_compound_buff_unblockable_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CompoundBuffUnblockableShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_compound_buff_unblockable_lexed,
         "compound-buff-unblockable",
     )
-    .ok()
 }
 
 #[cfg(test)]

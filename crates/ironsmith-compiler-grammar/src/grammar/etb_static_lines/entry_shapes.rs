@@ -38,7 +38,7 @@ pub struct AsEntersSpec<'a> {
 }
 
 pub fn parse_entry_filter_tokens(tokens: &[OwnedLexToken]) -> Option<EtbEntryFilterSpec<'_>> {
-    primitives::parse_all(tokens, parse_entry_filter_lexed, "ETB entry filter").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_entry_filter_lexed, "ETB entry filter")
 }
 
 pub fn parse_reveal_from_hand_filter_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
@@ -49,49 +49,45 @@ pub fn parse_reveal_from_hand_filter_tokens(tokens: &[OwnedLexToken]) -> Option<
 pub fn parse_as_enters_reveal_from_hand_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AsEntersRevealFromHandSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_as_enters_reveal_from_hand_lexed,
         "as-enters reveal from hand",
     )
-    .ok()
 }
 
 pub fn parse_revealed_this_way_or_control_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<RevealedThisWayOrControlSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_revealed_this_way_or_control_lexed,
         "revealed-this-way-or-control condition",
     )
-    .ok()
 }
 
 pub fn parse_enters_tapped_unless_condition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_enters_tapped_unless_condition_lexed,
         "enters-tapped-unless condition",
     )
-    .ok()
 }
 
 pub fn parse_spell_cast_enters_additional_counter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SpellCastEntersAdditionalCounterSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_spell_cast_enters_additional_counter_lexed,
         "spell-cast enters-with-additional-counter",
     )
-    .ok()
 }
 
 pub fn parse_as_enters_tokens(tokens: &[OwnedLexToken]) -> Option<AsEntersSpec<'_>> {
-    primitives::parse_all(tokens, parse_as_enters_lexed, "as-enters clause").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_as_enters_lexed, "as-enters clause")
 }
 
 fn parse_entry_filter_lexed<'a>(input: &mut LexStream<'a>) -> WResult<EtbEntryFilterSpec<'a>> {

@@ -2001,8 +2001,8 @@ fn parse_direct_token_creation_conjunction(
     let separator = direct_token_creation_conjunction_separator(tokens)?;
     let left_tokens = trim_commas(&tokens[..separator]);
     let right_tokens = trim_commas(&tokens[separator + 1..]);
-    let first = parse_create(&left_tokens, subject).ok()?;
-    let second = parse_create(&right_tokens, subject).ok()?;
+    let first = crate::grammar::primitives::probe_shape(parse_create(&left_tokens, subject))?;
+    let second = crate::grammar::primitives::probe_shape(parse_create(&right_tokens, subject))?;
     let coordination = creation_grammar::coordination::coordination_from_effects(
         crate::model::CoordinationKindAst::Conjunction,
         crate::model::CoordinationOperatorAst::And,
@@ -2026,7 +2026,7 @@ fn parse_direct_token_creation_alternative(
     let right_tokens = trim_commas(&tokens[separator + 1..]);
 
     let parse_branch = |branch: &[OwnedLexToken]| {
-        let parsed = parse_create(branch, subject).ok()?;
+        let parsed = crate::grammar::primitives::probe_shape(parse_create(branch, subject))?;
         matches!(
             &parsed,
             EffectAst::SubjectVerb(subject_verb)
@@ -2525,7 +2525,7 @@ mod tests {
         assert_eq!(
             parsed
                 .iter()
-                .filter_map(|result| result.as_ref().ok())
+                .filter_map(|result| crate::grammar::primitives::probe_shape(result.as_ref()))
                 .map(Vec::len)
                 .sum::<usize>(),
             2,

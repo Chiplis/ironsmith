@@ -58,7 +58,8 @@ fn parse_shared_effect(tokens: &[OwnedLexToken]) -> Option<SoulbondSharedEffect<
         )),
     ) {
         let mut input = LexStream::new(tail);
-        let modifier_word = primitives::word_text(&mut input).ok()?;
+        let modifier_word =
+            crate::grammar::primitives::take_leaf(&mut input, primitives::word_text)?;
         return input
             .is_empty()
             .then_some(SoulbondSharedEffect::PowerToughness { modifier_word });

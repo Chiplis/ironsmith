@@ -16,8 +16,7 @@ pub fn parse_repeated_tagged_mana_payment_tokens(
     }
 
     let mut stream = LexStream::new(tokens);
-    let pip_groups = primitives::collect_mana_pip_groups
-        .parse_next(&mut stream)
-        .ok()?;
+    let pip_groups =
+        crate::grammar::primitives::take_leaf(&mut stream, primitives::collect_mana_pip_groups)?;
     Some(RepeatedTaggedManaPayment { pip_groups })
 }

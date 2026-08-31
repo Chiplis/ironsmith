@@ -100,12 +100,13 @@ fn parse_static_abilities_among(tokens: &[OwnedLexToken]) -> Option<Value> {
         return None;
     }
     let mut ability_words: primitives::WordSliceInput<'_> = &words[3..found];
-    let ability_ids: Vec<StaticAbilityId> = repeat(
-        1..,
-        preceded(opt(parse_ability_separator), parse_static_ability),
-    )
-    .parse_next(&mut ability_words)
-    .ok()?;
+    let ability_ids: Vec<StaticAbilityId> = crate::grammar::primitives::take_leaf(
+        &mut ability_words,
+        repeat(
+            1..,
+            preceded(opt(parse_ability_separator), parse_static_ability),
+        ),
+    )?;
     if !ability_words.is_empty() || ability_ids.is_empty() {
         return None;
     }
@@ -120,7 +121,9 @@ fn parse_static_abilities_among(tokens: &[OwnedLexToken]) -> Option<Value> {
     if scope_tokens.is_empty() {
         return None;
     }
-    let filter = crate::object_filters::parse_object_filter(scope_tokens, false).ok()?;
+    let filter = crate::grammar::primitives::probe_shape(
+        crate::object_filters::parse_object_filter(scope_tokens, false),
+    )?;
     Some(
         Value::StaticAbilitiesAmong {
             filter,
@@ -278,7 +281,9 @@ pub fn parse_creation_for_each_dynamic_count_tokens(tokens: &[OwnedLexToken]) ->
     if surface.starts(CreationPhrase::CardTypesAmong) {
         let scope_start = token_surface.boundary(3)?;
         let scope_tokens = trim_lexed_commas(tokens.get(scope_start..)?);
-        let filter = crate::object_filters::parse_object_filter(scope_tokens, false).ok()?;
+        let filter = crate::grammar::primitives::probe_shape(
+            crate::object_filters::parse_object_filter(scope_tokens, false),
+        )?;
         return Some(Value::CardTypesAmong(filter).with_surface_hint(ValueSurfaceHint::ForEach));
     }
     None

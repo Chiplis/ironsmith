@@ -191,12 +191,11 @@ fn parse_choose_target_verb_lexed<'a>(
 pub fn parse_choose_target_verb_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ChooseTargetVerbShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_choose_target_verb_lexed,
         "choose target and action",
     )
-    .ok()
 }
 
 fn source_descriptor<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken]> {
@@ -342,7 +341,7 @@ fn parse_target_first<'a>(input: &mut LexStream<'a>) -> WResult<PreventAllDamage
 pub fn parse_prevent_all_damage_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PreventAllDamageShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         alt((
             parse_duration_first_source,
@@ -353,7 +352,6 @@ pub fn parse_prevent_all_damage_shape_tokens(
         )),
         "prevent all damage",
     )
-    .ok()
 }
 
 fn marker_present<'a, O, P>(tokens: &'a [OwnedLexToken], parser: P) -> bool
@@ -422,12 +420,11 @@ fn parse_can_attack_no_defender_lexed<'a>(
 pub fn parse_can_attack_no_defender_subject_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_can_attack_no_defender_lexed,
         "can attack as though no defender",
     )
-    .ok()
 }
 
 fn target_indicator<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -486,12 +483,11 @@ fn parse_choose_target_prelude_lexed<'a>(
 pub fn parse_choose_target_prelude_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ChooseTargetPreludeShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_choose_target_prelude_lexed,
         "choose target prelude",
     )
-    .ok()
 }
 
 #[cfg(test)]

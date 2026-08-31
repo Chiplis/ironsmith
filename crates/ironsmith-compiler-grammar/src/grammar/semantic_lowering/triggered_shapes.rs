@@ -139,7 +139,7 @@ fn parse_trigger_label_split<'a>(input: &mut LexStream<'a>) -> WResult<TriggerLa
 }
 
 pub fn parse_trigger_label_split_tokens(tokens: &[OwnedLexToken]) -> Option<TriggerLabelSplit<'_>> {
-    primitives::parse_all(tokens, parse_trigger_label_split, "trigger-label-split").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_trigger_label_split, "trigger-label-split")
 }
 
 pub fn normalized_trigger_source_words_tokens(tokens: &[OwnedLexToken]) -> Vec<String> {

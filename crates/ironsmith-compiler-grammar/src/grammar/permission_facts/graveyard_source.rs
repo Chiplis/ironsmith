@@ -368,8 +368,8 @@ where
     P: Parser<LexStream<'a>, O, ErrMode<ContextError>>,
 {
     let mut input = LexStream::new(tokens);
-    let output = parser.parse_next(&mut input).ok()?;
-    semantic_finish.parse_next(&mut input).ok()?;
+    let output = crate::grammar::primitives::take_leaf(&mut input, parser)?;
+    crate::grammar::primitives::take_leaf(&mut input, semantic_finish)?;
     Some(output)
 }
 

@@ -16,10 +16,9 @@ pub(super) fn parse_cant_be_regenerated_followup_lexed<'a>(
 pub fn parse_cant_be_regenerated_followup(
     tokens: &[OwnedLexToken],
 ) -> Option<CantBeRegeneratedFollowupShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_cant_be_regenerated_followup_lexed,
         "can't-be-regenerated followup",
     )
-    .ok()
 }

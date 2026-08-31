@@ -61,7 +61,9 @@ pub fn parse_persistent_anthem_tail_head(
         work_tokens.drain(get_token + 1..get_token + 3);
     }
     let mut modifier_input = LexStream::new(work_tokens.get(get_token + 1..)?);
-    let modifier_word = primitives::word_text(&mut modifier_input).ok()?.to_string();
+    let modifier_word =
+        crate::grammar::primitives::take_leaf(&mut modifier_input, primitives::word_text)?
+            .to_string();
     Some(PersistentAnthemTailHead {
         tokens: work_tokens,
         get_token,

@@ -145,7 +145,7 @@ pub fn parse_possessive_activated_ability_subject_tokens(
 pub fn parse_target_indicator_tokens(tokens: &[OwnedLexToken]) -> Option<TargetIndicatorShape> {
     let mut input = LexStream::new(tokens);
     let initial_len = input.len();
-    parse_target_indicator_lexed.parse_next(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, parse_target_indicator_lexed)?;
     Some(TargetIndicatorShape {
         consumed: initial_len.saturating_sub(input.len()),
     })

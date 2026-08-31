@@ -134,18 +134,16 @@ pub fn parse_directional_adjacent_player_control_shape(
     choice: &[OwnedLexToken],
     gain: &[OwnedLexToken],
 ) -> Option<DirectionalAdjacentPlayerControlShape> {
-    let choice_object = primitives::parse_all(
+    let choice_object = crate::grammar::primitives::probe_all(
         choice,
         |input: &mut LexStream<'_>| parse_between(input, CHOICE_PREFIX, CHOICE_SUFFIX),
         "directional-control-choice",
-    )
-    .ok()?;
-    let gained_object = primitives::parse_all(
+    )?;
+    let gained_object = crate::grammar::primitives::probe_all(
         gain,
         |input: &mut LexStream<'_>| parse_between(input, GAIN_PREFIX, GAIN_SUFFIX),
         "directional-control-gain",
-    )
-    .ok()?;
+    )?;
     if !same_words_without_articles(&choice[choice_object.clone()], &gain[gained_object.clone()]) {
         return None;
     }
@@ -284,12 +282,11 @@ pub fn parse_same_controller_sacrifice_shape(
     if !matches_complete_content_sequence(sacrifice, SACRIFICE_ONE) {
         return None;
     }
-    let target = primitives::parse_all(
+    let target = crate::grammar::primitives::probe_all(
         choose,
         parse_same_controller_target,
         "same-controller-sacrifice-target",
-    )
-    .ok()?;
+    )?;
     Some(SameControllerSacrificeShape { target })
 }
 
@@ -454,8 +451,7 @@ pub fn is_filtered_future_exile_return_next_end_step_shape(
 fn parse_fixed_limit_word(input: &mut LexStream<'_>) -> WResult<i32> {
     let token = super::next_word(input)?;
     let word = token.parser_text();
-    word.parse::<i32>()
-        .ok()
+    crate::util::decimal_amount(word)
         .or_else(|| {
             Some(match word {
                 "zero" => 0,
@@ -477,14 +473,12 @@ fn parse_fixed_limit_word(input: &mut LexStream<'_>) -> WResult<i32> {
 
 fn mana_value_limit(tokens: &[OwnedLexToken]) -> Option<i32> {
     let mut input = LexStream::new(tokens);
-    seek_sequence_phrase(&mut input, &[&["mana", "value"]]).ok()?;
-    sequence_phrase(&["mana", "value"])
-        .parse_next(&mut input)
-        .ok()?;
-    let limit = parse_fixed_limit_word(&mut input).ok()?;
-    sequence_any_phrase(MANA_COMPARISONS)
-        .parse_next(&mut input)
-        .ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        seek_sequence_phrase(input, &[&["mana", "value"]])
+    })?;
+    crate::grammar::primitives::take_leaf(&mut input, sequence_phrase(&["mana", "value"]))?;
+    let limit = crate::grammar::primitives::take_leaf(&mut input, parse_fixed_limit_word)?;
+    crate::grammar::primitives::take_leaf(&mut input, sequence_any_phrase(MANA_COMPARISONS))?;
     Some(limit)
 }
 

@@ -73,7 +73,7 @@ pub fn parse_source_exiled_delegated_partition_shape(
     }
     Some(SourceExiledDelegatedPartitionShape {
         subset_count: crate::util::parse_number_word_u32(subset_count)
-            .and_then(|count| usize::try_from(count).ok())?,
+            .and_then(crate::util::narrowed_usize)?,
     })
 }
 
@@ -123,9 +123,9 @@ pub fn parse_revealed_top_delegated_partition_shape(
     }
     Some(RevealedTopDelegatedPartitionShape {
         pool_count: crate::util::parse_number_word_u32(pool_count)
-            .and_then(|count| usize::try_from(count).ok())?,
+            .and_then(crate::util::narrowed_usize)?,
         subset_count: crate::util::parse_number_word_u32(subset_count)
-            .and_then(|count| usize::try_from(count).ok())?,
+            .and_then(crate::util::narrowed_usize)?,
     })
 }
 
@@ -180,9 +180,9 @@ pub fn parse_delegated_graveyard_pair_partition_shape(
 
     Some(DelegatedGraveyardPairPartitionShape {
         pool_count: crate::util::parse_number_word_u32(pool_count)
-            .and_then(|count| usize::try_from(count).ok())?,
+            .and_then(crate::util::narrowed_usize)?,
         subset_count: crate::util::parse_number_word_u32(subset_count)
-            .and_then(|count| usize::try_from(count).ok())?,
+            .and_then(crate::util::narrowed_usize)?,
     })
 }
 
@@ -265,9 +265,9 @@ pub fn parse_conditional_delegated_graveyard_partition_shape(
 
     Some(ConditionalDelegatedGraveyardPartitionShape {
         pool_count: crate::util::parse_number_word_u32(pool_count)
-            .and_then(|count| usize::try_from(count).ok())?,
+            .and_then(crate::util::narrowed_usize)?,
         subset_count: crate::util::parse_number_word_u32(subset_count)
-            .and_then(|count| usize::try_from(count).ok())?,
+            .and_then(crate::util::narrowed_usize)?,
     })
 }
 

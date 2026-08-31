@@ -107,8 +107,11 @@ fn emblem_payload<'a>(input: &mut LexStream<'a>) -> WResult<(bool, Vec<EmblemGro
 }
 
 pub fn parse_emblem_payload_tokens(tokens: &[OwnedLexToken]) -> Option<EmblemPayloadShape<'_>> {
-    let (explicit_you, spans) =
-        primitives::parse_all(tokens, emblem_payload, "emblem typed ability payload").ok()?;
+    let (explicit_you, spans) = crate::grammar::primitives::probe_all(
+        tokens,
+        emblem_payload,
+        "emblem typed ability payload",
+    )?;
     let ability_groups = spans
         .into_iter()
         .map(|span| tokens.get(span.first..span.end))

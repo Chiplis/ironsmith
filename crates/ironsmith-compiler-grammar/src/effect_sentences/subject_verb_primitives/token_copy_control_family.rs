@@ -105,9 +105,10 @@ pub fn parse_choose_then_do_same_for_filter_sentence(
     };
     let Some((player, base_filter, count)) = parse_you_choose_objects_clause(shape.head_tokens)?
         .or_else(|| {
-            parse_target_player_choose_objects_clause(shape.head_tokens)
-                .ok()
-                .flatten()
+            crate::grammar::primitives::probe_shape(parse_target_player_choose_objects_clause(
+                shape.head_tokens,
+            ))
+            .flatten()
         })
     else {
         return Ok(None);

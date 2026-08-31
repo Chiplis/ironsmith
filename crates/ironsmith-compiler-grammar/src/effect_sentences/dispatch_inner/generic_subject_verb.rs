@@ -138,7 +138,7 @@ fn parse_source_exiled_counted_return_remainder_to_owners_libraries(
         .first()
         .is_some_and(|token| token.is_word("return"))
         .then_some(&prefix[1..])?;
-    let return_effect = super::zone_handlers::parse_return(return_tokens).ok()?;
+    let return_effect = crate::grammar::primitives::probe_shape(super::zone_handlers::parse_return(return_tokens))?;
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
             SubjectVerbActionAst::MoveToZone {
@@ -1304,12 +1304,12 @@ fn parse_branch_scoped_collection_subject_verb(
     let (route, effect) = if clause.first().is_some_and(|token| token.is_word("return")) {
         (
             "subject-verb verb=Return subject=implicit recognizer=branch-scoped-collection",
-            super::zone_handlers::parse_return(&clause[1..]).ok()?,
+            crate::grammar::primitives::probe_shape(super::zone_handlers::parse_return(&clause[1..]))?,
         )
     } else if clause.first().is_some_and(|token| token.is_word("destroy")) {
         (
             "subject-verb verb=Destroy subject=implicit recognizer=branch-scoped-collection",
-            super::zone_handlers::parse_destroy(&clause[1..]).ok()?,
+            crate::grammar::primitives::probe_shape(super::zone_handlers::parse_destroy(&clause[1..]))?,
         )
     } else {
         return None;
@@ -1722,7 +1722,7 @@ fn parse_destroy_attached_object_then_source_damage_to_controller(
         return Ok(None);
     }
     let Some(amount) = crate::util::parse_number_word_u32(amount_word)
-        .and_then(|amount| i32::try_from(amount).ok())
+        .and_then(|amount| crate::util::narrowed_i32(amount))
     else {
         return Ok(None);
     };
@@ -2262,7 +2262,7 @@ fn parse_pt_modifier_capture(clause: LexedClause<'_>) -> Option<(Value, Value)> 
         .tokens()
         .first()
         .and_then(OwnedLexToken::as_word)?;
-    crate::keyword_static::parse_pt_modifier_values(modifier_word).ok()
+    crate::grammar::primitives::probe_shape(crate::keyword_static::parse_pt_modifier_values(modifier_word))
 }
 
 fn target_controlled_pump_controller(controller_clause: LexedClause<'_>) -> Option<PlayerFilter> {

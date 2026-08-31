@@ -17,5 +17,5 @@ pub fn parse_become_attack_color(words: &[&str]) -> Option<ColorSet> {
     if !matches!(tail, ["if", "able"] | ["this", "turn", "if", "able"]) {
         return None;
     }
-    leaf::parse_leaf_color_complete(color_word).ok()
+    crate::grammar::primitives::probe_shape(leaf::parse_leaf_color_complete(color_word))
 }

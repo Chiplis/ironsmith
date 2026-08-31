@@ -5,8 +5,10 @@ pub(super) fn parse_regenerate_then_gain_control_if_regenerates_bundle(
     second: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
     let shape = bundle_grammar::parse_regenerate_control_shape(first, second)?;
-    let regenerate_target = parse_target_phrase(shape.regenerate_target).ok()?;
-    let control_target = parse_target_phrase(shape.control_target).ok()?;
+    let regenerate_target =
+        crate::grammar::primitives::probe_shape(parse_target_phrase(shape.regenerate_target))?;
+    let control_target =
+        crate::grammar::primitives::probe_shape(parse_target_phrase(shape.control_target))?;
     let follow_up = EffectAst::subject_verb_gain_control(
         PlayerAst::Implicit,
         control_target,

@@ -22,9 +22,10 @@ pub fn parse_sentence_prelude_shape_tokens(
 ) -> Option<SentencePreludeShape> {
     let words = TokenWordView::new(tokens).word_refs();
     let mut input: primitives::WordSliceInput<'_> = &words;
-    alt((parse_x_cant_be_zero, parse_roll_dice_choose_one_result))
-        .parse_next(&mut input)
-        .ok()
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        alt((parse_x_cant_be_zero, parse_roll_dice_choose_one_result)),
+    )
 }
 
 fn parse_x_cant_be_zero(

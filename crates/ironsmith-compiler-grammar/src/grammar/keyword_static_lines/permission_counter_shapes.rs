@@ -53,7 +53,7 @@ pub struct PlayPermissionEnterCounterSpec<'a> {
 pub fn parse_exile_counter_permission_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ExileCounterPermissionSpec> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         alt((
             parse_cast_countered_exile_cards_lexed,
@@ -63,18 +63,16 @@ pub fn parse_exile_counter_permission_tokens(
         )),
         "countered exile-card permission",
     )
-    .ok()
 }
 
 pub fn parse_play_permission_enter_counter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayPermissionEnterCounterSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_play_permission_enter_counter_lexed,
         "play permission with enters-counter rider",
     )
-    .ok()
 }
 
 fn parse_cast_countered_exile_cards_lexed<'a>(

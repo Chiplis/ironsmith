@@ -39,8 +39,9 @@ pub(super) fn parse_simple_subtype_spell_filter(tokens: &[OwnedLexToken]) -> Opt
     };
     matches!(*spell_word, "spell" | "spells").then_some(())?;
     Some(
-        ObjectFilter::default()
-            .with_subtype(leaf::parse_leaf_subtype_flexible_complete(subtype_word).ok()?),
+        ObjectFilter::default().with_subtype(crate::grammar::primitives::probe_shape(
+            leaf::parse_leaf_subtype_flexible_complete(subtype_word),
+        )?),
     )
 }
 
@@ -74,8 +75,9 @@ pub(super) fn parse_ability_source_filter(tokens: &[OwnedLexToken]) -> Option<Ob
         "creature" | "creatures" => Some(ObjectFilter::default().with_type(CardType::Creature)),
         "land" | "lands" => Some(ObjectFilter::default().with_type(CardType::Land)),
         _ => Some(
-            ObjectFilter::default()
-                .with_subtype(leaf::parse_leaf_subtype_flexible_complete(kind).ok()?),
+            ObjectFilter::default().with_subtype(crate::grammar::primitives::probe_shape(
+                leaf::parse_leaf_subtype_flexible_complete(kind),
+            )?),
         ),
     }
 }

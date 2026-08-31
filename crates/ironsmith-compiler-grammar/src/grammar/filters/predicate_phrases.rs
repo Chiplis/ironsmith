@@ -602,8 +602,7 @@ fn parse_source_attachment_count_predicate(
 }
 
 fn parse_attachment_count_filter_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
-    parse_object_filter(tokens, false)
-        .ok()
+    crate::grammar::primitives::probe_shape(parse_object_filter(tokens, false))
         .or_else(|| parse_aura_attachment_filter_clause(LexedClause::new(tokens)))
 }
 
@@ -671,10 +670,12 @@ fn parse_source_identity_predicate(tokens: &[OwnedLexToken]) -> Option<Predicate
     if source_identity_descriptor_contains_ignored_state(descriptor_clause) {
         return None;
     }
-    let filter = parse_object_filter(descriptor_clause.tokens(), false)
-        .ok()
-        .or_else(|| parse_color_only_object_filter_word_refs(descriptor_clause))
-        .or_else(|| parse_identity_descriptor_filter_tokens(descriptor_clause.tokens()))?;
+    let filter = crate::grammar::primitives::probe_shape(parse_object_filter(
+        descriptor_clause.tokens(),
+        false,
+    ))
+    .or_else(|| parse_color_only_object_filter_word_refs(descriptor_clause))
+    .or_else(|| parse_identity_descriptor_filter_tokens(descriptor_clause.tokens()))?;
     if !object_filter_has_identity(&filter) {
         return None;
     }
@@ -1306,13 +1307,13 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
     // An indefinite article expresses presence here ("has a counter"), not an
     // exact cardinality of one. Keep explicit quantities such as "exactly one"
     // exact while lowering "a"/"an" to an at-least-one comparison.
-    let (comparison, used) = parse_quantity_comparison_prefix(
-        counter_clause.tokens(),
-        false,
-        true,
-        "counter predicate quantity",
-    )
-    .ok()?;
+    let (comparison, used) =
+        crate::grammar::primitives::probe_shape(parse_quantity_comparison_prefix(
+            counter_clause.tokens(),
+            false,
+            true,
+            "counter predicate quantity",
+        ))?;
     let (operator, count) = comparison_to_value_comparison_operator(comparison)?;
     let counter_tail = counter_clause.tokens().get(used..)?;
     let counter_type = parse_terminal_counter_phrase(counter_tail)??;
@@ -1336,7 +1337,7 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
     if let Some(count) = source_count {
         return Some(PredicateAst::SourceHasCounterAtLeast {
             counter_type,
-            count: count.try_into().ok()?,
+            count: crate::util::narrowed_u32(count)?,
             surface: if explicit_one_or_more && count == 1 {
                 crate::SourceCounterThresholdSurface::SourceHasOneOrMore
             } else {
@@ -1934,9 +1935,9 @@ fn parse_stack_object_targets_object_predicate(tokens: &[OwnedLexToken]) -> Opti
     {
         return None;
     }
-    let target =
-        crate::grammar::shared_util::target_semantics::parse_target_phrase_inner(target.tokens())
-            .ok()?;
+    let target = crate::grammar::primitives::probe_shape(
+        crate::grammar::shared_util::target_semantics::parse_target_phrase_inner(target.tokens()),
+    )?;
     let spell_filter = match target {
         TargetAst::Object(target_filter, None, _) => {
             ObjectFilter::spell().targeting_object(target_filter)
@@ -2063,7 +2064,12 @@ fn ordinal_number_word(word: &str) -> Option<u32> {
 fn predicate_quantity_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<(crate::effect::Comparison, usize)> {
-    parse_quantity_comparison_prefix(tokens, false, false, "predicate quantity").ok()
+    crate::grammar::primitives::probe_shape(parse_quantity_comparison_prefix(
+        tokens,
+        false,
+        false,
+        "predicate quantity",
+    ))
 }
 
 fn predicate_number_or_more_prefix_tokens(tokens: &[OwnedLexToken]) -> Option<(u32, usize)> {
@@ -4062,7 +4068,8 @@ fn parse_demonstrative_shares_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
         shares_color_with_idx + 3
     };
     let filter_tokens = descriptor.after_words(filter_start)?.tokens();
-    let mut filter = parse_object_filter(filter_tokens, false).ok()?;
+    let mut filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter(filter_tokens, false))?;
     let player = match filter.controller.take() {
         Some(PlayerFilter::You) | None => PlayerAst::You,
         Some(PlayerFilter::Opponent) | Some(PlayerFilter::NotYou) => PlayerAst::Opponent,

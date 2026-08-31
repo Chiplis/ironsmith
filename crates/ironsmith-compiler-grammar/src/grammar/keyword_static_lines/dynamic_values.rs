@@ -300,50 +300,53 @@ fn classify_dynamic_filter(tokens: &[OwnedLexToken]) -> DynamicCostValueShape<'_
 
 fn parse_player_counters(tokens: &[OwnedLexToken]) -> Option<CounterType> {
     let mut input = LexStream::new(tokens);
-    let counter_tokens = repeat_till::<_, _, (), _, _, _, _>(
-        1..,
-        any.void(),
-        peek(alt((primitives::kw("counter"), primitives::kw("counters")))),
-    )
-    .map(|((), _)| ())
-    .take()
-    .parse_next(&mut input)
-    .ok()?;
-    alt((primitives::kw("counter"), primitives::kw("counters")))
-        .parse_next(&mut input)
-        .ok()?;
-    primitives::phrase(&["you", "have"])
-        .parse_next(&mut input)
-        .ok()?;
-    primitives::sentence_end().parse_next(&mut input).ok()?;
+    let counter_tokens = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till::<_, _, (), _, _, _, _>(
+            1..,
+            any.void(),
+            peek(alt((primitives::kw("counter"), primitives::kw("counters")))),
+        )
+        .map(|((), _)| ())
+        .take(),
+    )?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        alt((primitives::kw("counter"), primitives::kw("counters"))),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::phrase(&["you", "have"]))?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::sentence_end())?;
     filters::parse_counter_type_from_tokens(counter_tokens)
 }
 
 fn parse_counter_reference(tokens: &[OwnedLexToken]) -> Option<CounterReferenceSpec<'_>> {
     let mut input = LexStream::new(tokens);
-    opt(alt((
-        primitives::kw("a"),
-        primitives::kw("an"),
-        primitives::kw("one"),
-        primitives::kw("another"),
-    )))
-    .parse_next(&mut input)
-    .ok()?;
-    let counter_type_tokens = repeat_till::<_, _, (), _, _, _, _>(
-        0..,
-        any.void(),
-        peek(alt((primitives::kw("counter"), primitives::kw("counters")))),
-    )
-    .map(|((), _)| ())
-    .take()
-    .parse_next(&mut input)
-    .ok()?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        opt(alt((
+            primitives::kw("a"),
+            primitives::kw("an"),
+            primitives::kw("one"),
+            primitives::kw("another"),
+        ))),
+    )?;
+    let counter_type_tokens = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till::<_, _, (), _, _, _, _>(
+            0..,
+            any.void(),
+            peek(alt((primitives::kw("counter"), primitives::kw("counters")))),
+        )
+        .map(|((), _)| ())
+        .take(),
+    )?;
     let counter_type = parse_counter_reference_type(counter_type_tokens)?;
-    alt((primitives::kw("counter"), primitives::kw("counters")))
-        .parse_next(&mut input)
-        .ok()?;
-    primitives::kw("on").parse_next(&mut input).ok()?;
-    let reference_tokens = take_sentence_body(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        alt((primitives::kw("counter"), primitives::kw("counters"))),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::kw("on"))?;
+    let reference_tokens = crate::grammar::primitives::take_leaf(&mut input, take_sentence_body)?;
     let reference_kind = if starts_with_any(
         reference_tokens,
         &[

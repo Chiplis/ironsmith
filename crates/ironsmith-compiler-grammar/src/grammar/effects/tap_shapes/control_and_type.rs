@@ -56,7 +56,7 @@ fn parse_tap_type_choice_lexed<'a>(input: &mut LexStream<'a>) -> WResult<TapType
 }
 
 pub fn parse_tap_type_choice_tokens(tokens: &[OwnedLexToken]) -> Option<TapTypeChoiceShape<'_>> {
-    primitives::parse_all(tokens, parse_tap_type_choice_lexed, "tap-type-choice").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_tap_type_choice_lexed, "tap-type-choice")
 }
 
 fn inline_creature_type_choice_qualifier<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -87,12 +87,11 @@ fn parse_inline_creature_type_choice_lexed<'a>(
 pub fn parse_inline_creature_type_choice_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TapTypeChoiceShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_inline_creature_type_choice_lexed,
         "inline creature-type choice",
     )
-    .ok()
 }
 
 fn chosen_type_marker<'a>(input: &mut LexStream<'a>) -> WResult<()> {

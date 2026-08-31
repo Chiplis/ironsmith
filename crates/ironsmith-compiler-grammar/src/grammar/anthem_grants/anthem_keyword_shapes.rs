@@ -150,7 +150,8 @@ pub fn parse_anthem_keyword_color_segment(
     let start = head.get_token.saturating_add(2);
     let is_token = first_token_between(tokens, start, head.have_token, parse_is_word)?;
     let color_word = tokens.get(is_token + 1)?.as_word()?;
-    let color = leaf::parse_leaf_color_complete(color_word).ok()?;
+    let color =
+        crate::grammar::primitives::probe_shape(leaf::parse_leaf_color_complete(color_word))?;
     Some(AnthemKeywordColorSegment { is_token, color })
 }
 
@@ -279,7 +280,7 @@ fn split_adjacent_pair<'a>(
                 tail_tokens,
             });
         }
-        take_token(&mut input).ok()?;
+        crate::grammar::primitives::take_leaf(&mut input, take_token)?;
     }
 }
 
@@ -300,7 +301,7 @@ fn first_token_between(
         if parser(&mut candidate).is_ok() {
             return Some(start + offset);
         }
-        take_token(&mut input).ok()?;
+        crate::grammar::primitives::take_leaf(&mut input, take_token)?;
     }
 }
 
@@ -318,7 +319,7 @@ fn first_unquoted_token_between(
     let mut inside_quotes = false;
     loop {
         let offset = initial_len.saturating_sub(input.len());
-        let token = take_token(&mut input).ok()?;
+        let token = crate::grammar::primitives::take_leaf(&mut input, take_token)?;
         if token.kind == TokenKind::Quote {
             inside_quotes = !inside_quotes;
             continue;
@@ -345,7 +346,7 @@ fn first_phrase(
         if parser(&mut candidate).is_ok() {
             return Some((start, initial_len.saturating_sub(candidate.len())));
         }
-        take_token(&mut input).ok()?;
+        crate::grammar::primitives::take_leaf(&mut input, take_token)?;
     }
 }
 
@@ -374,7 +375,7 @@ fn last_token_before(
         if parser(&mut candidate).is_ok() {
             found = Some(offset);
         }
-        take_token(&mut input).ok()?;
+        crate::grammar::primitives::take_leaf(&mut input, take_token)?;
     }
     found
 }

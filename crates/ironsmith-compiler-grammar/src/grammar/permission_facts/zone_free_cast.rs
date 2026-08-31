@@ -64,43 +64,41 @@ pub struct FreeCastFromZoneFact<'a> {
 }
 
 pub fn parse_play_from_zone_tokens(tokens: &[OwnedLexToken]) -> Option<PlayFromZoneFact<'_>> {
-    primitives::parse_all(tokens, parse_play_from_zone, "play-from-zone permission").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_play_from_zone, "play-from-zone permission")
 }
 
 pub fn parse_lands_from_top_library_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LandsFromTopLibraryFact> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_lands_from_top_library,
         "lands from top library permission",
     )
-    .ok()
 }
 
 pub fn parse_lands_and_cast_from_top_library_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LandsAndCastFromTopLibraryFact<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_lands_and_cast_from_top_library,
         "lands and cast from top library permission",
     )
-    .ok()
 }
 
 pub fn parse_flash_grant_tokens(tokens: &[OwnedLexToken]) -> Option<FlashGrantFact<'_>> {
-    primitives::parse_all(tokens, parse_flash_grant, "flash grant permission").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_flash_grant, "flash grant permission")
 }
 
 pub fn parse_free_cast_from_zone_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<FreeCastFromZoneFact<'_>> {
-    primitives::parse_all(tokens, parse_free_cast_from_zone, "free cast from zone").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_free_cast_from_zone, "free cast from zone")
 }
 
 pub fn parse_mana_value_one_of_tokens(tokens: &[OwnedLexToken]) -> Option<Vec<i32>> {
-    primitives::parse_all(tokens, parse_mana_value_one_of, "mana-value disjunction").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_mana_value_one_of, "mana-value disjunction")
 }
 
 fn parse_mana_value_one_of(input: &mut LexStream<'_>) -> WResult<Vec<i32>> {

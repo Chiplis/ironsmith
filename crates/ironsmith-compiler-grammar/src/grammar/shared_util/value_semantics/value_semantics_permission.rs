@@ -8,7 +8,8 @@ pub(super) fn parse_spells_cast_this_turn_matching_count_value(
     let surface = value_helper_shapes::parse_spell_cast_this_turn_surface(&filter_words)?;
     let filter_token_range = word_view.token_span_for_words(0, surface.filter_end)?;
     let filter_tokens = trim_commas(&tokens[filter_token_range]);
-    let filter = parse_object_filter(&filter_tokens, false).ok()?;
+    let filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter(&filter_tokens, false))?;
     Some(Value::SpellsCastThisTurnMatching {
         player: surface.player,
         filter,
@@ -24,7 +25,8 @@ pub fn parse_spells_cast_this_turn_matching_count_value_lexed(
     let surface = value_helper_shapes::parse_spell_cast_this_turn_surface(&word_refs)?;
     let filter_token_range = filter_words.token_span_for_words(0, surface.filter_end)?;
     let filter_tokens = trim_lexed_commas(&tokens[filter_token_range]);
-    let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
+    let filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false))?;
     Some(Value::SpellsCastThisTurnMatching {
         player: surface.player,
         filter,

@@ -49,7 +49,7 @@ pub enum StaticTextMarkerKind {
 pub fn parse_activated_ability_special_subject_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivatedAbilitySpecialSubject> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         (
             alt((
@@ -62,23 +62,23 @@ pub fn parse_activated_ability_special_subject_tokens(
             .map(|(subject, ())| subject),
         "activated-ability special subject",
     )
-    .ok()
 }
 
 pub fn parse_cards_drawn_this_turn_player_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DynamicPlayerKind> {
     let mut input = LexStream::new(tokens);
-    let (_, player) = repeat_till::<_, _, (), _, _, _, _>(
-        0..,
-        any.void(),
-        alt((
-            parse_you_reference.value(DynamicPlayerKind::You),
-            parse_opponent_reference.value(DynamicPlayerKind::Opponent),
-        )),
-    )
-    .parse_next(&mut input)
-    .ok()?;
+    let (_, player) = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till::<_, _, (), _, _, _, _>(
+            0..,
+            any.void(),
+            alt((
+                parse_you_reference.value(DynamicPlayerKind::You),
+                parse_opponent_reference.value(DynamicPlayerKind::Opponent),
+            )),
+        ),
+    )?;
     find_semantic(tokens, || alt((semantic_kw("card"), semantic_kw("cards"))))?;
     find_semantic(tokens, || semantic_kw("drawn"))?;
     find_semantic(tokens, || semantic_phrase(&["this", "turn"]))?;
@@ -174,7 +174,7 @@ fn parse_living_metal_tokens(tokens: &[OwnedLexToken]) -> bool {
 pub fn parse_static_text_marker_kind_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<StaticTextMarkerKind> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         (
             alt((
@@ -229,7 +229,6 @@ pub fn parse_static_text_marker_kind_tokens(
             .map(|(kind, ())| kind),
         "static text marker kind",
     )
-    .ok()
 }
 
 pub fn parse_revealed_hand_as_enters_tail_tokens(tokens: &[OwnedLexToken]) -> bool {

@@ -293,9 +293,11 @@ fn parse_filter_tail_decoration_words(
 ) -> Option<ParsedFilterTailDecoration> {
     let mut input: WordInput<'_> = words;
     let decoration = match introducer {
-        FilterTailIntroducer::With => parse_with_tail_decoration.parse_next(&mut input).ok()?,
+        FilterTailIntroducer::With => {
+            crate::grammar::primitives::take_leaf(&mut input, parse_with_tail_decoration)?
+        }
         FilterTailIntroducer::Without => {
-            parse_without_tail_decoration.parse_next(&mut input).ok()?
+            crate::grammar::primitives::take_leaf(&mut input, parse_without_tail_decoration)?
         }
     };
     Some(ParsedFilterTailDecoration {

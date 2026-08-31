@@ -91,23 +91,21 @@ pub struct ConditionalSpellKeywordShape<'a> {
 }
 
 pub fn parse_affinity_for_filter(tokens: &[OwnedLexToken]) -> Option<AffinityForFilter<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_affinity_for_filter_lexed,
         "affinity-for-filter",
     )
-    .ok()
 }
 
 pub fn parse_conditional_spell_keyword(
     tokens: &[OwnedLexToken],
 ) -> Option<ConditionalSpellKeywordShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_conditional_spell_keyword_lexed,
         "conditional-spell-keyword",
     )
-    .ok()
 }
 
 pub fn parse_attachment_restriction_span(tokens: &[OwnedLexToken]) -> Option<TokenSpan> {

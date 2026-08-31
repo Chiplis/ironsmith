@@ -149,10 +149,13 @@ fn parse_exact_negated_result<'a>(input: &mut LexStream<'a>) -> WResult<ModalRes
 }
 
 fn parse_modal_result_shape(tokens: &[OwnedLexToken]) -> Option<ModalResultShape> {
-    primitives::parse_all(tokens, parse_this_way_result, "modal-this-way-result")
-        .ok()
+    crate::grammar::primitives::probe_all(tokens, parse_this_way_result, "modal-this-way-result")
         .or_else(|| {
-            primitives::parse_all(tokens, parse_exact_negated_result, "modal-negated-result").ok()
+            crate::grammar::primitives::probe_all(
+                tokens,
+                parse_exact_negated_result,
+                "modal-negated-result",
+            )
         })
 }
 
@@ -208,7 +211,9 @@ fn matches_phrase(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> 
 
 fn counted_shared_characteristic(tokens: &[OwnedLexToken]) -> Option<(u32, ObjectCharacteristic)> {
     let normalized = normalized_word_tokens(tokens);
-    let count = leaf::parse_number_complete(normalized.first()?.parser_text()).ok()?;
+    let count = crate::grammar::primitives::probe_shape(leaf::parse_number_complete(
+        normalized.first()?.parser_text(),
+    ))?;
     if count < 2 {
         return None;
     }
@@ -251,7 +256,8 @@ fn counted_shared_characteristic(tokens: &[OwnedLexToken]) -> Option<(u32, Objec
 fn parse_typed_prior_effect_result_surface(
     tokens: &[OwnedLexToken],
 ) -> Option<PriorEffectResultSurface> {
-    let predicate = super::filters::parse_predicate(tokens).ok()?;
+    let predicate =
+        crate::grammar::primitives::probe_shape(super::filters::parse_predicate(tokens))?;
     let (actor, mut filter) = match predicate {
         PredicateAst::TaggedMatches(_, filter) => (PriorEffectResultActor::Passive, filter),
         PredicateAst::PlayerTaggedObjectMatches { player, filter, .. } => {
@@ -325,9 +331,9 @@ fn parse_explicit_prior_result_filter_disjunction(
     }
 
     let parse_branch = |branch: &[OwnedLexToken]| {
-        let mut filter =
-            super::filters::parse_object_filter_with_grammar_entrypoint_lexed(branch, false)
-                .ok()?;
+        let mut filter = crate::grammar::primitives::probe_shape(
+            super::filters::parse_object_filter_with_grammar_entrypoint_lexed(branch, false),
+        )?;
         filter.zone = None;
         filter.tagged_constraints.clear();
         filter.set_prior_effect_action_surface(None);
@@ -351,9 +357,9 @@ fn parse_prior_result_object_filter(
     {
         start = 3;
     }
-    let mut filter =
-        super::filters::parse_object_filter_with_grammar_entrypoint_lexed(&tokens[start..], false)
-            .ok()?;
+    let mut filter = crate::grammar::primitives::probe_shape(
+        super::filters::parse_object_filter_with_grammar_entrypoint_lexed(&tokens[start..], false),
+    )?;
     filter.zone = None;
     filter.tagged_constraints.clear();
     filter.set_prior_effect_action_surface(None);

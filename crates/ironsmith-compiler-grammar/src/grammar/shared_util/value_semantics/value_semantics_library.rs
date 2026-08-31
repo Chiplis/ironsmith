@@ -23,14 +23,14 @@ pub fn parse_players_with_cards_in_hand_at_least(
     };
     let threshold_range = word_view.token_span_for_words(with_idx + 1, word_view.len())?;
     let threshold_tokens = trim_edge_punctuation(&tokens[threshold_range]);
-    let (minimum, used) = parse_greater_than_or_equal_quantity_prefix(
-        &threshold_tokens,
-        false,
-        false,
-        "player hand-size count",
-    )
-    .ok()
-    .flatten()?;
+    let (minimum, used) =
+        crate::grammar::primitives::probe_shape(parse_greater_than_or_equal_quantity_prefix(
+            &threshold_tokens,
+            false,
+            false,
+            "player hand-size count",
+        ))
+        .flatten()?;
     let remainder = TokenWordView::new(&threshold_tokens[used..]).to_word_refs();
     matches!(
         remainder.as_slice(),

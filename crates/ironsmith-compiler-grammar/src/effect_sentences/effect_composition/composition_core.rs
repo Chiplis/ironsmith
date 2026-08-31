@@ -268,10 +268,11 @@ pub fn parse_typed_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<E
         } else {
             &first_words[..]
         };
-        let (_, options) = parse_choose_card_type_phrase_words(choice_words)
-            .ok()
-            .flatten()
-            .expect("validated choose-card-type bundle prefix");
+        let (_, options) = crate::grammar::primitives::probe_shape(
+            parse_choose_card_type_phrase_words(choice_words),
+        )
+        .flatten()
+        .expect("validated choose-card-type bundle prefix");
         let mut combined = vec![EffectAst::subject_verb_choose_card_type(
             PlayerAst::You,
             options,

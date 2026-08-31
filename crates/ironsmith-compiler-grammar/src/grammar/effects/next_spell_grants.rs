@@ -106,12 +106,11 @@ fn next_spell_keyword_action<'a>(
 pub fn parse_next_spell_keyword_action_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<NextSpellKeywordActionShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         next_spell_keyword_action,
         "next-spell keyword action",
     )
-    .ok()
 }
 
 #[derive(Debug, Clone)]
@@ -363,9 +362,11 @@ fn spell_filter(
 pub fn parse_next_spell_grant_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<NextSpellGrantShape<'_>>, CardTextError> {
-    let Some(raw) =
-        primitives::parse_all(tokens, parse_raw_next_spell_grant, "next-spell-grant").ok()
-    else {
+    let Some(raw) = crate::grammar::primitives::probe_all(
+        tokens,
+        parse_raw_next_spell_grant,
+        "next-spell-grant",
+    ) else {
         return Ok(None);
     };
     let mut filters = vec![spell_filter(raw.first_subject, raw.cast_by.clone())?];

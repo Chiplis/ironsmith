@@ -49,12 +49,11 @@ enum TransformBoundary {
 pub fn parse_attached_transform_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedTransformSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_attached_transform_lexed,
         "attached object transform",
     )
-    .ok()
 }
 
 pub fn parse_attached_base_power_toughness_tokens(

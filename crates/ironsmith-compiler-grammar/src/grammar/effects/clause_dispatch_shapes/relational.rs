@@ -66,12 +66,11 @@ fn tagged_shares_card_type_condition<'a>(
 pub fn parse_tagged_shares_card_type_condition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TaggedSharesCardTypeConditionShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         tagged_shares_card_type_condition,
         "tagged cards share card type with triggering spell",
     )
-    .ok()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,7 +113,11 @@ pub fn parse_copular_animation_shape(
             });
     let fixed_pt_animation = animation_body
         .first()
-        .and_then(|token| leaf::parse_leaf_pt_modifier_values_complete(token.parser_text()).ok())
+        .and_then(|token| {
+            crate::grammar::primitives::probe_shape(leaf::parse_leaf_pt_modifier_values_complete(
+                token.parser_text(),
+            ))
+        })
         .is_some_and(|(power, toughness)| {
             matches!((power, toughness), (Value::Fixed(_), Value::Fixed(_)))
                 && (primitives::find_prefix(animation_tokens, || {

@@ -79,7 +79,7 @@ fn look_hand<'a>(input: &mut LexStream<'a>) -> WResult<LookHandShape> {
 }
 
 pub fn parse_look_hand_shape(tokens: &[OwnedLexToken]) -> Option<LookHandShape> {
-    primitives::parse_all(tokens, look_hand, "look at hand shape").ok()
+    crate::grammar::primitives::probe_all(tokens, look_hand, "look at hand shape")
 }
 
 fn exile_one_followup(tokens: &[OwnedLexToken]) -> Option<bool> {
@@ -110,7 +110,7 @@ fn exile_one_followup(tokens: &[OwnedLexToken]) -> Option<bool> {
     {
         return Some(false);
     }
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         rest,
         (
             primitives::phrase(&["face", "down"]),
@@ -119,7 +119,6 @@ fn exile_one_followup(tokens: &[OwnedLexToken]) -> Option<bool> {
             .value(true),
         "look/exile face-down follow-up",
     )
-    .ok()
 }
 
 pub fn parse_look_top_exile_one_shape(tokens: &[OwnedLexToken]) -> Option<LookTopExileOneShape> {

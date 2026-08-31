@@ -12,6 +12,8 @@ pub(super) fn parse_source_controller_graveyard_filter(
         .find(|suffix| permission_shapes::suffix_words(words, suffix))?;
     let object_words = words.get(..words.len().checked_sub(suffix.len())?)?;
     (!object_words.is_empty())
-        .then(|| parse_object_filter_words(object_words, false).ok())
+        .then(|| {
+            crate::grammar::primitives::probe_shape(parse_object_filter_words(object_words, false))
+        })
         .flatten()
 }

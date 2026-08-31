@@ -84,18 +84,16 @@ pub fn parse_kicked_counter_replacement_tokens(
     let [base_tokens, kicked_tokens] = sentences.as_slice() else {
         return None;
     };
-    let base = primitives::parse_all(
+    let base = crate::grammar::primitives::probe_all(
         base_tokens,
         parse_base_gate_lexed,
         "counter-spell-mana-value-base",
-    )
-    .ok()?;
-    let kicked = primitives::parse_all(
+    )?;
+    let kicked = crate::grammar::primitives::probe_all(
         kicked_tokens,
         parse_kicked_gate_lexed,
         "kicked-counter-spell-mana-value-replacement",
-    )
-    .ok()?;
+    )?;
     Some(KickedCounterReplacementFact { base, kicked })
 }
 

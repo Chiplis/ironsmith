@@ -142,7 +142,7 @@ pub fn parse_keyword_marker_text(text: &str) -> Option<KeywordMarkerKind> {
             return Some(kind);
         }
     }
-    let tokens = lex_line(input, 0).ok()?;
+    let tokens = crate::util::lex_fragment(input, 0)?;
     line_families::parse_sticker_ticket_marker(&tokens).map(|_| KeywordMarkerKind::TicketSticker)
 }
 

@@ -35,21 +35,19 @@ pub struct EquipCostModifierHead {
 }
 
 pub fn parse_starting_life_bonus_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_starting_life_bonus_lexed,
         "starting life bonus",
     )
-    .ok()
 }
 
 pub fn parse_buyback_cost_reduction_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_buyback_cost_reduction_lexed,
         "buyback cost reduction",
     )
-    .ok()
 }
 
 pub fn parse_cost_increase_per_target_marker_tokens(tokens: &[OwnedLexToken]) -> bool {

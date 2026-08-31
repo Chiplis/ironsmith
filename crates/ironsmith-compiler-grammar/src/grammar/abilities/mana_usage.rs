@@ -484,18 +484,21 @@ fn parse_cast_unlock_turn_face_up(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
     let unlock =
         prefix_end + phrase_offset_words(words.get(prefix_end..)?, &["unlock", "a", "door"])?;
     let mut tail: primitives::WordSliceInput<'_> = words.get(unlock..)?;
-    parse_phrase_words(&mut tail, &["unlock", "a", "door"]).ok()?;
-    alt((
-        |input: &mut primitives::WordSliceInput<'_>| {
-            parse_phrase_words(input, &["or", "turn", "a", "permanent", "face", "up"])
-        },
-        |input: &mut primitives::WordSliceInput<'_>| {
-            parse_phrase_words(input, &["or", "turn", "permanents", "face", "up"])
-        },
-    ))
-    .parse_next(&mut tail)
-    .ok()?;
-    primitives::word_slice_eof(&mut tail).ok()?;
+    crate::grammar::primitives::take_leaf(&mut tail, |input: &mut _| {
+        parse_phrase_words(input, &["unlock", "a", "door"])
+    })?;
+    crate::grammar::primitives::take_leaf(
+        &mut tail,
+        alt((
+            |input: &mut primitives::WordSliceInput<'_>| {
+                parse_phrase_words(input, &["or", "turn", "a", "permanent", "face", "up"])
+            },
+            |input: &mut primitives::WordSliceInput<'_>| {
+                parse_phrase_words(input, &["or", "turn", "permanents", "face", "up"])
+            },
+        )),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut tail, primitives::word_slice_eof)?;
     if unlock == prefix_end {
         return None;
     }
@@ -709,19 +712,23 @@ fn parse_legacy_cast_shape(tokens: &[OwnedLexToken]) -> Option<LegacyCastShape<'
     let words = view.word_refs();
     let mut input: primitives::WordSliceInput<'_> = &words;
     parse_any_prefix_words(&mut input, SPEND_MANA_CAST_PREFIXES)?;
-    opt(alt((
-        primitives::word_slice_exact("a"),
-        primitives::word_slice_exact("an"),
-    )))
-    .parse_next(&mut input)
-    .ok()?;
-    let card_type = leaf::parse_leaf_card_type_complete(take_word(&mut input).ok()?).ok()?;
-    alt((
-        primitives::word_slice_exact("spell"),
-        primitives::word_slice_exact("spells"),
-    ))
-    .parse_next(&mut input)
-    .ok()?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        opt(alt((
+            primitives::word_slice_exact("a"),
+            primitives::word_slice_exact("an"),
+        ))),
+    )?;
+    let card_type = crate::grammar::primitives::probe_shape(leaf::parse_leaf_card_type_complete(
+        crate::grammar::primitives::take_leaf(&mut input, take_word)?,
+    ))?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        alt((
+            primitives::word_slice_exact("spell"),
+            primitives::word_slice_exact("spells"),
+        )),
+    )?;
     let tail_start = words.len().checked_sub(input.len())?;
     Some(LegacyCastShape {
         card_type,

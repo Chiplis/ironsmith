@@ -149,7 +149,9 @@ pub fn parse_look_exile_face_down_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LookExileFaceDownShape> {
     let mut exile_input = LexStream::new(tokens);
-    let exile_at = seek_sequence_phrase(&mut exile_input, &[&["exile"]]).ok()?;
+    let exile_at = crate::grammar::primitives::take_leaf(&mut exile_input, |input: &mut _| {
+        seek_sequence_phrase(input, &[&["exile"]])
+    })?;
     let exile = exile_at..tokens.len();
     if let Some((count, bottom_order)) = counted_face_down_shape(&tokens[exile.clone()]) {
         return Some(LookExileFaceDownShape::Counted {
@@ -168,10 +170,10 @@ pub fn parse_look_exile_face_down_shape(
     }
 
     let mut then_input = LexStream::new(tokens);
-    let then_at = seek_sequence_phrase(&mut then_input, &[&["then", "exile"]]).ok()?;
-    sequence_phrase(&["then"])
-        .parse_next(&mut then_input)
-        .ok()?;
+    let then_at = crate::grammar::primitives::take_leaf(&mut then_input, |input: &mut _| {
+        seek_sequence_phrase(input, &[&["then", "exile"]])
+    })?;
+    crate::grammar::primitives::take_leaf(&mut then_input, sequence_phrase(&["then"]))?;
     let exile_at = tokens.len().saturating_sub(then_input.len());
     if !matches_complete_content_sequence(&tokens[exile_at..], SINGLE_FACE_DOWN) {
         return None;
@@ -305,7 +307,7 @@ pub fn parse_look_cloak_partition_shape(
     }
     let mut tail = LexStream::new(&tokens[cloak_at..]);
     let (selected_count, remainder_order) =
-        looked_cloak_partition_tail.parse_next(&mut tail).ok()?;
+        crate::grammar::primitives::take_leaf(&mut tail, looked_cloak_partition_tail)?;
     tail.is_empty().then_some(LookedCloakPartitionShape {
         look: 0..cloak_at,
         selected_count,

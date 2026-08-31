@@ -143,7 +143,7 @@ pub fn parse_statement_static_preference(
         return Some(StatementStaticPreference::FirstEquipCostAlternative);
     }
     let mut input = LexStream::new(tokens);
-    statement_static_preference.parse_next(&mut input).ok()
+    crate::grammar::primitives::take_leaf(&mut input, statement_static_preference)
 }
 
 fn first_equip_cost_alternative(input: &mut LexStream<'_>) -> WResult<StatementStaticPreference> {
@@ -348,10 +348,7 @@ fn effect_head(input: &mut LexStream<'_>) -> WResult<()> {
 
 fn parse_effect_head_word(word: &str) -> Option<()> {
     let mut input = word;
-    (effect_head_word, eof.void())
-        .void()
-        .parse_next(&mut input)
-        .ok()
+    crate::grammar::primitives::take_leaf(&mut input, (effect_head_word, eof.void()).void())
 }
 
 fn effect_head_word(input: &mut &str) -> WResult<()> {

@@ -10,7 +10,7 @@ pub fn parse_for_each_card_payment_shape(
     let (_, _, after_pay) = primitives::find_prefix(body, || primitives::kw("pay"))?;
     let (life_amount, after_amount) =
         primitives::parse_prefix(after_pay, leaf::parse_leaf_number_token_lexed)?;
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         trim_lexed_commas(after_amount),
         (
             primitives::phrase(&[
@@ -20,7 +20,6 @@ pub fn parse_for_each_card_payment_shape(
         )
             .void(),
         "for each card payment tail",
-    )
-    .ok()?;
+    )?;
     Some(ForEachCardPaymentShape { life_amount })
 }

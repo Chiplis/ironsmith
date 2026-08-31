@@ -234,7 +234,7 @@ fn parse_generic_mana_group(input: &mut LexStream<'_>) -> WResult<u32> {
     any.verify_map(|token: &OwnedLexToken| {
         token
             .mana_group_inner()
-            .and_then(|inner| inner.parse::<u32>().ok())
+            .and_then(|inner| crate::util::decimal_count(inner))
     })
     .parse_next(input)
 }

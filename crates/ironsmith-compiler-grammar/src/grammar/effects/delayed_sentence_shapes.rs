@@ -162,7 +162,7 @@ pub fn parse_delayed_tagged_leaves_shape(
     let tokens = trimmed(tokens);
     let (header_tokens, effect_tokens) =
         primitives::split_lexed_once_on_separator(tokens, || primitives::comma().void())?;
-    let kind = primitives::parse_all(
+    let kind = crate::grammar::primitives::probe_all(
         trimmed(header_tokens),
         (
             trigger_intro,
@@ -173,8 +173,7 @@ pub fn parse_delayed_tagged_leaves_shape(
         )
             .map(|(_, _, kind, _, _)| kind),
         "delayed tagged-object leaves trigger",
-    )
-    .ok()?;
+    )?;
     let effect_tokens = trimmed(effect_tokens);
     (!effect_tokens.is_empty()).then_some(DelayedTaggedLeavesShape {
         kind,
@@ -341,7 +340,7 @@ pub fn parse_delayed_attack_unblocked_subject(
 pub fn parse_delayed_tagged_damage_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DelayedTaggedDamageShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         trimmed(tokens),
         (
             primitives::kw("that"),
@@ -357,13 +356,12 @@ pub fn parse_delayed_tagged_damage_shape(
             }),
         "delayed tagged damage trigger",
     )
-    .ok()
 }
 
 pub fn parse_delayed_deals_combat_damage_kind(
     tokens: &[OwnedLexToken],
 ) -> Option<DelayedObjectKind> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         trimmed(tokens),
         (
             primitives::kw("that"),
@@ -374,7 +372,6 @@ pub fn parse_delayed_deals_combat_damage_kind(
             .map(|(_, kind, _, _)| kind),
         "delayed combat-damage trigger",
     )
-    .ok()
 }
 
 /// Parse the object-kind portion of a delayed "target ... dies" trigger.

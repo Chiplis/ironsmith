@@ -36,8 +36,9 @@ pub(super) fn parse_controlled_creature_power_condition(
     }
     let comparison_words = TokenWordView::new(parsed.comparison_tokens).word_refs();
     let clause_words = TokenWordView::new(tokens).word_refs();
-    let (comparison, used) =
-        parse_filter_comparison_tokens("power", &comparison_words, &clause_words).ok()??;
+    let (comparison, used) = crate::grammar::primitives::probe_shape(
+        parse_filter_comparison_tokens("power", &comparison_words, &clause_words),
+    )??;
     (used == comparison_words.len()).then_some(ConditionExpr::YouControl(
         ObjectFilter::creature().with_power(comparison),
     ))
@@ -57,7 +58,9 @@ pub(super) fn parse_activate_only_if_tail_tokens(
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     let mut input: primitives::WordSliceInput<'_> = &words;
-    parse_phrase_words(&mut input, &["activate", "only", "if"]).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        parse_phrase_words(input, &["activate", "only", "if"])
+    })?;
     let start = words.len().checked_sub(input.len())?;
     (start < words.len()).then_some(())?;
     token_slice_for_words(tokens, &view, start, words.len())

@@ -70,8 +70,9 @@ pub(super) fn parse_untap_then_phase_out_until_source_leaves_bundle(
     }
     let (untap_tokens, phase_tokens) =
         grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void())?;
-    let untap_effects =
-        effect_sentences::parse_effect_sentence_lexed(&trim_commas(untap_tokens)).ok()?;
+    let untap_effects = crate::grammar::primitives::probe_shape(
+        effect_sentences::parse_effect_sentence_lexed(&trim_commas(untap_tokens)),
+    )?;
     let [untap_effect] = untap_effects.as_slice() else {
         return None;
     };

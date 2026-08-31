@@ -10,12 +10,11 @@ pub fn parse_attached_and_related_get_ability_shape(
     ) {
         return None;
     }
-    let subject = primitives::parse_all(
+    let subject = crate::grammar::primitives::probe_all(
         shape.subject_tokens,
         parse_attached_and_related_subject,
         "attached object and related creatures subject",
-    )
-    .ok()?;
+    )?;
     let (ability_tokens, ()) =
         primitives::split_lexed_once_before_suffix(shape.ability_tokens, 1, || {
             (
@@ -39,12 +38,11 @@ pub fn parse_attached_and_related_get_shape(
     let tokens = trim_lexed_commas(tokens);
     let (get_token, (), after_get) = primitives::find_prefix(tokens, || get_verb)?;
     let subject_tokens = nonempty_trimmed(tokens.get(..get_token)?)?;
-    let subject = primitives::parse_all(
+    let subject = crate::grammar::primitives::probe_all(
         subject_tokens,
         parse_attached_and_related_subject,
         "attached object and related creatures subject",
-    )
-    .ok()?;
+    )?;
     let (pump_tokens, ()) = primitives::split_lexed_once_before_suffix(after_get, 1, || {
         (
             primitives::phrase(&["until", "end", "of", "turn"]),

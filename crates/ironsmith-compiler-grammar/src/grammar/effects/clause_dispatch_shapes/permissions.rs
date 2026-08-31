@@ -42,12 +42,11 @@ pub fn parse_tagged_permission_shape(tokens: &[OwnedLexToken]) -> Option<TaggedP
         ])
         .value(TaggedPermissionShape::ManaAnyTypeCastsTaggedThisWay),
     ));
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         trim_lexed_commas(tokens),
         (parser, primitives::sentence_end()).map(|(shape, _)| shape),
         "tagged permission shape",
     )
-    .ok()
     .or_else(|| {
         parse_cast_single_hand_shape(tokens)
             .then_some(TaggedPermissionShape::CastSingleFromAmongHandCards)
@@ -120,7 +119,7 @@ fn cast_any_tagged<'a>(input: &mut LexStream<'a>) -> WResult<CastAnyTaggedShape>
 }
 
 pub fn parse_cast_any_tagged_shape(tokens: &[OwnedLexToken]) -> Option<CastAnyTaggedShape> {
-    primitives::parse_all(tokens, cast_any_tagged, "cast any tagged shape").ok()
+    crate::grammar::primitives::probe_all(tokens, cast_any_tagged, "cast any tagged shape")
 }
 
 /// A one-shot free-cast choice drawn from the exact collection established by
@@ -177,12 +176,11 @@ fn split_collection_cast_mana_value(
         return Some((trim_lexed_commas(tokens), None));
     };
     let subject_tokens = trim_lexed_commas(tokens.get(..bound_start)?);
-    let mana_value = primitives::parse_all(
+    let mana_value = crate::grammar::primitives::probe_all(
         trim_lexed_commas(bound_tokens),
         mana_value_bound,
         "tagged collection cast mana value",
-    )
-    .ok()?;
+    )?;
     Some((subject_tokens, Some(mana_value)))
 }
 
@@ -199,7 +197,7 @@ pub fn parse_cast_tagged_collection_shape(
             &["from", "among", "those", "exiled", "cards"],
         ])
     })?;
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         trim_lexed_commas(free_cast_tail),
         (
             primitives::any_phrase(&[
@@ -210,8 +208,7 @@ pub fn parse_cast_tagged_collection_shape(
         )
             .void(),
         "tagged collection free-cast tail",
-    )
-    .ok()?;
+    )?;
 
     let (subject_tokens, mana_value) =
         split_collection_cast_mana_value(trim_lexed_commas(body.get(..scope_start)?))?;

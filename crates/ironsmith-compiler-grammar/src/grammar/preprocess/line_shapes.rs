@@ -52,7 +52,7 @@ pub struct WrappedActivationSurface {
 }
 
 pub fn parse_parenthetical_line_surface(line: &str) -> Option<ParentheticalLineSurface> {
-    let tokens = lex_line(line.trim(), 0).ok()?;
+    let tokens = crate::util::lex_fragment(line.trim(), 0)?;
     if tokens.first()?.kind == TokenKind::LParen && tokens.last()?.kind == TokenKind::RParen {
         return Some(ParentheticalLineSurface::FullyWrapped);
     }
@@ -67,7 +67,7 @@ pub fn parse_parenthetical_line_surface(line: &str) -> Option<ParentheticalLineS
 }
 
 pub fn parse_line_variant_split(line: &str) -> Option<LineVariantSplitSurface> {
-    let tokens = lex_line(line.trim(), 0).ok()?;
+    let tokens = crate::util::lex_fragment(line.trim(), 0)?;
     if permission_shapes::prefix_tokens(
         &tokens,
         &[
@@ -155,13 +155,13 @@ pub fn is_mana_spend_bonus_followup(second: &str) -> bool {
 pub fn parse_metadata_surface(line: &str) -> Option<MetadataSurface> {
     let trimmed = line.trim();
     let mut input = trimmed;
-    let (label, value) = metadata_parts.parse_next(&mut input).ok()?;
+    let (label, value) = crate::grammar::primitives::take_leaf(&mut input, metadata_parts)?;
     let label = label.trim();
     let value = value.trim();
     if label.is_empty() || value.is_empty() {
         return None;
     }
-    let label_tokens = lex_line(format!("{label}:").as_str(), 0).ok()?;
+    let label_tokens = crate::util::lex_fragment(format!("{label}:").as_str(), 0)?;
     let kind = super::super::structure::split_metadata_line_lexed(&label_tokens)?.kind;
     Some(MetadataSurface {
         kind,
@@ -177,7 +177,7 @@ fn metadata_parts<'a>(input: &mut &'a str) -> WResult<(&'a str, &'a str)> {
 }
 
 pub fn parse_labeled_ability_prefix(text: &str) -> Option<LabeledAbilityPrefixSurface> {
-    let tokens = lex_line(text, 0).ok()?;
+    let tokens = crate::util::lex_fragment(text, 0)?;
     let (separator_index, separator, _) = primitives::find_prefix(&tokens, || {
         alt((
             primitives::token_kind(TokenKind::EmDash),
@@ -198,7 +198,7 @@ pub fn parse_labeled_ability_prefix(text: &str) -> Option<LabeledAbilityPrefixSu
 }
 
 pub fn parse_resolution_timing_tail(text: &str) -> Option<ResolutionTimingTailSurface> {
-    let tokens = lex_line(text, 0).ok()?;
+    let tokens = crate::util::lex_fragment(text, 0)?;
     let (tail_index, _, _) =
         primitives::find_prefix(&tokens, || primitives::phrase(&["as", "it", "resolves"]))?;
     if tokens
@@ -216,7 +216,7 @@ pub fn parse_resolution_timing_tail(text: &str) -> Option<ResolutionTimingTailSu
 
 pub fn parse_wrapped_activation_surface(text: &str) -> Option<WrappedActivationSurface> {
     let trimmed = text.trim();
-    let tokens = lex_line(trimmed, 0).ok()?;
+    let tokens = crate::util::lex_fragment(trimmed, 0)?;
     let first = tokens.first()?;
     let last = tokens.last()?;
     if first.kind != TokenKind::LParen || last.kind != TokenKind::RParen {
@@ -233,8 +233,7 @@ pub fn parse_wrapped_activation_surface(text: &str) -> Option<WrappedActivationS
 }
 
 pub fn parse_terminal_period(text: &str) -> bool {
-    lex_line(text.trim(), 0)
-        .ok()
+    crate::util::lex_fragment(text.trim(), 0)
         .and_then(|tokens| tokens.last().map(OwnedLexToken::is_period))
         .unwrap_or(false)
 }

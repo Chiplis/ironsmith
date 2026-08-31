@@ -12,11 +12,11 @@ pub enum CaseLabelKind {
 }
 
 pub fn parse_case_label_tokens(tokens: &[OwnedLexToken]) -> Option<CaseLabelKind> {
-    primitives::parse_all(tokens, case_label, "case-label").ok()
+    crate::grammar::primitives::probe_all(tokens, case_label, "case-label")
 }
 
 pub fn parse_chosen_option_context_tokens(tokens: &[OwnedLexToken]) -> Option<ChosenOptionContext> {
-    primitives::parse_all(tokens, chosen_option_context, "chosen-option-label").ok()
+    crate::grammar::primitives::probe_all(tokens, chosen_option_context, "chosen-option-label")
 }
 
 fn case_label(input: &mut LexStream<'_>) -> WResult<CaseLabelKind> {

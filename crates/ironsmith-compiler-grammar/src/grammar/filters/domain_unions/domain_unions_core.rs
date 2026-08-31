@@ -224,7 +224,10 @@ pub fn parse_elided_shared_domain_union(
             continue;
         }
 
-        let leading_scope = parse_object_filter(&tokens[..first_in], other).ok();
+        let leading_scope = crate::grammar::primitives::probe_shape(parse_object_filter(
+            &tokens[..first_in],
+            other,
+        ));
         let mut shared_tokens = Vec::with_capacity(tokens.len());
         shared_tokens.extend_from_slice(&tokens[..first_in]);
         shared_tokens.extend_from_slice(&tokens[after_second..]);

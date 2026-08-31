@@ -24,7 +24,9 @@ pub(super) fn parse_look_hand_optional_exile_play_tax_bundle(
         return None;
     };
 
-    let mut look_effects = effect_sentences::parse_look_at_hand_sentence(look_sentence).ok()??;
+    let mut look_effects = crate::grammar::primitives::probe_shape(
+        effect_sentences::parse_look_at_hand_sentence(look_sentence),
+    )??;
     let [look_effect] = look_effects.as_mut_slice() else {
         return None;
     };
@@ -42,7 +44,9 @@ pub(super) fn parse_look_hand_optional_exile_play_tax_bundle(
     };
     let hand_owner = hand_owner.clone();
 
-    let mut optional_exile = effect_sentences::parse_effect_sentence_lexed(exile_sentence).ok()?;
+    let mut optional_exile = crate::grammar::primitives::probe_shape(
+        effect_sentences::parse_effect_sentence_lexed(exile_sentence),
+    )?;
     let [optional] = optional_exile.as_mut_slice() else {
         return None;
     };
@@ -80,8 +84,9 @@ pub(super) fn parse_look_hand_optional_exile_play_tax_bundle(
     let exile_filter = exile_filter.clone();
     let exiled_tag = helper_tag_for_tokens(exile_sentence, "exiled");
 
-    let permission_effects =
-        effect_sentences::parse_effect_sentence_lexed(permission_sentence).ok()?;
+    let permission_effects = crate::grammar::primitives::probe_shape(
+        effect_sentences::parse_effect_sentence_lexed(permission_sentence),
+    )?;
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:

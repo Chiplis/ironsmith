@@ -481,7 +481,7 @@ pub(super) fn predicate_mana_spent_helpers_use_tokens() {
         "fn parse_mana_spent_capture_predicate(tokens: &[OwnedLexToken])",
         "let validation_words = mana_spent_symbol_clause_words(symbol_clause)",
         "word_is_any(word, MANA_SYMBOL_WORDS)",
-        "parse_mana_symbol(token.parser_text()).ok()",
+        "parse_mana_symbol(token.parser_text())",
         "parse_mana_spent_capture_predicate(predicate_tokens)",
         "parse_same_color_mana_spent_to_cast_predicate(tokens)",
         "parse_mana_spent_to_cast_predicate(tokens)",
@@ -538,21 +538,29 @@ pub(super) fn predicate_card_in_your_graveyard_uses_predicate_tokens() {
         "fn graveyard_card_types_subject",
     );
 
+    // Formatting of a call is not part of this invariant: compare against
+    // whitespace-collapsed sources so a rustfmt line break inside an argument
+    // list cannot read as a missing route.
+    let collapse = |source: &str| source.split_whitespace().collect::<Vec<_>>().join(" ");
+    let collapsed_content = collapse(&content);
+    let collapsed_named_helper = collapse(&named_helper);
+    let collapsed_subtype_helper = collapse(&subtype_helper);
     for required in [
-        "fn parse_card_in_your_graveyard_predicate(\n    tokens: &[OwnedLexToken]",
+        "fn parse_card_in_your_graveyard_predicate( tokens: &[OwnedLexToken]",
         "let clause = LexedClause::new(tokens)",
         "parse_card_in_your_graveyard_predicate(predicate_tokens)",
         "descriptor.tokens().is_empty()",
         "object.tokens().is_empty()",
-        "parse_object_filter(trimmed_tokens, false)",
+        "parse_object_filter( trimmed_tokens, false, )",
         "parse_subtype_card_descriptor_clause(descriptor)",
         "let descriptor_tokens = strip_leading_article_tokens(clause.trimmed().tokens())",
         "token_word_is_any(&descriptor_tokens[1], CARD_OR_CARDS_WORDS)",
     ] {
+        let required = collapse(required);
         assert!(
-            content.contains(required)
-                || named_helper.contains(required)
-                || subtype_helper.contains(required),
+            collapsed_content.contains(&required)
+                || collapsed_named_helper.contains(&required)
+                || collapsed_subtype_helper.contains(&required),
             "{relative} should route graveyard-card predicates through captured predicate tokens: missing `{required}`"
         );
     }
@@ -2249,7 +2257,6 @@ pub(super) fn prevent_all_damage_clause_parser_uses_clause_shapes() {
         "fn parse_target_first_source",
         "fn parse_target_first",
         "pub fn parse_prevent_all_damage_shape_tokens",
-        "primitives::parse_all(",
         "repeat_till",
         "primitives::sentence_end()",
     ] {

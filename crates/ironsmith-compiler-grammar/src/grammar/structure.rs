@@ -738,9 +738,10 @@ fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
         parts.push(tail);
     }
     if parts.len() < 2 {
-        return parse_predicate_with_grammar_entrypoint_lexed(tokens)
-            .ok()
-            .or_else(|| life_relation_predicate(tokens));
+        return crate::grammar::primitives::probe_shape(
+            parse_predicate_with_grammar_entrypoint_lexed(tokens),
+        )
+        .or_else(|| life_relation_predicate(tokens));
     }
 
     let mut predicates = Vec::with_capacity(parts.len());
@@ -752,9 +753,10 @@ fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
             part = trim_lexed_commas(&part[1..]);
         }
         let Ok(predicate) = parse_predicate_with_grammar_entrypoint_lexed(part) else {
-            return parse_predicate_with_grammar_entrypoint_lexed(tokens)
-                .ok()
-                .or_else(|| life_relation_predicate(tokens));
+            return crate::grammar::primitives::probe_shape(
+                parse_predicate_with_grammar_entrypoint_lexed(tokens),
+            )
+            .or_else(|| life_relation_predicate(tokens));
         };
         predicates.push(predicate);
     }
@@ -960,9 +962,9 @@ fn scan_choose_both_exact_life_total(tokens: &[OwnedLexToken]) -> Option<i32> {
             && tokens[idx + 4].is_word("life")
         {
             return match tokens[idx + 3].kind {
-                TokenKind::Number | TokenKind::Word => {
-                    super::leaf::parse_number_i32_complete(tokens[idx + 3].parser_text()).ok()
-                }
+                TokenKind::Number | TokenKind::Word => crate::grammar::primitives::probe_shape(
+                    super::leaf::parse_number_i32_complete(tokens[idx + 3].parser_text()),
+                ),
                 _ => None,
             };
         }
@@ -1485,7 +1487,9 @@ pub fn parse_trailing_if_predicate_lexed(tokens: &[OwnedLexToken]) -> Option<Pre
         return None;
     }
 
-    parse_predicate_with_grammar_entrypoint_lexed(predicate_tokens).ok()
+    crate::grammar::primitives::probe_shape(parse_predicate_with_grammar_entrypoint_lexed(
+        predicate_tokens,
+    ))
 }
 
 pub fn parse_conditional_predicate_tail_lexed(
@@ -1547,17 +1551,21 @@ pub fn parse_conditional_predicate_tail_lexed(
             return None;
         }
 
-        let base_predicate =
-            parse_predicate_with_grammar_entrypoint_lexed(base_predicate_tokens).ok()?;
-        let outer_predicate =
-            parse_predicate_with_grammar_entrypoint_lexed(outer_predicate_tokens).ok()?;
+        let base_predicate = crate::grammar::primitives::probe_shape(
+            parse_predicate_with_grammar_entrypoint_lexed(base_predicate_tokens),
+        )?;
+        let outer_predicate = crate::grammar::primitives::probe_shape(
+            parse_predicate_with_grammar_entrypoint_lexed(outer_predicate_tokens),
+        )?;
         return Some(ConditionalPredicateTailSpec::InsteadIf {
             base_predicate,
             outer_predicate,
         });
     }
 
-    let predicate = parse_predicate_with_grammar_entrypoint_lexed(trimmed).ok()?;
+    let predicate = crate::grammar::primitives::probe_shape(
+        parse_predicate_with_grammar_entrypoint_lexed(trimmed),
+    )?;
     Some(ConditionalPredicateTailSpec::Plain(predicate))
 }
 

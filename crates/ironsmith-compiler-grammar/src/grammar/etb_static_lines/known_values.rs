@@ -28,12 +28,11 @@ pub enum WhereXKnownValue<'a> {
 }
 
 pub fn parse_where_x_known_value_tokens(tokens: &[OwnedLexToken]) -> Option<WhereXKnownValue<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_where_x_known_value_lexed,
         "known where-X value",
     )
-    .ok()
 }
 
 fn parse_where_x_known_value_lexed<'a>(input: &mut LexStream<'a>) -> WResult<WhereXKnownValue<'a>> {

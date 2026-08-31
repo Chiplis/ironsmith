@@ -60,9 +60,10 @@ pub fn parse_non_turn_conditional_untap_tokens(
     }
     let first_sentence_tokens = tokens.get(..delimiter)?;
     let mut first_input = LexStream::new(first_sentence_tokens);
-    primitives::phrase(&["creatures", "you", "control", "get"])
-        .parse_next(&mut first_input)
-        .ok()?;
+    crate::grammar::primitives::take_leaf(
+        &mut first_input,
+        primitives::phrase(&["creatures", "you", "control", "get"]),
+    )?;
     Some(NonTurnConditionalUntapShape {
         first_sentence_tokens,
         untap_sentence_tokens: tokens.get(delimiter + 1..)?,
@@ -73,9 +74,8 @@ pub fn parse_graveyard_cast_control_condition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<GraveyardCastControlCondition> {
     let mut input = LexStream::new(tokens);
-    let condition = graveyard_cast_control_condition
-        .parse_next(&mut input)
-        .ok()?;
+    let condition =
+        crate::grammar::primitives::take_leaf(&mut input, graveyard_cast_control_condition)?;
     input.is_empty().then_some(condition)
 }
 

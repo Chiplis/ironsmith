@@ -29,11 +29,12 @@ pub enum ActivatedLoyaltyShorthand {
 
 fn word_phrase_offset(words: &[&str], expected: &'static [&'static str]) -> Option<usize> {
     let mut input: WordSliceInput<'_> = words;
-    let skipped: &[&str] = repeat_till(0.., any.void(), peek(word_phrase(expected)))
-        .map(|((), ())| ())
-        .take()
-        .parse_next(&mut input)
-        .ok()?;
+    let skipped: &[&str] = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till(0.., any.void(), peek(word_phrase(expected)))
+            .map(|((), ())| ())
+            .take(),
+    )?;
     Some(skipped.len())
 }
 
@@ -166,7 +167,7 @@ pub fn parse_loyalty_shorthand_activation_tokens(
     match tokens {
         [token] if token.as_word().is_some() => {
             let mut input = token.parser_text();
-            parse_loyalty_shorthand_word.parse_next(&mut input).ok()
+            crate::grammar::primitives::take_leaf(&mut input, parse_loyalty_shorthand_word)
         }
         [sign, value]
             if matches!(sign.kind, TokenKind::Plus | TokenKind::Dash)
@@ -183,10 +184,10 @@ pub fn parse_loyalty_shorthand_activation_tokens(
                     return Some(ActivatedLoyaltyShorthand::RemoveX);
                 }
             }
-            let parsed = (parse_loyalty_number, parse_text_end)
-                .map(|(amount, ())| amount)
-                .parse_next(&mut amount)
-                .ok()?;
+            let parsed = crate::grammar::primitives::take_leaf(
+                &mut amount,
+                (parse_loyalty_number, parse_text_end).map(|(amount, ())| amount),
+            )?;
             if sign.kind == TokenKind::Plus {
                 Some(ActivatedLoyaltyShorthand::Add(parsed))
             } else {

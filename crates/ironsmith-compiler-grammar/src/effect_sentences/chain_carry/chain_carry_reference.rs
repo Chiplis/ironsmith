@@ -1270,7 +1270,7 @@ pub(super) fn parse_leading_player_may_words(words: &[&str]) -> Option<PlayerAst
     }
 
     let mut input = words;
-    parse_player_may_prefix(&mut input).ok()
+    crate::grammar::primitives::take_leaf(&mut input, parse_player_may_prefix)
 }
 
 pub fn parse_leading_player_may_lexed(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {

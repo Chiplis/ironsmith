@@ -146,12 +146,11 @@ fn combat_requirement<'a>(input: &mut LexStream<'a>) -> WResult<CombatRequiremen
 pub fn parse_combat_requirement_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<CombatRequirementShape<'_>> {
-    let shape = primitives::parse_all(
+    let shape = crate::grammar::primitives::probe_all(
         trim_shape_edges(tokens),
         combat_requirement,
         "combat requirement clause",
-    )
-    .ok()?;
+    )?;
     // A combat requirement's subject belongs to the same sentence as its
     // suffix. Without this boundary, the suffix parser can scan backward
     // across prior instructions and reinterpret an entire animation sentence
@@ -223,7 +222,7 @@ fn subject_blocks_attacker<'a>(input: &mut LexStream<'a>) -> WResult<MustBlockSh
 }
 
 pub fn parse_must_block_shape(tokens: &[OwnedLexToken]) -> Option<MustBlockShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         trim_shape_edges(tokens),
         alt((
             subject_blocks_this_turn,
@@ -232,7 +231,6 @@ pub fn parse_must_block_shape(tokens: &[OwnedLexToken]) -> Option<MustBlockShape
         )),
         "must block clause",
     )
-    .ok()
 }
 
 pub fn parse_duration_trigger_prefix_shape(

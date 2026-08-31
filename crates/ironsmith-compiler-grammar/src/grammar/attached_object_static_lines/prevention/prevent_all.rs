@@ -18,12 +18,11 @@ pub enum AttachedPreventAllKind {
 pub fn parse_attached_prevent_all_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedPreventAllKind> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_attached_prevent_all_lexed,
         "attached prevent-all line",
     )
-    .ok()
 }
 
 fn parse_attached_prevent_all_lexed<'a>(

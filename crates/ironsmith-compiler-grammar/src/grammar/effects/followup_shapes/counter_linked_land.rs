@@ -51,10 +51,9 @@ fn parse_counter_linked_land_subtype_followup_lexed(
 pub fn parse_counter_linked_land_subtype_followup(
     tokens: &[OwnedLexToken],
 ) -> Option<CounterLinkedLandSubtypeFollowupShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_counter_linked_land_subtype_followup_lexed,
         "counter-linked land subtype followup",
     )
-    .ok()
 }

@@ -69,12 +69,11 @@ fn reveal_source_exiled_permanents<'a>(
 pub fn parse_reveal_source_exiled_permanents_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<RevealSourceExiledPermanentsShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         reveal_source_exiled_permanents,
         "reveal source-exiled permanents",
     )
-    .ok()
 }
 
 #[cfg(test)]

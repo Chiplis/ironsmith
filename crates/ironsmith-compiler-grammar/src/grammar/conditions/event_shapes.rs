@@ -88,17 +88,20 @@ pub(super) fn parse_quantity_object_tail<'a>(
 ) -> Option<QuantityObjectShape<'a>> {
     let tokens = trim_clause(tokens);
     let mut input = LexStream::new(tokens);
-    let amount_tokens = repeat_till::<_, _, (), _, _, _, _>(
-        1..,
-        any.void(),
-        peek(|input: &mut LexStream<'a>| expected_any_phrase(input, object_phrases)),
-    )
-    .map(|((), ())| ())
-    .take()
-    .parse_next(&mut input)
-    .ok()?;
-    expected_any_phrase(&mut input, object_phrases).ok()?;
-    parse_end(&mut input).ok()?;
+    let amount_tokens = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till::<_, _, (), _, _, _, _>(
+            1..,
+            any.void(),
+            peek(|input: &mut LexStream<'a>| expected_any_phrase(input, object_phrases)),
+        )
+        .map(|((), ())| ())
+        .take(),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        expected_any_phrase(input, object_phrases)
+    })?;
+    crate::grammar::primitives::take_leaf(&mut input, parse_end)?;
     Some(QuantityObjectShape { amount_tokens })
 }
 
@@ -146,14 +149,16 @@ pub(super) fn parse_no_opponent_more_life_than(
 ) -> Option<LifeRelationPlayerShape<'_>> {
     let tokens = trim_clause(tokens);
     let mut input = LexStream::new(tokens);
-    primitives::kw("no").parse_next(&mut input).ok()?;
-    alt((primitives::kw("opponent"), primitives::kw("opponents")))
-        .parse_next(&mut input)
-        .ok()?;
-    primitives::phrase(&["has", "more", "life", "than"])
-        .parse_next(&mut input)
-        .ok()?;
-    let player_tokens = take_remaining(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::kw("no"))?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        alt((primitives::kw("opponent"), primitives::kw("opponents"))),
+    )?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        primitives::phrase(&["has", "more", "life", "than"]),
+    )?;
+    let player_tokens = crate::grammar::primitives::take_leaf(&mut input, take_remaining)?;
     (!player_tokens.is_empty()).then_some(LifeRelationPlayerShape { player_tokens })
 }
 
@@ -162,16 +167,17 @@ pub(super) fn parse_cards_in_hand_relation(
 ) -> Option<CardsInHandRelationShape> {
     let tokens = trim_clause(tokens);
     let mut input = LexStream::new(tokens);
-    parse_more_cards_in_hand_head(&mut input).ok()?;
-    primitives::kw("than").parse_next(&mut input).ok()?;
-    alt((
-        primitives::any_phrase(&[&["you", "do"], &["you"]])
-            .value(CardsInHandRelationShape::MoreThanYou),
-        primitives::any_phrase(&[&["each", "other", "player"], &["each", "other", "players"]])
-            .value(CardsInHandRelationShape::MoreThanEachOtherPlayer),
-    ))
-    .parse_next(&mut input)
-    .ok()
+    crate::grammar::primitives::take_leaf(&mut input, parse_more_cards_in_hand_head)?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::kw("than"))?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        alt((
+            primitives::any_phrase(&[&["you", "do"], &["you"]])
+                .value(CardsInHandRelationShape::MoreThanYou),
+            primitives::any_phrase(&[&["each", "other", "player"], &["each", "other", "players"]])
+                .value(CardsInHandRelationShape::MoreThanEachOtherPlayer),
+        )),
+    )
     .filter(|_| input.is_empty())
 }
 
@@ -222,37 +228,42 @@ pub(super) fn parse_lands_entered_this_turn(
 ) -> Option<TurnEventShape<'_>> {
     let tokens = trim_clause(tokens);
     let mut input = LexStream::new(tokens);
-    let subject_tokens =
+    let subject_tokens = crate::grammar::primitives::take_leaf(
+        &mut input,
         repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::kw("had").void()))
             .map(|((), _)| ())
-            .take()
-            .parse_next(&mut input)
-            .ok()?;
-    primitives::kw("had").parse_next(&mut input).ok()?;
-    let amount_tokens = repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), peek(parse_land_noun))
-        .map(|((), ())| ())
-        .take()
-        .parse_next(&mut input)
-        .ok()?;
-    parse_land_noun(&mut input).ok()?;
-    alt((primitives::kw("enter"), primitives::kw("entered")))
-        .parse_next(&mut input)
-        .ok()?;
-    opt(primitives::kw("the")).parse_next(&mut input).ok()?;
-    primitives::phrase(&["battlefield", "under"])
-        .parse_next(&mut input)
-        .ok()?;
-    alt((
-        primitives::kw("your"),
-        primitives::kw("their"),
-        primitives::kw("that"),
-        primitives::kw("its"),
-    ))
-    .parse_next(&mut input)
-    .ok()?;
-    primitives::phrase(&["control", "this", "turn"])
-        .parse_next(&mut input)
-        .ok()?;
+            .take(),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::kw("had"))?;
+    let amount_tokens = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), peek(parse_land_noun))
+            .map(|((), ())| ())
+            .take(),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, parse_land_noun)?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        alt((primitives::kw("enter"), primitives::kw("entered"))),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, opt(primitives::kw("the")))?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        primitives::phrase(&["battlefield", "under"]),
+    )?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        alt((
+            primitives::kw("your"),
+            primitives::kw("their"),
+            primitives::kw("that"),
+            primitives::kw("its"),
+        )),
+    )?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        primitives::phrase(&["control", "this", "turn"]),
+    )?;
     input.is_empty().then_some(TurnEventShape {
         subject_tokens,
         amount_tokens,
@@ -264,16 +275,17 @@ pub(super) fn parse_target_spell_controller_poisoned(
 ) -> Option<SpellControllerShape<'_>> {
     let tokens = trim_clause(tokens);
     let mut input = LexStream::new(tokens);
-    let controller_tokens = repeat_till::<_, _, (), _, _, _, _>(
-        1..,
-        any.void(),
-        peek(primitives::kw("poisoned").void()),
-    )
-    .map(|((), ())| ())
-    .take()
-    .parse_next(&mut input)
-    .ok()?;
-    primitives::kw("poisoned").parse_next(&mut input).ok()?;
+    let controller_tokens = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till::<_, _, (), _, _, _, _>(
+            1..,
+            any.void(),
+            peek(primitives::kw("poisoned").void()),
+        )
+        .map(|((), ())| ())
+        .take(),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::kw("poisoned"))?;
     input
         .is_empty()
         .then_some(SpellControllerShape { controller_tokens })
@@ -284,16 +296,16 @@ pub(super) fn parse_no_mana_spent_to_cast(
 ) -> Option<SpellReferenceShape<'_>> {
     let tokens = trim_clause(tokens);
     let mut input = LexStream::new(tokens);
-    primitives::phrase(&["no", "mana"])
-        .parse_next(&mut input)
-        .ok()?;
-    alt((primitives::kw("was"), primitives::kw("were")))
-        .parse_next(&mut input)
-        .ok()?;
-    primitives::phrase(&["spent", "to", "cast"])
-        .parse_next(&mut input)
-        .ok()?;
-    let spell_tokens = take_remaining(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::phrase(&["no", "mana"]))?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        alt((primitives::kw("was"), primitives::kw("were"))),
+    )?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        primitives::phrase(&["spent", "to", "cast"]),
+    )?;
+    let spell_tokens = crate::grammar::primitives::take_leaf(&mut input, take_remaining)?;
     (!spell_tokens.is_empty()).then_some(SpellReferenceShape { spell_tokens })
 }
 
@@ -302,12 +314,13 @@ pub(super) fn parse_more_creatures_than_controller(
 ) -> Option<SpellControllerShape<'_>> {
     let tokens = trim_clause(tokens);
     let mut input = LexStream::new(tokens);
-    primitives::kw("more").parse_next(&mut input).ok()?;
-    alt((primitives::kw("creature"), primitives::kw("creatures")))
-        .parse_next(&mut input)
-        .ok()?;
-    primitives::kw("than").parse_next(&mut input).ok()?;
-    let controller_tokens = take_remaining(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::kw("more"))?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        alt((primitives::kw("creature"), primitives::kw("creatures"))),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::kw("than"))?;
+    let controller_tokens = crate::grammar::primitives::take_leaf(&mut input, take_remaining)?;
     (!controller_tokens.is_empty()).then_some(SpellControllerShape { controller_tokens })
 }
 
@@ -338,7 +351,7 @@ pub(super) fn is_another_spell(tokens: &[OwnedLexToken]) -> bool {
 pub(super) fn parse_target_spell_controller(
     tokens: &[OwnedLexToken],
 ) -> Option<SpellContextReferenceAst> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         trim_clause(tokens),
         primitives::any_phrase(&[
             &["its", "controller"],
@@ -349,19 +362,17 @@ pub(super) fn parse_target_spell_controller(
         .value(SpellContextReferenceAst::TargetSpell),
         "target-spell controller reference",
     )
-    .ok()
 }
 
 pub(super) fn parse_target_spell_reference(
     tokens: &[OwnedLexToken],
 ) -> Option<SpellContextReferenceAst> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         trim_clause(tokens),
         primitives::any_phrase(&[&["it"], &["that", "spell"]])
             .value(SpellContextReferenceAst::TargetSpell),
         "target-spell reference",
     )
-    .ok()
 }
 
 pub(super) fn parse_spell_cast_filter_pair(
@@ -377,22 +388,23 @@ pub(super) fn parse_life_change_this_turn(
 ) -> Option<LifeChangeThisTurnShape<'_>> {
     let tokens = trim_clause(tokens);
     let mut input = LexStream::new(tokens);
-    let subject_tokens =
+    let subject_tokens = crate::grammar::primitives::take_leaf(
+        &mut input,
         repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(parse_life_change_direction))
             .map(|((), _)| ())
-            .take()
-            .parse_next(&mut input)
-            .ok()?;
-    let direction = parse_life_change_direction(&mut input).ok()?;
-    let amount_tokens =
+            .take(),
+    )?;
+    let direction = crate::grammar::primitives::take_leaf(&mut input, parse_life_change_direction)?;
+    let amount_tokens = crate::grammar::primitives::take_leaf(
+        &mut input,
         repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), peek(primitives::kw("life").void()))
             .map(|((), ())| ())
-            .take()
-            .parse_next(&mut input)
-            .ok()?;
-    primitives::phrase(&["life", "this", "turn"])
-        .parse_next(&mut input)
-        .ok()?;
+            .take(),
+    )?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        primitives::phrase(&["life", "this", "turn"]),
+    )?;
     input.is_empty().then_some(LifeChangeThisTurnShape {
         subject_tokens,
         amount_tokens,
@@ -403,15 +415,15 @@ pub(super) fn parse_life_change_this_turn(
 pub(super) fn parse_player_would(tokens: &[OwnedLexToken]) -> Option<PlayerWouldShape<'_>> {
     let tokens = trim_clause(tokens);
     let mut input = LexStream::new(tokens);
-    let subject_tokens =
+    let subject_tokens = crate::grammar::primitives::take_leaf(
+        &mut input,
         repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::kw("would").void()))
             .map(|((), ())| ())
-            .take()
-            .parse_next(&mut input)
-            .ok()?;
-    primitives::kw("would").parse_next(&mut input).ok()?;
-    let action = parse_player_would_action(&mut input).ok()?;
-    parse_end(&mut input).ok()?;
+            .take(),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::kw("would"))?;
+    let action = crate::grammar::primitives::take_leaf(&mut input, parse_player_would_action)?;
+    crate::grammar::primitives::take_leaf(&mut input, parse_end)?;
     Some(PlayerWouldShape {
         subject_tokens,
         action,
@@ -422,7 +434,7 @@ fn parse_spell_cast_filter_pair_with_both(
     tokens: &[OwnedLexToken],
 ) -> Option<SpellCastFilterPairShape<'_>> {
     let mut input = LexStream::new(tokens);
-    primitives::kw("both").parse_next(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::kw("both"))?;
     parse_spell_cast_filter_pair_tail(&mut input, false)
 }
 
@@ -437,14 +449,14 @@ fn parse_spell_cast_filter_pair_tail<'a>(
     input: &mut LexStream<'a>,
     require_named: bool,
 ) -> Option<SpellCastFilterPairShape<'a>> {
-    let left_tokens =
+    let left_tokens = crate::grammar::primitives::probe_shape(
         repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::kw("and").void()))
             .map(|((), ())| ())
             .take()
-            .parse_next(input)
-            .ok()?;
-    primitives::kw("and").parse_next(input).ok()?;
-    let right_tokens = take_remaining(input).ok()?;
+            .parse_next(input),
+    )?;
+    crate::grammar::primitives::take_leaf(input, primitives::kw("and"))?;
+    let right_tokens = crate::grammar::primitives::take_leaf(input, take_remaining)?;
     if right_tokens.is_empty()
         || (require_named
             && (!has_spell_named_prefix(left_tokens) || !has_spell_named_prefix(right_tokens)))
@@ -488,28 +500,30 @@ fn parse_spell_cast_with_action(
     action: SpellCastActionKind,
 ) -> Option<SpellCastThisTurnShape<'_>> {
     let mut input = LexStream::new(tokens);
-    let subject_tokens = repeat_till::<_, _, (), _, _, _, _>(
-        1..,
-        any.void(),
-        peek(|input: &mut LexStream<'_>| parse_spell_cast_action(input, action)),
-    )
-    .map(|((), ())| ())
-    .take()
-    .parse_next(&mut input)
-    .ok()?;
-    parse_spell_cast_action(&mut input, action).ok()?;
-    let object_tokens = repeat_till::<_, _, (), _, _, _, _>(
-        0..,
-        any.void(),
-        peek(primitives::phrase(&["this", "turn"])),
-    )
-    .map(|((), ())| ())
-    .take()
-    .parse_next(&mut input)
-    .ok()?;
-    primitives::phrase(&["this", "turn"])
-        .parse_next(&mut input)
-        .ok()?;
+    let subject_tokens = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till::<_, _, (), _, _, _, _>(
+            1..,
+            any.void(),
+            peek(|input: &mut LexStream<'_>| parse_spell_cast_action(input, action)),
+        )
+        .map(|((), ())| ())
+        .take(),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        parse_spell_cast_action(input, action)
+    })?;
+    let object_tokens = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till::<_, _, (), _, _, _, _>(
+            0..,
+            any.void(),
+            peek(primitives::phrase(&["this", "turn"])),
+        )
+        .map(|((), ())| ())
+        .take(),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::phrase(&["this", "turn"]))?;
     input.is_empty().then_some(SpellCastThisTurnShape {
         subject_tokens,
         object_tokens,

@@ -61,7 +61,9 @@ pub(super) fn parse_possession_relation(
         }
     }
     let mut input = LexStream::new(tokens);
-    let shape = parse_possession_basic(&mut input, tokens, action).ok()?;
+    let shape = crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        parse_possession_basic(input, tokens, action)
+    })?;
     input.is_empty().then_some(shape)
 }
 
@@ -78,7 +80,7 @@ pub(super) fn parse_control_relation_words<'a>(
         }
     }
     let mut input: primitives::WordSliceInput<'a> = words;
-    let shape = parse_control_words_basic(&mut input).ok()?;
+    let shape = crate::grammar::primitives::take_leaf(&mut input, parse_control_words_basic)?;
     input.is_empty().then_some(shape)
 }
 
@@ -102,16 +104,21 @@ pub(super) fn parse_prepositional_copula<'a, 'p>(
         });
     }
     let mut input = LexStream::new(tokens);
-    let subject_tokens = take_until_action(&mut input, PossessionAction::Copula).ok()?;
-    parse_action(&mut input, PossessionAction::Copula).ok()?;
-    let preposition_tokens = (|input: &mut LexStream<'a>| -> WResult<()> {
-        expected_any_word(input, preposition_words)?;
-        Ok(())
-    })
-    .take()
-    .parse_next(&mut input)
-    .ok()?;
-    let tail_tokens = take_remaining(&mut input).ok()?;
+    let subject_tokens = crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        take_until_action(input, PossessionAction::Copula)
+    })?;
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        parse_action(input, PossessionAction::Copula)
+    })?;
+    let preposition_tokens = crate::grammar::primitives::take_leaf(
+        &mut input,
+        (|input: &mut LexStream<'a>| -> WResult<()> {
+            expected_any_word(input, preposition_words)?;
+            Ok(())
+        })
+        .take(),
+    )?;
+    let tail_tokens = crate::grammar::primitives::take_leaf(&mut input, take_remaining)?;
     (!tail_tokens.is_empty()).then_some(PrepositionalCopulaShape {
         subject_tokens,
         preposition_tokens,
@@ -122,21 +129,25 @@ pub(super) fn parse_prepositional_copula<'a, 'p>(
 pub(super) fn parse_existential_object(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let tokens = trim_clause(tokens);
     let mut input = LexStream::new(tokens);
-    primitives::kw("there").parse_next(&mut input).ok()?;
-    opt(alt((primitives::kw("is"), primitives::kw("are"))))
-        .parse_next(&mut input)
-        .ok()?;
-    let object_tokens = take_remaining(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::kw("there"))?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        opt(alt((primitives::kw("is"), primitives::kw("are")))),
+    )?;
+    let object_tokens = crate::grammar::primitives::take_leaf(&mut input, take_remaining)?;
     (!object_tokens.is_empty()).then_some(object_tokens)
 }
 
 pub(super) fn parse_negated_control(tokens: &[OwnedLexToken]) -> Option<NegatedControlShape<'_>> {
     let tokens = trim_clause(tokens);
     let mut input = LexStream::new(tokens);
-    let subject_tokens = take_until_negation(&mut input).ok()?;
-    let negation_tokens = parse_control_negation.take().parse_next(&mut input).ok()?;
-    parse_action(&mut input, PossessionAction::Control).ok()?;
-    let tail_tokens = take_remaining(&mut input).ok()?;
+    let subject_tokens = crate::grammar::primitives::take_leaf(&mut input, take_until_negation)?;
+    let negation_tokens =
+        crate::grammar::primitives::take_leaf(&mut input, parse_control_negation.take())?;
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        parse_action(input, PossessionAction::Control)
+    })?;
+    let tail_tokens = crate::grammar::primitives::take_leaf(&mut input, take_remaining)?;
     (!tail_tokens.is_empty()).then_some(NegatedControlShape {
         subject_tokens,
         negation_tokens,
@@ -148,12 +159,11 @@ pub(super) fn parse_target_set_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<TargetSetPredicateAst> {
     let tokens = trim_clause(tokens);
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_different_color_sets,
         "target-set color relation",
     )
-    .ok()
 }
 
 fn parse_different_color_sets(input: &mut LexStream<'_>) -> WResult<TargetSetPredicateAst> {

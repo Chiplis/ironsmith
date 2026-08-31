@@ -92,12 +92,11 @@ pub fn parse_madness_line_tokens(tokens: &[OwnedLexToken]) -> Option<MadnessLine
     let rest = parse_expected_head(tokens, SharedKeywordHead::Madness)?;
     let comma = primitives::find_prefix(rest, primitives::comma).map(|(idx, _, _)| idx);
     let cost_tokens = strip_leading_cost_separators(&rest[..comma.unwrap_or(rest.len())]);
-    let cost = primitives::parse_all(
+    let cost = crate::grammar::primitives::probe_all(
         cost_tokens,
         parse_repeated_mana_payment_lexed,
         "repeated-mana-payment",
     )
-    .ok()
     .map(MadnessCostFact::RepeatedMana)
     .unwrap_or(MadnessCostFact::ActivationTokens(cost_tokens));
     Some(MadnessLineFact { cost })

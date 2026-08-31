@@ -52,7 +52,10 @@ pub fn parse_draw_reveal_matching_rest_bottom(
 ) -> Option<DrawRevealMatchingRestBottomShape<'_>> {
     let words = TokenWordView::new(tokens).word_refs();
     let mut input: primitives::WordSliceInput<'_> = &words;
-    let parsed = parse_draw_reveal_matching_rest_bottom_words(&mut input).ok()?;
+    let parsed = crate::grammar::primitives::take_leaf(
+        &mut input,
+        parse_draw_reveal_matching_rest_bottom_words,
+    )?;
     if !input.is_empty() {
         return None;
     }
@@ -66,12 +69,11 @@ pub fn parse_draw_reveal_matching_rest_bottom(
 pub fn parse_discard_or_redirect_replacement(
     tokens: &[OwnedLexToken],
 ) -> Option<DiscardOrRedirectReplacementShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         discard_or_redirect_replacement,
         "discard-or-redirect replacement",
     )
-    .ok()
 }
 
 pub fn parse_sacrifice_or_redirect_replacement(
@@ -87,12 +89,11 @@ pub fn parse_sacrifice_or_redirect_replacement(
     if count == 0 || filter_tokens.is_empty() {
         return None;
     }
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         after_instead,
         sacrifice_replacement_result_sentences,
         "sacrifice-or-redirect replacement result",
-    )
-    .ok()?;
+    )?;
     Some(SacrificeOrRedirectReplacementShape {
         count,
         filter_tokens,

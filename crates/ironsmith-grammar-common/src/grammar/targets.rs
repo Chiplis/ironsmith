@@ -57,7 +57,7 @@ fn parse_dynamic_target_count_prefix_lexed<'a>(
     let multiplier = alt((
         primitives::kw("twice").value(2i32),
         (
-            parse_leaf_number_prefix_lexed.verify_map(|amount| i32::try_from(amount).ok()),
+            parse_leaf_number_prefix_lexed.verify_map(|amount| crate::util::narrowed_i32(amount)),
             alt((primitives::kw("time"), primitives::kw("times"))),
         )
             .map(|(amount, _)| amount),
@@ -151,14 +151,15 @@ pub fn parse_referenced_target_prefix(
     }
     let mut input = LexStream::new(tokens);
     let before_count = input.len();
-    let count = parse_leaf_number_prefix_lexed.parse_next(&mut input).ok()?;
+    let count = crate::grammar::primitives::take_leaf(&mut input, parse_leaf_number_prefix_lexed)?;
     if before_count.saturating_sub(input.len()) != 1 {
         return None;
     }
-    primitives::kw("of").parse_next(&mut input).ok()?;
-    alt((primitives::kw("those"), primitives::kw("them")))
-        .parse_next(&mut input)
-        .ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::kw("of"))?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        alt((primitives::kw("those"), primitives::kw("them"))),
+    )?;
     let consumed = tokens.len().checked_sub(input.len())?;
     let object_tokens = trim_comma_edges(tokens.get(consumed..)?);
     if object_tokens.is_empty() {
@@ -218,39 +219,40 @@ pub fn parse_target_controller_set_suffix(tokens: &[OwnedLexToken]) -> TargetCon
 
 fn parse_controller_set_constraint_words(words: &[&str]) -> Option<TargetControllerSetConstraint> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    let constraint = alt((
-        (
-            primitives::word_slice_exact("controlled"),
-            primitives::word_slice_exact("by"),
-            primitives::word_slice_exact("the"),
-            primitives::word_slice_exact("same"),
-            primitives::word_slice_exact("player"),
-        )
-            .value(TargetControllerSetConstraint::SameController),
-        (
-            primitives::word_slice_exact("controlled"),
-            primitives::word_slice_exact("by"),
-            primitives::word_slice_exact("same"),
-            primitives::word_slice_exact("player"),
-        )
-            .value(TargetControllerSetConstraint::SameController),
-        (
-            primitives::word_slice_exact("controlled"),
-            primitives::word_slice_exact("by"),
-            primitives::word_slice_exact("different"),
-            primitives::word_slice_exact("players"),
-        )
-            .value(TargetControllerSetConstraint::DifferentControllers),
-    ))
-    .parse_next(&mut input)
-    .ok()?;
-    primitives::word_slice_eof.parse_next(&mut input).ok()?;
+    let constraint = crate::grammar::primitives::take_leaf(
+        &mut input,
+        alt((
+            (
+                primitives::word_slice_exact("controlled"),
+                primitives::word_slice_exact("by"),
+                primitives::word_slice_exact("the"),
+                primitives::word_slice_exact("same"),
+                primitives::word_slice_exact("player"),
+            )
+                .value(TargetControllerSetConstraint::SameController),
+            (
+                primitives::word_slice_exact("controlled"),
+                primitives::word_slice_exact("by"),
+                primitives::word_slice_exact("same"),
+                primitives::word_slice_exact("player"),
+            )
+                .value(TargetControllerSetConstraint::SameController),
+            (
+                primitives::word_slice_exact("controlled"),
+                primitives::word_slice_exact("by"),
+                primitives::word_slice_exact("different"),
+                primitives::word_slice_exact("players"),
+            )
+                .value(TargetControllerSetConstraint::DifferentControllers),
+        )),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::word_slice_eof)?;
     Some(constraint)
 }
 
 fn parse_counted_any_target(tokens: &[OwnedLexToken]) -> Option<ChoiceCount> {
     let mut input = LexStream::new(tokens);
-    parse_counted_any_target_lexed.parse_next(&mut input).ok()
+    crate::grammar::primitives::take_leaf(&mut input, parse_counted_any_target_lexed)
 }
 
 fn parse_counted_any_target_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ChoiceCount> {
@@ -355,7 +357,7 @@ fn parse_word_phrase_range(words: &[&str], expected: &[&'static str]) -> Option<
         if parse_word_phrase(&mut probe, expected).is_ok() {
             return Some(offset..offset + expected.len());
         }
-        parse_any_word_slice.parse_next(&mut input).ok()?;
+        crate::grammar::primitives::take_leaf(&mut input, parse_any_word_slice)?;
         offset += 1;
     }
     None

@@ -219,12 +219,11 @@ pub fn parse_tagged_permission_target_surface_tokens(
 pub fn parse_until_source_exiles_another_permission_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<UntilSourceExilesAnotherPermissionFact<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_until_source_exiles_another_permission_lexed,
         "until-source-exiles-another-permission",
     )
-    .ok()
 }
 
 pub fn parse_permission_lifetime_prefix_tokens(
@@ -256,12 +255,11 @@ pub fn parse_permission_duration_prefix_tokens(
 pub fn parse_allow_any_color_for_cast_suffix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AllowAnyColorForCastSuffixFact<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_allow_any_color_for_cast_suffix_lexed,
         "allow-any-color-for-cast-suffix",
     )
-    .ok()
 }
 
 pub fn parse_permission_tail_tokens(
@@ -274,12 +272,11 @@ pub fn parse_permission_tail_tokens(
         } else {
             (tokens, false)
         };
-    let (lifetime, without_paying_mana_cost) = primitives::parse_all(
+    let (lifetime, without_paying_mana_cost) = crate::grammar::primitives::probe_all(
         body_tokens,
         |input: &mut LexStream<'_>| parse_permission_tail_lexed(input, default_lifetime),
         "permission-tail",
-    )
-    .ok()?;
+    )?;
     Some(PermissionTailFact {
         lifetime,
         without_paying_mana_cost,
@@ -307,12 +304,11 @@ pub fn parse_tagged_permission_tail_tokens(
 pub fn parse_conditional_tagged_free_cast_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ConditionalTaggedFreeCastTailFact<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_conditional_tagged_free_cast_tail_lexed,
         "conditional-tagged-free-cast-tail",
     )
-    .ok()
 }
 
 pub fn parse_tagged_mana_value_condition_tokens(
@@ -328,45 +324,41 @@ pub fn parse_tagged_mana_value_condition_tokens(
 pub fn parse_additional_land_play_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AdditionalLandPlayFact<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_additional_land_play_lexed,
         "additional-land-play",
     )
-    .ok()
 }
 
 pub fn parse_unsupported_permission_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<UnsupportedPermissionFact> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_unsupported_permission_lexed,
         "unsupported-permission",
     )
-    .ok()
 }
 
 pub fn parse_revealed_top_library_permission_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<RevealedTopLibraryPermissionFact<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_revealed_top_library_permission_lexed,
         "revealed-top-library-permission",
     )
-    .ok()
 }
 
 pub fn parse_for_as_long_as_look_at_tagged_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ForAsLongAsLookAtTaggedFact<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_for_as_long_as_look_at_tagged_lexed,
         "for-as-long-as-look-at-tagged",
     )
-    .ok()
 }
 
 pub fn parse_spells_from_tagged_tokens(

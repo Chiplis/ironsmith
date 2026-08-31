@@ -114,7 +114,10 @@ pub fn parse_spell_cast_this_turn_surface(words: &[&str]) -> Option<SpellCastThi
 
 pub fn parse_spells_cast_this_turn_value_words(words: &[&str]) -> Option<Value> {
     let surface = parse_spell_cast_this_turn_surface(words)?;
-    let filter = parse_object_filter_words(&words[..surface.filter_end], false).ok()?;
+    let filter = crate::grammar::primitives::probe_shape(parse_object_filter_words(
+        &words[..surface.filter_end],
+        false,
+    ))?;
     Some(Value::SpellsCastThisTurnMatching {
         player: surface.player,
         filter,
@@ -124,7 +127,10 @@ pub fn parse_spells_cast_this_turn_value_words(words: &[&str]) -> Option<Value> 
 
 pub fn parse_aggregate_scope_value_words(words: &[&str]) -> Option<Value> {
     let surface = value_shapes::parse_aggregate_value_surface(words)?;
-    let filter = parse_object_filter_words(surface.scope_words, false).ok()?;
+    let filter = crate::grammar::primitives::probe_shape(parse_object_filter_words(
+        surface.scope_words,
+        false,
+    ))?;
     match surface.metric {
         AggregateValueMetric::BasicLandTypes => Some(Value::BasicLandTypesAmong(filter)),
         AggregateValueMetric::CardTypes => Some(Value::CardTypesAmong(filter)),

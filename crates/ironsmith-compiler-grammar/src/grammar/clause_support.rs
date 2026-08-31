@@ -172,7 +172,7 @@ pub fn parse_conjoined_segments_tokens(tokens: &[OwnedLexToken]) -> Vec<TokenSpa
 
 pub fn parse_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> TriggerIntro {
     let mut input = LexStream::new(tokens);
-    let intro = parse_trigger_intro_lexed(&mut input).ok();
+    let intro = crate::grammar::primitives::take_leaf(&mut input, parse_trigger_intro_lexed);
     TriggerIntro {
         body_first: intro.map_or(0, |(_, first)| first),
         is_non_at_intro: intro.is_some_and(|(non_at, _)| non_at),
@@ -308,7 +308,10 @@ pub fn parse_attack_with_shape_tokens(tokens: &[OwnedLexToken]) -> Option<Attack
 fn parse_protection_from_words(words: &[&str]) -> Option<Vec<usize>> {
     let mut input: WordSliceInput<'_> = words;
     let initial_len = input.len();
-    let mut from_words = vec![parse_protection_head_word_stream(&mut input, initial_len).ok()?];
+    let mut from_words = vec![crate::grammar::primitives::take_leaf(
+        &mut input,
+        |input: &mut _| parse_protection_head_word_stream(input, initial_len),
+    )?];
     while let Ok(word) = take_word(&mut input) {
         if word == "from" {
             from_words.push(initial_len.saturating_sub(input.len() + 1));
@@ -457,14 +460,14 @@ fn parse_attack_with_words(words: &[&str]) -> Option<(usize, usize)> {
     let initial_len = input.len();
     let attack_word = loop {
         let index = initial_len.saturating_sub(input.len());
-        let word = take_word(&mut input).ok()?;
+        let word = crate::grammar::primitives::take_leaf(&mut input, take_word)?;
         if matches!(word, "attack" | "attacks") {
             break index;
         }
     };
     let with_word = loop {
         let index = initial_len.saturating_sub(input.len());
-        let word = take_word(&mut input).ok()?;
+        let word = crate::grammar::primitives::take_leaf(&mut input, take_word)?;
         if word == "with" {
             break index;
         }
@@ -512,7 +515,7 @@ fn normalized_phrase_offset(words: &[&str], expected: &[&str]) -> Option<usize> 
         if parse_normalized_phrase(&mut candidate, expected).is_ok() {
             return Some(offset);
         }
-        take_word(&mut input).ok()?;
+        crate::grammar::primitives::take_leaf(&mut input, take_word)?;
     }
 }
 

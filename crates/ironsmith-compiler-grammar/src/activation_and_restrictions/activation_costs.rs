@@ -274,7 +274,9 @@ fn block_cost_static_ability(
         };
         let attacker_tokens = trim_edge_punctuation_tokens(&action_tokens[block_token_index + 1..]);
         parse_subject_object_filter(attacker_tokens)?
-            .or_else(|| parse_object_filter(attacker_tokens, false).ok())
+            .or_else(|| {
+                crate::grammar::primitives::probe_shape(parse_object_filter(attacker_tokens, false))
+            })
             .ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "unsupported attacker filter for blocking cost (clause: '{}')",
@@ -752,7 +754,12 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
             } => {
                 let attacker_tokens = trim_commas(attacker_tokens);
                 let attacker_filter = parse_subject_object_filter(&attacker_tokens)?
-                    .or_else(|| parse_object_filter(&attacker_tokens, false).ok())
+                    .or_else(|| {
+                        crate::grammar::primitives::probe_shape(parse_object_filter(
+                            &attacker_tokens,
+                            false,
+                        ))
+                    })
                     .ok_or_else(|| {
                         CardTextError::ParseError(format!(
                             "unsupported blocker restriction filter (clause: '{}')",

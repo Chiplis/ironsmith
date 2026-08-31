@@ -148,7 +148,11 @@ fn parse_activated_line_split<'a>(input: &mut LexStream<'a>) -> WResult<Activate
 pub fn parse_activated_line_split_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivatedLineSplit<'_>> {
-    primitives::parse_all(tokens, parse_activated_line_split, "activated-line-split").ok()
+    crate::grammar::primitives::probe_all(
+        tokens,
+        parse_activated_line_split,
+        "activated-line-split",
+    )
 }
 
 fn word_phrase<'a>(
@@ -240,7 +244,7 @@ pub fn parse_primary_mana_clause_tokens(
     }
 
     let mut input: WordSliceInput<'_> = &words;
-    let add_word = parse_primary_mana_head.parse_next(&mut input).ok()?;
+    let add_word = crate::grammar::primitives::take_leaf(&mut input, parse_primary_mana_head)?;
     let add_token = view.token_span_for_words(add_word, add_word + 1)?.start;
     let mana_tokens = tokens.get(add_token + 1..)?;
     let mana_words = TokenWordView::new(mana_tokens).word_refs();
@@ -477,9 +481,7 @@ pub fn parse_activated_abilities_reduction_remainder_tokens(
 ) -> Option<ActivatedAbilitiesReductionRemainder> {
     let words = parser_token_word_refs(tokens);
     let mut input: WordSliceInput<'_> = &words;
-    word_phrase(&["less", "to", "activate"])
-        .parse_next(&mut input)
-        .ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, word_phrase(&["less", "to", "activate"]))?;
 
     let uses_ability_activation_cost = word_phrase_present(
         &words,
@@ -605,12 +607,11 @@ fn parse_next_spell_cost_reduction<'a>(
 pub fn parse_next_spell_cost_reduction_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<NextSpellCostReductionSpec> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_next_spell_cost_reduction,
         "next-spell-cost-reduction",
     )
-    .ok()
 }
 
 fn parse_this_ability_cost_reference_prefix_lexed<'a>(

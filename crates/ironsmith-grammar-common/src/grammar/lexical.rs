@@ -57,7 +57,8 @@ fn parse_word_sequence_at<'p>(
     expected: &'p [&'p str],
 ) -> Option<ParsedWordSequence<'p>> {
     let mut input = words.get(start..)?;
-    let mut parsed = word_sequence_parser(expected).parse_next(&mut input).ok()?;
+    let mut parsed =
+        crate::grammar::primitives::take_leaf(&mut input, word_sequence_parser(expected))?;
     parsed.start = start;
     parsed.end = start + expected.len();
     Some(parsed)
@@ -82,8 +83,7 @@ fn parse_first_word_choice<'p>(
     let mut input = words;
     let mut index = 0usize;
     while !input.is_empty() {
-        let parsed: Result<&str, ErrMode<ContextError>> = any.parse_next(&mut input);
-        let word = parsed.ok()?;
+        let word = super::primitives::take_leaf(&mut input, any)?;
         for candidate in expected {
             if word == *candidate {
                 return Some((index, candidate));
@@ -102,8 +102,7 @@ fn parse_last_word_boundary_by(
     let mut index = 0usize;
     let mut last = None;
     while !input.is_empty() {
-        let parsed: Result<&str, ErrMode<ContextError>> = any.parse_next(&mut input);
-        let word = parsed.ok()?;
+        let word = super::primitives::take_leaf(&mut input, any)?;
         if predicate(word) {
             last = Some(index);
         }
@@ -123,9 +122,7 @@ fn parse_word_window_boundary(
     let mut start = 0usize;
     while start + window_len <= words.len() {
         let mut input = &words[start..];
-        let parsed: Result<&[&str], ErrMode<ContextError>> =
-            take(window_len).parse_next(&mut input);
-        if parsed.ok().is_some_and(&mut predicate) {
+        if super::primitives::take_leaf(&mut input, take(window_len)).is_some_and(&mut predicate) {
             return Some(start);
         }
         start += 1;
@@ -167,10 +164,10 @@ fn parse_first_token_sequence(
         return None;
     }
     let mut input = LexStream::new(tokens);
-    let mut parsed = repeat_till(0.., any.void(), token_sequence_parser(expected))
-        .map(|((), parsed)| parsed)
-        .parse_next(&mut input)
-        .ok()?;
+    let mut parsed = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till(0.., any.void(), token_sequence_parser(expected)).map(|((), parsed)| parsed),
+    )?;
     parsed.end = tokens.len().saturating_sub(input.len());
     parsed.start = parsed.end.saturating_sub(expected.len());
     Some(parsed)
@@ -183,8 +180,7 @@ fn parse_token_boundary_by(
     let mut input = LexStream::new(tokens);
     let mut index = 0usize;
     while !input.is_empty() {
-        let parsed: Result<&OwnedLexToken, ErrMode<ContextError>> = any.parse_next(&mut input);
-        let token = parsed.ok()?;
+        let token = super::primitives::take_leaf(&mut input, any)?;
         if predicate(token) {
             return Some(index);
         }

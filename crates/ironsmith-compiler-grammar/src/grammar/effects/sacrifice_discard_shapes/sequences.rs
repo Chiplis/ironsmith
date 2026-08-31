@@ -36,12 +36,11 @@ fn each_player_may_discard_hand_and_draw(
 pub fn parse_each_player_may_discard_hand_and_draw_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EachPlayerMayDiscardHandAndDrawShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         each_player_may_discard_hand_and_draw,
         "each-player optional hand wheel",
     )
-    .ok()
 }
 
 #[cfg(test)]

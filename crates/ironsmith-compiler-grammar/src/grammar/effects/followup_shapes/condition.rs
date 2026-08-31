@@ -55,10 +55,9 @@ pub(super) fn parse_conditional_followup_lexed<'a>(
 pub fn parse_conditional_followup(
     tokens: &[OwnedLexToken],
 ) -> Option<ConditionalFollowupShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_conditional_followup_lexed,
         "conditional subject-verb followup",
     )
-    .ok()
 }

@@ -41,7 +41,7 @@ pub fn parse_aggregate_value_surface<'a>(
     words: &'a [&'a str],
 ) -> Option<AggregateValueSurface<'a>> {
     let mut input: primitives::WordSliceInput<'a> = words;
-    let surface = parse_aggregate_surface.parse_next(&mut input).ok()?;
+    let surface = crate::grammar::primitives::take_leaf(&mut input, parse_aggregate_surface)?;
     input.is_empty().then_some(surface)
 }
 

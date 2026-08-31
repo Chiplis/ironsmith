@@ -42,6 +42,17 @@ pub mod util {
         }
     }
 
+    /// Narrow a counted amount to the runtime's signed amount type.
+    ///
+    /// Counts that do not fit are outside the range the runtime models, so the
+    /// shape carrying them is not one this grammar can represent.
+    pub fn narrowed_i32<T: TryInto<i32>>(value: T) -> Option<i32> {
+        match value.try_into() {
+            Ok(value) => Some(value),
+            Err(_) => None,
+        }
+    }
+
     pub fn with_parser_trace_enabled<T>(enabled: bool, callback: impl FnOnce() -> T) -> T {
         let previous = PARSER_TRACE_OVERRIDE.replace(Some(enabled));
         let _guard = ParserTraceOverrideGuard(previous);
@@ -87,23 +98,33 @@ pub mod util {
     }
 
     pub fn parse_card_type(word: &str) -> Option<CardType> {
-        crate::grammar::leaf::parse_leaf_card_type_complete(word).ok()
+        crate::grammar::primitives::probe_shape(
+            crate::grammar::leaf::parse_leaf_card_type_complete(word),
+        )
     }
 
     pub fn parse_color(word: &str) -> Option<ColorSet> {
-        crate::grammar::leaf::parse_leaf_color_complete(word).ok()
+        crate::grammar::primitives::probe_shape(crate::grammar::leaf::parse_leaf_color_complete(
+            word,
+        ))
     }
 
     pub fn parse_subtype_flexible(word: &str) -> Option<Subtype> {
-        crate::grammar::leaf::parse_leaf_subtype_flexible_complete(word).ok()
+        crate::grammar::primitives::probe_shape(
+            crate::grammar::leaf::parse_leaf_subtype_flexible_complete(word),
+        )
     }
 
     pub fn parse_zone_word(word: &str) -> Option<Zone> {
-        crate::grammar::leaf::parse_leaf_zone_complete(word).ok()
+        crate::grammar::primitives::probe_shape(crate::grammar::leaf::parse_leaf_zone_complete(
+            word,
+        ))
     }
 
     pub fn parse_number_word_i32(word: &str) -> Option<i32> {
-        crate::grammar::leaf::parse_number_i32_complete(word).ok()
+        crate::grammar::primitives::probe_shape(crate::grammar::leaf::parse_number_i32_complete(
+            word,
+        ))
     }
 }
 

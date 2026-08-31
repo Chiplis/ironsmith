@@ -259,11 +259,12 @@ fn parse_target_fact(
         return Some(CostTargetFact::AnyPlayer);
     }
     let target_token = view.map_word_to_token_boundary(target_start)?;
-    let filter = parse_object_filter_with_grammar_entrypoint_lexed(
-        trim_lexed_commas(tokens.get(target_token..)?),
-        false,
-    )
-    .ok()?;
+    let filter = crate::grammar::primitives::probe_shape(
+        parse_object_filter_with_grammar_entrypoint_lexed(
+            trim_lexed_commas(tokens.get(target_token..)?),
+            false,
+        ),
+    )?;
     Some(CostTargetFact::Object(filter))
 }
 

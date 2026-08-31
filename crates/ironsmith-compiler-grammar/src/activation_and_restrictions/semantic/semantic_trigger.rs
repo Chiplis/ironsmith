@@ -1280,8 +1280,14 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     right_tokens = &right_tokens[1..];
                 }
                 let parsed_filter =
-                    parse_subtype_list_enters_trigger_filter_lexed(right_tokens, other)
-                        .or_else(|| parse_object_filter_lexed(right_tokens, other).ok());
+                    parse_subtype_list_enters_trigger_filter_lexed(right_tokens, other).or_else(
+                        || {
+                            crate::grammar::primitives::probe_shape(parse_object_filter_lexed(
+                                right_tokens,
+                                other,
+                            ))
+                        },
+                    );
                 if let Some(filter) = parsed_filter {
                     return Ok(TriggerSpec::Either(
                         Box::new(TriggerSpec::ThisLeavesBattlefield),
@@ -1313,8 +1319,14 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             return Ok(TriggerSpec::LeavesBattlefield(filter));
         }
         let parsed_filter =
-            parse_subtype_list_enters_trigger_filter_lexed(filtered_subject_tokens, other)
-                .or_else(|| parse_object_filter_lexed(filtered_subject_tokens, other).ok());
+            parse_subtype_list_enters_trigger_filter_lexed(filtered_subject_tokens, other).or_else(
+                || {
+                    crate::grammar::primitives::probe_shape(parse_object_filter_lexed(
+                        filtered_subject_tokens,
+                        other,
+                    ))
+                },
+            );
         if let Some(filter) = parsed_filter {
             return Ok(TriggerSpec::LeavesBattlefield(filter));
         }
@@ -1485,7 +1497,12 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     }
                     let parsed_filter =
                         parse_subtype_list_enters_trigger_filter_lexed(right_tokens, other)
-                            .or_else(|| parse_object_filter_lexed(right_tokens, other).ok());
+                            .or_else(|| {
+                                crate::grammar::primitives::probe_shape(parse_object_filter_lexed(
+                                    right_tokens,
+                                    other,
+                                ))
+                            });
                     if let Some(mut filter) = parsed_filter {
                         if trigger_pattern_accepts(&words, UNDER_YOUR_CONTROL_PATTERN) {
                             filter.controller = Some(PlayerFilter::You);
@@ -1585,8 +1602,14 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             filtered_subject_tokens = &filtered_subject_tokens[1..];
         }
         let parsed_filter =
-            parse_subtype_list_enters_trigger_filter_lexed(filtered_subject_tokens, other)
-                .or_else(|| parse_object_filter_lexed(filtered_subject_tokens, other).ok());
+            parse_subtype_list_enters_trigger_filter_lexed(filtered_subject_tokens, other).or_else(
+                || {
+                    crate::grammar::primitives::probe_shape(parse_object_filter_lexed(
+                        filtered_subject_tokens,
+                        other,
+                    ))
+                },
+            );
         if let Some(mut filter) = parsed_filter {
             preserve_trigger_filter_union_surface(&mut filter, filtered_subject_tokens);
             let cause_filter = if contains_window(&words, &["without", "being", "played"]) {

@@ -36,18 +36,21 @@ fn parse_flashback_keyword_line_spec<'a>(
 pub fn parse_flashback_keyword_line_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<FlashbackKeywordLineSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_flashback_keyword_line_spec,
         "flashback-keyword-line",
     )
-    .ok()
 }
 
 pub fn parse_flashback_cost_clause_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<FlashbackCostClause<'_>> {
-    primitives::parse_all(tokens, parse_flashback_cost_clause, "flashback-cost-clause").ok()
+    crate::grammar::primitives::probe_all(
+        tokens,
+        parse_flashback_cost_clause,
+        "flashback-cost-clause",
+    )
 }
 
 fn parse_flashback_cost_clause<'a>(

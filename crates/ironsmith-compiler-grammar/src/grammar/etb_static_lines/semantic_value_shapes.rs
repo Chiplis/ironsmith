@@ -21,7 +21,7 @@ pub enum WhereXSpecialNumberFilterKind {
 pub fn parse_where_x_special_number_filter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<WhereXSpecialNumberFilterKind> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         alt((
             (
@@ -76,18 +76,16 @@ pub fn parse_where_x_special_number_filter_tokens(
         )),
         "special where-X number filter",
     )
-    .ok()
 }
 
 pub fn parse_etb_static_ability_ids_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<StaticAbilityId>> {
-    let parsed = primitives::parse_all(
+    let parsed = crate::grammar::primitives::probe_all(
         tokens,
         parse_etb_static_ability_ids_lexed,
         "ETB static ability list",
-    )
-    .ok()?;
+    )?;
     let mut unique = Vec::new();
     for ability in parsed {
         if !unique.iter().any(|existing| existing == &ability) {
@@ -98,12 +96,11 @@ pub fn parse_etb_static_ability_ids_tokens(
 }
 
 pub fn parse_number_of_counters_on_source_value_tokens(tokens: &[OwnedLexToken]) -> Option<Value> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_number_of_counters_on_source_value_lexed,
         "number of counters on source value",
     )
-    .ok()
 }
 
 pub fn parse_snow_mana_of_spell_color_condition_tokens(tokens: &[OwnedLexToken]) -> bool {
@@ -117,40 +114,41 @@ pub fn parse_snow_mana_of_spell_color_condition_tokens(tokens: &[OwnedLexToken])
 
 pub fn parse_pt_choice_keyword_action_words(words: &[&str]) -> Option<KeywordAction> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    let action = alt((
-        (
-            primitives::word_slice_exact("first"),
-            primitives::word_slice_exact("strike"),
-        )
-            .value(KeywordAction::FirstStrike),
-        (
-            primitives::word_slice_exact("double"),
-            primitives::word_slice_exact("strike"),
-        )
-            .value(KeywordAction::DoubleStrike),
-        primitives::word_slice_exact("flying").value(KeywordAction::Flying),
-        primitives::word_slice_exact("deathtouch").value(KeywordAction::Deathtouch),
-        primitives::word_slice_exact("haste").value(KeywordAction::Haste),
-        primitives::word_slice_exact("hexproof").value(KeywordAction::Hexproof),
-        primitives::word_slice_exact("indestructible").value(KeywordAction::Indestructible),
+    let action = crate::grammar::primitives::take_leaf(
+        &mut input,
         alt((
-            primitives::word_slice_exact("lifelink").value(KeywordAction::Lifelink),
-            primitives::word_slice_exact("menace").value(KeywordAction::Menace),
-            primitives::word_slice_exact("reach").value(KeywordAction::Reach),
-            primitives::word_slice_exact("trample").value(KeywordAction::Trample),
-            primitives::word_slice_exact("vigilance").value(KeywordAction::Vigilance),
-            primitives::word_slice_exact("defender").value(KeywordAction::Defender),
-            primitives::word_slice_exact("flash").value(KeywordAction::Flash),
-            primitives::word_slice_exact("phasing").value(KeywordAction::Phasing),
+            (
+                primitives::word_slice_exact("first"),
+                primitives::word_slice_exact("strike"),
+            )
+                .value(KeywordAction::FirstStrike),
+            (
+                primitives::word_slice_exact("double"),
+                primitives::word_slice_exact("strike"),
+            )
+                .value(KeywordAction::DoubleStrike),
+            primitives::word_slice_exact("flying").value(KeywordAction::Flying),
+            primitives::word_slice_exact("deathtouch").value(KeywordAction::Deathtouch),
+            primitives::word_slice_exact("haste").value(KeywordAction::Haste),
+            primitives::word_slice_exact("hexproof").value(KeywordAction::Hexproof),
+            primitives::word_slice_exact("indestructible").value(KeywordAction::Indestructible),
             alt((
-                primitives::word_slice_exact("shroud").value(KeywordAction::Shroud),
-                primitives::word_slice_exact("wither").value(KeywordAction::Wither),
-                primitives::word_slice_exact("infect").value(KeywordAction::Infect),
+                primitives::word_slice_exact("lifelink").value(KeywordAction::Lifelink),
+                primitives::word_slice_exact("menace").value(KeywordAction::Menace),
+                primitives::word_slice_exact("reach").value(KeywordAction::Reach),
+                primitives::word_slice_exact("trample").value(KeywordAction::Trample),
+                primitives::word_slice_exact("vigilance").value(KeywordAction::Vigilance),
+                primitives::word_slice_exact("defender").value(KeywordAction::Defender),
+                primitives::word_slice_exact("flash").value(KeywordAction::Flash),
+                primitives::word_slice_exact("phasing").value(KeywordAction::Phasing),
+                alt((
+                    primitives::word_slice_exact("shroud").value(KeywordAction::Shroud),
+                    primitives::word_slice_exact("wither").value(KeywordAction::Wither),
+                    primitives::word_slice_exact("infect").value(KeywordAction::Infect),
+                )),
             )),
         )),
-    ))
-    .parse_next(&mut input)
-    .ok()?;
+    )?;
     input.is_empty().then_some(action)
 }
 

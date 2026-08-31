@@ -42,7 +42,7 @@ pub(super) fn parse_subject_descriptor_subject(
     tokens: &[OwnedLexToken],
 ) -> Option<SubjectDescriptorConditionSubjectAst> {
     let tokens = trim_clause(tokens);
-    let kind = primitives::parse_all(
+    let kind = crate::grammar::primitives::probe_all(
         tokens,
         alt((
             primitives::phrase(&["enchanted", "permanent"])
@@ -57,8 +57,7 @@ pub(super) fn parse_subject_descriptor_subject(
             .value(SubjectDescriptorConditionSubjectAst::AttachedObject),
         )),
         "condition descriptor subject",
-    )
-    .ok()?;
+    )?;
     Some(kind)
 }
 
@@ -71,7 +70,7 @@ pub(super) fn parse_player_status_tokens(
         .parse_next(&mut shortcut)
         .is_ok()
     {
-        let status_tokens = take_remaining(&mut shortcut).ok()?;
+        let status_tokens = crate::grammar::primitives::take_leaf(&mut shortcut, take_remaining)?;
         return Some(PlayerStatusTokenShape {
             subject_tokens: None,
             status: parse_player_status_tail_tokens(status_tokens)?,
@@ -79,9 +78,10 @@ pub(super) fn parse_player_status_tokens(
     }
 
     let mut input = LexStream::new(tokens);
-    let subject_tokens = take_until_player_status_action(&mut input).ok()?;
-    parse_player_status_action(&mut input).ok()?;
-    let status_tokens = take_remaining(&mut input).ok()?;
+    let subject_tokens =
+        crate::grammar::primitives::take_leaf(&mut input, take_until_player_status_action)?;
+    crate::grammar::primitives::take_leaf(&mut input, parse_player_status_action)?;
+    let status_tokens = crate::grammar::primitives::take_leaf(&mut input, take_remaining)?;
     Some(PlayerStatusTokenShape {
         subject_tokens: Some(subject_tokens),
         status: parse_player_status_tail_tokens(status_tokens)?,
@@ -90,7 +90,11 @@ pub(super) fn parse_player_status_tokens(
 
 pub(super) fn parse_player_status_tail_tokens(tokens: &[OwnedLexToken]) -> Option<PlayerStatusAst> {
     let tokens = trim_clause(tokens);
-    primitives::parse_all(tokens, parse_player_status_tail_lexed, "player status tail").ok()
+    crate::grammar::primitives::probe_all(
+        tokens,
+        parse_player_status_tail_lexed,
+        "player status tail",
+    )
 }
 
 pub(super) fn parse_player_achievement(
@@ -137,14 +141,15 @@ fn parse_subject_status_with_copula(
     tokens: &[OwnedLexToken],
 ) -> Option<SubjectStatusConditionAst> {
     let mut input = LexStream::new(tokens);
-    let subject_tokens = repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(parse_copula))
-        .map(|((), ())| ())
-        .take()
-        .parse_next(&mut input)
-        .ok()?;
-    parse_copula(&mut input).ok()?;
-    let state = parse_status_state(&mut input).ok()?;
-    parse_end(&mut input).ok()?;
+    let subject_tokens = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(parse_copula))
+            .map(|((), ())| ())
+            .take(),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, parse_copula)?;
+    let state = crate::grammar::primitives::take_leaf(&mut input, parse_status_state)?;
+    crate::grammar::primitives::take_leaf(&mut input, parse_end)?;
     Some(SubjectStatusConditionAst {
         subject: parse_status_subject(context, subject_tokens)?,
         state,
@@ -190,7 +195,7 @@ fn parse_status_subject(
         return Some(StatusConditionSubjectAst::Source);
     }
 
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         alt((
             alt((
@@ -216,7 +221,6 @@ fn parse_status_subject(
         )),
         "condition status subject",
     )
-    .ok()
 }
 
 fn parse_status_state(input: &mut LexStream<'_>) -> WResult<StatusConditionStateAst> {
@@ -252,7 +256,10 @@ fn parse_achievement_head(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken],
         .parse_next(&mut shortcut)
         .is_ok()
     {
-        return Some((take_remaining(&mut shortcut).ok()?, false));
+        return Some((
+            crate::grammar::primitives::take_leaf(&mut shortcut, take_remaining)?,
+            false,
+        ));
     }
 
     for negated in [true, false] {

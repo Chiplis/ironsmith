@@ -105,7 +105,7 @@ pub(super) fn parse_bid_life_for_control_bundle(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
     let shape = bundle_grammar::parse_life_bid_shape(tokens)?;
-    let target = parse_target_phrase(shape.target).ok()?;
+    let target = crate::grammar::primitives::probe_shape(parse_target_phrase(shape.target))?;
 
     Some(vec![EffectAst::BidLife {
         target: target.clone(),

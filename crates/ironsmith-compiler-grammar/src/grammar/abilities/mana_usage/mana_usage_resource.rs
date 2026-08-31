@@ -14,12 +14,13 @@ pub(super) fn parse_mana_spend_bonus_shape(
     let head_end = view.token_index_after_words(spell_word_end)?;
     let after_head = tokens.get(head_end..)?;
     let mut input = LexStream::new(after_head);
-    let skipped: &[OwnedLexToken] = repeat_till(0.., any.void(), peek(primitives::comma()).void())
-        .map(|((), ())| ())
-        .take()
-        .parse_next(&mut input)
-        .ok()?;
-    primitives::comma().parse_next(&mut input).ok()?;
+    let skipped: &[OwnedLexToken] = crate::grammar::primitives::take_leaf(
+        &mut input,
+        repeat_till(0.., any.void(), peek(primitives::comma()).void())
+            .map(|((), ())| ())
+            .take(),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut input, primitives::comma())?;
     let bonus_start = head_end + skipped.len() + 1;
     Some(ManaSpendBonusShape {
         spec_tokens: token_slice_for_words(tokens, &view, spec_start, spec_start + spell_offset)?,
@@ -55,7 +56,9 @@ pub(super) fn parse_mana_spend_bonus_condition_prefix(
     ];
     candidates.into_iter().find_map(|(prefix, condition)| {
         let mut input: primitives::WordSliceInput<'_> = words;
-        parse_phrase_words(&mut input, prefix).ok()?;
+        crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+            parse_phrase_words(input, prefix)
+        })?;
         Some((words.len().saturating_sub(input.len()), condition))
     })
 }

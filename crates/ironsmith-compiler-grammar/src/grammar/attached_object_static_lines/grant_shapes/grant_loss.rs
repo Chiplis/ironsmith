@@ -8,12 +8,11 @@ pub struct AttachedKeywordGrantAndLossSpec<'a> {
 pub fn parse_attached_keyword_grant_and_loss_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedKeywordGrantAndLossSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_attached_keyword_grant_and_loss_lexed,
         "attached keyword grant and loss",
     )
-    .ok()
 }
 
 fn parse_attached_keyword_grant_and_loss_lexed<'a>(

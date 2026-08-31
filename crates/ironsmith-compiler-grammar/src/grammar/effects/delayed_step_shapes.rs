@@ -484,12 +484,11 @@ fn parse_lose_draw_clash<'a>(input: &mut LexStream<'a>) -> WResult<LoseDrawClash
 }
 
 pub fn parse_lose_draw_clash_shape(tokens: &[OwnedLexToken]) -> Option<LoseDrawClashShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         trimmed(tokens),
         parse_lose_draw_clash,
         "lose draw clash repeat",
     )
-    .ok()
 }
 
 #[cfg(test)]

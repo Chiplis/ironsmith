@@ -36,12 +36,11 @@ pub fn parse_activation_choice_prefix_tokens(
 pub fn parse_activation_exile_filter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ObjectFilter, CardTextError> {
-    let base_len = primitives::parse_all(
+    let base_len = crate::grammar::primitives::probe_all(
         tokens,
         parse_single_graveyard_suffix_lexed,
         "activation-exile-single-graveyard-filter",
-    )
-    .ok();
+    );
     let mut filter = if let Some(base_len) = base_len {
         let mut filter =
             filters::parse_object_filter_with_grammar_entrypoint_lexed(&tokens[..base_len], false)?;

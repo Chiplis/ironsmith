@@ -88,9 +88,9 @@ impl<'a> AttachedConditionSuffix<'a> {
 pub fn parse_attached_has_tokens(tokens: &[OwnedLexToken]) -> Option<AttachedHasSpec<'_>> {
     let initial_len = tokens.len();
     let mut input = LexStream::new(tokens);
-    let subject = parse_attached_subject_lexed(&mut input).ok()?;
+    let subject = crate::grammar::primitives::take_leaf(&mut input, parse_attached_subject_lexed)?;
     let has_token = initial_len.checked_sub(input.len())?;
-    semantic_kw("has").parse_next(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, semantic_kw("has"))?;
     let ability_start = initial_len.checked_sub(input.len())?;
     let ability_tokens = tokens.get(ability_start..)?;
     if ability_tokens.is_empty() {
@@ -119,7 +119,7 @@ pub fn parse_enchanted_has_tokens(tokens: &[OwnedLexToken]) -> Option<AttachedHa
 }
 
 pub fn parse_chosen_landwalk_tokens(tokens: &[OwnedLexToken]) -> Option<bool> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         (
             alt((
@@ -132,7 +132,6 @@ pub fn parse_chosen_landwalk_tokens(tokens: &[OwnedLexToken]) -> Option<bool> {
             .map(|(snow, (), ())| snow),
         "attached chosen landwalk",
     )
-    .ok()
 }
 
 pub fn split_attached_condition_suffix_tokens(

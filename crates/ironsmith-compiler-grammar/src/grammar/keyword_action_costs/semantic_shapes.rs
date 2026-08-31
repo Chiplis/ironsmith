@@ -180,7 +180,11 @@ fn parse_dynamic_life_tail<'a>(input: &mut LexStream<'a>) -> WResult<Range<usize
 }
 
 pub fn parse_keyword_dynamic_life_tail_tokens(tokens: &[OwnedLexToken]) -> Option<Range<usize>> {
-    primitives::parse_all(tokens, parse_dynamic_life_tail, "keyword-dynamic-life-tail").ok()
+    crate::grammar::primitives::probe_all(
+        tokens,
+        parse_dynamic_life_tail,
+        "keyword-dynamic-life-tail",
+    )
 }
 
 fn parse_single_graveyard_bottom_payment<'a>(
@@ -242,12 +246,11 @@ fn parse_single_graveyard_bottom_payment<'a>(
 pub fn parse_single_graveyard_bottom_payment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<KeywordSingleGraveyardBottomPayment> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_single_graveyard_bottom_payment,
         "single-graveyard-bottom-payment",
     )
-    .ok()
 }
 
 fn parse_dynamic_word<'a>(
@@ -272,7 +275,9 @@ pub fn parse_keyword_cost_action_surface_tokens(
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     let mut input: primitives::WordSliceInput<'_> = &words;
-    parse_dynamic_word(&mut input, keyword).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        parse_dynamic_word(input, keyword)
+    })?;
     if input
         .first()
         .is_some_and(|word| matches!(*word, "cost" | "costs"))

@@ -82,7 +82,7 @@ pub fn parse_counter_replacement_tokens(
     if parse_energy_counter_replacement(tokens) {
         return Some(CounterReplacementShape::EnergyYouGet);
     }
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         alt((
             parse_player_counter_per_turn_limit_lexed,
@@ -91,7 +91,6 @@ pub fn parse_counter_replacement_tokens(
         )),
         "counter replacement",
     )
-    .ok()
 }
 
 pub fn parse_token_creation_replacement_tokens(
@@ -100,18 +99,17 @@ pub fn parse_token_creation_replacement_tokens(
     if parse_generic_token_replacement(tokens) {
         return Some(TokenCreationReplacementShape::GenericUnderYourControl);
     }
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_add_treasure_token_replacement_lexed,
         "additional treasure token replacement",
     )
-    .ok()
 }
 
 pub fn parse_keyword_action_replacement_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<KeywordActionReplacementShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         alt((
             parse_learn_return_from_graveyard_replacement_lexed,
@@ -123,7 +121,6 @@ pub fn parse_keyword_action_replacement_tokens(
         )),
         "keyword-action replacement",
     )
-    .ok()
 }
 
 fn parse_learn_return_from_graveyard_replacement_lexed<'a>(

@@ -128,16 +128,17 @@ pub fn is_trigger_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> b
 
 pub fn parse_triggered_times_each_turn_from_words(words: &[&str]) -> Option<u32> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    alt((
-        |input: &mut primitives::WordSliceInput<'_>| {
-            parse_phrase_words(input, &["this", "ability", "triggers", "only"])
-        },
-        |input: &mut primitives::WordSliceInput<'_>| {
-            parse_phrase_words(input, &["do", "this", "only"])
-        },
-    ))
-    .parse_next(&mut input)
-    .ok()?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        alt((
+            |input: &mut primitives::WordSliceInput<'_>| {
+                parse_phrase_words(input, &["this", "ability", "triggers", "only"])
+            },
+            |input: &mut primitives::WordSliceInput<'_>| {
+                parse_phrase_words(input, &["do", "this", "only"])
+            },
+        )),
+    )?;
     parse_activation_count_per_turn(input)
 }
 
@@ -414,16 +415,17 @@ fn parse_graveyard_condition_shape(
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     let mut input: primitives::WordSliceInput<'_> = &words;
-    alt((
-        |input: &mut primitives::WordSliceInput<'_>| {
-            parse_phrase_words(input, &["activate", "only", "if", "there", "is"])
-        },
-        |input: &mut primitives::WordSliceInput<'_>| {
-            parse_phrase_words(input, &["activate", "only", "if", "there", "are"])
-        },
-    ))
-    .parse_next(&mut input)
-    .ok()?;
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        alt((
+            |input: &mut primitives::WordSliceInput<'_>| {
+                parse_phrase_words(input, &["activate", "only", "if", "there", "is"])
+            },
+            |input: &mut primitives::WordSliceInput<'_>| {
+                parse_phrase_words(input, &["activate", "only", "if", "there", "are"])
+            },
+        )),
+    )?;
     let start = words.len().checked_sub(input.len())?;
     let end = start + exact_tail_offset(input, TAILS)?;
     (end > start).then_some(GraveyardConditionShape {
@@ -470,21 +472,22 @@ fn parse_total_power_condition_shape(
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     let mut input: primitives::WordSliceInput<'_> = &words;
-    parse_phrase_words(
-        &mut input,
-        &[
-            "activate",
-            "only",
-            "if",
-            "creatures",
-            "you",
-            "control",
-            "have",
-            "total",
-            "power",
-        ],
-    )
-    .ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        parse_phrase_words(
+            input,
+            &[
+                "activate",
+                "only",
+                "if",
+                "creatures",
+                "you",
+                "control",
+                "have",
+                "total",
+                "power",
+            ],
+        )
+    })?;
     let start = words.len().checked_sub(input.len())?;
     (start < words.len()).then_some(TotalPowerConditionShape {
         comparison_tokens: token_slice_for_words(tokens, &view, start, words.len())?,
@@ -495,13 +498,14 @@ fn parse_total_power_condition(tokens: &[OwnedLexToken]) -> Option<ConditionExpr
     let parsed = parse_total_power_condition_shape(tokens)?;
     let comparison_words = TokenWordView::new(parsed.comparison_tokens).word_refs();
     let clause_words = TokenWordView::new(tokens).word_refs();
-    let (comparison, used) =
-        parse_filter_comparison_tokens("power", &comparison_words, &clause_words).ok()??;
+    let (comparison, used) = crate::grammar::primitives::probe_shape(
+        parse_filter_comparison_tokens("power", &comparison_words, &clause_words),
+    )??;
     let crate::filter::Comparison::GreaterThanOrEqual(threshold) = comparison else {
         return None;
     };
     (used == comparison_words.len()).then_some(ConditionExpr::ControlCreaturesTotalPowerAtLeast(
-        u32::try_from(threshold).ok()?,
+        crate::util::narrowed_u32(threshold)?,
     ))
 }
 
@@ -527,7 +531,9 @@ fn parse_sources_damage_condition_shape(
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     let mut input: primitives::WordSliceInput<'_> = &words;
-    parse_phrase_words(&mut input, &["activate", "only", "if"]).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        parse_phrase_words(input, &["activate", "only", "if"])
+    })?;
     let body_start = words.len().checked_sub(input.len())?;
     let dealt = phrase_offset_words(input, &["dealt"])?;
     let source_end = body_start + dealt;

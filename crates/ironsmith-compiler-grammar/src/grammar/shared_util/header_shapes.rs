@@ -22,7 +22,7 @@ pub struct LevelHeader {
 }
 
 pub fn parse_saga_chapter_header(line: &str) -> Option<SagaChapterHeader> {
-    let tokens = lex_line(line.trim(), 0).ok()?;
+    let tokens = crate::util::lex_fragment(line.trim(), 0)?;
     let (chapters, rest_tokens) = primitives::parse_prefix(&tokens, parse_saga_prefix)?;
     let body_shape = parse_saga_chapter_body_tokens(rest_tokens);
     let body = render_token_slice(body_shape.body_tokens)
@@ -96,7 +96,7 @@ fn parse_labeled_saga_chapter_body<'a>(
 }
 
 pub fn parse_level_header(line: &str) -> Option<LevelHeader> {
-    let tokens = lex_line(line.trim(), 0).ok()?;
+    let tokens = crate::util::lex_fragment(line.trim(), 0)?;
     if !permission_shapes::prefix_tokens(&tokens, &["level"]) {
         return None;
     }

@@ -86,7 +86,7 @@ pub fn parse_counter_then_fight_shape(
         return None;
     }
     let required_power =
-        primitives::parse_all(counter, counter_power, "counter-then-fight-power").ok()?;
+        crate::grammar::primitives::probe_all(counter, counter_power, "counter-then-fight-power")?;
     Some(CounterThenFightShape { required_power })
 }
 
@@ -130,10 +130,10 @@ pub fn parse_opponent_exile_then_hand_shape(
     third: &[OwnedLexToken],
 ) -> Option<OpponentExileThenHandShape> {
     let mut then_input = LexStream::new(second);
-    let then_at = seek_sequence_phrase(&mut then_input, &[&["then"]]).ok()?;
-    sequence_phrase(&["then"])
-        .parse_next(&mut then_input)
-        .ok()?;
+    let then_at = crate::grammar::primitives::take_leaf(&mut then_input, |input: &mut _| {
+        seek_sequence_phrase(input, &[&["then"]])
+    })?;
+    crate::grammar::primitives::take_leaf(&mut then_input, sequence_phrase(&["then"]))?;
     let rest_start = second.len().saturating_sub(then_input.len());
     if !matches_complete_content_sequence(
         &second[rest_start..],
@@ -150,16 +150,15 @@ pub fn parse_opponent_exile_then_hand_shape(
 
     let exile = &second[..then_at];
     let mut exile_input = LexStream::new(exile);
-    sequence_any_phrase(OPPONENT_EXILES)
-        .parse_next(&mut exile_input)
-        .ok()?;
+    crate::grammar::primitives::take_leaf(&mut exile_input, sequence_any_phrase(OPPONENT_EXILES))?;
     let filter_start = exile.len().saturating_sub(exile_input.len());
-    let filter_relative_end = seek_sequence_phrase(&mut exile_input, FROM_AMONG).ok()?;
+    let filter_relative_end =
+        crate::grammar::primitives::take_leaf(&mut exile_input, |input: &mut _| {
+            seek_sequence_phrase(input, FROM_AMONG)
+        })?;
     let filter_end = filter_start + filter_relative_end;
-    sequence_any_phrase(FROM_AMONG)
-        .parse_next(&mut exile_input)
-        .ok()?;
-    finish_sequence_words(&mut exile_input).ok()?;
+    crate::grammar::primitives::take_leaf(&mut exile_input, sequence_any_phrase(FROM_AMONG))?;
+    crate::grammar::primitives::take_leaf(&mut exile_input, finish_sequence_words)?;
     (filter_start < filter_end).then_some(OpponentExileThenHandShape {
         exile_filter: filter_start..filter_end,
     })
@@ -180,8 +179,10 @@ pub fn parse_search_then_name_shape(
     shuffle: &[OwnedLexToken],
 ) -> Option<SearchThenNameShape> {
     let mut input = LexStream::new(first);
-    let then_at = seek_sequence_phrase(&mut input, &[&["then"]]).ok()?;
-    sequence_phrase(&["then"]).parse_next(&mut input).ok()?;
+    let then_at = crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        seek_sequence_phrase(input, &[&["then"]])
+    })?;
+    crate::grammar::primitives::take_leaf(&mut input, sequence_phrase(&["then"]))?;
     let name_start = first.len().saturating_sub(input.len());
     if !matches_complete_content_sequence(&first[..then_at], SEARCH_CARD)
         || !matches_complete_content_sequence(&first[name_start..], CHOOSE_NAME)
@@ -249,7 +250,9 @@ pub fn parse_chosen_name_reveal_shape(
     third: &[OwnedLexToken],
 ) -> Option<ChosenNameRevealShape> {
     let mut input = LexStream::new(second);
-    let suffix_at = seek_sequence_phrase(&mut input, CHOSEN_NAME_HAND).ok()?;
+    let suffix_at = crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        seek_sequence_phrase(input, CHOSEN_NAME_HAND)
+    })?;
     if !contains_sequence_word(&second[suffix_at..], "hand")
         || !starts_content_sequence(third, &[&["put", "rest"], &["puts", "rest"]])
         || !contains_sequence_word(third, "graveyard")

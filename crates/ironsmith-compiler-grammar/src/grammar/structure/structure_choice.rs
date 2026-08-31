@@ -63,7 +63,9 @@ pub(super) fn parse_modal_header_choose_spec_inner<'a>(
 
     for choose_idx in choose_indices.iter().copied() {
         let choose_tail = &tokens[choose_idx + 1..];
-        let Some((Some(min), max)) = values::parse_modal_choose_range(choose_tail).ok().flatten()
+        let Some((Some(min), max)) =
+            crate::grammar::primitives::probe_shape(values::parse_modal_choose_range(choose_tail))
+                .flatten()
         else {
             continue;
         };

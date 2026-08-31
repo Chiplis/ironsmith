@@ -25,10 +25,9 @@ pub(super) fn parse_half_starting_life<'a>(
 }
 
 pub fn parse_half_starting_life_shape(tokens: &[OwnedLexToken]) -> Option<HalfStartingLifeShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         trim_shape_edges(tokens),
         parse_half_starting_life,
         "half starting life total",
     )
-    .ok()
 }

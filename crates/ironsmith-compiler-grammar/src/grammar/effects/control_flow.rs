@@ -121,7 +121,9 @@ impl ControlFlowPlan<'_> {
                 },
             ),
         };
-        CompilerControlFlowAst::new(semantic, node, programs, None).ok()
+        crate::grammar::primitives::probe_shape(CompilerControlFlowAst::new(
+            semantic, node, programs, None,
+        ))
     }
 }
 
@@ -308,7 +310,9 @@ fn recognize_delayed_or_duration(tokens: &[OwnedLexToken]) -> Option<ControlFlow
         if body_tokens.is_empty() {
             return None;
         }
-        let predicate = parse_predicate_with_grammar_entrypoint_lexed(condition_tokens).ok()?;
+        let predicate = crate::grammar::primitives::probe_shape(
+            parse_predicate_with_grammar_entrypoint_lexed(condition_tokens),
+        )?;
         return Some(ControlFlowPlan {
             structure: RecognizedControlFlowAst::Duration(CompilerDurationAst::ForAsLongAs(
                 predicate,
@@ -379,8 +383,7 @@ fn recognize_trailing_condition(
     // dedicated parser retains that distinction as `TargetMatches`; generic
     // state-condition recognition would instead reinterpret the earlier
     // choice as a broad `PlayerControls` predicate.
-    if super::parse_prevent_damage_sentence_lexed(tokens)
-        .ok()
+    if crate::grammar::primitives::probe_shape(super::parse_prevent_damage_sentence_lexed(tokens))
         .flatten()
         .is_some()
     {
@@ -619,7 +622,9 @@ fn parse_state_condition(
     position: ConditionPositionAst,
     negated_surface: bool,
 ) -> Option<ControlConditionAst> {
-    let predicate = parse_predicate_with_grammar_entrypoint_lexed(tokens).ok()?;
+    let predicate = crate::grammar::primitives::probe_shape(
+        parse_predicate_with_grammar_entrypoint_lexed(tokens),
+    )?;
     Some(ControlConditionAst {
         position,
         predicate: ControlPredicateAst::State(predicate),

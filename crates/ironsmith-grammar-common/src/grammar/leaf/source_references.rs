@@ -215,19 +215,24 @@ pub fn parse_leaf_this_source_reference_surface(
 pub fn parse_leaf_this_source_reference_words(words: &[&str]) -> Option<SourceReferenceSurface> {
     let normalized = words.join(" ");
     let mut input = normalized.as_str();
-    parse_this_source_reference(&mut input, words).ok()
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut &str| {
+        parse_this_source_reference(input, words)
+    })
 }
 
 pub fn parse_leaf_source_anaphor_words(words: &[&str]) -> Option<LeafSourceAnaphor> {
     let normalized = words.join(" ");
     let mut input = normalized.as_str();
-    alt((
-        (literal("its"), eof).value(LeafSourceAnaphor::Its),
-        (literal("it"), eof).value(LeafSourceAnaphor::It),
-        |input: &mut &str| parse_this_source_reference(input, words).map(LeafSourceAnaphor::This),
-    ))
-    .parse_next(&mut input)
-    .ok()
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        alt((
+            (literal("its"), eof).value(LeafSourceAnaphor::Its),
+            (literal("it"), eof).value(LeafSourceAnaphor::It),
+            |input: &mut &str| {
+                parse_this_source_reference(input, words).map(LeafSourceAnaphor::This)
+            },
+        )),
+    )
 }
 
 fn parse_this_source_reference(
@@ -458,7 +463,7 @@ fn parse_name_prefix<'a>(
     mut parser: impl Parser<&'a str, &'a str, ErrMode<ContextError>>,
 ) -> Option<&'a str> {
     let mut input = raw;
-    parser.parse_next(&mut input).ok()
+    crate::grammar::primitives::take_leaf(&mut input, parser)
 }
 
 fn parse_front_face_name<'a>(input: &mut &'a str) -> WResult<&'a str> {

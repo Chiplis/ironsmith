@@ -252,7 +252,7 @@ pub fn parse_source_card_type(word: &str) -> Option<CardType> {
     if let Ok(card_type) = leaf::parse_leaf_card_type_complete(word) {
         return Some(card_type);
     }
-    parse_plural_card_type.parse(word).ok()
+    crate::grammar::primitives::probe_shape(parse_plural_card_type.parse(word))
 }
 
 fn parse_plural_card_type(input: &mut &str) -> WResult<CardType> {

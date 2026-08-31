@@ -138,12 +138,11 @@ fn you_and_permanents<'a>(input: &mut LexStream<'a>) -> WResult<bool> {
 }
 
 pub fn parse_you_and_permanents_filter_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         (you_and_permanents_filter, winnow::combinator::eof).map(|((_, filter), _)| filter),
         "you and matching permanents",
     )
-    .ok()
 }
 
 fn source_of_your_choice<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -244,12 +243,11 @@ fn damage_source_filter_from_descriptor(descriptor: &[OwnedLexToken]) -> ObjectF
 }
 
 fn damage_source_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
-    let descriptor = primitives::parse_all(
+    let descriptor = crate::grammar::primitives::probe_all(
         tokens,
         filter_descriptor_tokens,
         "damage source filter descriptor",
-    )
-    .ok()?;
+    )?;
     Some(damage_source_filter_from_descriptor(descriptor))
 }
 
@@ -392,12 +390,11 @@ fn parse_prevent_next_damage_lexed<'a>(
 pub fn parse_prevent_next_damage_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PreventNextDamageShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_prevent_next_damage_lexed,
         "prevent next damage",
     )
-    .ok()
 }
 
 fn reflect_tail<'a>(input: &mut LexStream<'a>) -> WResult<bool> {
@@ -447,12 +444,11 @@ fn parse_prevent_next_time_damage_lexed<'a>(
 pub fn parse_prevent_next_time_damage_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PreventNextTimeDamageShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_prevent_next_time_damage_lexed,
         "prevent next time damage",
     )
-    .ok()
 }
 
 fn parse_destroy_damage_target_reference<'a>(
@@ -489,12 +485,11 @@ fn parse_replace_next_damage_with_destroy_lexed<'a>(
 pub fn parse_replace_next_damage_with_destroy_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ReplaceNextDamageWithDestroyShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_replace_next_damage_with_destroy_lexed,
         "replace next damage with destroy",
     )
-    .ok()
 }
 
 fn parse_all_to_you_and_permanents<'a>(

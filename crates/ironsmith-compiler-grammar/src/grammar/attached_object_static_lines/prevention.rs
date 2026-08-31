@@ -51,18 +51,17 @@ pub enum PutCounterPreventionSpec<'a> {
 pub fn parse_remove_counter_prevention_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<RemoveCounterPreventionSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_remove_counter_prevention_lexed,
         "remove-counter damage prevention",
     )
-    .ok()
 }
 
 pub fn parse_put_counter_prevention_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PutCounterPreventionSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         alt((
             parse_general_put_counter_prevention_lexed,
@@ -71,7 +70,6 @@ pub fn parse_put_counter_prevention_tokens(
         )),
         "put-counter damage prevention",
     )
-    .ok()
 }
 
 fn parse_remove_counter_prevention_lexed<'a>(

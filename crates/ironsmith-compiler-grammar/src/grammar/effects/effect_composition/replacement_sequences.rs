@@ -118,36 +118,31 @@ pub fn parse_kicked_multi_zone_search_destination_tokens(
             leaf::parse_leaf_number_prefix_lexed,
         ),
     )?;
-    let count = usize::try_from(count).ok()?;
-    let mut filter = filters::parse_object_filter_with_grammar_entrypoint_lexed(
-        trim_lexed_commas(filter_tokens),
-        false,
-    )
-    .ok()?;
+    let count = crate::util::narrowed_usize(count)?;
+    let mut filter = crate::grammar::primitives::probe_shape(
+        filters::parse_object_filter_with_grammar_entrypoint_lexed(
+            trim_lexed_commas(filter_tokens),
+            false,
+        ),
+    )?;
     filter.owner = Some(PlayerFilter::You);
     filter.zone = None;
 
-    let default_destination = primitives::parse_all_or_none(
+    let default_destination = primitives::probe_all(
         trim_lexed_commas(reveal_tail),
         reveal_and_put_destination,
         "multi-zone search destination",
-    )
-    .ok()
-    .flatten()?;
-    primitives::parse_all_or_none(
+    )?;
+    primitives::probe_all(
         trim_lexed_commas(shuffle),
         conditional_search_shuffle,
         "conditional search shuffle",
-    )
-    .ok()
-    .flatten()?;
-    let (kicked_destination, replacement_default) = primitives::parse_all_or_none(
+    )?;
+    let (kicked_destination, replacement_default) = primitives::probe_all(
         trim_lexed_commas(replacement),
         kicked_destination_replacement,
         "kicked search destination replacement",
-    )
-    .ok()
-    .flatten()?;
+    )?;
     if replacement_default != default_destination {
         return None;
     }
@@ -237,13 +232,11 @@ pub fn parse_spell_cast_this_way_tax_tokens(
         trim_lexed_commas(cost_tokens),
         leaf::parse_leaf_fixed_mana_cost_prefix_lexed,
     )?;
-    primitives::parse_all_or_none(
+    primitives::probe_all(
         trim_lexed_commas(rest),
         primitives::phrase(&["more", "to", "cast"]).void(),
         "spell tax suffix",
-    )
-    .ok()
-    .flatten()?;
+    )?;
 
     Some(SpellCastThisWayTaxShape {
         taxed_caster,
@@ -278,24 +271,20 @@ pub fn parse_each_player_hand_exile_play_constraints_tokens(
     let [exile_and_permission, tax, land_entry] = sentences.as_slice() else {
         return None;
     };
-    let players = primitives::parse_all_or_none(
+    let players = primitives::probe_all(
         trim_lexed_commas(exile_and_permission),
         each_player_hand_exile_play_permission,
         "each-player hand exile play permission",
-    )
-    .ok()
-    .flatten()?;
+    )?;
     let tax = parse_spell_cast_this_way_tax_tokens(tax)?;
     if tax.taxed_caster.is_some() {
         return None;
     }
-    primitives::parse_all_or_none(
+    primitives::probe_all(
         trim_lexed_commas(land_entry),
         each_land_played_this_way_enters_tapped,
         "each land played this way enters tapped",
-    )
-    .ok()
-    .flatten()?;
+    )?;
 
     Some(EachPlayerHandExilePlayConstraintsShape {
         players,
@@ -316,19 +305,18 @@ pub fn parse_persistent_exile_play_tax_tokens(
             .void()
             .parse_next(input)
     })?;
-    let mut target_filter = filters::parse_object_filter_with_grammar_entrypoint_lexed(
-        trim_lexed_commas(target_tokens),
-        false,
-    )
-    .ok()?;
+    let mut target_filter = crate::grammar::primitives::probe_shape(
+        filters::parse_object_filter_with_grammar_entrypoint_lexed(
+            trim_lexed_commas(target_tokens),
+            false,
+        ),
+    )?;
     target_filter.zone = Some(Zone::Battlefield);
-    let permission_player = primitives::parse_all_or_none(
+    let permission_player = primitives::probe_all(
         trim_lexed_commas(permission),
         persistent_play_permission,
         "persistent exile play permission",
-    )
-    .ok()
-    .flatten()?;
+    )?;
 
     let tax = parse_spell_cast_this_way_tax_tokens(tax)?;
     let taxed_caster = tax.taxed_caster?;

@@ -14,12 +14,11 @@ pub fn parse_clash_shape(tokens: &[OwnedLexToken]) -> Option<ClashOpponentAst> {
     })
     .map(|(head, _)| head)
     .unwrap_or(tail);
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         trim_shape_edges(target_tokens),
         (clash_opponent, eof).map(|(opponent, _)| opponent),
         "clash opponent",
     )
-    .ok()
 }
 
 pub(super) fn parse_repeat_process<'a>(
@@ -41,12 +40,11 @@ pub(super) fn parse_repeat_process<'a>(
 }
 
 pub fn parse_repeat_process_shape(tokens: &[OwnedLexToken]) -> Option<RepeatProcessShape> {
-    let (explicit_may, shape) = primitives::parse_all(
+    let (explicit_may, shape) = crate::grammar::primitives::probe_all(
         trim_shape_edges(tokens),
         parse_repeat_process,
         "repeat process clause",
-    )
-    .ok()?;
+    )?;
     match (explicit_may, shape) {
         (true, RepeatProcessShape::Required | RepeatProcessShape::May) => {
             Some(RepeatProcessShape::May)

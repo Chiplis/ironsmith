@@ -163,8 +163,14 @@ fn lower_consult_repeated_move(
     all_tag: TagKey,
     tag_seed: &[OwnedLexToken],
 ) -> Option<(Vec<EffectAst>, TagKey)> {
-    let mut first = parse_object_filter_lexed(&repeated.first_filter, false).ok()?;
-    let mut second = parse_object_filter_lexed(&repeated.repeated_filter, false).ok()?;
+    let mut first = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(
+        &repeated.first_filter,
+        false,
+    ))?;
+    let mut second = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(
+        &repeated.repeated_filter,
+        false,
+    ))?;
     first.zone = None;
     second.zone = None;
     // Each authored partition says "revealed this way", so the standalone
@@ -217,10 +223,10 @@ pub fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<
         .map(|prefix| prefix.trailing_tokens)
         .unwrap_or(tokens);
     let shape = bundle_grammar::parse_consult_disposition_sequence_shape(bundle_tokens)?;
-    let parts =
-        super::super::consult_family::parse_consult_traversal_sentence(&shape.consult_tokens)
-            .ok()
-            .flatten()?;
+    let parts = crate::grammar::primitives::probe_shape(
+        super::super::consult_family::parse_consult_traversal_sentence(&shape.consult_tokens),
+    )
+    .flatten()?;
     let mut effects = parts.effects;
     let keep_tag = match shape.middle {
         bundle_grammar::ConsultMiddleShape::MatchedMove(matched) => match matched.selection {
@@ -262,8 +268,9 @@ pub fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<
         }
         bundle_grammar::ConsultMiddleShape::Generic(clauses) => {
             for clause in clauses {
-                let mut clause_effects =
-                    effect_sentences::parse_effect_sentence_lexed(&clause).ok()?;
+                let mut clause_effects = crate::grammar::primitives::probe_shape(
+                    effect_sentences::parse_effect_sentence_lexed(&clause),
+                )?;
                 effects.append(&mut clause_effects);
             }
             parts.match_tag.clone()
@@ -324,7 +331,9 @@ pub(super) fn parse_reveal_repeated_disposition_bundle(
     }
 
     let shape = bundle_grammar::parse_reveal_repeated_disposition_sequence_shape(tokens)?;
-    let mut effects = effect_sentences::parse_effect_chain(&shape.reveal_tokens).ok()?;
+    let mut effects = crate::grammar::primitives::probe_shape(
+        effect_sentences::parse_effect_chain(&shape.reveal_tokens),
+    )?;
     if effects.len() > 1 {
         effects = vec![EffectAst::CommaThen { effects }];
     }

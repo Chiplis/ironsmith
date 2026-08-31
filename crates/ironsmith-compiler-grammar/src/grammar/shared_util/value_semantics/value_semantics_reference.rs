@@ -42,7 +42,8 @@ pub fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option
         // `that OBJECT's controller` relation below. The ordinary typed
         // object-filter grammar already owns the complete suffix and maps it
         // to TargetPlayerOrControllerOfTarget; let it retain both arms.
-        let filter = parse_object_filter(&filter_tokens, false).ok()?;
+        let filter =
+            crate::grammar::primitives::probe_shape(parse_object_filter(&filter_tokens, false))?;
         return Some(Value::Count(filter).with_surface_hint(ValueSurfaceHint::EqualTo));
     }
     // A relative controller clause scopes the counted set to the object
@@ -65,9 +66,10 @@ pub fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option
             && that_idx > 0
         {
             let base_range = filter_word_view.token_span_for_words(0, that_idx)?;
-            let mut filter =
-                parse_object_filter(&trim_edge_punctuation(&filter_tokens[base_range]), false)
-                    .ok()?;
+            let mut filter = crate::grammar::primitives::probe_shape(parse_object_filter(
+                &trim_edge_punctuation(&filter_tokens[base_range]),
+                false,
+            ))?;
             filter.controller = Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target));
             return Some(Value::Count(filter).with_surface_hint(ValueSurfaceHint::EqualTo));
         }
@@ -121,7 +123,10 @@ pub fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option
             },
         )
     {
-        let filter = parse_object_filter(distinct_filter_tokens, false).ok()?;
+        let filter = crate::grammar::primitives::probe_shape(parse_object_filter(
+            distinct_filter_tokens,
+            false,
+        ))?;
         return Some(Value::DistinctNames(filter).with_surface_hint(ValueSurfaceHint::EqualTo));
     }
     if let Some((value, used)) = value_expr::parse_value_expr_tokens(&value_tokens)
@@ -129,7 +134,8 @@ pub fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option
     {
         return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
     }
-    let filter = parse_object_filter(&filter_tokens, false).ok()?;
+    let filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter(&filter_tokens, false))?;
     Some(Value::Count(filter).with_surface_hint(ValueSurfaceHint::EqualTo))
 }
 
@@ -162,7 +168,9 @@ pub fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
     ) {
         Value::PartySize(player)
     } else {
-        Value::Count(parse_object_filter(&filter_tokens, false).ok()?)
+        Value::Count(crate::grammar::primitives::probe_shape(
+            parse_object_filter(&filter_tokens, false),
+        )?)
     };
 
     let offset_range = word_view.token_span_for_words(operator_word_idx + 1, word_view.len())?;
@@ -234,7 +242,8 @@ pub fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Option
     if let Some(value) = pending_aggregate_metric_value(aggregate, value_kind, object_words) {
         return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
     }
-    let mut filter = parse_object_filter(filter_tokens, false).ok()?;
+    let mut filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter(filter_tokens, false))?;
     if object_words
         .iter()
         .any(|word| matches!(*word, "permanent" | "permanents"))
@@ -322,7 +331,7 @@ pub fn parse_filter_comparison_tokens(
         if let Ok(value) = word.parse::<i32>() {
             return Some(value);
         }
-        leaf::parse_number_i32_complete(word).ok()
+        crate::grammar::primitives::probe_shape(leaf::parse_number_i32_complete(word))
     };
 
     let first = tokens[0];

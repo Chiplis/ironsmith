@@ -85,26 +85,27 @@ fn parse_legacy_controller_sacrifice_consult_tokens(
         primitives::split_lexed_once_on_separator(target_and_tail, || {
             primitives::phrase(&["sacrifices", "it"]).void()
         })?;
-    let mut target_filter = filters::parse_object_filter_with_grammar_entrypoint_lexed(
-        trim_lexed_commas(target_tokens),
-        false,
-    )
-    .ok()?;
+    let mut target_filter = crate::grammar::primitives::probe_shape(
+        filters::parse_object_filter_with_grammar_entrypoint_lexed(
+            trim_lexed_commas(target_tokens),
+            false,
+        ),
+    )?;
     target_filter.zone = Some(Zone::Battlefield);
     let (_, match_tokens) =
         primitives::parse_prefix(trim_lexed_commas(consult_tokens), controller_consult_head)?;
-    let mut match_filter = filters::parse_object_filter_with_grammar_entrypoint_lexed(
-        trim_lexed_commas(match_tokens),
-        false,
-    )
-    .ok()?;
+    let mut match_filter = crate::grammar::primitives::probe_shape(
+        filters::parse_object_filter_with_grammar_entrypoint_lexed(
+            trim_lexed_commas(match_tokens),
+            false,
+        ),
+    )?;
     match_filter.zone = None;
-    let destination = primitives::parse_all_or_none(
+    let destination = crate::grammar::primitives::probe_shape(primitives::parse_all_or_none(
         trim_lexed_commas(followup),
         controller_consult_followup,
         "controller sacrifice consult followup",
-    )
-    .ok()
+    ))
     .flatten()?;
     Some(ControllerSacrificeConsultShape {
         target_filter,
@@ -168,8 +169,9 @@ fn parse_conditional_controller_sacrifice_consult_tokens(
         return None;
     }
     let target_tokens = normalize_possessive_filter_tokens(trim_lexed_commas(target_tokens));
-    let mut target_filter =
-        filters::parse_object_filter_with_grammar_entrypoint_lexed(&target_tokens, false).ok()?;
+    let mut target_filter = crate::grammar::primitives::probe_shape(
+        filters::parse_object_filter_with_grammar_entrypoint_lexed(&target_tokens, false),
+    )?;
     target_filter.zone = Some(Zone::Battlefield);
 
     let (_, match_and_followup) =
@@ -178,18 +180,18 @@ fn parse_conditional_controller_sacrifice_consult_tokens(
         primitives::split_lexed_once_on_separator(match_and_followup, || {
             primitives::phrase(&["put", "that", "card"]).void()
         })?;
-    let mut match_filter = filters::parse_object_filter_with_grammar_entrypoint_lexed(
-        trim_lexed_commas(match_tokens),
-        false,
-    )
-    .ok()?;
+    let mut match_filter = crate::grammar::primitives::probe_shape(
+        filters::parse_object_filter_with_grammar_entrypoint_lexed(
+            trim_lexed_commas(match_tokens),
+            false,
+        ),
+    )?;
     match_filter.zone = None;
-    let destination = primitives::parse_all_or_none(
+    let destination = crate::grammar::primitives::probe_shape(primitives::parse_all_or_none(
         trim_lexed_commas(followup_tokens),
         conditional_controller_consult_followup,
         "conditional controller sacrifice consult followup",
-    )
-    .ok()
+    ))
     .flatten()?;
 
     Some(ControllerSacrificeConsultShape {
@@ -260,11 +262,12 @@ pub fn parse_each_player_shuffle_then_consult_tokens(
     if !trim_lexed_commas(shuffled_suffix).is_empty() {
         return None;
     }
-    let mut shuffled_filter = filters::parse_object_filter_with_grammar_entrypoint_lexed(
-        trim_lexed_commas(shuffled_tokens),
-        false,
-    )
-    .ok()?;
+    let mut shuffled_filter = crate::grammar::primitives::probe_shape(
+        filters::parse_object_filter_with_grammar_entrypoint_lexed(
+            trim_lexed_commas(shuffled_tokens),
+            false,
+        ),
+    )?;
     shuffled_filter.zone = Some(Zone::Battlefield);
 
     let (_, qualifying_tail) = primitives::parse_prefix(
@@ -273,11 +276,12 @@ pub fn parse_each_player_shuffle_then_consult_tokens(
     )?;
     let (qualifying_tokens, consult_tail) =
         primitives::split_lexed_once_on_separator(qualifying_tail, || qualifying_shuffle_suffix)?;
-    let mut qualifying_filter = filters::parse_object_filter_with_grammar_entrypoint_lexed(
-        trim_lexed_commas(qualifying_tokens),
-        false,
-    )
-    .ok()?;
+    let mut qualifying_filter = crate::grammar::primitives::probe_shape(
+        filters::parse_object_filter_with_grammar_entrypoint_lexed(
+            trim_lexed_commas(qualifying_tokens),
+            false,
+        ),
+    )?;
     qualifying_filter.zone = Some(Zone::Battlefield);
     let (_, match_and_disposition) =
         primitives::parse_prefix(trim_lexed_commas(consult_tail), each_player_consult_head)?;
@@ -285,18 +289,18 @@ pub fn parse_each_player_shuffle_then_consult_tokens(
         primitives::split_lexed_once_on_separator(match_and_disposition, || {
             primitives::phrase(&["then", "puts", "that", "card", "onto"]).void()
         })?;
-    let mut match_filter = filters::parse_object_filter_with_grammar_entrypoint_lexed(
-        trim_lexed_commas(match_tokens),
-        false,
-    )
-    .ok()?;
+    let mut match_filter = crate::grammar::primitives::probe_shape(
+        filters::parse_object_filter_with_grammar_entrypoint_lexed(
+            trim_lexed_commas(match_tokens),
+            false,
+        ),
+    )?;
     match_filter.zone = None;
-    let destination = primitives::parse_all_or_none(
+    let destination = crate::grammar::primitives::probe_shape(primitives::parse_all_or_none(
         trim_lexed_commas(disposition_tokens),
         random_bottom_disposition,
         "each-player consult disposition",
-    )
-    .ok()
+    ))
     .flatten()?;
     Some(EachPlayerShuffleThenConsultShape {
         shuffled_filter,

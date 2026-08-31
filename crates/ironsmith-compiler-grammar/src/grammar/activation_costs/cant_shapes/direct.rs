@@ -37,7 +37,9 @@ pub fn parse_counter_limit_fact_tokens(tokens: &[OwnedLexToken]) -> Option<Count
     }
 
     let maximum_idx = cant_idx + 4;
-    let maximum = leaf::parse_number_complete(words.get(maximum_idx)?).ok()?;
+    let maximum = crate::grammar::primitives::probe_shape(leaf::parse_number_complete(
+        words.get(maximum_idx)?,
+    ))?;
     let counter_noun_idx = maximum_idx
         + 1
         + crate::word_primitives::select_word_position(words.get(maximum_idx + 1..)?, |word| {
@@ -88,7 +90,7 @@ pub enum DirectCantFact {
 }
 
 pub fn parse_direct_cant_fact_tokens(tokens: &[OwnedLexToken]) -> Option<DirectCantFact> {
-    primitives::parse_all(tokens, parse_direct_cant_fact_lexed, "direct cant fact").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_direct_cant_fact_lexed, "direct cant fact")
 }
 
 fn parse_direct_cant_fact_lexed<'a>(input: &mut LexStream<'a>) -> WResult<DirectCantFact> {

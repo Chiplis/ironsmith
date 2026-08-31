@@ -58,8 +58,9 @@ pub fn parse_looked_card_reveal_filter_shape(tokens: &[OwnedLexToken]) -> Option
         return Some(apply_same_name(filter, same_name));
     }
 
-    let filter = parse_generic_disjunction_filter(filter_tokens)
-        .or_else(|| parse_object_filter_lexed(filter_tokens, false).ok())?;
+    let filter = parse_generic_disjunction_filter(filter_tokens).or_else(|| {
+        crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false))
+    })?;
     Some(apply_same_name(filter, same_name))
 }
 

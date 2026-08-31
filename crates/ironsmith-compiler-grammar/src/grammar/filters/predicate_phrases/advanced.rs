@@ -1311,9 +1311,9 @@ pub(super) fn parse_x_value_comparison_predicate(tokens: &[OwnedLexToken]) -> Op
         return None;
     }
     let comparison_clause = relation.tail_clause;
-    let (comparison, used) =
-        parse_quantity_comparison_prefix(comparison_clause.tokens(), false, false, "x comparison")
-            .ok()?;
+    let (comparison, used) = crate::grammar::primitives::probe_shape(
+        parse_quantity_comparison_prefix(comparison_clause.tokens(), false, false, "x comparison"),
+    )?;
     if used != comparison_clause.tokens().len() {
         return None;
     }
@@ -1343,15 +1343,18 @@ pub(super) fn parse_controlled_creatures_total_power_predicate(
 
     let tail_words = relation.tail_clause.word_refs();
     let mut comparison_words: primitives::WordSliceInput<'_> = tail_words.as_slice();
-    primitives::word_slice_exact("total")
-        .parse_next(&mut comparison_words)
-        .ok()?;
-    primitives::word_slice_exact("power")
-        .parse_next(&mut comparison_words)
-        .ok()?;
+    crate::grammar::primitives::take_leaf(
+        &mut comparison_words,
+        primitives::word_slice_exact("total"),
+    )?;
+    crate::grammar::primitives::take_leaf(
+        &mut comparison_words,
+        primitives::word_slice_exact("power"),
+    )?;
     let clause_words = LexedClause::new(tokens).word_refs();
-    let (comparison, used) =
-        parse_filter_comparison_tokens("power", comparison_words, &clause_words).ok()??;
+    let (comparison, used) = crate::grammar::primitives::probe_shape(
+        parse_filter_comparison_tokens("power", comparison_words, &clause_words),
+    )??;
     if used != comparison_words.len() {
         return None;
     }
@@ -2492,8 +2495,12 @@ pub(super) fn parse_this_spell_was_kicked_with_cost_shape(
         return None;
     }
 
-    let parsed_cost = parse_activation_cost_tokens(&tokens[cost_start..kicker_idx]).ok()?;
-    let compiler_cost = crate::semantic_assembly::assemble_activation_cost(&parsed_cost).ok()?;
+    let parsed_cost = crate::grammar::primitives::probe_shape(parse_activation_cost_tokens(
+        &tokens[cost_start..kicker_idx],
+    ))?;
+    let compiler_cost = crate::grammar::primitives::probe_shape(
+        crate::semantic_assembly::assemble_activation_cost(&parsed_cost),
+    )?;
     let compiler_cost = compiler_cost.to_core_total_cost();
     let cost_text = compiler_cost
         .mana_cost()
@@ -2668,18 +2675,21 @@ fn parse_mana_from_source_spent_to_cast_shape(tokens: &[OwnedLexToken]) -> Optio
         return None;
     }
     let source_clause = clause.between_word_range(mana_idx + 2, spent_idx)?;
-    let source_filter = parse_object_filter(source_clause.tokens(), false).ok()?;
+    let source_filter = crate::grammar::primitives::probe_shape(parse_object_filter(
+        source_clause.tokens(),
+        false,
+    ))?;
     let amount = if mana_idx == 0 {
         1
     } else {
         let amount_clause = clause.between_word_range(0, mana_idx)?;
-        let (comparison, used) = parse_quantity_comparison_prefix(
-            amount_clause.tokens(),
-            false,
-            false,
-            "mana-source spend predicate",
-        )
-        .ok()?;
+        let (comparison, used) =
+            crate::grammar::primitives::probe_shape(parse_quantity_comparison_prefix(
+                amount_clause.tokens(),
+                false,
+                false,
+                "mana-source spend predicate",
+            ))?;
         if used != amount_clause.tokens().len() {
             return None;
         }
@@ -2753,7 +2763,7 @@ pub(super) fn parse_snow_mana_of_any_spell_color_spent_to_cast_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
     let first = tokens.first()?;
-    let symbol = parse_mana_symbol(first.parser_text()).ok()?;
+    let symbol = crate::grammar::primitives::probe_shape(parse_mana_symbol(first.parser_text()))?;
     if symbol != crate::mana::ManaSymbol::Snow {
         return None;
     }
@@ -2800,7 +2810,9 @@ pub(super) fn parse_mana_symbol_spent_to_cast_shape(
     let mut predicates = symbol_clause
         .tokens()
         .iter()
-        .filter_map(|token| parse_mana_symbol(token.parser_text()).ok())
+        .filter_map(|token| {
+            crate::grammar::primitives::probe_shape(parse_mana_symbol(token.parser_text()))
+        })
         .map(|symbol| PredicateAst::ManaSpentToCastThisSpellAtLeast {
             amount: 1,
             symbol: Some(symbol),
@@ -2834,7 +2846,10 @@ pub(super) fn parse_this_permanent_attached_to_shape(
             continue;
         }
         let object_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
-        let mut filter = parse_object_filter(object_clause.tokens(), false).ok()?;
+        let mut filter = crate::grammar::primitives::probe_shape(parse_object_filter(
+            object_clause.tokens(),
+            false,
+        ))?;
         if filter.card_types.is_empty() {
             filter.card_types.push(CardType::Creature);
         }
@@ -3240,10 +3255,12 @@ pub(super) fn parse_implicit_object_present_state_shape(
     let descriptor_starts_with_other = descriptor_clause
         .token(0)
         .is_some_and(|token| token_word_is_any(token, OTHER_OR_ANOTHER_WORDS));
-    let mut filter = parse_object_filter(descriptor_clause.tokens(), descriptor_starts_with_other)
-        .ok()
-        .or_else(|| parse_color_only_object_filter_word_refs(descriptor_clause))
-        .or_else(|| parse_identity_descriptor_filter_tokens(descriptor_clause.tokens()))?;
+    let mut filter = crate::grammar::primitives::probe_shape(parse_object_filter(
+        descriptor_clause.tokens(),
+        descriptor_starts_with_other,
+    ))
+    .or_else(|| parse_color_only_object_filter_word_refs(descriptor_clause))
+    .or_else(|| parse_identity_descriptor_filter_tokens(descriptor_clause.tokens()))?;
     if let Some(surface) = demonstrative_antecedent_surface(subject_clause.tokens()) {
         filter.set_demonstrative_antecedent_surface(Some(surface));
     }
@@ -3269,7 +3286,8 @@ pub(super) fn parse_implicit_object_bare_state_shape(
         return None;
     }
     let state_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
-    let filter = parse_object_filter(state_clause.tokens(), false).ok()?;
+    let filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter(state_clause.tokens(), false))?;
     implicit_object_state_predicate_from_filter(filter, false)
 }
 
@@ -3296,10 +3314,12 @@ pub(super) fn parse_tagged_historical_identity_shape(
     {
         return None;
     }
-    let filter = parse_object_filter(descriptor_clause.tokens(), false)
-        .ok()
-        .or_else(|| parse_color_only_object_filter_word_refs(descriptor_clause))
-        .or_else(|| parse_identity_descriptor_filter_tokens(descriptor_clause.tokens()))?;
+    let filter = crate::grammar::primitives::probe_shape(parse_object_filter(
+        descriptor_clause.tokens(),
+        false,
+    ))
+    .or_else(|| parse_color_only_object_filter_word_refs(descriptor_clause))
+    .or_else(|| parse_identity_descriptor_filter_tokens(descriptor_clause.tokens()))?;
     if !object_filter_has_identity(&filter) {
         return None;
     }
@@ -3353,7 +3373,10 @@ pub(super) fn parse_tagged_creature_filter_shape(tokens: &[OwnedLexToken]) -> Op
     let tagged_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     let tag = tagged_creature_role_clause(tagged_clause)?;
     let filter_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
-    let mut filter = parse_object_filter(filter_clause.tokens(), false).ok()?;
+    let mut filter = crate::grammar::primitives::probe_shape(parse_object_filter(
+        filter_clause.tokens(),
+        false,
+    ))?;
     if filter.card_types.is_empty() {
         filter.card_types.push(CardType::Creature);
     }
@@ -3469,7 +3492,7 @@ pub(super) fn parse_quantified_objects_in_graveyard_predicate(
     {
         Some(ObjectFilter::default())
     } else {
-        parse_object_filter(descriptor_tokens, false).ok()
+        crate::grammar::primitives::probe_shape(parse_object_filter(descriptor_tokens, false))
     }
     .or_else(|| {
         descriptor_tokens
@@ -3477,7 +3500,7 @@ pub(super) fn parse_quantified_objects_in_graveyard_predicate(
             .filter(|token| token_word_is_any(token, CARD_OR_CARDS_WORDS))
             .and_then(|_| {
                 let trimmed = &descriptor_tokens[..descriptor_tokens.len().saturating_sub(1)];
-                parse_object_filter(trimmed, false).ok()
+                crate::grammar::primitives::probe_shape(parse_object_filter(trimmed, false))
             })
     })?;
     filter.zone = Some(Zone::Graveyard);
@@ -3518,7 +3541,8 @@ pub(super) fn parse_player_controls_more_than_you_predicate(
         .tokens()
         .first()
         .is_some_and(|token| token_word_is_any(token, OTHER_OR_ANOTHER_WORDS));
-    let filter = parse_object_filter(object.tokens(), other).ok()?;
+    let filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter(object.tokens(), other))?;
     if filter == ObjectFilter::default() {
         return None;
     }
@@ -3550,7 +3574,8 @@ pub(super) fn parse_player_controls_fewer_than_you_predicate(
         .tokens()
         .first()
         .is_some_and(|token| token_word_is_any(token, OTHER_OR_ANOTHER_WORDS));
-    let mut controlled_filter = parse_object_filter(object.tokens(), other).ok()?;
+    let mut controlled_filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter(object.tokens(), other))?;
     if controlled_filter == ObjectFilter::default() {
         return None;
     }
@@ -3593,7 +3618,8 @@ pub(super) fn parse_player_controls_more_than_each_other_player_predicate(
         .tokens()
         .first()
         .is_some_and(|token| token_word_is_any(token, OTHER_OR_ANOTHER_WORDS));
-    let filter = parse_object_filter(object.tokens(), other).ok()?;
+    let filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter(object.tokens(), other))?;
     if filter == ObjectFilter::default() {
         return None;
     }
@@ -3617,7 +3643,8 @@ pub(super) fn parse_opponent_controls_predicate(tokens: &[OwnedLexToken]) -> Opt
         .tokens()
         .first()
         .is_some_and(|token| token_word_is_any(token, OTHER_OR_ANOTHER_WORDS));
-    let mut filter = parse_object_filter(object.tokens(), other).ok()?;
+    let mut filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter(object.tokens(), other))?;
     filter.controller = Some(PlayerFilter::Opponent);
     filter.zone = None;
 
@@ -4009,7 +4036,8 @@ pub(super) fn parse_counted_objects_have_counter_predicate(
     let other = object_tokens
         .first()
         .is_some_and(|token| token_word_is_any(token, OTHER_OR_ANOTHER_WORDS));
-    let mut filter = parse_object_filter(object_tokens, other).ok()?;
+    let mut filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter(object_tokens, other))?;
     filter.with_counter = Some(counter_constraint);
     if filter.zone.is_none()
         && filter.card_types.iter().any(|card_type| {
@@ -4087,7 +4115,7 @@ pub(super) fn parse_counted_source_exiled_objects_predicate(
     {
         ObjectFilter::default()
     } else {
-        parse_object_filter(object_tokens, false).ok()?
+        crate::grammar::primitives::probe_shape(parse_object_filter(object_tokens, false))?
     };
     filter.zone = Some(Zone::Exile);
     filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -4378,21 +4406,24 @@ pub(super) fn parse_card_in_your_graveyard_predicate(
     if descriptor.tokens().is_empty() {
         return None;
     }
-    let mut filter = parse_object_filter(descriptor.tokens(), false)
-        .ok()
-        .or_else(|| {
-            descriptor
-                .tokens()
-                .last()
-                .and_then(OwnedLexToken::as_word)
-                .filter(|word| word_is_any(word, CARD_OR_CARDS_WORDS))
-                .and_then(|_| {
-                    let trimmed_tokens =
-                        &descriptor.tokens()[..descriptor.tokens().len().saturating_sub(1)];
-                    parse_object_filter(trimmed_tokens, false).ok()
-                })
-        })
-        .or_else(|| parse_subtype_card_descriptor_clause(descriptor))?;
+    let mut filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter(descriptor.tokens(), false))
+            .or_else(|| {
+                descriptor
+                    .tokens()
+                    .last()
+                    .and_then(OwnedLexToken::as_word)
+                    .filter(|word| word_is_any(word, CARD_OR_CARDS_WORDS))
+                    .and_then(|_| {
+                        let trimmed_tokens =
+                            &descriptor.tokens()[..descriptor.tokens().len().saturating_sub(1)];
+                        crate::grammar::primitives::probe_shape(parse_object_filter(
+                            trimmed_tokens,
+                            false,
+                        ))
+                    })
+            })
+            .or_else(|| parse_subtype_card_descriptor_clause(descriptor))?;
     filter.zone = Some(Zone::Graveyard);
     filter.owner = Some(PlayerFilter::You);
 
@@ -4758,7 +4789,8 @@ fn parse_each_global_greatest_power_predicate(tokens: &[OwnedLexToken]) -> Optio
     let filter_tokens = clause
         .tokens()
         .get(clause.words().token_span_for_words(2, words.len())?)?;
-    let mut global_creatures = parse_object_filter(filter_tokens, false).ok()?;
+    let mut global_creatures =
+        crate::grammar::primitives::probe_shape(parse_object_filter(filter_tokens, false))?;
     global_creatures.controller = None;
     global_creatures.zone = Some(Zone::Battlefield);
     let mut greatest_creatures = global_creatures.clone();

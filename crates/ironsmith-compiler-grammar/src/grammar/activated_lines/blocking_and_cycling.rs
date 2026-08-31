@@ -60,9 +60,7 @@ fn parse_cycling_marker_surface(input: &mut &str) -> WResult<()> {
 
 pub fn parse_cycling_marker_word(word: &str) -> Option<ActivatedCyclingMarker> {
     let mut input = word;
-    parse_cycling_marker_surface
-        .parse_next(&mut input)
-        .ok()
+    crate::grammar::primitives::take_leaf(&mut input, parse_cycling_marker_surface)
         .map(|()| ActivatedCyclingMarker::Cycling)
 }
 

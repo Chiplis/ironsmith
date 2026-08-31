@@ -127,6 +127,14 @@ pub fn strip_word_suffix<'a>(word: &'a str, expected: &str) -> Option<&'a str> {
     input.is_empty().then_some(prefix)
 }
 
+/// Read a decimal bound of a compact numeric range.
+fn decimal_bound(word: &str) -> Option<i32> {
+    match word.parse::<i32>() {
+        Ok(value) => Some(value),
+        Err(_) => None,
+    }
+}
+
 /// Parse a compact inclusive numeric range such as `2-5` through the shared
 /// Winnow leaf layer. Domain parsers should not split normalized token text
 /// themselves after lexing.
@@ -137,12 +145,16 @@ pub fn parse_ascii_numeric_range(word: &str) -> Option<(i32, i32)> {
         winnow::token::literal("-"),
         winnow::token::take_while(1.., |ch: char| ch.is_ascii_digit()),
     );
+    // A leaf reports absence by backtracking; there is no committed failure to
+    // surface for a single compact range word.
     let parsed: Result<(&str, &str, &str), ErrMode<ContextError>> = parser.parse_next(&mut input);
-    let (min, _, max) = parsed.ok()?;
+    let Ok((min, _, max)) = parsed else {
+        return None;
+    };
     if !input.is_empty() {
         return None;
     }
-    Some((min.parse().ok()?, max.parse().ok()?))
+    Some((decimal_bound(min)?, decimal_bound(max)?))
 }
 
 pub fn parse_sequence_prefix(words: &[&str], expected: &[&str]) -> bool {

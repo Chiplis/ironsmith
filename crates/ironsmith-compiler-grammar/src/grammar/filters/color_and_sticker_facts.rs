@@ -5,7 +5,7 @@ pub(super) fn parse_sticker_filter_words(
 ) -> Option<(crate::events::KeywordActionKind, usize)> {
     let mut input: primitives::WordSliceInput<'_> = words;
     let initial_len = input.len();
-    let sticker = parse_sticker_filter_prefix(&mut input).ok()?;
+    let sticker = crate::grammar::primitives::take_leaf(&mut input, parse_sticker_filter_prefix)?;
     Some((sticker, initial_len.saturating_sub(input.len())))
 }
 

@@ -81,16 +81,18 @@ pub fn parse_consult_matched_move_shape(
             .parse_next(input)
         })?;
     let mut destination_input = LexStream::new(after_put);
-    let destination_at = seek_sequence_phrase(
-        &mut destination_input,
-        &[
-            &["into", "your", "hand"],
-            &["into", "hand"],
-            &["onto", "the", "battlefield"],
-            &["onto", "battlefield"],
-        ],
-    )
-    .ok()?;
+    let destination_at =
+        crate::grammar::primitives::take_leaf(&mut destination_input, |input: &mut _| {
+            seek_sequence_phrase(
+                input,
+                &[
+                    &["into", "your", "hand"],
+                    &["into", "hand"],
+                    &["onto", "the", "battlefield"],
+                    &["onto", "battlefield"],
+                ],
+            )
+        })?;
     let reference = trimmed(&after_put[..destination_at]);
     let selection = if starts_content_sequence(
         reference,
@@ -115,18 +117,20 @@ pub fn parse_consult_matched_move_shape(
     let target_plural_surface = selection == ConsultMoveSelectionShape::AnyNumberOfMatched
         || contains_content_sequence(reference, &[&["cards"]]);
 
-    let zone = alt((
-        sequence_any_phrase(&[&["into", "your", "hand"], &["into", "hand"]]).value(Zone::Hand),
-        sequence_any_phrase(&[&["onto", "the", "battlefield"], &["onto", "battlefield"]])
-            .value(Zone::Battlefield),
-    ))
-    .parse_next(&mut destination_input)
-    .ok()?;
-    let controller_you = opt(sequence_phrase(&["under", "your", "control"]))
-        .parse_next(&mut destination_input)
-        .ok()?
-        .is_some();
-    finish_sequence_words(&mut destination_input).ok()?;
+    let zone = crate::grammar::primitives::take_leaf(
+        &mut destination_input,
+        alt((
+            sequence_any_phrase(&[&["into", "your", "hand"], &["into", "hand"]]).value(Zone::Hand),
+            sequence_any_phrase(&[&["onto", "the", "battlefield"], &["onto", "battlefield"]])
+                .value(Zone::Battlefield),
+        )),
+    )?;
+    let controller_you = crate::grammar::primitives::take_leaf(
+        &mut destination_input,
+        opt(sequence_phrase(&["under", "your", "control"])),
+    )?
+    .is_some();
+    crate::grammar::primitives::take_leaf(&mut destination_input, finish_sequence_words)?;
     Some(ConsultMatchedMoveShape {
         selection,
         zone,
@@ -138,20 +142,23 @@ pub fn parse_consult_matched_move_shape(
 fn parse_repeated_move_shape(tokens: &[OwnedLexToken]) -> Option<ConsultRepeatedMoveShape> {
     let tokens = trimmed(tokens);
     let mut repeated_input = LexStream::new(tokens);
-    let repeated_at = seek_sequence_phrase(
+    let repeated_at =
+        crate::grammar::primitives::take_leaf(&mut repeated_input, |input: &mut _| {
+            seek_sequence_phrase(
+                input,
+                &[
+                    &["then", "do", "the", "same", "for"],
+                    &["do", "the", "same", "for"],
+                ],
+            )
+        })?;
+    crate::grammar::primitives::take_leaf(
         &mut repeated_input,
-        &[
+        sequence_any_phrase(&[
             &["then", "do", "the", "same", "for"],
             &["do", "the", "same", "for"],
-        ],
-    )
-    .ok()?;
-    sequence_any_phrase(&[
-        &["then", "do", "the", "same", "for"],
-        &["do", "the", "same", "for"],
-    ])
-    .parse_next(&mut repeated_input)
-    .ok()?;
+        ]),
+    )?;
     let repeated_filter = trimmed(&tokens[tokens.len().saturating_sub(repeated_input.len())..]);
     if repeated_filter.is_empty() {
         return None;
@@ -164,19 +171,23 @@ fn parse_repeated_move_shape(tokens: &[OwnedLexToken]) -> Option<ConsultRepeated
         })?;
     let mut revealed_input = LexStream::new(after_put);
     let revealed_at =
-        seek_sequence_phrase(&mut revealed_input, &[&["revealed", "this", "way"]]).ok()?;
+        crate::grammar::primitives::take_leaf(&mut revealed_input, |input: &mut _| {
+            seek_sequence_phrase(input, &[&["revealed", "this", "way"]])
+        })?;
     let first_filter = trimmed(&after_put[..revealed_at]);
     if first_filter.is_empty() {
         return None;
     }
-    sequence_phrase(&["revealed", "this", "way"])
-        .parse_next(&mut revealed_input)
-        .ok()?;
-    let zone = sequence_any_phrase(&[&["onto", "the", "battlefield"], &["onto", "battlefield"]])
-        .value(Zone::Battlefield)
-        .parse_next(&mut revealed_input)
-        .ok()?;
-    finish_sequence_words(&mut revealed_input).ok()?;
+    crate::grammar::primitives::take_leaf(
+        &mut revealed_input,
+        sequence_phrase(&["revealed", "this", "way"]),
+    )?;
+    let zone = crate::grammar::primitives::take_leaf(
+        &mut revealed_input,
+        sequence_any_phrase(&[&["onto", "the", "battlefield"], &["onto", "battlefield"]])
+            .value(Zone::Battlefield),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut revealed_input, finish_sequence_words)?;
 
     Some(ConsultRepeatedMoveShape {
         first_filter: first_filter.to_vec(),
@@ -276,7 +287,7 @@ fn parse_remainder_shape_inner(
 
 fn parse_remainder_shape(tokens: &[OwnedLexToken]) -> Option<ConsultRemainderDispositionShape> {
     let mut input = LexStream::new(trimmed(tokens));
-    parse_remainder_shape_inner.parse_next(&mut input).ok()
+    crate::grammar::primitives::take_leaf(&mut input, parse_remainder_shape_inner)
 }
 
 fn split_terminal_remainder(
@@ -344,19 +355,21 @@ pub fn parse_reveal_repeated_disposition_sequence_shape(
         return None;
     };
     let mut reveal_input = LexStream::new(reveal);
-    seek_sequence_phrase(
+    crate::grammar::primitives::take_leaf(&mut reveal_input, |input: &mut _| {
+        seek_sequence_phrase(
+            input,
+            &[&[
+                "reveal", "that", "many", "cards", "from", "the", "top", "of", "your", "library",
+            ]],
+        )
+    })?;
+    crate::grammar::primitives::take_leaf(
         &mut reveal_input,
-        &[&[
+        sequence_phrase(&[
             "reveal", "that", "many", "cards", "from", "the", "top", "of", "your", "library",
-        ]],
-    )
-    .ok()?;
-    sequence_phrase(&[
-        "reveal", "that", "many", "cards", "from", "the", "top", "of", "your", "library",
-    ])
-    .parse_next(&mut reveal_input)
-    .ok()?;
-    finish_sequence_words(&mut reveal_input).ok()?;
+        ]),
+    )?;
+    crate::grammar::primitives::take_leaf(&mut reveal_input, finish_sequence_words)?;
 
     let (middle, remainder) = split_terminal_remainder(disposition)?;
     let repeated = parse_repeated_move_shape(&middle)?;

@@ -93,12 +93,11 @@ fn parse_graveyard_threshold_shape_lexed<'a>(
 fn parse_graveyard_threshold_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<GraveyardThresholdShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_graveyard_threshold_shape_lexed,
         "graveyard-threshold",
     )
-    .ok()
 }
 
 fn graveyard_threshold_owner_player(owner: GraveyardThresholdOwner) -> PlayerAst {
@@ -148,8 +147,9 @@ pub(super) fn parse_graveyard_threshold_predicate(
     }
 
     fn parse_at_least_quantity_prefix(tokens: &[OwnedLexToken]) -> Option<(u32, usize)> {
-        let (comparison, used) =
-            parse_quantity_comparison_prefix(tokens, false, false, "graveyard threshold").ok()?;
+        let (comparison, used) = crate::grammar::primitives::probe_shape(
+            parse_quantity_comparison_prefix(tokens, false, false, "graveyard threshold"),
+        )?;
         let count = comparison_to_strict_at_least_threshold(&comparison)?;
         Some((count, used))
     }
@@ -238,10 +238,10 @@ pub(super) fn parse_mana_spent_to_cast_predicate(
         return None;
     }
 
-    let (amount, used) =
-        parse_greater_than_or_equal_quantity_prefix(tokens, false, false, "mana spent predicate")
-            .ok()
-            .flatten()?;
+    let (amount, used) = crate::grammar::primitives::probe_shape(
+        parse_greater_than_or_equal_quantity_prefix(tokens, false, false, "mana spent predicate"),
+    )
+    .flatten()?;
 
     let mut idx = used;
     if tokens.get(idx).is_some_and(|token| token.is_word("of")) {
@@ -271,14 +271,14 @@ pub fn parse_same_color_mana_spent_to_cast_predicate(tokens: &[OwnedLexToken]) -
         return None;
     }
 
-    let (amount, used) = parse_greater_than_or_equal_quantity_prefix(
-        tokens,
-        false,
-        false,
-        "same-color mana spent predicate",
-    )
-    .ok()
-    .flatten()?;
+    let (amount, used) =
+        crate::grammar::primitives::probe_shape(parse_greater_than_or_equal_quantity_prefix(
+            tokens,
+            false,
+            false,
+            "same-color mana spent predicate",
+        ))
+        .flatten()?;
 
     let mut idx = used;
     let (_, after_mana_of) =

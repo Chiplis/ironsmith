@@ -74,29 +74,27 @@ pub enum ManaSpendPermissionShape<'a> {
 }
 
 pub fn parse_mana_value_grant_tokens(tokens: &[OwnedLexToken]) -> Option<ManaValueGrantSpec<'_>> {
-    primitives::parse_all(tokens, parse_mana_value_grant_lexed, "mana-value grant").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_mana_value_grant_lexed, "mana-value grant")
 }
 
 pub fn parse_life_mana_value_grant_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LifeManaValueGrantSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_life_mana_value_grant_lexed,
         "life mana-value grant",
     )
-    .ok()
 }
 
 pub fn parse_fixed_mana_cost_grant_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<FixedManaCostGrantSpec<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_fixed_mana_cost_grant_lexed,
         "fixed mana-cost grant",
     )
-    .ok()
 }
 
 pub fn parse_cascade_land_drop_tokens(tokens: &[OwnedLexToken]) -> bool {
@@ -104,13 +102,17 @@ pub fn parse_cascade_land_drop_tokens(tokens: &[OwnedLexToken]) -> bool {
 }
 
 pub fn parse_hand_size_line_tokens(tokens: &[OwnedLexToken]) -> Option<HandSizeLineSpec<'_>> {
-    primitives::parse_all(tokens, parse_hand_size_line_lexed, "maximum hand-size line").ok()
+    crate::grammar::primitives::probe_all(
+        tokens,
+        parse_hand_size_line_lexed,
+        "maximum hand-size line",
+    )
 }
 
 pub fn parse_mana_spend_permission_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaSpendPermissionShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         alt((
             parse_symbol_mana_spend_lexed,
@@ -119,7 +121,6 @@ pub fn parse_mana_spend_permission_tokens(
         )),
         "mana spend permission",
     )
-    .ok()
 }
 
 fn parse_mana_value_grant_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ManaValueGrantSpec<'a>> {

@@ -37,12 +37,11 @@ pub fn parse_once_per_turn_activation_restriction_tokens(
 pub fn parse_text_only_activation_restriction_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TextOnlyActivationRestriction> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_text_only_activation_restriction_lexed,
         "text-only activation restriction",
     )
-    .ok()
 }
 
 fn parse_text_only_activation_restriction_lexed<'a>(

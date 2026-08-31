@@ -88,7 +88,7 @@ where
     } else {
         visible
     };
-    parser.parse(LexStream::new(visible)).ok()
+    crate::grammar::primitives::probe_shape(parser.parse(LexStream::new(visible)))
 }
 
 fn simple_document_line(input: &mut LexStream<'_>) -> WResult<SimpleDocumentLineShape> {

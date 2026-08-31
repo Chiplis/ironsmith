@@ -73,9 +73,7 @@ pub(super) fn parse_other_than_filter(
     let mut input: WordInput<'_> = split.exclusions;
     let mut saw_exclusion = false;
     while !input.is_empty() {
-        match parse_excluded_object_filter_atom
-            .parse_next(&mut input)
-            .ok()?
+        match crate::grammar::primitives::take_leaf(&mut input, parse_excluded_object_filter_atom)?
         {
             ExcludedObjectFilterAtom::Separator => {}
             ExcludedObjectFilterAtom::CardType(card_type) => {

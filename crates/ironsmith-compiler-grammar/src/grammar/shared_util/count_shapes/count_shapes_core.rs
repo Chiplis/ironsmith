@@ -218,7 +218,10 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
                 &["creature", "cards", "put", "into", "your", "graveyard"],
             ],
         ) {
-            let mut filter = parse_object_filter_words(&["creature", "card"], false).ok()?;
+            let mut filter = crate::grammar::primitives::probe_shape(parse_object_filter_words(
+                &["creature", "card"],
+                false,
+            ))?;
             filter.set_explicit_card_noun(true);
             return Some((
                 Value::PendingPriorEffectMetric(

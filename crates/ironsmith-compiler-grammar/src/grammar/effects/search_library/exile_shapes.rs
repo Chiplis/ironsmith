@@ -156,7 +156,7 @@ pub fn parse_search_exile_zone_pair_shape_lexed(
     let words = parser_token_word_refs(tokens);
     let normalized = possessive_normalized_word_refs(&words);
     let mut input: primitives::WordSliceInput<'_> = &normalized;
-    parse_zone_pair_words.parse_next(&mut input).ok()
+    crate::grammar::primitives::take_leaf(&mut input, parse_zone_pair_words)
 }
 
 fn target_exile_subject(
@@ -243,7 +243,7 @@ pub fn parse_target_exile_bundle_shape_lexed(
 ) -> Option<SearchTargetExileBundleShape> {
     let words = parser_token_word_refs(trim_lexed_commas(tokens));
     let mut input: primitives::WordSliceInput<'_> = &words;
-    parse_target_exile_bundle_words.parse_next(&mut input).ok()
+    crate::grammar::primitives::take_leaf(&mut input, parse_target_exile_bundle_words)
 }
 
 fn marker_present(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> bool {

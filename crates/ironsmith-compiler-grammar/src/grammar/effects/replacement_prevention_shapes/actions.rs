@@ -51,8 +51,7 @@ fn monstrosity<'a>(input: &mut LexStream<'a>) -> WResult<Value> {
 }
 
 pub fn parse_monstrosity_shape(tokens: &[OwnedLexToken]) -> Option<MonstrosityShape> {
-    primitives::parse_all(tokens, monstrosity, "monstrosity shape")
-        .ok()
+    crate::grammar::primitives::probe_all(tokens, monstrosity, "monstrosity shape")
         .map(|amount| MonstrosityShape { amount })
 }
 
@@ -122,7 +121,7 @@ fn token_end_combat<'a>(input: &mut LexStream<'a>) -> WResult<TokenEndCombatActi
 pub fn parse_token_end_combat_action_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenEndCombatActionShape> {
-    primitives::parse_all(tokens, token_end_combat, "token end-of-combat action").ok()
+    crate::grammar::primitives::probe_all(tokens, token_end_combat, "token end-of-combat action")
 }
 
 fn extra_turn<'a>(input: &mut LexStream<'a>) -> WResult<ExtraTurnShape> {
@@ -162,7 +161,7 @@ fn extra_turn<'a>(input: &mut LexStream<'a>) -> WResult<ExtraTurnShape> {
 }
 
 pub fn parse_extra_turn_shape(tokens: &[OwnedLexToken]) -> Option<ExtraTurnShape> {
-    primitives::parse_all(tokens, extra_turn, "extra turn shape").ok()
+    crate::grammar::primitives::probe_all(tokens, extra_turn, "extra turn shape")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -294,7 +293,7 @@ fn additional_phases<'a>(input: &mut LexStream<'a>) -> WResult<AdditionalPhasesS
 }
 
 pub fn parse_additional_phases_shape(tokens: &[OwnedLexToken]) -> Option<AdditionalPhasesShape> {
-    primitives::parse_all(tokens, additional_phases, "additional phases shape").ok()
+    crate::grammar::primitives::probe_all(tokens, additional_phases, "additional phases shape")
 }
 
 fn voted_with_you_scry<'a>(input: &mut LexStream<'a>) -> WResult<Value> {
@@ -314,8 +313,7 @@ fn voted_with_you_scry<'a>(input: &mut LexStream<'a>) -> WResult<Value> {
 }
 
 pub fn parse_voted_with_you_scry_shape(tokens: &[OwnedLexToken]) -> Option<VotedWithYouScryShape> {
-    primitives::parse_all(tokens, voted_with_you_scry, "voted-with-you scry")
-        .ok()
+    crate::grammar::primitives::probe_all(tokens, voted_with_you_scry, "voted-with-you scry")
         .map(|count| VotedWithYouScryShape { count })
 }
 

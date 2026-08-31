@@ -54,10 +54,10 @@ fn complete<'a, O>(
     parser: impl Parser<WordSliceInput<'a>, O, ErrMode<ContextError>>,
 ) -> Option<O> {
     let mut input: WordSliceInput<'a> = words;
-    (parser, primitives::word_slice_eof)
-        .map(|(value, ())| value)
-        .parse_next(&mut input)
-        .ok()
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        (parser, primitives::word_slice_eof).map(|(value, ())| value),
+    )
 }
 
 fn consume_head<'a>(
@@ -65,7 +65,7 @@ fn consume_head<'a>(
     expected: &'static [&'static str],
 ) -> Option<&'a [&'a str]> {
     let mut input: WordSliceInput<'a> = words;
-    sequence(expected).parse_next(&mut input).ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, sequence(expected))?;
     Some(input)
 }
 
@@ -76,7 +76,7 @@ fn sequence_offset(words: &[&str], expected: &'static [&'static str]) -> Option<
         if sequence(expected).parse_next(&mut probe).is_ok() {
             return words.len().checked_sub(input.len());
         }
-        next_atom.parse_next(&mut input).ok()?;
+        crate::grammar::primitives::take_leaf(&mut input, next_atom)?;
     }
     None
 }
@@ -89,7 +89,7 @@ fn atom_offset(words: &[&str], expected: &'static str) -> Option<usize> {
         if atom(expected).parse_next(&mut probe).is_ok() {
             return Some(offset);
         }
-        next_atom.parse_next(&mut input).ok()?;
+        crate::grammar::primitives::take_leaf(&mut input, next_atom)?;
     }
     None
 }
@@ -726,7 +726,7 @@ fn parse_slot_items(tokens: &[OwnedLexToken]) -> Option<Vec<Vec<OwnedLexToken>>>
     let mut input = LexStream::new(tokens);
     let mut items = Vec::new();
     while !input.is_empty() {
-        let item = slot_item.parse_next(&mut input).ok()?;
+        let item = crate::grammar::primitives::take_leaf(&mut input, slot_item)?;
         let item = trim_lexed_commas(item);
         if item.is_empty() {
             return None;
@@ -885,9 +885,9 @@ pub fn parse_kicked_targeted_search_count_shape(
     };
     Some(KickedTargetedSearchCountShape {
         default_count: crate::util::parse_number_word_u32(default_count)
-            .and_then(|count| usize::try_from(count).ok())?,
+            .and_then(|count| crate::util::narrowed_usize(count))?,
         replacement_count: crate::util::parse_number_word_u32(replacement_count)
-            .and_then(|count| usize::try_from(count).ok())?,
+            .and_then(|count| crate::util::narrowed_usize(count))?,
     })
 }
 

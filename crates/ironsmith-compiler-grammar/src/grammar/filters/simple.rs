@@ -110,7 +110,7 @@ struct OtherThanSplit<'a> {
 
 pub fn parse_filter_face_state_words(words: &[&str]) -> Option<(bool, usize)> {
     let mut input: WordInput<'_> = words;
-    let state = parse_filter_face_state.parse_next(&mut input).ok()?;
+    let state = crate::grammar::primitives::take_leaf(&mut input, parse_filter_face_state)?;
     Some((state.is_face_down(), words.len().checked_sub(input.len())?))
 }
 
@@ -474,9 +474,8 @@ fn parse_simple_filter_body(
     let mut saw_inclusive_subtype_bundle = false;
 
     while !input.is_empty() {
-        let atom = parse_simple_object_filter_atom
-            .parse_next(&mut input)
-            .ok()?;
+        let atom =
+            crate::grammar::primitives::take_leaf(&mut input, parse_simple_object_filter_atom)?;
         match atom {
             SimpleObjectFilterAtom::TypeListSeparator(separator) => {
                 saw_type_list_conjunction = true;

@@ -473,11 +473,13 @@ fn parse_effect_sentences_preserving_source_boundaries_general(
             effects: effects[..effects.len() - 1].to_vec(),
         };
         let fallback = effects.last().cloned().expect("result branch was proved");
-        if parse_effect_sentences_lexed(first_sentence).ok().as_deref()
+        if crate::grammar::primitives::probe_shape(parse_effect_sentences_lexed(first_sentence))
+            .as_deref()
             == Some(std::slice::from_ref(&prefix))
-            && parse_effect_sentences_lexed(fallback_sentence)
-                .ok()
-                .as_deref()
+            && crate::grammar::primitives::probe_shape(parse_effect_sentences_lexed(
+                fallback_sentence,
+            ))
+            .as_deref()
                 == Some(std::slice::from_ref(&fallback))
         {
             return Ok(vec![

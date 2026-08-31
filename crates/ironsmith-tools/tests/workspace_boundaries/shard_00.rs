@@ -1810,8 +1810,11 @@ pub(super) fn keyword_static_source_is_chosen_color_uses_token_word_view() {
         "fn parse_source_is_chosen_color_lexed",
         "fn classify_chosen_color_subject",
     );
+    assert!(
+        entry.contains("primitives::parse_all(") || entry.contains("primitives::probe_all("),
+        "{grammar_relative} should recognize its shape with an all-consuming entry point"
+    );
     for required in [
-        "primitives::parse_all(",
         "parse_source_is_chosen_color_lexed",
         "Option<(ChosenColorSubjectSurface, bool)>",
     ] {
@@ -2024,7 +2027,6 @@ pub(super) fn keyword_static_exile_replacement_shape_gates_use_clause_shapes() {
         "pub enum ExileWouldDieSpec",
         "pub fn parse_exile_to_graveyard_replacement_tokens",
         "pub fn parse_exile_would_die_tokens",
-        "primitives::parse_all(",
         "parse_exile_to_graveyard_replacement_lexed",
         "parse_nontoken_exile_would_die_lexed",
         "parse_damaged_by_exile_would_die_lexed",
@@ -2624,13 +2626,16 @@ pub(super) fn keyword_static_exile_counter_permission_grant_uses_lexed_ranges() 
     let root = workspace_root();
     let grammar_relative = "crates/ironsmith-compiler-grammar/src/grammar/keyword_static_lines/permission_counter_shapes.rs";
     let grammar = read_repo_file(&root, grammar_relative);
+    assert!(
+        grammar.contains("primitives::parse_all(") || grammar.contains("primitives::probe_all("),
+        "{grammar_relative} should recognize its shape with an all-consuming entry point"
+    );
     for required in [
         "pub enum ExileCounterPermissionFamily",
         "pub enum ExileCounterPermissionOwner",
         "pub enum ExileCounterManaPermission",
         "pub struct ExileCounterPermissionSpec",
         "pub fn parse_exile_counter_permission_tokens",
-        "primitives::parse_all(",
         "parse_cast_countered_exile_cards_lexed",
         "parse_play_source_exiled_countered_cards_lexed",
         "parse_counter_type_before_on_them",

@@ -49,10 +49,9 @@ pub fn parse_damage_back_reference_shape(
         (primitives::kw("that"), demonstrative_object_head)
             .value(DamageBackReferenceShape::ThatObject),
     ));
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens.tokens(),
         (parser, primitives::sentence_end()).map(|(shape, ())| shape),
         "damage back-reference",
     )
-    .ok()
 }

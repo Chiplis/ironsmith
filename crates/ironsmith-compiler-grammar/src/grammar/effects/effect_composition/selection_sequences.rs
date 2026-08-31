@@ -46,13 +46,11 @@ pub fn parse_each_graveyard_owner_shuffle_shape(
     let (choice_head, suffix) = primitives::split_lexed_once_on_separator(first, || {
         primitives::phrase(&["in", "each", "graveyard"]).void()
     })?;
-    primitives::parse_all_or_none(
+    primitives::probe_all(
         suffix,
         primitives::sentence_end(),
         "each-graveyard choice suffix",
-    )
-    .ok()
-    .flatten()?;
+    )?;
 
     let (_, choice_body) = primitives::parse_prefix(
         trim_lexed_commas(choice_head),
@@ -62,13 +60,11 @@ pub fn parse_each_graveyard_owner_shuffle_shape(
         return None;
     }
 
-    primitives::parse_all_or_none(
+    primitives::probe_all(
         trim_lexed_commas(second),
         selected_cards_owner_shuffle,
         "chosen cards owner shuffle",
-    )
-    .ok()
-    .flatten()?;
+    )?;
     Some(EachGraveyardOwnerShuffleShape)
 }
 
@@ -115,13 +111,11 @@ pub fn parse_collection_scoped_each_upkeep_return_shape(
     if exile_tail.is_empty() {
         return None;
     }
-    primitives::parse_all_or_none(
+    primitives::probe_all(
         trim_lexed_commas(second),
         collection_scoped_each_upkeep_return,
         "collection-scoped each-upkeep return",
-    )
-    .ok()
-    .flatten()?;
+    )?;
     Some(CollectionScopedEachUpkeepReturnShape)
 }
 
@@ -177,19 +171,18 @@ pub fn parse_proliferate_choose_phase_out_tokens(
         trim_lexed_commas(count_and_filter),
         leaf::parse_leaf_choice_count_prefix_lexed,
     )?;
-    let mut filter = filters::parse_object_filter_with_grammar_entrypoint_lexed(
-        trim_lexed_commas(filter_tokens),
-        false,
-    )
-    .ok()?;
+    let mut filter = crate::grammar::primitives::probe_shape(
+        filters::parse_object_filter_with_grammar_entrypoint_lexed(
+            trim_lexed_commas(filter_tokens),
+            false,
+        ),
+    )?;
     filter.zone = Some(Zone::Battlefield);
-    primitives::parse_all_or_none(
+    primitives::probe_all(
         trim_lexed_commas(phase_out),
         chosen_objects_phase_out,
         "chosen objects phase out",
-    )
-    .ok()
-    .flatten()?;
+    )?;
     Some(ProliferateChoosePhaseOutShape { count, filter })
 }
 

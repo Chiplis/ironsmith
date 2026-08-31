@@ -32,18 +32,14 @@ pub fn parse_word_token_offset(tokens: &[OwnedLexToken], word_offset: usize) -> 
 
 pub fn parse_rule_id_head(rule_id: &str) -> Option<&str> {
     let mut input = rule_id;
-    let prefix: WResult<&str> = literal("parse_").parse_next(&mut input);
-    prefix.ok()?;
-    let head: WResult<&str> = take_till(1.., '_').parse_next(&mut input);
-    head.ok()
+    crate::grammar::primitives::take_leaf(&mut input, literal("parse_"))?;
+    crate::grammar::primitives::take_leaf(&mut input, take_till(1.., '_'))
 }
 
 pub fn parse_pt_components(raw: &str) -> Option<PtComponents<'_>> {
     let mut input = raw;
-    let parsed_power: WResult<&str> = take_till(1.., '/').parse_next(&mut input);
-    let power = parsed_power.ok()?;
-    let separator: WResult<&str> = literal('/').parse_next(&mut input);
-    separator.ok()?;
+    let power = crate::grammar::primitives::take_leaf(&mut input, take_till(1.., '/'))?;
+    crate::grammar::primitives::take_leaf(&mut input, literal('/'))?;
     if input.is_empty() {
         return None;
     }

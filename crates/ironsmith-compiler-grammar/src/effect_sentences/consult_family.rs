@@ -46,8 +46,10 @@ pub fn parse_consult_traversal_sentence(
         Vec::new()
     } else {
         let effects = parse_exile_top_library_prefix(&prefix_tokens)
-            .or_else(|| parse_effect_sentence_lexed(&prefix_tokens).ok())
-            .or_else(|| parse_effect_chain(&prefix_tokens).ok())
+            .or_else(|| {
+                crate::grammar::primitives::probe_shape(parse_effect_sentence_lexed(&prefix_tokens))
+            })
+            .or_else(|| crate::grammar::primitives::probe_shape(parse_effect_chain(&prefix_tokens)))
             .unwrap_or_default();
         if effects.is_empty() {
             return Ok(None);

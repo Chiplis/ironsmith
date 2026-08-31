@@ -56,7 +56,7 @@ fn parse_any_word_at(words: &[&str], idx: usize, expected: &'static [&'static st
 
 fn parse_chain_verb_word(word: &str) -> Option<ChainVerbKind> {
     let mut input = std::slice::from_ref(&word);
-    parse_chain_verb_kind.parse_next(&mut input).ok()
+    crate::grammar::primitives::take_leaf(&mut input, parse_chain_verb_kind)
 }
 
 fn parse_chain_verb_kind(input: &mut &[&str]) -> WResult<ChainVerbKind> {

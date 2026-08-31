@@ -497,7 +497,10 @@ pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
         && crate::word_primitives::at_is_any(characteristic_tail, 1, &["that", "the"])
         && crate::word_primitives::at_is_any(characteristic_tail, 3, &["was", "were"])
     {
-        let mut filter = parse_object_filter_words(&words[idx + 2..idx + 3], false).ok()?;
+        let mut filter = crate::grammar::primitives::probe_shape(parse_object_filter_words(
+            &words[idx + 2..idx + 3],
+            false,
+        ))?;
         filter = filter.match_tagged(
             crate::tag::CompilerReferenceTag::Sacrificed0.key(),
             crate::target::TaggedOpbjectRelation::IsTaggedObject,
@@ -749,7 +752,8 @@ pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
         filter.owner = Some(PlayerFilter::You);
         return Some((Value::Count(filter), filter_end));
     }
-    let filter = parse_object_filter_words(filter_words, false).ok()?;
+    let filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter_words(filter_words, false))?;
     let mut value = Value::Count(filter);
     if value_helper_shapes::has_that_player_possessive(filter_words) {
         value = value.with_surface_hint(ValueSurfaceHint::ThatPlayerPossessive);

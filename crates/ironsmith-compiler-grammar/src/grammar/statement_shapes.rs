@@ -159,7 +159,7 @@ pub fn parse_day_night_enters_tokens(tokens: &[OwnedLexToken]) -> Option<DayNigh
 }
 
 pub fn parse_reveal_from_hand_tokens(tokens: &[OwnedLexToken]) -> Option<RevealFromHandShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         (
             primitives::phrase(&["reveal", "this", "card", "from", "your", "hand"]),
@@ -168,7 +168,6 @@ pub fn parse_reveal_from_hand_tokens(tokens: &[OwnedLexToken]) -> Option<RevealF
             .value(RevealFromHandShape),
         "reveal-this-card-from-hand",
     )
-    .ok()
 }
 
 pub fn has_statement_error_prefix(tokens: &[OwnedLexToken]) -> bool {

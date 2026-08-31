@@ -18,7 +18,9 @@ pub fn parse_for_each_mana_symbol_spent_effect_shape(
     }
     let mut symbols = Vec::new();
     for token in &after_prefix[..mana_token_count] {
-        symbols.extend(crate::grammar::values::parse_mana_symbol_group(token.parser_text()).ok()?);
+        symbols.extend(crate::grammar::primitives::probe_shape(
+            crate::grammar::values::parse_mana_symbol_group(token.parser_text()),
+        )?);
     }
     let suffix = &after_prefix[mana_token_count..];
     let (&symbol, remaining) = symbols.split_first()?;
@@ -56,7 +58,7 @@ pub fn parse_for_each_mana_symbol_spent_effect_shape(
     let effect_tokens = trim_lexed_commas(effect_tokens);
     (!effect_tokens.is_empty()).then_some(ForEachManaSymbolSpentEffectShape {
         symbol,
-        group_size: symbols.len().try_into().ok()?,
+        group_size: crate::util::narrowed_u32(symbols.len())?,
         reference,
         effect_tokens,
     })

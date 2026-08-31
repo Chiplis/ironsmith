@@ -73,7 +73,7 @@ fn possessive_word_stem(input: &mut &str) -> WResult<String> {
 }
 
 pub fn parse_possessive_subject_stem(word: &str) -> Option<String> {
-    possessive_word_stem.parse(word).ok()
+    crate::grammar::primitives::probe_shape(possessive_word_stem.parse(word))
 }
 
 fn enchanted_target() -> TargetAst {
@@ -132,9 +132,12 @@ fn parsed_controller_owner_shape(
         .or_else(|| crate::util::source_reference_surface_for_words(&target_words))
         .or_else(|| crate::util::this_source_surface_for_words(&target_words));
     let target = if let Some(context) = context {
-        crate::util::parse_target_phrase_with_context(context, &target_tokens).ok()?
+        crate::grammar::primitives::probe_shape(crate::util::parse_target_phrase_with_context(
+            context,
+            &target_tokens,
+        ))?
     } else {
-        crate::util::parse_target_phrase(&target_tokens).ok()?
+        crate::grammar::primitives::probe_shape(crate::util::parse_target_phrase(&target_tokens))?
     };
     let target = match (persistent_source_surface, target) {
         (Some(surface), TargetAst::Source(_)) => {

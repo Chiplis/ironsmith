@@ -39,11 +39,11 @@ fn parse_unsigned_pt(input: &mut &str) -> WResult<(i32, i32)> {
 
 pub fn parse_pt_word(word: &str) -> Option<PtSurface> {
     let normalized = word.to_ascii_lowercase();
-    parse_pt.parse(&normalized).ok()
+    crate::grammar::primitives::probe_shape(parse_pt.parse(&normalized))
 }
 
 pub fn parse_unsigned_pt_word(word: &str) -> Option<(i32, i32)> {
-    parse_unsigned_pt.parse(word).ok()
+    crate::grammar::primitives::probe_shape(parse_unsigned_pt.parse(word))
 }
 
 pub fn first_pt_word(words: &[&str]) -> Option<(usize, PtSurface)> {

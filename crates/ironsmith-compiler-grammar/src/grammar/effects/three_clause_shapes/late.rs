@@ -71,17 +71,18 @@ pub fn parse_keyword_choice_segments_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<KeywordChoiceSegmentsShape> {
     let mut input = LexStream::new(tokens);
-    sequence_phrase(&["choose"]).parse_next(&mut input).ok()?;
-    sequence_any_phrase(FROM_AMONG)
-        .parse_next(&mut input)
-        .ok()?;
+    crate::grammar::primitives::take_leaf(&mut input, sequence_phrase(&["choose"]))?;
+    crate::grammar::primitives::take_leaf(&mut input, sequence_any_phrase(FROM_AMONG))?;
     let tail_start = tokens.len().saturating_sub(input.len());
     let tail = &tokens[tail_start..];
     let mut tail_input = LexStream::new(tail);
-    let repeated_at = seek_sequence_phrase(&mut tail_input, &[&["and", "so", "on", "for"]]).ok()?;
-    sequence_phrase(&["and", "so", "on", "for"])
-        .parse_next(&mut tail_input)
-        .ok()?;
+    let repeated_at = crate::grammar::primitives::take_leaf(&mut tail_input, |input: &mut _| {
+        seek_sequence_phrase(input, &[&["and", "so", "on", "for"]])
+    })?;
+    crate::grammar::primitives::take_leaf(
+        &mut tail_input,
+        sequence_phrase(&["and", "so", "on", "for"]),
+    )?;
     let suffix_start = tokens.len().saturating_sub(tail_input.len());
     let mut segments = Vec::new();
     push_comma_segments(&tail[..repeated_at], tail_start, &mut segments);
@@ -130,7 +131,9 @@ const CARD_FROM_REVEALED: &[&[&str]] = &[
 
 fn phrase_start(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> Option<usize> {
     let mut input = LexStream::new(tokens);
-    seek_sequence_phrase(&mut input, &[phrase]).ok()
+    crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
+        seek_sequence_phrase(input, &[phrase])
+    })
 }
 
 fn cast_tail_start(tokens: &[OwnedLexToken]) -> Option<usize> {
@@ -161,15 +164,13 @@ pub fn parse_card_type_iteration_shape(
     };
     let prefix_end = {
         let mut input = LexStream::new(second);
-        sequence_phrase(prefix).parse_next(&mut input).ok()?;
+        crate::grammar::primitives::take_leaf(&mut input, sequence_phrase(prefix))?;
         second.len().saturating_sub(input.len())
     };
     let put_relative = phrase_start(&second[prefix_end..], &["you", "may", "put"])?;
     let put_start = prefix_end + put_relative;
     let mut put_input = LexStream::new(&second[put_start..]);
-    sequence_phrase(&["you", "may", "put"])
-        .parse_next(&mut put_input)
-        .ok()?;
+    crate::grammar::primitives::take_leaf(&mut put_input, sequence_phrase(&["you", "may", "put"]))?;
     let action_tail_start = second.len().saturating_sub(put_input.len());
     if !starts_sequence(&second[action_tail_start..], CARD_FROM_REVEALED)
         || !contains_sequence_word(&second[action_tail_start..], "hand")

@@ -67,12 +67,11 @@ pub enum IsntCreatureShapeError {
 
 pub fn parse_multi_subject_segments(tokens: &[OwnedLexToken]) -> Option<Vec<&[OwnedLexToken]>> {
     let tokens = trim_lexed_commas(tokens);
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_multi_subject_segments_lexed,
         "multi-anthem-subjects",
     )
-    .ok()
 }
 
 pub fn parse_base_power_toughness_shape(
@@ -80,12 +79,11 @@ pub fn parse_base_power_toughness_shape(
 ) -> Option<BasePowerToughnessShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
     let (condition, clause_tokens) = split_leading_base_power_toughness_condition(tokens)?;
-    let mut shape = primitives::parse_all(
+    let mut shape = crate::grammar::primitives::probe_all(
         clause_tokens,
         parse_base_power_toughness_lexed,
         "base-power-toughness",
-    )
-    .ok()?;
+    )?;
     shape.condition = condition;
     Some(shape)
 }
@@ -110,19 +108,18 @@ pub fn parse_base_power_toughness_type_addition_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<BasePowerToughnessTypeAdditionShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
-    let shape = primitives::parse_all(
+    let shape = crate::grammar::primitives::probe_all(
         tokens,
         parse_base_power_toughness_type_addition_lexed,
         "base-power/toughness type addition",
-    )
-    .ok()?;
+    )?;
     super::parse_type_color_addition_shape(shape.addition_tokens)?;
     Some(shape)
 }
 
 pub fn parse_base_power_grant_shape(tokens: &[OwnedLexToken]) -> Option<BasePowerGrantShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
-    primitives::parse_all(tokens, parse_base_power_grant_lexed, "base-power grant").ok()
+    crate::grammar::primitives::probe_all(tokens, parse_base_power_grant_lexed, "base-power grant")
 }
 
 pub fn persistent_anthem_subject_facts(tokens: &[OwnedLexToken]) -> PersistentAnthemSubjectFacts {

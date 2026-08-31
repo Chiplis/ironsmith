@@ -47,7 +47,7 @@ pub enum BorrowStaticConditionSurface {
 }
 
 pub fn parse_subject_predicate_surface(sentence: &str) -> Option<SubjectPredicateSurface> {
-    let tokens = lex_line(sentence.trim(), 0).ok()?;
+    let tokens = crate::util::lex_fragment(sentence.trim(), 0)?;
     let mut verb_index = None;
     for verb in [
         "are", "is", "have", "has", "get", "gets", "gain", "gains", "lose", "loses", "become",
@@ -70,7 +70,7 @@ pub fn parse_subject_predicate_surface(sentence: &str) -> Option<SubjectPredicat
 }
 
 pub fn parse_borrow_ability_surface(sentence: &str) -> Option<BorrowAbilitySurface> {
-    let tokens = lex_line(sentence.trim(), 0).ok()?;
+    let tokens = crate::util::lex_fragment(sentence.trim(), 0)?;
     let words = TokenWordView::new(&tokens).word_refs();
     let mut best: Option<(usize, &'static str)> = None;
     for ability in BORROW_ABILITIES {
@@ -94,7 +94,7 @@ pub fn parse_borrow_ability_surface(sentence: &str) -> Option<BorrowAbilitySurfa
 }
 
 pub fn parse_exiled_source_ability_tail(tail: &str) -> Option<ExiledSourceAbilityTailSurface> {
-    let tokens = lex_line(tail.trim(), 0).ok()?;
+    let tokens = crate::util::lex_fragment(tail.trim(), 0)?;
     let words = TokenWordView::new(&tokens).word_refs();
     for source_noun in SOURCE_NOUNS {
         let possessive = format!("{source_noun}s");
@@ -112,7 +112,7 @@ pub fn parse_exiled_source_ability_tail(tail: &str) -> Option<ExiledSourceAbilit
 }
 
 pub fn parse_borrow_static_sentence_surface(sentence: &str) -> Option<BorrowStaticSentenceSurface> {
-    let tokens = lex_line(sentence.trim(), 0).ok()?;
+    let tokens = crate::util::lex_fragment(sentence.trim(), 0)?;
     let words = TokenWordView::new(&tokens);
     let word_refs = words.word_refs();
     let leading_words = if permission_shapes::prefix_words(&word_refs, &["if"]) {
@@ -161,10 +161,10 @@ pub fn parse_borrow_static_condition_surface(
     condition: &str,
     ability: &str,
 ) -> Option<BorrowStaticConditionSurface> {
-    let tokens = lex_line(condition.trim(), 0).ok()?;
+    let tokens = crate::util::lex_fragment(condition.trim(), 0)?;
     let words = TokenWordView::new(&tokens);
     let word_refs = words.word_refs();
-    let ability_tokens = lex_line(ability.trim(), 0).ok()?;
+    let ability_tokens = crate::util::lex_fragment(ability.trim(), 0)?;
     let ability_words = TokenWordView::new(&ability_tokens).word_refs();
     if ability_words.is_empty() {
         return None;

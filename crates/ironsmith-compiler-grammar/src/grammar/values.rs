@@ -126,12 +126,11 @@ fn parse_players_who_control_more_value_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayersWhoControlMoreValueShape<'_>> {
     let tokens = trim_edge_punctuation_tokens(tokens);
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_players_who_control_more_value_shape_lexed,
         "players-who-control-more-value",
     )
-    .ok()
 }
 
 fn parse_value_stat_segment_shape_lexed<'a>(
@@ -183,12 +182,11 @@ fn parse_value_stat_segment_shape_lexed<'a>(
 }
 
 fn parse_value_stat_segment_shape(clause: LexedClause<'_>) -> Option<ValueStatSegmentShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         clause.tokens(),
         parse_value_stat_segment_shape_lexed,
         "value-stat-segment",
     )
-    .ok()
 }
 
 fn value_from_stat_segment_shape(shape: ValueStatSegmentShape) -> Value {
@@ -323,12 +321,11 @@ fn parse_value_mana_value_segment_shape_lexed<'a>(
 fn parse_value_mana_value_segment_shape(
     clause: LexedClause<'_>,
 ) -> Option<ValueManaValueSegmentShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         clause.tokens(),
         parse_value_mana_value_segment_shape_lexed,
         "value-mana-value-segment",
     )
-    .ok()
 }
 
 fn value_from_mana_value_segment_shape(shape: ValueManaValueSegmentShape) -> Value {
@@ -407,7 +404,10 @@ pub fn parse_players_who_control_more_than_you_value_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     let shape = parse_players_who_control_more_value_shape(tokens)?;
-    let filter = parse_object_filter_lexed(shape.filter_tokens, false).ok()?;
+    let filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(
+        shape.filter_tokens,
+        false,
+    ))?;
     let players = shape.players.player_filter();
     let Some(minimum_difference_token) = shape.minimum_difference_token else {
         return Some(Value::PlayersWhoControlMoreThanYou { players, filter });
@@ -416,7 +416,7 @@ pub fn parse_players_who_control_more_than_you_value_lexed(
         return None;
     };
     let minimum_difference = parse_number_word_u32(minimum_difference_token.parser_text())
-        .or_else(|| minimum_difference_token.parser_text().parse::<u32>().ok())?;
+        .or_else(|| crate::util::decimal_count(minimum_difference_token.parser_text()))?;
     Some(Value::PlayersWhoControlAtLeastMoreThanYou {
         players,
         filter,

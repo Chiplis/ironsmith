@@ -55,13 +55,12 @@ fn parse_preprocess_sentence_list_lexed(
 }
 
 pub fn parse_preprocess_sentence_list(text: &str) -> Option<PreprocessSentenceList> {
-    let tokens = lex_line(text.trim(), 0).ok()?;
-    primitives::parse_all(
+    let tokens = crate::util::lex_fragment(text.trim(), 0)?;
+    crate::grammar::primitives::probe_all(
         &tokens,
         parse_preprocess_sentence_list_lexed,
         "preprocess sentence list",
     )
-    .ok()
 }
 
 #[cfg(test)]

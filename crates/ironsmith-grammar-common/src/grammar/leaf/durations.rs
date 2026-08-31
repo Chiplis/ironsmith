@@ -206,9 +206,8 @@ pub fn parse_leaf_restriction_duration_suffix_tokens<'a>(
 #[cfg(any(test, feature = "test-support"))]
 pub fn parse_leaf_duration_prefix_words(words: &[&str]) -> Option<LeafDurationWordSpan> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    let duration = parse_leaf_duration_phrase_word_slice
-        .parse_next(&mut input)
-        .ok()?;
+    let duration =
+        crate::grammar::primitives::take_leaf(&mut input, parse_leaf_duration_phrase_word_slice)?;
     Some(LeafDurationWordSpan {
         duration,
         start: 0,

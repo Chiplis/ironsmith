@@ -55,7 +55,7 @@ fn named_surface_for_span(
     // inside that grammar-proven source-target span rather than treating the
     // action verb as part of the reference surface.
     let authored = authored_name_text_for_span(info, span)?;
-    let authored_tokens = crate::lexer::lex_line(&authored, info.line_index).ok()?;
+    let authored_tokens = crate::util::lex_fragment(&authored, info.line_index)?;
     // Source maps produced before the final comma/`then` split can retain a
     // few bytes from the following clause (for example `Jace, th`). Reapply
     // the grammar boundary to the mapped slice before accepting it as a name.
@@ -79,7 +79,7 @@ pub(super) fn recognize_named_source_action_surfaces(info: &LineInfo, effects: &
             info.normalized.original.as_str(),
             &info.normalized.char_map,
         );
-        let tokens = crate::lexer::lex_line(&info.normalized.original, info.line_index).ok()?;
+        let tokens = crate::util::lex_fragment(&info.normalized.original, info.line_index)?;
         crate::grammar::source_surface_shapes::parse_named_operand_nearest_to(
             &tokens,
             "exile",
@@ -91,7 +91,7 @@ pub(super) fn recognize_named_source_action_surfaces(info: &LineInfo, effects: &
     fn named_surface_from_authored_counter_clause(
         info: &LineInfo,
     ) -> Option<crate::target::SourceReferenceSurface> {
-        let tokens = crate::lexer::lex_line(&info.normalized.original, info.line_index).ok()?;
+        let tokens = crate::util::lex_fragment(&info.normalized.original, info.line_index)?;
         crate::grammar::source_surface_shapes::parse_unique_named_counter_on_operand(&tokens)
             .map(|shape| shape.surface)
     }
@@ -126,7 +126,7 @@ pub(super) fn recognize_named_source_action_surfaces(info: &LineInfo, effects: &
     }
 
     fn authored_return_surface(info: &LineInfo) -> Option<crate::target::SourceReferenceSurface> {
-        let tokens = crate::lexer::lex_line(&info.normalized.original, info.line_index).ok()?;
+        let tokens = crate::util::lex_fragment(&info.normalized.original, info.line_index)?;
         if !tokens.iter().any(|token| token.is_word("exile")) {
             return None;
         }

@@ -31,12 +31,11 @@ pub struct DiscardRedrawManaValueLadderShape {
 pub fn parse_discard_redraw_mana_value_ladder_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DiscardRedrawManaValueLadderShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_discard_redraw_mana_value_ladder,
         "discard redraw mana-value ladder",
     )
-    .ok()
 }
 
 fn parse_discard_redraw_mana_value_ladder(
@@ -115,12 +114,11 @@ fn parse_discard_redraw_mana_value_ladder(
 pub fn parse_energy_pay_any_destroy_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EnergyPayAnyDestroyShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_energy_pay_any_destroy,
         "energy pay-any destroy threshold",
     )
-    .ok()
 }
 
 fn energy_symbol(input: &mut LexStream<'_>) -> WResult<()> {
@@ -191,12 +189,11 @@ fn parse_energy_pay_any_destroy(input: &mut LexStream<'_>) -> WResult<EnergyPayA
 pub fn parse_tap_controlled_objects_then_empty_mana_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TapControlledObjectsThenEmptyManaShape> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_tap_controlled_objects_then_empty_mana,
         "tap controlled objects then empty mana",
     )
-    .ok()
 }
 
 fn parse_tap_controlled_objects_then_empty_mana(

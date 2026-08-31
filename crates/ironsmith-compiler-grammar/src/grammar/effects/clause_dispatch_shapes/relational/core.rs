@@ -3,7 +3,7 @@ use super::*;
 pub fn parse_passive_goad_shape(tokens: &[OwnedLexToken]) -> Option<PassiveGoadShape<'_>> {
     let (subject_tokens, tail_tokens) =
         primitives::split_lexed_once_on_separator(tokens, || primitives::kw("is").void())?;
-    let for_rest_of_game = primitives::parse_all(
+    let for_rest_of_game = crate::grammar::primitives::probe_all(
         trim_lexed_commas(tail_tokens),
         (
             alt((primitives::kw("goaded"), primitives::kw("goad"))),
@@ -16,8 +16,7 @@ pub fn parse_passive_goad_shape(tokens: &[OwnedLexToken]) -> Option<PassiveGoadS
         )
             .map(|(_, for_rest_of_game, _)| for_rest_of_game),
         "passive goad shape",
-    )
-    .ok()?;
+    )?;
     let subject_tokens = trim_lexed_commas(subject_tokens);
     if subject_tokens.is_empty() {
         return None;

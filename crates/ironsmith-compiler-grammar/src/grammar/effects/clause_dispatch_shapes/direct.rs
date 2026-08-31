@@ -39,7 +39,7 @@ fn next_turn_cant<'a>(input: &mut LexStream<'a>) -> WResult<NextTurnCantShape<'a
 pub fn parse_next_turn_cant_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<NextTurnCantShape<'_>> {
-    primitives::parse_all(tokens, next_turn_cant, "next-turn restriction").ok()
+    crate::grammar::primitives::probe_all(tokens, next_turn_cant, "next-turn restriction")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -208,12 +208,11 @@ fn exact_shape(tokens: &[OwnedLexToken]) -> Option<DirectClauseShape> {
         ])
         .value(DirectClauseShape::CastNonlandTaggedThisWay),
     ));
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         (parser, primitives::sentence_end()).map(|(shape, _)| shape),
         "direct clause shape",
     )
-    .ok()
 }
 
 fn damaged_players_cant_gain_life(tokens: &[OwnedLexToken]) -> bool {

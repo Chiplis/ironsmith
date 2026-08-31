@@ -226,14 +226,14 @@ fn parse_life_total_or_less_spell_cost_condition(
 
     let shape = early_static_facts::parse_life_total_cost_condition_shape_tokens(tokens)?;
     let quantity_tokens = &tokens[shape.quantity_tokens];
-    let (amount, used) = parse_less_than_or_equal_quantity_prefix(
-        quantity_tokens,
-        false,
-        false,
-        "life total cost condition",
-    )
-    .ok()
-    .flatten()?;
+    let (amount, used) =
+        crate::grammar::primitives::probe_shape(parse_less_than_or_equal_quantity_prefix(
+            quantity_tokens,
+            false,
+            false,
+            "life total cost condition",
+        ))
+        .flatten()?;
     (used == shape.quantity_words)
         .then_some(ThisSpellCostCondition::YouLifeTotalOrLess(amount as i32))
 }
@@ -5192,14 +5192,15 @@ pub fn parse_no_more_than_creatures_can_attack_or_block_each_combat_line(
         return Ok(None);
     }
 
-    let Some((maximum, used)) = parse_less_than_or_equal_quantity_prefix(
-        tokens,
-        false,
-        false,
-        "combat maximum restriction",
-    )
-    .ok()
-    .flatten() else {
+    let Some((maximum, used)) =
+        crate::grammar::primitives::probe_shape(parse_less_than_or_equal_quantity_prefix(
+            tokens,
+            false,
+            false,
+            "combat maximum restriction",
+        ))
+        .flatten()
+    else {
         return Ok(None);
     };
 
@@ -5599,7 +5600,7 @@ pub fn parse_characteristic_defining_pt_term(tokens: &[OwnedLexToken]) -> Option
         }
     }
 
-    let filter = parse_object_filter(start, false).ok()?;
+    let filter = crate::grammar::primitives::probe_shape(parse_object_filter(start, false))?;
     Some(bind_characteristic_count_to_affected_controller(
         Value::Count(filter),
         start,
@@ -5859,7 +5860,8 @@ fn parse_target_whose_controller_has_cards_in_graveyard_cost_condition(
     let target_start_token = static_keyword_shapes::parse_word_token_offset(tokens, target_start)?;
     let whose_token = static_keyword_shapes::parse_word_token_offset(tokens, whose)?;
     let target_tokens = trim_commas(tokens.get(target_start_token..whose_token)?);
-    let mut filter = parse_object_filter_lexed(&target_tokens, false).ok()?;
+    let mut filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter_lexed(&target_tokens, false))?;
     if filter.source || filter.card_types.is_empty() {
         return None;
     }
@@ -5871,13 +5873,13 @@ fn parse_target_whose_controller_has_cards_in_graveyard_cost_condition(
     let count_start_token =
         static_keyword_shapes::parse_word_token_offset(tokens, count_start_word)?;
     let count_tokens = tokens.get(count_start_token..)?;
-    let (count, used) = parse_greater_than_or_equal_quantity_prefix(
-        count_tokens,
-        false,
-        false,
-        "target controller graveyard threshold",
-    )
-    .ok()??;
+    let (count, used) =
+        crate::grammar::primitives::probe_shape(parse_greater_than_or_equal_quantity_prefix(
+            count_tokens,
+            false,
+            false,
+            "target controller graveyard threshold",
+        ))??;
     if !crate::word_primitives::parse_sequence_complete(
         &parser_token_word_refs(count_tokens.get(used..)?),
         &["cards", "in", "their", "graveyard"],
@@ -6115,8 +6117,9 @@ fn parse_conjoined_this_spell_cost_condition(
         let Ok(left) = parse_static_condition_clause(&left_tokens) else {
             continue;
         };
-        let right = parse_conjoined_this_spell_cost_condition(&right_tokens)
-            .or_else(|| parse_static_condition_clause(&right_tokens).ok());
+        let right = parse_conjoined_this_spell_cost_condition(&right_tokens).or_else(|| {
+            crate::grammar::primitives::probe_shape(parse_static_condition_clause(&right_tokens))
+        });
         if let Some(right) = right {
             return Some(crate::ConditionExpr::And(Box::new(left), Box::new(right)));
         }

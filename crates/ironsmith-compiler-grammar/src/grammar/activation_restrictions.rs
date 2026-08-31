@@ -167,18 +167,15 @@ pub fn parse_activation_negation_span_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivationNegationSpan> {
     let mut input = LexStream::new(tokens);
-    parse_activation_negation_span_lexed
-        .parse_next(&mut input)
-        .ok()
+    crate::grammar::primitives::take_leaf(&mut input, parse_activation_negation_span_lexed)
 }
 
 pub fn parse_activation_cast_limit_qualifier_words(
     words: &[&str],
 ) -> Option<ActivationCastLimitQualifier> {
     let mut input: primitives::WordSliceInput<'_> = words;
-    let filter = parse_cast_limit_qualifier_word_slice
-        .parse_next(&mut input)
-        .ok()?;
+    let filter =
+        crate::grammar::primitives::take_leaf(&mut input, parse_cast_limit_qualifier_word_slice)?;
     Some(ActivationCastLimitQualifier {
         filter,
         consumed: words.len().checked_sub(input.len())?,
@@ -537,7 +534,7 @@ fn parse_cast_limit_qualifier_word_slice(
 
 fn parse_compound_non_term(raw: &str) -> Option<&str> {
     let mut input = raw;
-    parse_compound_non_term_text.parse_next(&mut input).ok()
+    crate::grammar::primitives::take_leaf(&mut input, parse_compound_non_term_text)
 }
 
 fn parse_compound_non_term_text<'a>(input: &mut &'a str) -> WResult<&'a str> {
@@ -564,7 +561,8 @@ fn classify_cast_limit_term(term: &str, negated: bool) -> Option<ObjectFilter> {
             ObjectFilter::default().with_type(card_type)
         });
     }
-    let subtype = leaf::parse_leaf_subtype_flexible_complete(term).ok()?;
+    let subtype =
+        crate::grammar::primitives::probe_shape(leaf::parse_leaf_subtype_flexible_complete(term))?;
     Some(if negated {
         ObjectFilter::default().without_subtype(subtype)
     } else {
@@ -600,7 +598,7 @@ fn parse_negation_candidate<'a>(
     initial_len: usize,
     previous_words: &[&str],
 ) -> Option<usize> {
-    let first = primitives::word_parser_text.parse_next(input).ok()?;
+    let first = crate::grammar::primitives::take_leaf(input, primitives::word_parser_text)?;
     if matches!(first, "cant" | "can't" | "cannot") {
         return Some(initial_len.saturating_sub(input.len()));
     }
@@ -650,7 +648,7 @@ fn find_restriction_or_lexed(tokens: &[OwnedLexToken]) -> Option<usize> {
         if primitives::kw("or").parse_next(&mut candidate).is_ok() {
             return Some(offset);
         }
-        consume_any_lexed(&mut input).ok()?;
+        crate::grammar::primitives::take_leaf(&mut input, consume_any_lexed)?;
     }
 }
 

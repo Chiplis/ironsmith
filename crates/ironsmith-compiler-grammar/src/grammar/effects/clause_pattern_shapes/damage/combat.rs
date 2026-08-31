@@ -16,10 +16,9 @@ pub(super) fn parse_redirect_next_damage_lexed<'a>(
 pub fn parse_redirect_next_damage_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<RedirectNextDamageShape<'_>> {
-    primitives::parse_all(
+    crate::grammar::primitives::probe_all(
         tokens,
         parse_redirect_next_damage_lexed,
         "redirect next damage",
     )
-    .ok()
 }

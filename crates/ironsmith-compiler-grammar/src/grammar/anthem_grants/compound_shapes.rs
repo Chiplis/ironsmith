@@ -233,8 +233,11 @@ fn parse_otherwise_anthem_sentence(tokens: &[OwnedLexToken]) -> Option<(i32, i32
 }
 
 fn parse_fixed_modifier(tokens: &[OwnedLexToken]) -> Option<(i32, i32)> {
-    let values =
-        primitives::parse_all(tokens, parse_fixed_modifier_lexed, "fixed anthem modifier").ok()?;
+    let values = crate::grammar::primitives::probe_all(
+        tokens,
+        parse_fixed_modifier_lexed,
+        "fixed anthem modifier",
+    )?;
     let (crate::effect::Value::Fixed(power), crate::effect::Value::Fixed(toughness)) = values
     else {
         return None;
@@ -288,7 +291,10 @@ fn parse_attached_reference_condition(tokens: &[OwnedLexToken]) -> Option<Object
         filter.attacking = true;
         return Some(filter);
     }
-    filters::parse_object_filter_with_grammar_entrypoint(descriptor_tokens, false).ok()
+    crate::grammar::primitives::probe_shape(filters::parse_object_filter_with_grammar_entrypoint(
+        descriptor_tokens,
+        false,
+    ))
 }
 
 #[cfg(test)]

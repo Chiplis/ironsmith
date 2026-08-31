@@ -70,7 +70,9 @@ fn parse_reciprocal_non_subtype_blocking_rule<'a>(
     primitives::phrase(&["block", "or", "be", "blocked", "by"]).parse_next(input)?;
     let subtype = any
         .verify_map(|token: &OwnedLexToken| {
-            leaf::parse_leaf_non_subtype_complete(token.parser_text()).ok()
+            crate::grammar::primitives::probe_shape(leaf::parse_leaf_non_subtype_complete(
+                token.parser_text(),
+            ))
         })
         .parse_next(input)?;
     alt((primitives::kw("creature"), primitives::kw("creatures"))).parse_next(input)?;
@@ -281,12 +283,11 @@ pub fn parse_embedded_token_rule_tokens(
             return Some(rule);
         }
     }
-    let shape = primitives::parse_all(
+    let shape = crate::grammar::primitives::probe_all(
         body_tokens,
         (parse_land_enters_counter_rule, primitives::sentence_end()).map(|(shape, ())| shape),
         "embedded land-entry counter rule",
-    )
-    .ok()?;
+    )?;
     token_rule_target_is_self(shape.target_tokens, named_token).then_some(
         TokenEmbeddedRuleShape::LandEntersPutCountersOnSelf {
             counter_type: shape.counter_type,
