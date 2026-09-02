@@ -27,7 +27,6 @@ pub(super) fn exact_atomic_return_as_aura_bundle(
         .then_some(idx)
     })?;
     let aura_prefix = trim_lexed_commas(&aura_sentence[..loss_start]);
-    let loss_suffix = trim_lexed_commas(&aura_sentence[loss_start + 1..]);
     let quote_positions = aura_prefix
         .iter()
         .enumerate()
@@ -54,48 +53,48 @@ pub(super) fn exact_atomic_return_as_aura_bundle(
     {
         aura_base.pop();
     }
-    let mut aura_effects = crate::effect_sentences::parse_effect_sentence_lexed(&aura_base).ok()?;
-    let [EffectAst::SubjectVerb(aura_subject_verb)] = aura_effects.as_mut_slice() else {
+    let aura_effects = crate::effect_sentences::parse_effect_sentence_lexed(&aura_base).ok()?;
+    let [EffectAst::SubjectVerb(aura_subject_verb)] = aura_effects.as_slice() else {
         return None;
     };
     let SubjectVerbActionAst::BecomeAuraEnchantment {
-        granted_abilities, ..
-    } = &mut aura_subject_verb.action
+        target,
+        attachment_filter,
+        granted_abilities,
+        ..
+    } = &aura_subject_verb.action
     else {
         return None;
     };
+    // The Aura has to animate the object the first sentence returned; an Aura
+    // aimed anywhere else is a different line.
+    if !matches!(target, TargetAst::Tagged(tag, _)
+        if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
+    {
+        return None;
+    }
     if !granted_abilities.is_empty() {
         return None;
     }
-    granted_abilities.push(granted_ability);
-    let loss_effects = crate::effect_sentences::parse_effect_sentence_lexed(loss_suffix).ok()?;
-    aura_effects.extend(loss_effects);
-    match aura_effects.as_slice() {
-        [
-            EffectAst::Coordinated {
-                effects: coordinated,
-                leading_duration: false,
-                result_conjunction: false,
-            },
-        ] => effects.extend(coordinated.iter().cloned()),
-        _ => effects.extend(aura_effects),
-    }
-    let effects = crate::effect_ast_normalization::normalize_effects_ast(&effects);
-    let [
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::ReturnToBattlefield {
-                    as_aura: Some(as_aura),
-                    ..
-                },
-            ..
-        }),
-    ] = effects.as_slice()
+
+    // The return is the node this line produces. Its Aura payload is assembled
+    // here rather than by concatenating three parsed fragments and asking the
+    // normalizer to fuse them back together: every part is already in hand, and
+    // the ability loss was matched literally in the split above.
+    let [EffectAst::SubjectVerb(return_subject_verb)] = effects.as_mut_slice() else {
+        return None;
+    };
+    let SubjectVerbActionAst::ReturnToBattlefield { as_aura, .. } = &mut return_subject_verb.action
     else {
         return None;
     };
-    if !as_aura.remove_all_abilities || as_aura.granted_abilities.is_empty() {
+    if as_aura.is_some() {
         return None;
     }
+    *as_aura = Some(crate::model::ast::ReturnAsAuraAst {
+        attachment_filter: attachment_filter.clone(),
+        remove_all_abilities: true,
+        granted_abilities: vec![granted_ability],
+    });
     Some(effects)
 }

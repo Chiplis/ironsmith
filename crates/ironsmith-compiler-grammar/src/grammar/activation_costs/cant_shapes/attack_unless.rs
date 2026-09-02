@@ -3,6 +3,8 @@
 //! The direct-cant cluster already owns the max-speed attack-or-block surface;
 //! this parser intentionally declines that line so there is one semantic owner.
 
+use crate::cards::builders::PlayerAst;
+use crate::cards::builders::PredicateAst;
 use winnow::combinator::{alt, eof, opt, peek, repeat_till};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
@@ -58,7 +60,7 @@ pub enum AttackUnlessSurface {
 pub struct AttackUnlessConditionFact<'a> {
     pub scope: AttackUnlessScope,
     pub surface: AttackUnlessSurface,
-    pub condition: CantAttackUnlessConditionSpec,
+    pub condition: CantAttackUnlessConditionSpec<PredicateAst>,
     pub display_tokens: &'a [OwnedLexToken],
     pub tail_tokens: &'a [OwnedLexToken],
 }
@@ -73,7 +75,7 @@ struct AttackUnlessLineCapture<'a> {
 #[derive(Debug, Clone, PartialEq)]
 struct ParsedRequirement {
     surface: AttackUnlessSurface,
-    condition: CantAttackUnlessConditionSpec,
+    condition: CantAttackUnlessConditionSpec<PredicateAst>,
 }
 
 pub fn parse_attack_unless_condition_tokens(
@@ -261,13 +263,11 @@ fn parse_there_are_exile_count(input: &mut LexStream<'_>) -> WResult<ParsedRequi
     let filter = ObjectFilter::default().in_zone(Zone::Exile).nontoken();
     Ok(ParsedRequirement {
         surface: AttackUnlessSurface::CardsInExile,
-        condition: CantAttackUnlessConditionSpec::SourceCondition(
-            crate::ConditionExpr::ValueComparison {
-                left: Value::Count(filter),
-                operator: ValueComparisonOperator::GreaterThanOrEqual,
-                right: Value::Fixed(count as i32),
-            },
-        ),
+        condition: CantAttackUnlessConditionSpec::SourceCondition(PredicateAst::ValueComparison {
+            left: Value::Count(filter),
+            operator: ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(count as i32),
+        }),
     })
 }
 
@@ -538,13 +538,19 @@ fn parse_controller_control_requirement_inner(
         .at_least_count()
         .ok_or_else(|| primitives::backtrack_err("controller count", "minimum count"))?;
     let condition = if count > 1 || require_explicit_quantity {
-        crate::ConditionExpr::PlayerHasAtLeast {
-            player: parsed.player_filter.unwrap_or(PlayerFilter::You),
+        PredicateAst::PlayerHasAtLeast {
+            // A subject with no context-free filter ("that player") kept its
+            // old meaning here: this clause read it as "you".
+            player: if parsed.player_filter.is_some() {
+                parsed.player
+            } else {
+                PlayerAst::You
+            },
             filter: parsed.filter,
             count,
         }
     } else {
-        crate::ConditionExpr::YouControl(parsed.filter)
+        PredicateAst::YouControl(parsed.filter)
     };
     Ok(ParsedRequirement {
         surface: AttackUnlessSurface::ControllerControlCondition,
@@ -621,7 +627,7 @@ fn parse_indefinite_article(input: &mut LexStream<'_>) -> WResult<()> {
         .parse_next(input)
 }
 
-fn spell_cast_condition(noncreature: bool) -> crate::ConditionExpr {
+fn spell_cast_condition(noncreature: bool) -> PredicateAst {
     let mut filter = ObjectFilter::default();
     filter.stack_kind = Some(StackObjectKind::Spell);
     if noncreature {
@@ -629,7 +635,7 @@ fn spell_cast_condition(noncreature: bool) -> crate::ConditionExpr {
     } else {
         filter.card_types.push(CardType::Creature);
     }
-    crate::ConditionExpr::ValueComparison {
+    PredicateAst::ValueComparison {
         left: Value::SpellsCastThisTurnMatching {
             player: PlayerFilter::You,
             filter,

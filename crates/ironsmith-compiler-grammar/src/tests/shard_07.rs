@@ -1,4 +1,8 @@
 use super::*;
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
+#[cfg(test)]
+use ironsmith_compiler_lowering::CardDefinitionBuilder;
 
 #[test]
 pub(super) fn turn_history_values_compile_for_exact_card_surfaces() {

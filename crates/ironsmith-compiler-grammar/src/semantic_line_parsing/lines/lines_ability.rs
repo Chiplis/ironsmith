@@ -400,7 +400,7 @@ pub(super) fn parse_static_line_impl(
     )))
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn parse_keyword_line_for_test(
     info: LineInfo,
     text: &str,

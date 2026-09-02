@@ -697,7 +697,9 @@ fn parse_exact_cards_in_hand_gate(tokens: &[OwnedLexToken]) -> Option<PredicateA
     let crate::effect::Comparison::Equal(amount) = condition.comparison else {
         return None;
     };
-    (amount > 1).then(|| value_equal(Value::CardsInHand(condition.player), amount))
+    crate::grammar::conditions::unconditional_player_filter(condition.player)
+        .filter(|_| amount > 1)
+        .map(|player| value_equal(Value::CardsInHand(player), amount))
 }
 
 fn parse_control_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, CardTextError> {

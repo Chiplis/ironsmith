@@ -1,4 +1,6 @@
 use super::*;
+#[cfg(test)]
+use ironsmith_compiler_lowering::CardDefinitionBuilder;
 
 const LIM_DUL_EFFECT: &str =
     "For each player, this enchantment deals 1 damage to that player unless they pay {B} or {3}.";

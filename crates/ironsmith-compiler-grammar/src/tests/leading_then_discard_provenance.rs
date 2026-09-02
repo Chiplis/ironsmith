@@ -1,4 +1,8 @@
 use super::*;
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
+#[cfg(test)]
+use ironsmith_compiler_lowering::CardDefinitionBuilder;
 
 fn compile_triggered_program(text: &str) -> crate::resolution::ResolutionProgram {
     let definition = CardDefinitionBuilder::new(CardId::new(), "Leading Then Provenance")

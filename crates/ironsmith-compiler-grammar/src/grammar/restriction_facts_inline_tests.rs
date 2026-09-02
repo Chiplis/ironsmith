@@ -1,4 +1,5 @@
 use super::*;
+use crate::cards::builders::PredicateAst;
 use crate::lexer::lex_line;
 
 fn lex(text: &str) -> Vec<OwnedLexToken> {
@@ -13,13 +14,10 @@ fn activation_fact_carries_timing_condition_and_residual_text() {
     .expect("activation restriction should parse");
 
     assert_eq!(parsed.timing, Some(ActivationTiming::OncePerTurn));
-    assert_eq!(
-        parsed.condition,
-        Some(ConditionExpr::SourceAttackedThisTurn)
-    );
+    assert_eq!(parsed.condition, Some(PredicateAst::SourceAttackedThisTurn));
     assert_eq!(
         parsed.text_only_condition,
-        Some(ConditionExpr::SourceAttackedThisTurn)
+        Some(PredicateAst::SourceAttackedThisTurn)
     );
     assert_eq!(
         parsed.normalization,

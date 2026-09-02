@@ -61,6 +61,6 @@ pub fn parse_source_tapped_gain_duration_shape(
         start,
         len,
         duration: Until::SourceUntaps,
-        condition: Some(ConditionExpr::SourceIsTapped),
+        condition: Some(PredicateAst::SourceIsTapped),
     })
 }

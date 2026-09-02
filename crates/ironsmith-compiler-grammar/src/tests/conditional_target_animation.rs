@@ -1,4 +1,8 @@
 use super::*;
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
+#[cfg(test)]
+use ironsmith_compiler_lowering::CardDefinitionBuilder;
 
 const LIFECRAFT_AWAKENING: &str = "Put X +1/+1 counters on target artifact you control. If it isn't a creature or Vehicle, it becomes a 0/0 Construct artifact creature.";
 

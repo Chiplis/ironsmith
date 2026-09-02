@@ -1,3 +1,5 @@
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
     use super::*;
 
     #[test]

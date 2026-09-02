@@ -1610,7 +1610,7 @@ fn parse_persistent_exile_play_tax_bundle(tokens: &[OwnedLexToken]) -> Option<Ve
             TargetAst::Tagged(tagged, None),
             crate::model::CompilerGrantableCore::Ability(
                 crate::model::CompilerStaticAbilityCore::new(
-                    crate::static_abilities::CostIncreaseManaCost::new(
+                    crate::model::CompilerCostIncreaseManaCost::new(
                         spell_filter,
                         shape.additional_cost,
                     ),

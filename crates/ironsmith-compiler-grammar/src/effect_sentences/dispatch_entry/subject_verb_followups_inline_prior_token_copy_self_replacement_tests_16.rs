@@ -1,4 +1,6 @@
 use super::*;
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
 
 fn copy_count(effects: &[EffectAst]) -> Option<Value> {
     for effect in effects {

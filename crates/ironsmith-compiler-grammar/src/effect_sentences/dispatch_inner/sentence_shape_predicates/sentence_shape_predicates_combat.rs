@@ -125,7 +125,7 @@ pub(in crate::effect_sentences) fn parse_attacking_doesnt_tap_if_source_untapped
                 Box::new(crate::payload::KeywordAction::Vigilance),
             )],
             Until::EndOfCombat,
-            crate::ConditionExpr::SourceIsUntapped,
+            PredicateAst::SourceIsUntapped,
         ),
     ];
     if wrapped_if_result {

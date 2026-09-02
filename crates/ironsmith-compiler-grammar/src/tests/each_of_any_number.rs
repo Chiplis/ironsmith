@@ -1,4 +1,8 @@
 use super::*;
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
+#[cfg(test)]
+use ironsmith_compiler_lowering::CardDefinitionBuilder;
 
 #[test]
 fn counter_removal_each_of_any_number_keeps_zero_and_unbounded_selection() {

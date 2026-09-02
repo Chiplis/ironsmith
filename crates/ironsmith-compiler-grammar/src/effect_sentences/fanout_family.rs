@@ -1691,7 +1691,7 @@ mod coordinated_target_tests {
             else {
                 return false;
             };
-            crate::reference_helpers::choose_spec_for_target(target).is_target()
+            crate::model::ast::choose_spec_for_target(target).is_target()
         }));
         let (_, choices) = crate::compile_support::compile_trigger_effects(None, &parsed)
             .expect("the typed serial targets should lower");

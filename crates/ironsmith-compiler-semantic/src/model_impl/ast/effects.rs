@@ -2157,7 +2157,7 @@ impl EffectAst {
         toughness: Value,
         target: TargetAst,
         duration: Until,
-        condition: Option<crate::ConditionExpr>,
+        condition: Option<PredicateAst>,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -2669,7 +2669,7 @@ impl EffectAst {
         filter: ObjectFilter,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
-        condition: crate::ConditionExpr,
+        condition: PredicateAst,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -2708,7 +2708,7 @@ impl EffectAst {
         filter: ObjectFilter,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
-        condition: crate::ConditionExpr,
+        condition: PredicateAst,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -2746,7 +2746,7 @@ impl EffectAst {
         filter: ObjectFilter,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
-        condition: crate::ConditionExpr,
+        condition: PredicateAst,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -2799,7 +2799,7 @@ impl EffectAst {
         target: TargetAst,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
-        condition: crate::ConditionExpr,
+        condition: PredicateAst,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -3000,7 +3000,7 @@ impl EffectAst {
     pub fn subject_verb_cant(
         restriction: crate::effect::Restriction,
         duration: crate::effect::Until,
-        condition: Option<crate::ConditionExpr>,
+        condition: Option<PredicateAst>,
     ) -> Self {
         Self::subject_verb_cant_starting(
             restriction,
@@ -3014,7 +3014,7 @@ impl EffectAst {
         restriction: crate::effect::Restriction,
         duration: crate::effect::Until,
         start: crate::effect::RestrictionStart,
-        condition: Option<crate::ConditionExpr>,
+        condition: Option<PredicateAst>,
     ) -> Self {
         Self::subject_verb_cant_starting_with_duration_surface(
             restriction,
@@ -3030,7 +3030,7 @@ impl EffectAst {
         duration: crate::effect::Until,
         start: crate::effect::RestrictionStart,
         duration_surface: crate::effect::RestrictionDurationSurface,
-        condition: Option<crate::ConditionExpr>,
+        condition: Option<PredicateAst>,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -4227,7 +4227,7 @@ impl EffectAst {
         player: PlayerAst,
         target: TargetAst,
         duration: Until,
-        condition: Option<ConditionExpr>,
+        condition: Option<PredicateAst>,
     ) -> Self {
         Self::subject_verb_gain_control_with_condition_and_source_surface(
             player, target, duration, condition, None,
@@ -4238,7 +4238,7 @@ impl EffectAst {
         player: PlayerAst,
         target: TargetAst,
         duration: Until,
-        condition: Option<ConditionExpr>,
+        condition: Option<PredicateAst>,
         source_reference_surface: Option<SourceReferenceSurface>,
     ) -> Self {
         Self::subject_verb(

@@ -543,16 +543,7 @@ pub(super) fn parse_triggered_ability_line_impl(
                 trigger,
                 effects,
                 vec![Zone::Command, Zone::Battlefield],
-                line.intervening_if
-                    .as_ref()
-                    .map(|predicate| {
-                        crate::compile_support::compile_condition_from_predicate_ast_with_env(
-                            predicate,
-                            &crate::model::reference_state::ReferenceEnv::default(),
-                            None,
-                        )
-                    })
-                    .transpose()?,
+                line.intervening_if.clone(),
                 Some(&label),
                 ReferenceImports::default(),
             )));

@@ -1,5 +1,5 @@
-use crate::ConditionExpr;
 use crate::ability::ActivationTiming;
+use crate::cards::builders::PredicateAst;
 use crate::lexer::{OwnedLexToken, render_token_slice};
 use crate::model::compiler_semantic::{
     ActivationRestrictionNormalizationFact, ParsedActivationRestriction, ParsedManaRestriction,
@@ -56,21 +56,21 @@ pub fn parse_activation_restriction_surface_tokens(
 }
 
 fn strip_redundant_once_per_turn_condition(
-    condition: ConditionExpr,
+    condition: PredicateAst,
     timing: Option<&ActivationTiming>,
-) -> Option<ConditionExpr> {
+) -> Option<PredicateAst> {
     if timing != Some(&ActivationTiming::OncePerTurn) {
         return Some(condition);
     }
 
     match condition {
-        ConditionExpr::MaxActivationsPerTurn(1) => None,
-        ConditionExpr::And(left, right) => {
+        PredicateAst::MaxActivationsPerTurn(1) => None,
+        PredicateAst::And(left, right) => {
             let left = strip_redundant_once_per_turn_condition(*left, timing);
             let right = strip_redundant_once_per_turn_condition(*right, timing);
             match (left, right) {
                 (Some(left), Some(right)) => {
-                    Some(ConditionExpr::And(Box::new(left), Box::new(right)))
+                    Some(PredicateAst::And(Box::new(left), Box::new(right)))
                 }
                 (Some(condition), None) | (None, Some(condition)) => Some(condition),
                 (None, None) => None,
@@ -110,13 +110,13 @@ pub fn parse_mana_restriction_surface_tokens(tokens: &[OwnedLexToken]) -> Parsed
     }
 }
 
-fn text_only_condition(parsed: TextOnlyActivationRestriction) -> ConditionExpr {
+fn text_only_condition(parsed: TextOnlyActivationRestriction) -> PredicateAst {
     match parsed {
         TextOnlyActivationRestriction::SourceDidNotAttackThisTurn => {
-            ConditionExpr::Not(Box::new(ConditionExpr::SourceAttackedThisTurn))
+            PredicateAst::Not(Box::new(PredicateAst::SourceAttackedThisTurn))
         }
         TextOnlyActivationRestriction::SourceAttackedThisTurn => {
-            ConditionExpr::SourceAttackedThisTurn
+            PredicateAst::SourceAttackedThisTurn
         }
     }
 }

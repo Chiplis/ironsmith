@@ -1,4 +1,7 @@
 use super::*;
+use crate::cards::builders::PredicateAst;
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
 
 fn cost_words_contain_phrase(words: &[&str], phrase: &[&str]) -> bool {
     crate::word_primitives::sequence_occurs(words, phrase)
@@ -118,7 +121,7 @@ pub fn parse_source_graveyard_dynamic_surcharge_line(
         )
         .with_beneficiary(PlayerFilter::You),
     );
-    let increase = StaticAbility::new(crate::static_abilities::CostIncrease::new(
+    let increase = StaticAbility::new(crate::model::CompilerCostIncrease::new(
         ObjectFilter::source(),
         scale_dynamic_cost_modifier_value(repetitions, i32::from(*multiplier)),
     ));
@@ -139,6 +142,8 @@ fn apply_this_spell_cost_increase_condition(
         ThisSpellCostCondition::NotYourTurn => Ok(Some(crate::ConditionExpr::Not(Box::new(
             crate::ConditionExpr::YourTurn,
         )))),
+        // A spell-cost condition is already the bound form; this maps one
+        // runtime condition onto another, so it stays on that side.
         ThisSpellCostCondition::ConditionExpr { condition, .. }
         | ThisSpellCostCondition::AsLongAsConditionExpr { condition, .. } => Ok(Some(condition)),
         ThisSpellCostCondition::TargetsPlayer(player) => {
@@ -196,7 +201,7 @@ pub fn parse_cost_modifier_target_spec(
 pub fn parse_cost_modifier_prefix_condition(
     tokens: &[OwnedLexToken],
     spells_token_idx: usize,
-) -> Result<(Option<crate::ConditionExpr>, usize), CardTextError> {
+) -> Result<(Option<PredicateAst>, usize), CardTextError> {
     if let Some(prefix) =
         keyword_static_lines::parse_cost_prefix_condition_tokens(tokens, spells_token_idx)
     {
@@ -205,14 +210,12 @@ pub fn parse_cost_modifier_prefix_condition(
                 subject_start,
             } => {
                 return Ok((
-                    Some(crate::ConditionExpr::Not(Box::new(
-                        crate::ConditionExpr::YourTurn,
-                    ))),
+                    Some(PredicateAst::Not(Box::new(PredicateAst::YourTurn))),
                     subject_start,
                 ));
             }
             keyword_static_lines::CostPrefixCondition::DuringYourTurn { subject_start } => {
-                return Ok((Some(crate::ConditionExpr::YourTurn), subject_start));
+                return Ok((Some(PredicateAst::YourTurn), subject_start));
             }
             keyword_static_lines::CostPrefixCondition::AsLongAs {
                 condition_tokens,
@@ -226,6 +229,7 @@ pub fn parse_cost_modifier_prefix_condition(
                 }
                 let condition = match parse_static_condition_clause(condition_tokens) {
                     Ok(condition) => condition,
+                    // Both branches are recognized predicates now.
                     Err(_) => parse_source_tap_status_condition_lexed(condition_tokens)
                         .ok_or_else(|| {
                             CardTextError::ParseError(format!(
@@ -308,7 +312,7 @@ pub fn parse_optional_life_additional_cost_reduction_line(
         .trim_end_matches('.')
         .to_string();
     Ok(Some(StaticAbility::new(
-        crate::static_abilities::CostReductionManaCost::new(filter, reduction)
+        crate::model::CompilerCostReductionManaCost::new(filter, reduction)
             .with_optional_life_additional_cost(label, life_cost),
     )))
 }
@@ -695,12 +699,8 @@ pub fn parse_spells_cost_modifier_line(
             condition
         } else if let Some(prefix) = &prefix_condition {
             match prefix {
-                crate::ConditionExpr::YourTurn => {
-                    crate::static_abilities::ThisSpellCostCondition::YourTurn
-                }
-                crate::ConditionExpr::Not(inner)
-                    if matches!(inner.as_ref(), crate::ConditionExpr::YourTurn) =>
-                {
+                PredicateAst::YourTurn => crate::static_abilities::ThisSpellCostCondition::YourTurn,
+                PredicateAst::Not(inner) if matches!(inner.as_ref(), PredicateAst::YourTurn) => {
                     crate::static_abilities::ThisSpellCostCondition::NotYourTurn
                 }
                 other => {
@@ -724,11 +724,10 @@ pub fn parse_spells_cost_modifier_line(
     };
     if first_spell_fact.is_some_and(|fact| fact.during_each_of_your_turns) && !is_this_spell {
         non_this_condition = Some(match non_this_condition.take() {
-            Some(existing) => crate::ConditionExpr::And(
-                Box::new(existing),
-                Box::new(crate::ConditionExpr::YourTurn),
-            ),
-            None => crate::ConditionExpr::YourTurn,
+            Some(existing) => {
+                PredicateAst::And(Box::new(existing), Box::new(PredicateAst::YourTurn))
+            }
+            None => PredicateAst::YourTurn,
         });
     }
 
@@ -794,6 +793,7 @@ pub fn parse_spells_cost_modifier_line(
         }
         if let Some(condition) = source_only_condition
             .clone()
+            .map(|bound| PredicateAst::Bound(Box::new(bound)))
             .or_else(|| non_this_condition.clone())
         {
             ability = ability.with_condition(condition);
@@ -805,7 +805,10 @@ pub fn parse_spells_cost_modifier_line(
     if per_target {
         ability = ability.with_per_target();
     }
-    if let Some(condition) = source_only_condition.or_else(|| non_this_condition.clone()) {
+    if let Some(condition) = source_only_condition
+        .map(|bound| PredicateAst::Bound(Box::new(bound)))
+        .or_else(|| non_this_condition.clone())
+    {
         ability = ability.with_condition(condition);
     }
     Ok(Some(StaticAbility::new(ability)))
@@ -1124,11 +1127,11 @@ pub fn parse_flashback_cost_modifier_line(
 
     if direction == CostModifierDirection::Less {
         return Ok(Some(StaticAbility::new(
-            crate::static_abilities::CostReduction::new(filter, amount_value),
+            crate::model::CompilerCostReduction::new(filter, amount_value),
         )));
     }
     Ok(Some(StaticAbility::new(
-        crate::static_abilities::CostIncrease::new(filter, amount_value),
+        crate::model::CompilerCostIncrease::new(filter, amount_value),
     )))
 }
 
@@ -2796,9 +2799,7 @@ pub fn parse_during_your_turn_prevent_all_damage_to_source_line(
     if is_during_your_turn_prevent_all_damage_to_source_line_lexed(tokens) {
         return Ok(Some(
             StaticAbility::prevent_all_damage_to_self().with_condition(
-                crate::ConditionExpr::ActivationTiming(
-                    crate::ability::ActivationTiming::DuringYourTurn,
-                ),
+                PredicateAst::ActivationTiming(crate::ability::ActivationTiming::DuringYourTurn),
             ),
         ));
     }
@@ -2960,9 +2961,9 @@ pub fn parse_doesnt_untap_during_untap_step_line(
                         clause_display
                     )));
                 }
-                Some(crate::ConditionExpr::Not(Box::new(
-                    parse_static_condition_clause(&condition_tokens)?,
-                )))
+                Some(PredicateAst::Not(Box::new(parse_static_condition_clause(
+                    &condition_tokens,
+                )?)))
             };
             Ok(Some(StaticAbilityAst::AttachedStaticAbilityGrant {
                 ability: Box::new(StaticAbilityAst::Static(StaticAbility::doesnt_untap())),
@@ -3184,7 +3185,7 @@ pub fn parse_you_may_cast_exile_counter_cards_with_mana_permission_line(
         .with_beneficiary(PlayerFilter::You),
     );
     if spec.during_your_turn {
-        grant = grant.with_condition(crate::ConditionExpr::ActivationTiming(
+        grant = grant.with_condition(PredicateAst::ActivationTiming(
             crate::ability::ActivationTiming::DuringYourTurn,
         ));
     }
@@ -3844,7 +3845,7 @@ pub fn parse_conditional_draw_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = parser_token_word_refs(tokens);
-    let always = || Condition::ValueComparison {
+    let always = || PredicateAst::ValueComparison {
         left: Value::Fixed(1),
         operator: crate::effect::ValueComparisonOperator::Equal,
         right: Value::Fixed(1),
@@ -3994,7 +3995,7 @@ pub fn parse_conditional_draw_replacement_line(
 
     if is_draw_replacement_win_empty_library_line_lexed(tokens) {
         return Ok(Some(StaticAbility::conditional_draw_replacement(
-            Condition::ValueComparison {
+            PredicateAst::ValueComparison {
                 left: Value::CardsInLibrary(PlayerFilter::You),
                 operator: crate::effect::ValueComparisonOperator::Equal,
                 right: Value::Fixed(0),
@@ -4012,7 +4013,7 @@ pub fn parse_conditional_draw_replacement_line(
     else {
         return Ok(None);
     };
-    if no_cards_condition.player != PlayerFilter::You || !no_cards_condition.is_no_cards_in_hand() {
+    if no_cards_condition.player != PlayerAst::You || !no_cards_condition.is_no_cards_in_hand() {
         return Ok(None);
     }
 
@@ -4052,7 +4053,7 @@ pub fn parse_conditional_draw_replacement_line(
     display.push('.');
 
     Ok(Some(StaticAbility::conditional_draw_replacement(
-        Condition::Not(Box::new(Condition::CardsInHandOrMore(1))),
+        PredicateAst::Not(Box::new(PredicateAst::CardsInHandOrMore(1))),
         replacement_effects,
         display,
     )))
@@ -5019,7 +5020,7 @@ mod tests {
 
     #[test]
     fn scorched_ruins_entry_payment_is_a_typed_sacrifice_replacement() {
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = ironsmith_compiler_lowering::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Scorched Ruins",
         )
@@ -5655,7 +5656,7 @@ mod tests {
         assert_eq!(reduction.filter.card_types, [CardType::Creature]);
         assert_eq!(reduction.filter.excluded_subtypes, [Subtype::Lemur]);
         assert_eq!(reduction.filter.static_abilities, [StaticAbilityId::Flying]);
-        assert_eq!(reduction.condition, Some(crate::ConditionExpr::YourTurn));
+        assert_eq!(reduction.condition, Some(PredicateAst::YourTurn));
     }
 
     #[test]

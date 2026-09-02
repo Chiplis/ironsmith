@@ -239,10 +239,10 @@ pub use trigger_model::{
 };
 pub use types::{CardType, Subtype, SubtypeFamily, Supertype};
 pub use value_model::{
-    AttachmentConditionHost, Condition, DeathHistoryControllerSurface, EffectMetric,
-    EffectMetricSource, ManaSpendPermission, ManaSpendScope, ManaSpentCastReferenceSurface,
-    PermanentLeftBattlefieldControlSurface, PriorEffectAction, PriorEffectMetricQuery, Restriction,
-    SourceCounterThresholdSurface, TaggedObjectMatchMode, TurnHistoryCondition, TurnHistoryCount,
-    Value, ValueSurfaceHint,
+    AttachmentConditionHost, Condition, ConditionConjunction, DeathHistoryControllerSurface,
+    EffectMetric, EffectMetricSource, ManaSpendPermission, ManaSpendScope,
+    ManaSpentCastReferenceSurface, PermanentLeftBattlefieldControlSurface, PriorEffectAction,
+    PriorEffectMetricQuery, Restriction, SourceCounterThresholdSurface, TaggedObjectMatchMode,
+    TurnHistoryCondition, TurnHistoryCount, Value, ValueSurfaceHint,
 };
 pub use zone::Zone;

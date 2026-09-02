@@ -1,3 +1,4 @@
+use ironsmith_compiler::ParseCardText;
 use ironsmith_compiler::cards::{CardDefinition, CardDefinitionBuilder};
 use ironsmith_compiler::effect::{Effect, Value};
 use ironsmith_compiler::effects::{HealDamageEffect, TaggedEffect};

@@ -1,4 +1,8 @@
 use super::*;
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
+#[cfg(test)]
+use ironsmith_compiler_lowering::CardDefinitionBuilder;
 
 const FLAMES_OF_REBIRTH: &str = "Return any number of target creature cards with total mana value 6 or less from your graveyard to the battlefield.";
 

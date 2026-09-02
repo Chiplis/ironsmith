@@ -1,5 +1,18 @@
 use super::*;
 
+/// A stated limit on how often a triggered ability may fire.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TriggerFrequencyPredicateAst {
+    /// "for the first time this turn"
+    FirstTimeThisTurn,
+    /// "the first time this creature becomes crewed each turn"
+    SourceFirstCrewedThisTurn,
+    /// "only once each turn", or a stated maximum
+    MaxTimesEachTurn(u32),
+    /// A maximum stated on the effect rather than the trigger
+    DoThisMaxTimesEachTurn(u32),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum PredicateAst {
     ItIsNight,
@@ -102,6 +115,13 @@ pub enum PredicateAst {
     CountParity {
         count: crate::static_abilities::AnthemCountExpression,
         even: bool,
+        display: Option<String>,
+    },
+    /// "you control a Forest", "there are two or more cards in your graveyard" —
+    /// a stated count compared against a threshold.
+    CountComparison {
+        count: crate::static_abilities::AnthemCountExpression,
+        comparison: crate::effect::Comparison,
         display: Option<String>,
     },
     PlayerIsMonarch {
@@ -282,6 +302,104 @@ pub enum PredicateAst {
     NoSpellsWereCastLastTurn,
     ThisSpellWasKicked,
     ThisSpellPaidLabel(OptionalCostRef),
+    /// A condition that arrived already bound.
+    ///
+    /// The spell-cost model states its conditions in the resolved vocabulary
+    /// and has no recognized form to offer, so a static ability that combines
+    /// one with a recognized condition carries it through here. This is the
+    /// only place a bound condition may sit inside a predicate, and it exists
+    /// so that bridge is one named variant rather than a scatter of binds.
+    Bound(Box<crate::ConditionExpr>),
+    /// "if you control a basic land" — the plain "you control one of these"
+    /// check, distinct from a counted comparison.
+    YouControl(ObjectFilter),
+    /// "if you attacked this turn"
+    AttackedThisTurn,
+    /// "if this creature attacked a battle this turn"
+    SourceAttackedBattleThisTurn,
+    /// "as long as this creature is paired"
+    SourceIsSoulbondPaired,
+    /// "as long as it has two or more Auras attached to it"
+    AttachmentCount {
+        attachment: ObjectFilter,
+        host: crate::AttachmentConditionHost,
+        comparison: crate::effect::Comparison,
+        display: String,
+    },
+    /// "if you have 5 or less life"
+    LifeTotalOrLess(i32),
+    /// "if you have one or more cards in hand"
+    CardsInHandOrMore(i32),
+    /// "if you rolled a 6 this turn"
+    PlayerRolledResultThisTurn {
+        player: PlayerAst,
+        result: u32,
+    },
+    /// "if that card is the top card of your library"
+    TaggedObjectIsTopOfLibrary {
+        tag: TagKey,
+        player: PlayerAst,
+    },
+    /// "if you committed a crime this turn"
+    PlayerCommittedCrimeThisTurn {
+        player: PlayerAst,
+    },
+    /// "if you removed a card matching this from the draft"
+    PlayerRemovedDraftCardMatching {
+        player: PlayerAst,
+        filter: ObjectFilter,
+        with_cards_named: String,
+    },
+    /// "if this creature devoured two or more creatures"
+    SourceDevouredCreaturesOrMore(u32),
+    /// "if X is 5 or greater"
+    XValueAtLeast(u32),
+    /// "if two or more colors of mana were spent to cast it"
+    ColorsOfManaSpentToCastThisSpellOrMore(u32),
+    /// "at the beginning of its controller's end step"
+    SourceControllersEndStep,
+    /// "if you have a card in hand matching this"
+    YouHaveCardInHandMatching(ObjectFilter),
+    /// "during your first turn of the game"
+    YourFirstTurnsOfTheGameOrFewer(u32),
+    /// "as long as this creature is attacking"
+    SourceIsAttacking,
+    /// "as long as this permanent is untapped"
+    SourceIsUntapped,
+    /// "as long as this creature is monstrous"
+    SourceIsMonstrous,
+    /// "as long as equipped creature is attacking"
+    EquippedCreatureAttacking,
+    /// "as long as equipped creature is tapped"
+    EquippedCreatureTapped,
+    /// "as long as equipped creature is untapped"
+    EquippedCreatureUntapped,
+    /// "as long as enchanted permanent is a creature"
+    EnchantedPermanentIsCreature,
+    /// "as long as enchanted permanent is a land"
+    EnchantedPermanentIsLand,
+    /// "as long as enchanted permanent is an Equipment"
+    EnchantedPermanentIsEquipment,
+    /// "as long as enchanted permanent is a Vehicle"
+    EnchantedPermanentIsVehicle,
+    /// "if creatures you control have total power 10 or greater"
+    ControlCreaturesTotalPowerAtLeast(u32),
+    /// "if there is a creature card in your graveyard"
+    CardInYourGraveyard {
+        card_types: Vec<crate::types::CardType>,
+        subtypes: Vec<crate::types::Subtype>,
+    },
+    /// "Activate only as a sorcery", "only during combat" — when the text says
+    /// the ability may be activated.
+    ActivationTiming(crate::ability::ActivationTiming),
+    /// "only once each turn", as a cap on activations.
+    MaxActivationsPerTurn(u32),
+    /// "if that turn is an extra turn"
+    CurrentTurnIsExtra,
+    /// How often the ability may fire, as the text states it — "only once each
+    /// turn", "for the first time this turn". It is a fact about the text, so
+    /// it is recognized as a predicate rather than resolved on the spot.
+    TriggerFrequency(TriggerFrequencyPredicateAst),
     TargetWasKicked,
     ThisAbilityResolvedThisTurnExactly(u32),
     TargetSpellCastOrderThisTurn(u32),
@@ -452,5 +570,11 @@ impl PredicateAst {
             self.reference_antecedent(),
             Some(PredicateReferenceAntecedent::SourceObject)
         )
+    }
+}
+
+impl ironsmith_core::ConditionConjunction for PredicateAst {
+    fn and(self, other: Self) -> Self {
+        PredicateAst::And(Box::new(self), Box::new(other))
     }
 }

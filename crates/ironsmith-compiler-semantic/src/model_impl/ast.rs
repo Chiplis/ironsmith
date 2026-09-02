@@ -1,4 +1,3 @@
-use crate::ConditionExpr;
 use crate::color::ColorSet;
 use crate::cost::OptionalCostRef;
 use crate::effect::{ChoiceAggregateMetric, ChoiceCount, EffectId, Until, Value};
@@ -24,6 +23,10 @@ use super::super::{
 };
 use crate::cards::builders::GrantedAbilityAst;
 use crate::model::compiler_semantic::ParsedAbility;
+
+#[path = "ast/queries.rs"]
+mod queries;
+pub use queries::*;
 
 #[path = "ast/predicates.rs"]
 mod predicates;
@@ -60,16 +63,16 @@ pub enum StaticAbilityAst {
     },
     ConditionalStaticAbility {
         ability: Box<StaticAbilityAst>,
-        condition: ConditionExpr,
+        condition: PredicateAst,
     },
     LabeledConditionalStaticAbility {
         ability: Box<StaticAbilityAst>,
-        condition: ConditionExpr,
+        condition: PredicateAst,
         label: String,
     },
     ConditionalKeywordAction {
         action: KeywordAction,
-        condition: ConditionExpr,
+        condition: PredicateAst,
     },
     WithSetQuantifierSurface {
         ability: Box<StaticAbilityAst>,
@@ -78,12 +81,12 @@ pub enum StaticAbilityAst {
     GrantStaticAbility {
         filter: ObjectFilter,
         ability: Box<StaticAbilityAst>,
-        condition: Option<ConditionExpr>,
+        condition: Option<PredicateAst>,
     },
     GrantKeywordAction {
         filter: ObjectFilter,
         action: KeywordAction,
-        condition: Option<ConditionExpr>,
+        condition: Option<PredicateAst>,
     },
     RemoveStaticAbility {
         filter: ObjectFilter,
@@ -97,18 +100,18 @@ pub enum StaticAbilityAst {
     AttachedStaticAbilityGrant {
         ability: Box<StaticAbilityAst>,
         display: String,
-        condition: Option<ConditionExpr>,
+        condition: Option<PredicateAst>,
     },
     AttachedKeywordActionGrant {
         action: KeywordAction,
         display: String,
-        condition: Option<ConditionExpr>,
+        condition: Option<PredicateAst>,
         protection_does_not_remove_controlled_attachments: bool,
     },
     AttachedChosenLandwalkGrant {
         snow: bool,
         display: String,
-        condition: Option<ConditionExpr>,
+        condition: Option<PredicateAst>,
     },
     EquipmentKeywordActionsGrant {
         actions: Vec<KeywordAction>,
@@ -117,12 +120,12 @@ pub enum StaticAbilityAst {
         filter: ObjectFilter,
         ability: ParsedAbility,
         display: String,
-        condition: Option<ConditionExpr>,
+        condition: Option<PredicateAst>,
     },
     AttachedObjectAbilityGrant {
         ability: ParsedAbility,
         display: String,
-        condition: Option<ConditionExpr>,
+        condition: Option<PredicateAst>,
     },
     SoulbondSharedObjectAbility {
         ability: ParsedAbility,

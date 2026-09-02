@@ -8,29 +8,45 @@ use crate::zone::Zone;
 /// Shared static-ability algebra instantiated entirely with compiler-owned
 /// trigger, effect, and cost nodes. Runtime lowering maps this value into the
 /// engine instantiation after parsing and reference resolution are complete.
+/// The static-ability payloads as recognition builds them, with conditions
+/// still in the recognized predicate vocabulary.
+pub type CompilerAnthem = ironsmith_core::Anthem<super::ast::PredicateAst>;
+pub type CompilerCostReduction = ironsmith_core::CostReduction<super::ast::PredicateAst>;
+pub type CompilerCostReductionManaCost =
+    ironsmith_core::CostReductionManaCost<super::ast::PredicateAst>;
+pub type CompilerCostIncrease = ironsmith_core::CostIncrease<super::ast::PredicateAst>;
+pub type CompilerCostIncreaseManaCost =
+    ironsmith_core::CostIncreaseManaCost<super::ast::PredicateAst>;
+pub type CompilerRemoveCardTypesForFilter =
+    ironsmith_core::RemoveCardTypesForFilter<super::ast::PredicateAst>;
+
 pub type CompilerStaticAbilityCore = ironsmith_core::StaticAbility<
     TriggerSpec,
     EffectAst,
     crate::model::CompilerCost,
     ironsmith_core::ThisSpellCostCondition,
+    super::ast::PredicateAst,
 >;
 pub type CompilerStaticAbilityPayloadCore = ironsmith_core::StaticAbilityPayload<
     TriggerSpec,
     EffectAst,
     crate::model::CompilerCost,
     ironsmith_core::ThisSpellCostCondition,
+    super::ast::PredicateAst,
 >;
 pub type CompilerPowerToughnessChoiceOptionCore = ironsmith_core::PowerToughnessChoiceOption<
     TriggerSpec,
     EffectAst,
     crate::model::CompilerCost,
     ironsmith_core::ThisSpellCostCondition,
+    super::ast::PredicateAst,
 >;
 pub type CompilerGrantAbilityCore = ironsmith_core::GrantAbility<
     TriggerSpec,
     EffectAst,
     crate::model::CompilerCost,
     ironsmith_core::ThisSpellCostCondition,
+    super::ast::PredicateAst,
 >;
 pub type CompilerGrantObjectAbilityForFilterCore = ironsmith_core::GrantObjectAbilityForFilter<
     TriggerSpec,
@@ -49,6 +65,7 @@ pub type CompilerEnterAsCopyAsEntersSpecCore = ironsmith_core::EnterAsCopyAsEnte
     EffectAst,
     crate::model::CompilerCost,
     ironsmith_core::ThisSpellCostCondition,
+    super::ast::PredicateAst,
 >;
 pub type CompilerGrantableCore = ironsmith_core::Grantable<
     CompilerStaticAbilityCore,

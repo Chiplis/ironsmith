@@ -1,7 +1,7 @@
 use crate::ability::AbilityKind;
 use crate::cards::builders::{
-    CardDefinitionBuilder, CardTextError, ChoiceCount, EffectAst, LineAst, ParsedLineAst,
-    ParsedModalHeader, SubjectVerbActionAst, TriggerSpec,
+    CardTextError, ChoiceCount, EffectAst, LineAst, ParsedLineAst, ParsedModalHeader,
+    SubjectVerbActionAst, TriggerSpec,
 };
 use crate::color::ColorSet;
 use crate::effect::Value;
@@ -12,6 +12,9 @@ use crate::static_abilities::{StaticAbilityId, StaticAbilityPayload};
 use crate::triggers::TriggerKind;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
+use ironsmith_core::card::CardBuilder;
+
+use crate::cards::builders::PredicateAst;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -20,7 +23,6 @@ use crate::activation_and_restrictions::{
     parse_activate_only_timing_lexed, parse_activation_condition_lexed, parse_cost_reduction_line,
     parse_mana_usage_restriction_sentence_lexed, parse_triggered_times_each_turn_lexed,
 };
-use crate::compiler_pipeline::parse_text_with_annotations_lowered;
 use crate::effect_sentences::{
     parse_cant_effect_sentence_lexed, parse_effect_sentence_lexed, parse_restriction_duration_lexed,
 };
@@ -37,18 +39,15 @@ use crate::lexer::{
 use crate::parse_context::ParseContext;
 use crate::semantic_assembly::assemble_activation_cost as lower_activation_cost_cst;
 use crate::util::parse_value_expr_words;
+use ironsmith_compiler::compiler_pipeline::parse_text_with_annotations_lowered;
 
 fn parse_text_to_semantic_document(
-    builder: CardDefinitionBuilder,
+    card: CardBuilder,
     text: String,
     allow_unsupported: bool,
 ) -> Result<(RewriteSemanticDocument, crate::cards::ParseAnnotations), CardTextError> {
-    let mut context = crate::parse_context_for_builder(&builder, &text, allow_unsupported);
-    crate::compiler_pipeline::parse_text_to_semantic_document_with_context(
-        &mut context,
-        builder,
-        text,
-    )
+    let mut context = crate::parse_context_for_builder(&card, &text, allow_unsupported);
+    crate::document_parser::parse_text_to_semantic_document_with_context(&mut context, card, text)
 }
 
 fn find_nested_effect<T: 'static>(effect: &crate::effect::Effect) -> Option<&T> {
@@ -128,13 +127,16 @@ fn rewrite_direct_triggered_chunk(
         })
 }
 
-fn trigger_frequency_limit(condition: &crate::ConditionExpr) -> Option<u32> {
-    match condition {
-        crate::ConditionExpr::FirstTimeThisTurn
-        | crate::ConditionExpr::SourceFirstCrewedThisTurn => Some(1),
-        crate::ConditionExpr::MaxTimesEachTurn(limit)
-        | crate::ConditionExpr::DoThisMaxTimesEachTurn(limit) => Some(*limit),
-        crate::ConditionExpr::And(left, right) | crate::ConditionExpr::Or(left, right) => {
+fn trigger_frequency_limit(predicate: &PredicateAst) -> Option<u32> {
+    use crate::cards::builders::TriggerFrequencyPredicateAst as Frequency;
+    match predicate {
+        PredicateAst::TriggerFrequency(
+            Frequency::FirstTimeThisTurn | Frequency::SourceFirstCrewedThisTurn,
+        ) => Some(1),
+        PredicateAst::TriggerFrequency(
+            Frequency::MaxTimesEachTurn(limit) | Frequency::DoThisMaxTimesEachTurn(limit),
+        ) => Some(*limit),
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
             trigger_frequency_limit(left).or_else(|| trigger_frequency_limit(right))
         }
         _ => None,

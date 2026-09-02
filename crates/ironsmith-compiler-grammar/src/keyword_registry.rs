@@ -82,7 +82,7 @@ pub fn lower_keyword_line_ast(line: &RewriteKeywordLine) -> Result<LineAst, Card
     Ok(line.payload.to_line_ast())
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn parse_keyword_payload_for_kind(
     mut info: crate::cards::builders::LineInfo,
     text: &str,

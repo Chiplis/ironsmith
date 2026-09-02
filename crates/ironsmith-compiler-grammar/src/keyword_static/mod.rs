@@ -1,3 +1,4 @@
+use crate::cards::builders::PredicateAst;
 mod costs_replacements_and_permissions;
 mod leading_conditional_sentence_chain;
 pub use costs_replacements_and_permissions::*;
@@ -107,7 +108,6 @@ use super::lexer::{
     parser_token_word_refs, render_token_slice, split_lexed_sentences, token_slice_first_is,
     trim_lexed_commas, word_slice_last_is_any,
 };
-use super::lowering_support::assemble_parsed_triggered_ability as parsed_triggered_ability;
 use super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::rule_engine::{LexRuleHeadHint, LexRuleHintIndex, build_lex_rule_hint_index};
 use super::static_ability_helpers::static_ability_for_keyword_action;
@@ -158,6 +158,7 @@ use crate::static_abilities::{Anthem, AnthemCountExpression, AnthemValue};
 use crate::target::{ChooseSpec, ChooseSpecSurfaceHint, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
+use ironsmith_compiler_semantic::keyword_abilities::assemble_parsed_triggered_ability as parsed_triggered_ability;
 use ironsmith_core::{EffectMetric, EffectMetricSource};
 use std::sync::LazyLock;
 
@@ -2220,7 +2221,7 @@ pub fn parse_removed_draft_leading_conditional_static_sentence_chain(
         };
         if !matches!(
             condition,
-            crate::ConditionExpr::PlayerRemovedDraftCardMatching { .. }
+            PredicateAst::PlayerRemovedDraftCardMatching { .. }
         ) {
             return Ok(None);
         }
@@ -2338,7 +2339,7 @@ fn parse_static_ability_ast_line_lexed_single(
         let mut card = ObjectFilter::default();
         card.set_explicit_card_noun(true);
         let ability = StaticAbility::conditional_draw_replacement_with_optional(
-            crate::ConditionExpr::ValueComparison {
+            PredicateAst::ValueComparison {
                 left: Value::Fixed(1),
                 operator: crate::effect::ValueComparisonOperator::Equal,
                 right: Value::Fixed(1),
@@ -2366,7 +2367,7 @@ fn parse_static_ability_ast_line_lexed_single(
         return Ok(Some(vec![
             StaticAbilityAst::LabeledConditionalStaticAbility {
                 ability: Box::new(StaticAbilityAst::Static(ability)),
-                condition: crate::ConditionExpr::SourceHasCounterAtLeast {
+                condition: PredicateAst::SourceHasCounterAtLeast {
                     counter_type: CounterType::Quest,
                     count: 6,
                     surface: crate::SourceCounterThresholdSurface::SourceHas,
@@ -2398,7 +2399,7 @@ fn parse_static_ability_ast_line_lexed_single(
             for ability in abilities {
                 conditioned.push(add_static_ability_ast_condition(
                     ability,
-                    crate::ConditionExpr::SourceControllersEndStep,
+                    PredicateAst::SourceControllersEndStep,
                 )?);
             }
             return Ok(Some(conditioned));
@@ -2415,20 +2416,20 @@ fn parse_static_ability_ast_line_lexed_single(
         let condition =
             if crate::word_primitives::parse_sequence_suffix(&condition_words, &["is", "equipped"])
             {
-                crate::ConditionExpr::SourceIsEquipped
+                PredicateAst::SourceIsEquipped
             } else if crate::word_primitives::parse_sequence_suffix(
                 &condition_words,
                 &["is", "enchanted"],
             ) {
-                crate::ConditionExpr::SourceIsEnchanted
+                PredicateAst::SourceIsEnchanted
             } else {
                 parse_static_condition_clause(spec.condition_tokens)?
             };
         if matches!(
             condition,
-            crate::ConditionExpr::SourceIsEquipped
-                | crate::ConditionExpr::SourceIsEnchanted
-                | crate::ConditionExpr::SourceIsMonstrous
+            PredicateAst::SourceIsEquipped
+                | PredicateAst::SourceIsEnchanted
+                | PredicateAst::SourceIsMonstrous
         ) {
             return Ok(Some(vec![StaticAbilityAst::ConditionalStaticAbility {
                 ability: Box::new(StaticAbilityAst::Static(StaticAbility::restriction(
@@ -2487,7 +2488,7 @@ fn parse_static_ability_ast_line_lexed_single(
             )?
         && !abilities.is_empty()
     {
-        let condition = crate::ConditionExpr::Not(Box::new(crate::ConditionExpr::YourTurn));
+        let condition = PredicateAst::Not(Box::new(PredicateAst::YourTurn));
         let mut conditioned = Vec::with_capacity(abilities.len());
         for ability in abilities {
             conditioned.push(add_static_ability_ast_condition(
@@ -2943,11 +2944,9 @@ fn leading_condition_remainder_has_dependent_subject(tokens: &[OwnedLexToken]) -
         && matches!(words.get(2), Some(&"them" | &"those" | &"these")))
 }
 
-fn static_condition_references_source_outside_battlefield(
-    condition: &crate::ConditionExpr,
-) -> bool {
+fn static_condition_references_source_outside_battlefield(condition: &PredicateAst) -> bool {
     match condition {
-        crate::ConditionExpr::CountComparison {
+        PredicateAst::CountComparison {
             count: AnthemCountExpression::MatchingFilter(filter),
             ..
         } => {
@@ -2957,14 +2956,12 @@ fn static_condition_references_source_outside_battlefield(
                     .as_ref()
                     .is_some_and(|zone| *zone != Zone::Battlefield)
         }
-        crate::ConditionExpr::SourceIsInZone(zone) => *zone != Zone::Battlefield,
-        crate::ConditionExpr::And(left, right) | crate::ConditionExpr::Or(left, right) => {
+        PredicateAst::SourceIsInZone(zone) => *zone != Zone::Battlefield,
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
             static_condition_references_source_outside_battlefield(left)
                 || static_condition_references_source_outside_battlefield(right)
         }
-        crate::ConditionExpr::Not(inner) => {
-            static_condition_references_source_outside_battlefield(inner)
-        }
+        PredicateAst::Not(inner) => static_condition_references_source_outside_battlefield(inner),
         _ => false,
     }
 }
@@ -3648,9 +3645,9 @@ pub fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<StaticA
     }
 
     if is_attack_as_haste_unless_entered_this_turn_marker_line_lexed(tokens) {
-        let condition = Condition::Not(Box::new(Condition::ObjectEnteredBattlefieldThisTurn(
-            ObjectFilter::source(),
-        )));
+        let condition = PredicateAst::Not(Box::new(
+            PredicateAst::ObjectEnteredBattlefieldThisTurn(ObjectFilter::source()),
+        ));
         return Some(StaticAbility::new(
             GrantAbility::source(StaticAbility::can_attack_as_though_haste())
                 .with_condition(condition),
@@ -4388,7 +4385,7 @@ fn parse_trigger_duplication_event_matcher(
 
 fn parse_trigger_duplication_core(
     tokens: &[OwnedLexToken],
-) -> Result<Option<(StaticAbility, Option<crate::ConditionExpr>)>, CardTextError> {
+) -> Result<Option<(StaticAbility, Option<PredicateAst>)>, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
     let Some(shape) = early_static_facts::parse_trigger_duplication_core_shape_tokens(&tokens)
     else {
@@ -6037,14 +6034,18 @@ pub fn parse_this_spell_cost_condition(
         return Some(condition);
     }
 
-    if let Some(condition_expr) = parse_conjoined_this_spell_cost_condition(tokens) {
+    // The spell-cost model states its conditions bound, so a recognized
+    // predicate is bound here at that boundary.
+    if let Some(condition_expr) =
+        parse_conjoined_this_spell_cost_condition(tokens).and_then(bind_static_condition_predicate)
+    {
         return Some(ThisSpellCostCondition::ConditionExpr {
             condition: condition_expr,
             display: words.join(" "),
         });
     }
 
-    if let Ok(condition_expr) = parse_static_condition_clause(tokens) {
+    if let Some(condition_expr) = static_condition_clause_bound(tokens) {
         return Some(ThisSpellCostCondition::ConditionExpr {
             condition: condition_expr,
             display: words.join(" "),
@@ -6098,9 +6099,7 @@ mod target_controller_graveyard_cost_condition_tests {
     }
 }
 
-fn parse_conjoined_this_spell_cost_condition(
-    tokens: &[OwnedLexToken],
-) -> Option<crate::ConditionExpr> {
+fn parse_conjoined_this_spell_cost_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let words = crate::lexer::token_word_refs(tokens);
     let and_positions = words
         .iter()
@@ -6121,7 +6120,7 @@ fn parse_conjoined_this_spell_cost_condition(
             crate::grammar::primitives::probe_shape(parse_static_condition_clause(&right_tokens))
         });
         if let Some(right) = right {
-            return Some(crate::ConditionExpr::And(Box::new(left), Box::new(right)));
+            return Some(PredicateAst::And(Box::new(left), Box::new(right)));
         }
     }
     None
@@ -6157,7 +6156,8 @@ pub fn parse_trailing_this_spell_cost_condition(
             .to_string();
         return Ok(Some(
             crate::static_abilities::ThisSpellCostCondition::AsLongAsConditionExpr {
-                condition,
+                condition: bind_static_condition_predicate(condition)
+                    .ok_or_else(|| CardTextError::ParseError(display.clone()))?,
                 display,
             },
         ));

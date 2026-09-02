@@ -14,7 +14,7 @@ mod rules;
 mod surface;
 
 pub use crate::model::token_definition::*;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub use equipment::parse_equipment_rules_tokens;
 pub use names::leading_appositive_token_name;
 pub use reminder::*;

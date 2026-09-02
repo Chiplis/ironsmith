@@ -1,3 +1,4 @@
+use ironsmith_compiler::ParseCardText;
 use ironsmith_compiler::cards::CardDefinitionBuilder;
 use ironsmith_compiler::effects::EndCombatPhaseEffect;
 use ironsmith_compiler::ids::CardId;

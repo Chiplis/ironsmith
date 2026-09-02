@@ -529,7 +529,7 @@ pub fn parse_draw_equal_to_value(
         && let Ok(target) = parse_target_phrase(target_tokens)
     {
         let spec =
-            crate::reference_helpers::choose_spec_for_target(&target);
+            crate::model::ast::choose_spec_for_target(&target);
         let value = match stat {
             zone_move_grammar::DrawEqualStat::Power => Value::PowerOf(Box::new(spec)),
             zone_move_grammar::DrawEqualStat::Toughness => Value::ToughnessOf(Box::new(spec)),

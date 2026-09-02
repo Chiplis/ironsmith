@@ -1,4 +1,5 @@
 use crate::ability::ActivationTiming;
+use crate::cards::builders::PredicateAst;
 use crate::model::compiler_semantic::{CompilerActivatedAbilityCore, ParsedManaRestriction};
 
 use super::activation_and_restrictions::combine_mana_activation_condition;
@@ -43,14 +44,12 @@ fn apply_pending_mana_restriction(
 }
 
 fn merge_conditions(
-    existing: Option<crate::ConditionExpr>,
-    additional: Option<crate::ConditionExpr>,
-) -> Option<crate::ConditionExpr> {
+    existing: Option<PredicateAst>,
+    additional: Option<PredicateAst>,
+) -> Option<PredicateAst> {
     match (existing, additional) {
         (None, None) => None,
         (Some(condition), None) | (None, Some(condition)) => Some(condition),
-        (Some(left), Some(right)) => {
-            Some(crate::ConditionExpr::And(Box::new(left), Box::new(right)))
-        }
+        (Some(left), Some(right)) => Some(PredicateAst::And(Box::new(left), Box::new(right))),
     }
 }

@@ -79,7 +79,7 @@ fn direct_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilityS
             format_negated_restriction_display(tokens),
         ),
         DirectCantFact::SourceCantAttackOrBlockUnlessMaxSpeed => {
-            let max_speed = crate::ConditionExpr::ValueComparison {
+            let max_speed = PredicateAst::ValueComparison {
                 left: crate::effect::Value::Speed(PlayerFilter::You),
                 operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 right: crate::effect::Value::Fixed(4),
@@ -88,7 +88,7 @@ fn direct_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilityS
                 crate::effect::Restriction::attack_or_block(ObjectFilter::source()),
                 "This creature can't attack or block".to_string(),
             )
-            .with_condition(crate::ConditionExpr::Not(Box::new(max_speed)))
+            .with_condition(PredicateAst::Not(Box::new(max_speed)))
         }
         DirectCantFact::DomainAttackTax => {
             StaticAbility::cant_attack_you_unless_controller_pays_per_attacker_basic_land_types_among_lands_you_control()
@@ -145,7 +145,7 @@ fn attack_unless_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilit
             else {
                 return None;
             };
-            let condition = crate::ConditionExpr::Not(Box::new(condition));
+            let condition = PredicateAst::Not(Box::new(condition));
             Some(
                 StaticAbility::restriction(
                     crate::effect::Restriction::attack_or_block(ObjectFilter::source()),

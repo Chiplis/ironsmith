@@ -23,6 +23,7 @@ use super::shard_21::*;
 use super::shard_22::*;
 use super::shard_23::*;
 use super::*;
+use ironsmith_compiler::ParseCardText;
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]

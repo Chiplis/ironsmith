@@ -6,6 +6,11 @@ use super::shard_04::*;
 use super::shard_05::*;
 use super::shard_06::*;
 use super::*;
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
+#[cfg(test)]
+use ironsmith_compiler_lowering::CardDefinitionBuilder;
+use ironsmith_core::card::CardBuilder;
 
 #[test]
 pub(super) fn parser_sentence_helpers_do_not_use_retired_fixed_helper_tags() {
@@ -1065,10 +1070,10 @@ pub(super) fn rewrite_cant_be_regenerated_followup_detector_matches_plain_it_cla
 #[test]
 pub(super) fn rewrite_semantic_parse_handles_broken_visage_statement() -> Result<(), CardTextError>
 {
-    let builder = CardDefinitionBuilder::new(CardId::new(), "Broken Visage Variant")
+    let card = CardBuilder::new(CardId::new(), "Broken Visage Variant")
         .card_types(vec![CardType::Instant]);
     let (doc, _) = parse_text_to_semantic_document(
-        builder,
+        card,
         "Destroy target nonartifact attacking creature. It can't be regenerated. Create a black Spirit creature token. Its power is equal to that creature's power and its toughness is equal to that creature's toughness. Sacrifice the token at the beginning of the next end step.".to_string(),
         false,
     )?;
@@ -2467,10 +2472,10 @@ pub(super) fn rewrite_modal_header_error_reports_line_and_eof_after_trigger_pref
 
 #[test]
 pub(super) fn rewrite_document_parser_supports_activate_only_once_each_turn_without_period() {
-    let builder = CardDefinitionBuilder::new(CardId::new(), "Activated Limit Variant")
+    let card = CardBuilder::new(CardId::new(), "Activated Limit Variant")
         .card_types(vec![CardType::Artifact]);
     let preprocessed = super::super::preprocess::preprocess_document(
-        builder,
+        card,
         "Equip {0}\nActivate only once each turn",
     )
     .expect("expected preprocessing to accept activate-only-once line without trailing period");
@@ -2543,10 +2548,10 @@ pub(super) fn rewrite_document_parser_supports_robe_of_the_archmagi() {
 
 #[test]
 pub(super) fn rewrite_document_parser_splits_activation_cost_on_colon_outside_quotes() {
-    let builder = CardDefinitionBuilder::new(CardId::new(), "Quoted Colon Variant")
+    let card = CardBuilder::new(CardId::new(), "Quoted Colon Variant")
         .card_types(vec![CardType::Artifact]);
     let preprocessed =
-        super::super::preprocess::preprocess_document(builder, "{T}: Choose \"fire: ice\".")
+        super::super::preprocess::preprocess_document(card, "{T}: Choose \"fire: ice\".")
             .expect("expected preprocessing to accept quoted-colon activation line");
     let cst = super::super::document_parser::recognize_document(&preprocessed, false)
         .expect("expected document parser to split activation on colon outside quotes");
@@ -2588,8 +2593,7 @@ pub(super) fn rewrite_document_parser_splits_nonactivation_colon_outside_quotes(
 pub(super) fn rewrite_document_parser_dispatches_keyword_lines_by_head_phrase()
 -> Result<(), CardTextError> {
     let alt_preprocessed = super::super::preprocess::preprocess_document(
-        CardDefinitionBuilder::new(CardId::new(), "Alt Cost Variant")
-            .card_types(vec![CardType::Instant]),
+        CardBuilder::new(CardId::new(), "Alt Cost Variant").card_types(vec![CardType::Instant]),
         "If an opponent cast two or more spells this turn, you may pay {1}{R} rather than pay this spell's mana cost.",
     )?;
     let alt_cst = super::super::document_parser::recognize_document(&alt_preprocessed, false)?;
@@ -2600,8 +2604,7 @@ pub(super) fn rewrite_document_parser_dispatches_keyword_lines_by_head_phrase()
     ));
 
     let gift_preprocessed = super::super::preprocess::preprocess_document(
-        CardDefinitionBuilder::new(CardId::new(), "Gift Variant")
-            .card_types(vec![CardType::Sorcery]),
+        CardBuilder::new(CardId::new(), "Gift Variant").card_types(vec![CardType::Sorcery]),
         "Gift a card (You may promise an opponent a gift as you cast this spell. If you do, they draw a card before its other effects.)",
     )?;
     let gift_cst = super::super::document_parser::recognize_document(&gift_preprocessed, false)?;
@@ -2628,8 +2631,7 @@ pub(super) fn rewrite_splice_keyword_lines_lower_typed_subject_and_cost_without_
         ),
     ] {
         let preprocessed = super::super::preprocess::preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Keyword Probe")
-                .card_types(vec![CardType::Instant]),
+            CardBuilder::new(CardId::new(), "Keyword Probe").card_types(vec![CardType::Instant]),
             line,
         )?;
         let cst = super::super::document_parser::recognize_document(&preprocessed, false)?;
@@ -3882,7 +3884,7 @@ pub(super) fn rewrite_restriction_support_preserves_text_only_attack_conditions(
     );
     assert!(matches!(
         attacked_restriction.text_only_condition,
-        Some(crate::ConditionExpr::SourceAttackedThisTurn)
+        Some(PredicateAst::SourceAttackedThisTurn)
     ));
 
     let didnt_attack_restriction =
@@ -3907,8 +3909,8 @@ pub(super) fn rewrite_restriction_support_preserves_text_only_attack_conditions(
     assert!(didnt_attack_restriction.once_per_turn_after_other_restrictions);
     assert!(matches!(
         didnt_attack_restriction.text_only_condition,
-        Some(crate::ConditionExpr::Not(inner))
-            if matches!(inner.as_ref(), crate::ConditionExpr::SourceAttackedThisTurn)
+        Some(PredicateAst::Not(inner))
+            if matches!(inner.as_ref(), PredicateAst::SourceAttackedThisTurn)
     ));
 }
 

@@ -704,9 +704,9 @@ fn parse_revealed_top_library_permission_clause(
                     ),
                 ))],
                 crate::effect::Until::EndOfTurn,
-                crate::ConditionExpr::TaggedObjectIsTopOfLibrary {
+                PredicateAst::TaggedObjectIsTopOfLibrary {
                     tag: crate::tag::CompilerReferenceTag::LastRevealed.key(),
-                    player: crate::target::PlayerFilter::You,
+                    player: crate::cards::builders::PlayerAst::You,
                 },
             ),
             permission,

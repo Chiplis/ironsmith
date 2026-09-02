@@ -18,10 +18,21 @@ winnow = { version = "1.0.1", default-features = false, features = ["std", "asci
 
 [features]
 default = []
+# Recognition entry points that only tests call. The lowering crate's tests
+# build their inputs by recognizing real text, and a cfg(test) gate is not
+# visible across a crate boundary.
+test-support = []
 serialization = []
 
 [dev-dependencies]
 ironsmith-grammar-common = { path = "../ironsmith-grammar-common", default-features = false, features = ["test-support"] }
+# Recognition-to-runtime tests assert what a recognized line lowers to, so they
+# need the assembled pipeline. Cargo permits this cycle because it is a
+# dev-dependency: the compiled library graph still has no grammar -> lowering
+# edge, and the architecture audit reports dev-dependency edges separately so
+# the remaining test-side coupling stays counted rather than hidden.
+ironsmith-compiler = { path = "../ironsmith-compiler", default-features = false, features = ["test-support"] }
+ironsmith-compiler-lowering = { path = "../ironsmith-compiler-lowering", default-features = false, features = ["test-support"] }
 
 [lib]
 path = "src/lib.rs"

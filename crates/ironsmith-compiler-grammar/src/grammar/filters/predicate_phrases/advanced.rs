@@ -650,6 +650,7 @@ pub(super) fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFi
         PlayerAst::PlayerToYourLeft => Some(PlayerFilter::PlayerToYourLeft),
         PlayerAst::PlayerToYourRight => Some(PlayerFilter::PlayerToYourRight),
         PlayerAst::NotYou => Some(PlayerFilter::NotYou),
+        PlayerAst::Teammate => Some(PlayerFilter::Teammate),
         PlayerAst::That => Some(PlayerFilter::IteratedPlayer),
         PlayerAst::ThatPlayerOrTargetController => {
             Some(PlayerFilter::TargetPlayerOrControllerOfTarget)
@@ -682,17 +683,23 @@ pub(super) fn parse_player_status_predicate(tokens: &[OwnedLexToken]) -> Option<
     match status.status {
         crate::grammar::conditions::PlayerStatusAst::Monarch => {
             Some(PredicateAst::PlayerIsMonarch {
-                player: player_ast_from_status_player_filter(status.player)?,
+                player: player_ast_from_status_player_filter(
+                    crate::grammar::conditions::unconditional_player_filter(status.player)?,
+                )?,
             })
         }
         crate::grammar::conditions::PlayerStatusAst::Initiative => {
             Some(PredicateAst::PlayerHasInitiative {
-                player: player_ast_from_status_player_filter(status.player)?,
+                player: player_ast_from_status_player_filter(
+                    crate::grammar::conditions::unconditional_player_filter(status.player)?,
+                )?,
             })
         }
         crate::grammar::conditions::PlayerStatusAst::MaxSpeed => {
             Some(PredicateAst::ValueComparison {
-                left: Value::Speed(status.player),
+                left: Value::Speed(crate::grammar::conditions::unconditional_player_filter(
+                    status.player,
+                )?),
                 operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 right: Value::Fixed(4),
             })
@@ -884,7 +891,7 @@ pub(super) fn parse_source_controllers_main_phase_predicate_shape(
 
 pub(super) fn parse_player_achievement_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let achievement = crate::grammar::conditions::parse_player_achievement_condition(tokens)?;
-    let player = player_ast_from_status_player_filter(achievement.player)?;
+    let player = achievement.player;
     let predicate = match achievement.achievement {
         crate::grammar::conditions::PlayerAchievementAst::CitysBlessing => {
             Some(PredicateAst::PlayerHasCitysBlessing { player })
@@ -937,8 +944,8 @@ pub(super) fn parse_player_cards_in_hand_predicate(
 
     let condition =
         crate::grammar::conditions::parse_player_cards_in_hand_condition(&present_tokens)?;
-    let player_filter = condition.player.clone();
-    let player = player_ast_from_status_player_filter(condition.player.clone())?;
+    let player = condition.player;
+    let player_filter = crate::grammar::conditions::unconditional_player_filter(player)?;
 
     if !at_turn_start && player == PlayerAst::You && condition.is_no_cards_in_hand() {
         return Some(PredicateAst::YouHaveNoCardsInHand);
@@ -1024,7 +1031,9 @@ pub(super) fn parse_player_life_total_predicate(tokens: &[OwnedLexToken]) -> Opt
     let condition = crate::grammar::conditions::parse_player_life_total_condition(tokens)?;
     let (operator, amount) = comparison_to_value_comparison_operator(condition.comparison)?;
     Some(PredicateAst::ValueComparison {
-        left: crate::effect::Value::LifeTotal(condition.player),
+        left: crate::effect::Value::LifeTotal(
+            crate::grammar::conditions::unconditional_player_filter(condition.player)?,
+        ),
         operator,
         right: crate::effect::Value::Fixed(amount),
     })

@@ -363,7 +363,7 @@ fn parse_once_each_turn_top_library_shared_type_lexed<'a>(
     })
 }
 
-fn parse_semantic_all<'a, O, P>(tokens: &'a [OwnedLexToken], mut parser: P) -> Option<O>
+fn parse_semantic_all<'a, O, P>(tokens: &'a [OwnedLexToken], parser: P) -> Option<O>
 where
     P: Parser<LexStream<'a>, O, ErrMode<ContextError>>,
 {

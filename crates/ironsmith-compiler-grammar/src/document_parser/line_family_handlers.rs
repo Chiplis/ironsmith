@@ -98,11 +98,8 @@ pub(super) fn run_trailing_keyword_activation_line_family(
     if let Some(result) = sticker_sheet_ticket_marker_result(ctx) {
         return line_family_match(ctx, result);
     }
-    match try_parse_trailing_keyword_activation_dispatch(
-        &ctx.preprocessed.builder,
-        ctx.idx,
-        ctx.line,
-    ) {
+    match try_parse_trailing_keyword_activation_dispatch(&ctx.preprocessed.card, ctx.idx, ctx.line)
+    {
         Ok(Some(result)) => line_family_match(ctx, result),
         Ok(None) => ParseOutcome::NoMatch,
         Err(error) => line_family_error(ctx, rule, error),
@@ -193,7 +190,7 @@ pub(super) fn run_triggered_line_family(
     }
     if let Some(mut triggered) = recognize_simple_source_entry_face_down_exile_trigger(ctx.line) {
         if let Err(error) = restore_authored_named_source_trigger_subject(
-            &ctx.preprocessed.builder,
+            &ctx.preprocessed.card,
             ctx.line,
             &ctx.line.info.raw_line,
             &mut triggered,
@@ -324,7 +321,7 @@ pub(super) fn run_max_speed_labeled_line_family(
             ctx,
             rule,
             normalize_activation_cost_tokens_for_builder(
-                &ctx.preprocessed.builder,
+                &ctx.preprocessed.card,
                 ctx.line,
                 cost_tokens.clone(),
             )
@@ -335,7 +332,7 @@ pub(super) fn run_max_speed_labeled_line_family(
                     ctx,
                     rule,
                     normalize_activation_effect_tokens_for_builder(
-                        &ctx.preprocessed.builder,
+                        &ctx.preprocessed.card,
                         ctx.line,
                         &effect_parse_tokens,
                     )
@@ -851,7 +848,7 @@ pub(super) fn run_station_line_family(
         ctx,
         rule,
         normalize_activation_cost_tokens_for_builder(
-            &ctx.preprocessed.builder,
+            &ctx.preprocessed.card,
             ctx.line,
             cost_tokens.clone(),
         )
@@ -865,7 +862,7 @@ pub(super) fn run_station_line_family(
         ctx,
         rule,
         normalize_activation_effect_tokens_for_builder(
-            &ctx.preprocessed.builder,
+            &ctx.preprocessed.card,
             ctx.line,
             &effect_parse_tokens,
         )
@@ -890,7 +887,7 @@ pub(super) fn run_station_line_family(
         .any(|line| line_grammar::parse_station_threshold_line(&line.tokens).is_some());
     if !has_explicit_station_threshold_rows
         && let Some(threshold) = station_shape.creature_threshold
-        && let Some(pt) = ctx.preprocessed.builder.card_builder.power_toughness_ref()
+        && let Some(pt) = ctx.preprocessed.card.power_toughness_ref()
     {
         let chosen_option = ChosenOptionContext::StationThresholdSupport(threshold);
         let power = pt.power.base_value();
@@ -942,7 +939,7 @@ pub(super) fn run_station_threshold_line_family(
     let chosen_option = ChosenOptionContext::StationThreshold(threshold);
     let mut lines = Vec::new();
     if station_threshold_is_creature_pt_threshold(ctx, threshold)
-        && let Some(pt) = ctx.preprocessed.builder.card_builder.power_toughness_ref()
+        && let Some(pt) = ctx.preprocessed.card.power_toughness_ref()
     {
         let power = pt.power.base_value();
         let toughness = pt.toughness.base_value();
@@ -993,7 +990,7 @@ pub(super) fn run_station_threshold_line_family(
             ctx,
             rule,
             normalize_activation_cost_tokens_for_builder(
-                &ctx.preprocessed.builder,
+                &ctx.preprocessed.card,
                 ctx.line,
                 cost_tokens.clone(),
             )
@@ -1007,7 +1004,7 @@ pub(super) fn run_station_threshold_line_family(
             ctx,
             rule,
             normalize_activation_effect_tokens_for_builder(
-                &ctx.preprocessed.builder,
+                &ctx.preprocessed.card,
                 ctx.line,
                 &effect_parse_tokens,
             )
@@ -1078,13 +1075,7 @@ fn station_threshold_is_creature_pt_threshold(
     ctx: &LineDispatchContext<'_>,
     threshold: i32,
 ) -> bool {
-    if ctx
-        .preprocessed
-        .builder
-        .card_builder
-        .power_toughness_ref()
-        .is_none()
-    {
+    if ctx.preprocessed.card.power_toughness_ref().is_none() {
         return false;
     }
     ctx.preprocessed.items.iter().any(|item| {
@@ -1543,7 +1534,7 @@ pub(super) fn run_activation_line_family(
             ctx,
             rule,
             normalize_activation_cost_tokens_for_builder(
-                &ctx.preprocessed.builder,
+                &ctx.preprocessed.card,
                 ctx.line,
                 cost_tokens.clone(),
             )
@@ -1554,7 +1545,7 @@ pub(super) fn run_activation_line_family(
                     ctx,
                     rule,
                     normalize_activation_effect_tokens_for_builder(
-                        &ctx.preprocessed.builder,
+                        &ctx.preprocessed.card,
                         ctx.line,
                         &effect_parse_tokens,
                     )
@@ -1591,6 +1582,8 @@ pub(super) fn run_activation_line_family(
 mod tests {
     use super::*;
     use crate::lexer::lex_line;
+    use ironsmith_compiler_lowering::CardDefinitionBuilder;
+    use ironsmith_core::card::CardBuilder;
 
     #[test]
     fn partner_variant_separator_detection_uses_tokens() {
@@ -1614,18 +1607,15 @@ mod tests {
     #[test]
     fn partner_with_name_and_variant_label_trim_on_lexed_reminder_tokens() {
         fn line(text: &str) -> PreprocessedLine {
-            preprocess_document(
-                CardDefinitionBuilder::new(crate::CardId::new(), "Partner Test"),
-                text,
-            )
-            .expect("partner line should preprocess")
-            .items
-            .into_iter()
-            .find_map(|item| match item {
-                PreprocessedItem::Line(line) => Some(line),
-                PreprocessedItem::Metadata(_) => None,
-            })
-            .expect("partner line should yield a preprocessed line")
+            preprocess_document(CardBuilder::new(crate::CardId::new(), "Partner Test"), text)
+                .expect("partner line should preprocess")
+                .items
+                .into_iter()
+                .find_map(|item| match item {
+                    PreprocessedItem::Line(line) => Some(line),
+                    PreprocessedItem::Metadata(_) => None,
+                })
+                .expect("partner line should yield a preprocessed line")
         }
 
         let partner_with_line =
@@ -1644,7 +1634,7 @@ mod tests {
         );
 
         let shared_prefix_document = preprocess_document(
-            CardDefinitionBuilder::new(crate::CardId::new(), "Soulblade Renewer"),
+            CardBuilder::new(crate::CardId::new(), "Soulblade Renewer"),
             "Partner with Soulblade Corrupter (When this creature enters, target player may put Soulblade Corrupter into their hand from their library, then shuffle.)",
         )
         .expect("shared-prefix partner line should preprocess");
@@ -1664,7 +1654,7 @@ mod tests {
     #[test]
     fn typed_line_family_migration_routes_simple_and_unless_shapes_into_recognized() {
         let learn = preprocess_document(
-            CardDefinitionBuilder::new(crate::CardId::new(), "Learn Test"),
+            CardBuilder::new(crate::CardId::new(), "Learn Test"),
             "Learn.",
         )
         .expect("learn should preprocess");
@@ -1675,7 +1665,7 @@ mod tests {
         ));
 
         let unless = preprocess_document(
-            CardDefinitionBuilder::new(crate::CardId::new(), "Unless Test"),
+            CardBuilder::new(crate::CardId::new(), "Unless Test"),
             "Unless you pay {2}, sacrifice this permanent.",
         )
         .expect("unless should preprocess");
@@ -1692,9 +1682,9 @@ mod tests {
     #[test]
     fn expanded_removed_draft_ladder_yields_to_typed_static_dispatch() {
         let oracle = "If you removed a creature card with flying from the draft with cards named Animus of Predation, this creature has flying. The same is true for first strike, double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, reach, and vigilance.";
-        let builder = CardDefinitionBuilder::new(crate::CardId::new(), "Animus of Predation")
+        let card = CardBuilder::new(crate::CardId::new(), "Animus of Predation")
             .card_types(vec![crate::types::CardType::Creature]);
-        let document = preprocess_document(builder, oracle)
+        let document = preprocess_document(card, oracle)
             .expect("the removed-from-draft ladder should preprocess");
         let recognized = recognize_document(&document, false)
             .expect("the removed-from-draft ladder should classify");
@@ -1726,7 +1716,7 @@ mod tests {
     fn station_threshold_line_uses_pipe_and_plus_tokens() {
         fn line(text: &str) -> PreprocessedLine {
             preprocess_document(
-                CardDefinitionBuilder::new(crate::CardId::new(), "Station Threshold Test")
+                CardBuilder::new(crate::CardId::new(), "Station Threshold Test")
                     .card_types(vec![crate::types::CardType::Artifact]),
                 text,
             )
@@ -1813,7 +1803,7 @@ mod tests {
         let source =
             "Creatures you control get +1/+1. If it's not your turn, untap those creatures.";
         let line = preprocess_document(
-            CardDefinitionBuilder::new(crate::CardId::new(), "Untap Split Test"),
+            CardBuilder::new(crate::CardId::new(), "Untap Split Test"),
             source,
         )
         .expect("line should preprocess")
@@ -1839,7 +1829,7 @@ mod tests {
     #[test]
     fn graveyard_cast_conditions_carry_typed_labels_into_recognized() {
         let subtype_document = preprocess_document(
-            CardDefinitionBuilder::new(crate::CardId::new(), "Gravecrawler Test")
+            CardBuilder::new(crate::CardId::new(), "Gravecrawler Test")
                 .card_types(vec![crate::types::CardType::Creature]),
             "You may cast this card from your graveyard as long as you control a Zombie.",
         )
@@ -1857,7 +1847,7 @@ mod tests {
         );
 
         let color_document = preprocess_document(
-            CardDefinitionBuilder::new(crate::CardId::new(), "Color Pair Test")
+            CardBuilder::new(crate::CardId::new(), "Color Pair Test")
                 .card_types(vec![crate::types::CardType::Creature]),
             "You may cast this card from your graveyard as long as you control a black or red permanent.",
         )
@@ -1879,7 +1869,7 @@ mod tests {
     #[test]
     fn additional_combat_rewrite_splices_typed_token_span() {
         let document = preprocess_document(
-            CardDefinitionBuilder::new(crate::CardId::new(), "Additional Combat Test")
+            CardBuilder::new(crate::CardId::new(), "Additional Combat Test")
                 .card_types(vec![crate::types::CardType::Sorcery]),
             "If it's your main phase, there is an additional combat phase after this phase, followed by an additional main phase.",
         )
@@ -1899,7 +1889,7 @@ mod tests {
     fn attached_ignore_permission_wins_full_document_static_classification() {
         let restriction = "Enchanted creature can't attack or block, and its activated abilities can't be activated. That creature's controller may sacrifice a permanent of their choice for that player to ignore this effect until end of turn.";
         let document = preprocess_document(
-            CardDefinitionBuilder::new(crate::CardId::new(), "Attached Restriction Test")
+            CardBuilder::new(crate::CardId::new(), "Attached Restriction Test")
                 .card_types(vec![crate::types::CardType::Enchantment])
                 .subtypes(vec![crate::types::Subtype::Aura]),
             restriction,
@@ -2474,7 +2464,7 @@ pub(super) fn run_unsupported_line_family(
 }
 
 fn try_parse_trailing_keyword_activation_dispatch(
-    builder: &CardDefinitionBuilder,
+    card: &crate::card::CardBuilder,
     idx: usize,
     line: &PreprocessedLine,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
@@ -2493,7 +2483,7 @@ fn try_parse_trailing_keyword_activation_dispatch(
         RecognizedLine::Statement(statement_line)
     } else {
         parse_keyword_activation_prefix_static_or_rewrite(
-            builder,
+            card,
             line,
             &prefix_line,
             prefix_statement_error,
@@ -2515,10 +2505,10 @@ fn try_parse_trailing_keyword_activation_dispatch(
         )));
     };
     let normalized_cost_tokens =
-        normalize_activation_cost_tokens_for_builder(builder, line, cost_tokens.clone())?;
+        normalize_activation_cost_tokens_for_builder(card, line, cost_tokens.clone())?;
     let cost = parse_activation_cost_tokens_rewrite(&normalized_cost_tokens)?;
     let effect_parse_tokens =
-        normalize_activation_effect_tokens_for_builder(builder, line, &effect_parse_tokens)?;
+        normalize_activation_effect_tokens_for_builder(card, line, &effect_parse_tokens)?;
     let activated = RecognizedLine::Activated(RecognizedActivatedLine {
         info: suffix_line.info.clone(),
         cost,
@@ -2535,7 +2525,7 @@ fn try_parse_trailing_keyword_activation_dispatch(
 }
 
 fn parse_keyword_activation_prefix_static_or_rewrite(
-    _builder: &CardDefinitionBuilder,
+    _card: &crate::card::CardBuilder,
     line: &PreprocessedLine,
     prefix_line: &PreprocessedLine,
     statement_error: Option<CardTextError>,
@@ -2562,6 +2552,8 @@ fn parse_keyword_activation_prefix_static_or_rewrite(
 #[cfg(test)]
 mod ticket_marker_tests {
     use super::*;
+    use ironsmith_compiler_lowering::CardDefinitionBuilder;
+    use ironsmith_core::card::CardBuilder;
 
     fn compiled_sticker_marker_labels(name: &str, text: &str) -> Vec<String> {
         let compiled = crate::compile_card_text(

@@ -138,7 +138,7 @@ fn attached_color_condition_keeps_ability_loss_on_the_attached_creature() {
     let [
         StaticAbilityAst::AttachedStaticAbilityGrant {
             ability,
-            condition: Some(crate::ConditionExpr::AttachedToSourceMatches(filter)),
+            condition: Some(PredicateAst::AttachedToSourceMatches(filter)),
             ..
         },
     ] = abilities.as_slice()
@@ -244,7 +244,7 @@ fn attached_anthem_subject_carries_through_leading_condition_chain() {
     assert!(debug.contains("Trample"), "{debug}");
     let Some(StaticAbilityAst::AttachedKeywordActionGrant {
         action: KeywordAction::Trample,
-        condition: Some(crate::ConditionExpr::AttachedToSourceMatches(filter)),
+        condition: Some(PredicateAst::AttachedToSourceMatches(filter)),
         ..
     }) = abilities.last()
     else {
@@ -270,7 +270,7 @@ fn attached_object_controller_control_condition_binds_affected_target() {
     let tokens = crate::lexer::lex_line("its controller controls another creature", 0).unwrap();
     let condition = parse_static_condition_clause(&tokens)
         .expect("affected controller control condition should parse");
-    let crate::ConditionExpr::CountComparison {
+    let PredicateAst::CountComparison {
         count: AnthemCountExpression::MatchingFilter(filter),
         comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
         ..

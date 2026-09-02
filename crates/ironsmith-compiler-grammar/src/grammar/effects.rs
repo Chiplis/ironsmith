@@ -1630,7 +1630,7 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
                 duration,
                 crate::effect::RestrictionStart::Immediate,
                 duration_surface,
-                source_tapped_duration.then_some(crate::ConditionExpr::SourceIsTapped),
+                source_tapped_duration.then_some(PredicateAst::SourceIsTapped),
             ),
         ]));
     }
@@ -1662,7 +1662,7 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
             duration.clone(),
             crate::effect::RestrictionStart::Immediate,
             duration_surface,
-            source_tapped_duration.then_some(crate::ConditionExpr::SourceIsTapped),
+            source_tapped_duration.then_some(PredicateAst::SourceIsTapped),
         ));
     }
     if let Some(target) = target {

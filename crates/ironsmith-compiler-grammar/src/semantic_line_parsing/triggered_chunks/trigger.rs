@@ -107,24 +107,29 @@ pub fn apply_explicit_intervening_if_to_triggered_chunk(
             let mut reference_imports = parsed.reference_imports.clone();
             let default_last_object_tag = reference_imports.last_object_tag.clone().or_else(|| {
                 parsed.trigger_spec.as_deref().and_then(
-                    super::super::super::lowering_support::default_trigger_last_object_tag,
+                    ironsmith_compiler_semantic::trigger_references::default_trigger_last_object_tag,
                 )
             });
             if reference_imports.last_object_tag.is_none() {
                 reference_imports.last_object_tag = default_last_object_tag.clone();
             }
-            let compiled_condition = compile_condition_from_predicate_ast_with_env(
+            // Whether this predicate can bind at all decides whether the line
+            // takes this shape, so it is checked here — but the answer stored is
+            // the predicate, not the binding. Lowering binds it again against
+            // the same references the trigger exports.
+            let binds = crate::reference_resolution_support::resolve_condition_from_predicate(
                 &predicate,
                 &ReferenceEnv::from_imports(&reference_imports, false, false, false, None),
-                default_last_object_tag.as_ref(),
-            );
-            if let Ok(condition) = compiled_condition {
+                &default_last_object_tag,
+            )
+            .is_ok();
+            if binds {
                 if let AbilityKind::Triggered(triggered) = parsed.kind_mut() {
                     triggered.intervening_if = Some(match triggered.intervening_if.take() {
                         Some(existing) => {
-                            crate::ConditionExpr::And(Box::new(existing), Box::new(condition))
+                            PredicateAst::And(Box::new(existing), Box::new(predicate.clone()))
                         }
-                        None => condition,
+                        None => predicate.clone(),
                     });
                 }
                 if let Some(effects_ast) = parsed.effects_ast.take() {

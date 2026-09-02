@@ -1,3 +1,5 @@
+use crate::cards::builders::{PredicateAst, TriggerFrequencyPredicateAst};
+
 use super::super::super::lexer::OwnedLexToken;
 use super::super::primitives;
 
@@ -54,20 +56,27 @@ pub fn parse_trigger_frequency_tokens(tokens: &[OwnedLexToken]) -> TriggerFreque
     }
 }
 
+/// The frequency limit this trigger line states, as a predicate.
+///
+/// Which limit the words mean is a recognition question; what that limit checks
+/// at resolution is not. This answers the first and leaves the second to the
+/// resolver.
 pub fn parse_trigger_frequency_condition_tokens(
     tokens: &[OwnedLexToken],
     max_triggers_per_turn: Option<u32>,
-) -> Option<crate::ConditionExpr> {
+) -> Option<PredicateAst> {
     max_triggers_per_turn.map(|limit| {
         let frequency = parse_trigger_frequency_tokens(tokens);
-        if limit == 1 && frequency.first_time_each_or_this_turn && frequency.becomes_crewed {
-            crate::ConditionExpr::SourceFirstCrewedThisTurn
-        } else if limit == 1 && frequency.first_time_each_or_this_turn {
-            crate::ConditionExpr::FirstTimeThisTurn
-        } else if frequency.do_this_limit_each_turn.is_some() {
-            crate::ConditionExpr::DoThisMaxTimesEachTurn(limit)
-        } else {
-            crate::ConditionExpr::MaxTimesEachTurn(limit)
-        }
+        PredicateAst::TriggerFrequency(
+            if limit == 1 && frequency.first_time_each_or_this_turn && frequency.becomes_crewed {
+                TriggerFrequencyPredicateAst::SourceFirstCrewedThisTurn
+            } else if limit == 1 && frequency.first_time_each_or_this_turn {
+                TriggerFrequencyPredicateAst::FirstTimeThisTurn
+            } else if frequency.do_this_limit_each_turn.is_some() {
+                TriggerFrequencyPredicateAst::DoThisMaxTimesEachTurn(limit)
+            } else {
+                TriggerFrequencyPredicateAst::MaxTimesEachTurn(limit)
+            },
+        )
     })
 }

@@ -1,4 +1,5 @@
 use super::*;
+use ironsmith_compiler::ParseCardText;
 
 fn compile_with_types(
     text: &str,

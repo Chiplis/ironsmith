@@ -1,6 +1,6 @@
 use super::*;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn parse_single_effect_lexed(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     parse_effect_sentences_lexed(tokens)?
         .into_iter()
@@ -8,7 +8,7 @@ pub fn parse_single_effect_lexed(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
         .ok_or_else(|| CardTextError::ParseError("missing effect in lexed sentence".to_string()))
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn strip_lexed_suffix_phrase<'a>(
     tokens: &'a [OwnedLexToken],
     phrase: &[&str],

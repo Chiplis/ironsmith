@@ -326,8 +326,9 @@ pub(super) fn compiler_boundary_adapter_has_no_semantic_conversion_tables() {
         "core-owned costs should provide the core tap-cost constructor"
     );
     assert!(
-        core_ability.contains("pub fn try_map<SA2, T2, E2, C2, Error>"),
-        "core Ability should own structural mapping across non-static families"
+        core_ability.contains("pub fn try_map<SA2, T2, E2, C2, Cond2, Error>"),
+        "core Ability should own structural mapping across non-static families, \
+         including the condition vocabulary each phase speaks"
     );
     assert!(
         core_definition.contains("pub fn try_map<A2, E2, C2, AC2, OC2, Error>"),
@@ -926,7 +927,7 @@ pub(super) fn parse_annotations_stay_diagnostic_only() {
 #[test]
 pub(super) fn condition_antecedent_binding_has_single_lowering_owner() {
     let root = workspace_root();
-    let lowering_root = root.join("crates/ironsmith-compiler-grammar/src/lowering_impl");
+    let lowering_root = root.join("crates/ironsmith-compiler-lowering/src/lowering_impl");
     let owner = lowering_root.join("condition_antecedent.rs");
     let mut files = Vec::new();
     collect_rust_files(&lowering_root, &mut files);
@@ -1031,7 +1032,7 @@ pub(super) fn function_source<'a>(
 #[test]
 pub(super) fn lowering_lower_has_no_raw_text_checks_or_migration_allowlist() {
     let root = workspace_root();
-    let lower_root = root.join("crates/ironsmith-compiler-grammar/src/lowering_impl/lower");
+    let lower_root = root.join("crates/ironsmith-compiler-lowering/src/lowering_impl/lower");
     let mut files = Vec::new();
     collect_rust_files(&lower_root, &mut files);
 
@@ -1055,8 +1056,8 @@ pub(super) fn lowering_lower_has_no_raw_text_checks_or_migration_allowlist() {
     );
 
     for relative in [
-        "crates/ironsmith-compiler-grammar/src/lowering_impl/lower/activated_lowering.rs",
-        "crates/ironsmith-compiler-grammar/src/lowering_impl/lower/parser_semantic_lowering.rs",
+        "crates/ironsmith-compiler-lowering/src/lowering_impl/lower/activated_lowering.rs",
+        "crates/ironsmith-compiler-lowering/src/lowering_impl/lower/parser_semantic_lowering.rs",
     ] {
         assert!(
             !root.join(relative).exists(),
@@ -1521,7 +1522,7 @@ pub(super) fn token_pt_parsing_is_front_end_leaf_grammar_owned() {
     );
 
     let lowering_relative =
-        "crates/ironsmith-compiler-grammar/src/lowering_impl/compile_support.rs";
+        "crates/ironsmith-compiler-lowering/src/lowering_impl/compile_support.rs";
     let lowering = read_repo_file(&root, lowering_relative);
     assert!(
         !lowering.contains("fn parse_token_pt"),
@@ -2749,4 +2750,65 @@ pub(super) fn keyword_static_you_may_static_grant_uses_clause_shapes() {
             "{relative} should not parse static grant line probes through raw word vectors: found `{forbidden}`"
         );
     }
+}
+
+/// `StaticAbility::new` dispatches on the runtime type of its payload, so a
+/// downcast naming different generic arguments than the value it is handed
+/// silently misses and yields an ability with no semantic id — a compile-clean
+/// failure that surfaced only as a card that stopped compiling after
+/// `GrantAbility` gained a condition parameter.
+///
+/// Keeping each boxed payload variant generic over the same arguments turns
+/// that mismatch into a type error, and this asserts the two stay spelled
+/// alike so a future payload cannot reintroduce the silent form.
+#[test]
+pub(super) fn static_ability_dynamic_dispatch_matches_its_payload_variants() {
+    let source = read_repo_file(
+        &workspace_root(),
+        "crates/ironsmith-core/src/static_ability_model.rs",
+    );
+
+    let declared: Vec<(String, String)> = source
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            let (name, rest) = line.split_once("(Box<")?;
+            let (payload, _) = rest.split_once(">>)")?;
+            let (payload_name, arguments) = payload.split_once('<')?;
+            (payload_name == name).then(|| {
+                (
+                    name.to_string(),
+                    arguments.trim_end_matches('>').to_string(),
+                )
+            })
+        })
+        .collect();
+    assert!(
+        !declared.is_empty(),
+        "expected generic boxed payload variants in the static ability model"
+    );
+
+    let mut mismatched = Vec::new();
+    for (name, arguments) in &declared {
+        let needle = format!("downcast_ref::<{name}<");
+        let Some(start) = source.find(&needle) else {
+            continue;
+        };
+        let rest = &source[start + needle.len()..];
+        let Some(end) = rest.find(">>()") else {
+            continue;
+        };
+        let downcast_arguments = &rest[..end];
+        if downcast_arguments != arguments {
+            mismatched.push(format!(
+                "{name}: variant declares <{arguments}> but the downcast names <{downcast_arguments}>"
+            ));
+        }
+    }
+
+    assert!(
+        mismatched.is_empty(),
+        "dynamic static-ability dispatch would silently miss:\n{}",
+        mismatched.join("\n")
+    );
 }

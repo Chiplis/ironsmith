@@ -5,11 +5,12 @@ use super::super::grammar::activated_lines::{
 use super::super::lexer::OwnedLexToken;
 use super::{joined_activation_clause_text, merge_mana_activation_conditions};
 use crate::ability::ActivationTiming;
+use crate::cards::builders::PredicateAst;
 use crate::cards::builders::{EffectAst, PlayerAst};
 
 struct ActivateOnlySentenceDetails {
     timing: ActivationTiming,
-    condition: Option<crate::ConditionExpr>,
+    condition: Option<PredicateAst>,
     normalized_restriction: Option<String>,
     once_per_turn_after_other_restrictions: bool,
 }
@@ -28,7 +29,7 @@ enum ActivatedSentenceModifier {
 pub(super) struct ActivatedSentenceScan<'a> {
     pub(super) kept_sentences: Vec<&'a [OwnedLexToken]>,
     pub(super) timing: ActivationTiming,
-    pub(super) mana_activation_condition: Option<crate::ConditionExpr>,
+    pub(super) mana_activation_condition: Option<PredicateAst>,
     pub(super) additional_activation_restrictions: Vec<String>,
     pub(super) has_exhaust_once_restriction: bool,
     pub(super) mana_usage_restrictions: Vec<crate::model::CompilerManaUsageRestriction>,
@@ -61,21 +62,21 @@ fn parse_activate_only_sentence_details_lexed(
 }
 
 fn strip_once_per_turn_condition_redundancy(
-    condition: crate::ConditionExpr,
+    condition: PredicateAst,
     timing: &ActivationTiming,
-) -> Option<crate::ConditionExpr> {
+) -> Option<PredicateAst> {
     if timing != &ActivationTiming::OncePerTurn {
         return Some(condition);
     }
 
     match condition {
-        crate::ConditionExpr::MaxActivationsPerTurn(1) => None,
-        crate::ConditionExpr::And(left, right) => {
+        PredicateAst::MaxActivationsPerTurn(1) => None,
+        PredicateAst::And(left, right) => {
             let left = strip_once_per_turn_condition_redundancy(*left, timing);
             let right = strip_once_per_turn_condition_redundancy(*right, timing);
             match (left, right) {
                 (Some(left), Some(right)) => {
-                    Some(crate::ConditionExpr::And(Box::new(left), Box::new(right)))
+                    Some(PredicateAst::And(Box::new(left), Box::new(right)))
                 }
                 (Some(condition), None) | (None, Some(condition)) => Some(condition),
                 (None, None) => None,
@@ -265,7 +266,9 @@ pub fn parse_triggered_times_each_turn_lexed(tokens: &[OwnedLexToken]) -> Option
     ability_grammar::parse_triggered_times_each_turn_lexed(tokens)
 }
 
-pub fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Option<crate::ConditionExpr> {
+pub fn parse_activation_condition_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::cards::builders::PredicateAst> {
     ability_grammar::parse_activation_condition_lexed(tokens)
 }
 
@@ -301,7 +304,7 @@ mod tests {
         assert_eq!(details.timing, ActivationTiming::OncePerTurn);
         assert_eq!(
             details.condition,
-            Some(crate::ConditionExpr::SourceAttackedThisTurn)
+            Some(PredicateAst::SourceAttackedThisTurn)
         );
         assert!(!details.once_per_turn_after_other_restrictions);
     }
@@ -316,7 +319,7 @@ mod tests {
         assert_eq!(details.timing, ActivationTiming::OncePerTurn);
         assert_eq!(
             details.condition,
-            Some(crate::ConditionExpr::ActivationTiming(
+            Some(PredicateAst::ActivationTiming(
                 ActivationTiming::DuringYourTurn
             ))
         );

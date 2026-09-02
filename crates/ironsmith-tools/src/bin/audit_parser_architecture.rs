@@ -16,6 +16,14 @@ struct OwnershipManifest {
     phases: Vec<Phase>,
     allowed_edges: Vec<AllowedEdge>,
     allowed_dependencies: Vec<AllowedEdge>,
+    /// Crates that compose phases instead of owning one.
+    ///
+    /// The phase graph is only a line if no phase crate can reach another. An
+    /// orchestrator is the seam where the phases are finally assembled, so it
+    /// is the one place allowed to name more than one — and it must own no
+    /// phase itself, or the seam would be a phase with extra reach.
+    #[serde(default)]
+    orchestrators: Vec<String>,
     bridges: Vec<Bridge>,
     exceptions: Vec<Exception>,
     audit: AuditConfiguration,
@@ -432,29 +440,60 @@ fn audit_cargo_dependency_graph(
             .unwrap_or_else(|error| panic!("failed reading {}: {error}", cargo_path.display()));
         let parsed = toml::from_str::<toml::Value>(&source)
             .unwrap_or_else(|error| panic!("failed parsing {}: {error}", cargo_path.display()));
-        let Some(dependencies) = parsed.get("dependencies").and_then(toml::Value::as_table) else {
-            continue;
-        };
-        for (dependency_key, dependency_value) in dependencies {
-            let dependency_name = dependency_value
-                .as_table()
-                .and_then(|table| table.get("package"))
-                .and_then(toml::Value::as_str)
-                .unwrap_or(dependency_key);
-            let Some(target_phase) = phase_by_crate.get(dependency_name).copied() else {
+        // Dev-dependencies are checked too, under their own finding kind. A test
+        // that spans two phases still couples them, and reading only
+        // `[dependencies]` would let that coupling grow unseen.
+        let sections = [
+            ("dependencies", "forbidden_cargo_dependency"),
+            ("dev-dependencies", "forbidden_dev_dependency"),
+        ];
+        for (section, finding_kind) in sections {
+            let Some(dependencies) = parsed.get(section).and_then(toml::Value::as_table) else {
                 continue;
             };
-            if !allowed.contains(&(source_phase, target_phase)) {
-                findings.push(Finding {
-                    kind: "forbidden_cargo_dependency".to_string(),
+            for (dependency_key, dependency_value) in dependencies {
+                let dependency_name = dependency_value
+                    .as_table()
+                    .and_then(|table| table.get("package"))
+                    .and_then(toml::Value::as_str)
+                    .unwrap_or(dependency_key);
+                // Depending on an orchestrator reaches every phase it composes,
+                // so it is reported as the edge to the phase furthest from this
+                // one. Otherwise a phase crate could route around the graph by
+                // going through the seam.
+                let orchestrator_reach = || {
+                    manifest
+                        .orchestrators
+                        .iter()
+                        .any(|name| name == dependency_name)
+                        .then(|| {
+                            phase_by_crate
+                                .values()
+                                .copied()
+                                .filter(|phase| !allowed.contains(&(source_phase, *phase)))
+                                .max_by_key(|phase| phase.len())
+                        })
+                        .flatten()
+                };
+                let Some(target_phase) = phase_by_crate
+                    .get(dependency_name)
+                    .copied()
+                    .or_else(orchestrator_reach)
+                else {
+                    continue;
+                };
+                if !allowed.contains(&(source_phase, target_phase)) {
+                    findings.push(Finding {
+                    kind: finding_kind.to_string(),
                     rule_id: "compiled-cargo-graph".to_string(),
                     path: relative_path(repo_root, &cargo_path),
                     line: cargo_dependency_line(&source, dependency_key),
                     detail: format!(
-                        "{crate_name} ({source_phase}) depends on {dependency_name} ({target_phase})"
+                        "{crate_name} ({source_phase}) depends on {dependency_name} ({target_phase}) via [{section}]"
                     ),
                     suppressed_by: None,
                 });
+                }
             }
         }
     }
@@ -628,7 +667,6 @@ fn production_parser_rust_files(manifest: &OwnershipManifest, repo_root: &Path) 
         .flat_map(|phase| phase.crates.iter())
         .map(|crate_name| format!("crates/{crate_name}/src"))
         .collect::<Vec<_>>();
-    roots.push("crates/ironsmith-compiler/src".to_string());
     roots.sort();
     roots.dedup();
 
@@ -1125,6 +1163,30 @@ fn matching_delimiter(bytes: &[u8], start: usize, opening: u8, closing: u8) -> u
     bytes.len()
 }
 
+/// The end of a character literal starting at `start`, if one starts there.
+///
+/// Returns `None` for a lifetime, which shares the opening byte.
+fn char_literal_end(bytes: &[u8], start: usize) -> Option<usize> {
+    let mut cursor = start + 1;
+    if cursor >= bytes.len() {
+        return None;
+    }
+    if bytes[cursor] == b'\\' {
+        cursor += 1;
+        while cursor < bytes.len() && bytes[cursor] != b'\'' && bytes[cursor] != b'\n' {
+            cursor += 1;
+        }
+        return (cursor < bytes.len() && bytes[cursor] == b'\'').then_some(cursor + 1);
+    }
+    // One character, then the closing quote. Anything longer is a lifetime.
+    let mut end = cursor;
+    while end < bytes.len() && (bytes[end] & 0xC0) == 0x80 {
+        end += 1;
+    }
+    end += 1;
+    (end < bytes.len() && bytes[end] == b'\'').then_some(end + 1)
+}
+
 fn mask_comments_and_literals(source: &str) -> String {
     let bytes = source.as_bytes();
     let mut masked = bytes.to_vec();
@@ -1159,6 +1221,21 @@ fn mask_comments_and_literals(source: &str) -> String {
             masked[cursor..cursor + 2].fill(b' ');
             block_depth = 1;
             cursor += 2;
+            continue;
+        }
+        // A character literal may hold a quote or a brace (`.replace('"', "")`).
+        // Leaving it unmasked desynchronizes string masking and, with it, the
+        // brace matching that decides where a `#[cfg(test)]` item ends.
+        // Lifetimes (`&'a str`) start with the same byte and must be left alone.
+        if bytes[cursor] == b'\''
+            && let Some(end) = char_literal_end(bytes, cursor)
+        {
+            for slot in cursor..end {
+                if bytes[slot] != b'\n' {
+                    masked[slot] = b' ';
+                }
+            }
+            cursor = end;
             continue;
         }
         if bytes[cursor] == b'"' {

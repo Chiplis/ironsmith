@@ -7,6 +7,10 @@ use super::shard_05::*;
 use super::shard_06::*;
 use super::*;
 use crate::target::PlayerFilter;
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
+#[cfg(test)]
+use ironsmith_compiler_lowering::CardDefinitionBuilder;
 
 #[test]
 pub(super) fn rewrite_keyword_craft_line_uses_supported_activated_keyword_lowering() {
@@ -957,7 +961,7 @@ pub(super) fn rewrite_grammar_empty_library_draw_win_lowers_to_conditional_repla
     };
     assert!(matches!(
         condition,
-        crate::effect::Condition::ValueComparison {
+        crate::cards::builders::PredicateAst::ValueComparison {
             left: crate::effect::Value::CardsInLibrary(crate::target::PlayerFilter::You),
             operator: crate::effect::ValueComparisonOperator::Equal,
             right: crate::effect::Value::Fixed(0),
@@ -1001,10 +1005,10 @@ pub(super) fn aether_refinery_energy_doubling_static_line_parses_as_replacement(
 
 #[test]
 pub(super) fn aether_refinery_oracle_dispatches_energy_doubling_line_as_static() {
-    let builder = CardDefinitionBuilder::new(CardId::new(), "Aether Refinery")
-        .card_types(vec![CardType::Artifact]);
+    let card =
+        CardBuilder::new(CardId::new(), "Aether Refinery").card_types(vec![CardType::Artifact]);
     let preprocessed = super::super::preprocess::preprocess_document(
-        builder,
+        card,
         "If you would get one or more {E} (energy counters), you get twice that many {E} instead.\n\
          {T}: You get {E}, then you may pay one or more {E}. If you do, create an X/X black Aetherborn creature token, where X is the amount of {E} paid this way.",
     )
@@ -1346,11 +1350,11 @@ pub(super) fn cultist_of_the_absolute_static_line_parses_as_static_abilities() {
         "a quantified commander anthem must not be claimed as a source gain-ability statement"
     );
 
-    let builder = CardDefinitionBuilder::new(CardId::new(), "Cultist of the Absolute")
+    let card = CardBuilder::new(CardId::new(), "Cultist of the Absolute")
         .card_types(vec![CardType::Enchantment])
         .subtypes(vec![Subtype::Background]);
     let preprocessed = super::super::preprocess::preprocess_document(
-        builder,
+        card,
         "Commander creatures you own get +3/+3 and have flying, deathtouch, \"Ward—Pay 3 life,\" and \"At the beginning of your upkeep, sacrifice a creature.\"",
     )
     .expect("Cultist document should preprocess");
@@ -1790,11 +1794,11 @@ pub(super) fn rewrite_grammar_tap_status_and_max_cards_helpers_match_keyword_sta
     for (text, expected) in [
         (
             "this creature is tapped",
-            crate::ConditionExpr::SourceIsTapped,
+            crate::cards::builders::PredicateAst::SourceIsTapped,
         ),
         (
             "this permanent is untapped",
-            crate::ConditionExpr::SourceIsUntapped,
+            crate::cards::builders::PredicateAst::SourceIsUntapped,
         ),
     ] {
         let tokens = lex_line(text, 0).expect("rewrite lexer should classify tap-status condition");
@@ -1959,7 +1963,7 @@ pub(super) fn rewrite_grammar_assign_damage_as_unblocked_probe_matches_keyword_s
                 == crate::static_abilities::StaticAbilityId::MayAssignDamageAsUnblocked
     ));
 
-    let definition = crate::cards::builders::CardDefinitionBuilder::new(
+    let definition = ironsmith_compiler_lowering::CardDefinitionBuilder::new(
         crate::ids::CardId::new(),
         "Assign Damage Grant Probe",
     )
@@ -2333,8 +2337,9 @@ pub(super) fn rewrite_document_normalizes_labeled_named_tivit_vote_trigger() {
          a Treasure token. You may vote an additional time.";
     let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Tivit, Seller of Secrets")
         .card_types(vec![CardType::Creature]);
-    let (semantic, _) = parse_text_to_semantic_document(builder.clone(), text.to_string(), false)
-        .expect("Tivit semantic document should parse");
+    let (semantic, _) =
+        parse_text_to_semantic_document(builder.card_builder.clone(), text.to_string(), false)
+            .expect("Tivit semantic document should parse");
     assert!(
         semantic.items.iter().any(rewrite_item_is_triggered),
         "expected labeled named-source Tivit vote trigger semantic item, got {:?}",
@@ -3745,7 +3750,7 @@ pub(super) fn rewrite_lexed_triggered_line_preserves_named_source_leaves_surface
 #[test]
 pub(super) fn compile_named_source_leaves_trigger_preserves_surface() {
     let (semantic, _) = parse_text_to_semantic_document(
-        CardDefinitionBuilder::new(CardId::from_raw(1), "Emrakul, the World Anew")
+        CardBuilder::new(CardId::from_raw(1), "Emrakul, the World Anew")
             .card_types(vec![CardType::Creature]),
         "When Emrakul leaves the battlefield, sacrifice all creatures you control.".to_string(),
         false,

@@ -5,9 +5,10 @@ use super::lexer::{lex_line, split_lexed_sentences};
 use super::parser_support::{
     looks_like_spell_resolution_followup_intro_lexed, spell_card_prefers_resolution_line_merge,
 };
+use ironsmith_core::card::CardBuilder;
+
 use crate::cards::builders::{
-    CardDefinitionBuilder, CardTextError, LineInfo, MetadataLine, NormalizedLine, OwnedLexToken,
-    ParseAnnotations,
+    CardTextError, LineInfo, MetadataLine, NormalizedLine, OwnedLexToken, ParseAnnotations,
 };
 use crate::model::provenance::{
     ProvenanceStore, ReminderTextDecision, SourceSliceKind, SourceUnitId,
@@ -16,7 +17,7 @@ use crate::types::CardType;
 
 #[derive(Debug, Clone)]
 pub struct PreprocessedDocument {
-    pub builder: CardDefinitionBuilder,
+    pub card: CardBuilder,
     pub annotations: ParseAnnotations,
     pub provenance: ProvenanceStore,
     pub cst: crate::front_end::DocumentCst,
@@ -912,27 +913,20 @@ fn is_ignorable_unparsed_line(line: &str) -> bool {
 }
 
 pub fn preprocess_document(
-    builder: CardDefinitionBuilder,
+    card: CardBuilder,
     text: &str,
 ) -> Result<PreprocessedDocument, CardTextError> {
-    let provenance = ProvenanceStore::capture(
-        SourceUnitId(0),
-        text,
-        builder.card_builder.name_ref().trim(),
-    );
-    preprocess_document_with_provenance(builder, text, provenance)
+    let provenance = ProvenanceStore::capture(SourceUnitId(0), text, card.name_ref().trim());
+    preprocess_document_with_provenance(card, text, provenance)
 }
 
 pub fn preprocess_document_with_provenance(
-    mut builder: CardDefinitionBuilder,
+    mut card: CardBuilder,
     text: &str,
     mut provenance: ProvenanceStore,
 ) -> Result<PreprocessedDocument, CardTextError> {
-    let cst = crate::front_end::parse_document_cst(
-        provenance.source().id,
-        text,
-        builder.card_builder.name_ref().trim(),
-    )?;
+    let cst =
+        crate::front_end::parse_document_cst(provenance.source().id, text, card.name_ref().trim())?;
     for node in cst.lines.iter().flat_map(|line| &line.nodes) {
         let (kind, reminder_text) = match &node.kind {
             crate::front_end::CstNodeKind::SelfReference(_) => (
@@ -1072,7 +1066,7 @@ pub fn preprocess_document_with_provenance(
         }))
     }
 
-    let card_name = builder.card_builder.name_ref().to_string();
+    let card_name = card.name_ref().to_string();
     let front_face_name = card_name
         .split(" // ")
         .next()
@@ -1122,7 +1116,7 @@ pub fn preprocess_document_with_provenance(
             _ => None,
         }) {
             let normalized = NormalizedLine::identity(line);
-            builder = builder.apply_compiler_metadata(meta.clone())?;
+            card = crate::card_metadata::apply_compiler_metadata_line(card, meta.clone())?;
             annotations.record_original_line(line_index, &normalized.original);
             annotations.record_normalized_line(line_index, &normalized.normalized);
             annotations.record_char_map(line_index, normalized.char_map.clone());
@@ -1141,21 +1135,17 @@ pub fn preprocess_document_with_provenance(
 
         for (split_index, split_line) in split_parse_line_variants(line).into_iter().enumerate() {
             let preserve_source_surfaces = source_surface_name_is_lexable
-                && builder
-                    .card_builder
-                    .card_types_ref()
-                    .iter()
-                    .any(|card_type| {
-                        matches!(
-                            card_type,
-                            CardType::Artifact
-                                | CardType::Battle
-                                | CardType::Creature
-                                | CardType::Enchantment
-                                | CardType::Land
-                                | CardType::Planeswalker
-                        )
-                    });
+                && card.card_types_ref().iter().any(|card_type| {
+                    matches!(
+                        card_type,
+                        CardType::Artifact
+                            | CardType::Battle
+                            | CardType::Creature
+                            | CardType::Enchantment
+                            | CardType::Land
+                            | CardType::Planeswalker
+                    )
+                });
             let virtual_line_index = line_index.saturating_mul(8).saturating_add(split_index);
             let looks_like_resolution_followup = lex_line(split_line.as_str(), virtual_line_index)
                 .ok()
@@ -1176,7 +1166,7 @@ pub fn preprocess_document_with_provenance(
                 })
                 .unwrap_or(false);
 
-            if spell_card_prefers_resolution_line_merge(&builder)
+            if spell_card_prefers_resolution_line_merge(&card)
                 && looks_like_resolution_followup
                 && !is_standalone_keyword_action
                 && let Some(PreprocessedItem::Line(previous)) = items.last_mut()
@@ -1236,9 +1226,9 @@ pub fn preprocess_document_with_provenance(
             })
             .collect::<Vec<_>>()
             .join("\n");
-        let builder = builder.oracle_text(oracle_text);
+        let card = card.oracle_text(oracle_text);
         return Ok(PreprocessedDocument {
-            builder,
+            card,
             annotations,
             provenance,
             cst,
@@ -1247,7 +1237,7 @@ pub fn preprocess_document_with_provenance(
     }
 
     Ok(PreprocessedDocument {
-        builder,
+        card,
         annotations,
         provenance,
         cst,
@@ -1275,8 +1265,8 @@ pub fn make_line_info(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cards::builders::CardDefinitionBuilder;
     use crate::ids::CardId;
+    use ironsmith_core::card::CardBuilder;
 
     #[test]
     fn parse_metadata_line_routes_supported_labels_through_structure_parser() {
@@ -1325,9 +1315,9 @@ mod tests {
 
     #[test]
     fn preprocess_document_keeps_metadata_values_after_structure_cutover() {
-        let builder = CardDefinitionBuilder::new(CardId::new(), "Metadata Variant");
+        let card = CardBuilder::new(CardId::new(), "Metadata Variant");
         let preprocessed = preprocess_document(
-            builder,
+            card,
             "Mana Cost: {2}{W}\nType Line: Legendary Creature — Human\nFirst printed set: Antiquities\nDraw a card.",
         )
         .expect("metadata-bearing text should preprocess");
@@ -1358,12 +1348,7 @@ mod tests {
             Some(PreprocessedItem::Line(_))
         ));
         assert_eq!(
-            preprocessed
-                .builder
-                .build()
-                .card
-                .first_printed_set_name
-                .as_deref(),
+            preprocessed.card.build().first_printed_set_name.as_deref(),
             Some("Antiquities")
         );
     }
@@ -1371,7 +1356,7 @@ mod tests {
     #[test]
     fn created_token_lifecycle_normalizes_named_source_after_token_name() {
         let document = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Stangg"),
+            CardBuilder::new(CardId::new(), "Stangg"),
             "Type: Creature\nWhen Stangg enters, create Stangg Twin, a legendary 3/4 creature token. Exile that token when Stangg leaves the battlefield. Sacrifice Stangg when that token leaves the battlefield.",
         )
         .expect("created-token lifecycle should preprocess");
@@ -1418,7 +1403,7 @@ mod tests {
     #[test]
     fn preprocess_preserves_typed_multiword_keyword_action_matching_card_name() {
         let document = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Manifest Dread"),
+            CardBuilder::new(CardId::new(), "Manifest Dread"),
             "Manifest dread.",
         )
         .expect("the keyword action should preprocess without becoming a source reference");
@@ -1440,7 +1425,7 @@ mod tests {
     #[test]
     fn preprocess_preserves_front_face_name_used_as_become_subtype_descriptor() {
         let document = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Coward // Killer")
+            CardBuilder::new(CardId::new(), "Coward // Killer")
                 .card_types(vec![CardType::Sorcery]),
             "Target creature can't block this turn and becomes a Coward in addition to its other types until end of turn.\nTime travel.",
         )
@@ -1485,7 +1470,7 @@ mod tests {
     fn peacekeeper_tie_clause_is_not_fingerprint_dropped() {
         let oracle = "At the beginning of your upkeep, the player with the lowest life total gains control of this creature. If two or more players are tied for lowest life total, you choose one of them, and that player gains control of this creature.";
         let document = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Loxodon Peacekeeper"),
+            CardBuilder::new(CardId::new(), "Loxodon Peacekeeper"),
             oracle,
         )
         .expect("Peacekeeper text should preprocess generically");
@@ -1509,11 +1494,9 @@ mod tests {
             "You draw cards equal to the number of truth votes.",
             "Exile target creature. Return that card to the battlefield under its owner's control when this artifact leaves the battlefield.",
         ] {
-            let document = preprocess_document(
-                CardDefinitionBuilder::new(CardId::new(), "Preprocess Test"),
-                oracle,
-            )
-            .expect("typed rewrite should preprocess");
+            let document =
+                preprocess_document(CardBuilder::new(CardId::new(), "Preprocess Test"), oracle)
+                    .expect("typed rewrite should preprocess");
             let Some(PreprocessedItem::Line(line)) = document.items.first() else {
                 panic!("expected rewritten line: {:#?}", document.items);
             };

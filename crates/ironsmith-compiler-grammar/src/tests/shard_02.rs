@@ -7,6 +7,10 @@ use super::shard_05::*;
 use super::shard_06::*;
 use super::*;
 use crate::target::{ObjectFilter, PlayerFilter};
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
+#[cfg(test)]
+use ironsmith_compiler_lowering::CardDefinitionBuilder;
 
 #[test]
 pub(super) fn legendary_creatures_gain_typed_bands_with_other_quality() {
@@ -78,20 +82,17 @@ pub(super) fn rewrite_anthem_static_condition_normalizes_apostrophe_shapes() {
     let parsed = super::super::keyword_static::parse_static_condition_clause(&tokens)
         .expect("static-condition clause should parse");
 
-    assert!(matches!(parsed, crate::ConditionExpr::SourceIsEnchanted));
+    assert!(matches!(parsed, PredicateAst::SourceIsEnchanted));
 }
 
 #[test]
 pub(super) fn rewrite_anthem_static_status_condition_uses_subject_status_capture() {
     for (text, expected) in [
-        (
-            "this permanent is tapped",
-            crate::ConditionExpr::SourceIsTapped,
-        ),
-        ("it is attacking", crate::ConditionExpr::SourceIsAttacking),
+        ("this permanent is tapped", PredicateAst::SourceIsTapped),
+        ("it is attacking", PredicateAst::SourceIsAttacking),
         (
             "equipped creature is untapped",
-            crate::ConditionExpr::EquippedCreatureUntapped,
+            PredicateAst::EquippedCreatureUntapped,
         ),
     ] {
         let tokens = lex_line(text, 0)
@@ -115,9 +116,9 @@ pub(super) fn rewrite_anthem_static_condition_preserves_attacking_alone_semantic
 
     assert_eq!(
         parsed,
-        crate::ConditionExpr::And(
-            Box::new(crate::ConditionExpr::SourceIsAttacking),
-            Box::new(crate::ConditionExpr::CountComparison {
+        PredicateAst::And(
+            Box::new(PredicateAst::SourceIsAttacking),
+            Box::new(PredicateAst::CountComparison {
                 count: crate::static_abilities::AnthemCountExpression::MatchingFilter(
                     attacking_creatures,
                 ),
@@ -156,7 +157,7 @@ pub(super) fn rewrite_anthem_static_descriptor_condition_uses_subject_descriptor
         .expect("rewrite lexer should classify enchanted-permanent descriptor condition");
     let vehicle = super::super::keyword_static::parse_static_condition_clause(&vehicle_tokens)
         .expect("enchanted-permanent descriptor condition should parse");
-    assert_eq!(vehicle, crate::ConditionExpr::EnchantedPermanentIsVehicle);
+    assert_eq!(vehicle, PredicateAst::EnchantedPermanentIsVehicle);
 
     let color_tokens = lex_line("enchanted creature is red", 0)
         .expect("rewrite lexer should classify attached-object descriptor condition");
@@ -164,7 +165,7 @@ pub(super) fn rewrite_anthem_static_descriptor_condition_uses_subject_descriptor
         .expect("attached-object descriptor condition should parse");
     assert!(matches!(
         color,
-        crate::ConditionExpr::AttachedToSourceMatches(filter)
+        PredicateAst::AttachedToSourceMatches(filter)
             if filter.colors == Some(crate::color::ColorSet::RED)
     ));
 }
@@ -174,19 +175,19 @@ pub(super) fn rewrite_anthem_static_player_status_condition_uses_player_status_c
     for (text, expected) in [
         (
             "You're the monarch",
-            crate::ConditionExpr::PlayerIsMonarch {
-                player: crate::target::PlayerFilter::You,
+            PredicateAst::PlayerIsMonarch {
+                player: crate::cards::builders::PlayerAst::You,
             },
         ),
         (
             "you have the initiative",
-            crate::ConditionExpr::PlayerHasInitiative {
-                player: crate::target::PlayerFilter::You,
+            PredicateAst::PlayerHasInitiative {
+                player: crate::cards::builders::PlayerAst::You,
             },
         ),
         (
             "you have maximum speed",
-            crate::ConditionExpr::ValueComparison {
+            PredicateAst::ValueComparison {
                 left: crate::effect::Value::Speed(crate::target::PlayerFilter::You),
                 operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 right: crate::effect::Value::Fixed(4),

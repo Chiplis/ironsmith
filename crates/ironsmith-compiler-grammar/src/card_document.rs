@@ -1,33 +1,6 @@
-use crate::cards::ParseAnnotations;
-use crate::cards::builders::CardDefinitionBuilder;
+//! The front end's card-level result.
+//!
+//! Recognition produces it and lowering consumes it, so the type itself is
+//! owned by the semantic crate that both phases can see.
 
-use super::canonical_references::CanonicalReferenceResolutionAst;
-use super::compiler_semantic::ParsedCardItem;
-use super::provenance::ProvenanceStore;
-use super::symbols::SymbolTable;
-
-#[derive(Debug, Clone)]
-pub struct ParsedOverloadBranch {
-    pub items: Vec<ParsedCardItem>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ParsedCleaveBranch {
-    pub items: Vec<ParsedCardItem>,
-}
-
-/// The sole card-level front-end result. It owns compiler semantic nodes,
-/// diagnostics, provenance, and scoped symbols; runtime materialization is a
-/// separate operation in the lowering phase.
-#[derive(Debug, Clone)]
-pub struct ParsedCardAst {
-    pub builder: CardDefinitionBuilder,
-    pub annotations: ParseAnnotations,
-    pub provenance: ProvenanceStore,
-    pub symbols: SymbolTable,
-    pub reference_resolution: CanonicalReferenceResolutionAst,
-    pub items: Vec<ParsedCardItem>,
-    pub overload_branch: Option<ParsedOverloadBranch>,
-    pub cleave_branch: Option<ParsedCleaveBranch>,
-    pub allow_unsupported: bool,
-}
+pub use ironsmith_compiler_semantic::card_document::*;

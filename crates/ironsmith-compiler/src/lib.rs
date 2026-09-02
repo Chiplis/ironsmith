@@ -1,83 +1,98 @@
-//! Compatibility facade for the extracted compiler implementation.
+//! The compiler: Oracle text in, runtime card definition out.
 //!
-//! Grammar, document parsing, normalization, reference resolution, and
-//! lowering compile in their owned workspace crates. Existing consumers keep
-//! the historical `ironsmith_compiler` import path through this re-export.
+//! This crate owns no phase. It composes them — recognition in
+//! `ironsmith-compiler-grammar`, lowering in `ironsmith-compiler-lowering` —
+//! and is the only place that may name both. That is what keeps the phase
+//! graph a line rather than a cycle: neither phase crate can reach the other,
+//! so the pipeline can only be assembled here.
 
-pub use ironsmith_compiler_grammar::{
-    AttachmentConditionHost, AuraAttachmentFilter, CardDefinition, CardDefinitionBuilder, CardId,
-    CardTextError, CardType, ChoiceCount, ChooseSpec, ClashOpponentAst, Color, ColorSet,
-    CommonSentenceHead, CompilePolicy, CompiledCardText, CompilerBackend, CompilerCompileRequest,
-    CompilerFacade, CompilerSourceDocument, ConditionExpr, ControlDurationAst, CounterType,
-    CstFace, CstLine, CstLineKind, CstNode, CstNodeKind, DamageBySpec, DashStyle,
-    DelayedTriggerSpec, DocumentCst, Effect, EffectId, ExchangeValueAst, ExtraTurnAnchorAst,
-    FutureZoneReplacementCausePolicyAst, IfResultPredicate, KeywordAction, LeadingMayActionMatch,
-    LeadingMayActor, LexCursor, LexStream, LexToken, LexerError, LibraryBottomOrderAst,
-    LibraryConsultModeAst, LibraryConsultStopRuleAst, LineInfo, LoweringPipeline, MetadataLine,
-    ModeMarker, NormalizedLine, NormalizedSourceMap, NormalizedSourceSegment, ObjectCharacteristic,
-    ObjectCharacteristicRelation, ObjectCharacteristicRelationKind, ObjectFilter, ObjectId,
-    ObjectRef, ObjectRefAst, OptionalCost, OracleGrammarDocument, OracleGrammarLevelItem,
-    OracleGrammarLine, OracleGrammarLineInfo, OracleGrammarMode, OwnedLexToken, ParseAnnotations,
-    PermanentLeftBattlefieldControlSurface, PlayerAst, PlayerFilter, PlayerId, PostpassProcessor,
-    PowerToughness, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, ProvenanceId,
-    ProvenanceRecord, ProvenanceStore, ProvenanceView, Provenanced, PtValue, PunctuationKind,
-    QuoteStyle, ReminderTextDecision, RenderingHint, RetargetModeAst, ReturnControllerAst,
-    SearchLibrarySlotAst, SelfReferenceSurface, SemanticProvenance, SentenceSplitResult,
-    SharedTypeConstraintAst, SourceCounterThresholdSurface, SourcePosition, SourceSliceKind,
-    SourceSpan, SourceUnit, SourceUnitId, StableId, Subtype, Supertype, TagKey,
-    TaggedObjectConstraint, TaggedOpbjectRelation, TargetAst, TextSpan, TokenKind, TokenWordPiece,
-    TokenWordView, TotalCost, TrapCondition, TurnDurationPhrase, Until, Value,
-    WorkspaceSplitMarker, Zone, ZoneReplacementDurationAst, ability, activation_and_restrictions,
-    activation_helpers, alternative_cast, battlefield_entry_counter_fusion, canonical_pipeline,
-    canonical_references, card, card_builders, card_document, card_tokens, cards, clause_support,
-    clone_sentence_chunk_tokens, color, compile_card_text, compile_card_text_with_policy,
-    compile_support, compiler_pipeline, compiler_semantic, condition_antecedent, contains_sequence,
-    contains_token_any_word, contains_token_kind, contains_token_word,
-    contains_token_word_sequence, contains_window, continuous, cost, costs, diagnostics,
-    document_parser, effect, effect_ast_normalization, effect_ast_traversal, effect_pipeline,
-    effect_sentences, effects, events, extract_parenthetical_sentences, facade, filter,
-    find_any_token_word_sequence_span, find_token_any_word, find_token_kind, find_token_word,
-    find_token_word_sequence, find_token_word_sequence_span, find_token_word_sequence_value,
-    find_window_by, front_end, front_end_parser_support, game_state, grammar, grant, host, ids, ir,
-    is_at_trigger_intro_lexed, is_authored_proper_name_phrase, is_bare_card_name_phrase,
-    iter_contains, iterators_equal, keyword_families, keyword_payloads, keyword_registry,
-    keyword_static, keyword_static_helpers, lex_line, lexed_head_words,
-    lexed_tokens_contain_non_prefix_instead, lexer, line_info,
-    looks_like_reflexive_followup_intro_lexed, looks_like_spell_resolution_followup_intro_lexed,
-    lower, lowering, lowering_support, make_line_info, mana, modal_helpers, modal_support, model,
-    model_impl, normalize_restriction_text, normalize_trimmed_line, object, object_filters,
-    oracle_grammar, parse_card_text, parse_card_text_allow_unsupported, parse_common_sentence_head,
-    parse_context, parse_context_for_builder, parse_document_cst, parse_leading_may_action_lexed,
-    parse_loss, parse_metadata_line, parse_oracle_grammar_document, parse_trace,
-    parse_turn_duration_prefix, parse_turn_duration_suffix, parser_support,
-    parser_token_word_positions, parser_token_word_refs, parses_any_word_view_prefix,
-    parses_word_view_prefix, payload, permission_helpers, pipeline, preprocess, provenance,
-    recognition, recognized_document, reference_helpers, reference_resolution, registry,
-    remove_copy_exception_type_removal_lexed, render_bare_card_name_surface, render_token_slice,
-    resolution, restriction_support, rewrite_followup_intro_to_if_lexed, rfind_token_word,
-    rule_engine, runtime_static_ability_helpers, search_library_support, select_last_position,
-    select_position, select_sequence_position, semantic_assembly, semantic_document,
-    semantic_line_parsing, slice_contains, slice_contains_all, slice_contains_any, slice_ends_with,
-    slice_ends_with_any, slice_eq_any, slice_primitives, slice_starts_with, slice_starts_with_any,
-    slice_strip_any_prefix, slice_strip_any_suffix, slice_strip_prefix, slice_strip_suffix,
-    split_em_dash_label_prefix, split_em_dash_label_prefix_tokens, split_lexed_once_on_comma,
-    split_lexed_once_on_comma_then, split_lexed_once_on_delimiter, split_lexed_once_on_period,
-    split_lexed_sentences, split_sentences_for_parse, split_sentences_for_parse_fallback,
-    split_text_for_parse, split_text_for_parse_with_restrictions, static_abilities,
-    static_ability_helpers, str_ends_with_any_char, str_find_char, str_rfind, str_rfind_char,
-    str_split_once, str_strip_prefix, str_strip_suffix, string_primitives,
-    strip_leading_if_you_do_lexed, symbols, synthetic_word_tokens, tag, target, token_primitives,
-    token_slice_at_is, token_slice_at_is_any, token_slice_first_is, token_slice_first_is_any,
-    token_utils, token_word_pieces_for_token, token_word_refs, triggers, trim_lexed_commas, types,
-    util, word_primitives, word_slice_at_is, word_slice_at_is_any, word_slice_contains_all_words,
-    word_slice_contains_any_phrase_or_empty, word_slice_contains_any_word,
-    word_slice_contains_no_words, word_slice_contains_phrase_or_empty,
-    word_slice_contains_window_by, word_slice_contains_word, word_slice_ends_with_any,
-    word_slice_find_any_phrase_start, word_slice_find_any_phrase_start_or_zero,
-    word_slice_find_phrase_start_or_zero, word_slice_find_phrase_value, word_slice_find_window_by,
-    word_slice_first_is, word_slice_first_is_any, word_slice_last_is, word_slice_last_is_any,
-    word_slice_matching_phrase, word_slice_matching_value, word_slice_starts_with_any,
-    word_slice_starts_with_at, word_slice_strip_any_prefix, word_slice_strip_any_suffix,
-    word_slice_strip_first_word, word_slice_strip_first_word_value, word_slice_strip_prefix,
-    word_slice_strip_prefix_value, word_slice_strip_suffix, word_slice_strip_suffix_value, zone,
+#![allow(ambiguous_glob_reexports)]
+
+pub mod canonical_pipeline;
+pub mod compiler_pipeline;
+pub mod facade;
+pub mod pipeline;
+
+pub use ironsmith_compiler_grammar::*;
+pub use ironsmith_compiler_lowering::{
+    CardDefinitionBuilder, battlefield_entry_counter_fusion, card_builders, card_tokens, cards,
+    compile_support, condition_antecedent, effect_pipeline, lower, lowering, lowering_support,
+    runtime_static_ability_helpers,
 };
+
+pub use facade::{
+    CompilePolicy, CompiledCardText, CompilerBackend, CompilerCompileRequest, CompilerFacade,
+    CompilerSourceDocument,
+};
+pub use pipeline::{LoweringPipeline, PostpassProcessor};
+
+pub fn compile_card_text_with_policy(
+    builder: CardDefinitionBuilder,
+    text: impl Into<String>,
+    allow_unsupported: bool,
+) -> Result<facade::CompiledCardText<CardDefinition>, CardTextError> {
+    let text = text.into();
+    util::with_cached_parser_trace(move || {
+        let mut context =
+            parse_context_for_builder(&builder.card_builder, &text, allow_unsupported);
+        compiler_pipeline::parse_text_with_annotations_lowered_with_facts_context(
+            &mut context,
+            builder,
+            text,
+        )
+        .map(|lowered| facade::CompiledCardText {
+            definition: lowered.definition,
+            annotations: lowered.annotations,
+        })
+    })
+}
+
+pub fn compile_card_text(
+    builder: CardDefinitionBuilder,
+    text: impl Into<String>,
+    allow_unsupported: bool,
+) -> Result<facade::CompiledCardText<CardDefinition>, CardTextError> {
+    compile_card_text_with_policy(builder, text, allow_unsupported)
+}
+
+pub fn parse_card_text(
+    builder: CardDefinitionBuilder,
+    text: impl Into<String>,
+) -> Result<CardDefinition, CardTextError> {
+    compile_card_text(builder, text, false).map(|compiled| compiled.definition)
+}
+
+pub fn parse_card_text_allow_unsupported(
+    builder: CardDefinitionBuilder,
+    text: impl Into<String>,
+) -> Result<CardDefinition, CardTextError> {
+    compile_card_text(builder, text, true).map(|compiled| compiled.definition)
+}
+
+/// Parsing a card's text from a builder.
+///
+/// Parsing is the whole pipeline — recognition then lowering — so it is not
+/// something the definition builder can do by itself. This restores the
+/// convenience for callers that already have the assembled compiler in scope,
+/// without putting a pipeline call back inside the builder.
+pub trait ParseCardText: Sized {
+    fn parse_text(self, text: impl Into<String>) -> Result<CardDefinition, CardTextError>;
+
+    fn parse_text_allow_unsupported(
+        self,
+        text: impl Into<String>,
+    ) -> Result<CardDefinition, CardTextError>;
+}
+
+impl ParseCardText for CardDefinitionBuilder {
+    fn parse_text(self, text: impl Into<String>) -> Result<CardDefinition, CardTextError> {
+        parse_card_text(self, text)
+    }
+
+    fn parse_text_allow_unsupported(
+        self,
+        text: impl Into<String>,
+    ) -> Result<CardDefinition, CardTextError> {
+        parse_card_text_allow_unsupported(self, text)
+    }
+}

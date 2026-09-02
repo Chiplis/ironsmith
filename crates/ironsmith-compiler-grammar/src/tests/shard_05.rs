@@ -1,4 +1,15 @@
 #![allow(unused_imports)]
+
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
+/// Lower a token definition named by its printed shape text.
+///
+/// Recognizing the shape is the grammar's job and lowering it is the lowering
+/// crate's, so the two only meet in a test.
+fn token_definition_for(name: &str) -> Option<ironsmith_compiler_lowering::CardDefinition> {
+    let shape = crate::grammar::token_definitions::parse_token_definition_shape_text(name)?;
+    ironsmith_compiler_lowering::compile_support::lower_token_definition_shape(shape)
+}
 use super::shard_00::*;
 use super::shard_01::*;
 use super::shard_02::*;
@@ -6,6 +17,8 @@ use super::shard_03::*;
 use super::shard_04::*;
 use super::shard_06::*;
 use super::*;
+#[cfg(test)]
+use ironsmith_compiler_lowering::CardDefinitionBuilder;
 
 #[test]
 pub(super) fn rewrite_lowered_for_each_player_choose_uses_controller_as_chooser()
@@ -2326,7 +2339,7 @@ pub(super) fn rewrite_semantic_parse_merges_multiline_spell_when_you_do_followup
     let builder = CardDefinitionBuilder::new(CardId::new(), "Followup Variant")
         .card_types(vec![CardType::Instant]);
     let (doc, _) = parse_text_to_semantic_document(
-        builder,
+        builder.split_face().0,
         "Sacrifice a creature.\nWhen you do, draw two cards.".to_string(),
         false,
     )?;
@@ -2532,10 +2545,8 @@ pub(super) fn chance_encounter_parses_coin_flip_win_trigger() -> Result<(), Card
 
 #[test]
 pub(super) fn token_definition_keeps_multiple_creature_subtypes() {
-    let token = super::super::compile_support::token_definition_for(
-        "2/2 black Zombie Employee creature token",
-    )
-    .expect("Zombie Employee token should be recognized");
+    let token = token_definition_for("2/2 black Zombie Employee creature token")
+        .expect("Zombie Employee token should be recognized");
 
     assert_eq!(
         token.card.subtypes,
@@ -2545,10 +2556,8 @@ pub(super) fn token_definition_keeps_multiple_creature_subtypes() {
 
 #[test]
 pub(super) fn token_definition_recognizes_fractal_creature_tokens() {
-    let token = super::super::compile_support::token_definition_for(
-        "0/0 green and blue Fractal creature token",
-    )
-    .expect("Fractal token should be recognized");
+    let token = token_definition_for("0/0 green and blue Fractal creature token")
+        .expect("Fractal token should be recognized");
 
     assert_eq!(token.card.subtypes, vec![Subtype::Fractal]);
     assert_eq!(
@@ -2611,11 +2620,11 @@ pub(super) fn rewrite_semantic_parse_keeps_triggered_double_sweep_body() -> Resu
     let builder = CardDefinitionBuilder::new(CardId::new(), "Zopandrel Variant")
         .card_types(vec![CardType::Creature]);
     let (doc, _) = parse_text_to_semantic_document(
-        builder,
+        builder.split_face().0,
         "At the beginning of each combat, double the power and toughness of each creature you control until end of turn.".to_string(),
         false,
     )?;
-    let parsed = crate::compiler_pipeline::parse_semantic_document(doc)?;
+    let parsed = crate::semantic_document::parse_semantic_document(doc)?;
 
     match parsed.items.as_slice() {
         [crate::cards::builders::ParsedCardItem::Line(line)] => {
@@ -2634,11 +2643,11 @@ pub(super) fn rewrite_semantic_parse_keeps_triggered_triple_sweep_body() -> Resu
     let builder = CardDefinitionBuilder::new(CardId::new(), "Triple Sweep Variant")
         .card_types(vec![CardType::Enchantment]);
     let (doc, _) = parse_text_to_semantic_document(
-        builder,
+        builder.split_face().0,
         "At the beginning of each combat, triple the power and toughness of each creature you control until end of turn.".to_string(),
         false,
     )?;
-    let parsed = crate::compiler_pipeline::parse_semantic_document(doc)?;
+    let parsed = crate::semantic_document::parse_semantic_document(doc)?;
 
     match parsed.items.as_slice() {
         [crate::cards::builders::ParsedCardItem::Line(line)] => {
@@ -2658,7 +2667,7 @@ pub(super) fn rewrite_semantic_parse_keeps_nested_combat_whenever_trigger()
     let builder = CardDefinitionBuilder::new(CardId::new(), "Nested Combat Trigger Variant")
         .card_types(vec![CardType::Creature]);
     let (doc, _) = parse_text_to_semantic_document(
-        builder,
+        builder.split_face().0,
         "At the beginning of each combat, unless you pay {1}, whenever this creature attacks, draw a card.".to_string(),
         false,
     )?;
@@ -2691,7 +2700,7 @@ pub(super) fn nested_combat_payment_keeps_blocks_union_and_end_of_combat_lifetim
     let builder = CardDefinitionBuilder::new(CardId::new(), "Combat Flotilla Variant")
         .card_types(vec![CardType::Creature]);
     let (doc, _) = parse_text_to_semantic_document(
-        builder,
+        builder.split_face().0,
         "At the beginning of each combat, unless you pay {R}, whenever this creature blocks or becomes blocked by a creature this combat, that creature gains first strike until end of turn.".to_string(),
         false,
     )?;
@@ -2738,11 +2747,11 @@ pub(super) fn rewrite_semantic_parse_keeps_toggo_rock_token_rules_tail() -> Resu
     let builder = CardDefinitionBuilder::new(CardId::new(), "Toggo, Goblin Weaponsmith")
         .card_types(vec![CardType::Creature]);
     let (doc, _) = parse_text_to_semantic_document(
-        builder,
+        builder.split_face().0,
         "Landfall — Whenever a land you control enters, create a colorless Equipment artifact token named Rock with \"Equipped creature has '{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target'\" and equip {1}.".to_string(),
         false,
     )?;
-    let parsed = crate::compiler_pipeline::parse_semantic_document(doc)?;
+    let parsed = crate::semantic_document::parse_semantic_document(doc)?;
 
     let expect_toggo_token_shape = |effects: &[crate::cards::builders::EffectAst]| match effects {
         [
@@ -2819,10 +2828,10 @@ pub(super) fn rewrite_semantic_parse_keeps_toggo_rock_token_rules_tail() -> Resu
 pub(super) fn compile_definition_keeps_toggo_rock_token_rules_tail() -> Result<(), CardTextError> {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Toggo, Goblin Weaponsmith")
         .card_types(vec![CardType::Creature]);
-    let compiled = crate::CompilerFacade::new().compile_definition(
+    let compiled = ironsmith_compiler::CompilerFacade::new().compile_definition(
         builder,
         "Landfall — Whenever a land you control enters, create a colorless Equipment artifact token named Rock with \"Equipped creature has '{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target'\" and equip {1}.\nPartner (You can have two commanders if both have partner.)",
-        crate::CompilePolicy {
+        ironsmith_compiler::CompilePolicy {
             allow_unsupported: false,
         },
     )?;
@@ -2838,7 +2847,7 @@ pub(super) fn compile_definition_keeps_toggo_rock_token_rules_tail() -> Result<(
 pub(super) fn rewrite_semantic_parse_keeps_trigger_trigger_caps_and_first_time_suffixes()
 -> Result<(), CardTextError> {
     let (capped_doc, _) = parse_text_to_semantic_document(
-        CardDefinitionBuilder::new(CardId::new(), "Capped Trigger Variant")
+        CardBuilder::new(CardId::new(), "Capped Trigger Variant")
             .card_types(vec![CardType::Enchantment]),
         "Whenever one or more creatures attack you, draw a card. This ability triggers only once each turn.".to_string(),
         false,
@@ -2856,7 +2865,7 @@ pub(super) fn rewrite_semantic_parse_keeps_trigger_trigger_caps_and_first_time_s
     );
 
     let (first_time_doc, _) = parse_text_to_semantic_document(
-        CardDefinitionBuilder::new(CardId::new(), "First Time Trigger Variant")
+        CardBuilder::new(CardId::new(), "First Time Trigger Variant")
             .card_types(vec![CardType::Enchantment]),
         "Whenever one or more creatures attack you for the first time each turn, draw a card."
             .to_string(),
@@ -2882,7 +2891,7 @@ pub(super) fn rewrite_semantic_parse_keeps_trigger_trigger_caps_and_first_time_s
 pub(super) fn rewrite_semantic_parse_accepts_do_this_only_once_each_turn_trigger_cap()
 -> Result<(), CardTextError> {
     let (doc, annotations) = parse_text_to_semantic_document(
-        CardDefinitionBuilder::new(CardId::new(), "Deep Gnome Terramancer")
+        CardBuilder::new(CardId::new(), "Deep Gnome Terramancer")
             .card_types(vec![CardType::Creature]),
         "Flash\nMold Earth — Whenever one or more lands enter under an opponent's control without being played, you may search your library for a Plains card, put it onto the battlefield tapped, then shuffle. Do this only once each turn.".to_string(),
         false,
@@ -2936,7 +2945,7 @@ pub(super) fn rewrite_semantic_parse_keeps_intervening_if_trigger_split()
     let builder = CardDefinitionBuilder::new(CardId::new(), "Intervening If Trigger Variant")
         .card_types(vec![CardType::Enchantment]);
     let (doc, _) = parse_text_to_semantic_document(
-        builder,
+        builder.split_face().0,
         "At the beginning of your upkeep, if you control an artifact, draw a card.".to_string(),
         false,
     )?;
@@ -2958,7 +2967,7 @@ pub(super) fn rewrite_semantic_parse_accepts_becomes_targeted_by_spell_filter_tr
     let builder = CardDefinitionBuilder::new(CardId::new(), "Wild Defiance Variant")
         .card_types(vec![CardType::Enchantment]);
     let (doc, _) = parse_text_to_semantic_document(
-        builder,
+        builder.split_face().0,
         "Whenever a creature you control becomes the target of an instant or sorcery spell, that creature gets +3/+3 until end of turn.".to_string(),
         false,
     )?;
@@ -2980,7 +2989,7 @@ pub(super) fn rewrite_semantic_parse_keeps_controller_on_targeting_spell_filter(
     let builder = CardDefinitionBuilder::new(CardId::new(), "Targeted Drake Variant")
         .card_types(vec![CardType::Creature]);
     let (doc, _) = parse_text_to_semantic_document(
-        builder,
+        builder.split_face().0,
         "Whenever this creature becomes the target of a spell you control, draw a card."
             .to_string(),
         false,
@@ -3007,7 +3016,7 @@ pub(super) fn rewrite_semantic_parse_marks_plumb_additional_cost_as_non_choice()
     let builder = CardDefinitionBuilder::new(CardId::new(), "Plumb Variant")
         .card_types(vec![CardType::Instant]);
     let (doc, _) = parse_text_to_semantic_document(
-        builder,
+        builder.split_face().0,
         "As an additional cost to cast this spell, you may sacrifice one or more creatures. When you do, copy this spell for each creature sacrificed this way.\nYou draw a card and you lose 1 life.".to_string(),
         false,
     )?;

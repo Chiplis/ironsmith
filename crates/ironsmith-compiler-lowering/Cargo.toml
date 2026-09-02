@@ -1,0 +1,32 @@
+[package]
+name = "ironsmith-compiler-lowering"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ironsmith-core = { path = "../ironsmith-core", default-features = false, features = ["serde"] }
+ironsmith-compiler-api = { path = "../ironsmith-compiler-api", default-features = false }
+ironsmith-compiler-syntax = { path = "../ironsmith-compiler-syntax", default-features = false }
+ironsmith-compiler-source = { path = "../ironsmith-compiler-source", default-features = false }
+ironsmith-compiler-ast = { path = "../ironsmith-compiler-ast", default-features = false }
+ironsmith-compiler-semantic = { path = "../ironsmith-compiler-semantic", default-features = false }
+ironsmith-compiler-resolve = { path = "../ironsmith-compiler-resolve", default-features = false }
+serde = { version = "1.0.228", features = ["derive"] }
+
+[dev-dependencies]
+# Lowering's own tests build their inputs by recognizing real Oracle text, so
+# they need the assembled pipeline. Dev-dependency only: the compiled library
+# graph still has no lowering -> grammar edge.
+ironsmith-compiler = { path = "../ironsmith-compiler", default-features = false, features = ["test-support"] }
+
+[features]
+default = []
+serialization = []
+# Lowering entry points that only tests call. The grammar crate's
+# recognition-to-runtime tests need them, and a cfg(test) gate is not visible
+# across a crate boundary.
+test-support = []
+
+[lib]
+path = "src/lib.rs"
+doctest = false

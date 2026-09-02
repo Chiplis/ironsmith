@@ -1,4 +1,3 @@
-use crate::cards::builders::CardDefinitionBuilder;
 use crate::model::compiler_semantic::ParsedRestrictions;
 use crate::types::CardType;
 use winnow::combinator::{alt, opt};
@@ -65,10 +64,8 @@ fn parenthetical_token_slices(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]>
     slices
 }
 
-pub fn spell_card_prefers_resolution_line_merge(builder: &CardDefinitionBuilder) -> bool {
-    builder
-        .card_builder
-        .card_types_ref()
+pub fn spell_card_prefers_resolution_line_merge(card: &crate::card::CardBuilder) -> bool {
+    card.card_types_ref()
         .iter()
         .any(|card_type| matches!(card_type, CardType::Instant | CardType::Sorcery))
 }

@@ -384,7 +384,7 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
             let cost = match payment.kind {
                 crate::grammar::effects::UnlessPaymentKind::LifeEqualToItsToughness => {
                     let value = Value::ToughnessOf(Box::new(
-                        crate::reference_helpers::choose_spec_for_target(&target),
+                        crate::model::ast::choose_spec_for_target(&target),
                     ));
                     ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::Life(value))
                 }

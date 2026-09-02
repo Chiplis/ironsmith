@@ -115,7 +115,7 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
             filter.controller = Some(PlayerFilter::You);
             filter.subtypes = vec![subtype];
             let count = AnthemCountExpression::MatchingFilter(filter);
-            let anthem = Anthem::for_source(0, 0).with_values(
+            let anthem = crate::model::CompilerAnthem::for_source(0, 0).with_values(
                 AnthemValue::scaled(1, count.clone()),
                 AnthemValue::scaled(1, count),
             );

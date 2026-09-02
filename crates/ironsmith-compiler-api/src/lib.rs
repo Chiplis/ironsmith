@@ -1,5 +1,7 @@
 //! Stable, low-level compiler diagnostics shared by parser leaves.
 
+pub mod parse_loss;
+
 use std::collections::HashMap;
 
 /// Span of source text within a line-oriented oracle text block.

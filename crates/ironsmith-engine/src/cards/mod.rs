@@ -348,12 +348,17 @@ mod tests {
         card_terms.sort();
         card_terms.dedup();
 
-        let compiler_src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        // Both compiler phases are scanned: a card-specific hook is just as
+        // wrong in recognition as in lowering, and the phases now live in
+        // separate crates.
+        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .and_then(std::path::Path::parent)
-            .expect("workspace root")
-            .join("crates/ironsmith-compiler/src/runtime_backend");
-        let mut stack = vec![compiler_src];
+            .expect("workspace root");
+        let mut stack = vec![
+            workspace.join("crates/ironsmith-compiler-lowering/src"),
+            workspace.join("crates/ironsmith-compiler-grammar/src"),
+        ];
         let mut hits = Vec::new();
         while let Some(path) = stack.pop() {
             for entry in std::fs::read_dir(&path).expect("read compiler source") {

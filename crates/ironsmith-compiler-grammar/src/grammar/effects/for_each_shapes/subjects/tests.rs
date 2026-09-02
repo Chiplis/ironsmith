@@ -1,5 +1,7 @@
 use super::*;
 use crate::lexer::{TokenWordView, lex_line};
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
 
 #[test]
 fn parses_object_and_target_player_subjects() {
@@ -124,7 +126,7 @@ fn iterated_graveyard_card_can_feed_a_modified_token_copy() {
     )
     .expect("created-token mill follow-up should lower");
 
-    crate::cards::builders::CardDefinitionBuilder::new(
+    ironsmith_compiler_lowering::CardDefinitionBuilder::new(
         crate::CardId::new(),
         "Iterated Copy Walker",
     )
@@ -134,7 +136,7 @@ fn iterated_graveyard_card_can_feed_a_modified_token_copy() {
     )
     .expect("iterated modified token copy should parse through the document route");
 
-    crate::cards::builders::CardDefinitionBuilder::new(
+    ironsmith_compiler_lowering::CardDefinitionBuilder::new(
         crate::CardId::new(),
         "Token Counter Walker",
     )
@@ -144,7 +146,7 @@ fn iterated_graveyard_card_can_feed_a_modified_token_copy() {
     )
     .expect("the preceding token-counter loyalty ability should parse independently");
 
-    crate::cards::builders::CardDefinitionBuilder::new(
+    ironsmith_compiler_lowering::CardDefinitionBuilder::new(
         crate::CardId::new(),
         "Iterated Copy Walker",
     )

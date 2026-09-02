@@ -278,6 +278,7 @@ fn player_filter_for_library_count(player: PlayerAst) -> Option<PlayerFilter> {
         PlayerAst::PlayerToYourLeft => PlayerFilter::PlayerToYourLeft,
         PlayerAst::PlayerToYourRight => PlayerFilter::PlayerToYourRight,
         PlayerAst::NotYou => PlayerFilter::NotYou,
+        PlayerAst::Teammate => PlayerFilter::Teammate,
         PlayerAst::Any => PlayerFilter::Any,
         PlayerAst::Target => PlayerFilter::target_player(),
         PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),

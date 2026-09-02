@@ -1,9 +1,9 @@
+use crate::cards::builders::PredicateAst;
 use winnow::combinator::{alt, opt, peek, repeat_till};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
 
-use crate::ConditionExpr;
 use crate::effect::Until;
 use crate::grammar::primitives::WordSliceInput;
 use crate::grammar::{filters, leaf, primitives};
@@ -14,7 +14,7 @@ pub struct GainAbilityDurationShape {
     pub start: usize,
     pub len: usize,
     pub duration: Until,
-    pub condition: Option<ConditionExpr>,
+    pub condition: Option<PredicateAst>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

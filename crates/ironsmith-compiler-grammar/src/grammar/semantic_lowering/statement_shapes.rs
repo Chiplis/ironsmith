@@ -3,7 +3,7 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::{any, rest};
 
-use crate::ConditionExpr;
+use crate::cards::builders::PredicateAst;
 use crate::color::{Color, ColorSet};
 use crate::effect::Value;
 use crate::object::CounterType;
@@ -89,7 +89,7 @@ pub enum SelfCounterEntrySpec {
         count: Value,
     },
     Adamant {
-        condition: ConditionExpr,
+        condition: PredicateAst,
         predicate_body: String,
     },
 }
@@ -102,7 +102,7 @@ pub struct CommaSplit<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SnowManaCounterEntrySpec<'a> {
-    pub condition: ConditionExpr,
+    pub condition: PredicateAst,
     pub entry_tokens: &'a [OwnedLexToken],
     pub counter_type: CounterType,
     pub count: Value,
@@ -468,7 +468,7 @@ pub fn parse_comma_split_tokens(tokens: &[OwnedLexToken]) -> Option<CommaSplit<'
     crate::grammar::primitives::probe_all(tokens, parse_comma_split, "semantic-comma-split")
 }
 
-fn parse_adamant_condition(tokens: &[OwnedLexToken]) -> Option<(ConditionExpr, String)> {
+fn parse_adamant_condition(tokens: &[OwnedLexToken]) -> Option<(PredicateAst, String)> {
     let words = parser_token_word_refs(tokens);
     let body_start = phrase_location(&words, &["if"])? + 1;
     let body_words = words.get(body_start..)?;
@@ -489,7 +489,7 @@ fn parse_adamant_condition(tokens: &[OwnedLexToken]) -> Option<(ConditionExpr, S
     let view = TokenWordView::new(tokens);
     let body_range = view.token_span_for_words(body_start, words.len())?;
     Some((
-        ConditionExpr::ManaSpentToCastThisSpellAtLeast {
+        PredicateAst::ManaSpentToCastThisSpellAtLeast {
             amount,
             symbol: Some(symbol),
         },
@@ -585,7 +585,7 @@ pub fn parse_self_counter_entry_tokens(tokens: &[OwnedLexToken]) -> Option<SelfC
     Some(SelfCounterEntrySpec::Unconditional { count })
 }
 
-fn parse_snow_condition(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
+fn parse_snow_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let words = parser_token_word_refs(tokens);
     let body_start = phrase_location(&words, &["if"])? + 1;
     let body_words = words.get(body_start..)?;
@@ -612,7 +612,7 @@ fn parse_snow_condition(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
         crate::grammar::values::parse_mana_symbol(body_words[0]),
     )?;
     (symbol == crate::mana::ManaSymbol::Snow)
-        .then_some(ConditionExpr::SnowManaOfAnySpellColorSpentToCastThisSpell)
+        .then_some(PredicateAst::SnowManaOfAnySpellColorSpentToCastThisSpell)
 }
 
 fn parse_entry_counter_count(words: &[&str]) -> Value {
@@ -635,7 +635,7 @@ pub fn parse_snow_mana_counter_entry_tokens(
 ) -> Option<SnowManaCounterEntrySpec<'_>> {
     let (condition, entry_tokens) = if intervening_snow_condition {
         (
-            ConditionExpr::SnowManaOfAnySpellColorSpentToCastThisSpell,
+            PredicateAst::SnowManaOfAnySpellColorSpentToCastThisSpell,
             effect_tokens,
         )
     } else {

@@ -19,7 +19,7 @@ pub(super) fn additional_land_play_static_count_uses_token_words() {
     );
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn parse_keyword_line_with_full_tokens_for_test(
     info: LineInfo,
     text: &str,

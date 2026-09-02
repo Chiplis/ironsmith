@@ -1072,7 +1072,7 @@ pub(super) fn parse_effect_sentence_lexed_inner_unstacked(
             TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
             crate::model::CompilerGrantableCore::Ability(
                 crate::model::CompilerStaticAbilityCore::new(
-                    crate::static_abilities::CostIncreaseManaCost::new(
+                    crate::model::CompilerCostIncreaseManaCost::new(
                         spell_filter,
                         shape.additional_cost,
                     ),

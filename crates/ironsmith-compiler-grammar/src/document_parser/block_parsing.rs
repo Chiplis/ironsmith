@@ -28,7 +28,7 @@ pub(super) fn try_parse_level_header_block(
             probe_idx += 1;
             continue;
         }
-        match recognize_level_item(&preprocessed.builder, next_line) {
+        match recognize_level_item(&preprocessed.card, next_line) {
             Ok(Some(item)) => {
                 items.push(item);
                 probe_idx += 1;

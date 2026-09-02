@@ -1,5 +1,7 @@
 use crate::ability::{ActivationTiming, PresentationLabel};
-use crate::cards::builders::{CardDefinitionBuilder, EffectAst, ParseAnnotations, PredicateAst};
+use ironsmith_core::card::CardBuilder;
+
+use crate::cards::builders::{EffectAst, ParseAnnotations, PredicateAst};
 use crate::color::Color;
 use crate::cost::TotalCost;
 use crate::model::provenance::ProvenanceStore;
@@ -13,7 +15,7 @@ use crate::model::compiler_semantic::{ParsedLevelAbilityItemAst, ParsedLineAst};
 
 #[derive(Debug, Clone)]
 pub struct RewriteSemanticDocument {
-    pub builder: CardDefinitionBuilder,
+    pub card: CardBuilder,
     pub annotations: ParseAnnotations,
     pub provenance: ProvenanceStore,
     pub symbols: SymbolTable,

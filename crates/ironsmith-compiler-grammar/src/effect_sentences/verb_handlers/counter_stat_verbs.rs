@@ -1,3 +1,5 @@
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
 use crate::grammar::effects::counter_stat_shapes as counter_grammar;
 
 const COUNTER_TARGET_WORDS: &[&str] = &["target", "targets"];
@@ -899,7 +901,7 @@ pub fn parse_life_equal_to_value(tokens: &[OwnedLexToken]) -> Result<Option<Valu
                 if counter_grammar::parse_prefix(&value_words, &[stat_words]).is_some() {
                     let target_tokens = &value_tokens[stat_words.len()..];
                     if let Ok(target) = parse_target_phrase(target_tokens) {
-                        let spec = crate::reference_helpers::choose_spec_for_target(&target);
+                        let spec = crate::model::ast::choose_spec_for_target(&target);
                         return Some(constructor(Box::new(spec)));
                     }
                 }
@@ -981,7 +983,7 @@ fn parse_possessive_target_stat_value(tokens: &[OwnedLexToken]) -> Option<Value>
         counter_grammar::TargetStatKind::ManaValue => Value::ManaValueOf,
     };
     let target = crate::grammar::primitives::probe_shape(parse_target_phrase(&shape.target_tokens))?;
-    let spec = crate::reference_helpers::choose_spec_for_target(&target);
+    let spec = crate::model::ast::choose_spec_for_target(&target);
     Some(constructor(Box::new(spec)))
 }
 
@@ -1170,6 +1172,7 @@ fn player_filter_for_life_reference(player: PlayerAst) -> Option<PlayerFilter> {
         PlayerAst::PlayerToYourLeft => Some(PlayerFilter::PlayerToYourLeft),
         PlayerAst::PlayerToYourRight => Some(PlayerFilter::PlayerToYourRight),
         PlayerAst::NotYou => Some(PlayerFilter::NotYou),
+        PlayerAst::Teammate => Some(PlayerFilter::Teammate),
         PlayerAst::Target => Some(PlayerFilter::target_player()),
         PlayerAst::TargetOpponent => Some(PlayerFilter::target_opponent()),
         PlayerAst::That => Some(PlayerFilter::IteratedPlayer),
@@ -1389,7 +1392,7 @@ mod reveal_hand_count_tests {
 
     #[test]
     fn life_payment_reveal_choose_exile_pipeline_stays_typed() {
-        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+        let definition = ironsmith_compiler_lowering::CardDefinitionBuilder::new(
             crate::CardId::new(),
             "Life-Payment Confessor",
         )

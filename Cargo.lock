@@ -1312,7 +1312,14 @@ dependencies = [
 name = "ironsmith-compiler"
 version = "0.1.0"
 dependencies = [
+ "ironsmith-compiler",
+ "ironsmith-compiler-api",
  "ironsmith-compiler-grammar",
+ "ironsmith-compiler-lowering",
+ "ironsmith-compiler-resolve",
+ "ironsmith-compiler-semantic",
+ "ironsmith-compiler-source",
+ "ironsmith-compiler-syntax",
  "ironsmith-core",
 ]
 
@@ -1334,8 +1341,10 @@ name = "ironsmith-compiler-grammar"
 version = "0.1.0"
 dependencies = [
  "erased-serde",
+ "ironsmith-compiler",
  "ironsmith-compiler-api",
  "ironsmith-compiler-ast",
+ "ironsmith-compiler-lowering",
  "ironsmith-compiler-resolve",
  "ironsmith-compiler-semantic",
  "ironsmith-compiler-source",
@@ -1344,6 +1353,21 @@ dependencies = [
  "ironsmith-grammar-common",
  "serde",
  "winnow",
+]
+
+[[package]]
+name = "ironsmith-compiler-lowering"
+version = "0.1.0"
+dependencies = [
+ "ironsmith-compiler",
+ "ironsmith-compiler-api",
+ "ironsmith-compiler-ast",
+ "ironsmith-compiler-resolve",
+ "ironsmith-compiler-semantic",
+ "ironsmith-compiler-source",
+ "ironsmith-compiler-syntax",
+ "ironsmith-core",
+ "serde",
 ]
 
 [[package]]

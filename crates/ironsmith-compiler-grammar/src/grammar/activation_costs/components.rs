@@ -6,7 +6,7 @@ use crate::cards::builders::CardTextError;
 use crate::mana::ManaSymbol;
 use crate::object::CounterType;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use super::super::super::lexer::lex_line;
 use super::super::super::lexer::{
     LexStream, OwnedLexToken, TokenKind, render_token_slice, token_slice_at_is,

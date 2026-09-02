@@ -23,6 +23,7 @@ members = [
     "crates/ironsmith-compiler-resolve",
     "crates/ironsmith-grammar-common",
     "crates/ironsmith-compiler-grammar",
+    "crates/ironsmith-compiler-lowering",
     "crates/ironsmith-semantic-compare",
     "crates/ironsmith-runtime-catalog",
     "crates/ironsmith-engine",

@@ -64,8 +64,8 @@ pub(super) fn post_rule_reflexive_object_followup(
     sentence_effects: &mut Vec<EffectAst>,
 ) -> Result<Option<PostParseFollowupResult>, CardTextError> {
     let references_reflexive_object =
-        crate::compile_support::effects_reference_it_tag(sentence_effects)
-            || crate::compile_support::effects_reference_its_controller(sentence_effects);
+        crate::tag_support::effects_reference_it_tag(sentence_effects)
+            || crate::tag_support::effects_reference_its_controller(sentence_effects);
     if sentence_effects.is_empty() || !references_reflexive_object {
         return Ok(None);
     }

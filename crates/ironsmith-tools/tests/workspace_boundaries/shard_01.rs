@@ -1020,7 +1020,7 @@ pub(super) fn combat_restriction_control_conditions_use_shared_capture_parser() 
             && helper.contains("conditions::ControlConditionOptions")
             && helper.contains("parsed.has_explicit_quantity()")
             && helper.contains(".at_least_count()")
-            && helper.contains("ConditionExpr::PlayerHasAtLeast"),
+            && helper.contains("PredicateAst::PlayerHasAtLeast"),
         "{relative} should parse combat-restriction control tails into a typed condition through the shared capture parser"
     );
     for forbidden in [
@@ -2162,8 +2162,8 @@ pub(super) fn replacement_and_prevention_routes_shape_recognition_through_typed_
 pub(super) fn compile_support_tag_prefix_checks_use_named_helpers() {
     let root = workspace_root();
     let checked_files = [
-        "crates/ironsmith-compiler-grammar/src/lowering_impl/compile_support/effect_dispatch.rs",
-        "crates/ironsmith-compiler-grammar/src/lowering_impl/compile_support/effect_visibility_object_handlers.rs",
+        "crates/ironsmith-compiler-lowering/src/lowering_impl/compile_support/effect_dispatch.rs",
+        "crates/ironsmith-compiler-lowering/src/lowering_impl/compile_support/effect_visibility_object_handlers.rs",
         "crates/ironsmith-compiler-resolve/src/tag_support.rs",
     ];
     let forbidden_fragments = [
@@ -2376,7 +2376,7 @@ pub(super) fn triggered_label_source_selection_uses_lexed_dash_tokens() {
     }
 
     let legacy_lowering_relative =
-        "crates/ironsmith-compiler-grammar/src/lowering_impl/lower/parser_semantic_lowering.rs";
+        "crates/ironsmith-compiler-lowering/src/lowering_impl/lower/parser_semantic_lowering.rs";
     assert!(
         !root.join(legacy_lowering_relative).exists(),
         "trigger presentation recognition must not return to deleted parser-owned lowering module {legacy_lowering_relative}"
@@ -2424,7 +2424,7 @@ pub(super) fn chosen_option_context_flow_uses_typed_cst_ir_fact() {
     for lowering_relative in [
         "crates/ironsmith-compiler-grammar/src/semantic_line_parsing/lines.rs",
         "crates/ironsmith-compiler-grammar/src/semantic_line_parsing/activated.rs",
-        "crates/ironsmith-compiler-grammar/src/lowering_impl/lower/line_ast_helpers.rs",
+        "crates/ironsmith-compiler-lowering/src/lowering_impl/lower/line_ast_helpers.rs",
     ] {
         let lowering = read_repo_file(&root, lowering_relative);
         assert!(

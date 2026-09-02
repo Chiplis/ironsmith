@@ -26,6 +26,8 @@ pub enum PlayerAst {
     PlayerToYourRight,
     /// The player enchanted by this Aura or Curse.
     Enchanted,
+    /// "a teammate" — only meaningful in multiplayer team formats.
+    Teammate,
     NotYou,
     That,
     ThatPlayerOrTargetController,

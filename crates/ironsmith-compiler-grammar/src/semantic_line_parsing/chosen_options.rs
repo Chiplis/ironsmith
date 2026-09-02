@@ -1,18 +1,21 @@
 use super::*;
+use crate::cards::builders::PredicateAst;
 
-pub fn condition_for_chosen_option(context: &ChosenOptionContext) -> crate::ConditionExpr {
+/// What choosing this option means, as a predicate.
+///
+/// Which option the line named is a recognition question; the check that
+/// option implies at resolution is not.
+pub fn condition_for_chosen_option(context: &ChosenOptionContext) -> PredicateAst {
     match context {
-        ChosenOptionContext::SourceOption(label) => {
-            crate::ConditionExpr::SourceChosenOption(label.clone())
-        }
-        ChosenOptionContext::MaxSpeed => crate::ConditionExpr::ValueComparison {
+        ChosenOptionContext::SourceOption(label) => PredicateAst::SourceChosenOption(label.clone()),
+        ChosenOptionContext::MaxSpeed => PredicateAst::ValueComparison {
             left: crate::effect::Value::Speed(PlayerFilter::You),
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             right: crate::effect::Value::Fixed(4),
         },
         ChosenOptionContext::StationThreshold(threshold)
         | ChosenOptionContext::StationThresholdSupport(threshold) => {
-            crate::ConditionExpr::ValueComparison {
+            PredicateAst::ValueComparison {
                 left: crate::effect::Value::CountersOnSource(crate::CounterType::Charge),
                 operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 right: crate::effect::Value::Fixed(*threshold),
@@ -22,7 +25,7 @@ pub fn condition_for_chosen_option(context: &ChosenOptionContext) -> crate::Cond
             let filter = ObjectFilter::permanent()
                 .you_control()
                 .with_subtype(*subtype);
-            crate::ConditionExpr::CountComparison {
+            PredicateAst::CountComparison {
                 count: crate::static_abilities::AnthemCountExpression::MatchingFilter(filter),
                 comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
                 display: Some(format!("you control a {subtype}")),
@@ -37,17 +40,17 @@ pub fn condition_for_chosen_option(context: &ChosenOptionContext) -> crate::Cond
             let right_filter = ObjectFilter::permanent()
                 .you_control()
                 .with_colors(ColorSet::from_color(*right));
-            let left_condition = crate::ConditionExpr::CountComparison {
+            let left_condition = PredicateAst::CountComparison {
                 count: crate::static_abilities::AnthemCountExpression::MatchingFilter(left_filter),
                 comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
                 display: Some(format!("you control a {left_name} permanent")),
             };
-            let right_condition = crate::ConditionExpr::CountComparison {
+            let right_condition = PredicateAst::CountComparison {
                 count: crate::static_abilities::AnthemCountExpression::MatchingFilter(right_filter),
                 comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
                 display: Some(format!("you control a {right_name} permanent")),
             };
-            crate::ConditionExpr::Or(Box::new(left_condition), Box::new(right_condition))
+            PredicateAst::Or(Box::new(left_condition), Box::new(right_condition))
         }
     }
 }
@@ -152,11 +155,11 @@ mod tests {
     fn chosen_option_conditions_consume_typed_contexts() {
         assert!(matches!(
             condition_for_chosen_option(&ChosenOptionContext::source_option("khans")),
-            crate::ConditionExpr::SourceChosenOption(option) if option == "khans"
+            PredicateAst::SourceChosenOption(option) if option == "khans"
         ));
         assert!(matches!(
             condition_for_chosen_option(&ChosenOptionContext::StationThreshold(5)),
-            crate::ConditionExpr::ValueComparison {
+            PredicateAst::ValueComparison {
                 left: crate::effect::Value::CountersOnSource(crate::CounterType::Charge),
                 operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 right: crate::effect::Value::Fixed(5),
@@ -164,7 +167,7 @@ mod tests {
         ));
         assert!(matches!(
             condition_for_chosen_option(&ChosenOptionContext::MaxSpeed),
-            crate::ConditionExpr::ValueComparison {
+            PredicateAst::ValueComparison {
                 left: crate::effect::Value::Speed(PlayerFilter::You),
                 operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 right: crate::effect::Value::Fixed(4),
@@ -207,7 +210,7 @@ mod tests {
         );
         assert!(matches!(
             condition,
-            crate::ConditionExpr::ValueComparison {
+            PredicateAst::ValueComparison {
                 left: crate::effect::Value::CountersOnSource(crate::CounterType::Charge),
                 operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 right: crate::effect::Value::Fixed(3),
@@ -242,7 +245,7 @@ mod tests {
         ));
         assert!(matches!(
             condition,
-            crate::ConditionExpr::ValueComparison {
+            PredicateAst::ValueComparison {
                 left: crate::effect::Value::CountersOnSource(crate::CounterType::Charge),
                 operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 right: crate::effect::Value::Fixed(8),

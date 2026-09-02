@@ -6,6 +6,10 @@ use super::shard_03::*;
 use super::shard_04::*;
 use super::shard_05::*;
 use super::*;
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
+#[cfg(test)]
+use ironsmith_compiler_lowering::CardDefinitionBuilder;
 
 #[test]
 pub(super) fn clown_car_parses_roll_x_six_sided_dice_with_odd_even_result_clauses() {
@@ -247,7 +251,7 @@ pub(super) fn typed_counter_where_x_carries_into_payment_and_result_followup() {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Primordial Ooze")
         .card_types(vec![CardType::Creature]);
     let (document, _) = parse_text_to_semantic_document(
-        builder.clone(),
+        builder.card_builder.clone(),
         "At the beginning of your upkeep, put a +1/+1 counter on this creature. Then you may pay {X}, where X is the number of +1/+1 counters on it. If you don't, tap this creature and it deals X damage to you.".to_string(),
         false,
     )

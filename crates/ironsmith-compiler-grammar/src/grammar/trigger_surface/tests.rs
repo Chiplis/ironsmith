@@ -1,15 +1,16 @@
 use super::frequency::parse_do_this_only_each_turn_limit_tokens;
 use super::*;
+use crate::cards::builders::{PredicateAst, TriggerFrequencyPredicateAst};
 use crate::lexer::lex_line;
 
 fn tokens(text: &str) -> Vec<OwnedLexToken> {
     lex_line(text, 0).unwrap()
 }
 
-fn assert_frequency_condition(text: &str, limit: u32, expected: crate::ConditionExpr) {
+fn assert_frequency_condition(text: &str, limit: u32, expected: TriggerFrequencyPredicateAst) {
     assert_eq!(
         parse_trigger_frequency_condition_tokens(&tokens(text), Some(limit)),
-        Some(expected)
+        Some(PredicateAst::TriggerFrequency(expected))
     );
 }
 
@@ -48,7 +49,7 @@ fn parses_first_crewed_frequency_condition() {
     assert_frequency_condition(
         "Whenever this Vehicle becomes crewed for the first time each turn, draw a card.",
         1,
-        crate::ConditionExpr::SourceFirstCrewedThisTurn,
+        TriggerFrequencyPredicateAst::SourceFirstCrewedThisTurn,
     );
 }
 
@@ -57,7 +58,7 @@ fn parses_first_time_frequency_condition() {
     assert_frequency_condition(
         "Whenever one or more creatures attack you for the first time this turn, draw a card.",
         1,
-        crate::ConditionExpr::FirstTimeThisTurn,
+        TriggerFrequencyPredicateAst::FirstTimeThisTurn,
     );
 }
 
@@ -70,7 +71,9 @@ fn parses_first_time_during_each_of_your_turns_frequency_condition() {
     assert!(frequency.first_time_during_each_of_your_turns);
     assert_eq!(
         parse_trigger_frequency_condition_tokens(&tokens, Some(1)),
-        Some(crate::ConditionExpr::FirstTimeThisTurn)
+        Some(PredicateAst::TriggerFrequency(
+            TriggerFrequencyPredicateAst::FirstTimeThisTurn
+        ))
     );
 }
 
@@ -79,7 +82,7 @@ fn parses_do_this_frequency_condition() {
     assert_frequency_condition(
         "Do this only twice each turn.",
         2,
-        crate::ConditionExpr::DoThisMaxTimesEachTurn(2),
+        TriggerFrequencyPredicateAst::DoThisMaxTimesEachTurn(2),
     );
 }
 
@@ -88,6 +91,6 @@ fn parses_plain_max_frequency_condition() {
     assert_frequency_condition(
         "Whenever you cast a spell, draw a card.",
         3,
-        crate::ConditionExpr::MaxTimesEachTurn(3),
+        TriggerFrequencyPredicateAst::MaxTimesEachTurn(3),
     );
 }

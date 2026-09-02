@@ -223,7 +223,7 @@ fn last_effect_creates_tokens(effects: &[EffectAst]) -> bool {
             return true;
         }
         let mut found = false;
-        crate::effect_ast_traversal::for_each_nested_effects(effect, true, |nested| {
+        crate::model_impl::visit::for_each_nested_effects(effect, true, |nested| {
             found |= nested.iter().any(creates_tokens);
         });
         found

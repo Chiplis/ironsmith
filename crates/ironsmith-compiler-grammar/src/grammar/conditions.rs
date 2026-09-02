@@ -1,3 +1,4 @@
+use crate::cards::builders::{PredicateAst, TurnHistoryPredicateAst};
 use winnow::Parser;
 use winnow::combinator::{alt, opt};
 use winnow::error::ModalResult as WResult;
@@ -168,7 +169,7 @@ pub struct ObjectAttachedToObjectConditionAst {
 /// draft with a named card group.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RemovedFromDraftConditionAst {
-    pub player: PlayerFilter,
+    pub player: PlayerAst,
     pub filter: ObjectFilter,
     pub with_cards_named: String,
 }
@@ -214,7 +215,7 @@ pub fn parse_removed_from_draft_condition(
         return None;
     }
     Some(RemovedFromDraftConditionAst {
-        player: PlayerFilter::You,
+        player: PlayerAst::You,
         filter,
         with_cards_named,
     })
@@ -229,7 +230,7 @@ pub enum PlayerStatusAst {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlayerStatusConditionAst {
-    pub player: PlayerFilter,
+    pub player: PlayerAst,
     pub status: PlayerStatusAst,
 }
 
@@ -243,20 +244,20 @@ pub enum PlayerAchievementAst {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlayerAchievementConditionAst {
-    pub player: PlayerFilter,
+    pub player: PlayerAst,
     pub achievement: PlayerAchievementAst,
     pub negated: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlayerCardsInHandConditionAst {
-    pub player: PlayerFilter,
+    pub player: PlayerAst,
     pub comparison: Comparison,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlayerLifeTotalConditionAst {
-    pub player: PlayerFilter,
+    pub player: PlayerAst,
     pub comparison: Comparison,
 }
 
@@ -275,7 +276,7 @@ pub struct PlayerLifeTieChoiceConditionAst<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlayerHasQuantityObjectConditionAst {
-    pub player: PlayerFilter,
+    pub player: PlayerAst,
     pub comparison: Comparison,
 }
 
@@ -463,29 +464,30 @@ impl ControlConditionAst {
 }
 
 impl SubjectStatusConditionAst {
-    pub fn condition_expr(self) -> Option<crate::ConditionExpr> {
+    /// What this status clause asserts, as a predicate.
+    pub fn condition_expr(self) -> Option<PredicateAst> {
         match (self.subject, self.state) {
             (StatusConditionSubjectAst::Source, StatusConditionStateAst::Equipped) => {
-                Some(crate::ConditionExpr::SourceIsEquipped)
+                Some(PredicateAst::SourceIsEquipped)
             }
             (StatusConditionSubjectAst::Source, StatusConditionStateAst::Enchanted) => {
-                Some(crate::ConditionExpr::SourceIsEnchanted)
+                Some(PredicateAst::SourceIsEnchanted)
             }
             (StatusConditionSubjectAst::Source, StatusConditionStateAst::Tapped) => {
-                Some(crate::ConditionExpr::SourceIsTapped)
+                Some(PredicateAst::SourceIsTapped)
             }
             (StatusConditionSubjectAst::Source, StatusConditionStateAst::Untapped) => {
-                Some(crate::ConditionExpr::SourceIsUntapped)
+                Some(PredicateAst::SourceIsUntapped)
             }
             (StatusConditionSubjectAst::Source, StatusConditionStateAst::Attacking) => {
-                Some(crate::ConditionExpr::SourceIsAttacking)
+                Some(PredicateAst::SourceIsAttacking)
             }
             (StatusConditionSubjectAst::Source, StatusConditionStateAst::AttackingAlone) => {
                 let mut attacking_creatures = ObjectFilter::creature();
                 attacking_creatures.attacking = true;
-                Some(crate::ConditionExpr::And(
-                    Box::new(crate::ConditionExpr::SourceIsAttacking),
-                    Box::new(crate::ConditionExpr::CountComparison {
+                Some(PredicateAst::And(
+                    Box::new(PredicateAst::SourceIsAttacking),
+                    Box::new(PredicateAst::CountComparison {
                         count: AnthemCountExpression::MatchingFilter(attacking_creatures),
                         comparison: Comparison::Equal(1),
                         display: Some("no other creatures are attacking".to_string()),
@@ -493,16 +495,16 @@ impl SubjectStatusConditionAst {
                 ))
             }
             (StatusConditionSubjectAst::Source, StatusConditionStateAst::Monstrous) => {
-                Some(crate::ConditionExpr::SourceIsMonstrous)
+                Some(PredicateAst::SourceIsMonstrous)
             }
             (StatusConditionSubjectAst::EquippedCreature, StatusConditionStateAst::Tapped) => {
-                Some(crate::ConditionExpr::EquippedCreatureTapped)
+                Some(PredicateAst::EquippedCreatureTapped)
             }
             (StatusConditionSubjectAst::EquippedCreature, StatusConditionStateAst::Untapped) => {
-                Some(crate::ConditionExpr::EquippedCreatureUntapped)
+                Some(PredicateAst::EquippedCreatureUntapped)
             }
             (StatusConditionSubjectAst::EquippedCreature, StatusConditionStateAst::Attacking) => {
-                Some(crate::ConditionExpr::EquippedCreatureAttacking)
+                Some(PredicateAst::EquippedCreatureAttacking)
             }
             _ => None,
         }
@@ -510,26 +512,26 @@ impl SubjectStatusConditionAst {
 }
 
 impl SubjectDescriptorConditionAst {
-    pub fn condition_expr(self, display: String) -> crate::ConditionExpr {
+    pub fn condition_expr(self, display: String) -> PredicateAst {
         if self.subject == SubjectDescriptorConditionSubjectAst::AttachedObject {
             let mut descriptor_filter = ObjectFilter::default();
             apply_object_descriptor_to_filter(&mut descriptor_filter, self.descriptor);
-            return crate::ConditionExpr::AttachedToSourceMatches(descriptor_filter);
+            return PredicateAst::AttachedToSourceMatches(descriptor_filter);
         }
 
         if self.subject == SubjectDescriptorConditionSubjectAst::EnchantedPermanent {
             match self.descriptor {
                 ObjectDescriptorAst::CardType(CardType::Creature) => {
-                    return crate::ConditionExpr::EnchantedPermanentIsCreature;
+                    return PredicateAst::EnchantedPermanentIsCreature;
                 }
                 ObjectDescriptorAst::CardType(CardType::Land) => {
-                    return crate::ConditionExpr::EnchantedPermanentIsLand;
+                    return PredicateAst::EnchantedPermanentIsLand;
                 }
                 ObjectDescriptorAst::Subtype(Subtype::Equipment) => {
-                    return crate::ConditionExpr::EnchantedPermanentIsEquipment;
+                    return PredicateAst::EnchantedPermanentIsEquipment;
                 }
                 ObjectDescriptorAst::Subtype(Subtype::Vehicle) => {
-                    return crate::ConditionExpr::EnchantedPermanentIsVehicle;
+                    return PredicateAst::EnchantedPermanentIsVehicle;
                 }
                 _ => {}
             }
@@ -537,7 +539,7 @@ impl SubjectDescriptorConditionAst {
 
         let mut filter = self.filter;
         apply_object_descriptor_to_filter(&mut filter, self.descriptor);
-        crate::ConditionExpr::CountComparison {
+        PredicateAst::CountComparison {
             count: AnthemCountExpression::MatchingFilter(filter),
             comparison: Comparison::GreaterThanOrEqual(1),
             display: Some(display),
@@ -545,61 +547,86 @@ impl SubjectDescriptorConditionAst {
     }
 }
 
+/// The filter a recognized player denotes on its own, with no context.
+///
+/// Some surrounding types — `Value`, for one — still hold a resolved filter, so
+/// a recognized player has to be spelled out there. This is the context-free
+/// half of what the resolver does, which is all those positions ever had.
+pub fn unconditional_player_filter(player: PlayerAst) -> Option<PlayerFilter> {
+    match player {
+        PlayerAst::You => Some(PlayerFilter::You),
+        PlayerAst::Opponent => Some(PlayerFilter::Opponent),
+        PlayerAst::Any => Some(PlayerFilter::Any),
+        PlayerAst::Defending => Some(PlayerFilter::Defending),
+        PlayerAst::Attacking => Some(PlayerFilter::Attacking),
+        PlayerAst::That => Some(PlayerFilter::IteratedPlayer),
+        _ => None,
+    }
+}
+
 impl PlayerStatusConditionAst {
-    pub fn condition_expr(self) -> crate::ConditionExpr {
-        match self.status {
-            PlayerStatusAst::Monarch => crate::ConditionExpr::PlayerIsMonarch {
+    /// What this status clause asserts, as a predicate.
+    ///
+    /// `None` when the recognized player has no context-free denotation and the
+    /// shape needs one — the same clauses this declined before.
+    pub fn condition_expr(self) -> Option<PredicateAst> {
+        Some(match self.status {
+            PlayerStatusAst::Monarch => PredicateAst::PlayerIsMonarch {
                 player: self.player,
             },
-            PlayerStatusAst::Initiative => crate::ConditionExpr::PlayerHasInitiative {
+            PlayerStatusAst::Initiative => PredicateAst::PlayerHasInitiative {
                 player: self.player,
             },
-            PlayerStatusAst::MaxSpeed => crate::ConditionExpr::ValueComparison {
-                left: Value::Speed(self.player),
+            PlayerStatusAst::MaxSpeed => PredicateAst::ValueComparison {
+                left: Value::Speed(unconditional_player_filter(self.player)?),
                 operator: ValueComparisonOperator::GreaterThanOrEqual,
                 right: Value::Fixed(4),
             },
-        }
+        })
     }
 }
 
 impl PlayerAchievementConditionAst {
-    pub fn condition_expr(self) -> crate::ConditionExpr {
+    /// What this achievement clause asserts, as a predicate.
+    ///
+    /// `None` when the recognized player has no context-free denotation and the
+    /// shape needs one.
+    pub fn condition_expr(self) -> Option<PredicateAst> {
         let condition = match self.achievement {
-            PlayerAchievementAst::CitysBlessing => crate::ConditionExpr::PlayerHasCitysBlessing {
+            PlayerAchievementAst::CitysBlessing => PredicateAst::PlayerHasCitysBlessing {
                 player: self.player,
             },
             PlayerAchievementAst::CompletedDungeon { dungeon_name } => {
-                crate::ConditionExpr::PlayerCompletedDungeon {
+                PredicateAst::PlayerCompletedDungeon {
                     player: self.player,
                     dungeon_name,
                 }
             }
-            PlayerAchievementAst::FullParty => crate::ConditionExpr::YouHaveFullParty,
-            PlayerAchievementAst::VisitedAttractionThisTurn => crate::ConditionExpr::TurnHistory(
-                ironsmith_core::TurnHistoryCondition::PlayerVisitedAttractionThisTurn(self.player),
+            PlayerAchievementAst::FullParty => PredicateAst::YouHaveFullParty,
+            PlayerAchievementAst::VisitedAttractionThisTurn => PredicateAst::TurnHistory(
+                TurnHistoryPredicateAst::PlayerVisitedAttractionThisTurn(self.player),
             ),
         };
-        if self.negated {
-            crate::ConditionExpr::Not(Box::new(condition))
+        Some(if self.negated {
+            PredicateAst::Not(Box::new(condition))
         } else {
             condition
-        }
+        })
     }
 }
 
 impl PlayerCardsInHandConditionAst {
-    pub fn condition_expr(self) -> Option<crate::ConditionExpr> {
+    pub fn condition_expr(self) -> Option<PredicateAst> {
         if let Some(count) = comparison_to_strict_at_least_threshold(&self.comparison) {
-            return Some(crate::ConditionExpr::PlayerCardsInHandOrMore {
+            return Some(PredicateAst::PlayerCardsInHandOrMore {
                 player: self.player,
-                count: count as i32,
+                count,
             });
         }
         if let Some(count) = comparison_to_strict_at_most_threshold(&self.comparison) {
-            return Some(crate::ConditionExpr::PlayerCardsInHandOrFewer {
+            return Some(PredicateAst::PlayerCardsInHandOrFewer {
                 player: self.player,
-                count: count as i32,
+                count,
             });
         }
         None
@@ -611,10 +638,10 @@ impl PlayerCardsInHandConditionAst {
 }
 
 impl PlayerLifeTotalConditionAst {
-    pub fn condition_expr(self) -> Option<crate::ConditionExpr> {
+    pub fn condition_expr(self) -> Option<PredicateAst> {
         let (operator, right) = comparison_to_value_comparison_operator(self.comparison)?;
-        Some(crate::ConditionExpr::ValueComparison {
-            left: Value::LifeTotal(self.player),
+        Some(PredicateAst::ValueComparison {
+            left: Value::LifeTotal(unconditional_player_filter(self.player)?),
             operator,
             right: Value::Fixed(right),
         })
@@ -1168,7 +1195,7 @@ fn parse_player_status_shape(tokens: &[OwnedLexToken]) -> Option<PlayerStatusCon
     let shape = status_shapes::parse_player_status_tokens(tokens)?;
     let player = match shape.subject_tokens {
         Some(subject) => parse_player_status_subject_clause(LexedClause::new(subject))?,
-        None => PlayerFilter::You,
+        None => PlayerAst::You,
     };
     Some(PlayerStatusConditionAst {
         player,
@@ -1748,7 +1775,7 @@ fn parse_battlefield_entry_shape(tokens: &[OwnedLexToken]) -> Option<Battlefield
     }
 }
 
-fn parse_player_status_subject_clause(clause: LexedClause<'_>) -> Option<PlayerFilter> {
+fn parse_player_status_subject_clause(clause: LexedClause<'_>) -> Option<PlayerAst> {
     let reference = parse_leaf_player_reference_tokens(
         clause.tokens(),
         LeafPlayerReferenceMode::PlayerStatusSubject,
@@ -1756,30 +1783,34 @@ fn parse_player_status_subject_clause(clause: LexedClause<'_>) -> Option<PlayerF
     lower_player_status_subject_reference(reference)
 }
 
-fn lower_player_status_subject_reference(reference: LeafPlayerReference) -> Option<PlayerFilter> {
+/// Which player a status clause is about, as recognized.
+///
+/// Binding it to a filter is the resolver's job — it is the piece that knows
+/// what "that player" refers to here.
+fn lower_player_status_subject_reference(reference: LeafPlayerReference) -> Option<PlayerAst> {
     match reference {
-        LeafPlayerReference::You => Some(PlayerFilter::You),
-        LeafPlayerReference::DefendingPlayer => Some(PlayerFilter::Defending),
-        LeafPlayerReference::AttackingPlayer => Some(PlayerFilter::Attacking),
-        LeafPlayerReference::ThatPlayer => Some(PlayerFilter::IteratedPlayer),
-        LeafPlayerReference::Opponent => Some(PlayerFilter::Opponent),
-        LeafPlayerReference::AnyPlayer => Some(PlayerFilter::Any),
+        LeafPlayerReference::You => Some(PlayerAst::You),
+        LeafPlayerReference::DefendingPlayer => Some(PlayerAst::Defending),
+        LeafPlayerReference::AttackingPlayer => Some(PlayerAst::Attacking),
+        LeafPlayerReference::ThatPlayer => Some(PlayerAst::That),
+        LeafPlayerReference::Opponent => Some(PlayerAst::Opponent),
+        LeafPlayerReference::AnyPlayer => Some(PlayerAst::Any),
         _ => None,
     }
 }
 
-fn parse_player_has_quantity_subject_clause(clause: LexedClause<'_>) -> Option<PlayerFilter> {
+fn parse_player_has_quantity_subject_clause(clause: LexedClause<'_>) -> Option<PlayerAst> {
     let reference = parse_leaf_player_reference_tokens(
         clause.tokens(),
         LeafPlayerReferenceMode::PlayerHasQuantitySubject,
     )?;
     match reference {
-        LeafPlayerReference::You => Some(PlayerFilter::You),
-        LeafPlayerReference::Opponent => Some(PlayerFilter::Opponent),
-        LeafPlayerReference::AnyPlayer => Some(PlayerFilter::Any),
-        LeafPlayerReference::ThatPlayer => Some(PlayerFilter::IteratedPlayer),
-        LeafPlayerReference::AttackingPlayer => Some(PlayerFilter::Attacking),
-        LeafPlayerReference::DefendingPlayer => Some(PlayerFilter::Defending),
+        LeafPlayerReference::You => Some(PlayerAst::You),
+        LeafPlayerReference::Opponent => Some(PlayerAst::Opponent),
+        LeafPlayerReference::AnyPlayer => Some(PlayerAst::Any),
+        LeafPlayerReference::ThatPlayer => Some(PlayerAst::That),
+        LeafPlayerReference::AttackingPlayer => Some(PlayerAst::Attacking),
+        LeafPlayerReference::DefendingPlayer => Some(PlayerAst::Defending),
         _ => None,
     }
 }

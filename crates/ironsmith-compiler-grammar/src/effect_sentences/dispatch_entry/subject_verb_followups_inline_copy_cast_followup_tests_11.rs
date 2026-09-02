@@ -1,4 +1,6 @@
 use super::*;
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
 
 #[test]
 fn delayed_copy_of_prior_exiled_card_keeps_cast_inside_trigger() {

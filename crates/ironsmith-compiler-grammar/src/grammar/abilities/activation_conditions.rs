@@ -1,7 +1,7 @@
+use crate::cards::builders::{PlayerAst, PredicateAst};
 use winnow::combinator::{alt, eof};
 use winnow::prelude::*;
 
-use crate::ConditionExpr;
 use crate::ability::ActivationTiming;
 use crate::color::{Color, ColorSet};
 use crate::target::{ObjectFilter, PlayerFilter};
@@ -153,7 +153,7 @@ pub fn parse_activation_count_per_turn(words: &[&str]) -> Option<u32> {
     (parsed.1 == count_words.len()).then_some(parsed.0)
 }
 
-pub fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
+pub fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     if let Some(condition) = parse_repeated_or_if_activation_condition(tokens) {
         return Some(condition);
     }
@@ -170,7 +170,7 @@ pub fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Option<Cond
         return Some(condition);
     }
     if matches_any_prefix_tokens(tokens, ACTIVATE_ONLY_INSTANT_PREFIXES) {
-        return Some(ConditionExpr::ActivationTiming(ActivationTiming::AnyTime));
+        return Some(PredicateAst::ActivationTiming(ActivationTiming::AnyTime));
     }
     if let Some(condition) = parse_graveyard_condition(tokens) {
         return Some(condition);
@@ -180,7 +180,7 @@ pub fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Option<Cond
             super::super::conditions::parse_player_status_condition(status_tokens)
         && condition.status == super::super::conditions::PlayerStatusAst::MaxSpeed
     {
-        return Some(condition.condition_expr());
+        return condition.condition_expr();
     }
     if let Some(condition) = parse_total_power_condition(tokens) {
         return Some(condition);
@@ -201,10 +201,10 @@ pub fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Option<Cond
     {
         return Some(match condition {
             super::super::restriction_normalization::TextOnlyActivationRestriction::SourceDidNotAttackThisTurn => {
-                ConditionExpr::Not(Box::new(ConditionExpr::SourceAttackedThisTurn))
+                PredicateAst::Not(Box::new(PredicateAst::SourceAttackedThisTurn))
             }
             super::super::restriction_normalization::TextOnlyActivationRestriction::SourceAttackedThisTurn => {
-                ConditionExpr::SourceAttackedThisTurn
+                PredicateAst::SourceAttackedThisTurn
             }
         });
     }
@@ -217,14 +217,14 @@ pub fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Option<Cond
                 count,
                 surface,
             } => {
-                return Some(ConditionExpr::SourceHasCounterAtLeast {
+                return Some(PredicateAst::SourceHasCounterAtLeast {
                     counter_type,
                     count,
                     surface,
                 });
             }
             crate::cards::builders::PredicateAst::SourceMatches(filter) => {
-                return Some(ConditionExpr::SourceMatches(filter));
+                return Some(PredicateAst::SourceMatches(filter));
             }
             _ => {}
         }
@@ -234,7 +234,11 @@ pub fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Option<Cond
         parse_control_condition(control_tokens, ControlConditionOptions::default())
     {
         let count = control_condition.at_least_count()?;
-        let player = control_condition.player_filter?;
+        // The resolved filter is still required as a guard: a subject with no
+        // filter ("that player") is not one this clause accepts. What travels
+        // on is the recognized player, not the binding.
+        let _ = control_condition.player_filter?;
+        let player = control_condition.player;
         let mut filter = control_condition.filter;
         // Activation-condition ASTs historically represented adjacent type
         // words in the union field. Keep that established shape while the
@@ -244,16 +248,16 @@ pub fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Option<Cond
             filter.card_types = std::mem::take(&mut filter.all_card_types);
         }
         if count == 1
-            && player == PlayerFilter::You
+            && player == PlayerAst::You
             && crate::slice_primitives::contains(&filter.card_types, &crate::types::CardType::Land)
             && crate::slice_primitives::contains(
                 &filter.supertypes,
                 &crate::types::Supertype::Basic,
             )
         {
-            return Some(ConditionExpr::YouControl(filter));
+            return Some(PredicateAst::YouControl(filter));
         }
-        return Some(ConditionExpr::PlayerHasAtLeast {
+        return Some(PredicateAst::PlayerHasAtLeast {
             player,
             filter,
             count,
@@ -262,7 +266,7 @@ pub fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Option<Cond
     parse_land_subtype_control_condition(control_tokens)
 }
 
-fn parse_combined_once_and_timing_condition(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
+fn parse_combined_once_and_timing_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let words = TokenWordView::new(tokens).word_refs();
     phrase_offset_words(&words, &["once", "each", "turn"])?;
     let timing = if phrase_offset_words(&words, &["during", "your", "turn"]).is_some() {
@@ -276,13 +280,13 @@ fn parse_combined_once_and_timing_condition(tokens: &[OwnedLexToken]) -> Option<
     } else {
         return None;
     };
-    Some(ConditionExpr::And(
-        Box::new(ConditionExpr::MaxActivationsPerTurn(1)),
-        Box::new(ConditionExpr::ActivationTiming(timing)),
+    Some(PredicateAst::And(
+        Box::new(PredicateAst::MaxActivationsPerTurn(1)),
+        Box::new(PredicateAst::ActivationTiming(timing)),
     ))
 }
 
-fn parse_repeated_or_if_activation_condition(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
+fn parse_repeated_or_if_activation_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     let split = phrase_offset_words(&words, &["or", "if"])?;
@@ -302,12 +306,12 @@ fn parse_repeated_or_if_activation_condition(tokens: &[OwnedLexToken]) -> Option
     prefixed_right.extend_from_slice(right_tokens);
     let right = parse_activation_condition_lexed(&prefixed_right)?;
 
-    Some(ConditionExpr::Or(Box::new(left), Box::new(right)))
+    Some(PredicateAst::Or(Box::new(left), Box::new(right)))
 }
 
 fn parse_once_each_turn_and_if_activation_condition(
     tokens: &[OwnedLexToken],
-) -> Option<ConditionExpr> {
+) -> Option<PredicateAst> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     let split = phrase_offset_words(&words, &["and", "only", "if"])?;
@@ -333,13 +337,13 @@ fn parse_once_each_turn_and_if_activation_condition(
     ];
     prefixed_right.extend_from_slice(right_tokens);
     let right = parse_activation_condition_lexed(&prefixed_right)?;
-    Some(ConditionExpr::And(
-        Box::new(ConditionExpr::MaxActivationsPerTurn(1)),
+    Some(PredicateAst::And(
+        Box::new(PredicateAst::MaxActivationsPerTurn(1)),
         Box::new(right),
     ))
 }
 
-fn parse_source_entered_this_turn_condition(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
+fn parse_source_entered_this_turn_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let condition_tokens = parse_activate_only_if_tail_tokens(tokens)?;
     let words = TokenWordView::new(condition_tokens).word_refs();
     let source_end =
@@ -361,7 +365,7 @@ fn parse_source_entered_this_turn_condition(tokens: &[OwnedLexToken]) -> Option<
             source_words,
         )?)
     };
-    Some(ConditionExpr::ObjectEnteredBattlefieldThisTurn(filter))
+    Some(PredicateAst::ObjectEnteredBattlefieldThisTurn(filter))
 }
 
 fn parse_activate_only_timing_marker(tokens: &[OwnedLexToken]) -> Option<ActivateOnlyTimingMarker> {
@@ -433,7 +437,7 @@ fn parse_graveyard_condition_shape(
     })
 }
 
-fn parse_graveyard_condition(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
+fn parse_graveyard_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let parsed = parse_graveyard_condition_shape(tokens)?;
     let descriptor_words = TokenWordView::new(parsed.descriptor_tokens).word_refs();
     let mut card_types = Vec::new();
@@ -452,15 +456,15 @@ fn parse_graveyard_condition(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> 
         if descriptor_words.get(used..) != Some(&["or", "more", "cards"][..]) {
             return None;
         }
-        return Some(ConditionExpr::PlayerHasAtLeast {
-            player: PlayerFilter::You,
+        return Some(PredicateAst::PlayerHasAtLeast {
+            player: PlayerAst::You,
             filter: ObjectFilter::default()
                 .in_zone(crate::zone::Zone::Graveyard)
                 .owned_by(PlayerFilter::You),
             count,
         });
     }
-    Some(ConditionExpr::CardInYourGraveyard {
+    Some(PredicateAst::CardInYourGraveyard {
         card_types,
         subtypes,
     })
@@ -494,7 +498,7 @@ fn parse_total_power_condition_shape(
     })
 }
 
-fn parse_total_power_condition(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
+fn parse_total_power_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let parsed = parse_total_power_condition_shape(tokens)?;
     let comparison_words = TokenWordView::new(parsed.comparison_tokens).word_refs();
     let clause_words = TokenWordView::new(tokens).word_refs();
@@ -504,7 +508,7 @@ fn parse_total_power_condition(tokens: &[OwnedLexToken]) -> Option<ConditionExpr
     let crate::filter::Comparison::GreaterThanOrEqual(threshold) = comparison else {
         return None;
     };
-    (used == comparison_words.len()).then_some(ConditionExpr::ControlCreaturesTotalPowerAtLeast(
+    (used == comparison_words.len()).then_some(PredicateAst::ControlCreaturesTotalPowerAtLeast(
         crate::util::narrowed_u32(threshold)?,
     ))
 }
@@ -548,7 +552,7 @@ fn parse_sources_damage_condition_shape(
     })
 }
 
-fn parse_sources_damage_condition(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
+fn parse_sources_damage_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let parsed = parse_sources_damage_condition_shape(tokens)?;
     if !matches_exact_tokens(
         parsed.source_tokens,
@@ -561,7 +565,7 @@ fn parse_sources_damage_condition(tokens: &[OwnedLexToken]) -> Option<ConditionE
     if used != threshold_words.len() {
         return None;
     }
-    Some(ConditionExpr::ValueComparison {
+    Some(PredicateAst::ValueComparison {
         left: crate::effect::Value::NoncombatDamageDealtBySourcesControlledThisTurn {
             player: PlayerFilter::You,
             colors: Some(ColorSet::from_color(Color::Red)),

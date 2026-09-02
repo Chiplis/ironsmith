@@ -14,9 +14,12 @@ fn try_map_preserves_ward_cost_alternatives() {
         ]));
 
     let mapped: StaticAbility<(), (), Cost<usize>, ()> = ward
-        .try_map(Ok::<_, ()>, Ok::<_, ()>, |cost| {
-            cost.try_map_effect(|effect| Ok::<_, ()>(effect.len()))
-        })
+        .try_map(
+            Ok::<_, ()>,
+            Ok::<_, ()>,
+            |cost| cost.try_map_effect(|effect| Ok::<_, ()>(effect.len())),
+            Ok::<_, ()>,
+        )
         .expect("ward alternatives should map recursively");
 
     let StaticAbilityPayload::Ward(cost) = mapped.payload else {
@@ -40,9 +43,12 @@ fn try_map_preserves_full_escalate_cost_and_surface() {
         );
 
     let mapped: StaticAbility<(), (), Cost<usize>, ()> = escalate
-        .try_map(Ok::<_, ()>, Ok::<_, ()>, |cost| {
-            cost.try_map_effect(|effect| Ok::<_, ()>(effect.len()))
-        })
+        .try_map(
+            Ok::<_, ()>,
+            Ok::<_, ()>,
+            |cost| cost.try_map_effect(|effect| Ok::<_, ()>(effect.len())),
+            Ok::<_, ()>,
+        )
         .expect("Escalate costs should map recursively");
 
     let StaticAbilityPayload::Escalate(spec) = mapped.payload else {

@@ -1,6 +1,6 @@
 fn split_attached_keyword_condition_suffix(
     ability_tokens: &[OwnedLexToken],
-) -> Result<(Vec<OwnedLexToken>, Option<crate::ConditionExpr>), CardTextError> {
+) -> Result<(Vec<OwnedLexToken>, Option<PredicateAst>), CardTextError> {
     let ability_tokens = trim_edge_punctuation(ability_tokens);
     let parsed = attached_grammar::split_attached_condition_suffix_tokens(&ability_tokens);
     let condition = match parsed {
@@ -9,28 +9,52 @@ fn split_attached_keyword_condition_suffix(
             condition_tokens, ..
         } => Some(parse_static_condition_clause(condition_tokens)?),
         attached_grammar::AttachedConditionSuffix::YourTurn { .. } => {
-            Some(crate::ConditionExpr::YourTurn)
+            Some(PredicateAst::YourTurn)
         }
         attached_grammar::AttachedConditionSuffix::OtherTurns { .. } => Some(
-            crate::ConditionExpr::Not(Box::new(crate::ConditionExpr::YourTurn)),
+            PredicateAst::Not(Box::new(PredicateAst::YourTurn)),
         ),
     };
     Ok((trim_edge_punctuation(parsed.ability_tokens()), condition))
 }
 
-fn bind_condition_to_attached_object(condition: crate::ConditionExpr) -> crate::ConditionExpr {
+/// The filter an unbound `it` denotes when the line is about an attached object.
+///
+/// The clause read a battlefield-scoped filter, but matching it against the
+/// attached object ignores that object's current zone — the same normalization
+/// reference resolution applies to an `it` with nothing bound to it. A same-name
+/// relation still pointing at `__it__` describes a comparison *set*, and that
+/// set's zone is meaningful, so it is left alone.
+fn attached_object_host_filter(mut filter: ObjectFilter) -> ObjectFilter {
+    let is_same_name_comparison_set = filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+    });
+    if !is_same_name_comparison_set && filter.zone != Some(crate::zone::Zone::Stack) {
+        filter.zone = None;
+    }
+    filter
+}
+
+fn bind_condition_to_attached_object(condition: PredicateAst) -> PredicateAst {
     match condition {
-        crate::ConditionExpr::TargetMatches(filter) => {
-            crate::ConditionExpr::AttachedToSourceMatches(filter)
+        PredicateAst::TargetMatches(filter) => {
+            PredicateAst::AttachedToSourceMatches(filter)
         }
-        crate::ConditionExpr::Not(inner) => crate::ConditionExpr::Not(Box::new(
+        // "as long as it's an enchantment" on an attached-object line is about
+        // the attached object; recognition knows that here, so the predicate
+        // says so rather than leaving an unbound `it` for lowering to guess at.
+        PredicateAst::ItMatches(filter) => {
+            PredicateAst::AttachedToSourceMatches(attached_object_host_filter(filter))
+        }
+        PredicateAst::Not(inner) => PredicateAst::Not(Box::new(
             bind_condition_to_attached_object(*inner),
         )),
-        crate::ConditionExpr::And(left, right) => crate::ConditionExpr::And(
+        PredicateAst::And(left, right) => PredicateAst::And(
             Box::new(bind_condition_to_attached_object(*left)),
             Box::new(bind_condition_to_attached_object(*right)),
         ),
-        crate::ConditionExpr::Or(left, right) => crate::ConditionExpr::Or(
+        PredicateAst::Or(left, right) => PredicateAst::Or(
             Box::new(bind_condition_to_attached_object(*left)),
             Box::new(bind_condition_to_attached_object(*right)),
         ),
@@ -205,7 +229,7 @@ pub fn parse_attached_conditional_loses_all_abilities_line(
     }
     let condition_tokens = trim_edge_punctuation(&tokens[3..comma_idx]);
     let condition = parse_static_condition_clause(&condition_tokens)?;
-    if !matches!(condition, crate::ConditionExpr::AttachedToSourceMatches(_)) {
+    if !matches!(condition, PredicateAst::AttachedToSourceMatches(_)) {
         return Ok(None);
     }
     let subject_words = crate::lexer::parser_token_word_refs(&condition_tokens);
@@ -312,17 +336,17 @@ pub fn parse_carried_attached_subject_line(
     Ok(Some(abilities))
 }
 
-fn negate_attached_keyword_condition(condition: crate::ConditionExpr) -> crate::ConditionExpr {
+fn negate_attached_keyword_condition(condition: PredicateAst) -> PredicateAst {
     match condition {
-        crate::ConditionExpr::Not(inner) => *inner,
-        other => crate::ConditionExpr::Not(Box::new(other)),
+        PredicateAst::Not(inner) => *inner,
+        other => PredicateAst::Not(Box::new(other)),
     }
 }
 
 fn parse_attached_keyword_action_grants(
     subject: &str,
     ability_tokens: &[OwnedLexToken],
-    condition: Option<crate::ConditionExpr>,
+    condition: Option<PredicateAst>,
     clause_text: &str,
     prefer_equipment_grant_for_unconditional_equipped: bool,
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -388,7 +412,7 @@ fn parse_attached_keyword_action_grants(
 
 fn parse_attached_has_keyword_condition_sentence(
     tokens: &[OwnedLexToken],
-) -> Result<Option<(String, crate::ConditionExpr, Vec<StaticAbilityAst>)>, CardTextError> {
+) -> Result<Option<(String, PredicateAst, Vec<StaticAbilityAst>)>, CardTextError> {
     let Some(has) = attached_grammar::parse_attached_has_tokens(tokens) else {
         return Ok(None);
     };
@@ -427,7 +451,7 @@ fn parse_attached_has_keyword_condition_sentence(
 fn parse_attached_otherwise_has_keyword_sentence(
     tokens: &[OwnedLexToken],
     subject: &str,
-    condition: crate::ConditionExpr,
+    condition: PredicateAst,
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let Some(clause) = crate::grammar::static_line_support::parse_otherwise_ability_clause(tokens)
     else {
@@ -562,7 +586,7 @@ pub fn parse_attached_conditional_anthem_otherwise_base_and_restriction_line(
         return Ok(None);
     }
 
-    let otherwise_condition = crate::ConditionExpr::Not(Box::new(condition));
+    let otherwise_condition = PredicateAst::Not(Box::new(condition));
     let set_base = StaticAbility::set_base_power_toughness(filter, power, toughness)
         .with_condition(otherwise_condition.clone());
     let restriction_display = display_text_for_tokens(&restriction_tokens, true);
@@ -886,33 +910,7 @@ fn parse_attached_nonstatic_keyword_ability(
     Ok(Some((parsed, display)))
 }
 
-pub fn cumulative_upkeep_granted_ability(
-    total_cost: ironsmith_core::TotalCost<crate::model::CompilerCost>,
-) -> Ability {
-    Ability {
-        kind: AbilityKind::Triggered(TriggeredAbility {
-            trigger: TriggerSpec::BeginningOfUpkeep(PlayerFilter::You),
-            effects: ironsmith_core::ResolutionProgram::from_effects(vec![
-                EffectAst::subject_verb_put_counters(
-                    CounterType::Age,
-                    Value::Fixed(1),
-                    TargetAst::Source(None),
-                    None,
-                    false,
-                ),
-                EffectAst::subject_verb(
-                    SubjectVerbRoleAst::Actor,
-                    PlayerAst::You,
-                    SubjectVerbActionAst::CumulativeUpkeep { cost: total_cost },
-                ),
-            ]),
-            choices: vec![],
-            intervening_if: None,
-            presentation_label: None,
-        }),
-        functional_zones: vec![Zone::Battlefield],
-    }
-}
+pub use ironsmith_compiler_semantic::keyword_abilities::cumulative_upkeep_granted_ability;
 
 pub fn parse_equipped_creature_has_line(
     tokens: &[OwnedLexToken],
@@ -993,7 +991,7 @@ pub fn parse_enchanted_creature_has_line(
         return Ok(None);
     }
 
-    let mut condition: Option<crate::ConditionExpr> = None;
+    let mut condition: Option<PredicateAst> = None;
     let (parsed_ability_tokens, parsed_condition) =
         split_attached_keyword_condition_suffix(&ability_tokens)?;
     if parsed_condition.is_some() {

@@ -61,7 +61,7 @@ pub use lines::{
     parse_library_origin_source_pump_unblockable_triggered_line,
     parse_statement_token_groups_to_chunks, parse_static_line, rewrite_modal_to_parsed_item,
 };
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub use lines::{
     normalize_exert_followup_source_reference_tokens, parse_keyword_line_for_test,
     parse_keyword_line_with_full_tokens_for_test, parse_single_effect_lexed, parse_triggered_line,
@@ -75,10 +75,6 @@ use super::clause_support::{
     parse_ability_line_lexed, parse_effect_sentences_lexed,
     parse_linked_attack_group_combat_triggered_line_lexed, parse_static_ability_ast_line_lexed,
     parse_trigger_clause_lexed, parse_triggered_line_lexed,
-};
-use super::compile_support::{
-    compile_condition_from_predicate_ast_with_env,
-    materialize_prepared_effects_with_trigger_context,
 };
 use super::grammar::activated_lines as activated_line_grammar;
 use super::grammar::effects as effect_grammar;
@@ -97,11 +93,8 @@ use super::lexer::{
     OwnedLexToken, TokenKind, render_token_slice, split_lexed_sentences, token_word_refs,
     trim_lexed_commas,
 };
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use super::lexer::{TokenWordView, lex_line};
-use super::lowering_support::{
-    assemble_parsed_triggered_ability, stage_effects_with_trigger_context_for_lowering,
-};
 use super::modal_support::{parse_modal_header, replace_modal_header_x_in_effects_ast};
 use super::parser_support::split_tokens_for_parse;
 use super::restriction_support::apply_pending_mana_restrictions;
@@ -109,6 +102,7 @@ use super::token_primitives::strip_leading_if_you_do_lexed;
 use super::util::{join_sentences_with_period, parse_level_up_line_lexed};
 use crate::effect_sentences::merge_filters;
 use crate::model::reference_state::ReferenceEnv;
+use ironsmith_compiler_semantic::keyword_abilities::assemble_parsed_triggered_ability;
 
 #[cfg(test)]
 #[path = "mod_inline_source_boundary_surface_tests.rs"]
@@ -116,7 +110,7 @@ mod source_boundary_surface_tests;
 
 #[path = "reference.rs"]
 mod reference_programs;
-pub(crate) use reference_programs::parse_effect_sentences_preserving_source_boundaries;
+pub use reference_programs::parse_effect_sentences_preserving_source_boundaries;
 use reference_programs::{
     first_for_each_object_filter, mark_matching_for_each_object_leading_then,
 };

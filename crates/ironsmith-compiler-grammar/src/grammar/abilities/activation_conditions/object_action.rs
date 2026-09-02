@@ -1,4 +1,5 @@
 use super::*;
+use crate::cards::builders::PredicateAst;
 
 pub(super) fn parse_controlled_creature_power_shape(
     tokens: &[OwnedLexToken],
@@ -26,7 +27,7 @@ pub(super) fn parse_controlled_creature_power_shape(
 
 pub(super) fn parse_controlled_creature_power_condition(
     tokens: &[OwnedLexToken],
-) -> Option<ConditionExpr> {
+) -> Option<PredicateAst> {
     let parsed = parse_controlled_creature_power_shape(tokens)?;
     if !matches_exact_tokens(parsed.object_tokens, &["creature"])
         && !matches_exact_tokens(parsed.object_tokens, &["a", "creature"])
@@ -39,7 +40,7 @@ pub(super) fn parse_controlled_creature_power_condition(
     let (comparison, used) = crate::grammar::primitives::probe_shape(
         parse_filter_comparison_tokens("power", &comparison_words, &clause_words),
     )??;
-    (used == comparison_words.len()).then_some(ConditionExpr::YouControl(
+    (used == comparison_words.len()).then_some(PredicateAst::YouControl(
         ObjectFilter::creature().with_power(comparison),
     ))
 }
@@ -68,7 +69,7 @@ pub(super) fn parse_activate_only_if_tail_tokens(
 
 pub(super) fn parse_land_subtype_control_condition(
     control_tokens: &[OwnedLexToken],
-) -> Option<ConditionExpr> {
+) -> Option<PredicateAst> {
     let object =
         parse_control_relation_tail_clause(control_tokens, activate_only_you_control_options())?;
     let mut subtypes = Vec::new();
@@ -82,13 +83,13 @@ pub(super) fn parse_land_subtype_control_condition(
     }
     let mut combined = None;
     for subtype in subtypes {
-        let next = ConditionExpr::YouControl(
+        let next = PredicateAst::YouControl(
             ObjectFilter::default()
                 .with_type(crate::types::CardType::Land)
                 .with_subtype(subtype),
         );
         combined = Some(match combined {
-            Some(existing) => ConditionExpr::Or(Box::new(existing), Box::new(next)),
+            Some(existing) => PredicateAst::Or(Box::new(existing), Box::new(next)),
             None => next,
         });
     }

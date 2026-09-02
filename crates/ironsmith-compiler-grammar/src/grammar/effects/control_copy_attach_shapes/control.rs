@@ -1,7 +1,7 @@
+use crate::cards::builders::PredicateAst;
 use winnow::combinator::{alt, opt};
 use winnow::prelude::*;
 
-use crate::ConditionExpr;
 use crate::cards::builders::ControlDurationAst;
 use crate::effect::Until;
 use crate::grammar::{filters, permission_shapes, primitives};
@@ -20,7 +20,7 @@ pub struct GainControlClauseShape<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PermanentControlDurationShape {
     pub until: Until,
-    pub condition: Option<ConditionExpr>,
+    pub condition: Option<PredicateAst>,
     pub source_surface: Option<SourceReferenceSurface>,
 }
 

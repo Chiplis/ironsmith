@@ -1,7 +1,7 @@
+use crate::cards::builders::PredicateAst;
 use winnow::combinator::alt;
 use winnow::prelude::*;
 
-use crate::ConditionExpr;
 use crate::effect::Until;
 use crate::grammar::{leaf, permission_shapes, primitives};
 use crate::lexer::{OwnedLexToken, TokenKind};
@@ -18,7 +18,7 @@ pub enum ModifierTailAction<'a> {
 #[derive(Debug, Clone)]
 pub struct ModifierTailShape<'a> {
     pub duration: Until,
-    pub condition: Option<ConditionExpr>,
+    pub condition: Option<PredicateAst>,
     pub action: ModifierTailAction<'a>,
 }
 
@@ -144,7 +144,7 @@ pub fn parse_modifier_tail_shape(tokens: &[OwnedLexToken]) -> ModifierTailShape<
         duration = Until::SourceUntaps;
         return ModifierTailShape {
             duration,
-            condition: Some(ConditionExpr::SourceIsTapped),
+            condition: Some(PredicateAst::SourceIsTapped),
             action: ModifierTailAction::Complete,
         };
     }

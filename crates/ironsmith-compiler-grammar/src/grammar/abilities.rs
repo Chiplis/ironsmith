@@ -1,9 +1,9 @@
+use crate::cards::builders::PredicateAst;
 use winnow::combinator::{opt, seq};
 use winnow::error::{ContextError, ErrMode, StrContext, StrContextValue};
 use winnow::prelude::*;
 use winnow::token::any;
 
-use crate::ConditionExpr;
 use crate::PowerToughness;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::CounterType;
@@ -673,7 +673,7 @@ mod tests {
             let condition = parse_activation_condition_lexed(&tokens).unwrap();
             assert_eq!(
                 condition,
-                ConditionExpr::ValueComparison {
+                PredicateAst::ValueComparison {
                     left: crate::effect::Value::Speed(PlayerFilter::You),
                     operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                     right: crate::effect::Value::Fixed(4),
@@ -2058,7 +2058,9 @@ pub fn is_this_subject_reference_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_any_exact_phrase_line_lexed(tokens, &[&["this"], &["this's"], &["thiss"]])
 }
 
-pub fn parse_source_tap_status_condition_lexed(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
+pub fn parse_source_tap_status_condition_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::cards::builders::PredicateAst> {
     let condition = super::conditions::parse_subject_status_condition(tokens)?;
     if matches!(
         condition.state,

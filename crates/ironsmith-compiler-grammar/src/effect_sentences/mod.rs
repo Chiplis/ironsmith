@@ -66,7 +66,7 @@ mod clause_dispatch;
 pub(crate) use clause_dispatch::parse_get_pump_clause;
 pub mod clause_pattern_helpers;
 mod clause_primitives;
-pub(crate) use clause_primitives::{
+pub use clause_primitives::{
     parse_anaphoric_object_deals_damage_clause, parse_deal_damage_equal_to_power_clause,
 };
 pub mod conditionals;

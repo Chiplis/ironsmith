@@ -154,10 +154,12 @@ impl CardDefinitionBuilder {
     }
 
     pub fn apply_metadata(mut self, meta: impl Into<MetadataLine>) -> Result<Self, CardTextError> {
-        self.compiler = self
-            .compiler
-            .apply_metadata(meta)
-            .map_err(CardTextError::from)?;
+        let face = ironsmith_compiler::card_metadata::apply_metadata_line(
+            self.compiler.card_builder.clone(),
+            meta,
+        )
+        .map_err(CardTextError::from)?;
+        self.compiler = self.compiler.with_face(face);
         Ok(self)
     }
 

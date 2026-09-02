@@ -2,9 +2,6 @@ use winnow::Parser;
 use winnow::combinator::{alt, repeat};
 use winnow::error::{ContextError, ErrMode};
 
-use super::super::compile_support::{
-    effects_have_cross_arm_tag_dependency, effects_reference_it_tag,
-};
 use super::super::effect_ast_traversal::{
     for_each_nested_effect_vec_mut, for_each_nested_effects, for_each_nested_effects_mut,
 };
@@ -28,6 +25,7 @@ use super::super::permission_helpers::{
     parse_unsupported_play_cast_permission_clause_lexed,
 };
 use super::super::rule_engine::{LexClauseView, LexRuleDef, LexRuleHandler, LexRuleIndex};
+use super::super::tag_support::{effects_have_cross_arm_tag_dependency, effects_reference_it_tag};
 #[cfg(test)]
 use super::super::token_primitives::str_contains as string_contains;
 use super::super::util::{
@@ -1213,7 +1211,7 @@ fn parse_effect_chain_uncoordinated_lexed(
                     Box::new(crate::payload::KeywordAction::Vigilance),
                 )],
                 Until::EndOfCombat,
-                crate::ConditionExpr::SourceIsUntapped,
+                PredicateAst::SourceIsUntapped,
             ),
         ]);
     }

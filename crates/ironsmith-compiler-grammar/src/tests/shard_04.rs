@@ -7,6 +7,10 @@ use super::shard_05::*;
 use super::shard_06::*;
 use super::*;
 use crate::model::ast::SubjectVerbEffectAst;
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
+#[cfg(test)]
+use ironsmith_compiler_lowering::CardDefinitionBuilder;
 
 fn contains_choice_debug(debug: &str) -> bool {
     debug.contains("ChooseObjects") || debug.contains("ChooseTaggedObjectsInZone")
@@ -342,7 +346,7 @@ pub(super) fn rewrite_lexed_gain_ability_named_creature_subject_prefers_this_cre
 #[test]
 pub(super) fn rewrite_preprocessed_named_gain_ability_keeps_card_identity_surface() {
     let (semantic, annotations) = parse_text_to_semantic_document(
-        CardDefinitionBuilder::new(CardId::from_raw(1), "Thief of Existence")
+        CardBuilder::new(CardId::from_raw(1), "Thief of Existence")
             .card_types(vec![CardType::Creature]),
         "Thief of Existence gains \"When this creature leaves the battlefield, target opponent draws a card.\"."
             .to_string(),
@@ -4037,7 +4041,7 @@ pub(super) fn rewrite_semantic_parse_supports_adamant_spent_to_cast_statement_li
     let builder = CardDefinitionBuilder::new(CardId::new(), "Adamant Variant")
         .card_types(vec![CardType::Sorcery]);
     let (doc, _) = parse_text_to_semantic_document(
-        builder,
+        builder.split_face().0,
         "Adamant — If at least three blue mana was spent to cast this spell, create a Food token."
             .to_string(),
         false,
@@ -4813,7 +4817,8 @@ pub(super) fn rewrite_lowered_tempting_offer_copy_spell_comes_from_sequence_gram
     let builder = CardDefinitionBuilder::new(CardId::new(), "Tempt with Mayhem Variant")
         .card_types(vec![CardType::Instant]);
     let text = "Tempting offer — Choose target instant or sorcery spell. Each opponent may copy that spell and may choose new targets for the copy they control. You copy that spell once plus an additional time for each opponent who copied the spell this way. You may choose new targets for the copies you control.";
-    let (semantic, _) = parse_text_to_semantic_document(builder.clone(), text.to_string(), false)?;
+    let (semantic, _) =
+        parse_text_to_semantic_document(builder.card_builder.clone(), text.to_string(), false)?;
     let semantic_debug = format!("{semantic:#?}");
     assert!(
         semantic_debug.contains("ForEachOpponent"),

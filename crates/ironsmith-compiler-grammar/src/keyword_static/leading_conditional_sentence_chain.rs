@@ -1,4 +1,7 @@
 use super::*;
+use crate::cards::builders::PredicateAst;
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
 use ironsmith_core::{CopyStaticAbilityVariants, StaticAbilityId, StaticAbilityVariantSelector};
 
 fn selectors_for_borrowed_keyword(phrase: &str) -> Option<Vec<StaticAbilityVariantSelector>> {
@@ -62,7 +65,7 @@ fn condition_matching_filter(
     let tokens = crate::util::lex_fragment(condition_text, 0)?;
     let condition =
         crate::grammar::primitives::probe_shape(parse_static_condition_clause(&tokens))?;
-    let crate::ConditionExpr::CountComparison {
+    let PredicateAst::CountComparison {
         count: AnthemCountExpression::MatchingFilter(mut filter),
         ..
     } = condition
@@ -199,8 +202,9 @@ pub(super) fn parse_independent_leading_conditional_static_sentence_chain(
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
-    use crate::cards::builders::{CardDefinitionBuilder, CardId};
+    use crate::cards::builders::CardId;
     use crate::static_abilities::{StaticAbilityId, StaticAbilityPayload};
+    use ironsmith_compiler_lowering::CardDefinitionBuilder;
     use ironsmith_core::StaticAbilityVariantSelector::{Any, ProtectionFromColor};
 
     #[test]

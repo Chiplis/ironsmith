@@ -4,13 +4,29 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+ironsmith-core = { path = "../ironsmith-core", default-features = false, features = ["serde"] }
+ironsmith-compiler-api = { path = "../ironsmith-compiler-api", default-features = false }
+ironsmith-compiler-syntax = { path = "../ironsmith-compiler-syntax", default-features = false }
+ironsmith-compiler-source = { path = "../ironsmith-compiler-source", default-features = false }
+ironsmith-compiler-semantic = { path = "../ironsmith-compiler-semantic", default-features = false }
+ironsmith-compiler-resolve = { path = "../ironsmith-compiler-resolve", default-features = false }
 ironsmith-compiler-grammar = { path = "../ironsmith-compiler-grammar", default-features = false }
+ironsmith-compiler-lowering = { path = "../ironsmith-compiler-lowering", default-features = false }
 
 [dev-dependencies]
-ironsmith-core = { path = "../ironsmith-core" }
+# Integration tests exercise recognition-to-runtime paths, which need the
+# test-only entry points on both phases. A package may dev-depend on itself to
+# turn its own feature on for its test targets.
+ironsmith-compiler = { path = ".", features = ["test-support"] }
 
 [features]
 default = []
+# The assembled pipeline's test-only entries, needed by the grammar crate's
+# recognition-to-runtime tests across the crate boundary.
+test-support = [
+    "ironsmith-compiler-grammar/test-support",
+    "ironsmith-compiler-lowering/test-support",
+]
 serialization = ["ironsmith-compiler-grammar/serialization"]
 
 [lib]

@@ -939,6 +939,8 @@ fn runtime_static_ability_model(
         runtime_trigger_from_core_model,
         runtime_effect_from_core_model,
         runtime_cost_from_core_model,
+        // The wire form already carries resolved conditions.
+        Ok,
     )
 }
 
@@ -965,6 +967,8 @@ fn runtime_ability_from_core_model(
         runtime_trigger_from_core_model,
         runtime_effect_from_core_model,
         runtime_cost_from_core_model,
+        // The wire form already carries resolved conditions.
+        Ok,
     )?;
     match &mut converted.kind {
         crate::ability::AbilityKind::Triggered(triggered) => {

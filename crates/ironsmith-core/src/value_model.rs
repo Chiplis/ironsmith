@@ -1433,6 +1433,20 @@ pub enum TaggedObjectMatchMode {
     LastKnown,
 }
 
+/// A condition vocabulary that can say "both of these".
+///
+/// Static abilities accumulate conditions as more of a line is recognized, so
+/// whatever vocabulary a phase speaks has to be able to conjoin two of them.
+pub trait ConditionConjunction: Sized {
+    fn and(self, other: Self) -> Self;
+}
+
+impl ConditionConjunction for Condition {
+    fn and(self, other: Self) -> Self {
+        Condition::And(Box::new(self), Box::new(other))
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Condition {

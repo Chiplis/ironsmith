@@ -1,7 +1,11 @@
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
+use ironsmith_core::card::CardBuilder;
+
 use crate::PtValue;
 use crate::ability::{ActivationTiming, PresentationLabel};
 use crate::cards::builders::{
-    CardDefinitionBuilder, CardTextError, LineAst, ParseAnnotations, ParsedLevelAbilityItemAst,
+    CardTextError, LineAst, ParseAnnotations, ParsedLevelAbilityItemAst,
     ParsedLevelActivatedAbilityAst, PredicateAst, TextSpan,
 };
 use crate::parse_context::{ParseContext, ParseContextView, ParseScopeKind};
@@ -609,12 +613,8 @@ fn should_prefer_statement_before_static_for_nonpermanent_spell(
     preprocessed: &PreprocessedDocument,
     tokens: &[OwnedLexToken],
 ) -> bool {
-    let builder_has_nonpermanent_spell_type = preprocessed
-        .builder
-        .card_builder
-        .card_types_ref()
-        .iter()
-        .any(|card_type| {
+    let builder_has_nonpermanent_spell_type =
+        preprocessed.card.card_types_ref().iter().any(|card_type| {
             matches!(
                 card_type,
                 crate::types::CardType::Instant | crate::types::CardType::Sorcery
@@ -794,12 +794,8 @@ fn should_parse_delayed_trigger_line_as_spell_effect(
     preprocessed: &PreprocessedDocument,
     tokens: &[OwnedLexToken],
 ) -> bool {
-    let builder_has_nonpermanent_spell_type = preprocessed
-        .builder
-        .card_builder
-        .card_types_ref()
-        .iter()
-        .any(|card_type| {
+    let builder_has_nonpermanent_spell_type =
+        preprocessed.card.card_types_ref().iter().any(|card_type| {
             matches!(
                 card_type,
                 crate::types::CardType::Instant | crate::types::CardType::Sorcery
@@ -1165,37 +1161,37 @@ fn preflight_invalid_payment_keyword_lines(text: &str) -> Option<CardTextError> 
 }
 
 fn normalize_named_source_sentence_for_builder(
-    builder: &CardDefinitionBuilder,
+    card: &crate::card::CardBuilder,
     text: &str,
 ) -> Option<String> {
     let trimmed = text.trim();
     let subject = if crate::slice_primitives::contains(
-        builder.card_builder.card_types_ref(),
+        card.card_types_ref(),
         &crate::types::CardType::Creature,
     ) {
         "this creature"
     } else if crate::slice_primitives::contains(
-        builder.card_builder.card_types_ref(),
+        card.card_types_ref(),
         &crate::types::CardType::Land,
     ) {
         "this land"
     } else if crate::slice_primitives::contains(
-        builder.card_builder.card_types_ref(),
+        card.card_types_ref(),
         &crate::types::CardType::Artifact,
     ) {
         "this artifact"
     } else if crate::slice_primitives::contains(
-        builder.card_builder.card_types_ref(),
+        card.card_types_ref(),
         &crate::types::CardType::Enchantment,
     ) {
         "this enchantment"
     } else if crate::slice_primitives::contains(
-        builder.card_builder.card_types_ref(),
+        card.card_types_ref(),
         &crate::types::CardType::Planeswalker,
     ) {
         "this planeswalker"
     } else if crate::slice_primitives::contains(
-        builder.card_builder.card_types_ref(),
+        card.card_types_ref(),
         &crate::types::CardType::Battle,
     ) {
         "this battle"
@@ -1204,7 +1200,7 @@ fn normalize_named_source_sentence_for_builder(
     };
     let lower = trimmed.to_ascii_lowercase();
 
-    let name = builder.card_builder.name_ref();
+    let name = card.name_ref();
     if !name.is_empty() {
         let name_lower = name.to_ascii_lowercase();
         if let Some(remainder) =
@@ -1228,7 +1224,7 @@ fn normalize_named_source_sentence_for_builder(
         }
     }
 
-    let names = source_name_aliases_for_builder(builder);
+    let names = source_name_aliases_for_builder(card);
     if !names.is_empty() && !mentions_named_reference(lower.as_str()) {
         let mut rewritten = lower.clone();
         for name_lower in &names {
@@ -1302,12 +1298,12 @@ fn normalize_named_source_sentence_for_builder(
 }
 
 fn normalize_explicit_named_source_references_for_builder(
-    builder: &CardDefinitionBuilder,
+    card: &crate::card::CardBuilder,
     text: &str,
 ) -> Option<String> {
     let lower = text.trim().to_ascii_lowercase();
-    let subject = named_source_subject_for_builder(builder);
-    let aliases = source_name_aliases_for_builder(builder);
+    let subject = named_source_subject_for_builder(card);
+    let aliases = source_name_aliases_for_builder(card);
     let mut rewritten = lower.clone();
     for alias in &aliases {
         rewritten =
@@ -1321,19 +1317,19 @@ pub(crate) fn normalize_named_source_sentence_with_context(
     context: ParseContextView<'_>,
     text: &str,
 ) -> Option<String> {
-    let mut builder = CardDefinitionBuilder::new(
+    let mut card = CardBuilder::new(
         crate::ids::CardId::new(),
         context.source().card_name.as_str(),
     )
     .card_types(context.card().card_types.clone());
     if !context.card().subtypes.is_empty() {
-        builder = builder.subtypes(context.card().subtypes.clone());
+        card = card.subtypes(context.card().subtypes.clone());
     }
-    normalize_explicit_named_source_references_for_builder(&builder, text)
+    normalize_explicit_named_source_references_for_builder(&card, text)
 }
 
 fn normalize_named_source_trigger_for_builder(
-    builder: &CardDefinitionBuilder,
+    card: &crate::card::CardBuilder,
     text: &str,
 ) -> Option<String> {
     let trimmed = text.trim();
@@ -1343,7 +1339,7 @@ fn normalize_named_source_trigger_for_builder(
     // the trigger/effect separator; otherwise a line such as
     // `When Name, Epithet enters, ...` is split after `Name`.
     let (lower, leading_full_name_changed) =
-        if let Some(rewritten) = normalize_comma_bearing_leading_source_trigger(builder, &lower) {
+        if let Some(rewritten) = normalize_comma_bearing_leading_source_trigger(card, &lower) {
             (rewritten, true)
         } else {
             (lower, false)
@@ -1351,17 +1347,17 @@ fn normalize_named_source_trigger_for_builder(
     if let Some((trigger_head, effect_body)) = split_first_comma_lexed(lower.as_str()) {
         let mut changed = leading_full_name_changed;
         let rewritten_head = if let Some(rewritten_head) =
-            normalize_named_source_trigger_head_for_builder(builder, trigger_head.as_str())
+            normalize_named_source_trigger_head_for_builder(card, trigger_head.as_str())
         {
             changed = true;
             rewritten_head
         } else {
             trigger_head
         };
-        let names = source_name_aliases_for_builder(builder);
+        let names = source_name_aliases_for_builder(card);
         let mut rewritten_body = effect_body;
         if !names.is_empty() {
-            let subject = named_source_subject_for_builder(builder);
+            let subject = named_source_subject_for_builder(card);
             for name_lower in &names {
                 let next_body = replace_named_source_aliases_from_set(
                     &rewritten_body,
@@ -1382,14 +1378,14 @@ fn normalize_named_source_trigger_for_builder(
         return Some(format!("{rewritten_head}, {rewritten_body}"));
     }
 
-    normalize_named_source_trigger_head_for_builder(builder, lower.as_str())
+    normalize_named_source_trigger_head_for_builder(card, lower.as_str())
 }
 
 fn normalize_comma_bearing_leading_source_trigger(
-    builder: &CardDefinitionBuilder,
+    card: &crate::card::CardBuilder,
     text: &str,
 ) -> Option<String> {
-    let full_name = builder.card_builder.name_ref().trim().to_ascii_lowercase();
+    let full_name = card.name_ref().trim().to_ascii_lowercase();
     if full_name.is_empty() {
         return None;
     }
@@ -1411,46 +1407,40 @@ fn normalize_comma_bearing_leading_source_trigger(
         }
         return Some(format!(
             "{intro}{}{after_name}",
-            named_source_subject_for_builder(builder)
+            named_source_subject_for_builder(card)
         ));
     }
 
     None
 }
 
-fn named_source_subject_for_builder(builder: &CardDefinitionBuilder) -> &'static str {
-    if builder
-        .card_builder
+fn named_source_subject_for_builder(card: &crate::card::CardBuilder) -> &'static str {
+    if card
         .card_types_ref()
         .contains(&crate::types::CardType::Creature)
     {
         "this creature"
-    } else if builder
-        .card_builder
+    } else if card
         .card_types_ref()
         .contains(&crate::types::CardType::Land)
     {
         "this land"
-    } else if builder
-        .card_builder
+    } else if card
         .card_types_ref()
         .contains(&crate::types::CardType::Artifact)
     {
         "this artifact"
-    } else if builder
-        .card_builder
+    } else if card
         .card_types_ref()
         .contains(&crate::types::CardType::Enchantment)
     {
         "this enchantment"
-    } else if builder
-        .card_builder
+    } else if card
         .card_types_ref()
         .contains(&crate::types::CardType::Planeswalker)
     {
         "this planeswalker"
-    } else if builder
-        .card_builder
+    } else if card
         .card_types_ref()
         .contains(&crate::types::CardType::Battle)
     {
@@ -1460,10 +1450,10 @@ fn named_source_subject_for_builder(builder: &CardDefinitionBuilder) -> &'static
     }
 }
 
-fn normalized_line_mentions_source_alias(builder: &CardDefinitionBuilder, text: &str) -> bool {
+fn normalized_line_mentions_source_alias(card: &crate::card::CardBuilder, text: &str) -> bool {
     let lower = text.trim().to_ascii_lowercase();
-    let subject = named_source_subject_for_builder(builder);
-    let aliases = source_name_aliases_for_builder(builder);
+    let subject = named_source_subject_for_builder(card);
+    let aliases = source_name_aliases_for_builder(card);
     aliases.iter().any(|alias| {
         replace_named_source_aliases_from_set(
             lower.as_str(),
@@ -1476,20 +1466,20 @@ fn normalized_line_mentions_source_alias(builder: &CardDefinitionBuilder, text: 
 }
 
 fn normalized_line_mentions_explicit_source_alias(
-    builder: &CardDefinitionBuilder,
+    card: &crate::card::CardBuilder,
     text: &str,
 ) -> bool {
-    normalize_explicit_named_source_references_for_builder(builder, text).is_some()
+    normalize_explicit_named_source_references_for_builder(card, text).is_some()
 }
 
 fn normalize_named_source_trigger_head_for_builder(
-    builder: &CardDefinitionBuilder,
+    card: &crate::card::CardBuilder,
     text: &str,
 ) -> Option<String> {
     let trimmed = text.trim();
-    let subject = named_source_subject_for_builder(builder);
+    let subject = named_source_subject_for_builder(card);
 
-    let name = builder.card_builder.name_ref();
+    let name = card.name_ref();
     if !name.is_empty() {
         let name_lower = name.to_ascii_lowercase();
         if let Some(remainder) = strip_named_source_prefix_lexed(trimmed, name_lower.as_str()) {
@@ -1497,7 +1487,7 @@ fn normalize_named_source_trigger_head_for_builder(
         }
     }
 
-    let names = source_name_aliases_for_builder(builder);
+    let names = source_name_aliases_for_builder(card);
     if !names.is_empty() {
         let mut rewritten = trimmed.to_string();
         for name_lower in &names {
@@ -1973,8 +1963,8 @@ fn normalize_named_source_enter_agreement(text: &str, subject: &str) -> String {
     text.replace(&format!("{singular} "), &format!("{plural} "))
 }
 
-fn source_name_aliases_for_builder(builder: &CardDefinitionBuilder) -> Vec<String> {
-    let name = builder.card_builder.name_ref().trim();
+fn source_name_aliases_for_builder(card: &crate::card::CardBuilder) -> Vec<String> {
+    let name = card.name_ref().trim();
     if name.is_empty() {
         return Vec::new();
     }
@@ -2203,12 +2193,12 @@ fn probe_triggered_line(line: &PreprocessedLine) -> Option<RecognizedTriggeredLi
 }
 
 fn normalize_activation_cost_tokens_for_builder(
-    builder: &CardDefinitionBuilder,
+    card: &crate::card::CardBuilder,
     line: &PreprocessedLine,
     cost_tokens: Vec<OwnedLexToken>,
 ) -> Result<Vec<OwnedLexToken>, CardTextError> {
     let cost_text = render_token_slice(&cost_tokens);
-    if !normalized_line_mentions_source_alias(builder, cost_text.as_str()) {
+    if !normalized_line_mentions_source_alias(card, cost_text.as_str()) {
         return Ok(cost_tokens);
     }
     // Keep a directly parseable named-source cost intact so the typed cost
@@ -2216,7 +2206,7 @@ fn normalize_activation_cost_tokens_for_builder(
     if parse_activation_cost_tokens_rewrite(&cost_tokens).is_ok() {
         return Ok(cost_tokens);
     }
-    let Some(rewritten) = normalize_named_source_sentence_for_builder(builder, cost_text.as_str())
+    let Some(rewritten) = normalize_named_source_sentence_for_builder(card, cost_text.as_str())
     else {
         return Ok(cost_tokens);
     };
@@ -2224,13 +2214,13 @@ fn normalize_activation_cost_tokens_for_builder(
 }
 
 fn normalize_activation_effect_tokens_for_builder(
-    builder: &CardDefinitionBuilder,
+    card: &crate::card::CardBuilder,
     line: &PreprocessedLine,
     effect_tokens: &[OwnedLexToken],
 ) -> Result<Vec<OwnedLexToken>, CardTextError> {
     let effect_text = render_token_slice(effect_tokens);
     let Some(normalized) =
-        normalize_explicit_named_source_references_for_builder(builder, effect_text.as_str())
+        normalize_explicit_named_source_references_for_builder(card, effect_text.as_str())
     else {
         return Ok(effect_tokens.to_vec());
     };
@@ -2278,7 +2268,7 @@ fn render_original_text_for_token_slice(
 }
 
 fn try_parse_triggered_line_with_named_source_rewrite(
-    builder: &CardDefinitionBuilder,
+    card: &crate::card::CardBuilder,
     line: &PreprocessedLine,
     text: &str,
 ) -> Result<Option<RecognizedTriggeredLine>, CardTextError> {
@@ -2288,8 +2278,7 @@ fn try_parse_triggered_line_with_named_source_rewrite(
     // the rewritten candidate; reminder text is presentation, not a second
     // executable trigger body.
     let semantic_text = strip_parenthetical_segments(text);
-    let Some(rewritten) =
-        normalize_named_source_trigger_for_builder(builder, semantic_text.as_str())
+    let Some(rewritten) = normalize_named_source_trigger_for_builder(card, semantic_text.as_str())
     else {
         return Ok(None);
     };
@@ -2314,7 +2303,7 @@ fn try_parse_triggered_line_with_named_source_rewrite(
     for candidate in candidates {
         let rewritten_line = rewrite_line_normalized(line, candidate.as_str())?;
         if let Ok(mut triggered) = recognize_triggered_line(&rewritten_line) {
-            restore_authored_named_source_trigger_subject(builder, line, text, &mut triggered)?;
+            restore_authored_named_source_trigger_subject(card, line, text, &mut triggered)?;
             return Ok(Some(triggered));
         }
     }
@@ -2323,17 +2312,17 @@ fn try_parse_triggered_line_with_named_source_rewrite(
 }
 
 fn restore_authored_named_source_trigger_subject(
-    builder: &CardDefinitionBuilder,
+    card: &crate::card::CardBuilder,
     line: &PreprocessedLine,
     text: &str,
     triggered: &mut RecognizedTriggeredLine,
 ) -> Result<(), CardTextError> {
-    let Some(authored_subject) = leading_named_source_trigger_subject_for_builder(builder, text)
+    let Some(authored_subject) = leading_named_source_trigger_subject_for_builder(card, text)
     else {
         return Ok(());
     };
 
-    let generic_subject = named_source_subject_for_builder(builder);
+    let generic_subject = named_source_subject_for_builder(card);
     let trigger_text = render_token_slice(&triggered.trigger_parse_tokens);
     let rest =
         crate::string_primitives::strip_prefix(&trigger_text, generic_subject).or_else(|| {
@@ -2354,7 +2343,7 @@ fn restore_authored_named_source_trigger_subject(
 }
 
 fn leading_named_source_trigger_subject_for_builder(
-    builder: &CardDefinitionBuilder,
+    card: &crate::card::CardBuilder,
     text: &str,
 ) -> Option<String> {
     let trimmed = text.trim();
@@ -2365,7 +2354,7 @@ fn leading_named_source_trigger_subject_for_builder(
         ("whenever ".len(), lower.strip_prefix("whenever ")?)
     };
 
-    source_name_aliases_for_builder(builder)
+    source_name_aliases_for_builder(card)
         .into_iter()
         .find_map(|alias| {
             let rest = after_intro.strip_prefix(alias.as_str())?;
@@ -2566,7 +2555,7 @@ fn try_parse_labeled_line_dispatch(
             let authored_body = render_original_text_for_token_slice(line, body_tokens)
                 .unwrap_or_else(|| render_token_slice(body_tokens));
             authored_trigger = try_parse_triggered_line_with_named_source_rewrite(
-                &preprocessed.builder,
+                &preprocessed.card,
                 line,
                 &authored_body,
             )?;
@@ -2616,7 +2605,7 @@ fn try_parse_labeled_line_dispatch(
         {
             let builder_aware_static = render_original_text_for_token_slice(line, body_tokens)
                 .and_then(|body| {
-                    normalize_named_source_sentence_for_builder(&preprocessed.builder, &body)
+                    normalize_named_source_sentence_for_builder(&preprocessed.card, &body)
                 })
                 .map(|body| rewrite_line_normalized(line, &body))
                 .transpose()?
@@ -2724,7 +2713,7 @@ fn try_parse_labeled_line_dispatch(
             .or_else(|| probe_triggered_line(&body_line));
         if let Some(mut triggered) = triggered {
             restore_authored_named_source_trigger_subject(
-                &preprocessed.builder,
+                &preprocessed.card,
                 line,
                 authored_body_text
                     .as_deref()
@@ -2747,7 +2736,7 @@ fn try_parse_labeled_line_dispatch(
             )));
         }
         if let Some(mut triggered) = try_parse_triggered_line_with_named_source_rewrite(
-            &preprocessed.builder,
+            &preprocessed.card,
             line,
             authored_body_text
                 .as_deref()
@@ -2793,14 +2782,14 @@ fn try_parse_labeled_line_dispatch(
         && let Some((cost_tokens, effect_parse_tokens)) = labeled_activation.clone()
     {
         let normalized_cost_tokens = normalize_activation_cost_tokens_for_builder(
-            &preprocessed.builder,
+            &preprocessed.card,
             line,
             cost_tokens.clone(),
         )?;
         match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
             Ok(cost) => {
                 let effect_parse_tokens = normalize_activation_effect_tokens_for_builder(
-                    &preprocessed.builder,
+                    &preprocessed.card,
                     line,
                     &effect_parse_tokens,
                 )?;
@@ -2860,7 +2849,7 @@ fn try_parse_labeled_line_dispatch(
             Ok(None) => {}
             Err(_)
                 if normalized_line_mentions_source_alias(
-                    &preprocessed.builder,
+                    &preprocessed.card,
                     body_line.info.normalized.normalized.as_str(),
                 ) =>
             {
@@ -2878,10 +2867,10 @@ fn try_parse_labeled_line_dispatch(
     }
 
     if normalized_line_mentions_source_alias(
-        &preprocessed.builder,
+        &preprocessed.card,
         body_line.info.normalized.normalized.as_str(),
     ) && let Some(rewritten_body) = normalize_named_source_sentence_for_builder(
-        &preprocessed.builder,
+        &preprocessed.card,
         body_line.info.normalized.normalized.as_str(),
     ) {
         let rewritten_body_line = rewrite_line_normalized(line, rewritten_body.as_str())?;
@@ -2938,10 +2927,10 @@ fn try_parse_labeled_line_dispatch(
     }
 
     if normalized_line_mentions_source_alias(
-        &preprocessed.builder,
+        &preprocessed.card,
         body_line.info.normalized.normalized.as_str(),
     ) && let Some(rewritten_body) = normalize_named_source_sentence_for_builder(
-        &preprocessed.builder,
+        &preprocessed.card,
         body_line.info.normalized.normalized.as_str(),
     ) {
         let rewritten_body_line = rewrite_line_normalized(line, rewritten_body.as_str())?;
@@ -2966,14 +2955,14 @@ fn try_parse_labeled_line_dispatch(
 
     if let Some((cost_tokens, effect_parse_tokens)) = labeled_activation {
         let normalized_cost_tokens = normalize_activation_cost_tokens_for_builder(
-            &preprocessed.builder,
+            &preprocessed.card,
             line,
             cost_tokens.clone(),
         )?;
         match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
             Ok(cost) => {
                 let effect_parse_tokens = normalize_activation_effect_tokens_for_builder(
-                    &preprocessed.builder,
+                    &preprocessed.card,
                     line,
                     &effect_parse_tokens,
                 )?;
@@ -3144,7 +3133,7 @@ fn try_parse_linked_created_token_triggered_line(
         }
     };
     restore_authored_named_source_trigger_subject(
-        &preprocessed.builder,
+        &preprocessed.card,
         line,
         &line.info.raw_line,
         &mut triggered,
@@ -3172,7 +3161,7 @@ fn try_parse_triggered_line_dispatch_general(
             match recognize_triggered_line(&chunk_line) {
                 Ok(mut triggered) => {
                     restore_authored_named_source_trigger_subject(
-                        &preprocessed.builder,
+                        &preprocessed.card,
                         line,
                         authored_chunk_text
                             .as_deref()
@@ -3195,7 +3184,7 @@ fn try_parse_triggered_line_dispatch_general(
                         continue;
                     }
                     if let Some(triggered) = try_parse_triggered_line_with_named_source_rewrite(
-                        &preprocessed.builder,
+                        &preprocessed.card,
                         line,
                         authored_chunk_text
                             .as_deref()
@@ -3238,20 +3227,20 @@ fn try_parse_unsplit_triggered_line_dispatch(
     // exact comma-bearing full source name its builder-aware rewrite before a
     // syntactically valid but lossy split can claim the comma inside the name
     // as the trigger/effect boundary.
-    if (normalize_comma_bearing_leading_source_trigger(&preprocessed.builder, &line.info.raw_line)
+    if (normalize_comma_bearing_leading_source_trigger(&preprocessed.card, &line.info.raw_line)
         .is_some()
         || preserve_reciprocal_token_lifecycle
         || normalize_named_source_trigger_for_builder(
-            &preprocessed.builder,
+            &preprocessed.card,
             line.info.raw_line.as_str(),
         )
         .is_some()
         || normalized_line_mentions_explicit_source_alias(
-            &preprocessed.builder,
+            &preprocessed.card,
             line.info.normalized.normalized.as_str(),
         ))
         && let Some(triggered) = try_parse_triggered_line_with_named_source_rewrite(
-            &preprocessed.builder,
+            &preprocessed.card,
             line,
             &line.info.raw_line,
         )?
@@ -3267,7 +3256,7 @@ fn try_parse_unsplit_triggered_line_dispatch(
     match recognize_triggered_line(line) {
         Ok(mut triggered) => {
             restore_authored_named_source_trigger_subject(
-                &preprocessed.builder,
+                &preprocessed.card,
                 line,
                 &line.info.raw_line,
                 &mut triggered,
@@ -3281,7 +3270,7 @@ fn try_parse_unsplit_triggered_line_dispatch(
         }
         Err(_) => {
             if let Some(triggered) = try_parse_triggered_line_with_named_source_rewrite(
-                &preprocessed.builder,
+                &preprocessed.card,
                 line,
                 &line.info.raw_line,
             )? {
@@ -3400,11 +3389,11 @@ fn rewrite_cleave_bracket_document(
 
 pub fn parse_text_to_semantic_document_with_context(
     context: &mut ParseContext,
-    builder: CardDefinitionBuilder,
+    card: CardBuilder,
     text: String,
 ) -> Result<(RewriteSemanticDocument, ParseAnnotations), CardTextError> {
     let allow_unsupported = context.features().allow_unsupported;
-    let card_name = builder.card_builder.name_ref().to_string();
+    let card_name = card.name_ref().to_string();
     let _trace_scope = parse_trace::scope(format!(
         "card parse: \"{}\" allow_unsupported={} source_lines={}",
         card_name,
@@ -3414,7 +3403,7 @@ pub fn parse_text_to_semantic_document_with_context(
     if parser_trace_enabled() {
         eprintln!(
             "[parser-flow] stage=parse_text_to_semantic_document:start card={:?} allow_unsupported={} lines={}",
-            builder.card_builder.name_ref(),
+            card.name_ref(),
             allow_unsupported,
             text.lines().count()
         );
@@ -3426,7 +3415,7 @@ pub fn parse_text_to_semantic_document_with_context(
         return Err(err);
     }
     let mut preprocessed =
-        preprocess_document_with_provenance(builder, text.as_str(), context.provenance().clone())?;
+        preprocess_document_with_provenance(card, text.as_str(), context.provenance().clone())?;
     context.replace_provenance(preprocessed.provenance.clone());
     let semantic_facts = document_fact_grammar::parse_document_semantic_facts(
         preprocessed.items.iter().filter_map(|item| match item {
@@ -3711,7 +3700,7 @@ fn try_push_saga_chapter(
     // Saga chapters bypass ordinary source normalization, so normalize only
     // their parse view while preserving the authored display text.
     let parse_text =
-        normalize_named_source_sentence_for_builder(&preprocessed.builder, parse_text.as_str())
+        normalize_named_source_sentence_for_builder(&preprocessed.card, parse_text.as_str())
             .unwrap_or(parse_text);
     let recognized = RecognizedLine::SagaChapter(recognize_saga_chapter_line(
         line,
@@ -3791,7 +3780,7 @@ fn try_push_trailing_keyword_activation(
         if parsed_raw_static_prefix {
             // Handled by the raw static parse above.
         } else if let Some(rewritten_prefix) = normalize_named_source_sentence_for_builder(
-            &preprocessed.builder,
+            &preprocessed.card,
             prefix_line.info.normalized.normalized.as_str(),
         ) {
             let rewritten_prefix_line = rewrite_line_normalized(line, rewritten_prefix.as_str())?;
@@ -3836,13 +3825,13 @@ fn try_push_trailing_keyword_activation(
         )));
     };
     let normalized_cost_tokens = normalize_activation_cost_tokens_for_builder(
-        &preprocessed.builder,
+        &preprocessed.card,
         line,
         cost_tokens.clone(),
     )?;
     let cost = parse_activation_cost_tokens_rewrite(&normalized_cost_tokens)?;
     let effect_parse_tokens = normalize_activation_effect_tokens_for_builder(
-        &preprocessed.builder,
+        &preprocessed.card,
         line,
         &effect_parse_tokens,
     )?;
@@ -4168,14 +4157,14 @@ fn rewrite_named_source_gain_line(
         || labeled_body_starts_with_trigger_intro_tokens(&line.tokens)
         || line_family_grammar::parse_champion_line(&line.tokens).is_some()
         || !normalized_line_mentions_source_alias(
-            &preprocessed.builder,
+            &preprocessed.card,
             line.info.normalized.normalized.as_str(),
         )
     {
         return Ok(None);
     }
     let Some(rewritten) = normalize_named_source_sentence_for_builder(
-        &preprocessed.builder,
+        &preprocessed.card,
         line.info.normalized.normalized.as_str(),
     ) else {
         return Ok(None);
@@ -4203,14 +4192,14 @@ fn try_push_named_source_dispatch(
         || labeled_body_starts_with_trigger_intro_tokens(&line.tokens)
         || line_family_grammar::parse_champion_line(&line.tokens).is_some()
         || !normalized_line_mentions_source_alias(
-            &preprocessed.builder,
+            &preprocessed.card,
             line.info.normalized.normalized.as_str(),
         )
     {
         return Ok(None);
     }
     let Some(rewritten) = normalize_named_source_sentence_for_builder(
-        &preprocessed.builder,
+        &preprocessed.card,
         line.info.normalized.normalized.as_str(),
     ) else {
         return Ok(None);
@@ -4285,7 +4274,7 @@ pub fn recognize_document(
         .collect::<Vec<_>>()
         .join("\n");
     let context =
-        crate::parse_context_for_builder(&preprocessed.builder, &source_text, allow_unsupported);
+        crate::parse_context_for_builder(&preprocessed.card, &source_text, allow_unsupported);
     recognize_document_with_context(context.view().child(ParseScopeKind::Document), preprocessed)
 }
 
@@ -4346,7 +4335,7 @@ fn assemble_document_with_symbols(
         })
         .transpose()?;
 
-    let mut builder = preprocessed.builder;
+    let mut card = preprocessed.card;
     let mut annotations = preprocessed.annotations;
     let mut items = Vec::with_capacity(recognized.lines.len());
 
@@ -4369,7 +4358,7 @@ fn assemble_document_with_symbols(
         }
         match line {
             RecognizedLine::Metadata(RecognizedMetadataLine { value }) => {
-                builder = builder.apply_compiler_metadata(value)?;
+                card = crate::card_metadata::apply_compiler_metadata_line(card, value)?;
                 items.push(RewriteSemanticItem::Metadata);
             }
             other => items.push(assemble_non_metadata_line(other, allow_unsupported)?),
@@ -4377,7 +4366,7 @@ fn assemble_document_with_symbols(
     }
 
     Ok(RewriteSemanticDocument {
-        builder,
+        card,
         annotations,
         provenance: preprocessed.provenance,
         symbols,
@@ -4472,10 +4461,13 @@ pub fn recognize_metadata_line(
 #[cfg(test)]
 mod tests {
     use crate::ability::PresentationLabel;
+    use crate::cards::builders::CardTextError;
     use crate::cards::builders::document_parser::KeywordLineKind;
-    use crate::cards::builders::{CardDefinitionBuilder, CardTextError};
     use crate::ids::CardId;
     use crate::types::{CardType, Subtype};
+    use ironsmith_compiler::ParseCardText;
+    use ironsmith_compiler_lowering::CardDefinitionBuilder;
+    use ironsmith_core::card::CardBuilder;
 
     use super::super::grammar::structure::{
         StatementLineFamily, StaticLineFamily, classify_statement_line_family_lexed,
@@ -4508,7 +4500,7 @@ mod tests {
     };
 
     fn parse_text_to_semantic_document(
-        builder: CardDefinitionBuilder,
+        card: CardBuilder,
         text: String,
         allow_unsupported: bool,
     ) -> Result<
@@ -4518,13 +4510,13 @@ mod tests {
         ),
         CardTextError,
     > {
-        let mut context = crate::parse_context_for_builder(&builder, &text, allow_unsupported);
-        super::parse_text_to_semantic_document_with_context(&mut context, builder, text)
+        let mut context = crate::parse_context_for_builder(&card, &text, allow_unsupported);
+        super::parse_text_to_semantic_document_with_context(&mut context, card, text)
     }
 
     fn single_preprocessed_line(text: &str) -> super::PreprocessedLine {
         let document = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Document Parser Test")
+            CardBuilder::new(CardId::new(), "Document Parser Test")
                 .card_types(vec![CardType::Creature]),
             text,
         )
@@ -4543,9 +4535,9 @@ mod tests {
     #[test]
     fn document_statement_retains_complete_correlated_fight_program() -> Result<(), CardTextError> {
         let text = "Choose two target creatures that share no creature types. Those creatures fight each other.";
-        let builder = CardDefinitionBuilder::new(CardId::new(), "Correlated Fight")
-            .card_types(vec![CardType::Sorcery]);
-        let preprocessed = preprocess_document(builder, text)?;
+        let card =
+            CardBuilder::new(CardId::new(), "Correlated Fight").card_types(vec![CardType::Sorcery]);
+        let preprocessed = preprocess_document(card, text)?;
         let recognized = super::recognize_document(&preprocessed, false)?;
         let [RecognizedLine::Statement(statement)] = recognized.lines.as_slice() else {
             panic!("expected one statement: {recognized:#?}");
@@ -4588,8 +4580,7 @@ mod tests {
     fn carried_conditional_equipment_anthem_survives_document_preprocessing() {
         let text = "Equipped creature gets +2/+0. It gets an additional +0/+2 and has first strike as long as an Equipment named Groom's Finery is attached to a creature you control.";
         let document = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Bride's Gown")
-                .card_types(vec![CardType::Artifact]),
+            CardBuilder::new(CardId::new(), "Bride's Gown").card_types(vec![CardType::Artifact]),
             text,
         )
         .expect("preprocess carried conditional anthem");
@@ -4789,7 +4780,7 @@ mod tests {
     fn parse_document_recognized_keeps_morph_dash_keyword_out_of_labeled_line_fallback()
     -> Result<(), CardTextError> {
         let preprocessed = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Zombie Cutthroat")
+            CardBuilder::new(CardId::new(), "Zombie Cutthroat")
                 .card_types(vec![CardType::Creature]),
             "Morph—Pay 5 life. (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)",
         )?;
@@ -4852,7 +4843,7 @@ mod tests {
     fn parse_document_recognized_merges_numeric_result_followups_into_triggered_line()
     -> Result<(), CardTextError> {
         let preprocessed = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Aberrant Mind Sorcerer")
+            CardBuilder::new(CardId::new(), "Aberrant Mind Sorcerer")
                 .card_types(vec![CardType::Creature]),
             "Psionic Spells — When this creature enters, choose target instant or sorcery card in your graveyard, then roll a d20.\n1—9 | You may put that card on top of your library.\n10—20 | Return that card to your hand.",
         )?;
@@ -4882,7 +4873,7 @@ mod tests {
     fn parse_document_recognized_merges_exact_numeric_result_with_inner_label_into_activation()
     -> Result<(), CardTextError> {
         let preprocessed = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Result Table Probe")
+            CardBuilder::new(CardId::new(), "Result Table Probe")
                 .card_types(vec![CardType::Artifact]),
             "{4}, Sacrifice this artifact: Roll a d20.\n1 | Trapped! — You lose 3 life.\n2—9 | Create five Treasure tokens.\n10—20 | Draw a card.",
         )?;
@@ -4907,7 +4898,7 @@ mod tests {
     fn parse_document_recognized_merges_plural_animation_result_into_statement()
     -> Result<(), CardTextError> {
         let preprocessed = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Plural Return Probe"),
+            CardBuilder::new(CardId::new(), "Plural Return Probe"),
             "Return up to one target artifact card and up to one target land card from your graveyard to the battlefield.\nThey are 5/5 Elemental creatures in addition to their other types.",
         )?;
         let recognized = super::recognize_document(&preprocessed, false)?;
@@ -4965,8 +4956,7 @@ mod tests {
     fn parse_document_recognized_rewrites_surge_keyword_line_to_alternative_cost()
     -> Result<(), CardTextError> {
         let preprocessed = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Surge Parse Test")
-                .card_types(vec![CardType::Sorcery]),
+            CardBuilder::new(CardId::new(), "Surge Parse Test").card_types(vec![CardType::Sorcery]),
             "Surge {3}{U}{U} (You may cast this spell for its surge cost if you or a teammate has cast another spell this turn.)\nReturn all nonland permanents to their owners' hands.",
         )?;
         let recognized = super::recognize_document(&preprocessed, false)?;
@@ -4992,7 +4982,7 @@ mod tests {
     fn parse_document_recognized_rewrites_freerunning_keyword_line_to_alternative_cost()
     -> Result<(), CardTextError> {
         let preprocessed = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Freerunning Parse Test")
+            CardBuilder::new(CardId::new(), "Freerunning Parse Test")
                 .card_types(vec![CardType::Sorcery]),
             "Freerunning {2}{R} (You may cast this spell for its freerunning cost if you dealt combat damage to a player this turn with an Assassin or commander.)\nUntap all creatures you control that attacked this turn.",
         )?;
@@ -5018,8 +5008,7 @@ mod tests {
     #[test]
     fn parse_document_recognized_recognizes_sneak_keyword_line() -> Result<(), CardTextError> {
         let preprocessed = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Sneak Parse Test")
-                .card_types(vec![CardType::Sorcery]),
+            CardBuilder::new(CardId::new(), "Sneak Parse Test").card_types(vec![CardType::Sorcery]),
             "Sneak {1}{B} (You may cast this spell for {1}{B} if you also return an unblocked attacker you control to hand during the declare blockers step.)\nSearch your library for a card, put that card into your hand, then shuffle.",
         )?;
         let recognized = super::recognize_document(&preprocessed, false)?;
@@ -5058,7 +5047,7 @@ mod tests {
     fn document_recognizes_quoted_equipped_activation_as_static() -> Result<(), CardTextError> {
         let text = "Equipped creature has \"{2}: This creature gets +1/+0 until end of turn.\"";
         let preprocessed = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Quoted Equipment Test")
+            CardBuilder::new(CardId::new(), "Quoted Equipment Test")
                 .card_types(vec![CardType::Artifact])
                 .subtypes(vec![Subtype::Equipment]),
             text,
@@ -5093,7 +5082,7 @@ mod tests {
     {
         let text = "+1: Create a colorless artifact token named Etherium Cell with \"{T}, Sacrifice this token: Add one mana of any color.\"";
         let preprocessed = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Quoted Loyalty Activation Test")
+            CardBuilder::new(CardId::new(), "Quoted Loyalty Activation Test")
                 .card_types(vec![CardType::Planeswalker]),
             text,
         )?;
@@ -5193,12 +5182,12 @@ mod tests {
 
     #[test]
     fn level_item_recognized_stores_parsed_payload() -> Result<(), CardTextError> {
-        let builder = CardDefinitionBuilder::new(CardId::new(), "Document Parser Test")
+        let card = CardBuilder::new(CardId::new(), "Document Parser Test")
             .card_types(vec![CardType::Creature]);
         let line = single_preprocessed_line("Flying");
 
         let parsed =
-            recognize_level_item(&builder, &line)?.expect("expected flying to parse as level item");
+            recognize_level_item(&card, &line)?.expect("expected flying to parse as level item");
 
         assert_eq!(parsed.text, "flying");
         match &parsed.parsed {
@@ -5214,7 +5203,7 @@ mod tests {
     #[test]
     fn saga_chapter_recognized_stores_effects_ast() -> Result<(), CardTextError> {
         let preprocessed = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Saga Parse Tokens Test")
+            CardBuilder::new(CardId::new(), "Saga Parse Tokens Test")
                 .card_types(vec![CardType::Enchantment]),
             "I, II — Mega Flare — Draw a card.",
         )?;
@@ -5235,7 +5224,7 @@ mod tests {
     #[test]
     fn level_header_lowering_keeps_parsed_level_items() -> Result<(), CardTextError> {
         let preprocessed = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Level Lowering Parse Tokens Test")
+            CardBuilder::new(CardId::new(), "Level Lowering Parse Tokens Test")
                 .card_types(vec![CardType::Creature]),
             "Level up {1}\nLEVEL 1-2\nFlying\n3/3",
         )?;
@@ -5273,7 +5262,7 @@ mod tests {
     #[test]
     fn saga_chapter_lowering_keeps_effects_ast() -> Result<(), CardTextError> {
         let preprocessed = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Saga Lowering Parse Tokens Test")
+            CardBuilder::new(CardId::new(), "Saga Lowering Parse Tokens Test")
                 .card_types(vec![CardType::Enchantment]),
             "I, II — Mega Flare — Draw a card.",
         )?;
@@ -5558,7 +5547,7 @@ mod tests {
     #[test]
     fn source_spell_cast_trigger_is_not_misclassified_as_delayed_spell_effect() {
         let instant = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Malicious Affliction Variant")
+            CardBuilder::new(CardId::new(), "Malicious Affliction Variant")
                 .card_types(vec![CardType::Instant]),
             "When you cast this spell, if a creature died this turn, you may copy this spell and may choose a new target for the copy.",
         )
@@ -5572,7 +5561,7 @@ mod tests {
         );
 
         let delayed = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Delayed Cast Variant")
+            CardBuilder::new(CardId::new(), "Delayed Cast Variant")
                 .card_types(vec![CardType::Instant]),
             "This turn, whenever you cast a creature spell, draw a card.",
         )
@@ -5612,7 +5601,7 @@ mod tests {
     #[test]
     fn council_choice_label_routes_vote_sequence_as_statement() -> Result<(), CardTextError> {
         let preprocessed = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Council Vote Test")
+            CardBuilder::new(CardId::new(), "Council Vote Test")
                 .card_types(vec![CardType::Sorcery]),
             "Will of the council — Starting with you, each player votes for death or torture. If death gets more votes, each opponent sacrifices a creature of their choice. If torture gets more votes or the vote is tied, each opponent loses 4 life.",
         )?;
@@ -5699,7 +5688,7 @@ mod tests {
             r#"You get an emblem with "You have no maximum hand size." and "{T}: Draw a card.""#,
         ] {
             let preprocessed = preprocess_document(
-                CardDefinitionBuilder::new(CardId::new(), "Emblem Document Test")
+                CardBuilder::new(CardId::new(), "Emblem Document Test")
                     .card_types(vec![CardType::Sorcery]),
                 text,
             )?;
@@ -6079,7 +6068,7 @@ mod tests {
     #[test]
     fn barrensteppe_siege_choice_block_parses_both_bullet_options() {
         let (semantic, _) = parse_text_to_semantic_document(
-            CardDefinitionBuilder::new(CardId::new(), "Barrensteppe Siege")
+            CardBuilder::new(CardId::new(), "Barrensteppe Siege")
                 .card_types(vec![CardType::Enchantment]),
             "As this enchantment enters, choose Abzan or Mardu.\n• Abzan — At the beginning of your end step, put a +1/+1 counter on each creature you control.\n• Mardu — At the beginning of your end step, if a creature died under your control this turn, each opponent sacrifices a creature of their choice.".to_string(),
             false,
@@ -6092,7 +6081,7 @@ mod tests {
     #[test]
     fn eminence_labeled_trigger_remains_one_triggered_semantic_item() {
         let (semantic, _) = parse_text_to_semantic_document(
-            CardDefinitionBuilder::new(CardId::new(), "Eminence Fixture")
+            CardBuilder::new(CardId::new(), "Eminence Fixture")
                 .card_types(vec![CardType::Creature]),
             "Eminence — At the beginning of combat on your turn, if this is in the command zone or on the battlefield, another target Cat you control gets +3/+3 until end of turn."
                 .to_string(),
@@ -6141,7 +6130,7 @@ mod tests {
     fn triggered_presentation_label_keeps_source_acronym_casing_after_dispatch()
     -> Result<(), CardTextError> {
         let preprocessed = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "ED-E").card_types(vec![CardType::Creature]),
+            CardBuilder::new(CardId::new(), "ED-E").card_types(vec![CardType::Creature]),
             "ED-E My Love — Whenever you attack, draw a card.",
         )?;
         let recognized = super::recognize_document(&preprocessed, false)?;
@@ -6298,11 +6287,11 @@ mod tests {
 
     #[test]
     fn named_source_rewrite_covers_trigger_bodies_as_well_as_heads() {
-        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Kain, Traitorous Dragoon")
+        let card = CardBuilder::new(CardId::from_raw(1), "Kain, Traitorous Dragoon")
             .card_types(vec![CardType::Creature]);
 
         let rewritten = normalize_named_source_trigger_for_builder(
-            &builder,
+            &card,
             "Whenever Kain deals combat damage to a player, that player gains control of Kain. If they do, you draw that many cards, create that many tapped Treasure tokens, then lose that much life.",
         )
         .expect("expected named source rewrite to apply");
@@ -6318,18 +6307,18 @@ mod tests {
 
     #[test]
     fn named_source_rewrite_preserves_name_override_but_rewrites_later_subject() {
-        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Gogo, Mysterious Mime")
+        let card = CardBuilder::new(CardId::from_raw(1), "Gogo, Mysterious Mime")
             .card_types(vec![CardType::Creature]);
         let text = "At the beginning of combat on your turn, you may have Gogo become a copy of another target creature you control until end of turn, except its name is Gogo, Mysterious Mime. If you do, Gogo and that creature each get +2/+0 and gain haste until end of turn and attack this turn if able.";
 
-        let rewritten = normalize_named_source_trigger_for_builder(&builder, text)
+        let rewritten = normalize_named_source_trigger_for_builder(&card, text)
             .expect("the named source trigger body should be rewritten");
         assert!(
             rewritten.contains("except its name is gogo, mysterious mime")
                 && rewritten.contains("if you do, this creature and that creature each get"),
             "{rewritten}"
         );
-        let preprocessed = preprocess_document(builder, text).expect("preprocess Gogo trigger");
+        let preprocessed = preprocess_document(card, text).expect("preprocess Gogo trigger");
         let Some(PreprocessedItem::Line(line)) = preprocessed.items.first() else {
             panic!("expected one Gogo trigger line");
         };
@@ -6345,11 +6334,11 @@ mod tests {
 
     #[test]
     fn comma_bearing_full_source_name_is_normalized_before_trigger_split() {
-        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Example, Grim Manipulator")
+        let card = CardBuilder::new(CardId::from_raw(1), "Example, Grim Manipulator")
             .card_types(vec![CardType::Creature]);
         let text = "When Example, Grim Manipulator enters, you and target opponent each secretly choose a creature that player controls. Then those choices are revealed, and that player sacrifices those creatures.";
 
-        let rewritten = normalize_named_source_trigger_for_builder(&builder, text)
+        let rewritten = normalize_named_source_trigger_for_builder(&card, text)
             .expect("the leading full source name should be normalized");
         assert_eq!(
             rewritten,
@@ -6357,7 +6346,7 @@ mod tests {
         );
 
         let preprocessed =
-            preprocess_document(builder, text).expect("the trigger fixture should preprocess");
+            preprocess_document(card, text).expect("the trigger fixture should preprocess");
         let Some(PreprocessedItem::Line(line)) = preprocessed.items.first() else {
             panic!("expected one preprocessed trigger line");
         };
@@ -6397,13 +6386,12 @@ mod tests {
 
     #[test]
     fn comma_bearing_named_trigger_rewrite_does_not_parse_reminder_text_as_effects() {
-        let builder =
-            CardDefinitionBuilder::new(CardId::from_raw(1), "Sophina, Spearsage Deserter")
-                .card_types(vec![CardType::Creature]);
+        let card = CardBuilder::new(CardId::from_raw(1), "Sophina, Spearsage Deserter")
+            .card_types(vec![CardType::Creature]);
         let text = "Whenever Sophina, Spearsage Deserter attacks, investigate once for each nontoken attacking creature. (To investigate, create a Clue token. It's an artifact with \"{2}, Sacrifice this artifact: Draw a card.\")";
 
         let preprocessed =
-            preprocess_document(builder, text).expect("the Sophina trigger should preprocess");
+            preprocess_document(card, text).expect("the Sophina trigger should preprocess");
         let Some(PreprocessedItem::Line(line)) = preprocessed.items.first() else {
             panic!("expected one preprocessed trigger line");
         };
@@ -6422,12 +6410,12 @@ mod tests {
 
     #[test]
     fn named_source_fallback_restores_authored_trigger_subject() {
-        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "God-Eternal Rhonas")
+        let card = CardBuilder::new(CardId::from_raw(1), "God-Eternal Rhonas")
             .card_types(vec![CardType::Creature]);
         let text = "When God-Eternal Rhonas dies or is put into exile from the battlefield, you may put it into its owner's library third from the top.";
 
         let preprocessed =
-            preprocess_document(builder, text).expect("the trigger fixture should preprocess");
+            preprocess_document(card, text).expect("the trigger fixture should preprocess");
         let Some(PreprocessedItem::Line(line)) = preprocessed.items.first() else {
             panic!("expected one preprocessed trigger line");
         };
@@ -6446,11 +6434,11 @@ mod tests {
 
     #[test]
     fn named_source_rewrite_covers_trigger_body_when_head_needs_no_rewrite() {
-        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Rayne, Academy Chancellor")
+        let card = CardBuilder::new(CardId::from_raw(1), "Rayne, Academy Chancellor")
             .card_types(vec![CardType::Creature]);
 
         let rewritten = normalize_named_source_trigger_for_builder(
-            &builder,
+            &card,
             "Whenever a permanent you control becomes the target of a spell or ability an opponent controls, you may draw a card. You may draw an additional card if Rayne is enchanted.",
         )
         .expect("expected body-only named source rewrite to apply");
@@ -6463,11 +6451,11 @@ mod tests {
 
     #[test]
     fn named_source_rewrite_keeps_compound_and_name_as_one_effect_subject() {
-        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Firesong and Sunspeaker")
+        let card = CardBuilder::new(CardId::from_raw(1), "Firesong and Sunspeaker")
             .card_types(vec![CardType::Creature]);
 
         let rewritten = normalize_named_source_trigger_for_builder(
-            &builder,
+            &card,
             "Whenever a white instant or sorcery spell causes you to gain life, Firesong and Sunspeaker deals 3 damage to target creature or player.",
         )
         .expect("expected compound named source in the trigger body to normalize");
@@ -6480,10 +6468,10 @@ mod tests {
 
     #[test]
     fn named_source_rewrite_normalizes_short_name_in_labeled_tivit_trigger_head() {
-        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Tivit, Seller of Secrets");
+        let card = CardBuilder::new(CardId::from_raw(1), "Tivit, Seller of Secrets");
 
         let rewritten = normalize_named_source_trigger_for_builder(
-            &builder,
+            &card,
             "Whenever Tivit enters the battlefield or deals combat damage to a player, starting with you, each player votes for evidence or bribery.",
         )
         .expect("expected named source rewrite to apply");
@@ -6498,10 +6486,10 @@ mod tests {
 
     #[test]
     fn labeled_ability_word_dispatch_normalizes_a_named_source_trigger() {
-        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Rose Tyler")
+        let card = CardBuilder::new(CardId::from_raw(1), "Rose Tyler")
             .card_types(vec![CardType::Creature]);
         let text = "Bad Wolf — Whenever Rose Tyler attacks, put a time counter on it for each suspended card you own and each other permanent you control with a time counter on it.";
-        let preprocessed = preprocess_document(builder, text).expect("preprocess labeled trigger");
+        let preprocessed = preprocess_document(card, text).expect("preprocess labeled trigger");
         let Some(PreprocessedItem::Line(line)) = preprocessed.items.first() else {
             panic!("expected one labeled trigger line");
         };
@@ -6519,7 +6507,7 @@ mod tests {
             render_token_slice(body)
         );
         let rewritten = normalize_named_source_trigger_for_builder(
-            &preprocessed.builder,
+            &preprocessed.card,
             render_token_slice(body).as_str(),
         )
         .expect("named source should normalize inside the labeled body");
@@ -6558,10 +6546,10 @@ mod tests {
 
     #[test]
     fn labeled_static_dispatch_normalizes_a_named_source_with_its_card_type() {
-        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Shao Jun")
-            .card_types(vec![CardType::Creature]);
+        let card =
+            CardBuilder::new(CardId::from_raw(1), "Shao Jun").card_types(vec![CardType::Creature]);
         let text = "Leap Strike — During your turn, Shao Jun has flying and first strike.";
-        let preprocessed = preprocess_document(builder, text).expect("preprocess labeled static");
+        let preprocessed = preprocess_document(card, text).expect("preprocess labeled static");
         let Some(PreprocessedItem::Line(line)) = preprocessed.items.first() else {
             panic!("expected one labeled static line");
         };
@@ -6596,10 +6584,10 @@ mod tests {
 
     #[test]
     fn labeled_multi_static_dispatch_retains_its_authored_ability_word() {
-        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Toxicrene")
-            .card_types(vec![CardType::Creature]);
+        let card =
+            CardBuilder::new(CardId::from_raw(1), "Toxicrene").card_types(vec![CardType::Creature]);
         let text = "Hypertoxic Miasma — All lands have \"{T}: Add one mana of any color\" and lose all other abilities.";
-        let preprocessed = preprocess_document(builder, text).expect("preprocess labeled static");
+        let preprocessed = preprocess_document(card, text).expect("preprocess labeled static");
         let Some(PreprocessedItem::Line(line)) = preprocessed.items.first() else {
             panic!("expected one labeled static line");
         };
@@ -6640,10 +6628,10 @@ mod tests {
 
     #[test]
     fn quoted_token_reminder_does_not_claim_a_multi_sentence_spell_line() {
-        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Life And Token Probe")
+        let card = CardBuilder::new(CardId::from_raw(1), "Life And Token Probe")
             .card_types(vec![CardType::Sorcery]);
         let text = "Target player loses 3 life. You gain 3 life and create three 0/1 colorless Eldrazi Spawn creature tokens. They have \"Sacrifice this token: Add {C}.\"";
-        let preprocessed = preprocess_document(builder, text).expect("preprocess spell line");
+        let preprocessed = preprocess_document(card, text).expect("preprocess spell line");
         let Some(PreprocessedItem::Line(line)) = preprocessed.items.first() else {
             panic!("expected one spell line");
         };
@@ -6658,10 +6646,10 @@ mod tests {
 
     #[test]
     fn power_damage_leaf_does_not_claim_a_multi_sentence_target_program() {
-        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Power Fanout Probe")
+        let card = CardBuilder::new(CardId::from_raw(1), "Power Fanout Probe")
             .card_types(vec![CardType::Sorcery]);
         let text = "Choose target creature you control. It deals damage equal to its power to each other creature. If this spell was cast from a graveyard, discard your hand and draw four cards.";
-        let preprocessed = preprocess_document(builder, text).expect("preprocess spell line");
+        let preprocessed = preprocess_document(card, text).expect("preprocess spell line");
         let Some(PreprocessedItem::Line(line)) = preprocessed.items.first() else {
             panic!("expected one spell line");
         };
@@ -6676,10 +6664,10 @@ mod tests {
 
     #[test]
     fn paid_label_create_followup_reaches_the_complete_statement_parser() {
-        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Perch Protection")
+        let card = CardBuilder::new(CardId::from_raw(1), "Perch Protection")
             .card_types(vec![CardType::Instant]);
         let text = "Create four 2/2 blue Bird creature tokens with flying. If the gift was promised, all permanents you control phase out, and until your next turn, your life total can't change and you gain protection from everything.";
-        let preprocessed = preprocess_document(builder, text).expect("preprocess spell line");
+        let preprocessed = preprocess_document(card, text).expect("preprocess spell line");
         let Some(PreprocessedItem::Line(line)) = preprocessed.items.first() else {
             panic!("expected one spell line");
         };
@@ -6705,11 +6693,11 @@ mod tests {
 
     #[test]
     fn named_source_sentence_rewrite_normalizes_short_legendary_name_in_as_enters_line() {
-        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Shimatsu the Bloodcloaked")
+        let card = CardBuilder::new(CardId::from_raw(1), "Shimatsu the Bloodcloaked")
             .card_types(vec![CardType::Creature]);
 
         let rewritten = normalize_named_source_sentence_for_builder(
-            &builder,
+            &card,
             "As Shimatsu enters, sacrifice any number of permanents. Shimatsu enters with that many +1/+1 counters on it.",
         )
         .expect("expected short legendary source name to normalize");
@@ -6722,12 +6710,12 @@ mod tests {
 
     #[test]
     fn saga_chapter_normalizes_a_named_source_subject_before_effect_parsing() {
-        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Ifrit, Warden of Inferno")
+        let card = CardBuilder::new(CardId::from_raw(1), "Ifrit, Warden of Inferno")
             .card_types(vec![CardType::Enchantment, CardType::Creature])
             .subtypes(vec![Subtype::Saga, Subtype::Demon]);
 
         let (document, _) = parse_text_to_semantic_document(
-            builder,
+            card,
             "I — Lunge — Ifrit fights up to one other target creature.".to_string(),
             false,
         )
@@ -6739,10 +6727,10 @@ mod tests {
 
     #[test]
     fn named_source_sentence_rewrite_uses_preprocessed_untyped_as_enters_subject() {
-        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Shimatsu the Bloodcloaked");
+        let card = CardBuilder::new(CardId::from_raw(1), "Shimatsu the Bloodcloaked");
 
         let rewritten = normalize_named_source_sentence_for_builder(
-            &builder,
+            &card,
             "as this enters, sacrifice any number of permanents. shimatsu enters with that many +1/+1 counters on it.",
         )
         .expect("expected the preserved follow-up short name to normalize");
@@ -6755,12 +6743,12 @@ mod tests {
 
     #[test]
     fn named_source_sentence_rewrite_keeps_filtered_entry_subject_with_named_value_reference() {
-        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Arwen, Weaver of Hope")
+        let card = CardBuilder::new(CardId::from_raw(1), "Arwen, Weaver of Hope")
             .card_types(vec![CardType::Creature]);
 
         assert_eq!(
             normalize_named_source_sentence_for_builder(
-                &builder,
+                &card,
                 "Each other creature you control enters with a number of additional +1/+1 counters on it equal to Arwen's toughness.",
             ),
             None,
@@ -6770,12 +6758,12 @@ mod tests {
 
     #[test]
     fn named_source_sentence_rewrite_preserves_named_characteristic_subject() {
-        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Tidewalker")
+        let card = CardBuilder::new(CardId::from_raw(1), "Tidewalker")
             .card_types(vec![CardType::Creature]);
 
         assert_eq!(
             normalize_named_source_sentence_for_builder(
-                &builder,
+                &card,
                 "Tidewalker's power and toughness are each equal to the number of time counters on it.",
             ),
             None,
@@ -6785,11 +6773,11 @@ mod tests {
 
     #[test]
     fn named_source_sentence_rewrite_still_normalizes_leading_short_alias_with_named_reference() {
-        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Brago, King Eternal")
+        let card = CardBuilder::new(CardId::from_raw(1), "Brago, King Eternal")
             .card_types(vec![CardType::Creature]);
 
         let rewritten = normalize_named_source_sentence_for_builder(
-            &builder,
+            &card,
             "Brago enters with a number of +1/+1 counters equal to Brago's power.",
         )
         .expect("a leading short source alias should normalize");
@@ -6843,10 +6831,10 @@ mod tests {
 
     #[test]
     fn created_token_name_does_not_hide_source_references_in_later_sentences() {
-        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Stangg")
-            .card_types(vec![CardType::Creature]);
+        let card =
+            CardBuilder::new(CardId::from_raw(1), "Stangg").card_types(vec![CardType::Creature]);
         let rewritten = normalize_named_source_trigger_for_builder(
-            &builder,
+            &card,
             "When Stangg enters, create Stangg Twin, a legendary 3/4 red and green Human Warrior creature token. Exile that token when Stangg leaves the battlefield. Sacrifice Stangg when that token leaves the battlefield.",
         )
         .expect("named source trigger should normalize");
@@ -7031,9 +7019,9 @@ mod tests {
 
     #[test]
     fn named_source_rewrite_does_not_rewrite_prefix_of_preserved_full_name() {
-        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Vivi Ornitier")
+        let card = CardBuilder::new(CardId::from_raw(1), "Vivi Ornitier")
             .card_types(vec![CardType::Creature]);
-        let aliases = source_name_aliases_for_builder(&builder);
+        let aliases = source_name_aliases_for_builder(&card);
 
         let mut full_name_surface = "where x is vivi ornitier's power".to_string();
         for alias in &aliases {
@@ -7068,11 +7056,11 @@ mod tests {
 
     #[test]
     fn named_source_rewrite_preserves_vote_option_alias() {
-        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Truth or Consequences")
+        let card = CardBuilder::new(CardId::from_raw(1), "Truth or Consequences")
             .card_types(vec![CardType::Sorcery]);
 
         let rewritten = normalize_named_source_sentence_for_builder(
-            &builder,
+            &card,
             "Each player secretly votes for truth or consequences, then those votes are revealed. You draw cards equal to the number of truth votes. Truth or Consequences can't be countered.",
         )
         .expect("expected source name to normalize outside the vote option");
@@ -7104,7 +7092,7 @@ mod tests {
     #[test]
     fn named_source_leaves_trigger_keeps_original_head_for_surface_rendering() {
         let document = preprocess_document(
-            CardDefinitionBuilder::new(CardId::from_raw(1), "Emrakul, the World Anew")
+            CardBuilder::new(CardId::from_raw(1), "Emrakul, the World Anew")
                 .card_types(vec![CardType::Creature]),
             "When Emrakul leaves the battlefield, sacrifice all creatures you control.",
         )
@@ -7115,7 +7103,7 @@ mod tests {
         };
 
         let parsed = try_parse_triggered_line_with_named_source_rewrite(
-            &document.builder,
+            &document.card,
             line,
             line.info.raw_line.as_str(),
         )
@@ -7185,7 +7173,7 @@ mod tests {
     fn activated_line_recognized_stores_cost_and_effect_parse_tokens() -> Result<(), CardTextError>
     {
         let preprocessed = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Activated Parse Tokens Test")
+            CardBuilder::new(CardId::new(), "Activated Parse Tokens Test")
                 .card_types(vec![CardType::Artifact]),
             "{T}: Draw a card.",
         )?;
@@ -7219,7 +7207,7 @@ mod tests {
     fn reveal_first_draw_line_family_parses_through_document_recognized()
     -> Result<(), CardTextError> {
         let preprocessed = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Reveal First Draw Split Test")
+            CardBuilder::new(CardId::new(), "Reveal First Draw Split Test")
                 .card_types(vec![CardType::Enchantment]),
             "Reveal the first card you draw each turn. Whenever you reveal an instant card this way, draw a card.",
         )?;
@@ -7255,7 +7243,7 @@ mod tests {
     fn championed_with_this_trigger_rewrite_parses_through_document_recognized()
     -> Result<(), CardTextError> {
         let preprocessed = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Champion Trigger Rewrite Test")
+            CardBuilder::new(CardId::new(), "Champion Trigger Rewrite Test")
                 .card_types(vec![CardType::Creature]),
             "When a creature is championed with this creature, draw a card.",
         )?;
@@ -7285,7 +7273,7 @@ mod tests {
     #[test]
     fn modal_mode_recognized_stores_parsed_effects_ast() -> Result<(), CardTextError> {
         let preprocessed = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Modal Parse Tokens Test")
+            CardBuilder::new(CardId::new(), "Modal Parse Tokens Test")
                 .card_types(vec![CardType::Instant]),
             "Choose one —\n• Meteor Strikes — Draw a card.\n• Final Heaven — Gain 3 life.",
         )?;
@@ -7309,7 +7297,7 @@ mod tests {
     fn modal_mode_recognized_groups_season_of_the_burrow_pawprint_modes()
     -> Result<(), CardTextError> {
         let preprocessed = preprocess_document(
-            CardDefinitionBuilder::new(CardId::new(), "Season of the Burrow")
+            CardBuilder::new(CardId::new(), "Season of the Burrow")
                 .card_types(vec![CardType::Sorcery]),
             "Choose up to five {P} worth of modes. You may choose the same mode more than once.\n{P} — Create a 1/1 white Rabbit creature token.\n{P}{P} — Exile target nonland permanent. Its controller draws a card.\n{P}{P}{P} — Return target permanent card with mana value 3 or less from your graveyard to the battlefield with an indestructible counter on it.",
         )?;
@@ -7477,7 +7465,7 @@ mod tests {
         let text = "Create two 1/1 white Human creature tokens.\nFateful hour — If you have 5 or less life, create five of those tokens instead.";
         let builder = CardDefinitionBuilder::new(CardId::new(), "Prior Token Replacement")
             .card_types(vec![CardType::Sorcery]);
-        let preprocessed = preprocess_document(builder.clone(), text)
+        let preprocessed = preprocess_document(builder.card_builder.clone(), text)
             .expect("prior-token replacement should preprocess");
         let (recognized, recognition_trace) =
             crate::parse_trace::capture(|| super::recognize_document(&preprocessed, false));
@@ -7537,9 +7525,9 @@ mod tests {
     #[test]
     fn public_statement_route_keeps_each_player_return_entry_counter() {
         let text = "Each player returns each creature card from their graveyard to the battlefield with an additional -1/-1 counter on it.";
-        let builder = CardDefinitionBuilder::new(CardId::new(), "Return Counter Probe")
+        let card = CardBuilder::new(CardId::new(), "Return Counter Probe")
             .card_types(vec![CardType::Sorcery]);
-        let preprocessed = preprocess_document(builder, text).expect("statement should preprocess");
+        let preprocessed = preprocess_document(card, text).expect("statement should preprocess");
         let (recognized, trace) =
             crate::parse_trace::capture(|| super::recognize_document(&preprocessed, false));
         let recognized = recognized.unwrap_or_else(|error| {
@@ -7565,9 +7553,9 @@ mod tests {
     #[test]
     fn public_statement_route_keeps_each_player_revealed_partition() {
         let text = "Each player reveals the top five cards of their library, puts all land cards revealed this way onto the battlefield tapped, and exiles the rest.";
-        let builder = CardDefinitionBuilder::new(CardId::new(), "Reveal Partition Probe")
+        let card = CardBuilder::new(CardId::new(), "Reveal Partition Probe")
             .card_types(vec![CardType::Sorcery]);
-        let preprocessed = preprocess_document(builder, text).expect("statement should preprocess");
+        let preprocessed = preprocess_document(card, text).expect("statement should preprocess");
         let (recognized, trace) =
             crate::parse_trace::capture(|| super::recognize_document(&preprocessed, false));
         let recognized = recognized.unwrap_or_else(|error| {

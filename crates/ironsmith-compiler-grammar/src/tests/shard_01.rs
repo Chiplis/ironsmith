@@ -6,6 +6,10 @@ use super::shard_04::*;
 use super::shard_05::*;
 use super::shard_06::*;
 use super::*;
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
+#[cfg(test)]
+use ironsmith_compiler_lowering::CardDefinitionBuilder;
 
 pub(super) fn conditional_effect_parts(
     effect: &crate::cards::builders::EffectAst,
@@ -2058,21 +2062,21 @@ pub(super) fn rewrite_lexed_activation_condition_parser_handles_control_and_grav
 
     assert!(matches!(
         parse_activation_condition_lexed(&graveyard),
-        Some(crate::ConditionExpr::CardInYourGraveyard { card_types, subtypes })
+        Some(PredicateAst::CardInYourGraveyard { card_types, subtypes })
             if card_types == vec![CardType::Artifact] && subtypes.is_empty()
     ));
     assert!(matches!(
         parse_activation_condition_lexed(&control),
-        Some(crate::ConditionExpr::PlayerHasAtLeast {
-            player: crate::target::PlayerFilter::You,
+        Some(PredicateAst::PlayerHasAtLeast {
+            player: crate::cards::builders::PlayerAst::You,
             count: 3,
             ..
         })
     ));
     assert!(matches!(
         parse_activation_condition_lexed(&dynamic_control),
-        Some(crate::ConditionExpr::PlayerHasAtLeast {
-            player: crate::target::PlayerFilter::You,
+        Some(PredicateAst::PlayerHasAtLeast {
+            player: crate::cards::builders::PlayerAst::You,
             count: 2,
             filter,
         }) if filter.card_types == vec![CardType::Artifact, CardType::Creature]
@@ -2529,11 +2533,11 @@ pub(super) fn rewrite_parse_target_phrase_supports_enchanted_player() {
 
 #[test]
 pub(super) fn semantic_document_supports_next_turn_silence() {
-    let builder = CardDefinitionBuilder::new(CardId::new(), "Sphinx's Decree")
-        .card_types(vec![CardType::Sorcery]);
+    let card =
+        CardBuilder::new(CardId::new(), "Sphinx's Decree").card_types(vec![CardType::Sorcery]);
 
     let parsed = parse_text_to_semantic_document(
-        builder,
+        card,
         "Each opponent can't cast instant or sorcery spells during that player's next turn."
             .to_string(),
         false,
@@ -2617,15 +2621,9 @@ pub(super) fn collect_rust_files(dir: &Path, files: &mut Vec<PathBuf>) {
 
 #[test]
 pub(super) fn rewrite_runtime_sources_do_not_reintroduce_token_bridge_helpers() {
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let root = {
-        let compiler_local = manifest_dir.join("src/runtime_backend");
-        if compiler_local.is_dir() {
-            compiler_local
-        } else {
-            manifest_dir.join("../ironsmith-compiler/src/runtime_backend")
-        }
-    };
+    // Runtime materialization moved into its own crate, so that is where a
+    // token bridge would reappear.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../ironsmith-compiler-lowering/src");
     let removed_helper_names = [
         format!("{}_{}", "compat_tokens_from", "lexed"),
         format!("{}_{}", "lexed_tokens_from", "compat"),
@@ -4110,7 +4108,8 @@ pub(super) fn blue_dragon_keeps_three_independent_target_slots() -> Result<(), C
         .mana_cost(super::super::util::parse_scryfall_mana_cost("{5}{U}{U}").unwrap())
         .card_types(vec![CardType::Creature]);
     let text = "Flying\nLightning Breath — When this creature enters, until your next turn, target creature an opponent controls gets -3/-0, up to one other target creature gets -2/-0, and up to one other target creature gets -1/-0.";
-    let (semantic, _) = parse_text_to_semantic_document(builder.clone(), text.to_string(), false)?;
+    let (semantic, _) =
+        parse_text_to_semantic_document(builder.card_builder.clone(), text.to_string(), false)?;
     let semantic_ability = semantic
         .items
         .iter()
@@ -4150,7 +4149,7 @@ pub(super) fn blue_dragon_keeps_three_independent_target_slots() -> Result<(), C
             "front-end runtime compatibility payload must not nest coordination: {triggered:#?}"
         );
     }
-    let parsed_card = crate::compiler_pipeline::parse_semantic_document(semantic.clone())?;
+    let parsed_card = crate::semantic_document::parse_semantic_document(semantic.clone())?;
     let parsed_effects = parsed_card
         .items
         .iter()
@@ -4174,7 +4173,11 @@ pub(super) fn blue_dragon_keeps_three_independent_target_slots() -> Result<(), C
         ),
         "reference resolution must not introduce redundant coordination: {parsed_effects:#?}"
     );
-    let normalized_card = crate::compiler_pipeline::normalize_parsed_document(parsed_card)?;
+    let normalized_card =
+        ironsmith_compiler_lowering::lower::normalize_parsed_card_ast_for_lowering(
+            parsed_card,
+            CardDefinitionBuilder::seed(),
+        )?;
     let normalized_prepared = normalized_card
         .items
         .iter()
@@ -4699,13 +4702,12 @@ pub(super) fn draw_for_target_opponents_discard_history_declares_and_reuses_one_
 #[test]
 pub(super) fn rewrite_lower_routes_next_spell_cost_reduction_filters_through_grammar_entrypoint() {
     let text = "{T}: The next noncreature spell you cast this turn costs {2} less to cast.";
-    let builder = CardDefinitionBuilder::new(CardId::new(), "Cost Reducer")
-        .card_types(vec![CardType::Artifact]);
+    let card = CardBuilder::new(CardId::new(), "Cost Reducer").card_types(vec![CardType::Artifact]);
 
-    let (doc, _) = parse_text_to_semantic_document(builder, text.to_string(), false).expect(
+    let (doc, _) = parse_text_to_semantic_document(card, text.to_string(), false).expect(
         "next-spell cost reduction should lower through the grammar-owned spell filter entrypoint",
     );
-    let parsed = crate::compiler_pipeline::parse_semantic_document(doc)
+    let parsed = crate::semantic_document::parse_semantic_document(doc)
         .expect("next-spell cost reduction should parse semantic items before preparation");
     let debug = format!("{parsed:?}");
 

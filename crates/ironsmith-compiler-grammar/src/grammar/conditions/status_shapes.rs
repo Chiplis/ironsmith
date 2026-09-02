@@ -1,3 +1,4 @@
+use crate::cards::builders::PlayerAst;
 use winnow::combinator::{alt, eof, opt, peek, repeat_till};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
@@ -103,7 +104,7 @@ pub(super) fn parse_player_achievement(
     let tokens = trim_clause(tokens);
     let (tail, negated) = parse_achievement_head(tokens)?;
     Some(PlayerAchievementConditionAst {
-        player: PlayerFilter::You,
+        player: PlayerAst::You,
         achievement: parse_player_achievement_tail(tail)?,
         negated,
     })
@@ -427,7 +428,7 @@ mod tests {
         assert_eq!(
             parse_player_achievement(&achievement),
             Some(PlayerAchievementConditionAst {
-                player: PlayerFilter::You,
+                player: PlayerAst::You,
                 achievement: PlayerAchievementAst::CompletedDungeon { dungeon_name: None },
                 negated: true,
             })
@@ -437,7 +438,7 @@ mod tests {
         assert_eq!(
             parse_player_achievement(&attraction),
             Some(PlayerAchievementConditionAst {
-                player: PlayerFilter::You,
+                player: PlayerAst::You,
                 achievement: PlayerAchievementAst::VisitedAttractionThisTurn,
                 negated: false,
             })

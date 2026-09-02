@@ -701,7 +701,7 @@ pub(super) fn strict_unsupported_triggered_line_error(
 }
 
 pub(super) fn recognize_level_item(
-    builder: &CardDefinitionBuilder,
+    card: &crate::card::CardBuilder,
     line: &PreprocessedLine,
 ) -> Result<Option<RecognizedLevelItem>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
@@ -710,7 +710,7 @@ pub(super) fn recognize_level_item(
         split_activation_text_tokens_lexed(&line.tokens)
     {
         let normalized_cost_tokens =
-            normalize_activation_cost_tokens_for_builder(builder, line, cost_tokens.clone())?;
+            normalize_activation_cost_tokens_for_builder(card, line, cost_tokens.clone())?;
         match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
             Ok(cost_recognized) => {
                 let compiler_cost =

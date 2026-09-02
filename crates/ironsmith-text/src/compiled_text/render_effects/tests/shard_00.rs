@@ -159,7 +159,7 @@ pub(super) fn explicit_static_label_capitalizes_conjunctive_subtype_anthem_body(
     };
     filter.set_conjunctive_set_surface(true);
     let model: crate::static_abilities::CompiledStaticAbility = ironsmith_core::StaticAbility::new(
-        ironsmith_core::Anthem::new(filter, 1, 1),
+        ironsmith_core::Anthem::<ironsmith_core::Condition>::new(filter, 1, 1),
     )
     .with_text(format!(
         "{}Animal May-Ham",

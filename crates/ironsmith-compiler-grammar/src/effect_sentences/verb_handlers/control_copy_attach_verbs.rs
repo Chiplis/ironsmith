@@ -449,7 +449,7 @@ fn parse_permanent_gain_control_duration(
 ) -> Result<
     (
         Until,
-        Option<crate::ConditionExpr>,
+        Option<PredicateAst>,
         Option<crate::target::SourceReferenceSurface>,
     ),
     CardTextError,

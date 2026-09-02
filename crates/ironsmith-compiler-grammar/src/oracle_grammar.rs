@@ -1,4 +1,3 @@
-use crate::cards::CardDefinitionBuilder;
 use crate::diagnostics::CardTextError;
 use crate::document_parser::recognize_document;
 use crate::ids::CardId;
@@ -7,6 +6,7 @@ use crate::lexer::{OwnedLexToken, render_token_slice};
 use crate::line_info::LineInfo;
 use crate::preprocess::preprocess_document;
 use crate::recognized_document::{LevelItemKind, RecognizedLine, RecognizedUnsupportedLine};
+use ironsmith_core::card::CardBuilder;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OracleGrammarDocument {
@@ -106,8 +106,8 @@ pub fn parse_oracle_grammar_document(
     text: impl AsRef<str>,
     allow_unsupported: bool,
 ) -> Result<OracleGrammarDocument, CardTextError> {
-    let builder = CardDefinitionBuilder::new(CardId::from_raw(1), name);
-    let preprocessed = preprocess_document(builder, text.as_ref())?;
+    let preprocessed =
+        preprocess_document(CardBuilder::new(CardId::from_raw(1), name), text.as_ref())?;
     let recognized = recognize_document(&preprocessed, allow_unsupported)?;
     Ok(OracleGrammarDocument {
         lines: recognized.lines.into_iter().map(convert_line).collect(),

@@ -460,7 +460,7 @@ fn push_unique_name(names: &mut Vec<String>, raw: &str) {
 
 fn parse_name_prefix<'a>(
     raw: &'a str,
-    mut parser: impl Parser<&'a str, &'a str, ErrMode<ContextError>>,
+    parser: impl Parser<&'a str, &'a str, ErrMode<ContextError>>,
 ) -> Option<&'a str> {
     let mut input = raw;
     crate::grammar::primitives::take_leaf(&mut input, parser)

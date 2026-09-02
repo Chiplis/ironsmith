@@ -1,3 +1,4 @@
+use crate::ConditionConjunction;
 use std::any::Any;
 
 use crate::effect::SetQuantifierSurface;
@@ -14,9 +15,12 @@ mod grants;
 
 pub use grants::*;
 
-type AbilityModel<T, E, C, Cond> = Ability<StaticAbility<T, E, C, Cond>, T, E, C>;
-type LevelAbilityModel<T, E, C, Cond> = crate::LevelAbility<StaticAbility<T, E, C, Cond>>;
-type GrantSpecModel<T, E, C, Cond> = GrantSpec<StaticAbility<T, E, C, Cond>, E, C, Cond>;
+type AbilityModel<T, E, C, Cond, ICond = Condition> =
+    Ability<StaticAbility<T, E, C, Cond, ICond>, T, E, C, ICond>;
+type LevelAbilityModel<T, E, C, Cond, ICond = Condition> =
+    crate::LevelAbility<StaticAbility<T, E, C, Cond, ICond>>;
+type GrantSpecModel<T, E, C, Cond, ICond = Condition> =
+    GrantSpec<StaticAbility<T, E, C, Cond, ICond>, E, C, Cond>;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -375,10 +379,15 @@ impl ThisSpellCastRestrictionKind {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
-pub struct StaticAbility<T, E, C, Cond> {
+/// A static ability, over whatever vocabulary the phase using it speaks.
+///
+/// `ICond` is the intervening-if condition of any triggered ability this
+/// payload links; see [`TriggeredAbility`]. It defaults to the resolved
+/// [`Condition`] so the runtime spells this the way it always has.
+pub struct StaticAbility<T, E, C, Cond, ICond = Condition> {
     pub id: Option<StaticAbilityId>,
     pub label: String,
-    pub payload: StaticAbilityPayload<T, E, C, Cond>,
+    pub payload: StaticAbilityPayload<T, E, C, Cond, ICond>,
 }
 
 /// Internal model-label prefix for an authored ability word that precedes an
@@ -422,13 +431,13 @@ impl AbilityLossMode {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
-pub struct PowerToughnessChoiceOption<T, E, C, Cond> {
+pub struct PowerToughnessChoiceOption<T, E, C, Cond, ICond = Condition> {
     pub power: i32,
     pub toughness: i32,
-    pub abilities: Vec<StaticAbility<T, E, C, Cond>>,
+    pub abilities: Vec<StaticAbility<T, E, C, Cond, ICond>>,
 }
 
-impl<T, E, C, Cond> PowerToughnessChoiceOption<T, E, C, Cond> {
+impl<T, E, C, Cond, ICond> PowerToughnessChoiceOption<T, E, C, Cond, ICond> {
     pub fn new(power: i32, toughness: i32) -> Self {
         Self {
             power,
@@ -440,7 +449,7 @@ impl<T, E, C, Cond> PowerToughnessChoiceOption<T, E, C, Cond> {
     pub fn with_abilities(
         power: i32,
         toughness: i32,
-        abilities: Vec<StaticAbility<T, E, C, Cond>>,
+        abilities: Vec<StaticAbility<T, E, C, Cond, ICond>>,
     ) -> Self {
         Self {
             power,
@@ -452,7 +461,7 @@ impl<T, E, C, Cond> PowerToughnessChoiceOption<T, E, C, Cond> {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
-pub enum StaticAbilityPayload<T, E, C, Cond> {
+pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     #[default]
     None,
     /// Authored self-reference used to present an otherwise payloadless leaf
@@ -494,22 +503,22 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         filter: ObjectFilter,
     },
     Companion(CompanionDeckCondition),
-    Anthem(Anthem),
+    Anthem(Anthem<ICond>),
     AttachedAbilityGrant(Box<AttachedAbilityGrant<T, E, C, Cond>>),
     AttachedChosenLandwalkGrant(AttachedChosenLandwalkGrant),
     Conditional {
-        ability: Box<StaticAbility<T, E, C, Cond>>,
-        condition: Condition,
+        ability: Box<StaticAbility<T, E, C, Cond, ICond>>,
+        condition: ICond,
     },
-    GrantAbility(Box<GrantAbility<T, E, C, Cond>>),
+    GrantAbility(Box<GrantAbility<T, E, C, Cond, ICond>>),
     GrantObjectAbilityForFilter(Box<GrantObjectAbilityForFilter<T, E, C, Cond>>),
     CopyActivatedAbilities(CopyActivatedAbilities),
     CopyStaticAbilityVariants(CopyStaticAbilityVariants),
     CopyTriggeredAbilities(CopyTriggeredAbilities),
-    CostReduction(CostReduction),
-    CostReductionManaCost(CostReductionManaCost),
-    CostIncrease(CostIncrease),
-    CostIncreaseManaCost(CostIncreaseManaCost),
+    CostReduction(CostReduction<ICond>),
+    CostReductionManaCost(CostReductionManaCost<ICond>),
+    CostIncrease(CostIncrease<ICond>),
+    CostIncreaseManaCost(CostIncreaseManaCost<ICond>),
     ThisSpellCostReduction(ThisSpellCostReduction<Cond>),
     ThisSpellCostReductionManaCost(ThisSpellCostReductionManaCost<Cond>),
     ThisSpellCastRestriction {
@@ -563,7 +572,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     CantBeBlockedByPowerOrGreater(i32),
     CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes(Vec<CardType>),
     CantAttackUnlessCondition {
-        condition: CantAttackUnlessConditionSpec,
+        condition: CantAttackUnlessConditionSpec<ICond>,
         display: String,
     },
     /// A cost that must be paid for a matching creature to block a matching
@@ -658,23 +667,23 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     },
     ExertAttack {
         only_if_not_exerted_this_turn: bool,
-        linked_trigger: Option<TriggeredAbility<T, E>>,
+        linked_trigger: Option<TriggeredAbility<T, E, ICond>>,
         display: String,
     },
     EnlistAttack {
-        linked_trigger: TriggeredAbility<T, E>,
+        linked_trigger: TriggeredAbility<T, E, ICond>,
         display: String,
     },
-    EquipmentGrant(Vec<StaticAbility<T, E, C, Cond>>),
+    EquipmentGrant(Vec<StaticAbility<T, E, C, Cond, ICond>>),
     SoulbondSharedPowerToughness {
         power: i32,
         toughness: i32,
     },
-    SoulbondSharedAbility(Box<StaticAbility<T, E, C, Cond>>),
-    SoulbondSharedObjectAbility(Box<AbilityModel<T, E, C, Cond>>),
+    SoulbondSharedAbility(Box<StaticAbility<T, E, C, Cond, ICond>>),
+    SoulbondSharedObjectAbility(Box<AbilityModel<T, E, C, Cond, ICond>>),
     RemoveAbilityForFilter {
         filter: ObjectFilter,
-        ability: Box<StaticAbility<T, E, C, Cond>>,
+        ability: Box<StaticAbility<T, E, C, Cond, ICond>>,
         mode: AbilityLossMode,
     },
     RemoveObjectAbilitiesForFilter {
@@ -710,7 +719,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     RemoveCardTypes {
         filter: ObjectFilter,
         card_types: Vec<CardType>,
-        condition: Option<Condition>,
+        condition: Option<ICond>,
     },
     SetCardTypes {
         filter: ObjectFilter,
@@ -768,7 +777,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         increase: TotalCost<C>,
         activator: Option<PlayerFilter>,
         non_mana_only: bool,
-        condition: Option<Condition>,
+        condition: Option<ICond>,
     },
     ChoosePlayerAsEnters {
         filter: PlayerFilter,
@@ -793,11 +802,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         display: String,
     },
     ChoosePowerToughnessAsEntersOrTurnsFaceUp {
-        options: Vec<PowerToughnessChoiceOption<T, E, C, Cond>>,
+        options: Vec<PowerToughnessChoiceOption<T, E, C, Cond, ICond>>,
         display: String,
     },
     EnterAsCopyAsEnters {
-        spec: EnterAsCopyAsEntersSpec<T, E, C, Cond>,
+        spec: EnterAsCopyAsEntersSpec<T, E, C, Cond, ICond>,
         display: String,
     },
     /// A structured resolution program performed as the source enters and/or
@@ -924,7 +933,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         display: String,
     },
     ConditionalDrawReplacement {
-        condition: Condition,
+        condition: ICond,
         replacement_effects: Vec<E>,
         optional: bool,
         display: String,
@@ -995,17 +1004,17 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     CantAttackYouUnlessControllerPaysPerAttacker(u32),
     CantAttackYouOrPlaneswalkersUnlessControllerPaysPerAttacker(u32),
     CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl,
-    Grants(Box<GrantSpecModel<T, E, C, Cond>>),
+    Grants(Box<GrantSpecModel<T, E, C, Cond, ICond>>),
     EntersTappedUnlessCondition {
-        condition: Condition,
+        condition: ICond,
         display: String,
     },
     EntersWithCountersIfCondition {
         counter: CounterType,
         count: Value,
-        condition: Condition,
+        condition: ICond,
         display: String,
-        added_abilities: Vec<AbilityModel<T, E, C, Cond>>,
+        added_abilities: Vec<AbilityModel<T, E, C, Cond, ICond>>,
     },
     EntersWithCountersValue {
         counter: CounterType,
@@ -1041,22 +1050,28 @@ pub struct DieRollResultAdjustment {
     pub display: String,
 }
 
-impl<T, E, C, Cond> StaticAbility<T, E, C, Cond>
+impl<T, E, C, Cond, ICond> StaticAbility<T, E, C, Cond, ICond>
 where
     C: Clone,
 {
-    pub fn try_map<T2, E2, C2, Err, FT, FE, FC>(
+    /// Translate a static ability from one phase's vocabulary into another's.
+    ///
+    /// `map_intervening` is where a linked trigger's recognized intervening-if
+    /// predicate becomes a resolved condition.
+    pub fn try_map<T2, E2, C2, ICond2, Err, FT, FE, FC, FI>(
         self,
         mut map_trigger: FT,
         mut map_effect: FE,
         mut map_cost: FC,
-    ) -> Result<StaticAbility<T2, E2, C2, Cond>, Err>
+        mut map_intervening: FI,
+    ) -> Result<StaticAbility<T2, E2, C2, Cond, ICond2>, Err>
     where
         E2: Clone,
         C2: CostComponent,
         FT: FnMut(T) -> Result<T2, Err>,
         FE: FnMut(E) -> Result<E2, Err>,
         FC: FnMut(C) -> Result<C2, Err>,
+        FI: FnMut(ICond) -> Result<ICond2, Err>,
     {
         fn map_total_cost<C, C2, Err, FC>(
             cost: TotalCost<C>,
@@ -1069,35 +1084,39 @@ where
             cost.try_map(map_cost)
         }
 
-        fn map_triggered<T, E, T2, E2, Err, FT, FE>(
-            triggered: TriggeredAbility<T, E>,
+        fn map_triggered<T, E, IC, T2, E2, IC2, Err, FT, FE, FI>(
+            triggered: TriggeredAbility<T, E, IC>,
             map_trigger: &mut FT,
             map_effect: &mut FE,
-        ) -> Result<TriggeredAbility<T2, E2>, Err>
+            map_intervening: &mut FI,
+        ) -> Result<TriggeredAbility<T2, E2, IC2>, Err>
         where
             E2: Clone,
             FT: FnMut(T) -> Result<T2, Err>,
             FE: FnMut(E) -> Result<E2, Err>,
+            FI: FnMut(IC) -> Result<IC2, Err>,
         {
             Ok(TriggeredAbility {
                 trigger: map_trigger(triggered.trigger)?,
                 effects: triggered.effects.try_map_effects(map_effect)?,
                 choices: triggered.choices,
-                intervening_if: triggered.intervening_if,
+                intervening_if: triggered.intervening_if.map(map_intervening).transpose()?,
                 presentation_label: None,
             })
         }
 
-        fn map_activated<E, C, E2, C2, Err, FE, FC>(
-            activated: ActivatedAbility<E, C>,
+        fn map_activated<E, C, IC, E2, C2, IC2, Err, FE, FC, FI>(
+            activated: ActivatedAbility<E, C, IC>,
             map_effect: &mut FE,
             map_cost: &mut FC,
-        ) -> Result<ActivatedAbility<E2, C2>, Err>
+            map_intervening: &mut FI,
+        ) -> Result<ActivatedAbility<E2, C2, IC2>, Err>
         where
             C: Clone,
             E2: Clone,
             FE: FnMut(E) -> Result<E2, Err>,
             FC: FnMut(C) -> Result<C2, Err>,
+            FI: FnMut(IC) -> Result<IC2, Err>,
         {
             Ok(ActivatedAbility {
                 mana_cost: map_total_cost(activated.mana_cost, map_cost)?,
@@ -1105,9 +1124,16 @@ where
                 choices: activated.choices,
                 timing: activated.timing,
                 additional_restrictions: activated.additional_restrictions,
-                activation_restrictions: activated.activation_restrictions,
+                activation_restrictions: activated
+                    .activation_restrictions
+                    .into_iter()
+                    .map(&mut *map_intervening)
+                    .collect::<Result<Vec<_>, Err>>()?,
                 mana_output: activated.mana_output,
-                activation_condition: activated.activation_condition,
+                activation_condition: activated
+                    .activation_condition
+                    .map(&mut *map_intervening)
+                    .transpose()?,
                 mana_usage_restrictions: activated
                     .mana_usage_restrictions
                     .into_iter()
@@ -1121,12 +1147,13 @@ where
             clippy::type_complexity,
             reason = "the generic mapping boundary preserves every semantic model parameter"
         )]
-        fn map_ability<T, E, C, Cond, T2, E2, C2, Err, FT, FE, FC>(
-            ability: Ability<StaticAbility<T, E, C, Cond>, T, E, C>,
+        fn map_ability<T, E, C, Cond, IC, T2, E2, C2, IC2, Err, FT, FE, FC, FI>(
+            ability: Ability<StaticAbility<T, E, C, Cond, IC>, T, E, C, IC>,
             map_trigger: &mut FT,
             map_effect: &mut FE,
             map_cost: &mut FC,
-        ) -> Result<Ability<StaticAbility<T2, E2, C2, Cond>, T2, E2, C2>, Err>
+            map_intervening: &mut FI,
+        ) -> Result<Ability<StaticAbility<T2, E2, C2, Cond, IC2>, T2, E2, C2, IC2>, Err>
         where
             C: Clone,
             E2: Clone,
@@ -1134,6 +1161,7 @@ where
             FT: FnMut(T) -> Result<T2, Err>,
             FE: FnMut(E) -> Result<E2, Err>,
             FC: FnMut(C) -> Result<C2, Err>,
+            FI: FnMut(IC) -> Result<IC2, Err>,
         {
             let kind = match ability.kind {
                 AbilityKind::Static(static_ability) => AbilityKind::Static(map_static_ability(
@@ -1141,13 +1169,20 @@ where
                     map_trigger,
                     map_effect,
                     map_cost,
+                    map_intervening,
                 )?),
-                AbilityKind::Triggered(triggered) => {
-                    AbilityKind::Triggered(map_triggered(triggered, map_trigger, map_effect)?)
-                }
-                AbilityKind::Activated(activated) => {
-                    AbilityKind::Activated(map_activated(activated, map_effect, map_cost)?)
-                }
+                AbilityKind::Triggered(triggered) => AbilityKind::Triggered(map_triggered(
+                    triggered,
+                    map_trigger,
+                    map_effect,
+                    map_intervening,
+                )?),
+                AbilityKind::Activated(activated) => AbilityKind::Activated(map_activated(
+                    activated,
+                    map_effect,
+                    map_cost,
+                    map_intervening,
+                )?),
             };
             Ok(Ability {
                 kind,
@@ -1236,12 +1271,13 @@ where
             clippy::type_complexity,
             reason = "the generic mapping boundary preserves every semantic model parameter"
         )]
-        fn map_grantable<T, E, C, Cond, T2, E2, C2, Err, FT, FE, FC>(
-            grantable: Grantable<StaticAbility<T, E, C, Cond>, E, C, Cond>,
+        fn map_grantable<T, E, C, Cond, IC, T2, E2, C2, IC2, Err, FT, FE, FC, FI>(
+            grantable: Grantable<StaticAbility<T, E, C, Cond, IC>, E, C, Cond>,
             map_trigger: &mut FT,
             map_effect: &mut FE,
             map_cost: &mut FC,
-        ) -> Result<Grantable<StaticAbility<T2, E2, C2, Cond>, E2, C2, Cond>, Err>
+            map_intervening: &mut FI,
+        ) -> Result<Grantable<StaticAbility<T2, E2, C2, Cond, IC2>, E2, C2, Cond>, Err>
         where
             C: Clone,
             E2: Clone,
@@ -1249,6 +1285,7 @@ where
             FT: FnMut(T) -> Result<T2, Err>,
             FE: FnMut(E) -> Result<E2, Err>,
             FC: FnMut(C) -> Result<C2, Err>,
+            FI: FnMut(IC) -> Result<IC2, Err>,
         {
             Ok(match grantable {
                 Grantable::Ability(static_ability) => Grantable::Ability(map_static_ability(
@@ -1256,6 +1293,7 @@ where
                     map_trigger,
                     map_effect,
                     map_cost,
+                    map_intervening,
                 )?),
                 Grantable::AlternativeCast(method) => {
                     Grantable::AlternativeCast(map_alternative_cast(method, map_effect, map_cost)?)
@@ -1271,12 +1309,13 @@ where
             clippy::type_complexity,
             reason = "the generic mapping boundary preserves every semantic model parameter"
         )]
-        fn map_grant_spec<T, E, C, Cond, T2, E2, C2, Err, FT, FE, FC>(
-            spec: GrantSpec<StaticAbility<T, E, C, Cond>, E, C, Cond>,
+        fn map_grant_spec<T, E, C, Cond, IC, T2, E2, C2, IC2, Err, FT, FE, FC, FI>(
+            spec: GrantSpec<StaticAbility<T, E, C, Cond, IC>, E, C, Cond>,
             map_trigger: &mut FT,
             map_effect: &mut FE,
             map_cost: &mut FC,
-        ) -> Result<GrantSpec<StaticAbility<T2, E2, C2, Cond>, E2, C2, Cond>, Err>
+            map_intervening: &mut FI,
+        ) -> Result<GrantSpec<StaticAbility<T2, E2, C2, Cond, IC2>, E2, C2, Cond>, Err>
         where
             C: Clone,
             E2: Clone,
@@ -1284,9 +1323,16 @@ where
             FT: FnMut(T) -> Result<T2, Err>,
             FE: FnMut(E) -> Result<E2, Err>,
             FC: FnMut(C) -> Result<C2, Err>,
+            FI: FnMut(IC) -> Result<IC2, Err>,
         {
             Ok(GrantSpec {
-                grantable: map_grantable(spec.grantable, map_trigger, map_effect, map_cost)?,
+                grantable: map_grantable(
+                    spec.grantable,
+                    map_trigger,
+                    map_effect,
+                    map_cost,
+                    map_intervening,
+                )?,
                 filter: spec.filter,
                 zone: spec.zone,
                 beneficiary: spec.beneficiary,
@@ -1296,17 +1342,26 @@ where
                 cast_this_way_grants: spec
                     .cast_this_way_grants
                     .into_iter()
-                    .map(|ability| map_static_ability(ability, map_trigger, map_effect, map_cost))
+                    .map(|ability| {
+                        map_static_ability(
+                            ability,
+                            map_trigger,
+                            map_effect,
+                            map_cost,
+                            map_intervening,
+                        )
+                    })
                     .collect::<Result<Vec<_>, _>>()?,
             })
         }
 
-        fn map_static_ability<T, E, C, Cond, T2, E2, C2, Err, FT, FE, FC>(
-            ability: StaticAbility<T, E, C, Cond>,
+        fn map_static_ability<T, E, C, Cond, IC, T2, E2, C2, IC2, Err, FT, FE, FC, FI>(
+            ability: StaticAbility<T, E, C, Cond, IC>,
             map_trigger: &mut FT,
             map_effect: &mut FE,
             map_cost: &mut FC,
-        ) -> Result<StaticAbility<T2, E2, C2, Cond>, Err>
+            map_intervening: &mut FI,
+        ) -> Result<StaticAbility<T2, E2, C2, Cond, IC2>, Err>
         where
             C: Clone,
             E2: Clone,
@@ -1314,6 +1369,7 @@ where
             FT: FnMut(T) -> Result<T2, Err>,
             FE: FnMut(E) -> Result<E2, Err>,
             FC: FnMut(C) -> Result<C2, Err>,
+            FI: FnMut(IC) -> Result<IC2, Err>,
         {
             let payload = match ability.payload {
             StaticAbilityPayload::None => StaticAbilityPayload::None,
@@ -1369,15 +1425,23 @@ where
             StaticAbilityPayload::PlayersSkipExtraTurns { player } => {
                 StaticAbilityPayload::PlayersSkipExtraTurns { player }
             }
-            StaticAbilityPayload::Anthem(anthem) => StaticAbilityPayload::Anthem(anthem),
+            StaticAbilityPayload::Anthem(anthem) => {
+                StaticAbilityPayload::Anthem(anthem.try_map_condition(&mut *map_intervening)?)
+            }
             StaticAbilityPayload::AttachedAbilityGrant(grant) => {
                 let grant = *grant;
                 StaticAbilityPayload::AttachedAbilityGrant(Box::new(AttachedAbilityGrant {
-                    ability: map_ability(grant.ability, map_trigger, map_effect, map_cost)?,
+                    ability: map_ability(
+                        grant.ability,
+                        map_trigger,
+                        map_effect,
+                        map_cost,
+                        &mut Ok,
+                    )?,
                     additional_abilities: grant
                         .additional_abilities
                         .into_iter()
-                        .map(|ability| map_ability(ability, map_trigger, map_effect, map_cost))
+                        .map(|ability| map_ability(ability, map_trigger, map_effect, map_cost, &mut Ok))
                         .collect::<Result<Vec<_>, _>>()?,
                     display: grant.display,
                     condition: grant.condition,
@@ -1395,16 +1459,23 @@ where
                         map_trigger,
                         map_effect,
                         map_cost,
+                        map_intervening,
                     )?),
-                    condition,
+                    condition: map_intervening(condition)?,
                 }
             }
             StaticAbilityPayload::GrantAbility(grant) => {
                 let grant = *grant;
                 StaticAbilityPayload::GrantAbility(Box::new(GrantAbility {
                     filter: grant.filter,
-                    ability: map_ability(grant.ability, map_trigger, map_effect, map_cost)?,
-                    condition: grant.condition,
+                    ability: map_ability(
+                        grant.ability,
+                        map_trigger,
+                        map_effect,
+                        map_cost,
+                        map_intervening,
+                    )?,
+                    condition: grant.condition.map(&mut *map_intervening).transpose()?,
                     set_quantifier_surface: grant.set_quantifier_surface,
                 }))
             }
@@ -1418,11 +1489,12 @@ where
                             map_trigger,
                             map_effect,
                             map_cost,
+                            &mut Ok,
                         )?,
                         additional_abilities: grant
                             .additional_abilities
                             .into_iter()
-                            .map(|ability| map_ability(ability, map_trigger, map_effect, map_cost))
+                            .map(|ability| map_ability(ability, map_trigger, map_effect, map_cost, &mut Ok))
                             .collect::<Result<Vec<_>, _>>()?,
                         display: grant.display,
                         condition: grant.condition,
@@ -1439,18 +1511,18 @@ where
             StaticAbilityPayload::CopyTriggeredAbilities(copy) => {
                 StaticAbilityPayload::CopyTriggeredAbilities(copy)
             }
-            StaticAbilityPayload::CostReduction(reduction) => {
-                StaticAbilityPayload::CostReduction(reduction)
-            }
-            StaticAbilityPayload::CostReductionManaCost(reduction) => {
-                StaticAbilityPayload::CostReductionManaCost(reduction)
-            }
-            StaticAbilityPayload::CostIncrease(increase) => {
-                StaticAbilityPayload::CostIncrease(increase)
-            }
-            StaticAbilityPayload::CostIncreaseManaCost(increase) => {
-                StaticAbilityPayload::CostIncreaseManaCost(increase)
-            }
+            StaticAbilityPayload::CostReduction(reduction) => StaticAbilityPayload::CostReduction(
+                reduction.try_map_condition(&mut *map_intervening)?,
+            ),
+            StaticAbilityPayload::CostReductionManaCost(reduction) => StaticAbilityPayload::CostReductionManaCost(
+                reduction.try_map_condition(&mut *map_intervening)?,
+            ),
+            StaticAbilityPayload::CostIncrease(increase) => StaticAbilityPayload::CostIncrease(
+                increase.try_map_condition(&mut *map_intervening)?,
+            ),
+            StaticAbilityPayload::CostIncreaseManaCost(increase) => StaticAbilityPayload::CostIncreaseManaCost(
+                increase.try_map_condition(&mut *map_intervening)?,
+            ),
             StaticAbilityPayload::ThisSpellCostReduction(reduction) => {
                 StaticAbilityPayload::ThisSpellCostReduction(reduction)
             }
@@ -1478,6 +1550,7 @@ where
                         map_trigger,
                         map_effect,
                         map_cost,
+                        &mut Ok,
                     )?);
                 }
                 StaticAbilityPayload::LevelAbility(Box::new(crate::LevelAbility {
@@ -1580,7 +1653,10 @@ where
                 card_types,
             ),
             StaticAbilityPayload::CantAttackUnlessCondition { condition, display } => {
-                StaticAbilityPayload::CantAttackUnlessCondition { condition, display }
+                StaticAbilityPayload::CantAttackUnlessCondition {
+                    condition: condition.try_map_condition(&mut *map_intervening)?,
+                    display,
+                }
             }
             StaticAbilityPayload::BlockCost {
                 blockers,
@@ -1702,7 +1778,7 @@ where
             } => StaticAbilityPayload::ExertAttack {
                 only_if_not_exerted_this_turn,
                 linked_trigger: linked_trigger
-                    .map(|triggered| map_triggered(triggered, map_trigger, map_effect))
+                    .map(|triggered| map_triggered(triggered, map_trigger, map_effect, map_intervening))
                     .transpose()?,
                 display,
             },
@@ -1710,7 +1786,7 @@ where
                 linked_trigger,
                 display,
             } => StaticAbilityPayload::EnlistAttack {
-                linked_trigger: map_triggered(linked_trigger, map_trigger, map_effect)?,
+                linked_trigger: map_triggered(linked_trigger, map_trigger, map_effect, map_intervening)?,
                 display,
             },
             StaticAbilityPayload::EquipmentGrant(abilities) => {
@@ -1721,6 +1797,7 @@ where
                         map_trigger,
                         map_effect,
                         map_cost,
+                        map_intervening,
                     )?);
                 }
                 StaticAbilityPayload::EquipmentGrant(mapped)
@@ -1734,6 +1811,7 @@ where
                     map_trigger,
                     map_effect,
                     map_cost,
+                    map_intervening,
                 )?))
             }
             StaticAbilityPayload::SoulbondSharedObjectAbility(ability) => {
@@ -1742,6 +1820,7 @@ where
                     map_trigger,
                     map_effect,
                     map_cost,
+                    map_intervening,
                 )?))
             }
             StaticAbilityPayload::RemoveAbilityForFilter {
@@ -1756,6 +1835,7 @@ where
                         map_trigger,
                         map_effect,
                         map_cost,
+                        map_intervening,
                     )?),
                     mode,
                 }
@@ -1769,7 +1849,7 @@ where
                 filter,
                 abilities: abilities
                     .into_iter()
-                    .map(|ability| map_ability(ability, map_trigger, map_effect, map_cost))
+                    .map(|ability| map_ability(ability, map_trigger, map_effect, map_cost, &mut Ok))
                     .collect::<Result<Vec<_>, _>>()?,
                 display,
                 mode,
@@ -1818,7 +1898,7 @@ where
             } => StaticAbilityPayload::RemoveCardTypes {
                 filter,
                 card_types,
-                condition,
+                condition: condition.map(&mut *map_intervening).transpose()?,
             },
             StaticAbilityPayload::SetCardTypes { filter, card_types } => {
                 StaticAbilityPayload::SetCardTypes { filter, card_types }
@@ -1883,7 +1963,7 @@ where
                 increase: map_total_cost(increase, map_cost)?,
                 activator,
                 non_mana_only,
-                condition,
+                condition: condition.map(&mut *map_intervening).transpose()?,
             },
             StaticAbilityPayload::ChoosePlayerAsEnters { filter, display } => {
                 StaticAbilityPayload::ChoosePlayerAsEnters { filter, display }
@@ -1934,7 +2014,13 @@ where
                                 .abilities
                                 .into_iter()
                                 .map(|ability| {
-                                    map_static_ability(ability, map_trigger, map_effect, map_cost)
+                                    map_static_ability(
+                                        ability,
+                                        map_trigger,
+                                        map_effect,
+                                        map_cost,
+                                        map_intervening,
+                                    )
                                 })
                                 .collect::<Result<Vec<_>, _>>()?,
                         })
@@ -1950,6 +2036,7 @@ where
                         map_trigger,
                         map_effect,
                         map_cost,
+                        map_intervening,
                     )?);
                 }
                 StaticAbilityPayload::EnterAsCopyAsEnters {
@@ -2185,7 +2272,7 @@ where
                 optional,
                 display,
             } => StaticAbilityPayload::ConditionalDrawReplacement {
-                condition,
+                condition: map_intervening(condition)?,
                 replacement_effects: replacement_effects
                     .into_iter()
                     .map(map_effect)
@@ -2320,10 +2407,14 @@ where
                     map_trigger,
                     map_effect,
                     map_cost,
+                    map_intervening,
                 )?))
             }
             StaticAbilityPayload::EntersTappedUnlessCondition { condition, display } => {
-                StaticAbilityPayload::EntersTappedUnlessCondition { condition, display }
+                StaticAbilityPayload::EntersTappedUnlessCondition {
+                    condition: map_intervening(condition)?,
+                    display,
+                }
             }
             StaticAbilityPayload::EntersWithCountersIfCondition {
                 counter,
@@ -2334,11 +2425,13 @@ where
             } => StaticAbilityPayload::EntersWithCountersIfCondition {
                 counter,
                 count,
-                condition,
+                condition: map_intervening(condition)?,
                 display,
                 added_abilities: added_abilities
                     .into_iter()
-                    .map(|ability| map_ability(ability, map_trigger, map_effect, map_cost))
+                    .map(|ability| {
+                        map_ability(ability, map_trigger, map_effect, map_cost, map_intervening)
+                    })
                     .collect::<Result<Vec<_>, _>>()?,
             },
             StaticAbilityPayload::EntersWithCountersValue { counter, count } => {
@@ -2381,7 +2474,13 @@ where
             })
         }
 
-        map_static_ability(self, &mut map_trigger, &mut map_effect, &mut map_cost)
+        map_static_ability(
+            self,
+            &mut map_trigger,
+            &mut map_effect,
+            &mut map_cost,
+            &mut map_intervening,
+        )
     }
 }
 
@@ -2390,7 +2489,8 @@ impl<
     E: Clone + PartialEq + std::fmt::Debug + 'static,
     C: Clone + PartialEq + std::fmt::Debug + 'static,
     Cond: Clone + PartialEq + std::fmt::Debug + 'static,
-> StaticAbility<T, E, C, Cond>
+    ICond: Clone + PartialEq + std::fmt::Debug + ConditionConjunction + 'static,
+> StaticAbility<T, E, C, Cond, ICond>
 {
     fn identified(id: StaticAbilityId, label: impl Into<String>) -> Self {
         Self {
@@ -2405,7 +2505,7 @@ impl<
         if let Some(id) = label_any.downcast_ref::<StaticAbilityId>() {
             return Self::identified(*id, format!("{id:?}"));
         }
-        if let Some(payload) = label_any.downcast_ref::<Anthem>() {
+        if let Some(payload) = label_any.downcast_ref::<Anthem<ICond>>() {
             return Self {
                 id: Some(StaticAbilityId::Anthem),
                 label: "anthem".to_string(),
@@ -2426,7 +2526,7 @@ impl<
                 payload: StaticAbilityPayload::AttachedChosenLandwalkGrant(payload.clone()),
             };
         }
-        if let Some(payload) = label_any.downcast_ref::<GrantAbility<T, E, C, Cond>>() {
+        if let Some(payload) = label_any.downcast_ref::<GrantAbility<T, E, C, Cond, ICond>>() {
             return Self {
                 id: Some(StaticAbilityId::GrantAbility),
                 label: "grant ability".to_string(),
@@ -2444,7 +2544,7 @@ impl<
                 )),
             };
         }
-        if let Some(payload) = label_any.downcast_ref::<RemoveCardTypesForFilter>() {
+        if let Some(payload) = label_any.downcast_ref::<RemoveCardTypesForFilter<ICond>>() {
             return Self {
                 id: Some(StaticAbilityId::RemoveCardTypes),
                 label: "remove card types".to_string(),
@@ -2476,28 +2576,28 @@ impl<
                 payload: StaticAbilityPayload::CopyTriggeredAbilities(payload.clone()),
             };
         }
-        if let Some(payload) = label_any.downcast_ref::<CostReduction>() {
+        if let Some(payload) = label_any.downcast_ref::<CostReduction<ICond>>() {
             return Self {
                 id: Some(StaticAbilityId::CostReduction),
                 label: "cost reduction".to_string(),
                 payload: StaticAbilityPayload::CostReduction(payload.clone()),
             };
         }
-        if let Some(payload) = label_any.downcast_ref::<CostReductionManaCost>() {
+        if let Some(payload) = label_any.downcast_ref::<CostReductionManaCost<ICond>>() {
             return Self {
                 id: Some(StaticAbilityId::CostReductionManaCost),
                 label: "cost reduction mana cost".to_string(),
                 payload: StaticAbilityPayload::CostReductionManaCost(payload.clone()),
             };
         }
-        if let Some(payload) = label_any.downcast_ref::<CostIncrease>() {
+        if let Some(payload) = label_any.downcast_ref::<CostIncrease<ICond>>() {
             return Self {
                 id: Some(StaticAbilityId::CostIncrease),
                 label: "cost increase".to_string(),
                 payload: StaticAbilityPayload::CostIncrease(payload.clone()),
             };
         }
-        if let Some(payload) = label_any.downcast_ref::<CostIncreaseManaCost>() {
+        if let Some(payload) = label_any.downcast_ref::<CostIncreaseManaCost<ICond>>() {
             return Self {
                 id: Some(StaticAbilityId::CostIncreaseManaCost),
                 label: "cost increase mana cost".to_string(),
@@ -2981,7 +3081,7 @@ impl<
         }
     }
 
-    pub fn grants(spec: GrantSpecModel<T, E, C, Cond>) -> Self {
+    pub fn grants(spec: GrantSpecModel<T, E, C, Cond, ICond>) -> Self {
         Self {
             id: Some(StaticAbilityId::Grants),
             label: "grants".to_string(),
@@ -3072,7 +3172,7 @@ impl<
     pub fn remove_card_types(
         filter: ObjectFilter,
         card_types: Vec<CardType>,
-        condition: Option<Condition>,
+        condition: Option<ICond>,
     ) -> Self {
         Self {
             id: Some(StaticAbilityId::RemoveCardTypes),
@@ -3180,10 +3280,7 @@ impl<
         Self::identified(StaticAbilityId::CantAttack, "cant attack")
     }
 
-    pub fn enters_tapped_unless_condition(
-        condition: Condition,
-        display: impl Into<String>,
-    ) -> Self {
+    pub fn enters_tapped_unless_condition(condition: ICond, display: impl Into<String>) -> Self {
         let display = display.into();
         Self {
             id: Some(StaticAbilityId::EntersTappedUnlessCondition),
@@ -3375,11 +3472,11 @@ impl<
         self
     }
 
-    pub fn with_condition(self, condition: Condition) -> Self {
+    pub fn with_condition(self, condition: ICond) -> Self {
         match self.payload {
             StaticAbilityPayload::CostIncrease(mut increase) => {
                 increase.condition = Some(match increase.condition {
-                    Some(existing) => Condition::And(Box::new(existing), Box::new(condition)),
+                    Some(existing) => existing.and(condition),
                     None => condition,
                 });
                 StaticAbility {
@@ -3403,7 +3500,7 @@ impl<
                     activator,
                     non_mana_only,
                     condition: Some(match existing {
-                        Some(existing) => Condition::And(Box::new(existing), Box::new(condition)),
+                        Some(existing) => existing.and(condition),
                         None => condition,
                     }),
                 },
@@ -3412,7 +3509,7 @@ impl<
                 ability,
                 condition: existing,
             } => {
-                let combined = Condition::And(Box::new(existing), Box::new(condition));
+                let combined = existing.and(condition);
                 StaticAbility {
                     id: ability.id,
                     label: ability.label.clone(),
@@ -3445,7 +3542,7 @@ impl<
     ///
     /// The label belongs to the wrapper rather than the underlying ability so
     /// runtime behavior remains entirely driven by `condition`.
-    pub fn with_labeled_condition(self, condition: Condition, label: impl Into<String>) -> Self {
+    pub fn with_labeled_condition(self, condition: ICond, label: impl Into<String>) -> Self {
         let id = self.id;
         Self {
             id,
@@ -3594,7 +3691,7 @@ impl<
         }
     }
     pub fn cant_attack_unless_condition(
-        condition: CantAttackUnlessConditionSpec,
+        condition: CantAttackUnlessConditionSpec<ICond>,
         display: impl Into<String>,
     ) -> Self {
         let display = display.into();
@@ -3914,14 +4011,14 @@ impl<
             payload: StaticAbilityPayload::SetMaximumHandSize { player, amount },
         }
     }
-    pub fn equipment_grant(abilities: Vec<StaticAbility<T, E, C, Cond>>) -> Self {
+    pub fn equipment_grant(abilities: Vec<StaticAbility<T, E, C, Cond, ICond>>) -> Self {
         Self {
             id: Some(StaticAbilityId::EquipmentGrant),
             label: "equipment grant".to_string(),
             payload: StaticAbilityPayload::EquipmentGrant(abilities),
         }
     }
-    pub fn soulbond_shared_object_ability(ability: AbilityModel<T, E, C, Cond>) -> Self {
+    pub fn soulbond_shared_object_ability(ability: AbilityModel<T, E, C, Cond, ICond>) -> Self {
         let text = match &ability.kind {
             AbilityKind::Static(static_ability) => static_ability.label.clone(),
             AbilityKind::Triggered(_) | AbilityKind::Activated(_) => "an ability".to_string(),
@@ -3979,7 +4076,7 @@ impl<
     }
     pub fn exert_attack(
         only_if_not_exerted_this_turn: bool,
-        linked_trigger: Option<TriggeredAbility<T, E>>,
+        linked_trigger: Option<TriggeredAbility<T, E, ICond>>,
         display: impl Into<String>,
     ) -> Self {
         let display = display.into();
@@ -3994,7 +4091,7 @@ impl<
         }
     }
     pub fn enlist_attack(
-        linked_trigger: TriggeredAbility<T, E>,
+        linked_trigger: TriggeredAbility<T, E, ICond>,
         display: impl Into<String>,
     ) -> Self {
         let display = display.into();
@@ -4205,7 +4302,7 @@ impl<
             payload: StaticAbilityPayload::SoulbondSharedPowerToughness { power, toughness },
         }
     }
-    pub fn soulbond_shared_ability(ability: StaticAbility<T, E, C, Cond>) -> Self {
+    pub fn soulbond_shared_ability(ability: StaticAbility<T, E, C, Cond, ICond>) -> Self {
         let label = ability.display();
         Self {
             id: Some(StaticAbilityId::SoulbondSharedBonus),
@@ -4470,7 +4567,7 @@ impl<
     }
 
     pub fn choose_power_toughness_options_as_enters_or_turns_face_up(
-        options: Vec<PowerToughnessChoiceOption<T, E, C, Cond>>,
+        options: Vec<PowerToughnessChoiceOption<T, E, C, Cond, ICond>>,
         display: impl Into<String>,
     ) -> Self {
         let display = display.into();
@@ -4546,7 +4643,7 @@ impl<
         }
     }
     pub fn with_enter_as_copy_as_enters(
-        spec: EnterAsCopyAsEntersSpec<T, E, C, Cond>,
+        spec: EnterAsCopyAsEntersSpec<T, E, C, Cond, ICond>,
         display: impl Into<String>,
     ) -> Self {
         let display = display.into();
@@ -5006,13 +5103,16 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
-    pub fn remove_ability(filter: ObjectFilter, ability: StaticAbility<T, E, C, Cond>) -> Self {
+    pub fn remove_ability(
+        filter: ObjectFilter,
+        ability: StaticAbility<T, E, C, Cond, ICond>,
+    ) -> Self {
         Self::remove_ability_with_mode(filter, ability, AbilityLossMode::Lose)
     }
 
     pub fn remove_ability_with_mode(
         filter: ObjectFilter,
-        ability: StaticAbility<T, E, C, Cond>,
+        ability: StaticAbility<T, E, C, Cond, ICond>,
         mode: AbilityLossMode,
     ) -> Self {
         Self {
@@ -5180,7 +5280,7 @@ impl<
     }
 
     pub fn conditional_draw_replacement(
-        condition: Condition,
+        condition: ICond,
         replacement_effects: Vec<E>,
         display: impl Into<String>,
     ) -> Self {
@@ -5193,7 +5293,7 @@ impl<
     }
 
     pub fn conditional_draw_replacement_with_optional(
-        condition: Condition,
+        condition: ICond,
         replacement_effects: Vec<E>,
         optional: bool,
         display: impl Into<String>,
@@ -5719,7 +5819,7 @@ impl<
     pub fn enters_with_counters_if_condition(
         counter: CounterType,
         count: Value,
-        condition: Condition,
+        condition: ICond,
         display: impl Into<String>,
     ) -> Self {
         Self::enters_with_counters_and_abilities_if_condition(
@@ -5734,9 +5834,9 @@ impl<
     pub fn enters_with_counters_and_abilities_if_condition(
         counter: CounterType,
         count: Value,
-        condition: Condition,
+        condition: ICond,
         display: impl Into<String>,
-        added_abilities: Vec<AbilityModel<T, E, C, Cond>>,
+        added_abilities: Vec<AbilityModel<T, E, C, Cond, ICond>>,
     ) -> Self {
         let display = display.into();
         Self {

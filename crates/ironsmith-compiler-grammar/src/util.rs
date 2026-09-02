@@ -54,7 +54,7 @@ use super::grammar::shared_util::token_facts;
 use super::grammar::shared_util::value_expr;
 use super::grammar::shared_util::value_shapes;
 use super::grammar::targets::parse_target_envelope;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use super::lexer::lex_line;
 use super::lexer::{OwnedLexToken, TokenKind, render_token_slice};
 use super::token_primitives as shared_tokens;
@@ -407,15 +407,13 @@ pub fn source_reference_surface_for_possessive_words_with_context(
     })
 }
 
-pub fn source_choose_spec_for_surface(surface: SourceReferenceSurface) -> ChooseSpec {
-    ChooseSpec::Source.with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface))
-}
+pub use crate::model::ast::source_choose_spec_for_surface;
 
 pub fn this_source_surface_for_words(words: &[&str]) -> Option<SourceReferenceSurface> {
     leaf::parse_leaf_this_source_reference_words(words)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn tokenize_line(line: &str, line_index: usize) -> Vec<OwnedLexToken> {
     let mut tokens = lex_line(line, line_index).expect("test tokenization helper should lex input");
     for token in &mut tokens {

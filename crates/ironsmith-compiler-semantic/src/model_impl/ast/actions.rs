@@ -88,7 +88,7 @@ pub enum EmblemAbilityAst {
     Triggered {
         trigger: TriggerSpec,
         effects: Vec<EffectAst>,
-        trigger_limit_condition: Option<ConditionExpr>,
+        trigger_limit_condition: Option<PredicateAst>,
     },
 }
 
@@ -406,7 +406,7 @@ pub enum SubjectVerbActionAst {
     GainControl {
         target: TargetAst,
         duration: Until,
-        condition: Option<ConditionExpr>,
+        condition: Option<PredicateAst>,
         /// Explicit object whose controller performs the control change.
         ///
         /// This preserves authored relational subjects such as "that
@@ -751,7 +751,7 @@ pub enum SubjectVerbActionAst {
         toughness: Value,
         target: TargetAst,
         duration: Until,
-        condition: Option<crate::ConditionExpr>,
+        condition: Option<PredicateAst>,
         set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
     },
     SetBasePowerToughness {
@@ -910,7 +910,7 @@ pub enum SubjectVerbActionAst {
         filter: ObjectFilter,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
-        condition: Option<crate::ConditionExpr>,
+        condition: Option<PredicateAst>,
         set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
         /// CR 611.2c normally fixes the affected set when a resolving effect
         /// starts. Some rules effects instead create a continuous rule for a
@@ -921,7 +921,7 @@ pub enum SubjectVerbActionAst {
         filter: ObjectFilter,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
-        condition: Option<crate::ConditionExpr>,
+        condition: Option<PredicateAst>,
         set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
     },
     GrantAbilitiesChoiceAll {
@@ -933,7 +933,7 @@ pub enum SubjectVerbActionAst {
         target: TargetAst,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
-        condition: Option<crate::ConditionExpr>,
+        condition: Option<PredicateAst>,
         set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
     },
     GrantToTarget {
@@ -998,7 +998,7 @@ pub enum SubjectVerbActionAst {
         duration: crate::effect::Until,
         start: crate::effect::RestrictionStart,
         duration_surface: crate::effect::RestrictionDurationSurface,
-        condition: Option<crate::ConditionExpr>,
+        condition: Option<PredicateAst>,
     },
     CreateTokenCopy {
         object: ObjectRefAst,

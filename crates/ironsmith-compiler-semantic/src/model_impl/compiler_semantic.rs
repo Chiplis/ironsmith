@@ -1,4 +1,3 @@
-use crate::ConditionExpr;
 use crate::ability::ActivationTiming;
 use crate::effect::{EffectPredicate, Value};
 use crate::zone::Zone;
@@ -13,16 +12,32 @@ pub type CompilerAbilityCore = ironsmith_core::Ability<
     TriggerSpec,
     EffectAst,
     crate::model::CompilerCost,
+    super::ast::PredicateAst,
 >;
 pub type CompilerAbilityKindCore = ironsmith_core::AbilityKind<
     crate::model::CompilerStaticAbilityCore,
     TriggerSpec,
     EffectAst,
     crate::model::CompilerCost,
+    super::ast::PredicateAst,
 >;
-pub type CompilerTriggeredAbilityCore = ironsmith_core::TriggeredAbility<TriggerSpec, EffectAst>;
-pub type CompilerActivatedAbilityCore =
-    ironsmith_core::ActivatedAbility<EffectAst, crate::model::CompilerCost>;
+/// A triggered ability as recognition produces it.
+///
+/// The intervening-if is the recognized [`PredicateAst`], not a resolved
+/// condition: what a recognizer read is a fact about the text, and binding it
+/// to the game state is the resolver's job.
+pub type CompilerTriggeredAbilityCore =
+    ironsmith_core::TriggeredAbility<TriggerSpec, EffectAst, super::ast::PredicateAst>;
+/// An activated ability as recognition produces it.
+///
+/// The activation condition is the recognized predicate, like a triggered
+/// ability's intervening-if. Binding it happens once, where lowering turns the
+/// recognized ability into the runtime one.
+pub type CompilerActivatedAbilityCore = ironsmith_core::ActivatedAbility<
+    EffectAst,
+    crate::model::CompilerCost,
+    super::ast::PredicateAst,
+>;
 pub type CompilerManaUsageRestriction = ironsmith_core::ManaUsageRestriction<EffectAst>;
 
 #[derive(Debug, Clone)]
@@ -129,8 +144,10 @@ pub struct ParsedActivationRestriction {
     /// Normalized Oracle surface retained only for presentation/fallback behavior.
     pub presentation_text: String,
     pub timing: Option<ActivationTiming>,
-    pub condition: Option<ConditionExpr>,
-    pub text_only_condition: Option<ConditionExpr>,
+    /// The condition the restriction line stated, as recognized.
+    pub condition: Option<super::ast::PredicateAst>,
+    /// A restriction that only affects rendering, as recognized.
+    pub text_only_condition: Option<super::ast::PredicateAst>,
     pub normalization: ActivationRestrictionNormalizationFact,
     pub mana_usage_restriction: Option<CompilerManaUsageRestriction>,
     /// Oracle placed the once-per-turn clause after another activation
@@ -149,7 +166,8 @@ pub struct ParsedManaRestriction {
     /// Normalized Oracle surface retained for diagnostics and unsupported fallback behavior.
     pub presentation_text: String,
     pub timing: ActivationTiming,
-    pub condition: Option<ConditionExpr>,
+    /// The condition the restriction line stated, as recognized.
+    pub condition: Option<super::ast::PredicateAst>,
     pub usage_restriction: Option<CompilerManaUsageRestriction>,
 }
 
@@ -212,7 +230,8 @@ pub struct ParsedModalActivatedHeader {
     pub timing: ActivationTiming,
     pub is_loyalty_ability: bool,
     pub once_per_turn: bool,
-    pub activation_restrictions: Vec<ConditionExpr>,
+    /// The activation restrictions the header stated, as recognized.
+    pub activation_restrictions: Vec<super::ast::PredicateAst>,
 }
 
 #[derive(Debug, Clone)]

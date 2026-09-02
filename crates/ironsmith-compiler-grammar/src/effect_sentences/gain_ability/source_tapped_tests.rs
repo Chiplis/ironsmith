@@ -27,7 +27,7 @@ fn source_tapped_keyword_grants_keep_typed_duration_and_condition() {
         panic!("expected one targeted grant, got {effects:#?}");
     };
     assert_eq!(*duration, Until::SourceUntaps);
-    assert_eq!(*condition, Some(crate::ConditionExpr::SourceIsTapped));
+    assert_eq!(*condition, Some(PredicateAst::SourceIsTapped));
     assert_eq!(filter.controller, Some(PlayerFilter::You));
     assert!(filter.other);
 

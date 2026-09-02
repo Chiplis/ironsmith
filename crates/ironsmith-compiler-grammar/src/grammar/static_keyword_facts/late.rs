@@ -649,7 +649,7 @@ fn semantic_word_count(tokens: &[OwnedLexToken]) -> Option<usize> {
     Some(counts.into_iter().sum())
 }
 
-fn parse_semantic_all<'a, O, P>(tokens: &'a [OwnedLexToken], mut parser: P) -> Option<O>
+fn parse_semantic_all<'a, O, P>(tokens: &'a [OwnedLexToken], parser: P) -> Option<O>
 where
     P: Parser<LexStream<'a>, O, ErrMode<ContextError>>,
 {

@@ -36,16 +36,18 @@ pub mod model {
         ClauseVerbAst, CompilerAbility, CompilerAbilityCore, CompilerAbilityKind,
         CompilerAbilityKindCore, CompilerAbilityPayload, CompilerActivatedAbility,
         CompilerActivatedAbilityAst, CompilerActivatedAbilityCore, CompilerActivationLegalityAst,
-        CompilerAlternativeCastingMethod, CompilerAttachedAbilityGrantCore,
+        CompilerAlternativeCastingMethod, CompilerAnthem, CompilerAttachedAbilityGrantCore,
         CompilerCastingLegalityAst, CompilerClassAbilityAst, CompilerClassLevelAst,
-        CompilerControlFlowAst, CompilerCost, CompilerDocument, CompilerDocumentItem,
-        CompilerDurationAst, CompilerEnterAsCopyAsEntersSpecCore, CompilerGrantAbilityCore,
-        CompilerGrantObjectAbilityForFilterCore, CompilerGrantSpecCore, CompilerGrantableCore,
-        CompilerGrantedAbilityAst, CompilerKeywordAbilityAst, CompilerKeywordIdentityAst,
-        CompilerKeywordPayloadAst, CompilerLevelAbilityAst, CompilerLevelBandAst,
-        CompilerManaUsageRestriction, CompilerModalAbilityAst, CompilerModalModeAst,
-        CompilerModalSelectionAst, CompilerOptionalCost, CompilerPermissionAst,
-        CompilerPowerToughnessChoiceOptionCore, CompilerSagaAbilityAst, CompilerSagaChapterAst,
+        CompilerControlFlowAst, CompilerCost, CompilerCostIncrease, CompilerCostIncreaseManaCost,
+        CompilerCostReduction, CompilerCostReductionManaCost, CompilerDocument,
+        CompilerDocumentItem, CompilerDurationAst, CompilerEnterAsCopyAsEntersSpecCore,
+        CompilerGrantAbilityCore, CompilerGrantObjectAbilityForFilterCore, CompilerGrantSpecCore,
+        CompilerGrantableCore, CompilerGrantedAbilityAst, CompilerKeywordAbilityAst,
+        CompilerKeywordIdentityAst, CompilerKeywordPayloadAst, CompilerLevelAbilityAst,
+        CompilerLevelBandAst, CompilerManaUsageRestriction, CompilerModalAbilityAst,
+        CompilerModalModeAst, CompilerModalSelectionAst, CompilerOptionalCost,
+        CompilerPermissionAst, CompilerPowerToughnessChoiceOptionCore,
+        CompilerRemoveCardTypesForFilter, CompilerSagaAbilityAst, CompilerSagaChapterAst,
         CompilerSelectionAst, CompilerStaticAbilityAst, CompilerStaticAbilityCore,
         CompilerStaticAbilityPayloadCore, CompilerStructuredAbilityAst, CompilerTotalCost,
         CompilerTriggerEventAst, CompilerTriggerLegalityAst, CompilerTriggeredAbility,
@@ -189,10 +191,14 @@ pub mod lexer {
     };
 }
 
+pub use ironsmith_compiler_resolve::condition_antecedents;
 pub use ironsmith_compiler_resolve::effect_ast_normalization;
 pub use ironsmith_compiler_resolve::effect_ast_traversal;
+pub use ironsmith_compiler_resolve::predicate_conditions as reference_resolution_support;
 pub use ironsmith_compiler_resolve::reference_helpers;
 pub use ironsmith_compiler_resolve::reference_resolution;
+pub use ironsmith_compiler_resolve::tag_support;
+pub use ironsmith_compiler_resolve::trigger_players;
 pub use ironsmith_grammar_common::recognition;
 
 pub use alternative_cast::TrapCondition;
@@ -219,12 +225,11 @@ pub use zone::Zone;
 pub use ironsmith_compiler_syntax::{slice_primitives, string_primitives, word_primitives};
 pub mod token_primitives;
 
-pub mod facade;
 pub mod grammar;
 pub mod ir;
 pub mod oracle_grammar;
 pub mod parse_trace;
-pub mod pipeline;
+
 pub mod registry;
 pub mod rule_engine;
 
@@ -243,8 +248,6 @@ pub mod modal_helpers;
 pub mod object_filters;
 pub mod permission_helpers;
 pub mod restriction_support;
-#[path = "lowering_impl/runtime_static_ability_helpers.rs"]
-pub mod runtime_static_ability_helpers;
 pub mod search_library_support;
 pub mod static_ability_helpers;
 
@@ -256,48 +259,37 @@ pub mod semantic_assembly;
 pub mod semantic_line_parsing;
 pub mod util;
 
-#[path = "lowering_impl/battlefield_entry_counter_fusion.rs"]
-pub mod battlefield_entry_counter_fusion;
-pub mod canonical_pipeline;
-pub mod card_builders;
-#[path = "lowering_impl/compile_support.rs"]
-pub mod compile_support;
-#[path = "lowering_impl/pipeline.rs"]
-pub mod compiler_pipeline;
-#[path = "lowering_impl/condition_antecedent.rs"]
-pub mod condition_antecedent;
+#[cfg(test)]
+pub use ironsmith_compiler::{
+    compile_card_text, compile_card_text_with_policy, compiler_pipeline, parse_card_text,
+    parse_card_text_allow_unsupported,
+};
+#[cfg(test)]
+pub use ironsmith_compiler_lowering::{
+    CardDefinitionBuilder, card_tokens, compile_support, condition_antecedent, effect_pipeline,
+    lower, lowering, lowering_support, runtime_static_ability_helpers,
+};
+
+pub mod ast_facade;
+pub mod card_metadata;
+#[cfg(test)]
+#[path = "condition_antecedent_tests.rs"]
+mod condition_antecedent_tests;
 pub mod document_parser;
-#[path = "lowering_impl/effect_pipeline.rs"]
-pub mod effect_pipeline;
-#[path = "lowering_impl/lower/mod.rs"]
-pub mod lower;
-#[path = "lowering_impl/mod.rs"]
-pub mod lowering;
-#[path = "lowering_impl/lowering_support.rs"]
-pub mod lowering_support;
 #[path = "grammar/modal_support.rs"]
 pub mod modal_support;
 pub mod parse_loss;
 pub mod semantic_document;
 
 pub mod cards {
-    pub use crate::card_builders::CardDefinitionBuilder;
     pub use ironsmith_compiler_semantic::cards::{CardDefinition, ParseAnnotations, TextSpan};
 
     pub mod builders {
-        pub use crate::card_builders::*;
-    }
-
-    pub mod tokens {
-        pub use crate::card_tokens::*;
+        pub use crate::ast_facade::*;
     }
 }
-
-pub use card_builders::CardDefinitionBuilder;
 pub use ironsmith_compiler_semantic::cards::CardDefinition;
 pub use line_info::LineInfo;
-
-pub mod card_tokens;
 
 pub mod host {
     pub use crate::cards::builders::{
@@ -307,7 +299,7 @@ pub mod host {
 }
 
 pub fn parse_context_for_builder(
-    builder: &CardDefinitionBuilder,
+    card: &crate::card::CardBuilder,
     text: &str,
     allow_unsupported: bool,
 ) -> ironsmith_compiler_ast::ParseContext {
@@ -315,7 +307,7 @@ pub fn parse_context_for_builder(
         CardFaceMetadata, ParseContext, ParseFeatures, ProvenanceStore, SourceIdentity,
         SourceUnitId,
     };
-    let card_name = builder.card_builder.name_ref().trim().to_string();
+    let card_name = card.name_ref().trim().to_string();
     let mut context = ParseContext::new(
         SourceIdentity {
             unit: SourceUnitId(0),
@@ -325,9 +317,9 @@ pub fn parse_context_for_builder(
             source_line_count: text.lines().count(),
         },
         CardFaceMetadata {
-            supertypes: builder.card_builder.supertypes_ref().to_vec(),
-            card_types: builder.card_builder.card_types_ref().to_vec(),
-            subtypes: builder.card_builder.subtypes_ref().to_vec(),
+            supertypes: card.supertypes_ref().to_vec(),
+            card_types: card.card_types_ref().to_vec(),
+            subtypes: card.subtypes_ref().to_vec(),
             other_face_name: None,
         },
         ParseFeatures {
@@ -340,57 +332,10 @@ pub fn parse_context_for_builder(
     context
 }
 
-pub fn compile_card_text_with_policy(
-    builder: CardDefinitionBuilder,
-    text: impl Into<String>,
-    allow_unsupported: bool,
-) -> Result<facade::CompiledCardText<CardDefinition>, CardTextError> {
-    let text = text.into();
-    util::with_cached_parser_trace(move || {
-        let mut context = parse_context_for_builder(&builder, &text, allow_unsupported);
-        compiler_pipeline::parse_text_with_annotations_lowered_with_facts_context(
-            &mut context,
-            builder,
-            text,
-        )
-        .map(|lowered| facade::CompiledCardText {
-            definition: lowered.definition,
-            annotations: lowered.annotations,
-        })
-    })
-}
-
-pub fn compile_card_text(
-    builder: CardDefinitionBuilder,
-    text: impl Into<String>,
-    allow_unsupported: bool,
-) -> Result<facade::CompiledCardText<CardDefinition>, CardTextError> {
-    compile_card_text_with_policy(builder, text, allow_unsupported)
-}
-
-pub fn parse_card_text(
-    builder: CardDefinitionBuilder,
-    text: impl Into<String>,
-) -> Result<CardDefinition, CardTextError> {
-    compile_card_text(builder, text, false).map(|compiled| compiled.definition)
-}
-
-pub fn parse_card_text_allow_unsupported(
-    builder: CardDefinitionBuilder,
-    text: impl Into<String>,
-) -> Result<CardDefinition, CardTextError> {
-    compile_card_text(builder, text, true).map(|compiled| compiled.definition)
-}
-
-pub use facade::{
-    CompilePolicy, CompiledCardText, CompilerBackend, CompilerCompileRequest, CompilerFacade,
-    CompilerSourceDocument,
-};
 pub use oracle_grammar::{
     OracleGrammarDocument, OracleGrammarLevelItem, OracleGrammarLine, OracleGrammarLineInfo,
     OracleGrammarMode, parse_oracle_grammar_document,
 };
-pub use pipeline::{LoweringPipeline, PostpassProcessor};
 
 #[cfg(test)]
 #[path = "tests/mod.rs"]

@@ -1,4 +1,5 @@
 use super::*;
+use crate::cards::builders::PredicateAst;
 
 fn contains_compound_pump_and_grant(effects: &[EffectAst]) -> bool {
     let mut pump = false;
@@ -215,7 +216,7 @@ pub(super) fn parse_activated_line_impl(
         parsed_restriction_timing.unwrap_or(ActivationTiming::AnyTime)
     };
     let activation_restrictions = is_forecast
-        .then_some(crate::ConditionExpr::MaxActivationsPerTurn(1))
+        .then_some(PredicateAst::MaxActivationsPerTurn(1))
         .into_iter()
         .collect::<Vec<_>>();
     let mut additional_activation_restrictions =

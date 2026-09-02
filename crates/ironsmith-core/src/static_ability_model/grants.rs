@@ -1,4 +1,5 @@
 use super::*;
+use crate::ConditionConjunction;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -11,11 +12,14 @@ pub enum LandwalkKind {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
-pub struct Anthem {
+/// The condition guarding this static ability, over whatever vocabulary the
+/// phase using it speaks. Defaults to the resolved [`Condition`], so the
+/// runtime spells it the way it always has.
+pub struct Anthem<Cond = Condition> {
     pub filter: Option<ObjectFilter>,
     pub power: AnthemValue,
     pub toughness: AnthemValue,
-    pub condition: Option<Condition>,
+    pub condition: Option<Cond>,
     /// Original leading set quantifier, retained only for compiled-text surface.
     pub set_quantifier_surface: Option<SetQuantifierSurface>,
     /// True when the original oracle text expressed the scaling count with a
@@ -42,7 +46,36 @@ pub struct AnthemReplacementSurface {
     pub toughness: i32,
 }
 
-impl Anthem {
+impl<Cond> Anthem<Cond> {
+    /// Translate this ability's condition into another phase's vocabulary.
+    pub fn try_map_condition<Cond2, Err>(
+        self,
+        map_condition: impl FnOnce(Cond) -> Result<Cond2, Err>,
+    ) -> Result<Anthem<Cond2>, Err> {
+        let Anthem {
+            condition,
+            filter,
+            power,
+            toughness,
+            set_quantifier_surface,
+            count_uses_where_x,
+            additional_surface,
+            replacement_surface,
+        } = self;
+        Ok(Anthem {
+            condition: condition.map(map_condition).transpose()?,
+            filter,
+            power,
+            toughness,
+            set_quantifier_surface,
+            count_uses_where_x,
+            additional_surface,
+            replacement_surface,
+        })
+    }
+}
+
+impl<Cond: ConditionConjunction> Anthem<Cond> {
     pub fn new(filter: ObjectFilter, power: i32, toughness: i32) -> Self {
         Self {
             filter: Some(filter),
@@ -72,7 +105,7 @@ impl Anthem {
         self.toughness = toughness;
         self
     }
-    pub fn with_condition(mut self, condition: Condition) -> Self {
+    pub fn with_condition(mut self, condition: Cond) -> Self {
         self.condition = Some(condition);
         self
     }
@@ -96,16 +129,16 @@ impl Anthem {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
-pub struct AttachedAbilityGrant<T, E, C, Cond> {
-    pub ability: AbilityModel<T, E, C, Cond>,
-    pub additional_abilities: Vec<AbilityModel<T, E, C, Cond>>,
+pub struct AttachedAbilityGrant<T, E, C, Cond, ICond = Condition> {
+    pub ability: AbilityModel<T, E, C, Cond, ICond>,
+    pub additional_abilities: Vec<AbilityModel<T, E, C, Cond, ICond>>,
     pub display: String,
-    pub condition: Option<Condition>,
+    pub condition: Option<ICond>,
     pub protection_does_not_remove_controlled_attachments: bool,
 }
 
-impl<T, E, C, Cond> AttachedAbilityGrant<T, E, C, Cond> {
-    pub fn new(ability: AbilityModel<T, E, C, Cond>, display: impl Into<String>) -> Self {
+impl<T, E, C, Cond, ICond> AttachedAbilityGrant<T, E, C, Cond, ICond> {
+    pub fn new(ability: AbilityModel<T, E, C, Cond, ICond>, display: impl Into<String>) -> Self {
         Self {
             ability,
             additional_abilities: Vec::new(),
@@ -116,12 +149,12 @@ impl<T, E, C, Cond> AttachedAbilityGrant<T, E, C, Cond> {
     }
     pub fn with_additional_abilities(
         mut self,
-        abilities: Vec<AbilityModel<T, E, C, Cond>>,
+        abilities: Vec<AbilityModel<T, E, C, Cond, ICond>>,
     ) -> Self {
         self.additional_abilities = abilities;
         self
     }
-    pub fn with_condition(mut self, condition: Condition) -> Self {
+    pub fn with_condition(mut self, condition: ICond) -> Self {
         self.condition = Some(condition);
         self
     }
@@ -145,23 +178,23 @@ impl AttachedChosenLandwalkGrant {
             snow,
         }
     }
-    pub fn with_condition(self, _condition: Condition) -> Self {
+    pub fn with_condition<C>(self, _condition: C) -> Self {
         self
     }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
-pub struct GrantAbility<T, E, C, Cond> {
+pub struct GrantAbility<T, E, C, Cond, ICond = Condition> {
     pub filter: ObjectFilter,
-    pub ability: AbilityModel<T, E, C, Cond>,
-    pub condition: Option<Condition>,
+    pub ability: AbilityModel<T, E, C, Cond, ICond>,
+    pub condition: Option<ICond>,
     /// Original leading set quantifier, retained only for compiled-text surface.
     pub set_quantifier_surface: Option<SetQuantifierSurface>,
 }
 
-impl<T, E, C, Cond> GrantAbility<T, E, C, Cond> {
-    pub fn new(filter: ObjectFilter, ability: AbilityModel<T, E, C, Cond>) -> Self {
+impl<T, E, C, Cond, ICond> GrantAbility<T, E, C, Cond, ICond> {
+    pub fn new(filter: ObjectFilter, ability: AbilityModel<T, E, C, Cond, ICond>) -> Self {
         Self {
             filter,
             ability,
@@ -169,7 +202,7 @@ impl<T, E, C, Cond> GrantAbility<T, E, C, Cond> {
             set_quantifier_surface: None,
         }
     }
-    pub fn source(ability: impl Into<AbilityModel<T, E, C, Cond>>) -> Self {
+    pub fn source(ability: impl Into<AbilityModel<T, E, C, Cond, ICond>>) -> Self {
         Self {
             filter: ObjectFilter::source(),
             ability: ability.into(),
@@ -177,7 +210,7 @@ impl<T, E, C, Cond> GrantAbility<T, E, C, Cond> {
             set_quantifier_surface: None,
         }
     }
-    pub fn with_condition(mut self, condition: Condition) -> Self {
+    pub fn with_condition(mut self, condition: ICond) -> Self {
         self.condition = Some(condition);
         self
     }
@@ -189,12 +222,12 @@ impl<T, E, C, Cond> GrantAbility<T, E, C, Cond> {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, PartialEq)]
-pub struct GrantObjectAbilityForFilter<T, E, C, Cond> {
+pub struct GrantObjectAbilityForFilter<T, E, C, Cond, ICond = Condition> {
     pub filter: ObjectFilter,
-    pub ability: AbilityModel<T, E, C, Cond>,
-    pub additional_abilities: Vec<AbilityModel<T, E, C, Cond>>,
+    pub ability: AbilityModel<T, E, C, Cond, ICond>,
+    pub additional_abilities: Vec<AbilityModel<T, E, C, Cond, ICond>>,
     pub display: String,
-    pub condition: Option<Condition>,
+    pub condition: Option<ICond>,
     /// Original leading set quantifier, retained only for compiled-text surface.
     pub set_quantifier_surface: Option<SetQuantifierSurface>,
 }
@@ -222,10 +255,10 @@ where
     }
 }
 
-impl<T, E, C, Cond> GrantObjectAbilityForFilter<T, E, C, Cond> {
+impl<T, E, C, Cond, ICond> GrantObjectAbilityForFilter<T, E, C, Cond, ICond> {
     pub fn new(
         filter: ObjectFilter,
-        ability: AbilityModel<T, E, C, Cond>,
+        ability: AbilityModel<T, E, C, Cond, ICond>,
         display: impl Into<String>,
     ) -> Self {
         Self {
@@ -239,12 +272,12 @@ impl<T, E, C, Cond> GrantObjectAbilityForFilter<T, E, C, Cond> {
     }
     pub fn with_additional_abilities(
         mut self,
-        abilities: Vec<AbilityModel<T, E, C, Cond>>,
+        abilities: Vec<AbilityModel<T, E, C, Cond, ICond>>,
     ) -> Self {
         self.additional_abilities = abilities;
         self
     }
-    pub fn with_condition(mut self, condition: Condition) -> Self {
+    pub fn with_condition(mut self, condition: ICond) -> Self {
         self.condition = Some(condition);
         self
     }
@@ -302,7 +335,7 @@ impl CopyActivatedAbilities {
         self.force_once_each_turn = true;
         self
     }
-    pub fn with_condition(self, _condition: Condition) -> Self {
+    pub fn with_condition<C>(self, _condition: C) -> Self {
         self
     }
 }
@@ -419,17 +452,43 @@ impl CostReductionCharacteristicIntersection {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
-pub struct CostReduction {
+/// The condition guarding this static ability, over whatever vocabulary the
+/// phase using it speaks. Defaults to the resolved [`Condition`], so the
+/// runtime spells it the way it always has.
+pub struct CostReduction<Cond = Condition> {
     pub filter: ObjectFilter,
     pub amount: Value,
-    pub condition: Option<Condition>,
+    pub condition: Option<Cond>,
     pub per_target: bool,
     /// Count distinct values of one characteristic shared by the candidate
     /// spell and the comparison set, then reduce by `amount` for each.
     pub characteristic_intersection: Option<CostReductionCharacteristicIntersection>,
 }
 
-impl CostReduction {
+impl<Cond> CostReduction<Cond> {
+    /// Translate this ability's condition into another phase's vocabulary.
+    pub fn try_map_condition<Cond2, Err>(
+        self,
+        map_condition: impl FnOnce(Cond) -> Result<Cond2, Err>,
+    ) -> Result<CostReduction<Cond2>, Err> {
+        let CostReduction {
+            condition,
+            filter,
+            amount,
+            per_target,
+            characteristic_intersection,
+        } = self;
+        Ok(CostReduction {
+            condition: condition.map(map_condition).transpose()?,
+            filter,
+            amount,
+            per_target,
+            characteristic_intersection,
+        })
+    }
+}
+
+impl<Cond: ConditionConjunction> CostReduction<Cond> {
     pub fn new(filter: ObjectFilter, amount: Value) -> Self {
         Self {
             filter,
@@ -440,9 +499,9 @@ impl CostReduction {
         }
     }
 
-    pub fn with_condition(mut self, condition: Condition) -> Self {
+    pub fn with_condition(mut self, condition: Cond) -> Self {
         self.condition = Some(match self.condition.take() {
-            Some(existing) => Condition::And(Box::new(existing), Box::new(condition)),
+            Some(existing) => existing.and(condition),
             None => condition,
         });
         self
@@ -480,15 +539,41 @@ impl OptionalLifeAdditionalCost {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
-pub struct CostReductionManaCost {
+/// The condition guarding this static ability, over whatever vocabulary the
+/// phase using it speaks. Defaults to the resolved [`Condition`], so the
+/// runtime spells it the way it always has.
+pub struct CostReductionManaCost<Cond = Condition> {
     pub filter: ObjectFilter,
     pub cost: ManaCost,
-    pub condition: Option<Condition>,
+    pub condition: Option<Cond>,
     pub per_target: bool,
     pub optional_life_additional_cost: Option<OptionalLifeAdditionalCost>,
 }
 
-impl CostReductionManaCost {
+impl<Cond> CostReductionManaCost<Cond> {
+    /// Translate this ability's condition into another phase's vocabulary.
+    pub fn try_map_condition<Cond2, Err>(
+        self,
+        map_condition: impl FnOnce(Cond) -> Result<Cond2, Err>,
+    ) -> Result<CostReductionManaCost<Cond2>, Err> {
+        let CostReductionManaCost {
+            condition,
+            filter,
+            cost,
+            per_target,
+            optional_life_additional_cost,
+        } = self;
+        Ok(CostReductionManaCost {
+            condition: condition.map(map_condition).transpose()?,
+            filter,
+            cost,
+            per_target,
+            optional_life_additional_cost,
+        })
+    }
+}
+
+impl<Cond: ConditionConjunction> CostReductionManaCost<Cond> {
     pub fn new(filter: ObjectFilter, cost: ManaCost) -> Self {
         Self {
             filter,
@@ -508,9 +593,9 @@ impl CostReductionManaCost {
             Some(OptionalLifeAdditionalCost::new(label, life_cost));
         self
     }
-    pub fn with_condition(mut self, condition: Condition) -> Self {
+    pub fn with_condition(mut self, condition: Cond) -> Self {
         self.condition = Some(match self.condition.take() {
-            Some(existing) => Condition::And(Box::new(existing), Box::new(condition)),
+            Some(existing) => existing.and(condition),
             None => condition,
         });
         self
@@ -524,14 +609,38 @@ impl CostReductionManaCost {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
-pub struct CostIncrease {
+/// The condition guarding this static ability, over whatever vocabulary the
+/// phase using it speaks. Defaults to the resolved [`Condition`], so the
+/// runtime spells it the way it always has.
+pub struct CostIncrease<Cond = Condition> {
     pub filter: ObjectFilter,
     pub amount: Value,
-    pub condition: Option<Condition>,
+    pub condition: Option<Cond>,
     pub per_target: bool,
 }
 
-impl CostIncrease {
+impl<Cond> CostIncrease<Cond> {
+    /// Translate this ability's condition into another phase's vocabulary.
+    pub fn try_map_condition<Cond2, Err>(
+        self,
+        map_condition: impl FnOnce(Cond) -> Result<Cond2, Err>,
+    ) -> Result<CostIncrease<Cond2>, Err> {
+        let CostIncrease {
+            condition,
+            filter,
+            amount,
+            per_target,
+        } = self;
+        Ok(CostIncrease {
+            condition: condition.map(map_condition).transpose()?,
+            filter,
+            amount,
+            per_target,
+        })
+    }
+}
+
+impl<Cond: ConditionConjunction> CostIncrease<Cond> {
     pub fn new(filter: ObjectFilter, amount: Value) -> Self {
         Self {
             filter,
@@ -540,9 +649,9 @@ impl CostIncrease {
             per_target: false,
         }
     }
-    pub fn with_condition(mut self, condition: Condition) -> Self {
+    pub fn with_condition(mut self, condition: Cond) -> Self {
         self.condition = Some(match self.condition.take() {
-            Some(existing) => Condition::And(Box::new(existing), Box::new(condition)),
+            Some(existing) => existing.and(condition),
             None => condition,
         });
         self
@@ -556,14 +665,38 @@ impl CostIncrease {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
-pub struct CostIncreaseManaCost {
+/// The condition guarding this static ability, over whatever vocabulary the
+/// phase using it speaks. Defaults to the resolved [`Condition`], so the
+/// runtime spells it the way it always has.
+pub struct CostIncreaseManaCost<Cond = Condition> {
     pub filter: ObjectFilter,
     pub cost: ManaCost,
-    pub condition: Option<Condition>,
+    pub condition: Option<Cond>,
     pub per_target: bool,
 }
 
-impl CostIncreaseManaCost {
+impl<Cond> CostIncreaseManaCost<Cond> {
+    /// Translate this ability's condition into another phase's vocabulary.
+    pub fn try_map_condition<Cond2, Err>(
+        self,
+        map_condition: impl FnOnce(Cond) -> Result<Cond2, Err>,
+    ) -> Result<CostIncreaseManaCost<Cond2>, Err> {
+        let CostIncreaseManaCost {
+            condition,
+            filter,
+            cost,
+            per_target,
+        } = self;
+        Ok(CostIncreaseManaCost {
+            condition: condition.map(map_condition).transpose()?,
+            filter,
+            cost,
+            per_target,
+        })
+    }
+}
+
+impl<Cond: ConditionConjunction> CostIncreaseManaCost<Cond> {
     pub fn new(filter: ObjectFilter, cost: ManaCost) -> Self {
         Self {
             filter,
@@ -572,9 +705,9 @@ impl CostIncreaseManaCost {
             per_target: false,
         }
     }
-    pub fn with_condition(mut self, condition: Condition) -> Self {
+    pub fn with_condition(mut self, condition: Cond) -> Self {
         self.condition = Some(match self.condition.take() {
-            Some(existing) => Condition::And(Box::new(existing), Box::new(condition)),
+            Some(existing) => existing.and(condition),
             None => condition,
         });
         self
@@ -655,20 +788,42 @@ impl SetColorsForFilter {
     pub fn new(filter: ObjectFilter, color: ColorSet) -> Self {
         Self { filter, color }
     }
-    pub fn with_condition(self, _condition: Condition) -> Self {
+    pub fn with_condition<C>(self, _condition: C) -> Self {
         self
     }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
-pub struct RemoveCardTypesForFilter {
+/// The condition guarding this static ability, over whatever vocabulary the
+/// phase using it speaks. Defaults to the resolved [`Condition`], so the
+/// runtime spells it the way it always has.
+pub struct RemoveCardTypesForFilter<Cond = Condition> {
     pub filter: ObjectFilter,
     pub types: Vec<CardType>,
-    pub condition: Option<Condition>,
+    pub condition: Option<Cond>,
 }
 
-impl RemoveCardTypesForFilter {
+impl<Cond> RemoveCardTypesForFilter<Cond> {
+    /// Translate this ability's condition into another phase's vocabulary.
+    pub fn try_map_condition<Cond2, Err>(
+        self,
+        map_condition: impl FnOnce(Cond) -> Result<Cond2, Err>,
+    ) -> Result<RemoveCardTypesForFilter<Cond2>, Err> {
+        let RemoveCardTypesForFilter {
+            condition,
+            filter,
+            types,
+        } = self;
+        Ok(RemoveCardTypesForFilter {
+            condition: condition.map(map_condition).transpose()?,
+            filter,
+            types,
+        })
+    }
+}
+
+impl<Cond: ConditionConjunction> RemoveCardTypesForFilter<Cond> {
     pub fn new(filter: ObjectFilter, types: Vec<CardType>) -> Self {
         Self {
             filter,
@@ -676,7 +831,7 @@ impl RemoveCardTypesForFilter {
             condition: None,
         }
     }
-    pub fn with_condition(mut self, condition: Condition) -> Self {
+    pub fn with_condition(mut self, condition: Cond) -> Self {
         self.condition = Some(condition);
         self
     }
@@ -733,7 +888,7 @@ pub enum DefendingPlayerAttackCondition {
     clippy::large_enum_variant,
     reason = "attack restrictions preserve typed conditions and filters inline"
 )]
-pub enum CantAttackUnlessConditionSpec {
+pub enum CantAttackUnlessConditionSpec<Cond = Condition> {
     AttackCost(AttackCostCondition),
     AttackingGroupCondition(AttackingGroupAttackCondition),
     BattlefieldCountAtLeast { filter: ObjectFilter, count: u32 },
@@ -741,12 +896,37 @@ pub enum CantAttackUnlessConditionSpec {
     ControllerGraveyardHasCardsAtLeast(u32),
     DefendingPlayerCondition(DefendingPlayerAttackCondition),
     OpponentWasDealtDamageThisTurn,
-    SourceCondition(Condition),
+    SourceCondition(Cond),
+}
+impl<Cond> CantAttackUnlessConditionSpec<Cond> {
+    /// Translate the source condition into another phase's vocabulary.
+    pub fn try_map_condition<Cond2, Err>(
+        self,
+        map_condition: impl FnOnce(Cond) -> Result<Cond2, Err>,
+    ) -> Result<CantAttackUnlessConditionSpec<Cond2>, Err> {
+        use CantAttackUnlessConditionSpec as Spec;
+        Ok(match self {
+            Spec::SourceCondition(condition) => Spec::SourceCondition(map_condition(condition)?),
+            Spec::AttackCost(cost) => Spec::AttackCost(cost),
+            Spec::AttackingGroupCondition(group) => Spec::AttackingGroupCondition(group),
+            Spec::BattlefieldCountAtLeast { filter, count } => {
+                Spec::BattlefieldCountAtLeast { filter, count }
+            }
+            Spec::ControllerControlsMoreThanDefendingPlayer(filter) => {
+                Spec::ControllerControlsMoreThanDefendingPlayer(filter)
+            }
+            Spec::ControllerGraveyardHasCardsAtLeast(count) => {
+                Spec::ControllerGraveyardHasCardsAtLeast(count)
+            }
+            Spec::DefendingPlayerCondition(condition) => Spec::DefendingPlayerCondition(condition),
+            Spec::OpponentWasDealtDamageThisTurn => Spec::OpponentWasDealtDamageThisTurn,
+        })
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
-pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond> {
+pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond, ICond = Condition> {
     pub filter: ObjectFilter,
     pub affected_filter: Option<ObjectFilter>,
     pub may: bool,
@@ -762,7 +942,7 @@ pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond> {
     pub added_card_types: Vec<CardType>,
     pub removed_supertypes: Vec<Supertype>,
     pub added_subtypes: Vec<Subtype>,
-    pub added_abilities: Vec<AbilityModel<T, E, C, Cond>>,
+    pub added_abilities: Vec<AbilityModel<T, E, C, Cond, ICond>>,
     pub set_base_power_toughness: Option<(i32, i32)>,
     pub set_base_power_toughness_from_self: bool,
 }
@@ -773,12 +953,13 @@ pub struct EnterAsCopyLinkedExilePairSpec {
     pub counter_type: CounterType,
 }
 
-impl<T, E, C, Cond> crate::GrantStaticAbility for StaticAbility<T, E, C, Cond>
+impl<T, E, C, Cond, ICond> crate::GrantStaticAbility for StaticAbility<T, E, C, Cond, ICond>
 where
     T: Clone + PartialEq + std::fmt::Debug + 'static,
     E: Clone + PartialEq + std::fmt::Debug + 'static,
     C: Clone + PartialEq + std::fmt::Debug + 'static,
     Cond: Clone + PartialEq + std::fmt::Debug + 'static,
+    ICond: Clone + PartialEq + std::fmt::Debug + ConditionConjunction + 'static,
 {
     fn grant_flash() -> Self {
         Self::flash()

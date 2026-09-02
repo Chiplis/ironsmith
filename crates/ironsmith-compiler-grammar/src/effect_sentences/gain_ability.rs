@@ -2,8 +2,6 @@ use super::super::activation_and_restrictions::parse_single_word_keyword_action;
 use super::super::clause_support::{
     parse_static_ability_ast_line_lexed, parse_trigger_clause_lexed, parse_triggered_line_lexed,
 };
-#[cfg(test)]
-use super::super::compile_support::compile_statement_effects;
 use super::super::grammar::primitives::{
     TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_comma,
     split_lexed_slices_on_list_conjunction,
@@ -13,7 +11,6 @@ use super::super::lexer::{
     OwnedLexToken, TokenKind, contains_token_kind, is_authored_proper_name_phrase,
     locate_token_kind, locate_token_word, token_slice_first_is, trim_lexed_commas,
 };
-use super::super::lowering_support::assemble_parsed_triggered_ability as parsed_triggered_ability;
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 #[cfg(test)]
 use super::super::token_primitives::str_contains as string_contains;
@@ -47,6 +44,9 @@ use crate::static_abilities::StaticAbilityId;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, SourceReferenceSurface};
 use crate::types::CardType;
 use crate::zone::Zone;
+#[cfg(test)]
+use ironsmith_compiler_lowering::compile_support::compile_statement_effects;
+use ironsmith_compiler_semantic::keyword_abilities::assemble_parsed_triggered_ability as parsed_triggered_ability;
 
 type GainAbilityWordView<'a> = TokenWordView<'a>;
 type SharedSubjectPump = (
@@ -54,7 +54,7 @@ type SharedSubjectPump = (
     Value,
     usize,
     Until,
-    Option<crate::ConditionExpr>,
+    Option<PredicateAst>,
     Option<(i32, i32, Value)>,
 );
 type SharedSubjectBasePt = (Value, Value, usize, Until);
@@ -1198,7 +1198,7 @@ pub fn parse_simple_ability_duration(words_after_verb: &[&str]) -> Option<(usize
 fn parse_ability_duration_with_condition(
     tokens_after_verb: &[OwnedLexToken],
     words_after_verb: &[&str],
-) -> (Option<(usize, usize, Until)>, Option<crate::ConditionExpr>) {
+) -> (Option<(usize, usize, Until)>, Option<PredicateAst>) {
     let Some(shape) = gain_shapes::parse_source_tapped_gain_duration_shape(tokens_after_verb)
         .or_else(|| gain_shapes::parse_gain_ability_duration_shape(words_after_verb))
     else {
@@ -1245,20 +1245,26 @@ fn parse_temporary_escape_grant(
     )))
 }
 
-fn player_filter_for_gain_condition(player: PlayerAst) -> Option<PlayerFilter> {
-    Some(match player {
-        PlayerAst::Implicit | PlayerAst::You => PlayerFilter::You,
-        PlayerAst::Opponent => PlayerFilter::Opponent,
-        PlayerAst::Any => PlayerFilter::Any,
-        PlayerAst::That => PlayerFilter::IteratedPlayer,
-        PlayerAst::Target => PlayerFilter::target_player(),
-        _ => return None,
-    })
+/// The players a trailing gain condition can be about.
+///
+/// The clause only accepts the handful of subjects it can bind; anything else
+/// declines. The recognized player passes through unchanged — turning it into a
+/// filter is the resolver's job.
+fn player_filter_for_gain_condition(player: PlayerAst) -> Option<PlayerAst> {
+    match player {
+        PlayerAst::Implicit => Some(PlayerAst::You),
+        PlayerAst::You
+        | PlayerAst::Opponent
+        | PlayerAst::Any
+        | PlayerAst::That
+        | PlayerAst::Target => Some(player),
+        _ => None,
+    }
 }
 
-fn condition_from_gain_trailing_predicate(predicate: PredicateAst) -> Option<crate::ConditionExpr> {
+fn condition_from_gain_trailing_predicate(predicate: PredicateAst) -> Option<PredicateAst> {
     Some(match predicate {
-        PredicateAst::PlayerControls { player, filter } => crate::ConditionExpr::PlayerControls {
+        PredicateAst::PlayerControls { player, filter } => PredicateAst::PlayerControls {
             player: player_filter_for_gain_condition(player)?,
             filter,
         },
@@ -1266,7 +1272,7 @@ fn condition_from_gain_trailing_predicate(predicate: PredicateAst) -> Option<cra
             player,
             filter,
             count,
-        } => crate::ConditionExpr::PlayerHasAtLeast {
+        } => PredicateAst::PlayerHasAtLeast {
             player: player_filter_for_gain_condition(player)?,
             filter,
             count,
@@ -1275,7 +1281,7 @@ fn condition_from_gain_trailing_predicate(predicate: PredicateAst) -> Option<cra
             player,
             filter,
             count,
-        } => crate::ConditionExpr::PlayerControlsExactly {
+        } => PredicateAst::PlayerControlsExactly {
             player: player_filter_for_gain_condition(player)?,
             filter,
             count,
@@ -1284,21 +1290,21 @@ fn condition_from_gain_trailing_predicate(predicate: PredicateAst) -> Option<cra
             player,
             filter,
             count,
-        } => crate::ConditionExpr::PlayerHasAtLeastWithDifferentPowers {
+        } => PredicateAst::PlayerHasAtLeastWithDifferentPowers {
             player: player_filter_for_gain_condition(player)?,
             filter,
             count,
         },
-        PredicateAst::And(left, right) => crate::ConditionExpr::And(
+        PredicateAst::And(left, right) => PredicateAst::And(
             Box::new(condition_from_gain_trailing_predicate(*left)?),
             Box::new(condition_from_gain_trailing_predicate(*right)?),
         ),
-        PredicateAst::Or(left, right) => crate::ConditionExpr::Or(
+        PredicateAst::Or(left, right) => PredicateAst::Or(
             Box::new(condition_from_gain_trailing_predicate(*left)?),
             Box::new(condition_from_gain_trailing_predicate(*right)?),
         ),
         PredicateAst::Not(inner) => {
-            crate::ConditionExpr::Not(Box::new(condition_from_gain_trailing_predicate(*inner)?))
+            PredicateAst::Not(Box::new(condition_from_gain_trailing_predicate(*inner)?))
         }
         _ => return None,
     })
@@ -1308,7 +1314,7 @@ fn subject_verb_grant_abilities_to_target_with_optional_condition(
     target: TargetAst,
     abilities: Vec<GrantedAbilityAst>,
     duration: Until,
-    condition: &Option<crate::ConditionExpr>,
+    condition: &Option<PredicateAst>,
 ) -> EffectAst {
     if let Some(condition) = condition {
         EffectAst::subject_verb_grant_abilities_to_target_with_condition(
@@ -1326,7 +1332,7 @@ fn subject_verb_grant_abilities_all_with_optional_condition(
     filter: ObjectFilter,
     abilities: Vec<GrantedAbilityAst>,
     duration: Until,
-    condition: &Option<crate::ConditionExpr>,
+    condition: &Option<PredicateAst>,
 ) -> EffectAst {
     if let Some(condition) = condition {
         EffectAst::subject_verb_grant_abilities_all_with_condition(
@@ -1356,7 +1362,7 @@ fn subject_verb_remove_abilities_all_with_optional_condition(
     filter: ObjectFilter,
     abilities: Vec<GrantedAbilityAst>,
     duration: Until,
-    condition: &Option<crate::ConditionExpr>,
+    condition: &Option<PredicateAst>,
 ) -> EffectAst {
     if let Some(condition) = condition {
         EffectAst::subject_verb_remove_abilities_all_with_condition(

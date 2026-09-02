@@ -63,7 +63,7 @@ pub fn parse_semantic_document(
     doc: RewriteSemanticDocument,
 ) -> Result<ParsedCardAst, CardTextError> {
     let RewriteSemanticDocument {
-        builder,
+        card,
         annotations,
         provenance,
         symbols,
@@ -102,7 +102,7 @@ pub fn parse_semantic_document(
     }
 
     Ok(ParsedCardAst {
-        builder,
+        card,
         annotations,
         provenance,
         symbols,

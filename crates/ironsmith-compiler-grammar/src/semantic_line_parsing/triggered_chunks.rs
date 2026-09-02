@@ -5,14 +5,15 @@
 //! text or token shapes.
 
 use super::*;
-use crate::condition_antecedent::{
+use crate::cards::builders::TriggerFrequencyPredicateAst;
+use crate::model::ast::TriggerIntroSurfaceAst;
+use crate::model::facts::TriggeredLineSemanticFacts;
+use ironsmith_compiler_semantic::condition_antecedent::{
     ConditionAntecedentBinding, bind_condition_antecedent_in_effects,
     bind_condition_counter_antecedent_in_effects,
     bind_random_count_condition_antecedent_in_effects, predicate_object_filter_antecedent,
     predicate_source_counter_antecedent, resolve_it_animations_to_source,
 };
-use crate::model::ast::TriggerIntroSurfaceAst;
-use crate::model::facts::TriggeredLineSemanticFacts;
 
 fn merge_optional_predicates(
     left: Option<PredicateAst>,
@@ -376,23 +377,26 @@ fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
         || filter.any_of.iter().any(|branch| filter_references_tag(branch, tag))
 }
 
+/// The frequency limit these facts state, as a predicate.
 fn trigger_frequency_condition_from_facts(
     facts: &TriggeredLineSemanticFacts,
     max_triggers_per_turn: Option<u32>,
-) -> Option<crate::ConditionExpr> {
+) -> Option<PredicateAst> {
     max_triggers_per_turn.map(|limit| {
-        if limit == 1
-            && facts.frequency.first_time_each_or_this_turn
-            && facts.frequency.becomes_crewed
-        {
-            crate::ConditionExpr::SourceFirstCrewedThisTurn
-        } else if limit == 1 && facts.frequency.first_time_each_or_this_turn {
-            crate::ConditionExpr::FirstTimeThisTurn
-        } else if facts.frequency.do_this_limit_each_turn.is_some() {
-            crate::ConditionExpr::DoThisMaxTimesEachTurn(limit)
-        } else {
-            crate::ConditionExpr::MaxTimesEachTurn(limit)
-        }
+        PredicateAst::TriggerFrequency(
+            if limit == 1
+                && facts.frequency.first_time_each_or_this_turn
+                && facts.frequency.becomes_crewed
+            {
+                TriggerFrequencyPredicateAst::SourceFirstCrewedThisTurn
+            } else if limit == 1 && facts.frequency.first_time_each_or_this_turn {
+                TriggerFrequencyPredicateAst::FirstTimeThisTurn
+            } else if facts.frequency.do_this_limit_each_turn.is_some() {
+                TriggerFrequencyPredicateAst::DoThisMaxTimesEachTurn(limit)
+            } else {
+                TriggerFrequencyPredicateAst::MaxTimesEachTurn(limit)
+            },
+        )
     })
 }
 
@@ -406,12 +410,15 @@ fn rewrite_do_this_trigger_frequency_surface(
     let Some(condition) = triggered.intervening_if.take() else {
         return;
     };
-    triggered.intervening_if = Some(match condition {
-        crate::ConditionExpr::MaxTimesEachTurn(count) if count == surface_count => {
-            crate::ConditionExpr::DoThisMaxTimesEachTurn(count)
-        }
-        other => other,
-    });
+    triggered.intervening_if =
+        Some(match condition {
+            PredicateAst::TriggerFrequency(TriggerFrequencyPredicateAst::MaxTimesEachTurn(
+                count,
+            )) if count == surface_count => PredicateAst::TriggerFrequency(
+                TriggerFrequencyPredicateAst::DoThisMaxTimesEachTurn(count),
+            ),
+            other => other,
+        });
 }
 
 pub fn apply_chosen_option_to_triggered_chunk(
@@ -423,10 +430,10 @@ pub fn apply_chosen_option_to_triggered_chunk(
 ) -> Result<LineAst, CardTextError> {
     let during_your_turn_condition = facts
         .becomes_tapped_during_your_turn
-        .then_some(crate::ConditionExpr::YourTurn);
+        .then_some(PredicateAst::YourTurn);
     let max_condition = trigger_frequency_condition_from_facts(facts, max_triggers_per_turn);
     let combined_condition = match (chosen_option, max_condition.clone()) {
-        (Some(label), Some(max)) => Some(crate::ConditionExpr::And(
+        (Some(label), Some(max)) => Some(PredicateAst::And(
             Box::new(condition_for_chosen_option(label)),
             Box::new(max),
         )),
@@ -447,7 +454,7 @@ pub fn apply_chosen_option_to_triggered_chunk(
                 .or(max_triggers_per_turn)
                 .and_then(|count| trigger_frequency_condition_from_facts(facts, Some(count)));
             let merged_condition = match (chosen_option, merged_max_condition) {
-                (Some(label), Some(max)) => Some(crate::ConditionExpr::And(
+                (Some(label), Some(max)) => Some(PredicateAst::And(
                     Box::new(condition_for_chosen_option(label)),
                     Box::new(max),
                 )),
@@ -456,10 +463,9 @@ pub fn apply_chosen_option_to_triggered_chunk(
                 (None, None) => None,
             };
             let merged_condition = match (during_your_turn_condition.clone(), merged_condition) {
-                (Some(condition), Some(existing)) => Some(crate::ConditionExpr::And(
-                    Box::new(condition),
-                    Box::new(existing),
-                )),
+                (Some(condition), Some(existing)) => {
+                    Some(PredicateAst::And(Box::new(condition), Box::new(existing)))
+                }
                 (Some(condition), None) => Some(condition),
                 (None, existing) => existing,
             };
@@ -502,9 +508,7 @@ pub fn apply_chosen_option_to_triggered_chunk(
                 && let Some(condition) = combined_condition
             {
                 triggered.intervening_if = Some(match triggered.intervening_if.take() {
-                    Some(existing) => {
-                        crate::ConditionExpr::And(Box::new(existing), Box::new(condition))
-                    }
+                    Some(existing) => PredicateAst::And(Box::new(existing), Box::new(condition)),
                     None => condition,
                 });
             }
@@ -512,9 +516,7 @@ pub fn apply_chosen_option_to_triggered_chunk(
                 && let Some(condition) = during_your_turn_condition
             {
                 triggered.intervening_if = Some(match triggered.intervening_if.take() {
-                    Some(existing) => {
-                        crate::ConditionExpr::And(Box::new(condition), Box::new(existing))
-                    }
+                    Some(existing) => PredicateAst::And(Box::new(condition), Box::new(existing)),
                     None => condition,
                 });
             }

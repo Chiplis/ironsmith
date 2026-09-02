@@ -2035,7 +2035,7 @@ fn filter_is_exact_tagged_it(filter: &ObjectFilter) -> bool {
 fn push_returned_object_keyword_grant_effect(
     effects: &mut Vec<EffectAst>,
     action: KeywordAction,
-    condition: Option<crate::ConditionExpr>,
+    condition: Option<PredicateAst>,
 ) {
     let target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None);
     let ability = GrantedAbilityAst::from(action);
@@ -2391,7 +2391,7 @@ pub use lines_trigger_programs::{
 };
 #[path = "lines/lines_object_action.rs"]
 mod lines_object_action_programs;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub use lines_object_action_programs::parse_keyword_line_with_full_tokens_for_test;
 #[cfg(test)]
 use lines_object_action_programs::{
@@ -2410,11 +2410,11 @@ mod lines_core_programs;
 use lines_core_programs::hideaway_line_ast;
 #[cfg(test)]
 use lines_core_programs::test_line_info;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub use lines_core_programs::{parse_single_effect_lexed, strip_lexed_suffix_phrase};
 #[path = "lines/lines_ability.rs"]
 mod lines_ability_programs;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub use lines_ability_programs::parse_keyword_line_for_test;
 use lines_ability_programs::{
     parse_day_night_starts_day_static_chunk, parse_static_line_impl, try_lower_hideaway_keyword,

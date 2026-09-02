@@ -53,7 +53,7 @@ pub(super) fn mark_matching_for_each_object_leading_then(
 /// proving exactly where a later sentence did not rewrite or absorb an
 /// earlier effect. Any cross-sentence structural rewrite falls back to the
 /// ordinary flat program.
-pub(crate) fn parse_effect_sentences_preserving_source_boundaries(
+pub fn parse_effect_sentences_preserving_source_boundaries(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     let sentences = split_lexed_sentences(tokens)
@@ -715,7 +715,7 @@ fn parse_effect_sentences_preserving_source_boundaries_general(
                 .any(|effect| crate::effect_sentences::primary_target_from_effect(effect).is_some())
             && sentence_effects
                 .iter()
-                .any(crate::compile_support::effect_references_it_tag)
+                .any(crate::tag_support::effect_references_it_tag)
             && sentence_effects
                 .iter()
                 .any(contains_local_replacement_dependency)

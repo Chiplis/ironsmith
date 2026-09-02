@@ -1,3 +1,4 @@
+use ironsmith_compiler::ParseCardText;
 use ironsmith_compiler::Zone;
 use ironsmith_compiler::ability::AbilityKind;
 use ironsmith_compiler::cards::CardDefinitionBuilder;

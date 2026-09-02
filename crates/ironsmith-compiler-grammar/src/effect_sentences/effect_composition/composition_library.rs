@@ -145,7 +145,7 @@ pub(super) fn parse_look_hand_optional_exile_play_tax_bundle(
             TargetAst::Tagged(exiled_tag, None),
             crate::model::CompilerGrantableCore::Ability(
                 crate::model::CompilerStaticAbilityCore::new(
-                    crate::static_abilities::CostIncreaseManaCost::new(
+                    crate::model::CompilerCostIncreaseManaCost::new(
                         spell_filter,
                         tax.additional_cost,
                     ),

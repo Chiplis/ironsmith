@@ -305,19 +305,7 @@ fn marker_keyword_set_contains(set: &[&str], keyword: &str) -> bool {
         .any(|candidate| keyword_head_is(keyword, candidate))
 }
 
-pub fn target_ast_to_object_filter(target: TargetAst) -> Option<ObjectFilter> {
-    match target {
-        TargetAst::Source(_) => Some(ObjectFilter::source()),
-        TargetAst::Object(filter, _, _) => Some(filter),
-        TargetAst::Spell(_) => Some(ObjectFilter::spell()),
-        TargetAst::Tagged(tag, _) => Some(ObjectFilter::tagged(tag)),
-        TargetAst::AnyOtherTarget(_) => {
-            Some(ObjectFilter::default().not_tagged(crate::tag::CompilerReferenceTag::It.key()))
-        }
-        TargetAst::WithCount(inner, _) => target_ast_to_object_filter(*inner),
-        _ => None,
-    }
-}
+pub use crate::model::ast::target_ast_to_object_filter;
 
 pub fn is_supported_untap_restriction_tail(words: &[&str]) -> bool {
     parse_keyword_untap_restriction_words(words).is_some()

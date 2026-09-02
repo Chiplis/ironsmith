@@ -1,4 +1,5 @@
 use super::*;
+use crate::cards::builders::PlayerAst;
 
 #[test]
 fn parses_removed_from_draft_characteristic_condition_with_exact_group_name() {
@@ -10,7 +11,7 @@ fn parses_removed_from_draft_characteristic_condition_with_exact_group_name() {
     let parsed =
         parse_removed_from_draft_condition(&tokens).expect("typed removed-from-draft condition");
 
-    assert_eq!(parsed.player, PlayerFilter::You);
+    assert_eq!(parsed.player, PlayerAst::You);
     assert!(parsed.filter.card_types.contains(&CardType::Creature));
     assert!(parsed.filter.has_explicit_card_noun());
     assert_eq!(
@@ -282,7 +283,7 @@ fn parse_control_condition_supports_opt_in_defending_player_subject() {
 fn player_status_subjects_lower_typed_contextual_references() {
     let tokens = lex_line("that player is the monarch", 0).expect("lex");
     let parsed = parse_player_status_condition(&tokens).expect("that-player status");
-    assert_eq!(parsed.player, PlayerFilter::IteratedPlayer);
+    assert_eq!(parsed.player, PlayerAst::That);
     assert_eq!(parsed.status, PlayerStatusAst::Monarch);
 }
 
@@ -292,7 +293,7 @@ fn deferred_player_subject_modes_keep_contextual_lowering_distinct() {
     let that_player = LexedClause::new(&that_player);
     assert_eq!(
         parse_player_has_quantity_subject_clause(that_player),
-        Some(PlayerFilter::IteratedPlayer)
+        Some(PlayerAst::That)
     );
     assert_eq!(
         parse_life_relation_player_subject_clause(that_player),
@@ -326,7 +327,7 @@ fn parse_player_has_quantity_object_condition_uses_shared_capture_shape() {
     )
     .expect("player has opponents condition should parse");
 
-    assert_eq!(parsed.player, PlayerFilter::You);
+    assert_eq!(parsed.player, PlayerAst::You);
     assert_eq!(
         comparison_to_strict_at_least_threshold(&parsed.comparison),
         Some(2)
@@ -336,7 +337,7 @@ fn parse_player_has_quantity_object_condition_uses_shared_capture_shape() {
     let parsed = parse_player_has_quantity_object_condition(&life, &[&["life"]], "life condition")
         .expect("player has life condition should parse");
 
-    assert_eq!(parsed.player, PlayerFilter::Any);
+    assert_eq!(parsed.player, PlayerAst::Any);
     assert_eq!(parsed.comparison, Comparison::LessThanOrEqual(13));
 }
 

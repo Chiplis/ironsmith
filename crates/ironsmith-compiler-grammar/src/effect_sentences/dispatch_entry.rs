@@ -48,6 +48,8 @@ use crate::target::{
 };
 use crate::types::CardType;
 use crate::zone::Zone;
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
 use ironsmith_core::ValueSurfaceHint;
 use std::cell::OnceCell;
 use winnow::Parser as _;
@@ -6318,7 +6320,7 @@ mod quoted_token_coin_flip_outcome_tests {
         .expect("coin-flip sentence bundle should prepare");
         assert_eq!(prepared.source_sentence_segments.len(), 3, "{prepared:#?}");
 
-        let builder = crate::cards::builders::CardDefinitionBuilder::new(
+        let builder = ironsmith_compiler_lowering::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Coin Boundary Probe",
         )
@@ -8251,68 +8253,6 @@ pub fn apply_cant_be_regenerated_to_last_destroy_group(effects: &mut [EffectAst]
         applied |= apply_cant_be_regenerated_to_effect(effect);
     }
     applied
-}
-
-pub fn apply_cant_be_regenerated_to_last_target_effect(effects: &mut Vec<EffectAst>) -> bool {
-    let Some(previous_target) = effects.last().and_then(primary_target_from_effect) else {
-        return false;
-    };
-    let Some(mut filter) = target_ast_to_object_filter(previous_target) else {
-        return false;
-    };
-    if !filter
-        .tagged_constraints
-        .iter()
-        .any(|constraint| constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
-    {
-        filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.key(),
-            relation: TaggedOpbjectRelation::IsTaggedObject,
-        });
-    }
-
-    effects.push(EffectAst::subject_verb_cant(
-        crate::effect::Restriction::be_regenerated(filter),
-        Until::EndOfTurn,
-        None,
-    ));
-    true
-}
-
-fn apply_cant_be_regenerated_to_effect(effect: &mut EffectAst) -> bool {
-    match effect {
-        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
-            SubjectVerbActionAst::Destroy {
-                no_regeneration, ..
-            }
-            | SubjectVerbActionAst::DestroyAll {
-                no_regeneration, ..
-            }
-            | SubjectVerbActionAst::DestroyAllOfChosenColor {
-                no_regeneration, ..
-            } => {
-                *no_regeneration = true;
-                true
-            }
-            _ => false,
-        },
-        EffectAst::ChooseOneOf { modes } | EffectAst::VillainousChoice { modes, .. } => {
-            let mut applied = false;
-            for mode in modes {
-                applied |= apply_cant_be_regenerated_to_effects_tail(&mut mode.effects);
-            }
-            applied
-        }
-        _ => {
-            let mut applied = false;
-            for_each_nested_effects_mut(effect, true, |nested| {
-                if !applied {
-                    applied = apply_cant_be_regenerated_to_effects_tail(nested);
-                }
-            });
-            applied
-        }
-    }
 }
 
 pub fn mark_last_destroy_creature_destroyed_this_way_surface(effects: &mut [EffectAst]) -> bool {
@@ -10260,7 +10200,7 @@ mod tests {
                         filter,
                         abilities,
                         duration: crate::effect::Until::EndOfCombat,
-                        condition: Some(crate::ConditionExpr::SourceIsUntapped),
+                        condition: Some(PredicateAst::SourceIsUntapped),
                         lock_filter_at_resolution: false,
                         ..
                     },
@@ -10881,124 +10821,6 @@ mod tests {
     }
 }
 
-fn apply_cant_be_regenerated_to_effects_tail(effects: &mut [EffectAst]) -> bool {
-    for effect in effects.iter_mut().rev() {
-        if apply_cant_be_regenerated_to_effect(effect) {
-            return true;
-        }
-    }
-    false
-}
-
-pub fn primary_damage_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
-    match effect {
-        EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            SubjectVerbActionAst::DealDamage { target, .. }
-            | SubjectVerbActionAst::DealDistributedDamage { target, .. }
-            | SubjectVerbActionAst::DealDamageEqualToPower { target, .. } => Some(target.clone()),
-            _ => None,
-        },
-        _ => {
-            let mut found = None;
-            for_each_nested_effects(effect, false, |nested| {
-                if found.is_none() {
-                    found = nested.iter().find_map(primary_damage_target_from_effect);
-                }
-            });
-            found
-        }
-    }
-}
-
-pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
-    match effect {
-        EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            SubjectVerbActionAst::DealDamage { target, .. }
-            | SubjectVerbActionAst::DealDistributedDamage { target, .. }
-            | SubjectVerbActionAst::DealDamageEqualToPower { target, .. }
-            | SubjectVerbActionAst::Tap { target }
-            | SubjectVerbActionAst::Untap { target }
-            | SubjectVerbActionAst::Destroy { target, .. }
-            | SubjectVerbActionAst::Exile { target, .. }
-            | SubjectVerbActionAst::LookAtHand { target }
-            | SubjectVerbActionAst::Counter { target }
-            | SubjectVerbActionAst::CounterUnlessPays { target, .. }
-            | SubjectVerbActionAst::PutCounters { target, .. }
-            | SubjectVerbActionAst::PutCounterChoice { target, .. }
-            | SubjectVerbActionAst::ReturnToHand { target, .. }
-            | SubjectVerbActionAst::Detain { target }
-            | SubjectVerbActionAst::Goad { target, .. }
-            | SubjectVerbActionAst::Suspect { target }
-            | SubjectVerbActionAst::RemoveFromCombat { target }
-            | SubjectVerbActionAst::Flip { target }
-            | SubjectVerbActionAst::Regenerate { target, .. }
-            | SubjectVerbActionAst::TapOrUntap { target }
-            | SubjectVerbActionAst::PhaseOut { target, .. }
-            | SubjectVerbActionAst::PhaseIn { target }
-            | SubjectVerbActionAst::Transform { target }
-            | SubjectVerbActionAst::Convert { target }
-            | SubjectVerbActionAst::Explore { target }
-            | SubjectVerbActionAst::Endure { target, .. }
-            | SubjectVerbActionAst::Connive { target, .. }
-            | SubjectVerbActionAst::MoveToLibraryNthFromTop { target, .. }
-            | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target }
-            | SubjectVerbActionAst::RemoveUpToAnyCounters { target, .. }
-            | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target, .. }
-            | SubjectVerbActionAst::PutCounterOfChosenKind { target }
-            | SubjectVerbActionAst::PutSticker { target, .. }
-            | SubjectVerbActionAst::SwitchPowerToughness { target, .. }
-            | SubjectVerbActionAst::GrantProtectionChoice { target, .. }
-            | SubjectVerbActionAst::AssignNoCombatDamage { source: target, .. }
-            | SubjectVerbActionAst::PreventAllCombatDamageFromSource { source: target, .. }
-            | SubjectVerbActionAst::ExileWhenSourceLeaves { target }
-            | SubjectVerbActionAst::SacrificeSourceWhenLeaves { target }
-            | SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
-            | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
-                source: target,
-            }
-            | SubjectVerbActionAst::PreventDamage { target, .. }
-            | SubjectVerbActionAst::PreventAllDamageToTarget { target, .. }
-            | SubjectVerbActionAst::PreventDamageToTargetPutCounters { target, .. }
-            | SubjectVerbActionAst::PutOrRemoveCounters { target, .. }
-            | SubjectVerbActionAst::DoubleCountersOnTarget { target, .. }
-            | SubjectVerbActionAst::ExileUntilSourceLeaves { target, .. }
-            | SubjectVerbActionAst::ReturnToBattlefield { target, .. }
-            | SubjectVerbActionAst::MoveToZone { target, .. }
-            | SubjectVerbActionAst::TargetOnly { target, .. }
-            | SubjectVerbActionAst::Pump { target, .. }
-            | SubjectVerbActionAst::SetBasePowerToughness { target, .. }
-            | SubjectVerbActionAst::BecomeBasePtCreature { target, .. }
-            | SubjectVerbActionAst::SetBasePower { target, .. }
-            | SubjectVerbActionAst::PumpForEach { target, .. }
-            | SubjectVerbActionAst::PumpByLastEffect { target, .. }
-            | SubjectVerbActionAst::GainControl { target, .. }
-            | SubjectVerbActionAst::GrantAbilitiesToTarget { target, .. }
-            | SubjectVerbActionAst::GrantToTarget { target, .. }
-            | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { target, .. } => {
-                Some(target.clone())
-            }
-            SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
-                protected_target,
-                destination_target,
-                ..
-            } => protected_target
-                .as_ref()
-                .or(destination_target.as_ref())
-                .cloned(),
-            _ => None,
-        },
-        _ => {
-            let mut found = None;
-            for_each_nested_effects(effect, false, |nested| {
-                if found.is_none() {
-                    found = nested.iter().find_map(primary_target_from_effect);
-                }
-            });
-            found
-        }
-    }
-}
-
 fn time_travel_effect_ast() -> EffectAst {
     let permanent_with_time_counter = ObjectFilter::permanent()
         .you_control()
@@ -11413,7 +11235,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
     match effect {
         EffectAst::UnlessPays { effects, cost, .. } => {
             let consequence_references_it =
-                crate::compile_support::effects_reference_it_tag(effects);
+                crate::tag_support::effects_reference_it_tag(effects);
             replace_values_in_total_cost(cost, replacement, clause)?;
             replace_unbound_x_in_effects_anywhere(effects, replacement, clause)?;
             if consequence_references_it {
@@ -13043,3 +12865,11 @@ pub fn try_apply_token_copy_followup(
     }
     Ok(false)
 }
+
+// AST queries and edits live beside the AST they operate on, so lowering can
+// use them without importing recognition.
+pub use crate::model::ast::{
+    apply_cant_be_regenerated_to_effect, apply_cant_be_regenerated_to_effects_tail,
+    apply_cant_be_regenerated_to_last_target_effect, primary_damage_target_from_effect,
+    primary_target_from_effect,
+};

@@ -1,7 +1,10 @@
 use super::super::super::util::tokenize_line;
 use super::*;
 use crate::CardId;
-use crate::cards::builders::CardDefinitionBuilder;
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
+#[cfg(test)]
+use ironsmith_compiler_lowering::CardDefinitionBuilder;
 
 #[test]
 fn quoted_source_relative_restriction_remains_a_temporary_static_grant() {

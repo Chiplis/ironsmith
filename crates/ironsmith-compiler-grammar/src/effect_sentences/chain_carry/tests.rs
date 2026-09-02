@@ -1,7 +1,7 @@
 use crate::ability::AbilityKind;
 use crate::cards::builders::{
-    CardDefinitionBuilder, CarryContext, ChooseOneModeAst, EffectAst, PlayerAst, PredicateAst,
-    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbSubjectAst, TargetAst,
+    CarryContext, ChooseOneModeAst, EffectAst, PlayerAst, PredicateAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, SubjectVerbSubjectAst, TargetAst,
 };
 use crate::effect::{ChoiceCount, Value};
 use crate::ids::CardId;
@@ -14,6 +14,10 @@ use crate::target::PlayerFilter;
 use crate::target::TaggedOpbjectRelation;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
+#[cfg(test)]
+use ironsmith_compiler_lowering::CardDefinitionBuilder;
 
 use super::super::super::lexer::lex_line;
 use super::super::dispatch_entry::parse_effect_sentences_lexed;

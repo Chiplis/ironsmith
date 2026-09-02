@@ -40205,7 +40205,7 @@ mod anthem_color_subtype_boundary_tests {
         let filter = goblin_filter();
         let anthem: crate::static_abilities::CompiledStaticAbility =
             ironsmith_core::StaticAbility::new(
-                ironsmith_core::Anthem::new(filter.clone(), 1, 1)
+                ironsmith_core::Anthem::<ironsmith_core::Condition>::new(filter.clone(), 1, 1)
                     .with_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::All)),
             );
         let colors: crate::static_abilities::CompiledStaticAbility =
@@ -40238,7 +40238,7 @@ mod anthem_color_subtype_boundary_tests {
             .with_subtype(Subtype::Zombie);
         let anthem: crate::static_abilities::CompiledStaticAbility =
             ironsmith_core::StaticAbility::new(
-                ironsmith_core::Anthem::new(goblins.clone(), 1, 1)
+                ironsmith_core::Anthem::<ironsmith_core::Condition>::new(goblins.clone(), 1, 1)
                     .with_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::All)),
             );
         let colors: crate::static_abilities::CompiledStaticAbility =

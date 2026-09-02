@@ -284,7 +284,7 @@ pub fn parse_get_modifier_values_with_tail(
     modifier_tokens: &[OwnedLexToken],
     power: Value,
     toughness: Value,
-) -> Result<(Value, Value, Until, Option<crate::ConditionExpr>), CardTextError> {
+) -> Result<(Value, Value, Until, Option<PredicateAst>), CardTextError> {
     let clause = LexedClause::new(modifier_tokens).text();
     let mut out_power = power;
     let mut out_toughness = toughness;

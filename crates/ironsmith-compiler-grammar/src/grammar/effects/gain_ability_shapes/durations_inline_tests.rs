@@ -38,7 +38,7 @@ fn parses_turn_conditional_and_quoted_durations() {
     let tapped = parse_source_tapped_gain_duration_shape(&tapped_tokens).unwrap();
     assert_eq!(tapped.start, 1);
     assert_eq!(tapped.duration, Until::SourceUntaps);
-    assert_eq!(tapped.condition, Some(ConditionExpr::SourceIsTapped));
+    assert_eq!(tapped.condition, Some(PredicateAst::SourceIsTapped));
 
     let near_miss = lex_line("flying for as long as this creature remains untapped.", 0).unwrap();
     assert!(parse_source_tapped_gain_duration_shape(&near_miss).is_none());

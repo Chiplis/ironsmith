@@ -1,4 +1,5 @@
 use super::*;
+use crate::cards::builders::PredicateAst;
 use crate::grammar::activated_lines::{
     self as activated_line_grammar, ActivatedAbilitiesReductionRemainder,
     ActivatedBlockRequirement, ActivatedDevotionParseError, ActivatedLoyaltyShorthand,
@@ -870,12 +871,9 @@ pub fn parse_activate_only_timing_lexed(tokens: &[OwnedLexToken]) -> Option<Acti
     activated_sentence_parsers::parse_activate_only_timing_lexed(tokens)
 }
 
-pub fn flatten_mana_activation_conditions(
-    condition: &crate::ConditionExpr,
-    out: &mut Vec<crate::ConditionExpr>,
-) {
+pub fn flatten_mana_activation_conditions(condition: &PredicateAst, out: &mut Vec<PredicateAst>) {
     match condition {
-        crate::ConditionExpr::And(left, right) => {
+        PredicateAst::And(left, right) => {
             flatten_mana_activation_conditions(left, out);
             flatten_mana_activation_conditions(right, out);
         }
@@ -883,31 +881,29 @@ pub fn flatten_mana_activation_conditions(
     }
 }
 
-pub fn rebuild_mana_activation_conditions(
-    conditions: Vec<crate::ConditionExpr>,
-) -> Option<crate::ConditionExpr> {
+pub fn rebuild_mana_activation_conditions(conditions: Vec<PredicateAst>) -> Option<PredicateAst> {
     let mut iter = conditions.into_iter();
     let first = iter.next()?;
     Some(iter.fold(first, |acc, next| {
-        crate::ConditionExpr::And(Box::new(acc), Box::new(next))
+        PredicateAst::And(Box::new(acc), Box::new(next))
     }))
 }
 
 pub fn combine_mana_activation_condition(
-    base: Option<crate::ConditionExpr>,
+    base: Option<PredicateAst>,
     timing: ActivationTiming,
-) -> Option<crate::ConditionExpr> {
+) -> Option<PredicateAst> {
     if timing == ActivationTiming::AnyTime {
         return base;
     }
-    merge_mana_activation_conditions(base, crate::ConditionExpr::ActivationTiming(timing))
+    merge_mana_activation_conditions(base, PredicateAst::ActivationTiming(timing))
 }
 
 pub fn merge_mana_activation_conditions(
-    base: Option<crate::ConditionExpr>,
-    condition: crate::ConditionExpr,
-) -> Option<crate::ConditionExpr> {
-    let mut conditions: Vec<crate::ConditionExpr> = Vec::new();
+    base: Option<PredicateAst>,
+    condition: PredicateAst,
+) -> Option<PredicateAst> {
+    let mut conditions: Vec<PredicateAst> = Vec::new();
     if let Some(base) = base {
         flatten_mana_activation_conditions(&base, &mut conditions);
     }
@@ -1010,7 +1006,7 @@ pub fn color_from_color_set(colors: ColorSet) -> Option<crate::color::Color> {
 }
 
 #[cfg(test)]
-pub fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Option<crate::ConditionExpr> {
+pub fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     activated_sentence_parsers::parse_activation_condition_lexed(tokens)
 }
 
@@ -1252,7 +1248,7 @@ pub fn parse_cost_reduction_line(
             }
             if let Some(dynamic) = parse_dynamic_cost_modifier_value(remaining_tokens)? {
                 let reduction =
-                    crate::static_abilities::CostReduction::new(ObjectFilter::default(), dynamic);
+                    crate::model::CompilerCostReduction::new(ObjectFilter::default(), dynamic);
                 return Ok(Some(StaticAbility::new(reduction)));
             }
             if parsed_amount.is_none() {
@@ -1264,7 +1260,7 @@ pub fn parse_cost_reduction_line(
                 }
                 let reduction = crate::effect::Value::CardTypesInGraveyard(PlayerFilter::You);
                 let cost_reduction =
-                    crate::static_abilities::CostReduction::new(ObjectFilter::default(), reduction);
+                    crate::model::CompilerCostReduction::new(ObjectFilter::default(), reduction);
                 return Ok(Some(StaticAbility::new(cost_reduction)));
             }
             Ok(None)

@@ -1,9 +1,12 @@
 use super::super::super::lexer::lex_line;
 use super::super::super::util::tokenize_line;
 use super::*;
-use crate::cards::builders::CardDefinitionBuilder;
 use crate::model::CompilerAbilityKindCore as AbilityKind;
 use crate::{CardId, ChoiceCount};
+#[cfg(test)]
+use ironsmith_compiler::ParseCardText;
+#[cfg(test)]
+use ironsmith_compiler_lowering::CardDefinitionBuilder;
 
 fn sole_typed_coordination(effects: &[EffectAst]) -> &crate::model::CoordinationAst {
     match effects {

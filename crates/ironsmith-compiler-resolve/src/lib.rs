@@ -98,6 +98,9 @@ pub mod compile_support {
     pub use crate::tag_support::*;
 }
 
+pub mod condition_antecedents;
 pub mod effect_ast_normalization;
+pub mod predicate_conditions;
 pub mod reference_helpers;
 pub mod reference_resolution;
+pub mod trigger_players;

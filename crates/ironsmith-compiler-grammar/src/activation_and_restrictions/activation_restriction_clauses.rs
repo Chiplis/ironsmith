@@ -1,4 +1,5 @@
 use super::*;
+use crate::cards::builders::PredicateAst;
 use crate::grammar::activation_restrictions as restriction_grammar;
 fn player_negated_restriction_subject(words: &[&str]) -> Option<PlayerFilter> {
     restriction_grammar::parse_player_negated_subject_words(words)
@@ -440,7 +441,7 @@ pub fn parse_cant_cast_restriction_words(words: &[&str]) -> Option<crate::effect
 
 pub fn strip_static_restriction_condition(
     tokens: &[OwnedLexToken],
-) -> Result<Option<(crate::ConditionExpr, Vec<OwnedLexToken>)>, CardTextError> {
+) -> Result<Option<(PredicateAst, Vec<OwnedLexToken>)>, CardTextError> {
     use crate::grammar::activation_restrictions::{
         StaticRestrictionConditionKind, StaticRestrictionConditionShape,
         parse_source_attached_to_creature_condition_tokens,
@@ -456,7 +457,7 @@ pub fn strip_static_restriction_condition(
             remainder_first,
             remainder_end,
         } => Ok(Some((
-            crate::ConditionExpr::ActivationTiming(timing),
+            PredicateAst::ActivationTiming(timing),
             trim_commas(&tokens[remainder_first..remainder_end]).to_vec(),
         ))),
         StaticRestrictionConditionShape::Condition {
@@ -469,7 +470,7 @@ pub fn strip_static_restriction_condition(
                 Ok(condition) => condition,
                 Err(_) if kind == StaticRestrictionConditionKind::If => return Ok(None),
                 Err(_) if parse_source_attached_to_creature_condition_tokens(&condition_tokens) => {
-                    crate::ConditionExpr::SourceIsEquipped
+                    PredicateAst::SourceIsEquipped
                 }
                 Err(_) => {
                     return Err(CardTextError::ParseError(format!(
@@ -487,7 +488,7 @@ pub fn strip_static_restriction_condition(
             remainder_first,
             remainder_end,
         } => Ok(Some((
-            crate::ConditionExpr::CurrentTurnIsExtra,
+            PredicateAst::CurrentTurnIsExtra,
             trim_commas(&tokens[remainder_first..remainder_end]).to_vec(),
         ))),
     }

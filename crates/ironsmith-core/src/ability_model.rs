@@ -257,17 +257,22 @@ impl<E: PartialEq> Eq for RestrictedManaUnit<E> {}
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
-pub struct Ability<SA, T, E, C> {
-    pub kind: AbilityKind<SA, T, E, C>,
+/// An ability, over whatever vocabulary the phase using it speaks.
+///
+/// `Cond` is the intervening-if condition; see [`TriggeredAbility`]. It
+/// defaults to the resolved [`Condition`] so the runtime spells this the way it
+/// always has.
+pub struct Ability<SA, T, E, C, Cond = Condition> {
+    pub kind: AbilityKind<SA, T, E, C, Cond>,
     pub functional_zones: Vec<Zone>,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
-pub enum AbilityKind<SA, T, E, C> {
+pub enum AbilityKind<SA, T, E, C, Cond = Condition> {
     Static(SA),
-    Triggered(TriggeredAbility<T, E>),
-    Activated(ActivatedAbility<E, C>),
+    Triggered(TriggeredAbility<T, E, Cond>),
+    Activated(ActivatedAbility<E, C, Cond>),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -502,31 +507,43 @@ impl PresentationLabel {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+/// A triggered ability, over whatever vocabulary the phase using it speaks.
+///
+/// `C` is the intervening-if condition. Recognition instantiates it with the
+/// *recognized* predicate, so a recognizer can record the condition it read
+/// without first resolving it; the runtime instantiates it with the resolved
+/// [`Condition`], which is what lowering produces. Pinning this to the resolved
+/// type is what used to force recognizers to resolve mid-recognition.
 #[derive(Debug, Clone, PartialEq)]
-pub struct TriggeredAbility<T, E> {
+pub struct TriggeredAbility<T, E, C = Condition> {
     pub trigger: T,
     pub effects: ResolutionProgram<E>,
     pub choices: Vec<crate::ChooseSpec>,
-    pub intervening_if: Option<Condition>,
+    pub intervening_if: Option<C>,
     pub presentation_label: Option<PresentationLabel>,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
-pub struct ActivatedAbility<E, C> {
+/// An activated ability, over whatever vocabulary the phase using it speaks.
+///
+/// `Cond` is the condition gating activation; see [`TriggeredAbility`]. It
+/// defaults to the resolved [`Condition`] so the runtime spells this the way it
+/// always has.
+pub struct ActivatedAbility<E, C, Cond = Condition> {
     pub mana_cost: TotalCost<C>,
     pub effects: ResolutionProgram<E>,
     pub choices: Vec<crate::ChooseSpec>,
     pub timing: ActivationTiming,
     pub is_loyalty_ability: bool,
     pub additional_restrictions: Vec<String>,
-    pub activation_restrictions: Vec<Condition>,
+    pub activation_restrictions: Vec<Cond>,
     pub mana_output: Option<Vec<ManaSymbol>>,
-    pub activation_condition: Option<Condition>,
+    pub activation_condition: Option<Cond>,
     pub mana_usage_restrictions: Vec<ManaUsageRestriction<E>>,
 }
 
-impl<SA, T, E, C> Ability<SA, T, E, C>
+impl<SA, T, E, C, Cond> Ability<SA, T, E, C, Cond>
 where
     E: Clone,
     C: CoreCostComponent,
@@ -676,13 +693,19 @@ where
         self.functional_zones.contains(zone)
     }
 
-    pub fn try_map<SA2, T2, E2, C2, Error>(
+    /// Translate an ability from one phase's vocabulary into another's.
+    ///
+    /// `map_condition` is where a recognized intervening-if predicate becomes a
+    /// resolved condition, so the resolution happens once, here, on the way out
+    /// of recognition — not at each recognizer that read one.
+    pub fn try_map<SA2, T2, E2, C2, Cond2, Error>(
         self,
         mut map_static: impl FnMut(SA) -> Result<SA2, Error>,
         mut map_trigger: impl FnMut(T) -> Result<T2, Error>,
         mut map_effect: impl FnMut(E) -> Result<E2, Error>,
         mut map_cost: impl FnMut(C) -> Result<C2, Error>,
-    ) -> Result<Ability<SA2, T2, E2, C2>, Error>
+        mut map_condition: impl FnMut(Cond) -> Result<Cond2, Error>,
+    ) -> Result<Ability<SA2, T2, E2, C2, Cond2>, Error>
     where
         E2: Clone,
     {
@@ -692,7 +715,10 @@ where
                 trigger: map_trigger(triggered.trigger)?,
                 effects: triggered.effects.try_map_effects(&mut map_effect)?,
                 choices: triggered.choices,
-                intervening_if: triggered.intervening_if,
+                intervening_if: triggered
+                    .intervening_if
+                    .map(&mut map_condition)
+                    .transpose()?,
                 presentation_label: triggered.presentation_label,
             }),
             AbilityKind::Activated(activated) => AbilityKind::Activated(ActivatedAbility {
@@ -702,9 +728,16 @@ where
                 timing: activated.timing,
                 is_loyalty_ability: activated.is_loyalty_ability,
                 additional_restrictions: activated.additional_restrictions,
-                activation_restrictions: activated.activation_restrictions,
+                activation_restrictions: activated
+                    .activation_restrictions
+                    .into_iter()
+                    .map(&mut map_condition)
+                    .collect::<Result<Vec<_>, Error>>()?,
                 mana_output: activated.mana_output,
-                activation_condition: activated.activation_condition,
+                activation_condition: activated
+                    .activation_condition
+                    .map(&mut map_condition)
+                    .transpose()?,
                 mana_usage_restrictions: activated
                     .mana_usage_restrictions
                     .into_iter()
@@ -720,7 +753,7 @@ where
     }
 }
 
-impl<SA, T, E, C> From<SA> for Ability<SA, T, E, C>
+impl<SA, T, E, C, Cond> From<SA> for Ability<SA, T, E, C, Cond>
 where
     E: Clone,
     C: CoreCostComponent,
@@ -772,7 +805,68 @@ impl<T, E: Clone> TriggeredAbility<T, E> {
     }
 }
 
-impl<E: Clone, C: CoreCostComponent> ActivatedAbility<E, C> {
+/// Reading an activation cap means inspecting resolved conditions, so this is
+/// only available once the ability speaks the runtime vocabulary.
+impl<E: Clone, C: CoreCostComponent> ActivatedAbility<E, C, Condition> {
+    pub fn conditional_mana(mana: ManaSymbol, required_subtypes: Vec<Subtype>) -> Self {
+        let mut condition: Option<Condition> = None;
+        for subtype in required_subtypes {
+            let next = Condition::YouControl(
+                ObjectFilter::default()
+                    .with_type(CardType::Land)
+                    .with_subtype(subtype),
+            );
+            condition = Some(match condition {
+                Some(existing) => Condition::Or(Box::new(existing), Box::new(next)),
+                None => next,
+            });
+        }
+
+        Self {
+            mana_cost: TotalCost::from_cost(C::tap_cost()),
+            effects: ResolutionProgram::default(),
+            choices: vec![],
+            timing: ActivationTiming::AnyTime,
+            is_loyalty_ability: false,
+            additional_restrictions: vec![],
+            activation_restrictions: vec![],
+            mana_output: Some(vec![mana]),
+            activation_condition: condition,
+            mana_usage_restrictions: vec![],
+        }
+    }
+
+    pub fn max_activations_per_turn(&self) -> Option<u32> {
+        fn min_cap(current: Option<u32>, next: u32) -> Option<u32> {
+            Some(current.map_or(next, |existing| existing.min(next)))
+        }
+
+        let mut cap = None;
+        if self.timing == ActivationTiming::OncePerTurn {
+            cap = min_cap(cap, 1);
+        }
+
+        if let Some(Condition::MaxActivationsPerTurn(limit)) = self.activation_condition.as_ref() {
+            cap = min_cap(cap, *limit);
+        }
+
+        for restriction in &self.activation_restrictions {
+            if let Condition::MaxActivationsPerTurn(limit) = restriction {
+                cap = min_cap(cap, *limit);
+            }
+        }
+
+        if cap.is_some() {
+            return cap;
+        }
+
+        self.additional_restrictions
+            .iter()
+            .find_map(|restriction| parse_activation_max_times_per_turn(restriction))
+    }
+}
+
+impl<E: Clone, C: CoreCostComponent, Cond> ActivatedAbility<E, C, Cond> {
     pub fn produces_mana(&self) -> bool {
         self.mana_output.is_some()
     }
@@ -808,7 +902,7 @@ impl<E: Clone, C: CoreCostComponent> ActivatedAbility<E, C> {
         self
     }
 
-    pub fn with_condition(mut self, condition: Condition) -> Self {
+    pub fn with_condition(mut self, condition: Cond) -> Self {
         self.activation_condition = Some(condition);
         self
     }
@@ -899,35 +993,6 @@ impl<E: Clone, C: CoreCostComponent> ActivatedAbility<E, C> {
         }
     }
 
-    pub fn max_activations_per_turn(&self) -> Option<u32> {
-        fn min_cap(current: Option<u32>, next: u32) -> Option<u32> {
-            Some(current.map_or(next, |existing| existing.min(next)))
-        }
-
-        let mut cap = None;
-        if self.timing == ActivationTiming::OncePerTurn {
-            cap = min_cap(cap, 1);
-        }
-
-        if let Some(Condition::MaxActivationsPerTurn(limit)) = self.activation_condition.as_ref() {
-            cap = min_cap(cap, *limit);
-        }
-
-        for restriction in &self.activation_restrictions {
-            if let Condition::MaxActivationsPerTurn(limit) = restriction {
-                cap = min_cap(cap, *limit);
-            }
-        }
-
-        if cap.is_some() {
-            return cap;
-        }
-
-        self.additional_restrictions
-            .iter()
-            .find_map(|restriction| parse_activation_max_times_per_turn(restriction))
-    }
-
     pub fn basic_mana(mana: ManaSymbol) -> Self {
         Self {
             mana_cost: TotalCost::from_cost(C::tap_cost()),
@@ -960,34 +1025,6 @@ impl<E: Clone, C: CoreCostComponent> ActivatedAbility<E, C> {
             activation_restrictions: vec![],
             mana_output: Some(mana),
             activation_condition: None,
-            mana_usage_restrictions: vec![],
-        }
-    }
-
-    pub fn conditional_mana(mana: ManaSymbol, required_subtypes: Vec<Subtype>) -> Self {
-        let mut condition: Option<Condition> = None;
-        for subtype in required_subtypes {
-            let next = Condition::YouControl(
-                ObjectFilter::default()
-                    .with_type(CardType::Land)
-                    .with_subtype(subtype),
-            );
-            condition = Some(match condition {
-                Some(existing) => Condition::Or(Box::new(existing), Box::new(next)),
-                None => next,
-            });
-        }
-
-        Self {
-            mana_cost: TotalCost::from_cost(C::tap_cost()),
-            effects: ResolutionProgram::default(),
-            choices: vec![],
-            timing: ActivationTiming::AnyTime,
-            is_loyalty_ability: false,
-            additional_restrictions: vec![],
-            activation_restrictions: vec![],
-            mana_output: Some(vec![mana]),
-            activation_condition: condition,
             mana_usage_restrictions: vec![],
         }
     }

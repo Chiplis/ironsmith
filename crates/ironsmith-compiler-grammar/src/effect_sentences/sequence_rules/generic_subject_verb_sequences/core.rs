@@ -38,7 +38,7 @@ pub fn parse_tap_lock_sequence(
         EffectAst::subject_verb_cant(
             crate::effect::Restriction::untap(filter.clone()),
             duration,
-            Some(crate::ConditionExpr::SourceIsTapped),
+            Some(PredicateAst::SourceIsTapped),
         ),
     ]))
 }

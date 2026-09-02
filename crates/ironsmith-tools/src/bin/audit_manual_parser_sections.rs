@@ -647,7 +647,13 @@ fn extract_functions(file: &str, source: &str) -> Vec<FunctionSection> {
         }
 
         let trimmed = sanitized_line.trim_start();
-        if trimmed.starts_with("#[cfg(test)]") {
+        // `#[cfg(any(test, ...))]` is the cross-crate form of `#[cfg(test)]`:
+        // a `test-support` feature exists only so another crate's tests can
+        // reach a helper. It is still test scaffolding and is skipped the same
+        // way, or this audit would grow for a crate split rather than for
+        // parser quality. The prefix stops before the feature name because the
+        // line has already had its string literals masked.
+        if trimmed.starts_with("#[cfg(test)]") || trimmed.starts_with("#[cfg(any(test,") {
             pending_cfg_test = true;
         }
         if trimmed.starts_with("#[test]") || trimmed.starts_with("#[tokio::test") {

@@ -1,7 +1,7 @@
 use crate::cards::builders::{CardTextError, PlayerAst, TagKey, TargetAst};
 use crate::effect::{EventValueSpec, Restriction, Value};
 use crate::filter::{Comparison, ObjectFilter, ObjectRef, PlayerFilter, TaggedOpbjectRelation};
-use crate::target::{ChooseSpec, ChooseSpecSurfaceHint, SourceReferenceSurface};
+use crate::target::{ChooseSpec, SourceReferenceSurface};
 use crate::zone::Zone;
 use ironsmith_core::TurnHistoryCount;
 
@@ -110,6 +110,7 @@ pub fn resolve_non_target_player_filter(
         PlayerAst::PlayerToYourLeft => Ok(PlayerFilter::PlayerToYourLeft),
         PlayerAst::PlayerToYourRight => Ok(PlayerFilter::PlayerToYourRight),
         PlayerAst::Enchanted => Ok(PlayerFilter::TaggedPlayer(TagKey::new("enchanted"))),
+        PlayerAst::Teammate => Ok(PlayerFilter::Teammate),
         PlayerAst::NotYou => {
             if let Some(excluded) = refs.known_last_player_filter()
                 && !is_you_player_filter(excluded)
@@ -1574,16 +1575,6 @@ pub fn with_target_reference_surface_hint(spec: ChooseSpec, target: &TargetAst) 
     source_reference_hinted_spec(spec, surface)
 }
 
-fn source_reference_hinted_spec(
-    spec: ChooseSpec,
-    surface: Option<SourceReferenceSurface>,
-) -> ChooseSpec {
-    match surface {
-        Some(surface) => spec.with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
-        None => spec,
-    }
-}
-
 fn implicit_it_reference_resolves_to_source(refs: &ReferenceEnv) -> bool {
     refs.known_last_object_tag().is_none()
         && (refs.has_source_object_antecedent() || refs.known_last_player_filter().is_none())
@@ -1595,53 +1586,9 @@ fn implicit_source_pronoun_surface(
     span.map(|_| SourceReferenceSurface::ThisPermanentType("it".to_string()))
 }
 
-pub fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
-    match target {
-        TargetAst::Source(_) => ChooseSpec::Source,
-        TargetAst::AnyTarget(_) => ChooseSpec::AnyTarget,
-        TargetAst::AnyOtherTarget(_) => ChooseSpec::AnyOtherTarget,
-        TargetAst::ObjectOrPlayer(object_filter, player_filter, explicit_target_span) => {
-            let spec = ChooseSpec::ObjectOrPlayer(object_filter.clone(), player_filter.clone());
-            if explicit_target_span.is_some() {
-                ChooseSpec::target(spec)
-            } else {
-                spec
-            }
-        }
-        TargetAst::PlayerOrPlaneswalker(filter, _) => {
-            ChooseSpec::PlayerOrPlaneswalker(filter.clone())
-        }
-        TargetAst::AttackedPlayerOrPlaneswalker(_) => ChooseSpec::AttackedPlayerOrPlaneswalker,
-        TargetAst::Spell(_) => ChooseSpec::target_spell(),
-        TargetAst::Player(filter, explicit_target_span) => {
-            if *filter == PlayerFilter::You {
-                ChooseSpec::SourceController
-            } else if *filter == PlayerFilter::IteratedPlayer {
-                ChooseSpec::Player(filter.clone())
-            } else if explicit_target_span.is_some() {
-                ChooseSpec::target(ChooseSpec::Player(filter.clone()))
-            } else {
-                ChooseSpec::Player(filter.clone())
-            }
-        }
-        TargetAst::Object(filter, explicit_target_span, reference_span) => {
-            let spec = if filter.source && filter.zone != Some(Zone::Exile) {
-                source_reference_hinted_spec(ChooseSpec::Source, filter.source_surface.clone())
-            } else if explicit_target_span.is_some() {
-                ChooseSpec::target(ChooseSpec::Object(filter.clone()))
-            } else {
-                ChooseSpec::Object(filter.clone())
-            };
-            let _ = reference_span;
-            source_reference_hinted_spec(spec, filter.source_surface.clone())
-        }
-        TargetAst::Tagged(tag, _) => ChooseSpec::Tagged(tag.clone()),
-        TargetAst::WithCount(inner, count) => choose_spec_for_target(inner).with_count(*count),
-        TargetAst::WithCountValue(inner, count, value) => {
-            choose_spec_for_target(inner).with_count_value(*count, value.clone())
-        }
-    }
-}
+pub use ironsmith_compiler_semantic::model::ast::{
+    choose_spec_for_target, source_reference_hinted_spec,
+};
 
 pub fn resolve_target_spec_with_choices(
     target: &TargetAst,

@@ -220,14 +220,16 @@ pub(super) fn parse_alternative_cast(
                     line.info.raw_line
                 ))
             })?;
+        // A spell-cost condition is evaluated against the game, not recognized
+        // structure, so it holds the bound form.
         let condition = crate::static_abilities::ThisSpellCostCondition::ConditionExpr {
             condition: crate::ConditionExpr::Or(
                 Box::new(crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore {
-                    player: crate::target::PlayerFilter::You,
+                    player: crate::cards::builders::PlayerFilter::You,
                     count: 1,
                 }),
                 Box::new(crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore {
-                    player: crate::target::PlayerFilter::Teammate,
+                    player: crate::cards::builders::PlayerFilter::Teammate,
                     count: 1,
                 }),
             ),

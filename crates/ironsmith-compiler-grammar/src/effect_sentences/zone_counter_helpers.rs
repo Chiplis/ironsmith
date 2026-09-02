@@ -455,7 +455,7 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
     }
     let mut target = parse_counter_target_phrase(&target_tokens)?;
     if equal_to_difference {
-        let target_spec = crate::reference_helpers::choose_spec_for_target(&target);
+        let target_spec = crate::model::ast::choose_spec_for_target(&target);
         count_value = Value::Add(
             Box::new(Value::PowerOf(Box::new(ChooseSpec::Tagged(
                 crate::tag::CompilerReferenceTag::It.key(),

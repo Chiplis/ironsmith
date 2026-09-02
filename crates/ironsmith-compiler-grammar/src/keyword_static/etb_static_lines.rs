@@ -115,7 +115,7 @@ pub fn parse_enters_with_counters_line(
     if etb_starts_with_trigger_intro_after_label(tokens) {
         return Ok(None);
     }
-    let mut condition: Option<(crate::ConditionExpr, String)> = None;
+    let mut condition: Option<(PredicateAst, String)> = None;
     let mut clause_tokens: Vec<OwnedLexToken> = tokens.to_vec();
 
     // Support leading conditional form:
@@ -156,7 +156,7 @@ pub fn parse_enters_with_counters_line(
     let _action_tokens = captured.action_tokens;
     if captured.escaped {
         condition = Some((
-            crate::ConditionExpr::ThisSpellEscaped,
+            PredicateAst::ThisSpellEscaped,
             "it escaped".to_string(),
         ));
     }
@@ -296,7 +296,7 @@ pub fn parse_enters_with_counters_line(
                     });
                     condition = Some(combine_enters_with_counter_conditions(
                         condition,
-                        (crate::ConditionExpr::Not(Box::new(parsed)), display),
+                        (PredicateAst::Not(Box::new(parsed)), display),
                     ));
                 }
             }
@@ -626,13 +626,13 @@ fn parse_enters_with_counter_plus_tail_tokens(
 }
 
 fn combine_enters_with_counter_conditions(
-    existing: Option<(crate::ConditionExpr, String)>,
-    next: (crate::ConditionExpr, String),
-) -> (crate::ConditionExpr, String) {
+    existing: Option<(PredicateAst, String)>,
+    next: (PredicateAst, String),
+) -> (PredicateAst, String) {
     match existing {
         Some((existing_condition, existing_display)) => {
             let combined_condition =
-                crate::ConditionExpr::And(Box::new(existing_condition), Box::new(next.0));
+                PredicateAst::And(Box::new(existing_condition), Box::new(next.0));
             let combined_display =
                 match (existing_display.trim().is_empty(), next.1.trim().is_empty()) {
                     (true, true) => String::new(),
@@ -707,7 +707,7 @@ fn parse_unless_enters_with_counter_condition_display(tokens: &[OwnedLexToken]) 
 
 fn parse_enters_with_counter_condition_clause(
     tokens: &[OwnedLexToken],
-) -> Option<crate::ConditionExpr> {
+) -> Option<PredicateAst> {
     let condition_tokens = trim_edge_punctuation(tokens);
     if condition_tokens.is_empty() {
         return None;
@@ -718,38 +718,38 @@ fn parse_enters_with_counter_condition_clause(
     {
         match shape {
             EntersWithCounterConditionShape::AttackedThisTurn => {
-                return Some(crate::ConditionExpr::AttackedThisTurn);
+                return Some(PredicateAst::AttackedThisTurn);
             }
             EntersWithCounterConditionShape::SourceWasCast => {
-                return Some(crate::ConditionExpr::SourceWasCast);
+                return Some(PredicateAst::SourceWasCast);
             }
             EntersWithCounterConditionShape::ThisSpellWasKicked => {
-                return Some(crate::ConditionExpr::ThisSpellWasKicked);
+                return Some(PredicateAst::ThisSpellWasKicked);
             }
             EntersWithCounterConditionShape::ThisSpellEscaped => {
-                return Some(crate::ConditionExpr::ThisSpellEscaped);
+                return Some(PredicateAst::ThisSpellEscaped);
             }
             EntersWithCounterConditionShape::CreatureDiedThisTurn => {
-                return Some(crate::ConditionExpr::CreatureDiedThisTurn);
+                return Some(PredicateAst::CreatureDiedThisTurn);
             }
             EntersWithCounterConditionShape::OpponentLostLifeThisTurn => {
-                return Some(crate::ConditionExpr::OpponentLostLifeThisTurn);
+                return Some(PredicateAst::OpponentLostLifeThisTurn);
             }
             EntersWithCounterConditionShape::PermanentLeftUnderYourControl => {
                 return Some(
-                    crate::ConditionExpr::PermanentLeftBattlefieldUnderYourControlThisTurn {
+                    PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn {
                         surface:
                             crate::PermanentLeftBattlefieldControlSurface::LeftUnderYourControl,
                     },
                 );
             }
             EntersWithCounterConditionShape::NotCastOrNoManaSpent => {
-                return Some(crate::ConditionExpr::Or(
-                    Box::new(crate::ConditionExpr::Not(Box::new(
-                        crate::ConditionExpr::SourceWasCast,
+                return Some(PredicateAst::Or(
+                    Box::new(PredicateAst::Not(Box::new(
+                        PredicateAst::SourceWasCast,
                     ))),
-                    Box::new(crate::ConditionExpr::Not(Box::new(
-                        crate::ConditionExpr::ManaSpentToCastThisSpellAtLeast {
+                    Box::new(PredicateAst::Not(Box::new(
+                        PredicateAst::ManaSpentToCastThisSpellAtLeast {
                             amount: 1,
                             symbol: None,
                         },
@@ -765,14 +765,14 @@ fn parse_enters_with_counter_condition_clause(
     if let Some(amount) =
         parse_enters_with_counter_x_value_threshold_condition_tokens(&condition_tokens)
     {
-        return Some(crate::ConditionExpr::XValueAtLeast(amount));
+        return Some(PredicateAst::XValueAtLeast(amount));
     }
 
     if let Some(amount) =
         parse_enters_with_counter_you_cast_spells_this_turn_condition_tokens(&condition_tokens)
     {
-        return Some(crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore {
-            player: PlayerFilter::You,
+        return Some(PredicateAst::PlayerCastSpellsThisTurnOrMore {
+            player: PlayerAst::You,
             count: amount,
         });
     }
@@ -780,13 +780,13 @@ fn parse_enters_with_counter_condition_clause(
     if let Some(amount) =
         parse_enters_with_counter_colors_mana_spent_condition_tokens(&condition_tokens)
     {
-        return Some(crate::ConditionExpr::ColorsOfManaSpentToCastThisSpellOrMore(amount));
+        return Some(PredicateAst::ColorsOfManaSpentToCastThisSpellOrMore(amount));
     }
 
     if let Some(amount) =
         crate::grammar::filters::parse_same_color_mana_spent_to_cast_predicate(&condition_tokens)
     {
-        return Some(crate::ConditionExpr::SameColorManaSpentToCastThisSpellAtLeast(amount));
+        return Some(PredicateAst::SameColorManaSpentToCastThisSpellAtLeast(amount));
     }
 
     crate::grammar::primitives::probe_shape(parse_static_condition_clause(&condition_tokens))
@@ -2159,7 +2159,7 @@ pub fn parse_x_at_most_enters_tapped_line(
     }
 
     Ok(Some(StaticAbility::enters_tapped_unless_condition(
-        crate::ConditionExpr::XValueAtLeast(maximum.saturating_add(1)),
+        PredicateAst::XValueAtLeast(maximum.saturating_add(1)),
         format!("If X is {maximum} or less, it enters tapped"),
     )))
 }
@@ -2236,7 +2236,7 @@ pub fn parse_reveal_from_hand_or_enters_tapped_line(
     }
     let mut reveal_filter = parse_object_filter(&reveal_filter_tokens, false)?;
     reveal_filter.zone = None;
-    let reveal_condition = crate::ConditionExpr::YouHaveCardInHandMatching(reveal_filter);
+    let reveal_condition = PredicateAst::YouHaveCardInHandMatching(reveal_filter);
 
     // Pattern A: "... If you don't, this land enters tapped."
     if let Some(if_you_dont_tail) = etb_grammar::find_if_you_dont_tail_tokens(tokens) {
@@ -2289,7 +2289,7 @@ pub fn parse_reveal_from_hand_or_enters_tapped_line(
 
 fn parse_revealed_this_way_or_control_condition(
     condition_tokens: &[OwnedLexToken],
-) -> Option<crate::ConditionExpr> {
+) -> Option<PredicateAst> {
     let parsed = etb_grammar::parse_revealed_this_way_or_control_tokens(condition_tokens)?;
     let reveal_filter_tokens = trim_edge_punctuation(parsed.reveal_filter_tokens);
     if reveal_filter_tokens.is_empty() {
@@ -2318,11 +2318,11 @@ fn parse_revealed_this_way_or_control_condition(
         return None;
     }
 
-    Some(crate::ConditionExpr::Or(
-        Box::new(crate::ConditionExpr::YouHaveCardInHandMatching(
+    Some(PredicateAst::Or(
+        Box::new(PredicateAst::YouHaveCardInHandMatching(
             reveal_filter,
         )),
-        Box::new(crate::ConditionExpr::YouControl(control_condition.filter)),
+        Box::new(PredicateAst::YouControl(control_condition.filter)),
     ))
 }
 
@@ -2390,7 +2390,7 @@ fn parse_enters_tapped_unless_control_quantity_static_ability(
     if filter.zone.is_none() {
         filter.zone = Some(Zone::Battlefield);
     }
-    let condition = crate::ConditionExpr::CountComparison {
+    let condition = PredicateAst::CountComparison {
         count: AnthemCountExpression::MatchingFilter(filter),
         comparison: control_condition.comparison,
         display: Some(condition_words.join(" ")),
@@ -2532,7 +2532,7 @@ mod etb_enters_tapped_with_counters_tests {
         );
         assert!(matches!(
             parse_enters_with_counter_condition_clause(&tokens),
-            Some(crate::ConditionExpr::ColorsOfManaSpentToCastThisSpellOrMore(2))
+            Some(PredicateAst::ColorsOfManaSpentToCastThisSpellOrMore(2))
         ));
     }
 
@@ -2559,8 +2559,8 @@ mod etb_enters_tapped_with_counters_tests {
             );
             assert!(matches!(
                 parse_enters_with_counter_condition_clause(&tokens),
-                Some(crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore {
-                    player: PlayerFilter::You,
+                Some(PredicateAst::PlayerCastSpellsThisTurnOrMore {
+                    player: PlayerAst::You,
                     count
                 }) if count == expected
             ));
@@ -2579,7 +2579,7 @@ mod etb_enters_tapped_with_counters_tests {
             );
             assert!(matches!(
                 parse_enters_with_counter_condition_clause(&tokens),
-                Some(crate::ConditionExpr::XValueAtLeast(amount)) if amount == expected
+                Some(PredicateAst::XValueAtLeast(amount)) if amount == expected
             ));
         }
     }
@@ -2928,7 +2928,7 @@ fn parse_enters_tapped_unless_a_player_has_13_or_less_life_condition(
 ) -> Option<()> {
     let condition =
         crate::grammar::conditions::parse_player_life_total_condition(condition_tokens)?;
-    if condition.player != PlayerFilter::Any {
+    if condition.player != PlayerAst::Any {
         return None;
     }
     match condition.comparison {
@@ -2947,7 +2947,7 @@ fn parse_enters_tapped_unless_two_or_more_opponents_condition(
         opponent_phrases,
         "enters-tapped opponents condition",
     )?;
-    if condition.player != PlayerFilter::You {
+    if condition.player != PlayerAst::You {
         return None;
     }
     let count = crate::util::comparison_to_strict_at_least_threshold(&condition.comparison)?;
@@ -2998,7 +2998,7 @@ pub fn parse_conditional_enters_tapped_unless_line(
     }
     if etb_grammar::parse_first_three_turns_prefix_tokens(&condition_tokens).is_some() {
         return Ok(Some(StaticAbility::enters_tapped_unless_condition(
-            crate::ConditionExpr::YourFirstTurnsOfTheGameOrFewer(3),
+            PredicateAst::YourFirstTurnsOfTheGameOrFewer(3),
             clause_words.join(" "),
         )));
     }
@@ -3016,7 +3016,7 @@ pub fn parse_conditional_enters_tapped_unless_line(
         },
     ) && !control_condition.has_explicit_quantity()
     {
-        let condition = crate::ConditionExpr::YouControl(control_condition.filter);
+        let condition = PredicateAst::YouControl(control_condition.filter);
         return Ok(Some(StaticAbility::enters_tapped_unless_condition(
             condition,
             clause_words.join(" "),
@@ -3097,7 +3097,7 @@ fn bind_it_reference_to_entering_object_in_value(value: &mut Value) -> bool {
 
 fn parse_entering_object_value_comparison_condition(
     tokens: &[OwnedLexToken],
-) -> Option<crate::ConditionExpr> {
+) -> Option<PredicateAst> {
     let tokens = trim_edge_punctuation(tokens);
     for comparison_start in 1..tokens.len() {
         let Some((mut left, left_used)) = parse_value(&tokens[..comparison_start]) else {
@@ -3120,7 +3120,7 @@ fn parse_entering_object_value_comparison_condition(
         let binds_entering_object = bind_it_reference_to_entering_object_in_value(&mut left)
             | bind_it_reference_to_entering_object_in_value(&mut right);
         if binds_entering_object {
-            return Some(crate::ConditionExpr::ValueComparison {
+            return Some(PredicateAst::ValueComparison {
                 left,
                 operator,
                 right,
@@ -3167,6 +3167,16 @@ pub fn parse_enters_with_additional_counter_for_filter_line(
                         "unsupported filtered ETB counter branch condition (clause: '{}')",
                         crate::lexer::token_word_refs(&branches.condition_tokens).join(" ")
                     ))
+                })
+                .and_then(|predicate| {
+                    // The counters-on-entry count is checked against the game,
+                    // so this slot holds the bound form.
+                    bind_static_condition_predicate(predicate).ok_or_else(|| {
+                        CardTextError::ParseError(format!(
+                            "unsupported filtered ETB counter branch condition (clause: '{}')",
+                            crate::lexer::token_word_refs(&branches.condition_tokens).join(" ")
+                        ))
+                    })
                 })?;
         let Some(primary) =
             parse_enters_with_additional_counter_for_filter_line(&branches.primary_tokens)?
@@ -3787,9 +3797,9 @@ fn parse_spell_cast_enters_with_additional_counter_for_filter_line(
 
 fn parse_snow_mana_of_any_spell_color_spent_to_cast_it_condition(
     tokens: &[OwnedLexToken],
-) -> Option<crate::ConditionExpr> {
+) -> Option<PredicateAst> {
     etb_grammar::parse_snow_mana_of_spell_color_condition_tokens(tokens)
-        .then_some(crate::ConditionExpr::SnowManaOfAnySpellColorSpentToCastThisSpell)
+        .then_some(PredicateAst::SnowManaOfAnySpellColorSpentToCastThisSpell)
 }
 
 fn parse_additional_counter_count_from_tokens(tokens: &[OwnedLexToken]) -> Value {
