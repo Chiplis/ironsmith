@@ -74,8 +74,8 @@ pub use contains_sequence as contains_window;
 
 #[cfg(test)]
 pub use crate::string_primitives::contains as str_contains;
-pub use sentence_markers::recognizes_core_keyword_marker as is_core_keyword_marker_text;
-pub use sentence_markers::recognizes_ticket_sticker_marker as is_ticket_sticker_marker_text;
+pub use sentence_markers::recognizes_core_keyword_marker_tokens as is_core_keyword_marker_tokens;
+pub use sentence_markers::recognizes_ticket_sticker_marker_tokens as is_ticket_sticker_marker_tokens;
 
 pub fn parse_lexed_prefix<'a, O>(
     tokens: &'a [OwnedLexToken],

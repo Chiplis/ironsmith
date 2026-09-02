@@ -20,6 +20,8 @@ use super::{
 pub struct ExertAttackHead {
     pub only_if_not_exerted_this_turn: bool,
     pub source_ref: String,
+    /// The same reference as tokens, for the follow-up normalizer.
+    pub source_tokens: Vec<OwnedLexToken>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,7 +98,10 @@ pub fn parse_exert_attack_head_tokens(
         .ok_or("could not isolate exert source")?;
     Ok(ExertAttackHead {
         only_if_not_exerted_this_turn,
-        source_ref: render_token_slice(&tokens[source_range]).trim().to_string(),
+        source_ref: render_token_slice(&tokens[source_range.clone()])
+            .trim()
+            .to_string(),
+        source_tokens: tokens[source_range].to_vec(),
     })
 }
 
@@ -118,7 +123,7 @@ pub fn parse_when_followup_intro_tokens(tokens: &[OwnedLexToken]) -> bool {
 }
 
 pub fn normalize_exert_followup_source_tokens(
-    source_ref: &str,
+    source_tokens: &[OwnedLexToken],
     followup_tokens: &[OwnedLexToken],
 ) -> Vec<OwnedLexToken> {
     let words = parser_token_word_refs(followup_tokens);
@@ -127,8 +132,8 @@ pub fn normalize_exert_followup_source_tokens(
         &[&["he"], &["she"], &["they"]],
     ) {
         Some(1)
-    } else if let Ok(source_tokens) = lex_line(source_ref, 0) {
-        let source_words = parser_token_word_refs(&source_tokens);
+    } else {
+        let source_words = parser_token_word_refs(source_tokens);
         if !source_words.is_empty()
             && !phrase_is_exact(&source_words, &["this", "creature"])
             && phrase_is_prefix(&words, &source_words)
@@ -137,8 +142,6 @@ pub fn normalize_exert_followup_source_tokens(
         } else {
             None
         }
-    } else {
-        None
     };
 
     let Some(replacement_words) = replacement_words else {
@@ -149,8 +152,7 @@ pub fn normalize_exert_followup_source_tokens(
         .token_span_for_words(replacement_words, words.len())
         .and_then(|range| followup_tokens.get(range.start..))
         .unwrap_or_default();
-    let mut normalized =
-        lex_line("this creature", 0).expect("semantic exert subject should always lex");
+    let mut normalized = crate::lexer::synthetic_word_tokens(["this", "creature"]);
     normalized.extend_from_slice(remainder);
     normalized
 }
@@ -273,7 +275,7 @@ mod tests {
         let followup = lex_line("Arni deals 2 damage.", 0).unwrap();
         assert_eq!(
             parser_token_word_refs(&normalize_exert_followup_source_tokens(
-                &parsed.source_ref,
+                &parsed.source_tokens,
                 &followup
             )),
             vec!["this", "creature", "deals", "2", "damage"]

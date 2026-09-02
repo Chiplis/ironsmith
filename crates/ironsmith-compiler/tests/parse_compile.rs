@@ -17,9 +17,18 @@ use ironsmith_compiler_resolve::SpanMappingContext;
 /// Recognizing the shape is the grammar's job and lowering it is the lowering
 /// crate's, so the two only meet here.
 fn token_definition_for(name: &str) -> Option<ironsmith_compiler::CardDefinition> {
-    let shape =
-        ironsmith_compiler::grammar::token_definitions::parse_token_definition_shape_text(name)?;
+    let shape = token_definition_shape_text(name)?;
     lower_token_definition_shape(shape)
+}
+
+/// The shape a token definition's text parses to. The fixture is tokenized
+/// here: it is test text, not a line the document phase has seen.
+fn token_definition_shape_text(
+    text: &str,
+) -> Option<ironsmith_compiler::grammar::token_definitions::TokenDefinitionSpec> {
+    ironsmith_compiler::grammar::token_definitions::parse_token_definition_shape_tokens(
+        &lex_line(text, 0).ok()?,
+    )
 }
 
 use ironsmith_compiler::effect::{Condition, Until};
@@ -1287,10 +1296,8 @@ fn parse_equipment_rules_text_keeps_single_quoted_activated_grant() {
 #[test]
 fn typed_equipment_token_rules_lower_into_grant_and_equip() {
     let source_text = "colorless Equipment artifact token named Rock with \"Equipped creature has '{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target'\" and equip {1}.";
-    let shape = ironsmith_compiler::grammar::token_definitions::parse_token_definition_shape_text(
-        source_text,
-    )
-    .expect("equipment token should have a typed definition");
+    let shape = token_definition_shape_text(source_text)
+        .expect("equipment token should have a typed definition");
     let def = lower_token_definition_shape(shape)
         .expect("typed equipment definition should lower without parsing display text");
 
@@ -1315,10 +1322,8 @@ fn typed_equipment_token_rules_lower_into_grant_and_equip() {
 #[test]
 fn typed_equipment_token_rules_lower_counter_scaled_grant() {
     let source_text = "colorless Book Equipment artifact token named Guide with \"Equipped creature gets +1/+1 for each quest counter among permanents you control\" and equip {1}.";
-    let shape = ironsmith_compiler::grammar::token_definitions::parse_token_definition_shape_text(
-        source_text,
-    )
-    .expect("scaled equipment token should have a typed definition");
+    let shape = token_definition_shape_text(source_text)
+        .expect("scaled equipment token should have a typed definition");
     let def = lower_token_definition_shape(shape)
         .expect("scaled equipment token definition should lower");
     let debug = format!("{def:#?}");
@@ -1638,10 +1643,8 @@ fn token_definition_named_construct_skips_urza_construct_shell() {
 #[test]
 fn typed_token_rules_shape_lowers_blink_trigger() {
     let source_text = "2/2 black Alien Angel artifact creature token with first strike, vigilance, and \"Whenever an opponent casts a creature spell, this token isn't a creature until end of turn.\"";
-    let shape = ironsmith_compiler::grammar::token_definitions::parse_token_definition_shape_text(
-        source_text,
-    )
-    .expect("quoted trigger should have a typed token shape");
+    let shape = token_definition_shape_text(source_text)
+        .expect("quoted trigger should have a typed token shape");
     let parsed = lower_token_definition_shape(shape)
         .expect("typed quoted trigger should lower without reparsing text");
     let debug = format!("{parsed:#?}");
@@ -1659,10 +1662,8 @@ fn typed_token_rules_shape_lowers_blink_trigger() {
 #[test]
 fn typed_token_rules_shape_lowers_static_pt_ability() {
     let source_text = "green and white Elemental creature token with \"This token's power and toughness are each equal to the number of creatures you control.\"";
-    let shape = ironsmith_compiler::grammar::token_definitions::parse_token_definition_shape_text(
-        source_text,
-    )
-    .expect("quoted static P/T should have a typed token shape");
+    let shape = token_definition_shape_text(source_text)
+        .expect("quoted static P/T should have a typed token shape");
     let parsed = lower_token_definition_shape(shape)
         .expect("typed quoted static P/T should lower without reparsing text");
     let debug = format!("{parsed:#?}");

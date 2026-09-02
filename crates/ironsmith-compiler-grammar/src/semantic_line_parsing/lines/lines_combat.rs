@@ -116,7 +116,8 @@ pub fn parse_exert_attack_keyword_line(
     };
     let semantic_grammar::ExertAttackHead {
         only_if_not_exerted_this_turn,
-        source_ref,
+        source_ref: _,
+        source_tokens,
     } = semantic_grammar::parse_exert_attack_head_tokens(head_tokens).map_err(|message| {
         CardTextError::ParseError(format!(
             "rewrite keyword lowering {message} '{}'",
@@ -129,7 +130,7 @@ pub fn parse_exert_attack_keyword_line(
         .and_then(|tokens| semantic_grammar::parse_exert_reflexive_followup_tokens(tokens));
     let linked_trigger = if let Some(followup) = followup {
         let normalized_followup_tokens = normalize_exert_followup_source_reference_tokens(
-            source_ref.as_str(),
+            &source_tokens,
             followup.effect_tokens,
         );
         let effects_ast = parse_effect_sentences_lexed(&normalized_followup_tokens)?;

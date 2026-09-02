@@ -3612,7 +3612,9 @@ fn leading_duration_named_source_copy_keeps_complete_exception_bundle() {
     };
 
     assert_eq!(*duration, crate::effect::Until::YourNextTurn);
-    assert_eq!(name_override.as_deref(), Some("mirror adept"));
+    // The name keeps its authored casing: normalization now replaces tokens
+    // in place instead of lowercasing the sentence and lexing it again.
+    assert_eq!(name_override.as_deref(), Some("Mirror Adept"));
     assert_eq!(add_supertypes, &[Supertype::Legendary]);
     assert_eq!(add_card_types, &[CardType::Creature]);
     assert_eq!(add_subtypes, &[Subtype::Human, Subtype::Villain]);

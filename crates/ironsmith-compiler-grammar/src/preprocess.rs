@@ -1,7 +1,7 @@
 use super::grammar::effects::optional_companion_shapes::parse_shared_subject_optional_companion_shape;
 use super::grammar::structure::{MetadataLineKind, split_leading_result_prefix_lexed};
 use super::grammar::{line_semantic_facts, preprocess as preprocess_grammar};
-use super::lexer::{lex_line, split_lexed_sentences};
+use super::lexer::{lex_line, render_token_slice, split_lexed_sentences};
 use super::parser_support::{
     looks_like_spell_resolution_followup_intro_lexed, spell_card_prefers_resolution_line_merge,
 };
@@ -72,7 +72,9 @@ fn collapse_whitespace_runs(text: &str) -> String {
 }
 
 pub(super) fn strip_parenthetical_segments(line: &str) -> String {
-    match preprocess_grammar::parse_parenthetical_line_surface(line) {
+    let surface = stage_tokens(line)
+        .and_then(|tokens| preprocess_grammar::parse_parenthetical_line_surface_tokens(&tokens));
+    match surface {
         Some(preprocess_grammar::ParentheticalLineSurface::FullyWrapped) => {
             return line.to_string();
         }
@@ -105,16 +107,63 @@ pub(super) fn strip_parenthetical_segments(line: &str) -> String {
     collapse_whitespace_runs(out.as_str())
 }
 
-fn split_parse_line_variants(line: &str) -> Vec<String> {
-    if let Some(split) = preprocess_grammar::parse_line_variant_split(line) {
+/// The tokens of one stage of the line pipeline. The document phase rewrites
+/// text, and each rewritten text is tokenized once for the probes that read
+/// it; `None` when the text is not rules text the lexer accepts.
+fn stage_tokens(text: &str) -> Option<Vec<OwnedLexToken>> {
+    crate::util::lex_fragment(text.trim(), 0)
+}
+
+/// The tokens of `tokens` that fall inside `range` of their text.
+fn tokens_within(tokens: &[OwnedLexToken], range: std::ops::Range<usize>) -> &[OwnedLexToken] {
+    let start = tokens.partition_point(|token| token.span.start < range.start);
+    let end = tokens.partition_point(|token| token.span.end <= range.end);
+    tokens.get(start..end.max(start)).unwrap_or_default()
+}
+
+/// A name the document phase turns into a self reference wherever a line
+/// mentions it: the lowercased text that is matched and the tokens the
+/// keyword guards read. Card metadata, tokenized once per card; a name the
+/// lexer rejects keeps its text and has no tokens.
+struct SelfReferenceName {
+    text: String,
+    tokens: Option<Vec<OwnedLexToken>>,
+}
+
+impl SelfReferenceName {
+    fn new(text: String) -> Self {
+        let tokens = stage_tokens(text.as_str());
+        Self { text, tokens }
+    }
+
+    fn tokens(&self) -> &[OwnedLexToken] {
+        self.tokens.as_deref().unwrap_or_default()
+    }
+
+    fn lexable(&self) -> bool {
+        self.tokens.is_some()
+    }
+}
+
+#[cfg(test)]
+fn split_parse_line_variants_text(line: &str) -> Vec<String> {
+    split_parse_line_variants(line, &stage_tokens(line).unwrap_or_default())
+}
+
+fn split_parse_line_variants(line: &str, line_tokens: &[OwnedLexToken]) -> Vec<String> {
+    if let Some(split) = preprocess_grammar::parse_line_variant_split_tokens(line_tokens) {
         let first = line.get(..split.first_end).unwrap_or_default().trim();
         let second = line.get(split.second_start..).unwrap_or_default().trim();
-        let second_without_reminder = strip_parenthetical_segments(second);
+        let first_tokens = tokens_within(line_tokens, 0..split.first_end);
+        let second_tokens = crate::util::strip_parenthetical_tokens(tokens_within(
+            line_tokens,
+            split.second_start..line.len(),
+        ));
         let is_flashback_scoped_cost_adjustment = split.kind
             == preprocess_grammar::LineVariantSplitKind::CostAdjustmentFollowup
-            && preprocess_grammar::is_flashback_scoped_cost_adjustment(
-                first,
-                second_without_reminder.as_str(),
+            && preprocess_grammar::is_flashback_scoped_cost_adjustment_tokens(
+                first_tokens,
+                &second_tokens,
             );
         if is_flashback_scoped_cost_adjustment {
             // The flashback parser binds "this way" to the alternative cast.
@@ -123,7 +172,7 @@ fn split_parse_line_variants(line: &str) -> Vec<String> {
             return vec![line.to_string()];
         }
         if split.kind == preprocess_grammar::LineVariantSplitKind::ManaSpendFollowup
-            && preprocess_grammar::is_mana_spend_bonus_followup(second_without_reminder.as_str())
+            && preprocess_grammar::is_mana_spend_bonus_followup_tokens(&second_tokens)
         {
             return vec![line.to_string()];
         }
@@ -136,7 +185,7 @@ fn split_parse_line_variants(line: &str) -> Vec<String> {
 }
 
 fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextError> {
-    let Some(surface) = preprocess_grammar::parse_metadata_surface(line) else {
+    let Some(surface) = preprocess_grammar::parse_metadata_surface_with(line, stage_tokens) else {
         return Ok(None);
     };
 
@@ -173,13 +222,16 @@ fn materialize_structural_metadata(value: &crate::front_end::MetadataLine) -> Me
 
 fn replace_names_with_map(
     line: &str,
-    full_name: &str,
-    short_name: &str,
+    line_tokens: &[OwnedLexToken],
+    full_name: &SelfReferenceName,
+    short_name: &SelfReferenceName,
     preserve_source_surfaces: bool,
     base_offset: usize,
 ) -> (String, Vec<usize>) {
     fn has_word_boundaries_at(bytes: &[u8], idx: usize, len: usize) -> bool {
-        let is_word = |b: u8| b.is_ascii_alphanumeric();
+        // A byte at or above 0x80 belongs to a multibyte letter: "omer" inside
+        // "Éomer" is not a word of its own.
+        let is_word = |b: u8| b.is_ascii_alphanumeric() || b >= 0x80;
         let start_ok = if idx == 0 {
             true
         } else {
@@ -194,23 +246,20 @@ fn replace_names_with_map(
         start_ok && end_ok
     }
 
-    fn is_single_word_keyword_verb(name: &str) -> bool {
-        preprocess_grammar::parse_single_keyword_verb(name).is_some()
+    fn is_single_word_keyword_verb(name: &SelfReferenceName) -> bool {
+        preprocess_grammar::parse_single_keyword_verb_tokens(name.tokens()).is_some()
     }
 
-    fn starts_with_typed_keyword_action_statement(line: &str) -> bool {
-        let Ok(tokens) = lex_line(line, 0) else {
-            return false;
-        };
-        let Some(statement) = split_lexed_sentences(&tokens).into_iter().next() else {
+    fn starts_with_typed_keyword_action_statement(tokens: &[OwnedLexToken]) -> bool {
+        let Some(statement) = split_lexed_sentences(tokens).into_iter().next() else {
             return false;
         };
         super::grammar::effects::clause_pattern_shapes::parse_keyword_mechanic_tokens(statement)
             .is_some()
     }
 
-    fn is_keyword_ability_name(name: &str) -> bool {
-        preprocess_grammar::parse_keyword_ability_name(name).is_some()
+    fn is_keyword_ability_name(name: &SelfReferenceName) -> bool {
+        preprocess_grammar::parse_keyword_ability_name_tokens(name.tokens()).is_some()
     }
 
     fn preceded_by_named_keyword(bytes: &[u8], mut idx: usize) -> bool {
@@ -303,7 +352,7 @@ fn replace_names_with_map(
         original: &str,
         idx: usize,
         len: usize,
-        keyword: &str,
+        keyword: &SelfReferenceName,
     ) -> bool {
         if !is_single_word_keyword_verb(keyword) {
             return false;
@@ -314,7 +363,7 @@ fn replace_names_with_map(
         !slice.iter().any(|byte| byte.is_ascii_uppercase())
     }
 
-    fn within_vote_choice_clause(bytes: &[u8], idx: usize) -> bool {
+    fn within_vote_choice_clause(bytes: &[u8], line_tokens: &[OwnedLexToken], idx: usize) -> bool {
         let mut sentence_start = idx;
         while sentence_start > 0 {
             let prev = bytes[sentence_start - 1];
@@ -323,10 +372,8 @@ fn replace_names_with_map(
             }
             sentence_start -= 1;
         }
-        let Some(prefix) = std::str::from_utf8(&bytes[sentence_start..idx]).ok() else {
-            return false;
-        };
-        preprocess_grammar::parse_vote_choice_surface(prefix).is_some()
+        let clause = tokens_within(line_tokens, sentence_start..idx);
+        preprocess_grammar::parse_vote_choice_surface_tokens(clause).is_some()
     }
 
     fn is_short_name_self_reference_context(bytes: &[u8], idx: usize, len: usize) -> bool {
@@ -396,6 +443,7 @@ fn replace_names_with_map(
 
     fn is_result_optional_companion_short_name_context(
         bytes: &[u8],
+        line_tokens: &[OwnedLexToken],
         idx: usize,
         len: usize,
     ) -> bool {
@@ -407,13 +455,8 @@ fn replace_names_with_map(
             matches!(*byte, b'.' | b';')
         })
         .map_or(bytes.len(), |separator| idx + len + separator);
-        let Some(sentence) = std::str::from_utf8(&bytes[sentence_start..sentence_end]).ok() else {
-            return false;
-        };
-        let Ok(tokens) = lex_line(sentence, 0) else {
-            return false;
-        };
-        let Some(prefix) = split_leading_result_prefix_lexed(&tokens) else {
+        let tokens = tokens_within(line_tokens, sentence_start..sentence_end);
+        let Some(prefix) = split_leading_result_prefix_lexed(tokens) else {
             return false;
         };
         let Some(shape) = parse_shared_subject_optional_companion_shape(prefix.trailing_tokens)
@@ -426,28 +469,31 @@ fn replace_names_with_map(
         let Some(last) = shape.first_subject_tokens.last() else {
             return false;
         };
-        let local_start = idx - sentence_start;
-        first.span.start == local_start && last.span.end == local_start + len
+        first.span.start == idx && last.span.end == idx + len
     }
 
-    fn is_created_token_lifecycle_source(bytes: &[u8], idx: usize) -> bool {
+    fn is_created_token_lifecycle_source(
+        bytes: &[u8],
+        line_tokens: &[OwnedLexToken],
+        idx: usize,
+    ) -> bool {
         let sentence_start = crate::slice_primitives::select_last_position(&bytes[..idx], |byte| {
             matches!(*byte, b'.' | b';')
         })
         .map_or(0, |separator| separator + 1);
-        let Some(prefix) = std::str::from_utf8(&bytes[sentence_start..idx]).ok() else {
-            return false;
-        };
-        let Ok(tokens) = lex_line(prefix, 0) else {
-            return false;
-        };
+        let tokens = tokens_within(line_tokens, sentence_start..idx);
         crate::word_primitives::parse_sequence_suffix(
-            &crate::lexer::parser_token_word_refs(&tokens),
+            &crate::lexer::parser_token_word_refs(tokens),
             &["exile", "that", "token", "when"],
         )
     }
 
-    fn should_preserve_source_surface_context(bytes: &[u8], idx: usize, len: usize) -> bool {
+    fn should_preserve_source_surface_context(
+        bytes: &[u8],
+        line_tokens: &[OwnedLexToken],
+        idx: usize,
+        len: usize,
+    ) -> bool {
         let prev = previous_word(bytes, idx);
         let next = next_word(bytes, idx + len);
         let next_char = bytes.get(idx + len).copied();
@@ -467,7 +513,7 @@ fn replace_names_with_map(
         // authored name surface.
         if prev == Some(&b"when"[..])
             && next == Some(&b"leaves"[..])
-            && is_created_token_lifecycle_source(bytes, idx)
+            && is_created_token_lifecycle_source(bytes, line_tokens, idx)
         {
             return false;
         }
@@ -544,8 +590,8 @@ fn replace_names_with_map(
 
     let lower = line.to_ascii_lowercase();
     let bytes = lower.as_bytes();
-    let full_bytes = full_name.as_bytes();
-    let short_bytes = short_name.as_bytes();
+    let full_bytes = full_name.text.as_bytes();
+    let short_bytes = short_name.text.as_bytes();
 
     let mut out = String::new();
     let mut map = Vec::new();
@@ -557,14 +603,19 @@ fn replace_names_with_map(
             && has_word_boundaries_at(bytes, idx, full_bytes.len())
             && !(idx == 0
                 && (is_single_word_keyword_verb(full_name)
-                    || starts_with_typed_keyword_action_statement(line)))
+                    || starts_with_typed_keyword_action_statement(line_tokens)))
             && !(is_keyword_ability_name(full_name) && preceded_by_ability_grant_word(bytes, idx))
             && !preceded_by_named_keyword(bytes, idx)
             && !appears_to_be_created_token_name(bytes, idx, full_bytes.len())
-            && !within_vote_choice_clause(bytes, idx)
+            && !within_vote_choice_clause(bytes, line_tokens, idx)
             && !is_indefinite_become_descriptor(bytes, idx)
             && !(preserve_source_surfaces
-                && should_preserve_source_surface_context(bytes, idx, full_bytes.len()))
+                && should_preserve_source_surface_context(
+                    bytes,
+                    line_tokens,
+                    idx,
+                    full_bytes.len(),
+                ))
             && !should_preserve_single_word_keyword_verb_usage(
                 line,
                 idx,
@@ -590,16 +641,26 @@ fn replace_names_with_map(
                 && has_word_boundaries_at(bytes, idx, full_bytes.len()))
             && !(idx == 0
                 && (is_single_word_keyword_verb(short_name)
-                    || starts_with_typed_keyword_action_statement(line)))
+                    || starts_with_typed_keyword_action_statement(line_tokens)))
             && !(is_keyword_ability_name(short_name) && preceded_by_ability_grant_word(bytes, idx))
             && !preceded_by_named_keyword(bytes, idx)
             && !appears_to_be_created_token_name(bytes, idx, short_bytes.len())
-            && !within_vote_choice_clause(bytes, idx)
+            && !within_vote_choice_clause(bytes, line_tokens, idx)
             && !is_indefinite_become_descriptor(bytes, idx)
             && (is_short_name_self_reference_context(bytes, idx, short_bytes.len())
-                || is_result_optional_companion_short_name_context(bytes, idx, short_bytes.len()))
+                || is_result_optional_companion_short_name_context(
+                    bytes,
+                    line_tokens,
+                    idx,
+                    short_bytes.len(),
+                ))
             && !(preserve_source_surfaces
-                && should_preserve_source_surface_context(bytes, idx, short_bytes.len()))
+                && should_preserve_source_surface_context(
+                    bytes,
+                    line_tokens,
+                    idx,
+                    short_bytes.len(),
+                ))
             && !should_preserve_single_word_keyword_verb_usage(
                 line,
                 idx,
@@ -655,7 +716,9 @@ fn strip_parenthetical_with_map(text: &str, map: &[usize]) -> (String, Vec<usize
 }
 
 fn strip_labeled_ability_word_prefix_with_map(text: &str, map: &[usize]) -> (String, Vec<usize>) {
-    let Some(surface) = preprocess_grammar::parse_labeled_ability_prefix(text) else {
+    let Some(surface) = stage_tokens(text)
+        .and_then(|tokens| preprocess_grammar::parse_labeled_ability_prefix_tokens(&tokens))
+    else {
         return (text.to_string(), map.to_vec());
     };
     let remainder = text[surface.remainder_start..].to_string();
@@ -669,13 +732,17 @@ fn strip_labeled_ability_word_prefix_with_map(text: &str, map: &[usize]) -> (Str
 }
 
 fn strip_resolution_timing_tail_with_map(text: &str, map: &[usize]) -> (String, Vec<usize>) {
-    let Some(surface) = preprocess_grammar::parse_resolution_timing_tail(text) else {
+    let Some(tokens) = stage_tokens(text) else {
+        return (text.to_string(), map.to_vec());
+    };
+    let Some(surface) = preprocess_grammar::parse_resolution_timing_tail_tokens(&tokens) else {
         return (text.to_string(), map.to_vec());
     };
 
     let mut out = text[..surface.tail_start].trim_end().to_string();
     let mut out_map = map[..out.chars().count().min(map.len())].to_vec();
-    if surface.terminal_period && !preprocess_grammar::parse_terminal_period(out.as_str()) {
+    let kept_tokens = tokens_within(&tokens, 0..surface.tail_start);
+    if surface.terminal_period && !preprocess_grammar::parse_terminal_period_tokens(kept_tokens) {
         out.push('.');
         out_map.push(
             *map.get(surface.tail_start)
@@ -685,10 +752,25 @@ fn strip_resolution_timing_tail_with_map(text: &str, map: &[usize]) -> (String, 
     (out, out_map)
 }
 
-fn normalize_line_for_parse(
+#[cfg(test)]
+fn normalize_line_for_parse_text(
     line: &str,
     full_name: &str,
     short_name: &str,
+    preserve_source_surfaces: bool,
+) -> Option<NormalizedLine> {
+    normalize_line_for_parse(
+        line,
+        &SelfReferenceName::new(full_name.to_string()),
+        &SelfReferenceName::new(short_name.to_string()),
+        preserve_source_surfaces,
+    )
+}
+
+fn normalize_line_for_parse(
+    line: &str,
+    full_name: &SelfReferenceName,
+    short_name: &SelfReferenceName,
     preserve_source_surfaces: bool,
 ) -> Option<NormalizedLine> {
     let trimmed = line.trim();
@@ -696,16 +778,26 @@ fn normalize_line_for_parse(
         return None;
     }
 
-    let (replaced, map) =
-        replace_names_with_map(trimmed, full_name, short_name, preserve_source_surfaces, 0);
+    let trimmed_tokens = stage_tokens(trimmed).unwrap_or_default();
+    let (replaced, map) = replace_names_with_map(
+        trimmed,
+        &trimmed_tokens,
+        full_name,
+        short_name,
+        preserve_source_surfaces,
+        0,
+    );
     let (label_stripped, label_map) = strip_labeled_ability_word_prefix_with_map(&replaced, &map);
     let (stripped, stripped_map) = strip_parenthetical_with_map(&label_stripped, &label_map);
     let (stripped, stripped_map) = strip_resolution_timing_tail_with_map(&stripped, &stripped_map);
 
     if stripped.trim().is_empty() {
-        let wrapped = preprocess_grammar::parse_wrapped_activation_surface(trimmed)?;
+        let wrapped =
+            preprocess_grammar::parse_wrapped_activation_surface_tokens(trimmed, &trimmed_tokens)?;
+        let inner_tokens = stage_tokens(wrapped.inner.as_str()).unwrap_or_default();
         let (inner_replaced, inner_map) = replace_names_with_map(
             wrapped.inner.as_str(),
+            &inner_tokens,
             full_name,
             short_name,
             preserve_source_surfaces,
@@ -725,39 +817,34 @@ fn normalize_line_for_parse(
     ))
 }
 
-fn split_same_is_true_subject_predicate(sentence: &str) -> Option<(String, String)> {
-    preprocess_grammar::parse_subject_predicate_surface(sentence)
+fn split_same_is_true_subject_predicate(sentence: &[OwnedLexToken]) -> Option<(String, String)> {
+    preprocess_grammar::parse_subject_predicate_surface_tokens(sentence)
         .map(|surface| (surface.subject, surface.predicate))
 }
 
-fn find_borrow_ability_source_phrase(sentence: &str) -> Option<&'static str> {
-    preprocess_grammar::parse_borrow_ability_surface(sentence).map(|surface| surface.phrase)
+fn find_borrow_ability_source_phrase(sentence: &[OwnedLexToken]) -> Option<&'static str> {
+    preprocess_grammar::parse_borrow_ability_surface_tokens(sentence).map(|surface| surface.phrase)
 }
 
+/// The sentence with every borrowed-ability phrase replaced by `replacement`.
 fn apply_borrow_phrase_occurrences(
-    text: &str,
-    occurrences: &preprocess_grammar::BorrowPhraseOccurrencesSurface,
+    tokens: &[OwnedLexToken],
+    occurrences: &preprocess_grammar::BorrowPhraseTokenOccurrences,
     replacement: &str,
-) -> String {
-    let mut out = String::with_capacity(text.len());
+) -> Vec<OwnedLexToken> {
+    let mut out = Vec::with_capacity(tokens.len());
     let mut cursor = 0usize;
     for range in &occurrences.ranges {
-        let Some(prefix) = text.get(cursor..range.start) else {
-            return text.to_string();
-        };
-        out.push_str(prefix);
-        out.push_str(replacement);
+        out.extend_from_slice(&tokens[cursor..range.start]);
+        out.extend(crate::lexer::synthetic_phrase_tokens(replacement));
         cursor = range.end;
     }
-    let Some(tail) = text.get(cursor..) else {
-        return text.to_string();
-    };
-    out.push_str(tail);
+    out.extend_from_slice(&tokens[cursor..]);
     out
 }
 
-fn rewrite_borrow_static_condition(condition: &str, ability: &str) -> Option<String> {
-    match preprocess_grammar::parse_borrow_static_condition_surface(condition, ability)? {
+fn rewrite_borrow_static_condition(condition: &[OwnedLexToken], ability: &str) -> Option<String> {
+    match preprocess_grammar::parse_borrow_static_condition_surface_tokens(condition, ability)? {
         preprocess_grammar::BorrowStaticConditionSurface::ExiledWithAbility {
             subject,
             tail,
@@ -782,72 +869,87 @@ fn rewrite_borrow_static_condition(condition: &str, ability: &str) -> Option<Str
     }
 }
 
-fn rewrite_borrow_static_sentence(sentence: &str) -> String {
+/// A borrowed-ability static sentence, rewritten to its canonical "as long
+/// as there is ..." form; the sentence text as rendered otherwise.
+fn rewrite_borrow_static_sentence(sentence: &[OwnedLexToken]) -> String {
+    let rendered = || render_token_slice(sentence).trim().to_string();
     let Some(ability) = find_borrow_ability_source_phrase(sentence) else {
-        return sentence.to_string();
+        return rendered();
     };
-    match preprocess_grammar::parse_borrow_static_sentence_surface(sentence) {
-        Some(preprocess_grammar::BorrowStaticSentenceSurface::Leading {
+    let rendered_slice = |slice: &[OwnedLexToken]| render_token_slice(slice).trim().to_string();
+    match preprocess_grammar::parse_borrow_static_sentence_surface_tokens(sentence) {
+        Some(preprocess_grammar::BorrowStaticSentenceSurfaceTokens::Leading {
             condition,
             consequence,
-        }) => rewrite_borrow_static_condition(condition.as_str(), ability)
-            .map(|rewritten| format!("as long as {rewritten}, {consequence}"))
-            .unwrap_or_else(|| sentence.to_string()),
-        Some(preprocess_grammar::BorrowStaticSentenceSurface::Trailing { prefix, condition }) => {
-            rewrite_borrow_static_condition(condition.as_str(), ability)
-                .map(|rewritten| format!("{prefix} as long as {rewritten}"))
-                .unwrap_or_else(|| sentence.to_string())
-        }
-        None => sentence.to_string(),
+        }) => rewrite_borrow_static_condition(condition, ability)
+            .map(|rewritten| format!("as long as {rewritten}, {}", rendered_slice(consequence)))
+            .unwrap_or_else(rendered),
+        Some(preprocess_grammar::BorrowStaticSentenceSurfaceTokens::Trailing {
+            prefix,
+            condition,
+        }) => rewrite_borrow_static_condition(condition, ability)
+            .map(|rewritten| format!("{} as long as {rewritten}", rendered_slice(prefix)))
+            .unwrap_or_else(rendered),
+        None => rendered(),
     }
 }
 
+/// "The same is true for ..." sentences expanded into one sentence per
+/// target, over the stage text's tokens — tokenized once for the whole line.
 fn expand_borrow_ability_line(text: &str) -> String {
-    let Some(document) = preprocess_grammar::parse_preprocess_sentence_list(text) else {
-        return rewrite_borrow_static_sentence(text.trim());
+    let Some(tokens) = stage_tokens(text) else {
+        return text.trim().to_string();
+    };
+    let Some(document) = preprocess_grammar::parse_preprocess_sentence_list_tokens(&tokens) else {
+        return rewrite_borrow_static_sentence(&tokens);
     };
     if document.sentences.len() < 2 {
-        return rewrite_borrow_static_sentence(text.trim());
+        return rewrite_borrow_static_sentence(&tokens);
     }
 
     let mut expanded: Vec<String> = Vec::new();
+    let mut expanded_tokens: Vec<Vec<OwnedLexToken>> = Vec::new();
     for sentence in document.sentences {
-        if let Some(same_is_true) =
-            preprocess_grammar::parse_same_is_true_surface(sentence.as_str())
-            && let Some(base_sentence) = expanded.last().cloned()
+        if let Some(same_is_true) = preprocess_grammar::parse_same_is_true_surface_tokens(sentence)
+            && let Some(base_sentence) = expanded_tokens.last().cloned()
         {
             let targets = same_is_true.targets;
             if !targets.is_empty() {
-                if let Some(source_phrase) =
-                    find_borrow_ability_source_phrase(base_sentence.as_str())
-                    && let Some(occurrences) = preprocess_grammar::parse_borrow_phrase_occurrences(
-                        base_sentence.as_str(),
-                        source_phrase,
-                    )
+                if let Some(source_phrase) = find_borrow_ability_source_phrase(&base_sentence)
+                    && let Some(occurrences) =
+                        preprocess_grammar::parse_borrow_phrase_occurrences_tokens(
+                            &base_sentence,
+                            source_phrase,
+                        )
                 {
                     for target in &targets {
                         let replaced = apply_borrow_phrase_occurrences(
-                            base_sentence.as_str(),
+                            &base_sentence,
                             &occurrences,
                             target.as_str(),
                         );
-                        expanded.push(rewrite_borrow_static_sentence(replaced.as_str()));
+                        expanded.push(rewrite_borrow_static_sentence(&replaced));
+                        expanded_tokens.push(replaced);
                     }
                     continue;
                 }
 
                 if let Some((_subject, predicate)) =
-                    split_same_is_true_subject_predicate(base_sentence.as_str())
+                    split_same_is_true_subject_predicate(&base_sentence)
                 {
                     for target in &targets {
                         expanded.push(format!("{} {}", target.trim(), predicate));
+                        let mut tokens = crate::lexer::synthetic_phrase_tokens(target.trim());
+                        tokens.extend(crate::lexer::synthetic_phrase_tokens(&predicate));
+                        expanded_tokens.push(tokens);
                     }
                     continue;
                 }
             }
         }
 
-        expanded.push(rewrite_borrow_static_sentence(sentence.as_str()));
+        expanded.push(rewrite_borrow_static_sentence(sentence));
+        expanded_tokens.push(sentence.to_vec());
     }
 
     let mut joined = expanded.join(". ");
@@ -858,9 +960,9 @@ fn expand_borrow_ability_line(text: &str) -> String {
 }
 
 fn rewrite_vote_count_followups_line(text: &str) -> String {
-    fn rewrite_vote_count_sentence(sentence: &str) -> String {
-        let trimmed = sentence.trim();
-        match preprocess_grammar::parse_vote_count_rewrite_surface(trimmed) {
+    fn rewrite_vote_count_sentence(sentence: &[OwnedLexToken]) -> String {
+        let trimmed = render_token_slice(sentence).trim().to_string();
+        match preprocess_grammar::parse_vote_count_rewrite_surface_tokens(sentence) {
             Some(preprocess_grammar::VoteCountRewriteSurface::DrawForEachVote { vote }) => {
                 format!("For each {vote} vote, draw a card")
             }
@@ -876,17 +978,20 @@ fn rewrite_vote_count_followups_line(text: &str) -> String {
             Some(preprocess_grammar::VoteCountRewriteSurface::TrailingForEach { head, vote }) => {
                 format!("For each {vote} vote, {head}")
             }
-            None => trimmed.to_string(),
+            None => trimmed,
         }
     }
 
-    let Some(document) = preprocess_grammar::parse_preprocess_sentence_list(text) else {
+    let Some(tokens) = stage_tokens(text) else {
+        return text.to_string();
+    };
+    let Some(document) = preprocess_grammar::parse_preprocess_sentence_list_tokens(&tokens) else {
         return text.to_string();
     };
     let rewritten = document
         .sentences
         .into_iter()
-        .map(|sentence| rewrite_vote_count_sentence(sentence.as_str()))
+        .map(rewrite_vote_count_sentence)
         .collect::<Vec<_>>()
         .join(". ");
     if document.terminal_period && !rewritten.is_empty() {
@@ -909,7 +1014,9 @@ fn resized_char_map_for_rewrite(original_map: &[usize], normalized: &str) -> Vec
 }
 
 fn is_ignorable_unparsed_line(line: &str) -> bool {
-    preprocess_grammar::parse_ignorable_parenthetical_line(line)
+    stage_tokens(line).is_some_and(|tokens| {
+        preprocess_grammar::parse_ignorable_parenthetical_line_tokens(&tokens)
+    })
 }
 
 pub fn preprocess_document(
@@ -985,16 +1092,12 @@ pub fn preprocess_document_with_provenance(
         }
     }
 
-    fn short_name_for_self_reference(name: &str) -> String {
-        preprocess_grammar::parse_short_self_reference_name(name)
-    }
-
     fn normalize_non_metadata_line(
         raw_line: &str,
         line_index: usize,
         display_line_index: usize,
-        full_name: &str,
-        short_name: &str,
+        full_name: &SelfReferenceName,
+        short_name: &SelfReferenceName,
         preserve_source_surfaces: bool,
         annotations: &mut ParseAnnotations,
         provenance: &mut ProvenanceStore,
@@ -1073,11 +1176,20 @@ pub fn preprocess_document_with_provenance(
         .unwrap_or(card_name.as_str())
         .trim()
         .to_string();
-    let short_name = short_name_for_self_reference(front_face_name.as_str());
-    let full_lower = normalize_card_name_for_self_reference(front_face_name.as_str());
-    let short_lower = normalize_card_name_for_self_reference(short_name.as_str());
-    let source_surface_name_is_lexable = lex_line(full_lower.as_str(), 0).is_ok()
-        || (short_lower != full_lower && lex_line(short_lower.as_str(), 0).is_ok());
+    // The card name is metadata: tokenized here, once per card, for the
+    // short alias and for the keyword guards every line's name matching asks.
+    let front_face_tokens = stage_tokens(front_face_name.as_str()).unwrap_or_default();
+    let short_name = preprocess_grammar::parse_short_self_reference_name_tokens(
+        front_face_name.as_str(),
+        &front_face_tokens,
+    );
+    let full_name = SelfReferenceName::new(normalize_card_name_for_self_reference(
+        front_face_name.as_str(),
+    ));
+    let short_name =
+        SelfReferenceName::new(normalize_card_name_for_self_reference(short_name.as_str()));
+    let source_surface_name_is_lexable =
+        full_name.lexable() || (short_name.text != full_name.text && short_name.lexable());
     let mut annotations = ParseAnnotations::default();
     let mut items = Vec::new();
 
@@ -1133,7 +1245,11 @@ pub fn preprocess_document_with_provenance(
             continue;
         }
 
-        for (split_index, split_line) in split_parse_line_variants(line).into_iter().enumerate() {
+        let line_tokens = stage_tokens(line).unwrap_or_default();
+        for (split_index, split_line) in split_parse_line_variants(line, &line_tokens)
+            .into_iter()
+            .enumerate()
+        {
             let preserve_source_surfaces = source_surface_name_is_lexable
                 && card.card_types_ref().iter().any(|card_type| {
                     matches!(
@@ -1147,14 +1263,15 @@ pub fn preprocess_document_with_provenance(
                     )
                 });
             let virtual_line_index = line_index.saturating_mul(8).saturating_add(split_index);
-            let looks_like_resolution_followup = lex_line(split_line.as_str(), virtual_line_index)
-                .ok()
-                .map(|tokens| looks_like_spell_resolution_followup_intro_lexed(tokens.as_slice()))
+            let split_tokens = lex_line(split_line.as_str(), virtual_line_index).ok();
+            let looks_like_resolution_followup = split_tokens
+                .as_deref()
+                .map(looks_like_spell_resolution_followup_intro_lexed)
                 .unwrap_or(false);
-            let is_standalone_keyword_action = lex_line(split_line.as_str(), virtual_line_index)
-                .ok()
+            let is_standalone_keyword_action = split_tokens
+                .as_deref()
                 .and_then(|tokens| {
-                    split_lexed_sentences(&tokens)
+                    split_lexed_sentences(tokens)
                         .into_iter()
                         .next()
                         .map(|sentence| {
@@ -1175,8 +1292,8 @@ pub fn preprocess_document_with_provenance(
                     format!("{} {}", previous.info.raw_line.trim(), split_line.trim());
                 let Some(normalized) = normalize_line_for_parse(
                     combined_raw_line.as_str(),
-                    full_lower.as_str(),
-                    short_lower.as_str(),
+                    &full_name,
+                    &short_name,
                     preserve_source_surfaces,
                 ) else {
                     return Err(CardTextError::ParseError(format!(
@@ -1193,18 +1310,23 @@ pub fn preprocess_document_with_provenance(
                     &normalized.normalized,
                     &normalized.char_map,
                 );
-                previous.info.raw_line = combined_raw_line;
-                previous.info.normalized = normalized.clone();
                 previous.tokens =
                     lex_line(normalized.normalized.as_str(), previous.info.line_index)?;
+                // The authored stream follows the authored line: readers of
+                // `source_tokens` must see the merged line, not the first half.
+                previous.info.source_tokens =
+                    lex_line(combined_raw_line.trim(), previous.info.line_index)
+                        .unwrap_or_else(|_| previous.tokens.clone());
+                previous.info.raw_line = combined_raw_line;
+                previous.info.normalized = normalized.clone();
                 continue;
             }
             if let Some(parsed_line) = normalize_non_metadata_line(
                 split_line.as_str(),
                 virtual_line_index,
                 line_index,
-                full_lower.as_str(),
-                short_lower.as_str(),
+                &full_name,
+                &short_name,
                 preserve_source_surfaces,
                 &mut annotations,
                 &mut provenance,
@@ -1372,7 +1494,7 @@ mod tests {
     #[test]
     fn typed_line_shapes_preserve_preprocess_rewrite_behavior() {
         assert_eq!(
-            split_parse_line_variants(
+            split_parse_line_variants_text(
                 "As an additional cost to cast this spell, discard a card. Draw two cards."
             ),
             vec![
@@ -1383,7 +1505,7 @@ mod tests {
 
         let flashback = "Flashback {8}{B}{B}. This spell costs {X} less to cast this way, where X is the greatest mana value of a commander you own on the battlefield or in the command zone.";
         assert_eq!(
-            split_parse_line_variants(flashback),
+            split_parse_line_variants_text(flashback),
             vec![flashback.to_string()],
             "flashback-scoped cost adjustments must reach the compound keyword parser"
         );
@@ -1395,8 +1517,9 @@ mod tests {
             "It's an enchantment in addition to its other types. It's not a creature."
         );
 
-        let normalized = normalize_line_for_parse("Draw a card as it resolves.", "", "", false)
-            .expect("resolution line should normalize");
+        let normalized =
+            normalize_line_for_parse_text("Draw a card as it resolves.", "", "", false)
+                .expect("resolution line should normalize");
         assert_eq!(normalized.normalized, "draw a card.");
     }
 
@@ -1412,7 +1535,7 @@ mod tests {
         };
         assert_eq!(line.info.normalized.normalized, "manifest dread.");
 
-        let reference = normalize_line_for_parse(
+        let reference = normalize_line_for_parse_text(
             "When Manifest Dread enters, draw a card.",
             "manifest dread",
             "manifest dread",
@@ -1450,7 +1573,10 @@ mod tests {
     fn typed_borrow_vote_and_return_shapes_drive_textual_rewrites() {
         assert_eq!(
             rewrite_borrow_static_sentence(
-                "As long as a creature with flying is in your graveyard, creatures you control have flying"
+                &stage_tokens(
+                    "as long as a creature with flying is in your graveyard, creatures you control have flying"
+                )
+                .expect("lexes")
             ),
             "as long as there is a creature with flying in your graveyard, creatures you control have flying"
         );

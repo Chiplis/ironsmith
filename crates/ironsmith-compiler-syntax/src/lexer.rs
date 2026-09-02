@@ -425,6 +425,17 @@ impl OwnedLexToken {
     }
 }
 
+fn has_case_mapping(ch: char) -> bool {
+    ch.to_lowercase().ne(std::iter::once(ch)) || ch.to_uppercase().ne(std::iter::once(ch))
+}
+
+/// Whether `ch` is part of a word: an ASCII letter or digit, or a letter with
+/// a case mapping ("é", "É"). A modifier letter such as the superscript in
+/// "2ˣ" has no case mapping and is a separator, so the count still reads "2".
+pub fn is_word_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || has_case_mapping(ch)
+}
+
 fn push_normalized_token_words(
     slice: &str,
     base_span: TextSpan,
@@ -477,12 +488,15 @@ fn push_normalized_token_words(
         };
         let is_mana_hybrid_slash = normalized_ch == '/' && in_mana_braces;
 
-        if normalized_ch.is_ascii_alphanumeric() || is_counter_char || is_mana_hybrid_slash {
+        // Letters outside ASCII are letters too: a name such as "Adéwalé" is
+        // one word, not "ad" and "wal" with the accented letters dropped — a
+        // split that once left a stray "é" behind when the name was replaced.
+        if is_word_char(normalized_ch) || is_counter_char || is_mana_hybrid_slash {
             if piece_start.is_none() {
                 piece_start = Some(base_span.start + rel_idx);
             }
             piece_end = base_span.start + rel_idx + original_ch.len_utf8();
-            buffer.push(normalized_ch.to_ascii_lowercase());
+            buffer.extend(normalized_ch.to_lowercase());
             continue;
         }
 
@@ -1125,6 +1139,14 @@ where
         .collect()
 }
 
+/// Word tokens for a phrase the grammar holds as text — a created token's
+/// name, a source reference it rendered earlier. The word pieces come out the
+/// same as the lexer would produce for those words, without lexing at parse
+/// time; punctuation stays attached to its word and is ignored by matching.
+pub fn synthetic_phrase_tokens(phrase: &str) -> Vec<OwnedLexToken> {
+    synthetic_word_tokens(phrase.split_whitespace())
+}
+
 pub fn parser_token_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
     let mut words = Vec::new();
     for token in tokens {
@@ -1145,35 +1167,42 @@ pub fn parser_token_word_positions(tokens: &[OwnedLexToken]) -> Vec<(usize, &str
     positions
 }
 
+fn render_needs_space(prev: &OwnedLexToken, current: &OwnedLexToken) -> bool {
+    // Adjacent spans mean the authored text had no space between them. A
+    // synthesized token has no position, so it can never be adjacent.
+    let positioned = prev.span != TextSpan::synthetic() && current.span != TextSpan::synthetic();
+    if positioned && prev.span.end == current.span.start {
+        return false;
+    }
+
+    if matches!(
+        current.kind,
+        TokenKind::Comma
+            | TokenKind::Period
+            | TokenKind::Colon
+            | TokenKind::Semicolon
+            | TokenKind::Question
+            | TokenKind::Bang
+            | TokenKind::RParen
+            | TokenKind::RBracket
+    ) {
+        return false;
+    }
+
+    !matches!(
+        prev.kind,
+        TokenKind::LBracket
+            | TokenKind::LParen
+            | TokenKind::Quote
+            | TokenKind::Apostrophe
+            | TokenKind::Plus
+            | TokenKind::Dash
+    )
+}
+
 pub fn render_token_slice(tokens: &[OwnedLexToken]) -> String {
     fn needs_space(prev: &OwnedLexToken, current: &OwnedLexToken) -> bool {
-        if prev.span.end == current.span.start {
-            return false;
-        }
-
-        if matches!(
-            current.kind,
-            TokenKind::Comma
-                | TokenKind::Period
-                | TokenKind::Colon
-                | TokenKind::Semicolon
-                | TokenKind::Question
-                | TokenKind::Bang
-                | TokenKind::RParen
-                | TokenKind::RBracket
-        ) {
-            return false;
-        }
-
-        !matches!(
-            prev.kind,
-            TokenKind::LBracket
-                | TokenKind::LParen
-                | TokenKind::Quote
-                | TokenKind::Apostrophe
-                | TokenKind::Plus
-                | TokenKind::Dash
-        )
+        render_needs_space(prev, current)
     }
 
     let mut rendered = String::new();

@@ -554,7 +554,7 @@ fn parse_named_source_leading_gain_activated(
         return Ok(None);
     };
 
-    let self_tokens = crate::lexer::lex_line("this creature", 0)?;
+    let self_tokens = crate::lexer::synthetic_word_tokens(["this", "creature"]);
     let mut ability_tokens = Vec::with_capacity(tokens.len());
     ability_tokens.extend_from_slice(&tokens[..subject_start]);
     ability_tokens.extend(self_tokens);

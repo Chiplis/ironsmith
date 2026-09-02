@@ -1145,9 +1145,9 @@ pub(super) fn document_partner_parenthetical_trims_use_token_kinds() {
     assert!(
         adapter
             .contains("keyword_special_lines::parse_partner_with_name_shape_tokens(&line.tokens)")
-            && adapter.contains("render_original_text_for_token_slice(line, shape.name_tokens)")
-            && adapter.contains("render_token_slice(shape.name_tokens)"),
-        "{caller_relative} should consume the typed partner-name token span and preserve its original surface"
+            && adapter.contains("authored_tokens_for_normalized_slice(line, shape.name_tokens)")
+            && adapter.contains("shape.name_tokens.to_vec()"),
+        "{caller_relative} should consume the typed partner-name token span and keep its authored tokens"
     );
     for forbidden in [
         "raw_line",
@@ -1317,22 +1317,22 @@ pub(super) fn grammar_effect_labeled_prefix_classifiers_use_parser_token_words()
     let content = read_repo_file(&root, relative);
     let labeled_prefix_support = function_source(
         &content,
-        "fn labeled_prefix_tokens",
+        "fn is_labeled_ability_prefix_tokens",
         "#[derive(Debug, Clone, PartialEq, Eq)]",
     );
 
     assert!(
-        labeled_prefix_support.contains("lex_line(prefix.trim(), 0)"),
-        "{relative} should lex label prefix text before classifying it"
+        labeled_prefix_support.contains("parser_token_word_refs(prefix)"),
+        "{relative} should classify label prefixes from the parser token words of the tokens it is given"
     );
     assert!(
-        labeled_prefix_support.contains("parser_token_word_refs(&tokens)"),
-        "{relative} should classify label prefixes from parser token words"
-    );
-    assert!(
-        labeled_prefix_support
-            .contains("parser_token_word_refs(&tokens).as_slice() == MAX_SPEED_LABEL"),
+        labeled_prefix_support.contains("words.as_slice() == MAX_SPEED_LABEL"),
         "{relative} should classify exact label-prefix gates from parser token words"
+    );
+    assert!(
+        !labeled_prefix_support.contains("lex_line(")
+            && !labeled_prefix_support.contains("lex_fragment("),
+        "{relative} label-prefix classifiers receive tokens; the document phase tokenizes"
     );
     for forbidden in [
         "MAX_SPEED_LABEL_PATTERN",
@@ -1465,22 +1465,17 @@ pub(super) fn labeled_keyword_prefix_preservation_is_front_end_grammar_owned() {
     let content = read_repo_file(&root, relative);
     let parser = function_source(
         &content,
-        "pub(crate) fn preserve_labeled_ability_prefix_for_parse_text",
-        "fn is_generic_ability_label_prefix_text",
+        "pub fn preserve_labeled_ability_prefix_for_parse_tokens",
+        "fn is_generic_ability_label_prefix_tokens",
     );
 
     assert!(
-        parser.contains("labeled_prefix_tokens(prefix)"),
-        "{relative} should route keyword-prefix text through the front-end lexer"
+        parser.contains("parser_token_word_refs(prefix)"),
+        "{relative} should classify keyword prefixes from the parser token words of the tokens it is given"
     );
     assert!(
-        parser.contains("parser_token_word_refs(&tokens)"),
-        "{relative} should classify keyword prefixes from parser token words"
-    );
-    assert!(
-        content.contains("fn labeled_prefix_tokens(prefix: &str)")
-            && content.contains("lex_line(prefix.trim(), 0).ok()"),
-        "{relative} should centralize the text-to-token boundary before semantic prefix classification"
+        !parser.contains("lex_line(") && !parser.contains("lex_fragment("),
+        "{relative} keyword-prefix preservation receives tokens; the document phase tokenizes"
     );
     for forbidden in [
         ".split_whitespace()",

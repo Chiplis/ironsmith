@@ -280,7 +280,7 @@ fn inline_rule_self_surface(
         ));
     }
     let named_token = named_token?;
-    let name_tokens = crate::util::lex_fragment(named_token, 0)?;
+    let name_tokens = crate::lexer::synthetic_phrase_tokens(named_token);
     let name_words = parser_token_word_refs(&name_tokens);
     crate::word_primitives::parse_sequence_prefix(subject_words, &name_words)
         .then(|| SourceReferenceSurface::FullName(named_token.to_string()))
@@ -515,6 +515,9 @@ pub(super) fn creature_rules(
     }
 }
 
+/// Test-only: the shape a token definition's text parses to. Production
+/// callers hold the sentence's tokens and use `parse_token_definition_shape_tokens`.
+#[cfg(test)]
 pub fn parse_token_definition_shape_text(source_text: &str) -> Option<TokenDefinitionSpec> {
     let trimmed = source_text.trim();
     let tokens = crate::util::lex_fragment(trimmed, 0)?;

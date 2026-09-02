@@ -4928,9 +4928,8 @@ mod tests {
             "You may remove a loyalty counter from a planeswalker you control rather than pay this creature's crew cost.",
         ] {
             let tokens = lex_line(line, 0).expect("marker line should lex");
-            let text = render_token_slice(&tokens);
             assert!(
-                supported_keyword_marker_tokens(&tokens, &text),
+                supported_keyword_marker_tokens(&tokens),
                 "{line} should be recognized through token shapes"
             );
         }

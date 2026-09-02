@@ -68,11 +68,7 @@ pub(super) fn parse_triggered_line_impl(
         Some(ironsmith_core::TotalCost::<crate::model::CompilerCost>::mana(cost))
     };
     let nested_combat_payment = parse_nested_combat_payment(full_parse_tokens)
-        .or_else(|| parse_nested_combat_payment(&line.info.source_tokens))
-        .or_else(|| {
-            crate::util::lex_fragment(&line.info.raw_line, line.info.line_index)
-                .and_then(|tokens| parse_nested_combat_payment(&tokens))
-        });
+        .or_else(|| parse_nested_combat_payment(&line.info.source_tokens));
     let mut parsed = parse_triggered_ability_line_impl(
         line,
         full_parse_tokens,
@@ -118,15 +114,13 @@ pub(super) fn parse_triggered_line_impl(
     // can collapse the already-typed aggregate P/T back to the token
     // definition's 0/0. Reconcile from the intact source only after that
     // lossy pass, retaining the exact TotalPower + zone-change-group proof.
-    let authored_source_tokens =
-        crate::lexer::lex_line(line.info.raw_line.as_str(), line.info.line_index)
-            .unwrap_or_else(|_| line.info.source_tokens.clone());
+    let authored_source_tokens = line.info.source_tokens.as_slice();
     // The surface-preservation pass re-recognizes the body one clause at a time.
     // Restore a grammar-proven serial target list from the intact authored
     // tail so all independent targets keep the one shared leading duration.
-    recognize_serial_target_pt_modifiers(&mut parsed, &authored_source_tokens)?;
-    recognize_authored_correlated_trigger_programs(&mut parsed, &authored_source_tokens)?;
-    recognize_dynamic_zone_change_group_token_creation(&mut parsed, &authored_source_tokens)?;
+    recognize_serial_target_pt_modifiers(&mut parsed, authored_source_tokens)?;
+    recognize_authored_correlated_trigger_programs(&mut parsed, authored_source_tokens)?;
+    recognize_dynamic_zone_change_group_token_creation(&mut parsed, authored_source_tokens)?;
     recognize_dynamic_zone_change_group_token_creation(&mut parsed, effect_parse_tokens)?;
     recognize_open_attraction_reminder(&mut parsed, line.info.raw_line.as_str());
     hoist_delayed_copy_retargeting_in_line(&mut parsed);
@@ -135,14 +129,14 @@ pub(super) fn parse_triggered_line_impl(
     // Source-trigger restoration above is intentionally broad for ordinary
     // spell-cast triggers. Reapply the stricter coordinated spell-or-ability
     // proof last so it cannot be simplified back to only its spell arm.
-    recognize_authored_correlated_trigger_programs(&mut parsed, &authored_source_tokens)?;
+    recognize_authored_correlated_trigger_programs(&mut parsed, authored_source_tokens)?;
     if let Some(source_surface) = spell_cast_single_target_source_exclusion_surface(
         trigger_parse_tokens,
         line.info.source_tokens.as_slice(),
     ) {
         apply_spell_cast_single_target_source_exclusion(&mut parsed, &source_surface);
     }
-    recognize_named_source_exile_surface(&mut parsed, &authored_source_tokens);
+    recognize_named_source_exile_surface(&mut parsed, authored_source_tokens);
     // Effect-surface reconciliation may rebuild a triggered chunk from its
     // body. Reapply the introduction from this exact authored sentence so a
     // physical `When` chunk split from a preceding static sentence cannot
@@ -492,8 +486,7 @@ pub(super) fn parse_triggered_ability_line_impl(
     } else {
         full_parse_tokens
     };
-    let authored_raw_tokens = crate::lexer::lex_line(&line.info.raw_line, line.info.line_index)
-        .unwrap_or_else(|_| line.info.source_tokens.clone());
+    let authored_raw_tokens = line.info.source_tokens.as_slice();
     let mut trigger_facts = line.info.semantic_facts.triggered_ability.clone();
     if let Some(intro_surface) =
         super::super::super::grammar::trigger_surface::parse_trigger_intro_surface_tokens(
@@ -519,7 +512,7 @@ pub(super) fn parse_triggered_ability_line_impl(
     // battlefield and can detach the resolution body as a spell instruction.
     // Rebuild only the typed ability-word shell that explicitly names the
     // command-zone-or-battlefield source condition.
-    let authored_words = crate::lexer::parser_token_word_refs(&authored_raw_tokens);
+    let authored_words = crate::lexer::parser_token_word_refs(authored_raw_tokens);
     let has_eminence_label = crate::word_primitives::first_is(&authored_words, "eminence");
     let names_command_or_battlefield = crate::word_primitives::sequence_occurs(
         &authored_words,
@@ -554,7 +547,7 @@ pub(super) fn parse_triggered_ability_line_impl(
     // it is not part of the restriction after the comma. Prepared trigger
     // rewrites can otherwise split at `this` and feed `card while ...` into
     // the effect parser, producing an unrelated object-filter union.
-    let exiled_last_counter = parse_exiled_last_counter_triggered_line(&authored_raw_tokens)?.or(
+    let exiled_last_counter = parse_exiled_last_counter_triggered_line(authored_raw_tokens)?.or(
         parse_exiled_last_counter_triggered_line(source_text_tokens)?,
     );
     if let Some(chunk) = exiled_last_counter {
@@ -573,9 +566,9 @@ pub(super) fn parse_triggered_ability_line_impl(
     // proof for both trigger domains and the shared X-cost qualification. The
     // intact head owns the trigger fact while the prepared effect slice owns
     // the copy/retarget reference flow.
-    if let Some(split) = semantic_grammar::parse_comma_split_tokens(&authored_raw_tokens)
+    if let Some(split) = semantic_grammar::parse_comma_split_tokens(authored_raw_tokens)
         && let Some(chunk) = lower_spell_or_activated_ability_x_cost_trigger(
-            &authored_raw_tokens,
+            authored_raw_tokens,
             split.before,
             effect_parse_tokens,
             inferred_max_triggers_per_turn,
@@ -595,7 +588,7 @@ pub(super) fn parse_triggered_ability_line_impl(
     // set before the `revealed this way` iterator is resolved, leaving only a
     // bare reveal, token creation, and draw. The intact authored tail is the
     // complete owner when all three grammar facts are present.
-    if let Some(split) = semantic_grammar::parse_comma_split_tokens(&authored_raw_tokens) {
+    if let Some(split) = semantic_grammar::parse_comma_split_tokens(authored_raw_tokens) {
         let words = crate::lexer::parser_token_word_refs(split.after);
         let conditional_gate_remainder_program = is_gate_partition_word_program(&words);
         if conditional_gate_remainder_program {
@@ -711,7 +704,7 @@ pub(super) fn parse_triggered_ability_line_impl(
     let serial_target_modifiers =
         crate::effect_sentences::parse_serial_target_pt_modifiers_sentence(effect_parse_tokens)?
             .or_else(|| {
-                crate::grammar::semantic_lowering::parse_comma_split_tokens(&authored_raw_tokens)
+                crate::grammar::semantic_lowering::parse_comma_split_tokens(authored_raw_tokens)
                     .and_then(|split| {
                         crate::grammar::primitives::probe_shape(
                             crate::effect_sentences::parse_serial_target_pt_modifiers_sentence(
@@ -743,7 +736,7 @@ pub(super) fn parse_triggered_ability_line_impl(
     // dynamic token to its 0/0 definition. Reparse only the grammar-proven
     // aggregate death-group creation from the intact source tail before that
     // lossy slice reaches ordinary sentence parsing.
-    if let Some(effect) = authored_dynamic_token_creation_from_trigger(&authored_raw_tokens)? {
+    if let Some(effect) = authored_dynamic_token_creation_from_trigger(authored_raw_tokens)? {
         let trigger = parse_trigger_clause_lexed(trigger_parse_tokens)?;
         return apply_chosen_option_to_triggered_chunk(
             apply_explicit_intervening_if_to_triggered_chunk(
@@ -821,7 +814,7 @@ pub(super) fn parse_triggered_ability_line_impl(
     let authored_source_pump_unblockable =
         crate::effect_sentences::parse_source_gets_unblockable_subject_verb(effect_parse_tokens)?
             .or(
-                semantic_grammar::parse_comma_split_tokens(&authored_raw_tokens)
+                semantic_grammar::parse_comma_split_tokens(authored_raw_tokens)
                     .or_else(|| semantic_grammar::parse_comma_split_tokens(source_text_tokens))
                     .and_then(|split| {
                         crate::effect_sentences::parse_source_gets_unblockable_subject_verb(
@@ -857,7 +850,7 @@ pub(super) fn parse_triggered_ability_line_impl(
     // slice has already been simplified sentence-by-sentence. Re-probe only
     // the authored post-trigger tail so the typed dynamic count, owner, and
     // shared exiled collection survive that handoff.
-    let authored_tail = semantic_grammar::parse_comma_split_tokens(&authored_raw_tokens)
+    let authored_tail = semantic_grammar::parse_comma_split_tokens(authored_raw_tokens)
         .or_else(|| semantic_grammar::parse_comma_split_tokens(source_text_tokens))
         .map(|split| split.after);
     let authored_correlated_effects = authored_tail
@@ -2043,23 +2036,15 @@ pub(super) fn lower_special_rewrite_triggered_head(
         return Ok(Some(chunk));
     }
 
-    let authored_tokens =
-        crate::lexer::lex_line(&line.info.raw_line, line.info.line_index).unwrap_or_default();
-    let full_authored_tokens =
-        crate::lexer::lex_line(&line.full_text, line.info.line_index).unwrap_or_default();
-    if [
-        full_parse_tokens,
-        line.info.source_tokens.as_slice(),
-        authored_tokens.as_slice(),
-        full_authored_tokens.as_slice(),
-    ]
-    .into_iter()
-    .any(|tokens| {
-        matches!(
-            semantic_grammar::parse_special_triggered_program_tokens(tokens),
-            Some(semantic_grammar::SpecialTriggeredProgram::SecondSpellSuspend)
-        )
-    }) {
+    if [full_parse_tokens, line.info.source_tokens.as_slice()]
+        .into_iter()
+        .any(|tokens| {
+            matches!(
+                semantic_grammar::parse_special_triggered_program_tokens(tokens),
+                Some(semantic_grammar::SpecialTriggeredProgram::SecondSpellSuspend)
+            )
+        })
+    {
         let trigger = parse_trigger_clause_lexed(trigger_parse_tokens)?;
         let triggering_tag = crate::tag::CompilerReferenceTag::Triggering.key();
         let triggering_spell = TargetAst::Tagged(triggering_tag.clone(), None);

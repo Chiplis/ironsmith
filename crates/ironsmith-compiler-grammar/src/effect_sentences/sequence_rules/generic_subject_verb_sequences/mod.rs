@@ -268,11 +268,7 @@ pub fn parse_each_player_repeat_pay_life_tokens_sequence(
                 PlayerAst::That,
                 SubjectVerbActionAst::CreateTokenWithMods {
                     name: "1/1 black Rat creature".to_string(),
-                    definition:
-                        crate::grammar::token_definitions::parse_token_definition_shape_text(
-                            "1/1 black Rat creature",
-                        )
-                        .expect("closed-form Rat token definition must remain parseable"),
+                    definition: rat_token_definition(),
                     count: Value::PendingEffectMetric {
                         source: ironsmith_core::EffectMetricSource::Outcome,
                         metric: ironsmith_core::EffectMetric::Count,
@@ -699,3 +695,37 @@ pub use combat_programs::{
     parse_damage_prevention_reflect_to_any_target_sequence,
     parse_next_damage_prevention_gain_life_sequence,
 };
+
+/// The closed-form "1/1 black Rat creature" definition, spelled as the shape
+/// its text parses to rather than as text to tokenize; a test keeps the two
+/// in step.
+fn rat_token_definition() -> crate::model::token_definition::TokenDefinitionSpec {
+    use crate::model::token_definition::{
+        CreatureTokenRulesShape, CreatureTokenShape, TokenDefinitionSpec,
+    };
+    TokenDefinitionSpec::Creature(CreatureTokenShape {
+        name: "Rat".to_string(),
+        card_types: vec![crate::types::CardType::Creature],
+        subtypes: vec![crate::types::Subtype::Rat],
+        power_toughness: (1, 1),
+        legendary: false,
+        colors: crate::color::ColorSet::BLACK,
+        use_source_chosen_color: false,
+        use_source_chosen_creature_type: false,
+        keywords: Vec::new(),
+        rules: CreatureTokenRulesShape::default(),
+    })
+}
+
+#[cfg(test)]
+mod rat_token_definition_tests {
+    #[test]
+    fn rat_token_definition_is_the_shape_its_text_parses_to() {
+        assert_eq!(
+            Some(super::rat_token_definition()),
+            crate::grammar::token_definitions::parse_token_definition_shape_text(
+                "1/1 black Rat creature"
+            ),
+        );
+    }
+}

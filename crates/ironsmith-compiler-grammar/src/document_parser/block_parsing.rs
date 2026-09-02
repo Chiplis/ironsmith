@@ -6,7 +6,7 @@ pub(super) fn try_parse_level_header_block(
     line: &PreprocessedLine,
     allow_unsupported: bool,
 ) -> Result<Option<(RecognizedLine, usize)>, CardTextError> {
-    let Some((min_level, max_level)) = parse_level_header(&line.info.normalized.normalized) else {
+    let Some((min_level, max_level)) = parse_level_header_tokens(&line.tokens) else {
         return Ok(None);
     };
 
@@ -14,10 +14,10 @@ pub(super) fn try_parse_level_header_block(
     let mut items = Vec::new();
     let mut probe_idx = idx + 1;
     while let Some(PreprocessedItem::Line(next_line)) = preprocessed.items.get(probe_idx) {
-        if parse_level_header(&next_line.info.normalized.normalized).is_some() {
+        if parse_level_header_tokens(&next_line.tokens).is_some() {
             break;
         }
-        if parse_saga_chapter_prefix(&next_line.info.normalized.normalized).is_some() {
+        if parse_saga_chapter_prefix_tokens(&next_line.tokens).is_some() {
             break;
         }
         if let Some(parsed_pt) = parse_power_toughness(&next_line.info.normalized.normalized)

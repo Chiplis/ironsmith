@@ -844,6 +844,21 @@ impl Drop for ParserTraceOverrideGuard {
 /// mana symbol. The rules lexer rejects those, and that rejection is the
 /// answer the caller asked for: this fragment is not a rules clause, so the
 /// shape being recognized does not apply. There is no diagnostic to surface.
+/// Tokens with parenthetical reminder text removed.
+pub fn strip_parenthetical_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let mut depth = 0usize;
+    let mut kept = Vec::with_capacity(tokens.len());
+    for token in tokens {
+        match token.kind {
+            TokenKind::LParen => depth += 1,
+            TokenKind::RParen => depth = depth.saturating_sub(1),
+            _ if depth == 0 => kept.push(token.clone()),
+            _ => {}
+        }
+    }
+    kept
+}
+
 pub fn lex_fragment(text: &str, line_index: usize) -> Option<Vec<OwnedLexToken>> {
     match crate::lexer::lex_line(text, line_index) {
         Ok(tokens) => Some(tokens),
@@ -2203,15 +2218,10 @@ pub fn normalize_source_reference_tokens_with_context(
     context: crate::parse_context::ParseContextView<'_>,
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<OwnedLexToken>, CardTextError> {
-    let authored = render_token_slice(tokens);
-    let Some(normalized) = crate::document_parser::normalize_named_source_sentence_with_context(
-        context,
-        authored.as_str(),
-    ) else {
-        return Ok(tokens.to_vec());
-    };
-    let line = tokens.first().map_or(0, |token| token.span.line);
-    super::lexer::lex_line(normalized.as_str(), line)
+    Ok(
+        crate::document_parser::normalize_named_source_tokens_with_context(context, tokens)
+            .unwrap_or_else(|| tokens.to_vec()),
+    )
 }
 
 pub fn parse_target_phrase_with_context(
@@ -2226,13 +2236,14 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
     target_semantics::parse_target_phrase_inner(tokens)
 }
 
-pub fn parse_saga_chapter_prefix(line: &str) -> Option<(Vec<u32>, Option<String>, String)> {
-    let parsed = header_shapes::parse_saga_chapter_header(line)?;
-    Some((parsed.chapters, parsed.presentation_label, parsed.body))
+pub fn parse_saga_chapter_prefix_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<header_shapes::SagaChapterHeaderTokens<'_>> {
+    header_shapes::parse_saga_chapter_header_tokens(tokens)
 }
 
-pub fn parse_level_header(line: &str) -> Option<(u32, Option<u32>)> {
-    let parsed = header_shapes::parse_level_header(line)?;
+pub fn parse_level_header_tokens(tokens: &[OwnedLexToken]) -> Option<(u32, Option<u32>)> {
+    let parsed = header_shapes::parse_level_header_tokens(tokens)?;
     Some((parsed.minimum, parsed.maximum))
 }
 
@@ -2957,14 +2968,14 @@ pub fn parse_additional_cost_choice_options_lexed(
 
 pub fn parse_if_conditional_alternative_cost_line(
     tokens: &[OwnedLexToken],
-    line: &str,
+    line_tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
-    alternative_cost_lines::parse_if_conditional_alternative_cost(tokens, line)
+    alternative_cost_lines::parse_if_conditional_alternative_cost(tokens, line_tokens)
 }
 
 pub fn parse_if_conditional_alternative_cost_line_lexed(
     tokens: &[OwnedLexToken],
-    line: &str,
+    line_tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
-    parse_if_conditional_alternative_cost_line(tokens, line)
+    parse_if_conditional_alternative_cost_line(tokens, line_tokens)
 }

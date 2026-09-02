@@ -168,22 +168,22 @@ pub mod lexer {
         contains_token_word_sequence, find_any_token_word_sequence_span, find_token_any_word,
         find_token_kind, find_token_word, find_token_word_sequence, find_token_word_sequence_span,
         find_token_word_sequence_value, is_authored_proper_name_phrase, is_bare_card_name_phrase,
-        lex_line, parser_token_word_positions, parser_token_word_refs,
+        is_word_char, lex_line, parser_token_word_positions, parser_token_word_refs,
         render_bare_card_name_surface, render_token_slice, rfind_token_word, split_lexed_sentences,
-        synthetic_word_tokens, token_slice_at_is, token_slice_at_is_any, token_slice_first_is,
-        token_slice_first_is_any, token_word_pieces_for_token, token_word_refs, trim_lexed_commas,
-        word_slice_at_is, word_slice_at_is_any, word_slice_contains_all_words,
-        word_slice_contains_any_phrase_or_empty, word_slice_contains_any_word,
-        word_slice_contains_no_words, word_slice_contains_phrase_or_empty,
-        word_slice_contains_window_by, word_slice_contains_word, word_slice_ends_with_any,
-        word_slice_find_any_phrase_start, word_slice_find_any_phrase_start_or_zero,
-        word_slice_find_phrase_start_or_zero, word_slice_find_phrase_value,
-        word_slice_find_window_by, word_slice_first_is, word_slice_first_is_any,
-        word_slice_last_is, word_slice_last_is_any, word_slice_matching_phrase,
-        word_slice_matching_value, word_slice_starts_with_any, word_slice_starts_with_at,
-        word_slice_strip_any_prefix, word_slice_strip_any_suffix, word_slice_strip_first_word,
-        word_slice_strip_first_word_value, word_slice_strip_prefix, word_slice_strip_prefix_value,
-        word_slice_strip_suffix, word_slice_strip_suffix_value,
+        synthetic_phrase_tokens, synthetic_word_tokens, token_slice_at_is, token_slice_at_is_any,
+        token_slice_first_is, token_slice_first_is_any, token_word_pieces_for_token,
+        token_word_refs, trim_lexed_commas, word_slice_at_is, word_slice_at_is_any,
+        word_slice_contains_all_words, word_slice_contains_any_phrase_or_empty,
+        word_slice_contains_any_word, word_slice_contains_no_words,
+        word_slice_contains_phrase_or_empty, word_slice_contains_window_by,
+        word_slice_contains_word, word_slice_ends_with_any, word_slice_find_any_phrase_start,
+        word_slice_find_any_phrase_start_or_zero, word_slice_find_phrase_start_or_zero,
+        word_slice_find_phrase_value, word_slice_find_window_by, word_slice_first_is,
+        word_slice_first_is_any, word_slice_last_is, word_slice_last_is_any,
+        word_slice_matching_phrase, word_slice_matching_value, word_slice_starts_with_any,
+        word_slice_starts_with_at, word_slice_strip_any_prefix, word_slice_strip_any_suffix,
+        word_slice_strip_first_word, word_slice_strip_first_word_value, word_slice_strip_prefix,
+        word_slice_strip_prefix_value, word_slice_strip_suffix, word_slice_strip_suffix_value,
     };
     pub use ironsmith_grammar_common::lexical::{
         LexedClause, locate_token_kind, locate_token_word, locate_token_word_choice,
@@ -252,11 +252,13 @@ pub mod search_library_support;
 pub mod static_ability_helpers;
 
 pub mod front_end_parser_support;
+pub mod parse_ledger;
 pub mod parser_support;
 pub mod preprocess;
 pub mod recognized_document;
 pub mod semantic_assembly;
 pub mod semantic_line_parsing;
+pub mod sentence_memo;
 pub mod util;
 
 #[cfg(test)]

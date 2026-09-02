@@ -29,6 +29,11 @@ const MANUAL_PARSER_BUDGET: usize = 38;
 /// Production modules over the 1,000-line limit.
 const MODULE_SIZE_BUDGET: usize = 92;
 
+/// Spans the sentence rules parse more than once for a card. The rules are
+/// memoized per card, so this can only rise if a new entry bypasses the memo;
+/// the sample keeps the gate fast and is deterministic.
+const REDUNDANT_PARSE_BUDGET: usize = 0;
+
 fn audit_output(binary: &str, arguments: &[&str]) -> String {
     let root = workspace_root();
     let output = Command::new(binary)
@@ -96,5 +101,18 @@ pub(super) fn parser_module_size_audit_is_enforced() {
         "module-size",
         reported_count(&report, "module-size findings:"),
         MODULE_SIZE_BUDGET,
+    );
+}
+
+#[test]
+pub(super) fn redundant_parse_audit_is_enforced() {
+    let report = audit_output(
+        env!("CARGO_BIN_EXE_audit_redundant_parses"),
+        &["--every", "50"],
+    );
+    assert_within_budget(
+        "redundant-parse",
+        reported_count(&report, "redundant parses:"),
+        REDUNDANT_PARSE_BUDGET,
     );
 }

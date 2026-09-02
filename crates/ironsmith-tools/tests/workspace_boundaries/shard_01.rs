@@ -1744,7 +1744,7 @@ pub(super) fn keyword_static_marker_support_uses_token_shapes() {
     }
 
     for expected in [
-        "is_core_keyword_marker_text(&text)",
+        "is_core_keyword_marker_tokens(tokens)",
         "early_static_facts::parse_early_keyword_marker_tokens(tokens).is_some()",
     ] {
         assert!(

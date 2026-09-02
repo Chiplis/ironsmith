@@ -112,7 +112,7 @@ use super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::rule_engine::{LexRuleHeadHint, LexRuleHintIndex, build_lex_rule_hint_index};
 use super::static_ability_helpers::static_ability_for_keyword_action;
 use super::token_primitives::{
-    is_core_keyword_marker_text, is_ticket_sticker_marker_text, split_em_dash_label_prefix,
+    is_core_keyword_marker_tokens, is_ticket_sticker_marker_tokens, split_em_dash_label_prefix,
     split_em_dash_label_prefix_tokens,
 };
 use super::util::{
@@ -321,7 +321,7 @@ fn keyword_static_clause_text(tokens: &[OwnedLexToken]) -> String {
 
 fn keyword_static_marker(tokens: &[OwnedLexToken]) -> StaticAbility {
     let mut text = keyword_static_clause_text(tokens);
-    if supported_keyword_marker_tokens(tokens, &text) {
+    if supported_keyword_marker_tokens(tokens) {
         if matches!(
             early_static_facts::parse_early_keyword_marker_tokens(tokens),
             Some(early_static_facts::EarlyKeywordMarkerKind::GreaterPowerCrewsVehicles)
@@ -343,9 +343,8 @@ fn parse_companion_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
     Some(StaticAbility::companion(condition, text))
 }
 
-fn supported_keyword_marker_tokens(tokens: &[OwnedLexToken], text: &str) -> bool {
-    let text = text.trim_start().to_ascii_lowercase();
-    is_core_keyword_marker_text(&text)
+fn supported_keyword_marker_tokens(tokens: &[OwnedLexToken]) -> bool {
+    is_core_keyword_marker_tokens(tokens)
         || early_static_facts::parse_early_keyword_marker_tokens(tokens).is_some()
 }
 
@@ -1720,9 +1719,7 @@ fn parse_static_ability_ast_line_early_lexed(
     }
 
     let marker_text = render_token_slice(tokens);
-    if supported_keyword_marker_tokens(tokens, &marker_text)
-        || is_ticket_sticker_marker_text(&marker_text)
-    {
+    if supported_keyword_marker_tokens(tokens) || is_ticket_sticker_marker_tokens(tokens) {
         return Ok(Some(vec![keyword_static_marker(tokens).into()]));
     }
     if document_grammar::parse_static_effect_continues_until_end_of_turn_surface(tokens).is_some() {

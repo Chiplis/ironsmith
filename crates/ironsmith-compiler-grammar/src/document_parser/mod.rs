@@ -69,9 +69,9 @@ use super::token_primitives::{
     strip_leading_if_you_do_lexed,
 };
 use super::util::{
-    map_span_to_original, parse_level_header, parse_level_up_line_lexed, parse_power_toughness,
-    parse_saga_chapter_prefix, parse_subtype_flexible, parser_trace, parser_trace_enabled,
-    span_from_tokens,
+    map_span_to_original, parse_level_header_tokens, parse_level_up_line_lexed,
+    parse_power_toughness, parse_saga_chapter_prefix_tokens, parse_subtype_flexible, parser_trace,
+    parser_trace_enabled, span_from_tokens,
 };
 const TOKEN_NAME_SUFFIX_WORD: &str = "twin";
 const LESS_THAN_ONE_MANA_REDUCTION_REMINDER: &str =
@@ -173,6 +173,10 @@ fn try_merge_labeled_prior_token_replacement_statement(
         previous.info.raw_line.trim(),
         followup.info.raw_line.trim()
     );
+    previous
+        .info
+        .source_tokens
+        .extend(followup.info.source_tokens.iter().cloned());
     let prior_token_facts = &followup.info.semantic_facts.statement;
     previous.info.semantic_facts.statement.instead_followup = prior_token_facts.instead_followup;
     previous
@@ -183,10 +187,6 @@ fn try_merge_labeled_prior_token_replacement_statement(
     previous.info.semantic_facts.statement.presentation_label =
         prior_token_facts.presentation_label.clone();
     true
-}
-
-fn lexed_tokens(text: &str, line_index: usize) -> Result<Vec<OwnedLexToken>, CardTextError> {
-    lex_line(text, line_index)
 }
 
 fn is_bullet_line(line: &PreprocessedLine) -> bool {
@@ -985,22 +985,41 @@ fn recognize_case_to_solve_line(
         return Ok(None);
     }
 
-    let condition = render_token_slice(body_tokens)
-        .trim()
-        .trim_end_matches('.')
-        .trim()
-        .to_string();
-    if condition.is_empty() {
+    // The trailing period is presentation, not part of the condition.
+    let mut condition_tokens = body_tokens;
+    while condition_tokens
+        .last()
+        .is_some_and(|token| token.kind == TokenKind::Period)
+    {
+        condition_tokens = &condition_tokens[..condition_tokens.len() - 1];
+    }
+    if condition_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "case solve line is missing a condition: '{}'",
             line.info.raw_line
         )));
     }
 
-    let rewritten = rewrite_line_normalized(
-        line,
-        &format!("At the beginning of your end step, if {condition}, put a level counter on this."),
-    )?;
+    // A Case to solve is a triggered ability in disguise: the trigger is
+    // built around the authored condition tokens from token constants.
+    let mut tokens = crate::lexer::synthetic_word_tokens([
+        "At",
+        "the",
+        "beginning",
+        "of",
+        "your",
+        "end",
+        "step",
+    ]);
+    tokens.push(OwnedLexToken::synthetic_comma());
+    tokens.extend(crate::lexer::synthetic_word_tokens(["if"]));
+    tokens.extend_from_slice(condition_tokens);
+    tokens.push(OwnedLexToken::synthetic_comma());
+    tokens.extend(crate::lexer::synthetic_word_tokens([
+        "put", "a", "level", "counter", "on", "this",
+    ]));
+    tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
+    let rewritten = rewrite_line_tokens(line, &tokens);
     let mut triggered = recognize_triggered_line(&rewritten)?;
     triggered.presentation = Some(PresentationLabel::CaseToSolve);
     Ok(Some(triggered))
@@ -1084,12 +1103,9 @@ fn normalize_trailing_keyword_activation_sentence_lexed(
     None
 }
 
-fn preflight_known_strict_unsupported(text: &str) -> Option<CardTextError> {
-    for (line_idx, line) in text.lines().enumerate() {
-        let Ok(tokens) = lex_line(line, line_idx) else {
-            continue;
-        };
-        if document_grammar::parse_half_starting_life_plus_one_surface(&tokens).is_some() {
+fn preflight_known_strict_unsupported(lines: &[&[OwnedLexToken]]) -> Option<CardTextError> {
+    for tokens in lines {
+        if document_grammar::parse_half_starting_life_plus_one_surface(tokens).is_some() {
             return Some(CardTextError::ParseError(
                 "unsupported predicate".to_string(),
             ));
@@ -1098,13 +1114,9 @@ fn preflight_known_strict_unsupported(text: &str) -> Option<CardTextError> {
     None
 }
 
-fn preflight_invalid_payment_keyword_lines(text: &str) -> Option<CardTextError> {
-    for (line_index, raw_line) in text.lines().enumerate() {
-        let Ok(tokens) = lex_line(raw_line, line_index) else {
-            continue;
-        };
-
-        for segment in grammar::split_lexed_slices_on_commas_or_semicolons(&tokens) {
+fn preflight_invalid_payment_keyword_lines(lines: &[&[OwnedLexToken]]) -> Option<CardTextError> {
+    for tokens in lines {
+        for segment in grammar::split_lexed_slices_on_commas_or_semicolons(tokens) {
             let (keyword, cost_start, is_echo) =
                 if document_grammar::parse_cumulative_upkeep_surface(segment).is_some() {
                     ("cumulative upkeep", 2, false)
@@ -1160,163 +1172,44 @@ fn preflight_invalid_payment_keyword_lines(text: &str) -> Option<CardTextError> 
     None
 }
 
-fn normalize_named_source_sentence_for_builder(
+/// The token-level form of [`normalize_explicit_named_source_references_for_builder`].
+///
+/// Recognition already holds the tokens, so the card's own name is replaced in
+/// them directly: every alias occurrence the string form would rewrite becomes
+/// the typed self-reference as synthesized word tokens, and the "enter" that
+/// follows a rewritten subject becomes "enters" the same way. Nothing is
+/// rendered back to text and lexed again. Kept tokens keep their spans; a
+/// synthesized subject takes the span of the name it stands in for, which is
+/// where the reference was authored.
+///
+/// Returns `None` when nothing changed, like the string form.
+pub(crate) fn normalize_named_source_tokens_for_builder(
     card: &crate::card::CardBuilder,
-    text: &str,
-) -> Option<String> {
-    let trimmed = text.trim();
-    let subject = if crate::slice_primitives::contains(
-        card.card_types_ref(),
-        &crate::types::CardType::Creature,
-    ) {
-        "this creature"
-    } else if crate::slice_primitives::contains(
-        card.card_types_ref(),
-        &crate::types::CardType::Land,
-    ) {
-        "this land"
-    } else if crate::slice_primitives::contains(
-        card.card_types_ref(),
-        &crate::types::CardType::Artifact,
-    ) {
-        "this artifact"
-    } else if crate::slice_primitives::contains(
-        card.card_types_ref(),
-        &crate::types::CardType::Enchantment,
-    ) {
-        "this enchantment"
-    } else if crate::slice_primitives::contains(
-        card.card_types_ref(),
-        &crate::types::CardType::Planeswalker,
-    ) {
-        "this planeswalker"
-    } else if crate::slice_primitives::contains(
-        card.card_types_ref(),
-        &crate::types::CardType::Battle,
-    ) {
-        "this battle"
-    } else {
-        "this permanent"
-    };
-    let lower = trimmed.to_ascii_lowercase();
-
-    let name = card.name_ref();
-    if !name.is_empty() {
-        let name_lower = name.to_ascii_lowercase();
-        if let Some(remainder) =
-            strip_named_source_prefix_lexed(lower.as_str(), name_lower.as_str())
-        {
-            if source_alias_prefix_looks_like_effect_verb(name_lower.as_str(), remainder.as_str()) {
-                return None;
-            }
-            // Characteristic-defining P/T lines deliberately retain whether
-            // Oracle used the card's proper name. Rewriting a leading
-            // possessive name here (for example, "Tidewalker's power ...")
-            // erases that presentation information before the typed static
-            // ability parser can attach its `SourceNameSubject` hint.
-            if lexed_word_strings(remainder.as_str())
-                .and_then(|words| words.first().cloned())
-                .is_some_and(|word| matches!(word.as_str(), "power" | "toughness"))
-            {
-                return None;
-            }
-            return Some(format!("{subject} {remainder}"));
-        }
-    }
-
-    let names = source_name_aliases_for_builder(card);
-    if !names.is_empty() && !mentions_named_reference(lower.as_str()) {
-        let mut rewritten = lower.clone();
-        for name_lower in &names {
-            rewritten = replace_named_source_aliases_from_set(
-                &rewritten, name_lower, subject, &names, true,
-            );
-        }
-        // In replacement programs such as "As this creature enters, ... .
-        // This creature enters with ...", preserving a short-name surface in
-        // the follow-up sentence prevents the two sentences from being parsed
-        // as one typed as-enters program. Once the leading source has been
-        // normalized, normalize source references in the follow-up as well.
-        let normalized_as_enters_subject =
-            crate::string_primitives::strip_prefix(&rewritten, "as ")
-                .and_then(|rest| {
-                    crate::string_primitives::split_once(rest, " enters,")
-                        .map(|(subject, _)| subject)
-                })
-                .filter(|subject| {
-                    *subject == "this" || crate::string_primitives::starts_with(subject, "this ")
-                });
-        if let Some(as_enters_subject) = normalized_as_enters_subject
-            && let Some((head, tail)) = crate::string_primitives::split_once(&rewritten, ". ")
-        {
-            let mut normalized_tail = tail.to_string();
-            for name_lower in &names {
-                normalized_tail = replace_named_source_aliases_from_set(
-                    &normalized_tail,
-                    name_lower,
-                    as_enters_subject,
-                    &names,
-                    document_grammar::parse_alias_face_separator(name_lower).is_some(),
-                );
-            }
-            rewritten = format!("{head}. {normalized_tail}");
-        }
-        rewritten = normalize_named_source_enter_agreement(&rewritten, subject);
-        if rewritten != lower {
-            return Some(rewritten);
-        }
-    }
-
-    // If a possessive named reference elsewhere in the sentence prevented the
-    // broad alias rewrite above, only treat this as a source-entry sentence
-    // when a known source alias is actually its leading subject. Searching for
-    // an arbitrary later "enters" would incorrectly collapse filtered rules
-    // such as "Each other creature ... enters ... equal to Arwen's toughness"
-    // into a self-entry rule.
-    for source_alias in &names {
-        let Some(source_tail) =
-            strip_named_source_prefix_lexed(lower.as_str(), source_alias.as_str())
-        else {
-            continue;
-        };
-        if source_alias_prefix_looks_like_effect_verb(source_alias.as_str(), source_tail.as_str()) {
-            continue;
-        }
-        let Some(source_tail_words) = lexed_word_strings(source_tail.as_str()) else {
-            continue;
-        };
-        if source_tail_words.first().map(String::as_str) != Some("enters") {
-            continue;
-        }
-        let Some(rest) = named_source_enters_tail_lexed(source_tail.as_str()) else {
-            continue;
-        };
-        return Some(format!("{subject} enters {rest}"));
-    }
-
-    None
-}
-
-fn normalize_explicit_named_source_references_for_builder(
-    card: &crate::card::CardBuilder,
-    text: &str,
-) -> Option<String> {
-    let lower = text.trim().to_ascii_lowercase();
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<OwnedLexToken>> {
     let subject = named_source_subject_for_builder(card);
-    let aliases = source_name_aliases_for_builder(card);
-    let mut rewritten = lower.clone();
+    let aliases = aliases_for_builder(card);
+    let all_words = alias_word_lists(&aliases);
+    let mut rewritten = tokens.to_vec();
+    let mut changed = false;
     for alias in &aliases {
-        rewritten =
-            replace_named_source_aliases_from_set(&rewritten, alias, subject, &aliases, false);
+        if let Some(next) =
+            replace_named_source_alias_tokens(&rewritten, &alias.words, subject, &all_words, false)
+        {
+            rewritten = next;
+            changed = true;
+        }
     }
-    rewritten = normalize_named_source_enter_agreement(&rewritten, subject);
-    (rewritten != lower).then_some(rewritten)
+    if normalize_named_source_enter_agreement_tokens(&mut rewritten, subject) {
+        changed = true;
+    }
+    changed.then_some(rewritten)
 }
 
-pub(crate) fn normalize_named_source_sentence_with_context(
+pub(crate) fn normalize_named_source_tokens_with_context(
     context: ParseContextView<'_>,
-    text: &str,
-) -> Option<String> {
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<OwnedLexToken>> {
     let mut card = CardBuilder::new(
         crate::ids::CardId::new(),
         context.source().card_name.as_str(),
@@ -1325,93 +1218,153 @@ pub(crate) fn normalize_named_source_sentence_with_context(
     if !context.card().subtypes.is_empty() {
         card = card.subtypes(context.card().subtypes.clone());
     }
-    normalize_explicit_named_source_references_for_builder(&card, text)
+    normalize_named_source_tokens_for_builder(&card, tokens)
 }
 
-fn normalize_named_source_trigger_for_builder(
-    card: &crate::card::CardBuilder,
-    text: &str,
-) -> Option<String> {
-    let trimmed = text.trim();
-    let lower = trimmed.to_ascii_lowercase();
-    // A legendary name can itself contain the first comma in a triggered
-    // line. Normalize an exact, leading full-name subject before looking for
-    // the trigger/effect separator; otherwise a line such as
-    // `When Name, Epithet enters, ...` is split after `Name`.
-    let (lower, leading_full_name_changed) =
-        if let Some(rewritten) = normalize_comma_bearing_leading_source_trigger(card, &lower) {
-            (rewritten, true)
-        } else {
-            (lower, false)
-        };
-    if let Some((trigger_head, effect_body)) = split_first_comma_lexed(lower.as_str()) {
-        let mut changed = leading_full_name_changed;
-        let rewritten_head = if let Some(rewritten_head) =
-            normalize_named_source_trigger_head_for_builder(card, trigger_head.as_str())
-        {
-            changed = true;
-            rewritten_head
-        } else {
-            trigger_head
-        };
-        let names = source_name_aliases_for_builder(card);
-        let mut rewritten_body = effect_body;
-        if !names.is_empty() {
-            let subject = named_source_subject_for_builder(card);
-            for name_lower in &names {
-                let next_body = replace_named_source_aliases_from_set(
-                    &rewritten_body,
-                    name_lower,
-                    subject,
-                    &names,
-                    false,
-                );
-                if next_body != rewritten_body {
-                    changed = true;
-                }
-                rewritten_body = next_body;
-            }
-        }
-        if !changed {
-            return None;
-        }
-        return Some(format!("{rewritten_head}, {rewritten_body}"));
-    }
-
-    normalize_named_source_trigger_head_for_builder(card, lower.as_str())
-}
-
-fn normalize_comma_bearing_leading_source_trigger(
-    card: &crate::card::CardBuilder,
-    text: &str,
-) -> Option<String> {
-    let full_name = card.name_ref().trim().to_ascii_lowercase();
-    if full_name.is_empty() {
+/// One pass of alias replacement over tokens — the token-level twin of
+/// [`replace_named_source_aliases_with_options`].
+///
+/// Word pieces are the unit of matching, as in the string form; a match that
+/// does not begin and end on token boundaries is left alone, since there is no
+/// token to stand in for part of a token.
+fn replace_named_source_alias_tokens(
+    tokens: &[OwnedLexToken],
+    alias_words: &[String],
+    replacement: &str,
+    all_alias_words: &[Vec<String>],
+    preserve_surface_hints: bool,
+) -> Option<Vec<OwnedLexToken>> {
+    if alias_words.is_empty() {
         return None;
     }
-
-    let lower = text.trim().to_ascii_lowercase();
-    for intro in ["when ", "whenever "] {
-        let Some(after_intro) = lower.strip_prefix(intro) else {
-            continue;
-        };
-        let Some(after_name) = after_intro.strip_prefix(full_name.as_str()) else {
-            continue;
-        };
-        if after_name
-            .chars()
-            .next()
-            .is_some_and(|ch| ch.is_alphanumeric() || ch == '\'' || ch == '’')
-        {
+    let pieces = source_alias_word_pieces(tokens);
+    if pieces.is_empty() {
+        return None;
+    }
+    // Which token each piece came from, so a piece range maps back to tokens.
+    let mut piece_tokens = Vec::with_capacity(pieces.len());
+    for (token_index, token) in tokens.iter().enumerate() {
+        if token.kind == TokenKind::Period {
             continue;
         }
-        return Some(format!(
-            "{intro}{}{after_name}",
-            named_source_subject_for_builder(card)
+        piece_tokens.extend(std::iter::repeat_n(
+            token_index,
+            token.parser_word_pieces().len(),
         ));
     }
+    debug_assert_eq!(piece_tokens.len(), pieces.len());
 
-    None
+    let mut out: Vec<OwnedLexToken> = Vec::with_capacity(tokens.len());
+    let mut next_token = 0usize;
+    let mut word_idx = 0usize;
+    let mut changed = false;
+    while word_idx + alias_words.len() <= pieces.len() {
+        if !source_alias_word_span_matches(&pieces, word_idx, &alias_words) {
+            word_idx += 1;
+            continue;
+        }
+        let overlaps_preserved_longer_alias = all_alias_words.iter().any(|longer_words| {
+            longer_words.len() > alias_words.len()
+                && source_alias_word_span_matches(&pieces, word_idx, longer_words)
+        });
+        if overlaps_preserved_longer_alias {
+            word_idx += 1;
+            continue;
+        }
+        let end_word = word_idx + alias_words.len();
+        let remaining_words = pieces[word_idx..]
+            .iter()
+            .map(|piece| piece.text)
+            .collect::<Vec<_>>();
+        let alias_is_strict_prefix_of_compound_subtype =
+            crate::grammar::filters::reference_tag_stage::compound_filter_subtype_prefix_word_len(
+                &remaining_words,
+            )
+            .is_some_and(|compound_len| compound_len > alias_words.len());
+        let preserve_surface = alias_is_strict_prefix_of_compound_subtype
+            || source_alias_occurrence_looks_like_effect_verb_lexed(&pieces, word_idx, end_word)
+            || source_alias_occurrence_is_name_override_surface_lexed(&pieces, word_idx, end_word)
+            || source_alias_occurrence_is_created_token_name_lexed(&pieces, word_idx, end_word)
+            || source_alias_occurrence_is_typed_subtype_noun_lexed(&pieces, word_idx, end_word)
+            || source_alias_occurrence_is_rules_term_lexed(&pieces, word_idx, end_word)
+            || (!pieces[end_word - 1].possessive
+                && matches!(
+                    pieces.get(end_word).map(|piece| piece.text),
+                    Some("counter" | "counters")
+                ))
+            || (preserve_surface_hints
+                && source_alias_occurrence_should_preserve_surface_lexed(
+                    &pieces, word_idx, end_word,
+                ));
+        if preserve_surface {
+            word_idx += 1;
+            continue;
+        }
+        let first_token = piece_tokens[word_idx];
+        let last_token = piece_tokens[end_word - 1];
+        let starts_token = word_idx == 0 || piece_tokens[word_idx - 1] != first_token;
+        let ends_token = end_word == pieces.len() || piece_tokens[end_word] != last_token;
+        if !starts_token || !ends_token || first_token < next_token {
+            word_idx += 1;
+            continue;
+        }
+        out.extend_from_slice(&tokens[next_token..first_token]);
+        let span = TextSpan {
+            line: tokens[first_token].span.line,
+            start: tokens[first_token].span.start,
+            end: tokens[last_token].span.end,
+        };
+        let mut words: Vec<String> = replacement.split_whitespace().map(str::to_string).collect();
+        // The matched name span includes an authored possessive; the typed
+        // subject keeps that grammar.
+        if pieces[end_word - 1].possessive
+            && let Some(last) = words.last_mut()
+        {
+            last.push_str("'s");
+        }
+        out.extend(
+            words
+                .into_iter()
+                .map(|word| OwnedLexToken::word(word, span)),
+        );
+        next_token = last_token + 1;
+        word_idx = end_word;
+        changed = true;
+    }
+    if !changed {
+        return None;
+    }
+    out.extend_from_slice(&tokens[next_token..]);
+    Some(out)
+}
+
+/// "this creature enter" → "this creature enters", on tokens.
+fn normalize_named_source_enter_agreement_tokens(
+    tokens: &mut [OwnedLexToken],
+    subject: &str,
+) -> bool {
+    let subject_words: Vec<&str> = subject.split_whitespace().collect();
+    let mut changed = false;
+    let mut index = 0;
+    while index + subject_words.len() < tokens.len() {
+        let subject_here = subject_words
+            .iter()
+            .enumerate()
+            .all(|(offset, word)| tokens[index + offset].is_word(word));
+        let enter_index = index + subject_words.len();
+        // The string form only rewrote "enter" at the end of the text or
+        // before a space, never before punctuation.
+        let followed_by_word_or_end = tokens
+            .get(enter_index + 1)
+            .is_none_or(|next| matches!(next.kind, TokenKind::Word | TokenKind::Number));
+        if subject_here && tokens[enter_index].is_word("enter") && followed_by_word_or_end {
+            let span = tokens[enter_index].span;
+            tokens[enter_index] = OwnedLexToken::word("enters", span);
+            changed = true;
+        }
+        index += 1;
+    }
+    changed
 }
 
 fn named_source_subject_for_builder(card: &crate::card::CardBuilder) -> &'static str {
@@ -1448,203 +1401,6 @@ fn named_source_subject_for_builder(card: &crate::card::CardBuilder) -> &'static
     } else {
         "this permanent"
     }
-}
-
-fn normalized_line_mentions_source_alias(card: &crate::card::CardBuilder, text: &str) -> bool {
-    let lower = text.trim().to_ascii_lowercase();
-    let subject = named_source_subject_for_builder(card);
-    let aliases = source_name_aliases_for_builder(card);
-    aliases.iter().any(|alias| {
-        replace_named_source_aliases_from_set(
-            lower.as_str(),
-            alias,
-            subject,
-            &aliases,
-            document_grammar::parse_alias_face_separator(alias).is_some(),
-        ) != lower
-    })
-}
-
-fn normalized_line_mentions_explicit_source_alias(
-    card: &crate::card::CardBuilder,
-    text: &str,
-) -> bool {
-    normalize_explicit_named_source_references_for_builder(card, text).is_some()
-}
-
-fn normalize_named_source_trigger_head_for_builder(
-    card: &crate::card::CardBuilder,
-    text: &str,
-) -> Option<String> {
-    let trimmed = text.trim();
-    let subject = named_source_subject_for_builder(card);
-
-    let name = card.name_ref();
-    if !name.is_empty() {
-        let name_lower = name.to_ascii_lowercase();
-        if let Some(remainder) = strip_named_source_prefix_lexed(trimmed, name_lower.as_str()) {
-            return Some(format!("{subject} {remainder}"));
-        }
-    }
-
-    let names = source_name_aliases_for_builder(card);
-    if !names.is_empty() {
-        let mut rewritten = trimmed.to_string();
-        for name_lower in &names {
-            rewritten = replace_named_source_aliases_from_set(
-                &rewritten, name_lower, subject, &names, false,
-            );
-        }
-        rewritten = normalize_named_source_enter_agreement(&rewritten, subject);
-        if rewritten != trimmed {
-            return Some(rewritten);
-        }
-    }
-
-    None
-}
-
-fn source_alias_prefix_looks_like_effect_verb(alias: &str, remainder: &str) -> bool {
-    document_grammar::parse_source_alias_effect_verb_surface(alias, remainder).is_some()
-}
-
-fn lexed_word_strings(text: &str) -> Option<Vec<String>> {
-    match lex_line(text.trim(), 0) {
-        Ok(tokens) => Some(TokenWordView::new(&tokens).owned_words()),
-        Err(_) => None,
-    }
-}
-
-fn strip_named_source_prefix_lexed(text: &str, name: &str) -> Option<String> {
-    document_grammar::parse_named_source_prefix(text, name).map(|surface| surface.tail)
-}
-
-fn named_source_enters_tail_lexed(text: &str) -> Option<String> {
-    document_grammar::parse_named_source_enters_surface(text).map(|surface| surface.tail)
-}
-
-fn split_first_comma_lexed(text: &str) -> Option<(String, String)> {
-    document_grammar::parse_first_comma(text).map(|surface| (surface.head, surface.body))
-}
-
-fn mentions_named_reference(text: &str) -> bool {
-    document_grammar::parse_named_reference(text).is_some()
-}
-
-#[cfg(test)]
-fn replace_named_source_aliases(text: &str, alias: &str, replacement: &str) -> String {
-    replace_named_source_aliases_with_options(text, alias, replacement, true, &[])
-}
-
-fn replace_named_source_aliases_from_set(
-    text: &str,
-    alias: &str,
-    replacement: &str,
-    all_aliases: &[String],
-    preserve_surface_hints: bool,
-) -> String {
-    replace_named_source_aliases_with_options(
-        text,
-        alias,
-        replacement,
-        preserve_surface_hints,
-        all_aliases,
-    )
-}
-
-fn replace_named_source_aliases_with_options(
-    text: &str,
-    alias: &str,
-    replacement: &str,
-    preserve_surface_hints: bool,
-    all_aliases: &[String],
-) -> String {
-    let Some(alias_words) = lexed_word_strings(alias) else {
-        return text.to_ascii_lowercase();
-    };
-    if alias_words.is_empty() {
-        return text.to_ascii_lowercase();
-    }
-
-    let lower = text.to_ascii_lowercase();
-    let Ok(tokens) = lex_line(lower.as_str(), 0) else {
-        return lower;
-    };
-    let pieces = source_alias_word_pieces(&tokens);
-    if pieces.is_empty() {
-        return lower;
-    }
-
-    let mut rewritten = String::with_capacity(lower.len());
-    let mut cursor = 0usize;
-    let mut word_idx = 0usize;
-    while word_idx + alias_words.len() <= pieces.len() {
-        if !source_alias_word_span_matches(&pieces, word_idx, &alias_words) {
-            word_idx += 1;
-            continue;
-        }
-        // Aliases are applied longest-first. If a longer source alias is
-        // still present at this position, its authored surface was
-        // intentionally preserved by the earlier pass. Do not let a shorter
-        // alias rewrite only its prefix (for example, turning
-        // "Vivi Ornitier's power" into "this creature Ornitier's power").
-        let overlaps_preserved_longer_alias = all_aliases.iter().any(|longer_alias| {
-            let Some(longer_words) = lexed_word_strings(longer_alias) else {
-                return false;
-            };
-            longer_words.len() > alias_words.len()
-                && source_alias_word_span_matches(&pieces, word_idx, &longer_words)
-        });
-        if overlaps_preserved_longer_alias {
-            word_idx += 1;
-            continue;
-        }
-
-        let end_word = word_idx + alias_words.len();
-        let start = pieces[word_idx].span.start;
-        let end = pieces[end_word - 1].span.end;
-        let remaining_words = pieces[word_idx..]
-            .iter()
-            .map(|piece| piece.text)
-            .collect::<Vec<_>>();
-        let alias_is_strict_prefix_of_compound_subtype =
-            crate::grammar::filters::reference_tag_stage::compound_filter_subtype_prefix_word_len(
-                &remaining_words,
-            )
-            .is_some_and(|compound_len| compound_len > alias_words.len());
-        let preserve_surface = alias_is_strict_prefix_of_compound_subtype
-            || source_alias_occurrence_looks_like_effect_verb_lexed(&pieces, word_idx, end_word)
-            || source_alias_occurrence_is_name_override_surface_lexed(&pieces, word_idx, end_word)
-            || source_alias_occurrence_is_created_token_name_lexed(&pieces, word_idx, end_word)
-            || source_alias_occurrence_is_typed_subtype_noun_lexed(&pieces, word_idx, end_word)
-            || source_alias_occurrence_is_rules_term_lexed(&pieces, word_idx, end_word)
-            || (!pieces[end_word - 1].possessive
-                && matches!(
-                    pieces.get(end_word).map(|piece| piece.text),
-                    Some("counter" | "counters")
-                ))
-            || (preserve_surface_hints
-                && source_alias_occurrence_should_preserve_surface_lexed(
-                    &pieces, word_idx, end_word,
-                ));
-        if !preserve_surface {
-            rewritten.push_str(&lower[cursor..start]);
-            rewritten.push_str(replacement);
-            // The matched source-name span includes the authored possessive
-            // suffix. Preserve that grammar when replacing a proper name such
-            // as "Hold for Ransom's" with a typed source surface.
-            if pieces[end_word - 1].possessive {
-                rewritten.push_str("'s");
-            }
-            cursor = end;
-            word_idx = end_word;
-            continue;
-        }
-
-        word_idx += 1;
-    }
-    rewritten.push_str(&lower[cursor..]);
-    rewritten
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1756,21 +1512,28 @@ fn source_alias_occurrence_looks_like_effect_verb_lexed(
     start_word: usize,
     end_word: usize,
 ) -> bool {
-    let alias = pieces
-        .get(start_word..end_word)
-        .unwrap_or_default()
-        .iter()
-        .map(|piece| piece.text)
-        .collect::<Vec<_>>()
-        .join(" ");
-    let remainder = pieces
-        .get(end_word..)
-        .unwrap_or_default()
-        .iter()
-        .map(|piece| piece.text)
-        .collect::<Vec<_>>()
-        .join(" ");
-    !remainder.is_empty() && source_alias_prefix_looks_like_effect_verb(&alias, &remainder)
+    // Word pieces are already normalized words; they become word tokens for
+    // the shape parser without a round trip through text.
+    let alias_tokens = crate::lexer::synthetic_word_tokens(
+        pieces
+            .get(start_word..end_word)
+            .unwrap_or_default()
+            .iter()
+            .map(|piece| piece.text),
+    );
+    let remainder_tokens = crate::lexer::synthetic_word_tokens(
+        pieces
+            .get(end_word..)
+            .unwrap_or_default()
+            .iter()
+            .map(|piece| piece.text),
+    );
+    !remainder_tokens.is_empty()
+        && document_grammar::source_alias_effect_verb_surface_tokens(
+            &alias_tokens,
+            &remainder_tokens,
+        )
+        .is_some()
 }
 
 fn source_alias_occurrence_should_preserve_surface_lexed(
@@ -1963,27 +1726,13 @@ fn normalize_named_source_enter_agreement(text: &str, subject: &str) -> String {
     text.replace(&format!("{singular} "), &format!("{plural} "))
 }
 
-fn source_name_aliases_for_builder(card: &crate::card::CardBuilder) -> Vec<String> {
+/// The card's full names: the printed name, its front face, and each of those
+/// without a digital-variant marker or trailing numeral.
+fn source_full_names_for_builder(card: &crate::card::CardBuilder) -> Vec<String> {
     let name = card.name_ref().trim();
     if name.is_empty() {
         return Vec::new();
     }
-
-    let mut aliases = Vec::new();
-    let mut push_alias = |alias: &str| {
-        let alias = alias.trim().to_ascii_lowercase();
-        if !alias.is_empty() && !aliases.contains(&alias) {
-            let ampersandless = alias.replace(" & ", " ");
-            let and_alias = alias.replace(" & ", " and ");
-            aliases.push(alias);
-            if !ampersandless.is_empty() && !aliases.contains(&ampersandless) {
-                aliases.push(ampersandless);
-            }
-            if !and_alias.is_empty() && !aliases.contains(&and_alias) {
-                aliases.push(and_alias);
-            }
-        }
-    };
 
     let mut full_names = Vec::new();
     push_unique_source_name_alias(&mut full_names, name);
@@ -1999,28 +1748,53 @@ fn source_name_aliases_for_builder(card: &crate::card::CardBuilder) -> Vec<Strin
             push_unique_source_name_alias(&mut full_names, stripped);
         }
     }
+    full_names
+}
 
-    for full_name in &full_names {
-        push_alias(full_name);
-        let short_name = preprocess_grammar::parse_short_self_reference_name(full_name);
-        if short_name != *full_name {
-            push_alias(short_name.as_str());
+/// The alias surfaces one full name contributes, given the short alias rules
+/// text uses for it: lowercased, deduplicated, with "&" spelled every way
+/// rules text spells it.
+fn push_source_name_alias_surfaces(aliases: &mut Vec<String>, full_name: &str, short_name: &str) {
+    let mut push_alias = |alias: &str| {
+        let alias = alias.trim().to_ascii_lowercase();
+        if !alias.is_empty() && !aliases.contains(&alias) {
+            let ampersandless = alias.replace(" & ", " ");
+            let and_alias = alias.replace(" & ", " and ");
+            aliases.push(alias);
+            if !ampersandless.is_empty() && !aliases.contains(&ampersandless) {
+                aliases.push(ampersandless);
+            }
+            if !and_alias.is_empty() && !aliases.contains(&and_alias) {
+                aliases.push(and_alias);
+            }
         }
-        if let Some((short_name, _)) = full_name.split_once(',') {
-            push_alias(short_name);
-            for part in short_name
-                .split(" & ")
-                .flat_map(|piece| piece.split(" and "))
-            {
-                push_alias(part);
-            }
-            if let Some(stripped) = strip_leading_digital_variant_marker(short_name) {
-                push_alias(stripped);
-            }
+    };
+
+    push_alias(full_name);
+    if short_name != full_name {
+        push_alias(short_name);
+    }
+    if let Some((short_name, _)) = full_name.split_once(',') {
+        push_alias(short_name);
+        for part in short_name
+            .split(" & ")
+            .flat_map(|piece| piece.split(" and "))
+        {
+            push_alias(part);
+        }
+        if let Some(stripped) = strip_leading_digital_variant_marker(short_name) {
+            push_alias(stripped);
         }
     }
-    aliases.sort_by_key(|alias| std::cmp::Reverse(alias.len()));
-    aliases
+}
+
+/// Every alias surface as text, longest first.
+#[cfg(test)]
+fn source_name_aliases_for_builder(card: &crate::card::CardBuilder) -> Vec<String> {
+    named_source_tokens::aliases_for_builder(card)
+        .into_iter()
+        .map(|alias| alias.text)
+        .collect()
 }
 
 fn push_unique_source_name_alias(aliases: &mut Vec<String>, raw: &str) {
@@ -2194,11 +1968,9 @@ fn probe_triggered_line(line: &PreprocessedLine) -> Option<RecognizedTriggeredLi
 
 fn normalize_activation_cost_tokens_for_builder(
     card: &crate::card::CardBuilder,
-    line: &PreprocessedLine,
     cost_tokens: Vec<OwnedLexToken>,
 ) -> Result<Vec<OwnedLexToken>, CardTextError> {
-    let cost_text = render_token_slice(&cost_tokens);
-    if !normalized_line_mentions_source_alias(card, cost_text.as_str()) {
+    if !tokens_mention_source_alias(card, &cost_tokens) {
         return Ok(cost_tokens);
     }
     // Keep a directly parseable named-source cost intact so the typed cost
@@ -2206,47 +1978,17 @@ fn normalize_activation_cost_tokens_for_builder(
     if parse_activation_cost_tokens_rewrite(&cost_tokens).is_ok() {
         return Ok(cost_tokens);
     }
-    let Some(rewritten) = normalize_named_source_sentence_for_builder(card, cost_text.as_str())
-    else {
-        return Ok(cost_tokens);
-    };
-    Ok(rewrite_line_normalized(line, rewritten.as_str())?.tokens)
+    Ok(normalize_named_source_sentence_tokens(card, &cost_tokens).unwrap_or(cost_tokens))
 }
 
 fn normalize_activation_effect_tokens_for_builder(
     card: &crate::card::CardBuilder,
-    line: &PreprocessedLine,
     effect_tokens: &[OwnedLexToken],
 ) -> Result<Vec<OwnedLexToken>, CardTextError> {
-    let effect_text = render_token_slice(effect_tokens);
-    let Some(normalized) =
-        normalize_explicit_named_source_references_for_builder(card, effect_text.as_str())
-    else {
-        return Ok(effect_tokens.to_vec());
-    };
-    lex_line(normalized.as_str(), line.info.line_index)
-}
-
-fn rewrite_line_normalized(
-    line: &PreprocessedLine,
-    normalized: &str,
-) -> Result<PreprocessedLine, CardTextError> {
-    let mut rewritten = line.clone();
-    rewritten.info.normalized.original = normalized.to_string();
-    rewritten.info.normalized.normalized = normalized.to_string();
-    rewritten.info.normalized.char_map = (0..normalized.len()).collect();
-    rewritten.tokens = super::lexer::lex_line(normalized, line.info.line_index)?;
-    Ok(rewritten)
-}
-
-fn rewrite_line_tokens(line: &PreprocessedLine, tokens: &[OwnedLexToken]) -> PreprocessedLine {
-    let normalized = render_token_slice(tokens);
-    let mut rewritten = line.clone();
-    rewritten.info.normalized.original = normalized.clone();
-    rewritten.info.normalized.normalized = normalized.clone();
-    rewritten.info.normalized.char_map = (0..normalized.len()).collect();
-    rewritten.tokens = tokens.to_vec();
-    rewritten
+    Ok(
+        normalize_named_source_tokens_for_builder(card, effect_tokens)
+            .unwrap_or_else(|| effect_tokens.to_vec()),
+    )
 }
 
 fn render_original_text_for_token_slice(
@@ -2267,43 +2009,76 @@ fn render_original_text_for_token_slice(
         .map(str::to_string)
 }
 
+/// A line whose text is the rendering of `tokens`.
+///
+/// The tokens keep the spans they came with. Recognized lines built from a
+/// rewrite carry the source line's info, and consumers map effect spans back
+/// to the authored text through it, so a span must stay relative to the line
+/// it was authored in — not to the rendering.
+fn rewrite_line_tokens(line: &PreprocessedLine, tokens: &[OwnedLexToken]) -> PreprocessedLine {
+    let normalized = render_token_slice(tokens);
+    let mut rewritten = line.clone();
+    rewritten.info.normalized.original = normalized.clone();
+    rewritten.info.normalized.normalized = normalized.clone();
+    rewritten.info.normalized.char_map = (0..normalized.len()).collect();
+    rewritten.tokens = tokens.to_vec();
+    rewritten
+}
+
+/// The authored tokens that sit under a normalized token slice.
+///
+/// `source_tokens` were lexed from the trimmed authored line while the source
+/// map speaks in untrimmed offsets, so the mapped span is shifted by the
+/// leading whitespace before it is compared with token spans.
+pub(super) fn authored_tokens_for_normalized_slice(
+    line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<OwnedLexToken>> {
+    let span = span_from_tokens(tokens)?;
+    let original = line.info.normalized.original.as_str();
+    let original_span = map_span_to_original(
+        span,
+        line.info.normalized.normalized.as_str(),
+        original,
+        &line.info.normalized.char_map,
+    );
+    let offset = original.len() - original.trim_start().len();
+    let start = original_span.start.saturating_sub(offset);
+    let end = original_span.end.saturating_sub(offset);
+    // Every authored token the mapped span touches: the source map is
+    // approximate at the edges, and a token it clips is still under the slice.
+    let selected: Vec<OwnedLexToken> = line
+        .info
+        .source_tokens
+        .iter()
+        .filter(|token| token.span.start < end && token.span.end > start)
+        .cloned()
+        .collect();
+    (!selected.is_empty()).then_some(selected)
+}
+
+#[path = "named_source_tokens.rs"]
+mod named_source_tokens;
+use named_source_tokens::*;
+
 fn try_parse_triggered_line_with_named_source_rewrite(
     card: &crate::card::CardBuilder,
     line: &PreprocessedLine,
-    text: &str,
+    authored: &[OwnedLexToken],
 ) -> Result<Option<RecognizedTriggeredLine>, CardTextError> {
-    // This fallback can be reached with `LineInfo::raw_line` so an authored
-    // comma-bearing source name is still available. Reapply the same
-    // parenthetical preprocessing used to build `line.tokens` before parsing
-    // the rewritten candidate; reminder text is presentation, not a second
-    // executable trigger body.
-    let semantic_text = strip_parenthetical_segments(text);
-    let Some(rewritten) = normalize_named_source_trigger_for_builder(card, semantic_text.as_str())
-    else {
+    // This fallback is reached with the authored token stream so a
+    // comma-bearing source name is still available. Reminder text is
+    // presentation, not a second executable trigger body, so parentheticals
+    // are dropped the way `line.tokens` dropped them.
+    let semantic = strip_parenthetical_tokens(authored);
+    let Some(rewritten) = normalize_named_source_trigger_tokens(card, &semantic) else {
         return Ok(None);
     };
 
-    let mut candidates = vec![rewritten];
-    if line_mentions_this_permanent_token_phrase(candidates[0].as_str()) {
-        for subject in [
-            "this creature",
-            "this artifact",
-            "this enchantment",
-            "this land",
-            "this planeswalker",
-            "this battle",
-        ] {
-            let candidate = candidates[0].replace("this permanent", subject);
-            if candidate != candidates[0] {
-                candidates.push(candidate);
-            }
-        }
-    }
-
-    for candidate in candidates {
-        let rewritten_line = rewrite_line_normalized(line, candidate.as_str())?;
+    for candidate in this_permanent_candidates(rewritten) {
+        let rewritten_line = rewrite_line_tokens(line, &candidate);
         if let Ok(mut triggered) = recognize_triggered_line(&rewritten_line) {
-            restore_authored_named_source_trigger_subject(card, line, text, &mut triggered)?;
+            restore_authored_named_source_trigger_subject(card, authored, &mut triggered);
             return Ok(Some(triggered));
         }
     }
@@ -2313,69 +2088,70 @@ fn try_parse_triggered_line_with_named_source_rewrite(
 
 fn restore_authored_named_source_trigger_subject(
     card: &crate::card::CardBuilder,
-    line: &PreprocessedLine,
-    text: &str,
+    authored: &[OwnedLexToken],
     triggered: &mut RecognizedTriggeredLine,
-) -> Result<(), CardTextError> {
-    let Some(authored_subject) = leading_named_source_trigger_subject_for_builder(card, text)
-    else {
-        return Ok(());
+) {
+    let Some(mut authored_tokens) = leading_authored_trigger_subject(card, authored) else {
+        return;
     };
 
     let generic_subject = named_source_subject_for_builder(card);
-    let trigger_text = render_token_slice(&triggered.trigger_parse_tokens);
-    let rest =
-        crate::string_primitives::strip_prefix(&trigger_text, generic_subject).or_else(|| {
-            // Preprocessing and some typed trigger shapes canonicalize a named
-            // source to the source-only subject "this". Restore its authored
-            // provenance after either canonicalization.
-            crate::string_primitives::strip_prefix(&trigger_text, "this").filter(|rest| {
-                rest.chars()
-                    .next()
-                    .is_some_and(|ch| ch.is_whitespace() || ch == '\'' || ch == '’')
-            })
-        });
-    if let Some(rest) = rest {
-        triggered.trigger_parse_tokens =
-            lex_line(&format!("{authored_subject}{rest}"), line.info.line_index)?;
-    }
-    Ok(())
-}
-
-fn leading_named_source_trigger_subject_for_builder(
-    card: &crate::card::CardBuilder,
-    text: &str,
-) -> Option<String> {
-    let trimmed = text.trim();
-    let lower = trimmed.to_ascii_lowercase();
-    let (intro_len, after_intro) = if let Some(after_intro) = lower.strip_prefix("when ") {
-        ("when ".len(), after_intro)
-    } else {
-        ("whenever ".len(), lower.strip_prefix("whenever ")?)
+    let tokens = &triggered.trigger_parse_tokens;
+    // Preprocessing and some typed trigger shapes canonicalize a named source
+    // to the source-only subject "this". Either form is restored to its
+    // authored provenance.
+    let Some((subject_len, possessive)) = leading_generic_subject_tokens(tokens, generic_subject)
+        .or_else(|| leading_generic_subject_tokens(tokens, "this"))
+    else {
+        return;
     };
-
-    source_name_aliases_for_builder(card)
-        .into_iter()
-        .find_map(|alias| {
-            let rest = after_intro.strip_prefix(alias.as_str())?;
-            if rest
-                .chars()
-                .next()
-                .is_some_and(|ch| ch.is_alphanumeric() || ch == '\'' || ch == '’')
-            {
-                return None;
-            }
-            trimmed
-                .get(intro_len..intro_len + alias.len())
-                .map(str::to_string)
-        })
+    if possessive && let Some(last) = authored_tokens.last_mut() {
+        let span = last.span;
+        let slice = format!("{}'s", last.slice);
+        *last = OwnedLexToken::word(slice, span);
+    }
+    authored_tokens.extend_from_slice(&tokens[subject_len..]);
+    triggered.trigger_parse_tokens = authored_tokens;
 }
 
-fn line_mentions_this_permanent_token_phrase(text: &str) -> bool {
-    match lex_line(text.trim(), 0) {
-        Ok(tokens) => document_grammar::parse_this_permanent_surface(&tokens).is_some(),
-        Err(_) => false,
+/// The words of a typed self-reference subject such as "this creature".
+fn generic_subject_words(subject: &str) -> &'static [&'static str] {
+    match subject {
+        "this creature" => &["this", "creature"],
+        "this land" => &["this", "land"],
+        "this artifact" => &["this", "artifact"],
+        "this enchantment" => &["this", "enchantment"],
+        "this planeswalker" => &["this", "planeswalker"],
+        "this battle" => &["this", "battle"],
+        "this permanent" => &["this", "permanent"],
+        _ => &["this"],
     }
+}
+
+/// How many leading tokens spell `subject`, and whether the last of them
+/// carries a possessive ("this creature's"). `None` when the tokens do not
+/// begin with the subject as whole words.
+fn leading_generic_subject_tokens(
+    tokens: &[OwnedLexToken],
+    subject: &str,
+) -> Option<(usize, bool)> {
+    let words = generic_subject_words(subject);
+    if tokens.len() < words.len() {
+        return None;
+    }
+    for (offset, word) in words.iter().enumerate() {
+        let token = &tokens[offset];
+        if token.is_word(word) {
+            continue;
+        }
+        let is_last = offset + 1 == words.len();
+        let possessive = format!("{word}'s");
+        if is_last && token.is_word(&possessive) {
+            return Some((words.len(), true));
+        }
+        return None;
+    }
+    Some((words.len(), false))
 }
 
 fn line_starts_with_lparen_token(line: &PreprocessedLine) -> bool {
@@ -2552,8 +2328,8 @@ fn try_parse_labeled_line_dispatch(
             authored_trigger = probe_triggered_line(&body_line);
         }
         if authored_trigger.is_none() && looks_like_ability_word_label(label_tokens, false) {
-            let authored_body = render_original_text_for_token_slice(line, body_tokens)
-                .unwrap_or_else(|| render_token_slice(body_tokens));
+            let authored_body = authored_tokens_for_normalized_slice(line, body_tokens)
+                .unwrap_or_else(|| body_tokens.to_vec());
             authored_trigger = try_parse_triggered_line_with_named_source_rewrite(
                 &preprocessed.card,
                 line,
@@ -2603,12 +2379,9 @@ fn try_parse_labeled_line_dispatch(
         if looks_like_ability_word_label(label_tokens, false)
             && !looks_like_leading_conditional_self_replacement(&body_line.tokens)
         {
-            let builder_aware_static = render_original_text_for_token_slice(line, body_tokens)
-                .and_then(|body| {
-                    normalize_named_source_sentence_for_builder(&preprocessed.card, &body)
-                })
-                .map(|body| rewrite_line_normalized(line, &body))
-                .transpose()?
+            let builder_aware_static = authored_tokens_for_normalized_slice(line, body_tokens)
+                .and_then(|body| normalize_named_source_sentence_tokens(&preprocessed.card, &body))
+                .map(|body| rewrite_line_tokens(line, &body))
                 .map(|body_line| recognize_static_line(&body_line))
                 .transpose()?
                 .flatten();
@@ -2655,7 +2428,7 @@ fn try_parse_labeled_line_dispatch(
         )));
     }
 
-    let authored_body_text = render_original_text_for_token_slice(line, body_tokens);
+    let authored_body_tokens = authored_tokens_for_normalized_slice(line, body_tokens);
     let body_line = rewrite_line_tokens(line, body_tokens);
     if label.eq_ignore_ascii_case("eminence")
         && let Some((trigger_with_intro, after_trigger)) =
@@ -2714,12 +2487,9 @@ fn try_parse_labeled_line_dispatch(
         if let Some(mut triggered) = triggered {
             restore_authored_named_source_trigger_subject(
                 &preprocessed.card,
-                line,
-                authored_body_text
-                    .as_deref()
-                    .unwrap_or(body_line.info.normalized.normalized.as_str()),
+                authored_body_tokens.as_deref().unwrap_or(&body_line.tokens),
                 &mut triggered,
-            )?;
+            );
             if preserve_as_choice_label && !is_case_ability_label(label_tokens) {
                 triggered.chosen_option =
                     document_grammar::parse_chosen_option_context_tokens(label_tokens);
@@ -2738,9 +2508,7 @@ fn try_parse_labeled_line_dispatch(
         if let Some(mut triggered) = try_parse_triggered_line_with_named_source_rewrite(
             &preprocessed.card,
             line,
-            authored_body_text
-                .as_deref()
-                .unwrap_or(body_line.info.normalized.normalized.as_str()),
+            authored_body_tokens.as_deref().unwrap_or(&body_line.tokens),
         )? {
             if preserve_as_choice_label && !is_case_ability_label(label_tokens) {
                 triggered.chosen_option =
@@ -2781,16 +2549,12 @@ fn try_parse_labeled_line_dispatch(
     if prefer_activation
         && let Some((cost_tokens, effect_parse_tokens)) = labeled_activation.clone()
     {
-        let normalized_cost_tokens = normalize_activation_cost_tokens_for_builder(
-            &preprocessed.card,
-            line,
-            cost_tokens.clone(),
-        )?;
+        let normalized_cost_tokens =
+            normalize_activation_cost_tokens_for_builder(&preprocessed.card, cost_tokens.clone())?;
         match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
             Ok(cost) => {
                 let effect_parse_tokens = normalize_activation_effect_tokens_for_builder(
                     &preprocessed.card,
-                    line,
                     &effect_parse_tokens,
                 )?;
                 return Ok(Some(LineDispatchResult::single(
@@ -2847,12 +2611,7 @@ fn try_parse_labeled_line_dispatch(
                 )));
             }
             Ok(None) => {}
-            Err(_)
-                if normalized_line_mentions_source_alias(
-                    &preprocessed.card,
-                    body_line.info.normalized.normalized.as_str(),
-                ) =>
-            {
+            Err(_) if tokens_mention_source_alias(&preprocessed.card, &body_line.tokens) => {
                 // The authored proper-name subject is normalized by the
                 // builder-aware branch below. Do not let a context-free
                 // statement probe commit to a suffix of that name first.
@@ -2866,14 +2625,11 @@ fn try_parse_labeled_line_dispatch(
         return Ok(Some(split_result));
     }
 
-    if normalized_line_mentions_source_alias(
-        &preprocessed.card,
-        body_line.info.normalized.normalized.as_str(),
-    ) && let Some(rewritten_body) = normalize_named_source_sentence_for_builder(
-        &preprocessed.card,
-        body_line.info.normalized.normalized.as_str(),
-    ) {
-        let rewritten_body_line = rewrite_line_normalized(line, rewritten_body.as_str())?;
+    if tokens_mention_source_alias(&preprocessed.card, &body_line.tokens)
+        && let Some(rewritten_body) =
+            normalize_named_source_sentence_tokens(&preprocessed.card, &body_line.tokens)
+    {
+        let rewritten_body_line = rewrite_line_tokens(line, &rewritten_body);
         if let Some(mut static_line) = recognize_static_line(&rewritten_body_line)? {
             if let Some(chosen_option) = max_speed_chosen_option.clone() {
                 static_line.chosen_option = Some(chosen_option);
@@ -2926,14 +2682,11 @@ fn try_parse_labeled_line_dispatch(
         )));
     }
 
-    if normalized_line_mentions_source_alias(
-        &preprocessed.card,
-        body_line.info.normalized.normalized.as_str(),
-    ) && let Some(rewritten_body) = normalize_named_source_sentence_for_builder(
-        &preprocessed.card,
-        body_line.info.normalized.normalized.as_str(),
-    ) {
-        let rewritten_body_line = rewrite_line_normalized(line, rewritten_body.as_str())?;
+    if tokens_mention_source_alias(&preprocessed.card, &body_line.tokens)
+        && let Some(rewritten_body) =
+            normalize_named_source_sentence_tokens(&preprocessed.card, &body_line.tokens)
+    {
+        let rewritten_body_line = rewrite_line_tokens(line, &rewritten_body);
         if let Some(mut static_line) = recognize_static_line(&rewritten_body_line)? {
             if let Some(chosen_option) = max_speed_chosen_option.clone() {
                 static_line.chosen_option = Some(chosen_option);
@@ -2954,16 +2707,12 @@ fn try_parse_labeled_line_dispatch(
     }
 
     if let Some((cost_tokens, effect_parse_tokens)) = labeled_activation {
-        let normalized_cost_tokens = normalize_activation_cost_tokens_for_builder(
-            &preprocessed.card,
-            line,
-            cost_tokens.clone(),
-        )?;
+        let normalized_cost_tokens =
+            normalize_activation_cost_tokens_for_builder(&preprocessed.card, cost_tokens.clone())?;
         match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
             Ok(cost) => {
                 let effect_parse_tokens = normalize_activation_effect_tokens_for_builder(
                     &preprocessed.card,
-                    line,
                     &effect_parse_tokens,
                 )?;
                 return Ok(Some(LineDispatchResult::single(
@@ -3134,10 +2883,9 @@ fn try_parse_linked_created_token_triggered_line(
     };
     restore_authored_named_source_trigger_subject(
         &preprocessed.card,
-        line,
-        &line.info.raw_line,
+        &line.info.source_tokens,
         &mut triggered,
-    )?;
+    );
     let (triggered, next_idx) =
         extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
     Ok(Some(LineDispatchResult::single(
@@ -3156,18 +2904,17 @@ fn try_parse_triggered_line_dispatch_general(
     if trigger_chunks.len() > 1 {
         let mut lines = Vec::with_capacity(trigger_chunks.len());
         for chunk_tokens in trigger_chunks {
-            let authored_chunk_text = render_original_text_for_token_slice(line, &chunk_tokens);
+            let authored_chunk_tokens = authored_tokens_for_normalized_slice(line, &chunk_tokens);
             let chunk_line = rewrite_line_tokens(line, &chunk_tokens);
             match recognize_triggered_line(&chunk_line) {
                 Ok(mut triggered) => {
                     restore_authored_named_source_trigger_subject(
                         &preprocessed.card,
-                        line,
-                        authored_chunk_text
+                        authored_chunk_tokens
                             .as_deref()
-                            .unwrap_or(chunk_line.info.normalized.normalized.as_str()),
+                            .unwrap_or(&chunk_line.tokens),
                         &mut triggered,
-                    )?;
+                    );
                     lines.push(RecognizedLine::Triggered(triggered));
                 }
                 Err(_) => {
@@ -3186,9 +2933,9 @@ fn try_parse_triggered_line_dispatch_general(
                     if let Some(triggered) = try_parse_triggered_line_with_named_source_rewrite(
                         &preprocessed.card,
                         line,
-                        authored_chunk_text
+                        authored_chunk_tokens
                             .as_deref()
-                            .unwrap_or(chunk_line.info.normalized.normalized.as_str()),
+                            .unwrap_or(&chunk_line.tokens),
                     )? {
                         lines.push(RecognizedLine::Triggered(triggered));
                         continue;
@@ -3227,22 +2974,13 @@ fn try_parse_unsplit_triggered_line_dispatch(
     // exact comma-bearing full source name its builder-aware rewrite before a
     // syntactically valid but lossy split can claim the comma inside the name
     // as the trigger/effect boundary.
-    if (normalize_comma_bearing_leading_source_trigger(&preprocessed.card, &line.info.raw_line)
-        .is_some()
+    if (trigger_names_source(&preprocessed.card, &line.info.source_tokens)
         || preserve_reciprocal_token_lifecycle
-        || normalize_named_source_trigger_for_builder(
-            &preprocessed.card,
-            line.info.raw_line.as_str(),
-        )
-        .is_some()
-        || normalized_line_mentions_explicit_source_alias(
-            &preprocessed.card,
-            line.info.normalized.normalized.as_str(),
-        ))
+        || normalize_named_source_tokens_for_builder(&preprocessed.card, &line.tokens).is_some())
         && let Some(triggered) = try_parse_triggered_line_with_named_source_rewrite(
             &preprocessed.card,
             line,
-            &line.info.raw_line,
+            &line.info.source_tokens,
         )?
     {
         let (triggered, next_idx) =
@@ -3257,10 +2995,9 @@ fn try_parse_unsplit_triggered_line_dispatch(
         Ok(mut triggered) => {
             restore_authored_named_source_trigger_subject(
                 &preprocessed.card,
-                line,
-                &line.info.raw_line,
+                &line.info.source_tokens,
                 &mut triggered,
-            )?;
+            );
             let (triggered, next_idx) =
                 extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
             Ok(Some(LineDispatchResult::single(
@@ -3272,7 +3009,7 @@ fn try_parse_unsplit_triggered_line_dispatch(
             if let Some(triggered) = try_parse_triggered_line_with_named_source_rewrite(
                 &preprocessed.card,
                 line,
-                &line.info.raw_line,
+                &line.info.source_tokens,
             )? {
                 let (triggered, next_idx) = extend_triggered_line_with_result_followups(
                     &preprocessed.items,
@@ -3376,11 +3113,7 @@ fn rewrite_cleave_bracket_document(
         if tokens.is_empty() {
             continue;
         }
-        let normalized = render_token_slice(&tokens);
-        items.push(PreprocessedItem::Line(rewrite_line_normalized(
-            &line,
-            normalized.trim(),
-        )?));
+        items.push(PreprocessedItem::Line(rewrite_line_tokens(&line, &tokens)));
     }
 
     rewritten.items = items;
@@ -3392,6 +3125,9 @@ pub fn parse_text_to_semantic_document_with_context(
     card: CardBuilder,
     text: String,
 ) -> Result<(RewriteSemanticDocument, ParseAnnotations), CardTextError> {
+    // A card is the unit of recognition: nothing parsed for the previous card
+    // is relevant to this one, and the memo must not grow across cards.
+    crate::sentence_memo::reset();
     let allow_unsupported = context.features().allow_unsupported;
     let card_name = card.name_ref().to_string();
     let _trace_scope = parse_trace::scope(format!(
@@ -3408,14 +3144,24 @@ pub fn parse_text_to_semantic_document_with_context(
             text.lines().count()
         );
     }
-    if let Some(err) = preflight_invalid_payment_keyword_lines(text.as_str()) {
-        return Err(err);
-    }
-    if !allow_unsupported && let Some(err) = preflight_known_strict_unsupported(text.as_str()) {
-        return Err(err);
-    }
     let mut preprocessed =
         preprocess_document_with_provenance(card, text.as_str(), context.provenance().clone())?;
+    // Preflight checks read the authored token stream of every line the
+    // document phase produced — the same words, tokenized once.
+    let authored_lines: Vec<&[OwnedLexToken]> = preprocessed
+        .items
+        .iter()
+        .map(|item| match item {
+            PreprocessedItem::Metadata(line) => line.info.source_tokens.as_slice(),
+            PreprocessedItem::Line(line) => line.info.source_tokens.as_slice(),
+        })
+        .collect();
+    if let Some(err) = preflight_invalid_payment_keyword_lines(&authored_lines) {
+        return Err(err);
+    }
+    if !allow_unsupported && let Some(err) = preflight_known_strict_unsupported(&authored_lines) {
+        return Err(err);
+    }
     context.replace_provenance(preprocessed.provenance.clone());
     let semantic_facts = document_fact_grammar::parse_document_semantic_facts(
         preprocessed.items.iter().filter_map(|item| match item {
@@ -3686,28 +3432,29 @@ fn try_push_saga_chapter(
     line: &PreprocessedLine,
     lines: &mut Vec<RecognizedLine>,
 ) -> Result<bool, CardTextError> {
-    let Some((chapters, presentation_label, text)) = parse_saga_chapter_prefix(&line.info.raw_line)
-    else {
+    let Some(authored) = parse_saga_chapter_prefix_tokens(&line.info.source_tokens) else {
         return Ok(false);
     };
-    // Retain the authored casing and chapter label from the raw line, but
-    // compile the preprocessed body. The latter has reminder text removed, so
-    // token reminder abilities cannot leak into the executable effect program.
-    let parse_text = parse_saga_chapter_prefix(&line.info.normalized.normalized)
-        .filter(|(normalized_chapters, _, _)| normalized_chapters == &chapters)
-        .map(|(_, _, normalized_text)| normalized_text)
-        .unwrap_or_else(|| text.clone());
+    let chapters = authored.chapters.clone();
+    let presentation_label = authored.presentation_label.clone();
+    let text = render_token_slice(authored.body_tokens).trim().to_string();
+    // Retain the authored casing and chapter label from the authored stream,
+    // but compile the preprocessed body. The latter has reminder text removed,
+    // so token reminder abilities cannot leak into the executable program.
+    let parse_tokens = parse_saga_chapter_prefix_tokens(&line.tokens)
+        .filter(|normalized| normalized.chapters == chapters)
+        .map(|normalized| normalized.body_tokens.to_vec())
+        .unwrap_or_else(|| authored.body_tokens.to_vec());
     // Saga chapters bypass ordinary source normalization, so normalize only
     // their parse view while preserving the authored display text.
-    let parse_text =
-        normalize_named_source_sentence_for_builder(&preprocessed.card, parse_text.as_str())
-            .unwrap_or(parse_text);
+    let parse_tokens = normalize_named_source_sentence_tokens(&preprocessed.card, &parse_tokens)
+        .unwrap_or(parse_tokens);
     let recognized = RecognizedLine::SagaChapter(recognize_saga_chapter_line(
         line,
         chapters,
         presentation_label,
         text.as_str(),
-        parse_text.as_str(),
+        &parse_tokens,
     )?);
     trace_recognized_line(&recognized);
     lines.push(recognized);
@@ -3779,11 +3526,10 @@ fn try_push_trailing_keyword_activation(
         };
         if parsed_raw_static_prefix {
             // Handled by the raw static parse above.
-        } else if let Some(rewritten_prefix) = normalize_named_source_sentence_for_builder(
-            &preprocessed.card,
-            prefix_line.info.normalized.normalized.as_str(),
-        ) {
-            let rewritten_prefix_line = rewrite_line_normalized(line, rewritten_prefix.as_str())?;
+        } else if let Some(rewritten_prefix) =
+            normalize_named_source_sentence_tokens(&preprocessed.card, &prefix_line.tokens)
+        {
+            let rewritten_prefix_line = rewrite_line_tokens(line, &rewritten_prefix);
             if let Some(statement_line) = recognize_statement_line(&rewritten_prefix_line)? {
                 let recognized = RecognizedLine::Statement(statement_line);
                 trace_recognized_line(&recognized);
@@ -3824,17 +3570,11 @@ fn try_push_trailing_keyword_activation(
             line.info.raw_line
         )));
     };
-    let normalized_cost_tokens = normalize_activation_cost_tokens_for_builder(
-        &preprocessed.card,
-        line,
-        cost_tokens.clone(),
-    )?;
+    let normalized_cost_tokens =
+        normalize_activation_cost_tokens_for_builder(&preprocessed.card, cost_tokens.clone())?;
     let cost = parse_activation_cost_tokens_rewrite(&normalized_cost_tokens)?;
-    let effect_parse_tokens = normalize_activation_effect_tokens_for_builder(
-        &preprocessed.card,
-        line,
-        &effect_parse_tokens,
-    )?;
+    let effect_parse_tokens =
+        normalize_activation_effect_tokens_for_builder(&preprocessed.card, &effect_parse_tokens)?;
     let recognized = RecognizedLine::Activated(RecognizedActivatedLine {
         info: suffix_line.info.clone(),
         cost,
@@ -4156,20 +3896,15 @@ fn rewrite_named_source_gain_line(
     if line_starts_with_trigger_intro_tokens(&line.tokens)
         || labeled_body_starts_with_trigger_intro_tokens(&line.tokens)
         || line_family_grammar::parse_champion_line(&line.tokens).is_some()
-        || !normalized_line_mentions_source_alias(
-            &preprocessed.card,
-            line.info.normalized.normalized.as_str(),
-        )
+        || !tokens_mention_source_alias(&preprocessed.card, &line.tokens)
     {
         return Ok(None);
     }
-    let Some(rewritten) = normalize_named_source_sentence_for_builder(
-        &preprocessed.card,
-        line.info.normalized.normalized.as_str(),
-    ) else {
+    let Some(rewritten) = normalize_named_source_sentence_tokens(&preprocessed.card, &line.tokens)
+    else {
         return Ok(None);
     };
-    let rewritten_line = rewrite_line_normalized(line, rewritten.as_str())?;
+    let rewritten_line = rewrite_line_tokens(line, &rewritten);
     if super::grammar::effects::gain_ability_shapes::parse_source_gain_ability_shape(
         &rewritten_line.tokens,
     )
@@ -4191,20 +3926,15 @@ fn try_push_named_source_dispatch(
     if line_starts_with_trigger_intro_tokens(&line.tokens)
         || labeled_body_starts_with_trigger_intro_tokens(&line.tokens)
         || line_family_grammar::parse_champion_line(&line.tokens).is_some()
-        || !normalized_line_mentions_source_alias(
-            &preprocessed.card,
-            line.info.normalized.normalized.as_str(),
-        )
+        || !tokens_mention_source_alias(&preprocessed.card, &line.tokens)
     {
         return Ok(None);
     }
-    let Some(rewritten) = normalize_named_source_sentence_for_builder(
-        &preprocessed.card,
-        line.info.normalized.normalized.as_str(),
-    ) else {
+    let Some(rewritten) = normalize_named_source_sentence_tokens(&preprocessed.card, &line.tokens)
+    else {
         return Ok(None);
     };
-    let rewritten_line = rewrite_line_normalized(line, rewritten.as_str())?;
+    let rewritten_line = rewrite_line_tokens(line, &rewritten);
     let Ok(dispatch) = dispatch_standard_line(
         line_context,
         preprocessed,
@@ -4264,6 +3994,9 @@ pub fn recognize_document(
     preprocessed: &PreprocessedDocument,
     allow_unsupported: bool,
 ) -> Result<RecognizedDocument, CardTextError> {
+    // A card is the unit of recognition; nothing parsed for the last one is
+    // relevant to this one.
+    crate::sentence_memo::reset();
     let source_text = preprocessed
         .items
         .iter()
@@ -4456,6 +4189,75 @@ pub fn recognize_metadata_line(
 ) -> Result<RecognizedMetadataLine, CardTextError> {
     let _ = info;
     Ok(RecognizedMetadataLine { value })
+}
+
+// ---- test-only adapters: the string normalizers these tests were written
+// against are gone; the token twins run over lexed text and render lowercase,
+// which is what the string forms returned.
+
+#[cfg(test)]
+fn normalize_named_source_trigger_for_builder(
+    card: &crate::card::CardBuilder,
+    text: &str,
+) -> Option<String> {
+    let tokens = lex_line(text.trim(), 0).ok()?;
+    normalize_named_source_trigger_tokens(card, &tokens)
+        .map(|tokens| render_token_slice(&tokens).to_ascii_lowercase())
+}
+
+#[cfg(test)]
+fn normalize_named_source_sentence_for_builder(
+    card: &crate::card::CardBuilder,
+    text: &str,
+) -> Option<String> {
+    let tokens = lex_line(text.trim(), 0).ok()?;
+    normalize_named_source_sentence_tokens(card, &tokens)
+        .map(|tokens| render_token_slice(&tokens).to_ascii_lowercase())
+}
+
+#[cfg(test)]
+fn test_alias_words(alias: &str) -> Vec<String> {
+    lex_line(alias.trim(), 0)
+        .map(|tokens| TokenWordView::new(&tokens).owned_words())
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+fn replace_named_source_aliases(text: &str, alias: &str, replacement: &str) -> String {
+    replace_named_source_aliases_from_set(text, alias, replacement, &[], true)
+}
+
+#[cfg(test)]
+fn replace_named_source_aliases_from_set(
+    text: &str,
+    alias: &str,
+    replacement: &str,
+    all_aliases: &[String],
+    preserve_surface_hints: bool,
+) -> String {
+    let lower = text.to_ascii_lowercase();
+    let Ok(tokens) = lex_line(lower.as_str(), 0) else {
+        return lower;
+    };
+    let all_words: Vec<Vec<String>> = all_aliases.iter().map(|a| test_alias_words(a)).collect();
+    replace_named_source_alias_tokens(
+        &tokens,
+        &test_alias_words(alias),
+        replacement,
+        &all_words,
+        preserve_surface_hints,
+    )
+    .map(|tokens| render_token_slice(&tokens).to_ascii_lowercase())
+    .unwrap_or(lower)
+}
+
+#[cfg(test)]
+fn rewrite_line_normalized(
+    line: &PreprocessedLine,
+    normalized: &str,
+) -> Result<PreprocessedLine, CardTextError> {
+    let tokens = lex_line(normalized, line.info.line_index)?;
+    Ok(rewrite_line_tokens(line, &tokens))
 }
 
 #[cfg(test)]
@@ -7105,7 +6907,7 @@ mod tests {
         let parsed = try_parse_triggered_line_with_named_source_rewrite(
             &document.card,
             line,
-            line.info.raw_line.as_str(),
+            &line.info.source_tokens,
         )
         .expect("named source leaves rewrite should not fail")
         .expect("named source leaves trigger should parse as triggered recognized form");

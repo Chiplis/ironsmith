@@ -1,15 +1,16 @@
 use super::*;
 
-pub(super) fn is_reserved_short_alias(alias: &str) -> bool {
+/// Whether a one-word alias is a rules word rather than a name. `alias_tokens`
+/// is the alias's own token, from the name it was read out of.
+pub(super) fn is_reserved_short_alias(alias: &str, alias_tokens: &[OwnedLexToken]) -> bool {
     let lower = alias.to_ascii_lowercase();
-    if let Ok(tokens) = lex_line(&lower, 0)
-        && (super::super::super::keyword_dispatch::parse_keyword_dispatch_hint_tokens(&tokens)
-            .is_some()
-            || super::super::super::line_families::parse_simple_document_line(&tokens).is_some())
+    if super::super::super::keyword_dispatch::parse_keyword_dispatch_hint_tokens(alias_tokens)
+        .is_some()
+        || super::super::super::line_families::parse_simple_document_line(alias_tokens).is_some()
     {
         return true;
     }
-    if super::super::super::sentence_markers::parse_keyword_marker_text(&lower).is_some() {
+    if super::super::super::sentence_markers::parse_keyword_marker_tokens(alias_tokens).is_some() {
         return true;
     }
     if matches!(
@@ -208,5 +209,5 @@ pub(super) fn is_reserved_short_alias(alias: &str) -> bool {
             | "battle"
             | "equipment"
             | "aura"
-    ) || parse_keyword_ability_name(alias).is_some()
+    ) || parse_keyword_ability_name_tokens(alias_tokens).is_some()
 }

@@ -98,6 +98,7 @@ fn collect_rust_files(root: &Path, out: &mut Vec<PathBuf>) {
 }
 
 mod audit_budgets;
+mod relex_sites;
 mod shard_00;
 mod shard_01;
 mod shard_02;

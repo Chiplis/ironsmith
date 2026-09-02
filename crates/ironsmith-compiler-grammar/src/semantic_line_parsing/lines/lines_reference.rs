@@ -487,8 +487,8 @@ pub(super) fn tagged_characteristic_addition_is_a_bound_effect_followup() {
 }
 
 pub fn normalize_exert_followup_source_reference_tokens(
-    source_ref: &str,
+    source_tokens: &[OwnedLexToken],
     followup_tokens: &[OwnedLexToken],
 ) -> Vec<OwnedLexToken> {
-    semantic_grammar::normalize_exert_followup_source_tokens(source_ref, followup_tokens)
+    semantic_grammar::normalize_exert_followup_source_tokens(source_tokens, followup_tokens)
 }

@@ -70,8 +70,8 @@ pub(super) fn parse_static_line_impl(
             chosen_option,
         );
     }
-    let source_partner_label = crate::util::lex_fragment(&line.info.raw_line, line.info.line_index)
-        .and_then(|tokens| keyword_special_grammar::parse_partner_visible_label_tokens(&tokens));
+    let source_partner_label =
+        keyword_special_grammar::parse_partner_visible_label_tokens(&line.info.source_tokens);
     if let Some(visible_label) = source_partner_label
         .or_else(|| keyword_special_grammar::parse_partner_visible_label_tokens(&line.parse_tokens))
     {

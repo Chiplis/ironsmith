@@ -33,11 +33,10 @@ fn selectors_for_borrowed_keyword(phrase: &str) -> Option<Vec<StaticAbilityVaria
     Some(selectors)
 }
 
-fn words_without_exact_phrase(text: &str, phrase: &str) -> Option<Vec<String>> {
-    let tokens = crate::util::lex_fragment(text, 0)?;
-    let words = parser_token_word_refs(&tokens);
-    let phrase_tokens = crate::util::lex_fragment(phrase, 0)?;
-    let phrase_words = parser_token_word_refs(&phrase_tokens);
+fn words_without_exact_phrase(tokens: &[OwnedLexToken], phrase: &str) -> Option<Vec<String>> {
+    let words = parser_token_word_refs(tokens);
+    // The phrase is one of the fixed borrowed-ability names, plain words.
+    let phrase_words: Vec<&str> = phrase.split_ascii_whitespace().collect();
     let start = crate::word_primitives::parse_sequence_start(&words, &phrase_words)?;
     if crate::word_primitives::parse_sequence_start(&words[start + 1..], &phrase_words).is_some() {
         return None;
@@ -53,7 +52,7 @@ fn words_without_exact_phrase(text: &str, phrase: &str) -> Option<Vec<String>> {
 }
 
 fn condition_matching_filter(
-    condition_text: &str,
+    tokens: &[OwnedLexToken],
     required_id: StaticAbilityId,
 ) -> Option<ObjectFilter> {
     // This receives the normalized condition after borrow preprocessing. Some
@@ -62,9 +61,7 @@ fn condition_matching_filter(
     // Re-running the pre-rewrite surface parser here rejects both shapes even
     // though the semantic condition parser below has proved the exact typed
     // matching-filter form we need.
-    let tokens = crate::util::lex_fragment(condition_text, 0)?;
-    let condition =
-        crate::grammar::primitives::probe_shape(parse_static_condition_clause(&tokens))?;
+    let condition = crate::grammar::primitives::probe_shape(parse_static_condition_clause(tokens))?;
     let PredicateAst::CountComparison {
         count: AnthemCountExpression::MatchingFilter(mut filter),
         ..
@@ -104,31 +101,31 @@ fn parse_borrowed_static_variant_chain(
     let mut phrases = Vec::new();
 
     for sentence in sentences {
-        let rendered = render_token_slice(sentence);
-        let crate::grammar::preprocess::BorrowStaticSentenceSurface::Leading {
+        let crate::grammar::preprocess::BorrowStaticSentenceSurfaceTokens::Leading {
             condition,
             consequence,
-        } = crate::grammar::preprocess::parse_borrow_static_sentence_surface(&rendered)?
+        } = crate::grammar::preprocess::parse_borrow_static_sentence_surface_tokens(sentence)?
         else {
             return None;
         };
-        let phrase = crate::grammar::preprocess::parse_borrow_ability_surface(&consequence)?.phrase;
+        let phrase =
+            crate::grammar::preprocess::parse_borrow_ability_surface_tokens(consequence)?.phrase;
         let sentence_selectors = selectors_for_borrowed_keyword(phrase)?;
         let required_id = sentence_selectors.first()?.ability_id();
-        let filter = condition_matching_filter(&condition, required_id)?;
+        let filter = condition_matching_filter(condition, required_id)?;
         match &common_filter {
             Some(expected) if expected != &filter => return None,
             None => common_filter = Some(filter),
             _ => {}
         }
 
-        let next_condition_signature = words_without_exact_phrase(&condition, phrase)?;
+        let next_condition_signature = words_without_exact_phrase(condition, phrase)?;
         match &condition_signature {
             Some(expected) if expected != &next_condition_signature => return None,
             None => condition_signature = Some(next_condition_signature),
             _ => {}
         }
-        let next_consequence_signature = words_without_exact_phrase(&consequence, phrase)?;
+        let next_consequence_signature = words_without_exact_phrase(consequence, phrase)?;
         match &consequence_signature {
             Some(expected) if expected != &next_consequence_signature => return None,
             None => consequence_signature = Some(next_consequence_signature),

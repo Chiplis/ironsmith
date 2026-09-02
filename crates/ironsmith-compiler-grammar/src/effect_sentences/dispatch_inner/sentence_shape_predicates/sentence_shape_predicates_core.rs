@@ -33,8 +33,23 @@ fn parse_complete_conditional_gain_ability(
     }]))
 }
 
+/// The sentence rule. Memoized per card: every distinct span is parsed once,
+/// and every recognizer that asks about it sees that one parse.
 #[inline(never)]
+#[track_caller]
 pub fn parse_effect_sentence_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<EffectAst>, CardTextError> {
+    crate::sentence_memo::memoized(
+        crate::sentence_memo::Rule::Sentence,
+        tokens,
+        std::panic::Location::caller(),
+        || parse_effect_sentence_lexed_uncached(tokens),
+    )
+}
+
+#[inline(never)]
+fn parse_effect_sentence_lexed_uncached(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     if let Some(effects) = super::super::parse_complete_create_statement(tokens)? {

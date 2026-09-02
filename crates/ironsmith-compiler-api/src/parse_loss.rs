@@ -82,6 +82,43 @@ pub fn capture<T>(f: impl FnOnce() -> T) -> (T, ParseLossReport) {
     }
 }
 
+/// Run `f`, returning what it recorded alongside its result — while still
+/// letting that loss reach whichever capture is already active.
+///
+/// [`capture`] isolates: the diagnostics it collects are hidden from the
+/// enclosing capture. A memoized rule needs the opposite — the parse that
+/// fills the cache must report its loss normally *and* leave a copy behind so
+/// a later cache hit can [`replay`] it, because the hit skips the recording
+/// code entirely.
+pub fn observe<T>(f: impl FnOnce() -> T) -> (T, Vec<ParseLossDiagnostic>) {
+    let previous = LOSS_STATE.with(|state| state.replace(Some(Vec::new())));
+    let result = panic::catch_unwind(AssertUnwindSafe(f));
+    let observed = LOSS_STATE
+        .with(|state| state.replace(previous))
+        .unwrap_or_default();
+    LOSS_STATE.with(|cell| {
+        if let Some(state) = cell.borrow_mut().as_mut() {
+            state.extend(observed.iter().cloned());
+        }
+    });
+    match result {
+        Ok(result) => (result, observed),
+        Err(payload) => panic::resume_unwind(payload),
+    }
+}
+
+/// Record diagnostics an earlier, memoized run of the same rule produced.
+pub fn replay(diagnostics: &[ParseLossDiagnostic]) {
+    if diagnostics.is_empty() {
+        return;
+    }
+    LOSS_STATE.with(|cell| {
+        if let Some(state) = cell.borrow_mut().as_mut() {
+            state.extend(diagnostics.iter().cloned());
+        }
+    });
+}
+
 pub fn record(code: impl Into<String>, message: impl Into<String>) {
     let diagnostic = ParseLossDiagnostic::new(code, message);
     LOSS_STATE.with(|cell| {

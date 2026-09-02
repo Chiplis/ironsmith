@@ -20,30 +20,16 @@ fn parses_document_routing_surfaces() {
 
 #[test]
 fn parses_source_alias_and_sentence_split_surfaces() {
-    assert!(parse_source_alias_effect_verb_surface("Mill", "three cards").is_some());
-    assert_eq!(
-        parse_named_source_prefix("brago attacks", "brago")
-            .expect("prefix")
-            .tail,
-        "attacks"
-    );
-    assert_eq!(
-        parse_first_comma("when this enters, draw a card")
-            .expect("split")
-            .body,
-        "draw a card"
+    assert!(
+        source_alias_effect_verb_surface_tokens(
+            &crate::lexer::synthetic_phrase_tokens("Mill"),
+            &crate::lexer::synthetic_phrase_tokens("three cards"),
+        )
+        .is_some()
     );
 
     let delayed = lex_line("When that dies this turn, draw a card", 0).expect("lex");
     assert!(parse_delayed_prior_object_dies_surface(&delayed).is_some());
-
-    assert_eq!(
-        parse_named_source_enters_surface("Brago enters tapped")
-            .expect("enters tail")
-            .tail,
-        "tapped"
-    );
-    assert!(parse_named_source_enters_surface("Brago enters, draw a card").is_none());
 
     let reflexive = lex_line(
         "Whenever you discard one or more cards this way, draw a card.",

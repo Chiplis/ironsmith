@@ -118,8 +118,10 @@ pub fn parse_you_may_rather_than_spell_cost(
 
 pub fn parse_if_conditional_alternative_cost(
     tokens: &[OwnedLexToken],
-    line: &str,
+    line_tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    let line = render_token_slice(line_tokens);
+    let line = line.as_str();
     let clause_words = TokenWordView::new(tokens).word_refs();
     if !permission_shapes::prefix_words(&clause_words, &["if"]) {
         return Ok(None);
@@ -157,8 +159,7 @@ pub fn parse_if_conditional_alternative_cost(
     let Some(method) = parse_you_may_rather_than_spell_cost(tail_tokens, line)? else {
         return Ok(None);
     };
-    if crate::util::lex_fragment(line, 0)
-        .is_some_and(|line_tokens| permission_shapes::prefix_tokens(&line_tokens, &["freerunning"]))
+    if permission_shapes::prefix_tokens(line_tokens, &["freerunning"])
         && let Some(cost) = method.mana_cost().cloned()
     {
         return Ok(Some(

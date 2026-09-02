@@ -710,7 +710,7 @@ pub(super) fn recognize_level_item(
         split_activation_text_tokens_lexed(&line.tokens)
     {
         let normalized_cost_tokens =
-            normalize_activation_cost_tokens_for_builder(card, line, cost_tokens.clone())?;
+            normalize_activation_cost_tokens_for_builder(card, cost_tokens.clone())?;
         match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
             Ok(cost_recognized) => {
                 let compiler_cost =
@@ -873,10 +873,9 @@ pub(super) fn recognize_saga_chapter_line(
     chapters: Vec<u32>,
     presentation_label: Option<String>,
     display_text: &str,
-    parse_text: &str,
+    parse_tokens: &[OwnedLexToken],
 ) -> Result<RecognizedSagaChapterLine, CardTextError> {
-    let parse_tokens = lexed_tokens(parse_text, line.info.line_index)?;
-    let mut effects_ast = parse_effect_sentences_lexed(&parse_tokens)?;
+    let mut effects_ast = parse_effect_sentences_lexed(parse_tokens)?;
     crate::util::recognize_unique_named_source_exile_surface(
         &mut effects_ast,
         &line.info.source_tokens,

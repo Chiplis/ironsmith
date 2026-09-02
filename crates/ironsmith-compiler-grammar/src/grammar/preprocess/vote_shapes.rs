@@ -3,7 +3,7 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
 
-use super::super::super::lexer::{LexStream, OwnedLexToken, lex_line, render_token_slice};
+use super::super::super::lexer::{LexStream, OwnedLexToken, render_token_slice};
 use super::super::primitives;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,10 +24,17 @@ pub enum VoteCountRewriteSurface {
     },
 }
 
+#[cfg(test)]
 pub fn parse_vote_count_rewrite_surface(sentence: &str) -> Option<VoteCountRewriteSurface> {
     let tokens = crate::util::lex_fragment(sentence.trim(), 0)?;
+    parse_vote_count_rewrite_surface_tokens(&tokens)
+}
+
+pub fn parse_vote_count_rewrite_surface_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<VoteCountRewriteSurface> {
     crate::grammar::primitives::probe_all(
-        &tokens,
+        tokens,
         alt((
             parse_shared_subject_vote_pair_lexed,
             parse_draw_for_each_vote_lexed,

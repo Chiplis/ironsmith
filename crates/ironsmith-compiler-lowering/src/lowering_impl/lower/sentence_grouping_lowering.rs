@@ -34,7 +34,7 @@ mod tests {
             .expect("rewrite lexer should classify exert followup");
 
         let normalized = normalize_exert_followup_source_reference_tokens(
-            "Champion",
+            &crate::front_end::lexer::synthetic_phrase_tokens("Champion"),
             trim_lexed_commas(&tokens),
         );
 

@@ -314,7 +314,7 @@ pub(super) fn parse_alternative_cast(
     if let Some(method) = parse_you_may_rather_than_spell_cost_line_lexed(tokens, surface)? {
         return Ok(ast(LineAst::AlternativeCastingMethod(method)));
     }
-    if let Some(method) = parse_if_conditional_alternative_cost_line_lexed(tokens, surface)? {
+    if let Some(method) = parse_if_conditional_alternative_cost_line_lexed(tokens, &line.tokens)? {
         return Ok(ast(LineAst::AlternativeCastingMethod(method)));
     }
     if let Some(method) = parse_prowl_line_lexed(tokens)? {

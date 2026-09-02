@@ -6,7 +6,7 @@ use winnow::prelude::*;
 use winnow::token::{any, take};
 
 use super::super::primitives;
-use crate::lexer::{LexStream, OwnedLexToken, lex_line, render_token_slice};
+use crate::lexer::{LexStream, OwnedLexToken, render_token_slice};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SameIsTrueSurface {
@@ -65,10 +65,15 @@ fn parse_same_is_true_surface_lexed(input: &mut LexStream<'_>) -> WResult<SameIs
     Ok(SameIsTrueSurface { targets })
 }
 
+#[cfg(test)]
 pub fn parse_same_is_true_surface(sentence: &str) -> Option<SameIsTrueSurface> {
     let tokens = crate::util::lex_fragment(sentence.trim(), 0)?;
+    parse_same_is_true_surface_tokens(&tokens)
+}
+
+pub fn parse_same_is_true_surface_tokens(tokens: &[OwnedLexToken]) -> Option<SameIsTrueSurface> {
     crate::grammar::primitives::probe_all(
-        &tokens,
+        tokens,
         parse_same_is_true_surface_lexed,
         "same-is-true target list",
     )
@@ -96,13 +101,19 @@ fn exact_token_phrase_parser<'a, 'p>(
     }
 }
 
-pub fn parse_borrow_phrase_occurrences(
-    sentence: &str,
+/// Where a borrowed-ability phrase occurs in a sentence, as token index
+/// ranges. The phrase is one of the fixed borrowed-ability names, so its
+/// tokens are synthesized from its words rather than lexed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BorrowPhraseTokenOccurrences {
+    pub ranges: Vec<Range<usize>>,
+}
+
+pub fn parse_borrow_phrase_occurrences_tokens(
+    tokens: &[OwnedLexToken],
     phrase: &str,
-) -> Option<BorrowPhraseOccurrencesSurface> {
-    let sentence = sentence.trim();
-    let tokens = crate::util::lex_fragment(sentence, 0)?;
-    let expected = crate::util::lex_fragment(phrase.trim(), 0)?;
+) -> Option<BorrowPhraseTokenOccurrences> {
+    let expected = crate::lexer::synthetic_phrase_tokens(phrase);
     if expected.is_empty() {
         return None;
     }
@@ -117,13 +128,11 @@ pub fn parse_borrow_phrase_occurrences(
         };
         let start_token = cursor + relative_start;
         let end_token = start_token + expected.len();
-        ranges.push(
-            tokens.get(start_token)?.span.start..tokens.get(end_token.checked_sub(1)?)?.span.end,
-        );
+        ranges.push(start_token..end_token);
         cursor = end_token;
     }
 
-    (!ranges.is_empty()).then_some(BorrowPhraseOccurrencesSurface { ranges })
+    (!ranges.is_empty()).then_some(BorrowPhraseTokenOccurrences { ranges })
 }
 
 #[cfg(test)]
@@ -158,8 +167,12 @@ mod tests {
             ]
         );
         assert_eq!(
-            parse_borrow_phrase_occurrences(
-                "As long as a creature with flying is in a graveyard, creatures have flying",
+            parse_borrow_phrase_occurrences_tokens(
+                &crate::util::lex_fragment(
+                    "as long as a creature with flying is in a graveyard, creatures have flying",
+                    0,
+                )
+                .expect("lexes"),
                 "flying",
             )
             .expect("occurrences")

@@ -1,5 +1,5 @@
 use super::super::{permission_shapes, primitives};
-use crate::lexer::{TokenWordView, lex_line, render_token_slice};
+use crate::lexer::{OwnedLexToken, TokenWordView, render_token_slice};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubjectPredicateSurface {
@@ -46,14 +46,21 @@ pub enum BorrowStaticConditionSurface {
     },
 }
 
+#[cfg(test)]
 pub fn parse_subject_predicate_surface(sentence: &str) -> Option<SubjectPredicateSurface> {
     let tokens = crate::util::lex_fragment(sentence.trim(), 0)?;
+    parse_subject_predicate_surface_tokens(&tokens)
+}
+
+pub fn parse_subject_predicate_surface_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<SubjectPredicateSurface> {
     let mut verb_index = None;
     for verb in [
         "are", "is", "have", "has", "get", "gets", "gain", "gains", "lose", "loses", "become",
         "becomes",
     ] {
-        if let Some((index, _, _)) = primitives::find_prefix(&tokens, || primitives::kw(verb)) {
+        if let Some((index, _, _)) = primitives::find_prefix(tokens, || primitives::kw(verb)) {
             verb_index = Some(index);
             break;
         }
@@ -69,9 +76,17 @@ pub fn parse_subject_predicate_surface(sentence: &str) -> Option<SubjectPredicat
         .then_some(SubjectPredicateSurface { subject, predicate })
 }
 
+#[cfg(test)]
 pub fn parse_borrow_ability_surface(sentence: &str) -> Option<BorrowAbilitySurface> {
     let tokens = crate::util::lex_fragment(sentence.trim(), 0)?;
-    let words = TokenWordView::new(&tokens).word_refs();
+    parse_borrow_ability_surface_tokens(&tokens)
+}
+
+/// The same shape over tokens the caller already holds.
+pub fn parse_borrow_ability_surface_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<BorrowAbilitySurface> {
+    let words = TokenWordView::new(tokens).word_refs();
     let mut best: Option<(usize, &'static str)> = None;
     for ability in BORROW_ABILITIES {
         let ability_words = ability.split_ascii_whitespace().collect::<Vec<_>>();
@@ -93,9 +108,10 @@ pub fn parse_borrow_ability_surface(sentence: &str) -> Option<BorrowAbilitySurfa
     best.map(|(_, phrase)| BorrowAbilitySurface { phrase })
 }
 
-pub fn parse_exiled_source_ability_tail(tail: &str) -> Option<ExiledSourceAbilityTailSurface> {
-    let tokens = crate::util::lex_fragment(tail.trim(), 0)?;
-    let words = TokenWordView::new(&tokens).word_refs();
+pub fn parse_exiled_source_ability_tail_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<ExiledSourceAbilityTailSurface> {
+    let words = TokenWordView::new(tokens).word_refs();
     for source_noun in SOURCE_NOUNS {
         let possessive = format!("{source_noun}s");
         for preposition in ["with", "by"] {
@@ -111,9 +127,46 @@ pub fn parse_exiled_source_ability_tail(tail: &str) -> Option<ExiledSourceAbilit
     None
 }
 
+#[cfg(test)]
 pub fn parse_borrow_static_sentence_surface(sentence: &str) -> Option<BorrowStaticSentenceSurface> {
     let tokens = crate::util::lex_fragment(sentence.trim(), 0)?;
-    let words = TokenWordView::new(&tokens);
+    let rendered = |slice: &[OwnedLexToken]| render_token_slice(slice).trim().to_string();
+    Some(
+        match parse_borrow_static_sentence_surface_tokens(&tokens)? {
+            BorrowStaticSentenceSurfaceTokens::Leading {
+                condition,
+                consequence,
+            } => BorrowStaticSentenceSurface::Leading {
+                condition: rendered(condition),
+                consequence: rendered(consequence),
+            },
+            BorrowStaticSentenceSurfaceTokens::Trailing { prefix, condition } => {
+                BorrowStaticSentenceSurface::Trailing {
+                    prefix: rendered(prefix),
+                    condition: rendered(condition),
+                }
+            }
+        },
+    )
+}
+
+/// [`BorrowStaticSentenceSurface`] over the caller's tokens, parts as slices.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BorrowStaticSentenceSurfaceTokens<'a> {
+    Leading {
+        condition: &'a [OwnedLexToken],
+        consequence: &'a [OwnedLexToken],
+    },
+    Trailing {
+        prefix: &'a [OwnedLexToken],
+        condition: &'a [OwnedLexToken],
+    },
+}
+
+pub fn parse_borrow_static_sentence_surface_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<BorrowStaticSentenceSurfaceTokens<'_>> {
+    let words = TokenWordView::new(tokens);
     let word_refs = words.word_refs();
     let leading_words = if permission_shapes::prefix_words(&word_refs, &["if"]) {
         1
@@ -127,14 +180,10 @@ pub fn parse_borrow_static_sentence_surface(sentence: &str) -> Option<BorrowStat
         let (relative_comma, _, _) =
             primitives::find_prefix(tokens.get(condition_start..)?, primitives::comma)?;
         let comma = condition_start + relative_comma;
-        let condition = render_token_slice(tokens.get(condition_start..comma)?)
-            .trim()
-            .to_string();
-        let consequence = render_token_slice(tokens.get(comma + 1..)?)
-            .trim()
-            .to_string();
+        let condition = tokens.get(condition_start..comma)?;
+        let consequence = tokens.get(comma + 1..)?;
         return (!condition.is_empty() && !consequence.is_empty()).then_some(
-            BorrowStaticSentenceSurface::Leading {
+            BorrowStaticSentenceSurfaceTokens::Leading {
                 condition,
                 consequence,
             },
@@ -145,27 +194,30 @@ pub fn parse_borrow_static_sentence_surface(sentence: &str) -> Option<BorrowStat
     if marker == 0 {
         return None;
     }
-    let prefix_range = words.token_span_for_words(0, marker)?;
-    let condition_range = words.token_span_for_words(marker + 3, words.len())?;
-    let prefix = render_token_slice(tokens.get(prefix_range)?)
-        .trim()
-        .to_string();
-    let condition = render_token_slice(tokens.get(condition_range)?)
-        .trim()
-        .to_string();
+    let prefix = tokens.get(words.token_span_for_words(0, marker)?)?;
+    let condition = tokens.get(words.token_span_for_words(marker + 3, words.len())?)?;
     (!prefix.is_empty() && !condition.is_empty())
-        .then_some(BorrowStaticSentenceSurface::Trailing { prefix, condition })
+        .then_some(BorrowStaticSentenceSurfaceTokens::Trailing { prefix, condition })
 }
 
+#[cfg(test)]
 pub fn parse_borrow_static_condition_surface(
     condition: &str,
     ability: &str,
 ) -> Option<BorrowStaticConditionSurface> {
     let tokens = crate::util::lex_fragment(condition.trim(), 0)?;
-    let words = TokenWordView::new(&tokens);
+    parse_borrow_static_condition_surface_tokens(&tokens, ability)
+}
+
+/// The borrowed-ability condition over the condition's tokens. `ability` is
+/// one of the fixed borrowed-ability names, plain words.
+pub fn parse_borrow_static_condition_surface_tokens(
+    tokens: &[OwnedLexToken],
+    ability: &str,
+) -> Option<BorrowStaticConditionSurface> {
+    let words = TokenWordView::new(tokens);
     let word_refs = words.word_refs();
-    let ability_tokens = crate::util::lex_fragment(ability.trim(), 0)?;
-    let ability_words = TokenWordView::new(&ability_tokens).word_refs();
+    let ability_words: Vec<&str> = ability.split_ascii_whitespace().collect();
     if ability_words.is_empty() {
         return None;
     }
@@ -187,11 +239,11 @@ pub fn parse_borrow_static_condition_surface(
             let subject = render_token_slice(tokens.get(subject_range)?)
                 .trim()
                 .to_string();
-            let tail = render_token_slice(tokens.get(tail_range)?)
+            let tail = render_token_slice(tokens.get(tail_range.clone())?)
                 .trim()
                 .to_string();
             if !subject.is_empty() && !tail.is_empty() {
-                let source_noun = parse_exiled_source_ability_tail(tail.as_str())
+                let source_noun = parse_exiled_source_ability_tail_tokens(tokens.get(tail_range)?)
                     .map(|surface| surface.source_noun);
                 return Some(BorrowStaticConditionSurface::ExiledWithAbility {
                     subject,

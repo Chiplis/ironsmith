@@ -126,6 +126,11 @@ path = "src/bin/audit_parser_module_sizes.rs"
 test = false
 
 [[bin]]
+name = "audit_redundant_parses"
+path = "src/bin/audit_redundant_parses.rs"
+test = false
+
+[[bin]]
 name = "audit_parser_architecture"
 path = "src/bin/audit_parser_architecture.rs"
 test = false

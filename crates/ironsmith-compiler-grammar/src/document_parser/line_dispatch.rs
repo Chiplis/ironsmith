@@ -682,12 +682,6 @@ pub(super) fn attach_compiler_trigger_facts(
         if nested_combat_cost.is_none() {
             nested_combat_cost = parse_nested_combat_cost(&triggered.info.source_tokens)?;
         }
-        if nested_combat_cost.is_none()
-            && let Ok(tokens) =
-                crate::lexer::lex_line(&triggered.info.raw_line, triggered.info.line_index)
-        {
-            nested_combat_cost = parse_nested_combat_cost(&tokens)?;
-        }
         let recognized_special =
             semantic_grammar::parse_special_triggered_program_tokens(&triggered.full_parse_tokens);
         let special_triggered_program = match recognized_special {

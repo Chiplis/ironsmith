@@ -646,16 +646,8 @@ pub fn split_labeled_effect_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<&[O
     Some(rest)
 }
 
-fn labeled_prefix_tokens(prefix: &str) -> Option<Vec<OwnedLexToken>> {
-    lex_line(prefix.trim(), 0).ok()
-}
-
-pub fn is_labeled_ability_prefix_text(prefix: &str) -> bool {
-    let Some(tokens) = labeled_prefix_tokens(prefix) else {
-        return false;
-    };
-    let words = parser_token_word_refs(&tokens);
-    is_labeled_ability_prefix_words(&words)
+fn is_labeled_ability_prefix_tokens(prefix: &[OwnedLexToken]) -> bool {
+    is_labeled_ability_prefix_words(&parser_token_word_refs(prefix))
 }
 
 fn is_labeled_ability_prefix_words(words: &[&str]) -> bool {
@@ -682,15 +674,12 @@ fn is_labeled_ability_prefix_words(words: &[&str]) -> bool {
         .any(|word| primitives::parse_word_sequence_prefix(words, &[*word]).is_some())
 }
 
-pub fn preserve_labeled_ability_prefix_for_parse_text(prefix: &str) -> bool {
-    let Some(tokens) = labeled_prefix_tokens(prefix) else {
-        return false;
-    };
-    let words = parser_token_word_refs(&tokens);
+pub fn preserve_labeled_ability_prefix_for_parse_tokens(prefix: &[OwnedLexToken]) -> bool {
+    let words = parser_token_word_refs(prefix);
     let Some(first) = words.first().copied() else {
         return false;
     };
-    if parser_token_word_refs(&tokens).as_slice() == MAX_SPEED_LABEL {
+    if words.as_slice() == MAX_SPEED_LABEL {
         return true;
     }
 
@@ -719,11 +708,8 @@ pub fn preserve_labeled_ability_prefix_for_parse_text(prefix: &str) -> bool {
     )
 }
 
-fn is_generic_ability_label_prefix_text(prefix: &str) -> bool {
-    let Some(tokens) = labeled_prefix_tokens(prefix) else {
-        return false;
-    };
-    let words = parser_token_word_refs(&tokens);
+fn is_generic_ability_label_prefix_tokens(prefix: &[OwnedLexToken]) -> bool {
+    let words = parser_token_word_refs(prefix);
     if words.is_empty() || words.len() > 4 {
         return false;
     }
@@ -734,18 +720,20 @@ fn is_generic_ability_label_prefix_text(prefix: &str) -> bool {
     })
 }
 
-fn starts_with_if_clause_text(text: &str) -> bool {
-    let Some(tokens) = lex_line(text.trim_start(), 0).ok() else {
-        return false;
-    };
-    parser_token_word_refs(&tokens)
+fn starts_with_if_clause_tokens(tokens: &[OwnedLexToken]) -> bool {
+    parser_token_word_refs(tokens)
         .first()
         .is_some_and(|word| *word == "if")
 }
 
-pub fn should_strip_labeled_ability_prefix_text(prefix: &str, remainder: &str) -> bool {
-    is_labeled_ability_prefix_text(prefix)
-        || (starts_with_if_clause_text(remainder) && is_generic_ability_label_prefix_text(prefix))
+pub fn should_strip_labeled_ability_prefix_tokens(
+    prefix: &[OwnedLexToken],
+    remainder: &[OwnedLexToken],
+) -> bool {
+    !remainder.is_empty()
+        && (is_labeled_ability_prefix_tokens(prefix)
+            || (starts_with_if_clause_tokens(remainder)
+                && is_generic_ability_label_prefix_tokens(prefix)))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

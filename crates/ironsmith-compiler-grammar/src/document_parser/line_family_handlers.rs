@@ -189,14 +189,11 @@ pub(super) fn run_triggered_line_family(
         return ParseOutcome::NoMatch;
     }
     if let Some(mut triggered) = recognize_simple_source_entry_face_down_exile_trigger(ctx.line) {
-        if let Err(error) = restore_authored_named_source_trigger_subject(
+        restore_authored_named_source_trigger_subject(
             &ctx.preprocessed.card,
-            ctx.line,
-            &ctx.line.info.raw_line,
+            &ctx.line.info.source_tokens,
             &mut triggered,
-        ) {
-            return line_family_error(ctx, rule, error);
-        }
+        );
         let (triggered, next_idx) = extend_triggered_line_with_result_followups(
             &ctx.preprocessed.items,
             ctx.idx,
@@ -322,7 +319,6 @@ pub(super) fn run_max_speed_labeled_line_family(
             rule,
             normalize_activation_cost_tokens_for_builder(
                 &ctx.preprocessed.card,
-                ctx.line,
                 cost_tokens.clone(),
             )
         );
@@ -333,7 +329,6 @@ pub(super) fn run_max_speed_labeled_line_family(
                     rule,
                     normalize_activation_effect_tokens_for_builder(
                         &ctx.preprocessed.card,
-                        ctx.line,
                         &effect_parse_tokens,
                     )
                 );
@@ -847,11 +842,7 @@ pub(super) fn run_station_line_family(
     let normalized_cost_tokens = line_family_try!(
         ctx,
         rule,
-        normalize_activation_cost_tokens_for_builder(
-            &ctx.preprocessed.card,
-            ctx.line,
-            cost_tokens.clone(),
-        )
+        normalize_activation_cost_tokens_for_builder(&ctx.preprocessed.card, cost_tokens.clone(),)
     );
     let cost = line_family_try!(
         ctx,
@@ -863,7 +854,6 @@ pub(super) fn run_station_line_family(
         rule,
         normalize_activation_effect_tokens_for_builder(
             &ctx.preprocessed.card,
-            ctx.line,
             &effect_parse_tokens,
         )
     );
@@ -991,7 +981,6 @@ pub(super) fn run_station_threshold_line_family(
             rule,
             normalize_activation_cost_tokens_for_builder(
                 &ctx.preprocessed.card,
-                ctx.line,
                 cost_tokens.clone(),
             )
         );
@@ -1005,7 +994,6 @@ pub(super) fn run_station_threshold_line_family(
             rule,
             normalize_activation_effect_tokens_for_builder(
                 &ctx.preprocessed.card,
-                ctx.line,
                 &effect_parse_tokens,
             )
         );
@@ -1091,25 +1079,19 @@ fn station_threshold_is_creature_pt_threshold(
 pub(super) fn run_partner_with_keyword_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> ParseOutcome<LineDispatchResult> {
-    let rule = RuleId::new("partner-with-keyword-line");
-    let Some(partner_name) = partner_with_name_from_line(ctx.line) else {
+    let Some(partner_name_tokens) = partner_with_name_tokens_from_line(ctx.line) else {
         return ParseOutcome::NoMatch;
     };
 
+    // Source-name normalization can rewrite a shared leading word in the
+    // partner's proper name (for example, Soulblade Corrupter on Soulblade
+    // Renewer) to "this creature". The keyword line is rebuilt from the
+    // authored name tokens the line retained, not from rendered text.
+    let mut parse_tokens = crate::lexer::synthetic_word_tokens(["Partner", "with"]);
+    parse_tokens.extend(partner_name_tokens);
     let partner_static = RecognizedStaticLine {
         info: ctx.line.info.clone(),
-        // Source-name normalization can rewrite a shared leading word in the
-        // partner's proper name (for example, Soulblade Corrupter on
-        // Soulblade Renewer) to "this creature". Recover the authored name
-        // from the retained source tokens before lowering the keyword line.
-        parse_tokens: line_family_try!(
-            ctx,
-            rule,
-            lex_line(
-                &format!("Partner with {partner_name}"),
-                ctx.line.info.line_index,
-            )
-        ),
+        parse_tokens,
         chosen_option: None,
         parsed: None,
     };
@@ -1535,7 +1517,6 @@ pub(super) fn run_activation_line_family(
             rule,
             normalize_activation_cost_tokens_for_builder(
                 &ctx.preprocessed.card,
-                ctx.line,
                 cost_tokens.clone(),
             )
         );
@@ -1546,7 +1527,6 @@ pub(super) fn run_activation_line_family(
                     rule,
                     normalize_activation_effect_tokens_for_builder(
                         &ctx.preprocessed.card,
-                        ctx.line,
                         &effect_parse_tokens,
                     )
                 );
@@ -1942,20 +1922,31 @@ mod tests {
 }
 
 fn partner_with_name_from_line(line: &PreprocessedLine) -> Option<String> {
-    let name =
+    let tokens = partner_with_name_tokens_from_line(line)?;
+    let name = render_token_slice(&tokens).trim().to_string();
+    (!name.is_empty()).then_some(name)
+}
+
+/// The partner's authored name, as tokens: from the authored stream when it
+/// carries the shape, otherwise the authored tokens under the normalized
+/// name's span. Quotes around the name are not part of it.
+fn partner_with_name_tokens_from_line(line: &PreprocessedLine) -> Option<Vec<OwnedLexToken>> {
+    let name_tokens =
         keyword_special_lines::parse_partner_with_name_shape_tokens(&line.info.source_tokens)
-            .map(|shape| render_token_slice(shape.name_tokens))
+            .map(|shape| shape.name_tokens.to_vec())
             .or_else(|| {
                 let shape =
                     keyword_special_lines::parse_partner_with_name_shape_tokens(&line.tokens)?;
                 Some(
-                    render_original_text_for_token_slice(line, shape.name_tokens)
-                        .unwrap_or_else(|| render_token_slice(shape.name_tokens)),
+                    authored_tokens_for_normalized_slice(line, shape.name_tokens)
+                        .unwrap_or_else(|| shape.name_tokens.to_vec()),
                 )
-            })?
-            .trim()
-            .replace('"', "");
-    (!name.is_empty()).then_some(name)
+            })?;
+    let tokens: Vec<OwnedLexToken> = name_tokens
+        .into_iter()
+        .filter(|token| token.kind != TokenKind::Quote)
+        .collect();
+    (!tokens.is_empty()).then_some(tokens)
 }
 
 pub(super) fn run_combined_static_line_family(
@@ -2505,10 +2496,10 @@ fn try_parse_trailing_keyword_activation_dispatch(
         )));
     };
     let normalized_cost_tokens =
-        normalize_activation_cost_tokens_for_builder(card, line, cost_tokens.clone())?;
+        normalize_activation_cost_tokens_for_builder(card, cost_tokens.clone())?;
     let cost = parse_activation_cost_tokens_rewrite(&normalized_cost_tokens)?;
     let effect_parse_tokens =
-        normalize_activation_effect_tokens_for_builder(card, line, &effect_parse_tokens)?;
+        normalize_activation_effect_tokens_for_builder(card, &effect_parse_tokens)?;
     let activated = RecognizedLine::Activated(RecognizedActivatedLine {
         info: suffix_line.info.clone(),
         cost,

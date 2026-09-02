@@ -5602,6 +5602,16 @@ fn bind_unresolved_it_in_restriction(
 #[cfg(all(test, feature = "compiler-internal-tests"))]
 mod tests {
     use super::*;
+
+    /// The shape a token definition's text parses to. The fixture is
+    /// tokenized here: it is test text, not a line the document phase has seen.
+    fn token_definition_shape_text(
+        text: &str,
+    ) -> Option<crate::model::token_definition::TokenDefinitionSpec> {
+        crate::grammar::token_definitions::parse_token_definition_shape_tokens(
+            &crate::lexer::lex_line(text, 0).ok()?,
+        )
+    }
     use crate::cards::TextSpan;
     use crate::cards::builders::IfResultPredicate;
     use crate::mana::{ManaCost, ManaSymbol};
@@ -6620,11 +6630,10 @@ mod tests {
                 PlayerAst::Implicit,
                 SubjectVerbActionAst::CreateTokenWithMods {
                     name: "Thopter".to_string(),
-                    definition:
-                        crate::grammar::token_definitions::parse_token_definition_shape_text(
-                            "1/1 colorless Thopter artifact creature token with flying",
-                        )
-                        .expect("test Thopter token definition should parse"),
+                    definition: token_definition_shape_text(
+                        "1/1 colorless Thopter artifact creature token with flying",
+                    )
+                    .expect("test Thopter token definition should parse"),
                     count: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
                         crate::tag::CompilerReferenceTag::It.key(),
                     ))),
@@ -7364,10 +7373,7 @@ mod tests {
                 PlayerAst::You,
                 SubjectVerbActionAst::CreateTokenWithMods {
                     name: "0/0 green and blue creature".to_string(),
-                    definition:
-                        crate::grammar::token_definitions::parse_token_definition_shape_text(
-                            "0/0 green and blue creature token",
-                        )
+                    definition: token_definition_shape_text("0/0 green and blue creature token")
                         .expect("test dynamic creature token definition should parse"),
                     count: Value::Fixed(1),
                     dynamic_power_toughness: None,
@@ -7535,10 +7541,7 @@ mod tests {
                 PlayerAst::Implicit,
                 SubjectVerbActionAst::CreateTokenWithMods {
                     name: "Knight".to_string(),
-                    definition:
-                        crate::grammar::token_definitions::parse_token_definition_shape_text(
-                            "2/2 white Knight creature token",
-                        )
+                    definition: token_definition_shape_text("2/2 white Knight creature token")
                         .expect("test Knight token definition should parse"),
                     count: Value::PendingEffectMetric {
                         source: EffectMetricSource::Outcome,

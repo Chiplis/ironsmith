@@ -1,61 +1,62 @@
 use super::*;
 
-fn authored_name_text_for_span(
+/// How far the authored line was indented: `source_tokens` are lexed from the
+/// trimmed line, while the source map speaks in untrimmed offsets.
+fn authored_leading_whitespace(info: &LineInfo) -> usize {
+    let original = info.normalized.original.as_str();
+    original.len() - original.trim_start().len()
+}
+
+/// The authored proper name inside a source-target span, as tokens.
+///
+/// Some legacy target spans include the action verb (and a historical
+/// source-map can begin one byte into it). The name is the first capitalized
+/// word inside the mapped span that is not the start of that verb, through
+/// the end of the span or the "and" that joins a second operand.
+fn authored_name_tokens_for_span(
     info: &LineInfo,
     span: crate::cards::builders::TextSpan,
-) -> Option<String> {
+) -> Option<Vec<OwnedLexToken>> {
     let original_span = crate::util::map_span_to_original(
         span,
         info.normalized.normalized.as_str(),
         info.normalized.original.as_str(),
         &info.normalized.char_map,
     );
-    let authored_span = info
-        .normalized
-        .original
-        .get(original_span.start..original_span.end)?
-        .trim_matches(|ch: char| ch.is_whitespace() || ch == ',' || ch == '.');
-    let authored_start = authored_span
-        .char_indices()
-        .filter(|(index, _)| {
-            *index == 0
-                || authored_span[..*index]
-                    .chars()
-                    .next_back()
-                    .is_some_and(char::is_whitespace)
-        })
-        .find_map(|(index, ch)| {
-            if !ch.is_uppercase() {
-                return None;
-            }
-            let word = authored_span[index..]
-                .split(|ch: char| !ch.is_alphanumeric() && ch != '\'' && ch != '’')
-                .next()
-                .unwrap_or_default();
-            let parser_word = word.to_ascii_lowercase();
-            (!["exile", "put", "remove"]
-                .iter()
-                .any(|verb| verb.starts_with(parser_word.as_str())))
-            .then_some(index)
-        })?;
-    Some(
-        crate::string_primitives::split_once(&authored_span[authored_start..], " and ")
-            .map_or(&authored_span[authored_start..], |(source, _)| source)
-            .trim_matches(|ch: char| ch.is_whitespace() || ch == ',' || ch == '.')
-            .to_string(),
-    )
+    let offset = authored_leading_whitespace(info);
+    let start = original_span.start.saturating_sub(offset);
+    let end = original_span.end.saturating_sub(offset);
+    let covered: Vec<&OwnedLexToken> = info
+        .source_tokens
+        .iter()
+        .filter(|token| token.span.start < end && token.span.end > start)
+        .collect();
+    let mut first_name = None;
+    for (index, token) in covered.iter().enumerate() {
+        let starts_capitalized = token.slice.chars().next().is_some_and(char::is_uppercase);
+        let is_verb_start = ["exile", "put", "remove"]
+            .iter()
+            .any(|verb| crate::string_primitives::starts_with(verb, token.parser_text.as_str()));
+        if starts_capitalized && !is_verb_start {
+            first_name = Some(index);
+            break;
+        }
+    }
+    let first_name = first_name?;
+    let name: Vec<OwnedLexToken> = covered[first_name..]
+        .iter()
+        .take_while(|token| !token.is_word("and"))
+        .filter(|token| !matches!(token.kind, TokenKind::Comma | TokenKind::Period))
+        .map(|token| (*token).clone())
+        .collect();
+    (!name.is_empty()).then_some(name)
 }
 
 fn named_surface_for_span(
     info: &LineInfo,
     span: crate::cards::builders::TextSpan,
 ) -> Option<crate::target::SourceReferenceSurface> {
-    // Some legacy target spans include the action verb (and a historical
-    // source-map can begin one byte into it). Select the authored proper name
-    // inside that grammar-proven source-target span rather than treating the
-    // action verb as part of the reference surface.
-    let authored = authored_name_text_for_span(info, span)?;
-    let authored_tokens = crate::util::lex_fragment(&authored, info.line_index)?;
+    let authored_tokens = authored_name_tokens_for_span(info, span)?;
     // Source maps produced before the final comma/`then` split can retain a
     // few bytes from the following clause (for example `Jace, th`). Reapply
     // the grammar boundary to the mapped slice before accepting it as a name.
@@ -79,11 +80,13 @@ pub(super) fn recognize_named_source_action_surfaces(info: &LineInfo, effects: &
             info.normalized.original.as_str(),
             &info.normalized.char_map,
         );
-        let tokens = crate::util::lex_fragment(&info.normalized.original, info.line_index)?;
+        // `source_tokens` are lexed from the trimmed line; the source map
+        // speaks in untrimmed offsets.
+        let offset = authored_leading_whitespace(info);
         crate::grammar::source_surface_shapes::parse_named_operand_nearest_to(
-            &tokens,
+            &info.source_tokens,
             "exile",
-            original_span.start,
+            original_span.start.saturating_sub(offset),
         )
         .map(|shape| shape.surface)
     }
@@ -91,9 +94,10 @@ pub(super) fn recognize_named_source_action_surfaces(info: &LineInfo, effects: &
     fn named_surface_from_authored_counter_clause(
         info: &LineInfo,
     ) -> Option<crate::target::SourceReferenceSurface> {
-        let tokens = crate::util::lex_fragment(&info.normalized.original, info.line_index)?;
-        crate::grammar::source_surface_shapes::parse_unique_named_counter_on_operand(&tokens)
-            .map(|shape| shape.surface)
+        crate::grammar::source_surface_shapes::parse_unique_named_counter_on_operand(
+            &info.source_tokens,
+        )
+        .map(|shape| shape.surface)
     }
 
     fn apply_target(info: &LineInfo, target: &mut TargetAst) {
@@ -126,11 +130,11 @@ pub(super) fn recognize_named_source_action_surfaces(info: &LineInfo, effects: &
     }
 
     fn authored_return_surface(info: &LineInfo) -> Option<crate::target::SourceReferenceSurface> {
-        let tokens = crate::util::lex_fragment(&info.normalized.original, info.line_index)?;
+        let tokens = info.source_tokens.as_slice();
         if !tokens.iter().any(|token| token.is_word("exile")) {
             return None;
         }
-        crate::grammar::source_surface_shapes::parse_unique_pronoun_operand_after(&tokens, "return")
+        crate::grammar::source_surface_shapes::parse_unique_pronoun_operand_after(tokens, "return")
             .map(|shape| shape.surface)
     }
 

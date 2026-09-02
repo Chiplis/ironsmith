@@ -5042,13 +5042,24 @@ fn parse_direct_typed_coordination(
     Ok(Some(vec![EffectAst::Coordination(coordination)]))
 }
 
+/// The sentence-list rule. Memoized per card like the sentence rule: line
+/// shapes that each need the effect clause parsed before they can claim the
+/// line all read one parse of it.
+#[track_caller]
 pub fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    let mut effects = parse_effect_sentences_lexed_unfinalized(tokens)?;
-    transport_coin_flip_outcomes_into_owner(&mut effects);
-    preserve_linked_target_fanout_group(tokens, &mut effects);
-    Ok(effects)
+    crate::sentence_memo::memoized(
+        crate::sentence_memo::Rule::Sentences,
+        tokens,
+        std::panic::Location::caller(),
+        || {
+            let mut effects = parse_effect_sentences_lexed_unfinalized(tokens)?;
+            transport_coin_flip_outcomes_into_owner(&mut effects);
+            preserve_linked_target_fanout_group(tokens, &mut effects);
+            Ok(effects)
+        },
+    )
 }
 
 fn parse_effect_sentences_lexed_unfinalized(

@@ -21,22 +21,42 @@ pub struct LevelHeader {
     pub maximum: Option<u32>,
 }
 
+#[cfg(test)]
 pub fn parse_saga_chapter_header(line: &str) -> Option<SagaChapterHeader> {
     let tokens = crate::util::lex_fragment(line.trim(), 0)?;
-    let (chapters, rest_tokens) = primitives::parse_prefix(&tokens, parse_saga_prefix)?;
+    let header = parse_saga_chapter_header_tokens(&tokens)?;
+    Some(SagaChapterHeader {
+        chapters: header.chapters,
+        presentation_label: header.presentation_label,
+        body: render_token_slice(header.body_tokens).trim().to_string(),
+    })
+}
+
+/// A Saga chapter header over the line's tokens: the chapter numbers, the
+/// optional ability-word label, and the chapter body as tokens.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SagaChapterHeaderTokens<'a> {
+    pub chapters: Vec<u32>,
+    pub presentation_label: Option<String>,
+    pub body_tokens: &'a [OwnedLexToken],
+}
+
+pub fn parse_saga_chapter_header_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<SagaChapterHeaderTokens<'_>> {
+    let (chapters, rest_tokens) = primitives::parse_prefix(tokens, parse_saga_prefix)?;
     let body_shape = parse_saga_chapter_body_tokens(rest_tokens);
-    let body = render_token_slice(body_shape.body_tokens)
-        .trim()
-        .to_string();
     let presentation_label = body_shape
         .presentation_label_tokens
         .map(render_token_slice)
         .map(|label| label.trim().to_string());
-    (!chapters.is_empty() && !body.is_empty()).then_some(SagaChapterHeader {
-        chapters,
-        presentation_label,
-        body,
-    })
+    (!chapters.is_empty() && !body_shape.body_tokens.is_empty()).then_some(
+        SagaChapterHeaderTokens {
+            chapters,
+            presentation_label,
+            body_tokens: body_shape.body_tokens,
+        },
+    )
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -95,12 +115,17 @@ fn parse_labeled_saga_chapter_body<'a>(
     })
 }
 
+#[cfg(test)]
 pub fn parse_level_header(line: &str) -> Option<LevelHeader> {
     let tokens = crate::util::lex_fragment(line.trim(), 0)?;
-    if !permission_shapes::prefix_tokens(&tokens, &["level"]) {
+    parse_level_header_tokens(&tokens)
+}
+
+pub fn parse_level_header_tokens(tokens: &[OwnedLexToken]) -> Option<LevelHeader> {
+    if !permission_shapes::prefix_tokens(tokens, &["level"]) {
         return None;
     }
-    let words = TokenWordView::new(&tokens);
+    let words = TokenWordView::new(tokens);
     let range_start = words.token_index_after_words(1)?;
     let range_tokens = tokens.get(range_start..)?;
     parse_level_header_range_tokens(range_tokens)

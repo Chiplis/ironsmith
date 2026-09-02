@@ -2,8 +2,8 @@ use winnow::combinator::{alt, opt};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
-use super::{line_families, primitives};
-use crate::lexer::{LexStream, OwnedLexToken, lex_line};
+use super::{line_families, permission_shapes, primitives};
+use crate::lexer::{LexStream, OwnedLexToken, parser_token_word_refs};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConditionalFollowupActor {
@@ -119,40 +119,54 @@ pub fn parse_leading_may_action_tokens<'a>(
     })
 }
 
-pub fn parse_keyword_marker_text(text: &str) -> Option<KeywordMarkerKind> {
-    let lowered = text.trim_start().to_ascii_lowercase();
-    let input = lowered.as_str();
-    if input == "compleated" {
+const PROTOTYPE_HEAD: &[&str] = &["prototype"];
+const MORE_THAN_MEETS_THE_EYE_HEAD: &[&str] = &["more", "than", "meets", "the", "eye"];
+const DREDGE_HEAD: &[&str] = &["dredge"];
+
+/// A keyword marker line ("Prototype {3}{U}", "Compleated", "{TK}{TK} — Prize
+/// sticker"), read from the line's tokens.
+pub fn parse_keyword_marker_tokens(tokens: &[OwnedLexToken]) -> Option<KeywordMarkerKind> {
+    let words = parser_token_word_refs(tokens);
+    if permission_shapes::exact_words(&words, &["compleated"]) {
         return Some(KeywordMarkerKind::Compleated);
     }
-    if input == "space sculptor" {
+    if permission_shapes::exact_words(&words, &["space", "sculptor"]) {
         return Some(KeywordMarkerKind::SpaceSculptor);
     }
-    for (mut prefix, kind) in [
-        ("prototype ", KeywordMarkerKind::Prototype),
+    for (head, kind) in [
+        (PROTOTYPE_HEAD, KeywordMarkerKind::Prototype),
         (
-            "more than meets the eye ",
+            MORE_THAN_MEETS_THE_EYE_HEAD,
             KeywordMarkerKind::MoreThanMeetsTheEye,
         ),
-        ("dredge ", KeywordMarkerKind::Dredge),
+        (DREDGE_HEAD, KeywordMarkerKind::Dredge),
     ] {
-        let mut candidate = input;
-        let matched: WResult<&str> = prefix.parse_next(&mut candidate);
-        if matched.is_ok() {
+        if let Some(((), tail_tokens)) = primitives::parse_prefix(tokens, primitives::phrase(head))
+            && marker_payload_follows(tokens, tail_tokens)
+        {
             return Some(kind);
         }
     }
-    let tokens = crate::util::lex_fragment(input, 0)?;
-    line_families::parse_sticker_ticket_marker(&tokens).map(|_| KeywordMarkerKind::TicketSticker)
+    line_families::parse_sticker_ticket_marker(tokens).map(|_| KeywordMarkerKind::TicketSticker)
 }
 
-pub fn recognizes_ticket_sticker_marker(text: &str) -> bool {
-    parse_keyword_marker_text(text) == Some(KeywordMarkerKind::TicketSticker)
+/// A marker's payload stands apart from its keyword ("Dredge 4"); the keyword
+/// alone, or with punctuation glued on, is not a marker.
+fn marker_payload_follows(tokens: &[OwnedLexToken], tail_tokens: &[OwnedLexToken]) -> bool {
+    let Some(next) = tail_tokens.first() else {
+        return false;
+    };
+    let head_len = tokens.len() - tail_tokens.len();
+    head_len > 0 && tokens[head_len - 1].span.end < next.span.start
 }
 
-pub fn recognizes_core_keyword_marker(text: &str) -> bool {
+pub fn recognizes_ticket_sticker_marker_tokens(tokens: &[OwnedLexToken]) -> bool {
+    parse_keyword_marker_tokens(tokens) == Some(KeywordMarkerKind::TicketSticker)
+}
+
+pub fn recognizes_core_keyword_marker_tokens(tokens: &[OwnedLexToken]) -> bool {
     matches!(
-        parse_keyword_marker_text(text),
+        parse_keyword_marker_tokens(tokens),
         Some(
             KeywordMarkerKind::Prototype
                 | KeywordMarkerKind::MoreThanMeetsTheEye
@@ -165,7 +179,7 @@ pub fn recognizes_core_keyword_marker(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lexer::TokenWordView;
+    use crate::lexer::{TokenWordView, lex_line};
 
     #[test]
     fn parses_conditional_and_may_action_prefixes() {
@@ -186,19 +200,23 @@ mod tests {
 
     #[test]
     fn classifies_keyword_markers() {
+        let marker = |text: &str| parse_keyword_marker_tokens(&lex_line(text, 0).expect("lex"));
         assert_eq!(
-            parse_keyword_marker_text("Prototype {3}{U}"),
+            marker("Prototype {3}{U}"),
             Some(KeywordMarkerKind::Prototype)
         );
-        assert!(recognizes_ticket_sticker_marker("{TK}{TK} — Prize sticker"));
+        assert!(recognizes_ticket_sticker_marker_tokens(
+            &lex_line("{TK}{TK} — Prize sticker", 0).expect("lex")
+        ));
+        assert_eq!(marker("Compleated"), Some(KeywordMarkerKind::Compleated));
         assert_eq!(
-            parse_keyword_marker_text("Compleated"),
-            Some(KeywordMarkerKind::Compleated)
-        );
-        assert_eq!(
-            parse_keyword_marker_text("Space sculptor"),
+            marker("Space sculptor"),
             Some(KeywordMarkerKind::SpaceSculptor)
         );
-        assert!(!recognizes_core_keyword_marker("Dredge 4"));
+        assert_eq!(marker("Dredge 4"), Some(KeywordMarkerKind::Dredge));
+        assert!(!recognizes_core_keyword_marker_tokens(
+            &lex_line("Dredge 4", 0).expect("lex")
+        ));
+        assert_eq!(marker("Dredge"), None, "the keyword alone is not a marker");
     }
 }
