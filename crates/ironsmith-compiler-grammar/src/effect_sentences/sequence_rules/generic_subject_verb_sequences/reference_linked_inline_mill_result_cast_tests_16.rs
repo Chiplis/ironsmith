@@ -8,7 +8,8 @@ fn parse_pair(second: &str) -> Option<Vec<EffectAst>> {
         SentenceInput::from_lexed(&first),
         SentenceInput::from_lexed(&second),
     ];
-    parse_mill_then_may_cast_from_among(&sentences, 0).expect("pair parser")
+    crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects)).expect("pair parser")
 }
 
 #[test]

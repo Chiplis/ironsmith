@@ -1,8 +1,33 @@
 use super::*;
 
+/// "If that spell would be put into a graveyard, exile it instead." — the
+/// replacement rider on a spell cast from a graveyard.
+pub fn is_graveyard_cast_replacement_sentence(replacement: &[OwnedLexToken]) -> bool {
+    matches_complete_sequence(
+        replacement,
+        &[
+            THAT_SPELL_YOUR_GRAVEYARD_REPLACEMENT,
+            THAT_SPELL_A_GRAVEYARD_REPLACEMENT,
+            CAST_THIS_WAY_YOUR_GRAVEYARD_REPLACEMENT,
+            CAST_THIS_WAY_A_GRAVEYARD_REPLACEMENT,
+        ],
+    )
+}
+
 pub fn parse_graveyard_cast_replacement_shape(
     cast: &[OwnedLexToken],
     replacement: &[OwnedLexToken],
+) -> Option<GraveyardCastReplacementShape> {
+    if !is_graveyard_cast_replacement_sentence(replacement) {
+        return None;
+    }
+    parse_graveyard_cast_permission_shape(cast)
+}
+
+/// "You may cast target instant or sorcery card from your graveyard [without
+/// paying its mana cost] [until end of turn]": the permission alone.
+pub fn parse_graveyard_cast_permission_shape(
+    cast: &[OwnedLexToken],
 ) -> Option<GraveyardCastReplacementShape> {
     let (cast, until_end_of_turn) = if let Some(rest) =
         primitives::strip_lexed_prefix_phrase(cast, &["until", "end", "of", "turn"])
@@ -19,15 +44,6 @@ pub fn parse_graveyard_cast_replacement_shape(
         || !contains_sequence_phrase(cast, CAST_FROM_GRAVEYARD)
         || !(contains_sequence_word(cast, "instant") || contains_sequence_word(cast, "sorcery"))
         || !contains_sequence_word(cast, "card")
-        || !matches_complete_sequence(
-            replacement,
-            &[
-                THAT_SPELL_YOUR_GRAVEYARD_REPLACEMENT,
-                THAT_SPELL_A_GRAVEYARD_REPLACEMENT,
-                CAST_THIS_WAY_YOUR_GRAVEYARD_REPLACEMENT,
-                CAST_THIS_WAY_A_GRAVEYARD_REPLACEMENT,
-            ],
-        )
     {
         return None;
     }

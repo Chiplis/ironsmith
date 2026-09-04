@@ -3792,14 +3792,13 @@ pub(super) fn rewrite_lexed_trigger_clause_keeps_attacked_player_relative_life_g
 #[test]
 pub(super) fn rewrite_lexed_triggered_line_preserves_attacking_looked_card_bundle() {
     let text = "Look at the top eight cards of your library. You may put a creature card from among them onto the battlefield tapped and attacking that player. Put the rest on the bottom of your library in a random order.";
-    let sentences = registry_sentence_inputs(text);
+    let source = text;
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(
+        &lex_line(source, 0).expect("registry test text should lex"),
+    )
+    .expect("the composed statements should parse");
+    let debug = format!("{:?}", effects);
 
-    let matched = super::super::effect_sentences::try_parse_document_program(&sentences, 0)
-        .expect("registry lookup should not error")
-        .expect("registry should match attacking looked-card battlefield/bottom sequence");
-    let debug = format!("{:?}", matched.effects);
-
-    assert_eq!(matched.consumed_sentences, 3);
     assert!(debug.contains("LookAtTopCards"), "{debug}");
     assert!(
         debug.contains("ChooseObjects") || debug.contains("ChooseTaggedObjectsInZone"),

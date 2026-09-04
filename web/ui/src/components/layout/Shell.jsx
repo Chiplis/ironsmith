@@ -488,7 +488,6 @@ export default function Shell() {
       compact={smallDesktopViewport}
       zoneViews={zoneViews}
       setZoneViews={setZoneViews}
-      onChangePerspective={handleChangePerspective}
     />
   );
   const zoneActionControlsElement = (
@@ -550,6 +549,7 @@ export default function Shell() {
         middleTopbar={dockToolbarsInTable ? topbarElement : null}
         middleAddCardBar={dockToolbarsInTable ? addCardBarElement : null}
         zoneActionControls={zoneActionControlsElement}
+        onChangePerspective={handleChangePerspective}
       />
       <LogDrawer open={logOpen} onOpenChange={setLogOpen} />
       {lobbyOpen ? (

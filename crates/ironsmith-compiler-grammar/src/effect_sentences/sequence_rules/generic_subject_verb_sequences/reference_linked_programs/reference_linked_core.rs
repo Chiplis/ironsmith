@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn parse_self_animate_followup_effects(
+pub(crate) fn parse_self_animate_followup_effects(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if let Ok(effects) = effect_sentences::parse_effect_sentence_lexed(tokens)

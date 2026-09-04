@@ -13,7 +13,8 @@ fn opponent_revealed_choice_tags_the_filtered_selection_and_exact_remainder() {
         .iter()
         .map(|sentence| SentenceInput::from_lexed(sentence))
         .collect::<Vec<_>>();
-    let effects = parse_reveal_top_opponent_chooses_then_partition(&sentences, 0)
+    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
         .expect("parse")
         .expect("typed opponent partition");
 
@@ -95,7 +96,8 @@ fn opponent_exile_partition_reuses_one_explicit_player_choice_for_cast_permissio
         .iter()
         .map(|sentence| SentenceInput::from_lexed(sentence))
         .collect::<Vec<_>>();
-    let effects = parse_reveal_top_opponent_exiles_one_put_rest_hand_then_may_cast(&sentences, 0)
+    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
         .expect("opponent exile partition should parse")
         .expect("opponent exile partition should match");
 
@@ -283,7 +285,8 @@ fn looked_any_number_battlefield_then_shuffle_keeps_one_tagged_pool() {
         .iter()
         .map(|sentence| SentenceInput::from_lexed(sentence))
         .collect::<Vec<_>>();
-    let effects = parse_look_at_top_put_matching_onto_battlefield_then_shuffle(&sentences, 0)
+    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
         .expect("parse")
         .expect("looked battlefield/shuffle program");
 
@@ -389,7 +392,8 @@ fn optional_top_selection_and_separate_remainder_share_one_looked_pool() {
         .iter()
         .map(|sentence| SentenceInput::from_lexed(sentence))
         .collect::<Vec<_>>();
-    let effects = parse_look_at_top_then_optional_one_top_then_remainder_bottom(&sentences, 0)
+    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
         .expect("parse")
         .expect("optional top/remainder partition");
 
@@ -476,7 +480,8 @@ fn same_name_permanent_selection_has_two_explicit_candidate_domains() {
         .iter()
         .map(|sentence| SentenceInput::from_lexed(sentence))
         .collect::<Vec<_>>();
-    let effects = parse_look_at_top_may_put_same_name_as_permanent_rest_bottom(&sentences, 0)
+    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
         .expect("parse")
         .expect("same-name looked-card program");
     let debug = format!("{effects:#?}");
@@ -571,7 +576,8 @@ fn consult_cleanup_reflexive_keeps_variable_damage_and_full_set_cleanup() {
         .map(|sentence| SentenceInput::from_lexed(sentence))
         .collect::<Vec<_>>();
 
-    let effects = parse_consult_cleanup_then_typed_when_result(&sentences, 0)
+    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
         .expect("parse")
         .expect("consult/cleanup/reflexive shape");
     let [

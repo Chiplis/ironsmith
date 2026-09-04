@@ -12,9 +12,12 @@ import PlanarZone from "./PlanarZone";
 import ManaPool from "@/components/left-rail/ManaPool";
 import StackTimelineRail from "@/components/right-rail/StackTimelineRail";
 import { DEFAULT_PLAYER_ACCENT, getPlayerAccent } from "@/lib/player-colors";
+import { formatPhase, formatStep } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
+import { useI18n } from "@/i18n/I18nContext";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
 function playerAccentStyle(accent) {
   const resolvedAccent = accent || DEFAULT_PLAYER_ACCENT;
@@ -55,12 +58,15 @@ export default function TableCore({
   middleTopbar = null,
   middleAddCardBar = null,
   zoneActionControls = null,
+  onChangePerspective = null,
   middleInspectorDock = null,
 }) {
   const { state, playerAccentOverrides, multiplayer } = useGame();
+  const { t } = useI18n();
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const tableRef = useRef(null);
   const [openDecklist, setOpenDecklist] = useState(null);
+  const [tableToolsExpanded, setTableToolsExpanded] = useState(false);
   const {
     portraitCompactViewport,
     landscapeMobileViewport,
@@ -78,6 +84,14 @@ export default function TableCore({
   const opponents = me ? ordered.filter((p) => p.id !== me.id) : [];
   const playerAccent = me ? getPlayerAccent(players, me?.id, perspective, playerAccentOverrides) : null;
   const decision = state?.decision || null;
+  const activePlayer = players.find((player) => samePlayerId(player.id, state?.active_player)) || null;
+  const priorityPlayer = players.find((player) => samePlayerId(player.id, state?.priority_player)) || null;
+  const decisionPlayer = decision?.player != null
+    ? players.find((player) => samePlayerId(player.id, decision.player)) || null
+    : null;
+  const decisionOwnerDiffersFromPriority = decisionPlayer
+    && (!priorityPlayer || !samePlayerId(decisionPlayer.id, priorityPlayer.id));
+  const activeZoneActionControls = tableToolsExpanded ? zoneActionControls : null;
   const expandedActionBar = Boolean(
     decision
     && decision.kind !== "priority"
@@ -215,12 +229,76 @@ export default function TableCore({
             {playerDisplayName(state?.players || [], me)}
           </span>
         </span>
+        {zoneActionControls ? (
+          <button
+            type="button"
+            className="table-tools-toggle"
+            aria-expanded={tableToolsExpanded}
+            aria-controls="table-utility-actions"
+            aria-label={t(tableToolsExpanded ? "action.hideTableTools" : "action.showTableTools")}
+            title={t(tableToolsExpanded ? "action.hideTableTools" : "action.showTableTools")}
+            onClick={() => setTableToolsExpanded((expanded) => !expanded)}
+          >
+            {tableToolsExpanded ? (
+              <ChevronDown aria-hidden="true" />
+            ) : (
+              <ChevronRight aria-hidden="true" />
+            )}
+          </button>
+        ) : null}
         <ManaPool
           pool={me.mana_pool}
           alwaysVisible
           compact
           className="player-name-mana battlefield-header-mana"
         />
+        <div
+          className="player-header-turn-summary"
+          aria-label={t("game.currentTurnSummary")}
+        >
+          <span>{formatPhase(state?.phase, t)}</span>
+          {state?.step ? (
+            <>
+              <span className="player-header-summary-dot" aria-hidden="true">•</span>
+              <span>{formatStep(state.step, t)}</span>
+            </>
+          ) : null}
+          <span className="player-header-summary-dot" aria-hidden="true">•</span>
+          <span>{t("game.turn", { turn: state?.turn_number ?? "-" })}</span>
+          {activePlayer ? (
+            <>
+              <span className="player-header-summary-dot" aria-hidden="true">•</span>
+              <span>{t("game.activePlayer", { player: playerDisplayName(players, activePlayer) })}</span>
+            </>
+          ) : null}
+          {decisionOwnerDiffersFromPriority ? (
+            <>
+              <span className="player-header-summary-dot" aria-hidden="true">•</span>
+              <span>{t("game.decisionPlayer", { player: playerDisplayName(players, decisionPlayer) })}</span>
+            </>
+          ) : priorityPlayer ? (
+            <>
+              <span className="player-header-summary-dot" aria-hidden="true">•</span>
+              <span>{t("game.priorityPlayer", { player: playerDisplayName(players, priorityPlayer) })}</span>
+            </>
+          ) : null}
+        </div>
+        <label className="player-header-perspective">
+          <span>{t("action.playingAs")}</span>
+          <select
+            className="stone-select player-header-perspective-select"
+            value={perspective ?? 0}
+            disabled={multiplayer.matchStarted}
+            onChange={(event) => onChangePerspective?.(Number(event.target.value))}
+            aria-label={t("action.playingAs")}
+          >
+            {players.map((player) => (
+              <option key={player.id} value={player.id}>
+                {playerDisplayName(players, player)}
+              </option>
+            ))}
+          </select>
+        </label>
         <div className="battlefield-header-zone-counts ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
           <ZoneCountInline player={me} onOpenDecklist={handleOpenDecklist} />
         </div>
@@ -249,7 +327,11 @@ export default function TableCore({
         <div className="table-shared-player-slot relative overflow-visible">
           {middlePlayerHeaderElement}
         </div>
-        <div className="table-shared-action-slot relative overflow-visible" style={{ height: `${actionBarHeight}px` }}>
+        <div
+          className="table-shared-action-slot relative overflow-visible"
+          data-tools-expanded={activeZoneActionControls ? "true" : "false"}
+          style={{ height: `${actionBarHeight}px` }}
+        >
           {actionBarElement}
         </div>
       </div>
@@ -340,7 +422,9 @@ export default function TableCore({
         headerInspectorDock={!mergeActionBarIntoMyZone && !sharedMiddleElement ? middleInspectorDock : null}
         headerActionBar={!mergeActionBarIntoMyZone && !sharedMiddleElement ? actionBarElement : null}
         embeddedActionBar={mergeActionBarIntoMyZone ? actionBarElement : null}
-        zoneActionControls={!mergeActionBarIntoMyZone ? zoneActionControls : null}
+        zoneActionControls={!mergeActionBarIntoMyZone ? activeZoneActionControls : null}
+        zoneActionRailOffset={!mergeActionBarIntoMyZone && activeZoneActionControls ? actionBarHeight : 0}
+        dockStackRail={dockStackRailInBoard}
         hideHeader={Boolean(sharedMiddleElement)}
         hideMobileHandRail={tabletCompactViewport}
       />

@@ -27,7 +27,7 @@ use super::consult_family;
 use super::divvy::try_parse_divvy_sentence_sequence;
 use super::looked_cards_family;
 use super::sentence_helpers::*;
-use super::sequence_rules::{document_program_route, try_parse_document_program};
+use super::sequence_rules::try_parse_document_program;
 use super::{
     SubjectVerbPrimitiveClause, parse_effect_sentence_lexed, parse_token_copy_modifier_sentence,
     trim_edge_punctuation, try_build_unless,
@@ -443,7 +443,7 @@ fn should_apply_leading_duration_become_shortcut(tokens: &[OwnedLexToken]) -> bo
 }
 
 const OTHERWISE_WORD: &str = "otherwise";
-fn summarize_effects(effects: &[EffectAst]) -> String {
+pub(super) fn summarize_effects(effects: &[EffectAst]) -> String {
     effects
         .iter()
         .map(|effect| {
@@ -2186,6 +2186,20 @@ fn parse_effect_sentences_from_sentence_inputs(
             sentence_idx += 1;
             continue;
         }
+        // A sentence that says what happens to the damage the preceding shield
+        // prevents binds to that shield before anything else reads it: it
+        // names the prevention event's amount, which nothing else knows.
+        if super::chain_carry::bind_prevention_followup(&mut effects, sentence)
+            || super::chain_carry::bind_tap_lock(&mut effects, sentence)
+            || super::chain_carry::bind_self_animate_after_life_gain(&mut effects, sentence)
+            || super::chain_carry::bind_destroy_typed_subset(&mut effects, sentence)
+            || super::chain_carry::bind_return_exiled_to_owners_hands(&mut effects, sentence)
+        {
+            parser_trace("parse_effect_sentences:rider:bound-followup", sentence);
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
         if authored_sentence
             .first()
             .is_some_and(|token| token.is_word("if"))
@@ -2572,14 +2586,20 @@ fn parse_effect_sentences_from_sentence_inputs(
                 summarize_effects(&matched.effects)
             ));
             parse_trace::event(format!(
-                "effect-route: {}",
-                document_program_route(matched.name)
+                "effect-route: document-program recognizer={}",
+                matched.name
             ));
             if let Some(where_value) = sequence_where_x {
                 carried_where_x = Some(where_value);
             }
             effects.append(&mut matched.effects);
             sentence_idx += matched.consumed_sentences;
+            continue;
+        }
+        if super::chain_carry::bind_no_regeneration_rider(&mut effects, sentence) {
+            parser_trace("parse_effect_sentences:rider:no-regeneration", sentence);
+            carried_context = None;
+            sentence_idx += 1;
             continue;
         }
         if let Some(mut exact_type_effects) =
@@ -4525,9 +4545,7 @@ fn parse_flat_independent_statements(
         .iter()
         .map(|sentence| SentenceInput::from_lexed(sentence))
         .collect::<Vec<_>>();
-    if let Some(matched) = try_parse_document_program(&document_sentences, 0)?
-        && matched.consumed_sentences == document_sentences.len()
-    {
+    if document_ends_in_program(&document_sentences)? {
         return Ok(None);
     }
     if has_adjacent_token_producer_followup(sentences)? {
@@ -4556,6 +4574,34 @@ fn parse_flat_independent_statements(
     } else {
         effects
     }))
+}
+
+/// Whether a document program (or procedure) covers the document from some
+/// sentence through its end, or a statement with its riders opens it. Such a document belongs to the sentence loop,
+/// which reads the leading sentences one by one and the program as a whole;
+/// composing its sentences independently would lose the references the
+/// program carries between them.
+fn document_ends_in_program(document_sentences: &[SentenceInput]) -> Result<bool, CardTextError> {
+    for start in 0..document_sentences.len() {
+        // A program's committed error stands at the first sentence, where this
+        // probe always asked; at a later sentence an error is simply no.
+        let matched = if start == 0 {
+            try_parse_document_program(document_sentences, 0)?
+        } else {
+            crate::grammar::primitives::probe_shape(try_parse_document_program(
+                document_sentences,
+                start,
+            ))
+            .flatten()
+        };
+        if let Some(matched) = matched
+            && (start + matched.consumed_sentences == document_sentences.len()
+                || (start == 0 && matched.name == super::procedures::RIDDEN_STATEMENT))
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn parse_resolving_card_countered_exile_replacement(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
@@ -4810,9 +4856,7 @@ fn parse_composable_typed_statements(
             .iter()
             .map(|sentence| SentenceInput::from_lexed(sentence))
             .collect::<Vec<_>>();
-        if let Some(matched) = try_parse_document_program(&document_sentences, 0)?
-            && matched.consumed_sentences == document_sentences.len()
-        {
+        if document_ends_in_program(&document_sentences)? {
             return Ok(None);
         }
     }

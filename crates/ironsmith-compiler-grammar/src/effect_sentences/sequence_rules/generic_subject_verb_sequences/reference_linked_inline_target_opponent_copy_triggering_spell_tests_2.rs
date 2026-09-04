@@ -8,7 +8,8 @@ fn parse(first: &str, second: &str) -> Option<Vec<EffectAst>> {
         SentenceInput::from_lexed(&first),
         SentenceInput::from_lexed(&second),
     ];
-    parse_target_opponent_may_copy_triggering_spell_then_retarget(&sentences, 0)
+    crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
         .expect("target-opponent copy parser should not error")
 }
 

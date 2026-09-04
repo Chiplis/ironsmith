@@ -312,10 +312,41 @@ fn parse_effect_sentences_preserving_source_boundaries_general(
             .iter()
             .map(|sentence| crate::effect_sentences::SentenceInput::from_lexed(sentence))
             .collect::<Vec<_>>();
-        if let Some(matched) =
-            crate::effect_sentences::try_parse_document_program(&program_sentences, 0)?
-            && matched.consumed_sentences == program_sentences.len()
-        {
+        // A program that covers the document from its first sentence is the
+        // document. A program that covers it from a later sentence to the end
+        // makes the document one block as well: the sentence loop reads the
+        // leading sentences one by one and then the program, whose statements
+        // refer to what those sentences bound.
+        let mut program_effects = None;
+        for start in 0..program_sentences.len() {
+            // A program's committed error stands at the first sentence, where
+            // this probe always asked; at a later sentence the probe only asks
+            // whether a program covers the rest, and an error there is no.
+            let matched = if start == 0 {
+                crate::effect_sentences::try_parse_document_program(&program_sentences, 0)?
+            } else {
+                crate::grammar::primitives::probe_shape(
+                    crate::effect_sentences::try_parse_document_program(&program_sentences, start),
+                )
+                .flatten()
+            };
+            let Some(matched) = matched else {
+                continue;
+            };
+            let covers_to_end = start + matched.consumed_sentences == program_sentences.len();
+            let ridden_opening =
+                start == 0 && matched.name == crate::effect_sentences::RIDDEN_STATEMENT;
+            if !covers_to_end && !ridden_opening {
+                continue;
+            }
+            program_effects = Some(if start == 0 && covers_to_end {
+                matched.effects
+            } else {
+                parse_effect_sentences_lexed(tokens)?
+            });
+            break;
+        }
+        if let Some(program_effects) = program_effects {
             // A registered program can own the cross-sentence recognition
             // without changing the meaning of either authored sentence. In
             // that case, prove the boundary structurally: independently
@@ -348,7 +379,8 @@ fn parse_effect_sentences_preserving_source_boundaries_general(
                     ),
                 });
             }
-            if independent_groups.len() == sentences.len() && independent_effects == matched.effects
+            if independent_groups.len() == sentences.len()
+                && independent_effects == program_effects
             {
                 return Ok(independent_groups);
             }
@@ -357,7 +389,7 @@ fn parse_effect_sentences_preserving_source_boundaries_general(
             // below accept every sentence independently: that would erase
             // participant loops and reference bindings before lowering sees
             // the typed program.
-            return Ok(matched.effects);
+            return Ok(program_effects);
         }
     }
     if sentences.len() >= 2

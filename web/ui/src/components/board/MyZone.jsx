@@ -259,6 +259,8 @@ export default function MyZone({
   embeddedActionBar = null,
   headerActionBar = null,
   zoneActionControls = null,
+  zoneActionRailOffset = 0,
+  dockStackRail = false,
   hideHeader = false,
   mobileBattleScene = false,
   hideMobileHandRail = false,
@@ -290,7 +292,7 @@ export default function MyZone({
   const hasHeaderActionBar = Boolean(headerActionBarElement);
   const showHeader = !hideHeader;
   const showBodyStackRail = !mergedMobileHeader
-    && Boolean(zoneActionControls)
+    && dockStackRail
     && (
       visibleStackObjects.length > 0
       || stackPreviewCount > 0
@@ -648,6 +650,7 @@ export default function MyZone({
       }}
       data-my-zone
       data-header-hidden={showHeader ? "false" : "true"}
+      data-tools-expanded={zoneActionControls ? "true" : "false"}
     >
       {showHeader ? (
         <div className="relative min-h-0 overflow-visible">
@@ -832,7 +835,11 @@ export default function MyZone({
           data-mobile-hand-drop-target={mobileHandRailVisible ? "board" : undefined}
         >
         {zoneActionControls ? (
-          <aside className="my-zone-action-rail min-h-0">
+          <aside
+            id="table-utility-actions"
+            className="my-zone-action-rail min-h-0"
+            style={{ transform: `translateY(-${Math.max(0, Number(zoneActionRailOffset) || 0)}px)` }}
+          >
             {zoneActionControls}
           </aside>
         ) : null}

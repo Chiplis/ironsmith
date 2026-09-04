@@ -24,7 +24,7 @@ pub(super) fn parse_copy_for_each_candidate_filter(
     Ok((Some(filter), None, shape.exclude_current_targets))
 }
 
-pub(super) fn parse_copy_for_each_target_sentence(
+pub(crate) fn parse_copy_for_each_target_sentence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
     tokens: &[OwnedLexToken],
@@ -90,24 +90,6 @@ pub(super) fn parse_copy_for_each_target_sentence(
     }))
 }
 
-pub fn parse_copy_for_each_target_then_each_copy_targets_different(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if !effect_grammar::each_copy_targets_different_shape(sentences[sentence_idx + 1].lowered()) {
-        return Ok(None);
-    }
-    let Some(effect) = parse_copy_for_each_target_sentence(
-        sentences,
-        sentence_idx,
-        sentences[sentence_idx].lowered(),
-    )?
-    else {
-        return Ok(None);
-    };
-    Ok(Some(vec![effect]))
-}
-
 pub fn parse_for_each_tagged_copy_then_copy_targets_it(
     sentences: &[SentenceInput],
     sentence_idx: usize,
@@ -155,7 +137,7 @@ pub fn parse_for_each_tagged_copy_then_copy_targets_it(
     }]))
 }
 
-pub(super) fn retarget_source_self_animate_effect(effect: EffectAst) -> EffectAst {
+pub(crate) fn retarget_source_self_animate_effect(effect: EffectAst) -> EffectAst {
     match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
@@ -256,34 +238,3 @@ pub(super) fn contains_tagged_source_animation(effect: &EffectAst) -> bool {
     }
 }
 
-pub fn parse_gain_life_then_self_animate_source(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let first = sentences[sentence_idx].lowered();
-    let second = sentences[sentence_idx + 1].lowered();
-
-    if !effect_grammar::has_life_gain_surface(first) {
-        return Ok(None);
-    }
-
-    let first_effects = effect_sentences::parse_effect_sentence_lexed(first)?;
-    if !first_effects
-        .iter()
-        .any(contains_triggered_life_gain_effect)
-    {
-        return Ok(None);
-    }
-
-    let Some(second_effects) = parse_self_animate_followup_effects(second)? else {
-        return Ok(None);
-    };
-
-    let mut effects = first_effects;
-    effects.extend(
-        second_effects
-            .into_iter()
-            .map(retarget_source_self_animate_effect),
-    );
-    Ok(Some(effects))
-}

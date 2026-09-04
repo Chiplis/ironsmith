@@ -27,7 +27,7 @@ const ARCHITECTURE_BUDGET: usize = 4;
 const MANUAL_PARSER_BUDGET: usize = 38;
 
 /// Production modules over the 1,000-line limit.
-const MODULE_SIZE_BUDGET: usize = 92;
+const MODULE_SIZE_BUDGET: usize = 89;
 
 /// Spans the sentence rules parse more than once for a card. The rules are
 /// memoized per card, so this can only rise if a new entry bypasses the memo;

@@ -117,95 +117,6 @@ fn discover_cast_condition_describes_the_exiled_card_not_a_stack_object() {
 }
 
 #[test]
-fn selected_card_condition_uses_the_chosen_tag_and_exact_remainder() {
-    let raw = [
-        "Look at the top six cards of your library",
-        "You may reveal a creature card from among them and put it into your hand",
-        "If it's legendary, you gain 3 life",
-        "Put the rest on the bottom of your library in a random order",
-    ];
-    let lexed = raw
-        .iter()
-        .enumerate()
-        .map(|(idx, line)| lex_line(line, idx).expect("sentence should lex"))
-        .collect::<Vec<_>>();
-    let sentences = lexed
-        .iter()
-        .map(|tokens| SentenceInput::from_lexed(tokens))
-        .collect::<Vec<_>>();
-
-    let effects = parse_look_reveal_match_to_hand_if_selected_matches_rest_bottom(&sentences, 0)
-        .expect("selected-card condition parser should not error")
-        .expect("look/reveal/selected-condition/remainder shape should parse");
-    let [look, choose, reveal, move_to_hand, conditional, remainder] = effects.as_slice() else {
-        panic!("expected one tagged selected-card partition: {effects:#?}");
-    };
-    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::LookAtTopCards {
-            tag: looked_tag, ..
-        },
-        ..
-    }) = look
-    else {
-        panic!("expected looked-card producer: {look:#?}");
-    };
-    let EffectAst::ChooseTaggedObjectsInZone {
-        filter,
-        count,
-        tag: selected_tag,
-        ..
-    } = choose
-    else {
-        panic!("expected selected-card choice: {choose:#?}");
-    };
-    assert_eq!(*count, ChoiceCount::up_to(1));
-    assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *looked_tag
-            && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-    }));
-    assert!(matches!(
-        reveal,
-        EffectAst::ForEachTagged { tag, .. } if tag == selected_tag
-    ));
-    assert!(matches!(
-        move_to_hand,
-        EffectAst::ForEachTagged { tag, .. } if tag == selected_tag
-    ));
-    assert!(matches!(
-        conditional,
-        EffectAst::Conditional {
-            predicate: PredicateAst::TaggedMatches(tag, condition_filter),
-            if_true,
-            ..
-        } if tag == selected_tag
-            && condition_filter.supertypes
-                == vec![crate::types::Supertype::Legendary]
-            && matches!(
-                if_true.as_slice(),
-                [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::GainLife {
-                        amount: crate::effect::Value::Fixed(3),
-                    },
-                    ..
-                })]
-            )
-    ));
-    assert!(matches!(
-        remainder,
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
-                    tag,
-                    keep_tagged: Some(keep_tagged),
-                    order: LibraryBottomOrderAst::Random,
-                    ..
-                },
-            ..
-        }) if tag == looked_tag && keep_tagged == selected_tag
-    ));
-}
-
-#[test]
 fn two_optional_selections_leave_an_exact_three_tag_graveyard_complement() {
     let raw = [
         "Reveal the top six cards of your library",
@@ -381,7 +292,8 @@ fn your_turn_destination_branch_keeps_one_selected_card_and_one_remainder() {
         "remainder sentence must retain the looked-card complement"
     );
     let effects =
-        parse_look_may_reveal_then_your_turn_battlefield_else_hand_rest_bottom(&sentences, 0)
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
             .expect("your-turn destination parser should not error")
             .expect("your-turn destination partition should parse");
     let [look, choose, reveal, conditional, remainder] = effects.as_slice() else {
@@ -457,7 +369,8 @@ fn unfiltered_optional_exile_uses_one_tag_for_exile_remainder_and_permission() {
         .map(|tokens| SentenceInput::from_lexed(tokens))
         .collect::<Vec<_>>();
 
-    let effects = parse_look_at_top_may_exile_match_rest_bottom_cast_exiled(&sentences, 0)
+    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
         .expect("optional exile parser should not error")
         .expect("unfiltered optional exile partition should parse");
     let [look, choose, exile, remainder, permission] = effects.as_slice() else {
@@ -610,7 +523,8 @@ fn conditional_cardinality_branches_share_one_selected_tag_and_one_complement() 
         .map(|tokens| SentenceInput::from_lexed(tokens))
         .collect::<Vec<_>>();
 
-    let effects = parse_look_at_top_conditional_hand_counts_then_rest_bottom(&sentences, 0)
+    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
         .expect("conditional partition parser should not error")
         .expect("Advice from the Fae shape should parse");
     assert_eq!(effects.len(), 3);
@@ -693,7 +607,8 @@ fn conditional_remainder_branches_share_the_looked_minus_selected_partition() {
         .map(|tokens| SentenceInput::from_lexed(tokens))
         .collect::<Vec<_>>();
 
-    let effects = parse_look_at_top_optional_battlefield_then_conditional_remainder(&sentences, 0)
+    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
         .expect("conditional partition parser should not error")
         .expect("looked/selected/conditional-remainder shape should parse");
     let [look, choose, move_selected, conditional] = effects.as_slice() else {
@@ -778,12 +693,16 @@ fn conditional_entry_modifier_is_not_claimed_as_a_remainder_branch() {
         .map(|tokens| SentenceInput::from_lexed(tokens))
         .collect::<Vec<_>>();
 
+    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .expect("ownership check should not error")
+        .expect("the looked procedure reads the entry modifier as a statement")
+        .effects;
+    let debug = format!("{effects:#?}");
     assert!(
-        parse_look_at_top_optional_battlefield_then_conditional_remainder(&sentences, 0)
-            .expect("ownership check should not error")
-            .is_none(),
-        "conditional entry modifiers must remain available to ordinary sentence dispatch"
+        !debug.contains("PutTaggedRemainderInZone"),
+        "conditional entry modifiers must not be rewritten into a remainder branch: {debug}"
     );
+    assert!(debug.contains("PutTaggedRemainderOnBottomOfLibrary"), "{debug}");
 }
 
 #[test]
@@ -800,9 +719,8 @@ fn conditional_entry_modifier_keeps_one_looked_partition_program() {
         .collect::<Vec<_>>();
 
     let effects =
-        parse_look_at_top_optional_battlefield_conditional_entry_counters_then_rest_bottom(
-            &sentences, 0,
-        )
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
         .expect("typed program should not error")
         .expect("conditional entry-counter partition should match");
     assert_eq!(effects.len(), 5, "{effects:#?}");

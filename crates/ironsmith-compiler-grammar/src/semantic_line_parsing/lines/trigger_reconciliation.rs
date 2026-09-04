@@ -351,8 +351,9 @@ pub(super) fn recognize_authored_correlated_trigger_programs(
             .map(|tokens| crate::effect_sentences::SentenceInput::from_lexed(tokens))
             .collect::<Vec<_>>();
         if sentences.len() == 4
-            && let Some(effects) = crate::effect_sentences::
-                parse_look_at_top_optional_battlefield_then_conditional_remainder(&sentences, 0)?
+            && let Some(effects) = crate::effect_sentences::try_parse_document_program(&sentences, 0)?
+                .filter(|matched| matched.consumed_sentences == sentences.len())
+                .map(|matched| matched.effects)
         {
             set_triggered_effects(line, &effects)?;
             return Ok(());

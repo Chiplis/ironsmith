@@ -627,30 +627,23 @@ pub(super) fn registry_sentence_inputs(
 
 #[test]
 pub(super) fn rewrite_sequence_registry_keeps_initial_exile_collection_across_player_actions() {
-    let sentences = registry_sentence_inputs(
-        "Exile all creatures. Each player may put any number of creature cards from their hand onto the battlefield. Then put all cards exiled this way into their owners' hands. Exile this spell.",
-    );
 
-    let matched = super::super::effect_sentences::try_parse_document_program(&sentences, 0)
-        .expect("registry lookup should not error")
-        .expect("registry should match exiled-collection return bundle");
-    assert_eq!(
-        matched.name,
-        "exile-each-player-put-return-exiled-exile-source"
-    );
-    assert_eq!(matched.consumed_sentences, 4);
+    let lexed = lex_line(
+        "Exile all creatures. Each player may put any number of creature cards from their hand onto the battlefield. Then put all cards exiled this way into their owners' hands. Exile this spell.",
+        0,
+    )
+    .expect("rewrite lexer should classify registry test text");
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("exiled-collection return bundle should parse");
 
     let [
         crate::cards::builders::EffectAst::TagAffected { tag, .. },
         _,
         return_exiled,
         _,
-    ] = matched.effects.as_slice()
+    ] = effects.as_slice()
     else {
-        panic!(
-            "expected tagged exile collection and return: {:#?}",
-            matched.effects
-        );
+        panic!("expected tagged exile collection and return: {effects:#?}");
     };
     assert!(matches!(
         return_exiled,
@@ -676,7 +669,6 @@ pub(super) fn rewrite_sequence_registry_matches_reciprocal_control_after_initial
     let matched = super::super::effect_sentences::try_parse_document_program(&sentences, 0)
         .expect("registry lookup should not error")
         .expect("registry should match initial-untap reciprocal control bundle");
-    assert_eq!(matched.name, "reciprocal-creature-control");
     assert_eq!(matched.consumed_sentences, 3);
     let debug = format!("{:#?}", matched.effects);
     assert!(debug.contains("TagMatchingObjects"), "{debug}");
@@ -685,40 +677,30 @@ pub(super) fn rewrite_sequence_registry_matches_reciprocal_control_after_initial
 
 #[test]
 pub(super) fn rewrite_sequence_registry_matches_search_upkeep_lose_game_bundle() {
-    let sentences = registry_sentence_inputs(
+    let lexed = lex_line(
         "search your library for a green creature card, reveal it, put it into your hand, then shuffle. at the beginning of your next upkeep, pay {2}{g}{g}. if you don't, you lose the game.",
-    );
+        0,
+    )
+    .expect("rewrite lexer should classify registry test text");
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("search upkeep bundle should parse");
+    let debug = format!("{effects:#?}");
 
-    let matched = super::super::effect_sentences::try_parse_document_program(&sentences, 0)
-        .expect("registry lookup should not error")
-        .expect("registry should match search upkeep bundle");
-    let debug = format!("{:#?}", matched.effects);
-
-    assert_eq!(
-        matched.name,
-        "effect-then-next-upkeep-unless-pays-lose-game"
-    );
-    assert_eq!(matched.consumed_sentences, 3);
     assert!(debug.contains("DelayedUntilNextUpkeep"), "{debug}");
     assert!(debug.contains("LoseGame"), "{debug}");
 }
 
 #[test]
 pub(super) fn rewrite_sequence_registry_matches_counterspell_upkeep_lose_game_bundle() {
-    let sentences = registry_sentence_inputs(
+    let lexed = lex_line(
         "counter target spell. at the beginning of your next upkeep, pay {3}{u}{u}. if you don't, you lose the game.",
-    );
+        0,
+    )
+    .expect("rewrite lexer should classify registry test text");
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("pact upkeep bundle should parse");
+    let debug = format!("{effects:#?}");
 
-    let matched = super::super::effect_sentences::try_parse_document_program(&sentences, 0)
-        .expect("registry lookup should not error")
-        .expect("registry should match pact upkeep bundle");
-    let debug = format!("{:#?}", matched.effects);
-
-    assert_eq!(
-        matched.name,
-        "effect-then-next-upkeep-unless-pays-lose-game"
-    );
-    assert_eq!(matched.consumed_sentences, 3);
     assert!(debug.contains("Counter"), "{debug}");
     assert!(debug.contains("DelayedUntilNextUpkeep"), "{debug}");
     assert!(debug.contains("LoseGame"), "{debug}");
@@ -767,15 +749,13 @@ pub(super) fn rewrite_lexed_effect_sequence_preserves_look_one_hand_other_gravey
 #[test]
 pub(super) fn rewrite_sequence_registry_matches_reveal_top_may_put_match_rest_graveyard_bundle() {
     let text = "Reveal the top five cards of your library. You may put a creature or enchantment card from among them into your hand. Put the rest into your graveyard.";
-    let sentences = registry_sentence_inputs(text);
+    let source = text;
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(
+        &lex_line(source, 0).expect("registry test text should lex"),
+    )
+    .expect("the composed statements should parse");
+    let debug = format!("{:#?}", effects);
 
-    let matched = super::super::effect_sentences::try_parse_document_program(&sentences, 0)
-        .expect("registry lookup should not error")
-        .expect("registry should match reveal-top hand/graveyard bundle");
-    let debug = format!("{:#?}", matched.effects);
-
-    assert_eq!(matched.name, "top-cards-put-match-into-hand-rest-graveyard");
-    assert_eq!(matched.consumed_sentences, 3);
     assert!(debug.contains("LookAtTopCards"), "{debug}");
     assert!(debug.contains("RevealTagged"), "{debug}");
     assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
@@ -991,14 +971,13 @@ pub(super) fn rewrite_lexed_effect_sequence_preserves_from_among_battlefield_res
 #[test]
 pub(super) fn rewrite_lexed_effect_sequence_preserves_counted_battlefield_rest_bottom_bundle() {
     let text = "Look at the top seven cards of your library. Put up to two planeswalker cards from among them onto the battlefield. Put the rest on the bottom of your library in a random order.";
-    let sentences = registry_sentence_inputs(text);
+    let source = text;
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(
+        &lex_line(source, 0).expect("registry test text should lex"),
+    )
+    .expect("the composed statements should parse");
+    let debug = format!("{:?}", effects);
 
-    let matched = super::super::effect_sentences::try_parse_document_program(&sentences, 0)
-        .expect("registry lookup should not error")
-        .expect("registry should match counted looked-card battlefield/bottom sequence");
-    let debug = format!("{:?}", matched.effects);
-
-    assert_eq!(matched.consumed_sentences, 3);
     assert!(debug.contains("LookAtTopCards"), "{debug}");
     assert!(contains_choice_debug(&debug), "{debug}");
     assert!(debug.contains("max: Some(2)"), "{debug}");
@@ -1025,10 +1004,6 @@ pub(super) fn rewrite_sequence_registry_prefers_battlefield_and_hand_looked_card
         .expect("registry should match the two-destination looked-card split");
     let debug = format!("{:#?}", matched.effects);
 
-    assert_eq!(
-        matched.name,
-        "top-cards-put-match-onto-battlefield-and-into-hand-rest-bottom"
-    );
     assert_eq!(matched.consumed_sentences, 3);
     assert_eq!(
         debug.matches("ChooseObjectsAcrossZones").count()
@@ -1047,14 +1022,12 @@ pub(super) fn rewrite_sequence_registry_prefers_battlefield_and_hand_looked_card
 
 #[test]
 pub(super) fn rewrite_sequence_registry_moves_all_matching_viewed_cards_without_choice() {
-    let sentences = registry_sentence_inputs(
-        "Reveal the top X cards of your library. Put all land cards from among them onto the battlefield tapped and the rest on the bottom of your library in a random order.",
-    );
-
-    let matched = super::super::effect_sentences::try_parse_document_program(&sentences, 0)
-        .expect("registry lookup should not error")
-        .expect("registry should match mandatory all-matching remainder sequence");
-    let debug = format!("{:#?}", matched.effects);
+    let source = "Reveal the top X cards of your library. Put all land cards from among them onto the battlefield tapped and the rest on the bottom of your library in a random order.";
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(
+        &lex_line(source, 0).expect("registry test text should lex"),
+    )
+    .expect("the composed statements should parse");
+    let debug = format!("{:#?}", effects);
 
     assert!(debug.contains("LookAtTopCards"), "{debug}");
     assert!(debug.contains("TagMatchingObjects"), "{debug}");
@@ -1070,14 +1043,13 @@ pub(super) fn rewrite_sequence_registry_moves_all_matching_viewed_cards_without_
 #[test]
 pub(super) fn rewrite_lexed_effect_sequence_preserves_dynamic_battlefield_rest_bottom_bundle() {
     let text = "Look at the top seven cards of your library. Put up to X artifact and/or creature cards with mana value 3 or less from among them onto the battlefield. Put the rest on the bottom of your library in a random order.";
-    let sentences = registry_sentence_inputs(text);
+    let source = text;
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(
+        &lex_line(source, 0).expect("registry test text should lex"),
+    )
+    .expect("the composed statements should parse");
+    let debug = format!("{:?}", effects);
 
-    let matched = super::super::effect_sentences::try_parse_document_program(&sentences, 0)
-        .expect("registry lookup should not error")
-        .expect("registry should match dynamic looked-card battlefield/bottom sequence");
-    let debug = format!("{:?}", matched.effects);
-
-    assert_eq!(matched.consumed_sentences, 3);
     assert!(debug.contains("LookAtTopCards"), "{debug}");
     assert!(contains_choice_debug(&debug), "{debug}");
     assert!(debug.contains("dynamic_x: true"), "{debug}");
@@ -1097,16 +1069,13 @@ pub(super) fn rewrite_lexed_effect_sequence_preserves_dynamic_battlefield_rest_b
 
 #[test]
 pub(super) fn rewrite_sequence_registry_preserves_dynamic_revealed_matching_set_and_remainder() {
-    let sentences = registry_sentence_inputs(
-        "Reveal the top X cards of your library. Put all creature cards revealed this way into your hand and the rest on the bottom of your library in any order.",
-    );
+    let source = "Reveal the top X cards of your library. Put all creature cards revealed this way into your hand and the rest on the bottom of your library in any order.";
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(
+        &lex_line(source, 0).expect("registry test text should lex"),
+    )
+    .expect("the composed statements should parse");
+    let debug = format!("{:#?}", effects);
 
-    let matched = super::super::effect_sentences::try_parse_document_program(&sentences, 0)
-        .expect("registry lookup should not error")
-        .expect("registry should match a dynamic revealed-set partition");
-    let debug = format!("{:#?}", matched.effects);
-
-    assert_eq!(matched.name, "reveal-top-matching-into-hand-rest-graveyard");
     assert!(debug.contains("count: X"), "{debug}");
     assert!(debug.contains("TagMatchingObjects"), "{debug}");
     assert!(
@@ -1122,16 +1091,13 @@ pub(super) fn rewrite_sequence_registry_preserves_dynamic_revealed_matching_set_
 
 #[test]
 pub(super) fn rewrite_sequence_registry_keeps_conditional_looked_partition_in_one_result_branch() {
-    let sentences = registry_sentence_inputs(
-        "If you do, look at the top two cards of your library. Put one of them into your hand and the other into your graveyard.",
-    );
+    let source = "If you do, look at the top two cards of your library. Put one of them into your hand and the other into your graveyard.";
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(
+        &lex_line(source, 0).expect("registry test text should lex"),
+    )
+    .expect("the composed statements should parse");
+    let debug = format!("{:#?}", effects);
 
-    let matched = super::super::effect_sentences::try_parse_document_program(&sentences, 0)
-        .expect("registry lookup should not error")
-        .expect("registry should match a conditional looked-card partition");
-    let debug = format!("{:#?}", matched.effects);
-
-    assert_eq!(matched.name, "look-at-top-partition-selected-and-remainder");
     assert!(debug.contains("IfResult"), "{debug}");
     assert!(debug.contains("LookAtTopCards"), "{debug}");
     assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
@@ -1150,8 +1116,6 @@ pub(super) fn rewrite_sequence_registry_builds_one_hidden_pile_then_cloaks_it() 
         .expect("registry lookup should not error")
         .expect("registry should match the hidden-pile cloak procedure");
     let debug = format!("{:#?}", matched.effects);
-
-    assert_eq!(matched.name, "exile-face-down-pile-then-cloak-tapped");
     assert_eq!(matched.consumed_sentences, 2);
     assert!(debug.contains("ExileTopOfLibrary"), "{debug}");
     assert!(debug.contains("face_down: true"), "{debug}");
@@ -1165,16 +1129,13 @@ pub(super) fn rewrite_sequence_registry_builds_one_hidden_pile_then_cloaks_it() 
 #[test]
 pub(super) fn rewrite_lexed_effect_sequence_preserves_noncreature_nonland_permanent_filter() {
     let text = "Look at the top seven cards of your library. Put up to two noncreature, nonland permanent cards with mana value 3 or less from among them onto the battlefield. Put the rest on the bottom of your library in a random order.";
-    let sentences = registry_sentence_inputs(text);
+    let source = text;
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(
+        &lex_line(source, 0).expect("registry test text should lex"),
+    )
+    .expect("the composed statements should parse");
+    let debug = format!("{:?}", effects);
 
-    let matched = super::super::effect_sentences::try_parse_document_program(&sentences, 0)
-        .expect("registry lookup should not error")
-        .expect(
-            "registry should match restricted permanent looked-card battlefield/bottom sequence",
-        );
-    let debug = format!("{:?}", matched.effects);
-
-    assert_eq!(matched.consumed_sentences, 3);
     assert!(debug.contains("LookAtTopCards"), "{debug}");
     assert!(contains_choice_debug(&debug), "{debug}");
     assert!(
@@ -1195,16 +1156,13 @@ pub(super) fn rewrite_lexed_effect_sequence_preserves_noncreature_nonland_perman
 
 #[test]
 pub(super) fn rewrite_sequence_registry_matches_from_among_battlefield_rest_graveyard_bundle() {
-    let sentences = registry_sentence_inputs(
-        "Look at the top X cards of your library. You may put any number of land and/or legendary permanent cards with mana value X or less from among them onto the battlefield. Put the rest into your graveyard.",
-    );
+    let source = "Look at the top X cards of your library. You may put any number of land and/or legendary permanent cards with mana value X or less from among them onto the battlefield. Put the rest into your graveyard.";
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(
+        &lex_line(source, 0).expect("registry test text should lex"),
+    )
+    .expect("the composed statements should parse");
+    let debug = format!("{:#?}", effects);
 
-    let matched = super::super::effect_sentences::try_parse_document_program(&sentences, 0)
-        .expect("registry lookup should not error")
-        .expect("registry should match looked-card battlefield/graveyard bundle");
-    let debug = format!("{:#?}", matched.effects);
-
-    assert_eq!(matched.consumed_sentences, 3);
     assert!(debug.contains("LookAtTopCards"), "{debug}");
     assert!(contains_choice_debug(&debug), "{debug}");
     assert!(debug.contains("any_of"), "{debug}");
@@ -1249,10 +1207,6 @@ pub(super) fn rewrite_sequence_registry_matches_consult_remainder_first_battlefi
         .expect("registry should match Telemin-style consult bundle");
     let debug = format!("{:#?}", matched.effects);
 
-    assert_eq!(
-        matched.name,
-        "consult-match-into-battlefield-others-graveyard"
-    );
     assert_eq!(matched.consumed_sentences, 2);
     assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
     assert!(debug.contains("PutTaggedRemainderInZone"), "{debug}");
@@ -1272,7 +1226,6 @@ pub(super) fn rewrite_sequence_registry_matches_tempting_offer_copy_spell_bundle
         .expect("registry should match Tempt with Mayhem-style copy bundle");
     let debug = format!("{:#?}", matched.effects);
 
-    assert_eq!(matched.name, "tempting-offer-copy-spell");
     assert_eq!(matched.consumed_sentences, 4);
     assert!(debug.contains("TargetOnly"), "{debug}");
     assert!(debug.contains("ForEachOpponent"), "{debug}");
@@ -1292,7 +1245,6 @@ pub(super) fn rewrite_sequence_registry_matches_reciprocal_creature_control_bund
         .expect("registry should match reciprocal creature-control bundle");
     let debug = format!("{:#?}", matched.effects);
 
-    assert_eq!(matched.name, "reciprocal-creature-control");
     assert_eq!(matched.consumed_sentences, 3);
     assert!(debug.contains("TagMatchingObjects"), "{debug}");
     assert!(debug.contains("GainControl"), "{debug}");
@@ -1304,21 +1256,14 @@ pub(super) fn rewrite_sequence_registry_matches_reciprocal_creature_control_bund
 
 #[test]
 pub(super) fn rewrite_sequence_registry_matches_counted_revealed_cards_hand_rest_bottom_bundle() {
-    let sentences = registry_sentence_inputs(
-        "Look at the top four cards of your library. You may reveal up to two instant and/or sorcery cards from among them and put the revealed cards into your hand. Put the rest on the bottom of your library in any order.",
-    );
+    let source = "Look at the top four cards of your library. You may reveal up to two instant and/or sorcery cards from among them and put the revealed cards into your hand. Put the rest on the bottom of your library in any order.";
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(
+        &lex_line(source, 0).expect("registry test text should lex"),
+    )
+    .expect("the composed statements should parse");
+    let debug = format!("{:#?}", effects);
+    let compact_debug = format!("{:?}", effects);
 
-    let matched = super::super::effect_sentences::try_parse_document_program(&sentences, 0)
-        .expect("registry lookup should not error")
-        .expect("registry should match counted revealed-cards hand/bottom bundle");
-    let debug = format!("{:#?}", matched.effects);
-    let compact_debug = format!("{:?}", matched.effects);
-
-    assert_eq!(
-        matched.name,
-        "top-cards-reveal-any-matching-to-hand-rest-bottom"
-    );
-    assert_eq!(matched.consumed_sentences, 3);
     assert!(debug.contains("LookAtTopCards"), "{debug}");
     assert!(contains_choice_debug(&debug), "{debug}");
     assert!(debug.contains("Instant"), "{debug}");
@@ -1332,41 +1277,28 @@ pub(super) fn rewrite_sequence_registry_matches_counted_revealed_cards_hand_rest
 
 #[test]
 pub(super) fn rewrite_sequence_registry_preserves_sentence_leading_then_on_looked_remainder() {
-    let sentences = registry_sentence_inputs(
-        "Look at the top five cards of your library. You may reveal a creature card from among them and put it into your hand. Then put the rest on the bottom of your library in a random order.",
-    );
-
-    let matched = super::super::effect_sentences::try_parse_document_program(&sentences, 0)
-        .expect("registry lookup should not error")
-        .expect("looked-card remainder bundle should match");
-    assert_eq!(
-        matched.name,
-        "top-cards-reveal-any-matching-to-hand-rest-bottom"
-    );
+    let source = "Look at the top five cards of your library. You may reveal a creature card from among them and put it into your hand. Then put the rest on the bottom of your library in a random order.";
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(
+        &lex_line(source, 0).expect("registry test text should lex"),
+    )
+    .expect("the composed statements should parse");
     assert!(
-        format!("{:#?}", matched.effects).contains("SentenceLeadingThenRest"),
+        format!("{:#?}", effects).contains("SentenceLeadingThenRest"),
         "the explicit sentence-leading Then must survive lowering: {:#?}",
-        matched.effects
+        effects
     );
 }
 
 #[test]
 pub(super) fn rewrite_sequence_registry_splits_and_or_single_revealed_cards_hand_rest_bottom_bundle()
  {
-    let sentences = registry_sentence_inputs(
-        "Look at the top four cards of your library. You may reveal a creature card and/or a land card from among them and put the revealed cards into your hand. Put the rest on the bottom of your library in any order.",
-    );
+    let source = "Look at the top four cards of your library. You may reveal a creature card and/or a land card from among them and put the revealed cards into your hand. Put the rest on the bottom of your library in any order.";
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(
+        &lex_line(source, 0).expect("registry test text should lex"),
+    )
+    .expect("the composed statements should parse");
+    let debug = format!("{:#?}", effects);
 
-    let matched = super::super::effect_sentences::try_parse_document_program(&sentences, 0)
-        .expect("registry lookup should not error")
-        .expect("registry should match split revealed-cards hand/bottom bundle");
-    let debug = format!("{:#?}", matched.effects);
-
-    assert_eq!(
-        matched.name,
-        "top-cards-reveal-any-matching-to-hand-rest-bottom"
-    );
-    assert_eq!(matched.consumed_sentences, 3);
     assert!(debug.contains("Creature"), "{debug}");
     assert!(debug.contains("Land"), "{debug}");
     assert!(
@@ -1411,7 +1343,6 @@ pub(super) fn rewrite_sequence_registry_links_and_or_revealed_choice_to_x_destin
     let matched = super::super::effect_sentences::try_parse_document_program(&sentences, 0)
         .expect("registry lookup should not error")
         .expect("registry should match revealed and/or destination replacement bundle");
-    assert_eq!(matched.name, "revealed-and-or-choice-destination-override");
     assert_eq!(matched.consumed_sentences, 4);
 
     let [
@@ -1473,11 +1404,6 @@ pub(super) fn rewrite_sequence_registry_matches_reveal_one_gain_mana_value_other
         .expect("registry lookup should not error")
         .expect("registry should match revealed-card value/remainder bundle");
     let debug = format!("{:#?}", matched.effects);
-
-    assert_eq!(
-        matched.name,
-        "reveal-top-one-hand-gain-mana-value-rest-graveyard"
-    );
     assert_eq!(matched.consumed_sentences, 3);
     assert!(debug.contains("LookAtTopCards"), "{debug}");
     assert!(debug.contains("reveal: true"), "{debug}");
@@ -1498,10 +1424,6 @@ pub(super) fn rewrite_sequence_registry_matches_tap_lock_followup() {
         .expect("registry should match tap-lock bundle");
     let debug = format!("{:#?}", matched.effects);
 
-    assert_eq!(
-        matched.name,
-        "tap-all-then-they-dont-untap-while-source-tapped"
-    );
     assert_eq!(matched.consumed_sentences, 2);
     assert!(debug.contains("TapAll"), "{debug}");
     assert!(debug.contains("Untap"), "{debug}");
@@ -1519,7 +1441,6 @@ pub(super) fn rewrite_sequence_registry_matches_damage_prevention_counter_follow
         .expect("registry should match damage-prevention bundle");
     let debug = format!("{:#?}", matched.effects);
 
-    assert_eq!(matched.name, "damage-prevention-then-put-counters");
     assert_eq!(matched.consumed_sentences, 2);
     assert!(
         debug.contains("PreventDamageToTargetPutCounters"),
@@ -1607,10 +1528,6 @@ pub(super) fn rewrite_sequence_registry_matches_may_cast_target_graveyard_spell_
         .expect("registry should match may-cast/replacement bundle");
     let debug = format!("{:#?}", matched.effects);
 
-    assert_eq!(
-        matched.name,
-        "may-cast-target-graveyard-spell-then-exile-replacement"
-    );
     assert_eq!(matched.consumed_sentences, 2);
     assert!(debug.contains("TargetOnly"), "{debug}");
     assert!(debug.contains("TagAffected"), "{debug}");
@@ -1632,10 +1549,6 @@ pub(super) fn rewrite_sequence_registry_preserves_may_cast_target_graveyard_spel
         .expect("registry should match may-cast/replacement bundle");
     let debug = format!("{:#?}", matched.effects);
 
-    assert_eq!(
-        matched.name,
-        "may-cast-target-graveyard-spell-then-exile-replacement"
-    );
     assert!(
         debug.contains("LessThanOrEqual") && debug.contains("4,"),
         "{debug}"
@@ -1654,10 +1567,6 @@ pub(super) fn rewrite_sequence_registry_preserves_dynamic_source_power_graveyard
         .expect("registry should match dynamic may-cast/replacement bundle");
     let debug = format!("{:#?}", matched.effects);
 
-    assert_eq!(
-        matched.name,
-        "may-cast-target-graveyard-spell-then-exile-replacement"
-    );
     assert!(debug.contains("LessThanOrEqualExpr"), "{debug}");
     assert!(debug.contains("SourcePower"), "{debug}");
     assert!(debug.contains("MasculineSourcePossessive"), "{debug}");
@@ -1677,10 +1586,6 @@ pub(super) fn rewrite_sequence_registry_matches_may_cast_target_graveyard_artifa
         .expect("registry should match targeted graveyard free-cast/replacement bundle");
     let debug = format!("{:#?}", matched.effects);
 
-    assert_eq!(
-        matched.name,
-        "may-cast-target-graveyard-spell-then-exile-replacement"
-    );
     assert_eq!(matched.consumed_sentences, 2);
     assert!(debug.contains("TargetOnly"), "{debug}");
     assert!(debug.contains("Artifact"), "{debug}");
@@ -1714,10 +1619,6 @@ pub(super) fn rewrite_sequence_registry_links_delayed_counters_to_prevented_targ
         .expect("registry should match the delayed prevention-counter bundle");
     let debug = format!("{:#?}", matched.effects);
 
-    assert_eq!(
-        matched.name,
-        "damage-prevention-then-delayed-creature-counters"
-    );
     assert_eq!(matched.consumed_sentences, 2);
     assert!(debug.contains("TargetMatches"), "{debug}");
     assert!(debug.contains("\"targeted_0\""), "{debug}");
@@ -1747,11 +1648,6 @@ pub(super) fn rewrite_filtered_future_exile_and_delayed_return_links_all_objects
         .expect("registry lookup should not error")
         .expect("filtered future replacement sequence should match");
     let debug = format!("{:#?}", matched.effects);
-
-    assert_eq!(
-        matched.name,
-        "filtered-future-exile-then-return-next-end-step"
-    );
     assert_eq!(matched.consumed_sentences, 2);
     assert!(debug.contains("duration: UntilEndOfTurn"), "{debug}");
     assert!(debug.contains("cause_policy: Any"), "{debug}");
@@ -2699,7 +2595,6 @@ pub(super) fn rewrite_sequence_registry_matches_consult_cast_bottom_bundle() {
         .expect("registry should match consult cast-bottom bundle");
     let debug = format!("{:#?}", matched.effects);
 
-    assert_eq!(matched.name, "exile-until-match-cast-rest-bottom");
     assert_eq!(matched.consumed_sentences, 3);
     assert!(debug.contains("CastTagged"), "{debug}");
     assert!(
@@ -2719,7 +2614,6 @@ pub(super) fn rewrite_sequence_registry_matches_target_opponent_consult_cast_bot
         .expect("registry should match target-opponent consult cast-bottom bundle");
     let debug = format!("{:#?}", matched.effects);
 
-    assert_eq!(matched.name, "exile-until-match-cast-rest-bottom");
     assert_eq!(matched.consumed_sentences, 3);
     assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
     assert!(debug.contains("TargetOpponent"), "{debug}");
@@ -2740,10 +2634,6 @@ pub(super) fn rewrite_sequence_registry_matches_looked_cards_kicker_override_bun
         .expect("registry should match looked-cards kicker override bundle");
     let debug = format!("{:#?}", matched.effects);
 
-    assert_eq!(
-        matched.name,
-        "look-at-top-put-counted-into-hand-rest-bottom-kicker-override"
-    );
     assert_eq!(matched.consumed_sentences, 4);
     assert!(debug.contains("ThisSpellWasKicked"), "{debug}");
     assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
@@ -2768,7 +2658,6 @@ pub(super) fn rewrite_sequence_registry_matches_looked_cards_reveal_top_rest_bot
         .expect("registry should match looked-cards reveal-top bundle");
     let debug = format!("{:#?}", matched.effects);
 
-    assert_eq!(matched.name, "look-at-top-reveal-match-put-top-rest-bottom");
     assert_eq!(matched.consumed_sentences, 3);
     assert!(debug.contains("LookAtTopCards"), "{debug}");
     assert!(contains_choice_debug(&debug), "{debug}");

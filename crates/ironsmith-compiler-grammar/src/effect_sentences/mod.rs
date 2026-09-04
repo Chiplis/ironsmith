@@ -71,6 +71,11 @@ pub use clause_primitives::{
 };
 pub mod conditionals;
 mod consult_family;
+mod consult_procedure;
+mod copy_cast_procedure;
+mod exiled_top_procedure;
+mod pair_procedure;
+mod rider_procedure;
 mod creation_handlers;
 #[path = "delegated_partition.rs"]
 mod delegated_partition_programs;
@@ -80,11 +85,17 @@ mod divvy;
 mod fanout_family;
 mod for_each_helpers;
 mod gain_ability;
+mod graveyard_cast_procedure;
+mod hand_procedure;
 mod lex_chain_helpers;
 mod looked_cards_family;
+mod looked_procedure;
+mod mill_procedure;
 mod next_spell_family;
 mod optional_companion_fanout;
 mod player_subject_sequences;
+mod procedures;
+pub use procedures::RIDDEN_STATEMENT;
 mod search_library;
 #[cfg(test)]
 pub(crate) fn parse_shuffle_graveyard_into_library_sentence_probe(
@@ -139,12 +150,9 @@ pub use gain_ability::*;
 pub use search_library::parse_search_library_sentence;
 pub use search_library::parse_search_library_sentence as parse_search_library_sentence_lexed;
 pub use search_library::*;
-pub use sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_look_at_top_optional_battlefield_then_conditional_remainder;
 pub use sequence_rules::generic_subject_verb_sequences::exile_permission_followups::parse_dynamic_exile_top_then_play_for_as_long_as_exiled;
-pub use sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_look_at_top_partition_face_down_then_filtered_permission;
 pub use sequence_rules::generic_subject_verb_sequences::parse_destroy_then_no_regeneration_sequence;
-pub use sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_look_at_players_hand_then_may_cast_from_those_cards;
-pub use sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_tempting_offer_copy_spell_sequence;
+pub use sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_look_at_top_partition_face_down_then_filtered_permission;
 pub use sequence_rules::try_parse_document_program;
 pub use subject_verb_primitives::*;
 pub use verb_handlers::parse_exiled_with_source_move_surface;

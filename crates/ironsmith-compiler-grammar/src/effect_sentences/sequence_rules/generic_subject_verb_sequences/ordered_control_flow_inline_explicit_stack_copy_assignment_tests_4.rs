@@ -19,7 +19,9 @@ fn parse(second: &str) -> Option<Vec<EffectAst>> {
         .iter()
         .map(|tokens| SentenceInput::from_lexed(tokens))
         .collect::<Vec<_>>();
-    parse_explicit_stack_target_then_copy_for_each_target(&sentences, 0).unwrap()
+    crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
+        .unwrap()
 }
 
 #[test]

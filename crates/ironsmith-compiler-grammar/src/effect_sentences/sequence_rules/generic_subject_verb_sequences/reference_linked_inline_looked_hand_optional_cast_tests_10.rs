@@ -18,7 +18,8 @@ fn looked_players_hand_optional_free_cast_keeps_zone_owner_and_may_semantics() {
         SentenceInput::from_lexed(&lexed[0]),
         SentenceInput::from_lexed(&lexed[1]),
     ];
-    let effects = parse_look_at_players_hand_then_may_cast_from_those_cards(&sentences, 0)
+    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
         .expect("pair parser should not error")
         .expect("looked-hand optional cast should match");
 
@@ -95,7 +96,8 @@ fn looked_hand_pair_does_not_claim_unrelated_or_nonoptional_casts() {
         SentenceInput::from_lexed(&wrong_reference_lexed[1]),
     ];
     assert!(
-        parse_look_at_players_hand_then_may_cast_from_those_cards(&wrong_reference, 0)
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&wrong_reference, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
             .unwrap()
             .is_none()
     );
@@ -109,7 +111,8 @@ fn looked_hand_pair_does_not_claim_unrelated_or_nonoptional_casts() {
         SentenceInput::from_lexed(&mandatory_lexed[1]),
     ];
     assert!(
-        parse_look_at_players_hand_then_may_cast_from_those_cards(&mandatory, 0)
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&mandatory, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
             .unwrap()
             .is_none()
     );

@@ -3808,6 +3808,13 @@ textarea,
   align-items: stretch;
 }
 
+.my-zone-board-shell--with-stack {
+  display: grid;
+  grid-template-columns: clamp(188px, 18vw, 260px) minmax(0, 1fr);
+  gap: 8px;
+  align-items: stretch;
+}
+
 .my-zone-board-shell--with-actions.my-zone-board-shell--with-stack {
   grid-template-columns: minmax(104px, 124px) clamp(188px, 18vw, 260px) minmax(0, 1fr);
 }

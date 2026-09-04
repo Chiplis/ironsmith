@@ -31,12 +31,3 @@ pub fn parse_choose_then_do_same_for_filter_then_return_to_battlefield(
     Ok(Some(effects))
 }
 
-pub fn parse_choose_creature_type_then_become_type(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    effect_sentences::parse_choose_creature_type_then_become_type(
-        sentences[sentence_idx].lowered(),
-        sentences[sentence_idx + 1].lowered(),
-    )
-}

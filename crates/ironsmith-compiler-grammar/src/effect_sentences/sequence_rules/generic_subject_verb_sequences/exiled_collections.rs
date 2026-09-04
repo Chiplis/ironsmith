@@ -41,7 +41,7 @@ fn exiled_top_collection_tag(effect: &EffectAst) -> Option<TagKey> {
     found
 }
 
-fn find_exiled_top_collection_tag(effects: &[EffectAst]) -> Option<TagKey> {
+pub(crate) fn find_exiled_top_collection_tag(effects: &[EffectAst]) -> Option<TagKey> {
     effects.iter().find_map(exiled_top_collection_tag)
 }
 
@@ -95,7 +95,7 @@ fn tag_first_exile(effect: &mut EffectAst, tag: &TagKey) -> bool {
     tagged
 }
 
-fn tag_first_exile_in_effects(effects: &mut [EffectAst], tag: &TagKey) -> bool {
+pub(crate) fn tag_first_exile_in_effects(effects: &mut [EffectAst], tag: &TagKey) -> bool {
     effects
         .iter_mut()
         .any(|effect| tag_first_exile(effect, tag))
@@ -108,12 +108,12 @@ fn leading_actor_player(actor: LeadingMayActor) -> PlayerAst {
     }
 }
 
-fn contains_word_phrase(tokens: &[OwnedLexToken], phrase: &[&str]) -> bool {
+pub(crate) fn contains_word_phrase(tokens: &[OwnedLexToken], phrase: &[&str]) -> bool {
     let words = parser_token_word_refs(tokens);
     crate::word_primitives::sequence_occurs(&words, phrase)
 }
 
-fn has_owner_hands_destination(tokens: &[OwnedLexToken]) -> bool {
+pub(crate) fn has_owner_hands_destination(tokens: &[OwnedLexToken]) -> bool {
     let words = parser_token_word_refs(tokens);
     crate::word_primitives::any_sequence_occurs(
         &words,
@@ -122,80 +122,6 @@ fn has_owner_hands_destination(tokens: &[OwnedLexToken]) -> bool {
             &["their", "owners'", "hands"],
         ],
     )
-}
-
-/// Preserves the collection provenance in a four-step sequence of the form
-/// "exile ...; each player may put ...; put all cards exiled this way into
-/// their owners' hands; exile this spell". Parsing the middle instruction in
-/// isolation updates the ordinary last-object tag, so the later "exiled this
-/// way" reference must be bound to the first instruction explicitly.
-pub fn parse_exile_each_player_put_return_exiled_then_exile_source(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let first_tokens = sentences[sentence_idx].lowered();
-    let second_tokens = sentences[sentence_idx + 1].lowered();
-    let third_tokens = sentences[sentence_idx + 2].lowered();
-    let fourth_tokens = sentences[sentence_idx + 3].lowered();
-
-    if !contains_word_phrase(second_tokens, &["each", "player", "may", "put"])
-        || !contains_word_phrase(second_tokens, &["any", "number", "of"])
-        || !contains_word_phrase(second_tokens, &["from", "their", "hand"])
-        || !contains_word_phrase(second_tokens, &["onto", "the", "battlefield"])
-        || !contains_word_phrase(third_tokens, &["all", "cards", "exiled", "this", "way"])
-        || !has_owner_hands_destination(third_tokens)
-    {
-        return Ok(None);
-    }
-
-    let fourth_words = parser_token_word_refs(fourth_tokens);
-    if !crate::word_primitives::parse_sequence_prefix(&fourth_words, &["exile", "this"]) {
-        return Ok(None);
-    }
-
-    let Ok(mut first_effects) = effect_sentences::parse_effect_sentence_lexed(first_tokens) else {
-        return Ok(None);
-    };
-    let exiled_tag = helper_tag_for_tokens(first_tokens, "exiled");
-    if !tag_first_exile_in_effects(&mut first_effects, &exiled_tag) {
-        return Ok(None);
-    }
-
-    let Ok(second_effects) = effect_sentences::parse_effect_sentence_lexed(second_tokens) else {
-        return Ok(None);
-    };
-    if !matches!(second_effects.as_slice(), [EffectAst::ForEachPlayer { .. }]) {
-        return Ok(None);
-    }
-
-    let Ok(fourth_effects) = effect_sentences::parse_effect_sentence_lexed(fourth_tokens) else {
-        return Ok(None);
-    };
-    if !matches!(
-        fourth_effects.as_slice(),
-        [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Exile {
-                target: TargetAst::Source(_),
-                ..
-            },
-            ..
-        })]
-    ) {
-        return Ok(None);
-    }
-
-    let mut effects = first_effects;
-    effects.extend(second_effects);
-    effects.push(EffectAst::subject_verb_move_to_zone(
-        TargetAst::Tagged(exiled_tag, None),
-        Zone::Hand,
-        false,
-        ReturnControllerAst::Preserve,
-        false,
-        None,
-    ));
-    effects.extend(fourth_effects);
-    Ok(Some(effects))
 }
 
 /// Composes "exile the top N ...; put <count/filter> from among them onto the
@@ -286,23 +212,13 @@ pub fn parse_exile_top_then_put_from_among_tokens(
     Ok(Some(effects))
 }
 
-pub fn parse_exile_top_then_put_from_among_onto_battlefield(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_exile_top_then_put_from_among_tokens(
-        sentences[sentence_idx].lowered(),
-        sentences[sentence_idx + 1].lowered(),
-    )
-}
-
 fn exclude_lands_from_spell_filter(filter: &mut ObjectFilter) {
     if !filter.excluded_card_types.contains(&CardType::Land) {
         filter.excluded_card_types.push(CardType::Land);
     }
 }
 
-fn parse_collection_cast_filter(
+pub(crate) fn parse_collection_cast_filter(
     shape: &clause_dispatch_shapes::CastTaggedCollectionShape<'_>,
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let Some(mut filter) =
@@ -315,69 +231,6 @@ fn parse_collection_cast_filter(
     }
     filter.mana_value = shape.mana_value.clone();
     Ok(Some(filter))
-}
-
-fn build_exile_top_then_cast_collection(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<(Vec<EffectAst>, TagKey, TagKey)>, CardTextError> {
-    let Ok(mut effects) =
-        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
-    else {
-        return Ok(None);
-    };
-    let Some(exiled_tag) = find_exiled_top_collection_tag(&effects) else {
-        return Ok(None);
-    };
-    let Some(shape) = clause_dispatch_shapes::parse_cast_tagged_collection_shape(
-        sentences[sentence_idx + 1].lowered(),
-    ) else {
-        return Ok(None);
-    };
-    let Some(mut filter) = parse_collection_cast_filter(&shape)? else {
-        return Ok(None);
-    };
-
-    filter.zone = Some(Zone::Exile);
-    filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: exiled_tag.clone(),
-        relation: TaggedOpbjectRelation::IsTaggedObject,
-    });
-    let chosen_tag = helper_tag_for_tokens(
-        sentences[sentence_idx + 1].lowered(),
-        "cast_from_exiled_collection",
-    );
-    effects.push(EffectAst::ChooseTaggedObjectsInZone {
-        filter,
-        count: shape.count,
-        player: PlayerAst::You,
-        tag: chosen_tag.clone(),
-        zone: Zone::Exile,
-    });
-    effects.push(EffectAst::ForEachTagged {
-        tag: chosen_tag.clone(),
-        effects: vec![EffectAst::subject_verb_cast_tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
-            PlayerAst::You,
-            false,
-            false,
-            true,
-            None,
-        )],
-    });
-    Ok(Some((effects, exiled_tag, chosen_tag)))
-}
-
-/// Composes "exile the top N ...; you may cast <count/filter> ... from among
-/// them" using the exact moved-object tag minted by the exile effect.
-pub fn parse_exile_top_then_cast_collection_free(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    Ok(
-        build_exile_top_then_cast_collection(sentences, sentence_idx)?
-            .map(|(effects, _, _)| effects),
-    )
 }
 
 fn remaining_exiled_filter(
@@ -414,7 +267,7 @@ fn move_all_remaining_exiled(
     .with_library_order(order, PlayerAst::You)
 }
 
-fn parse_remaining_exiled_partition(
+pub(crate) fn parse_remaining_exiled_partition(
     tokens: &[OwnedLexToken],
     exiled_tag: &TagKey,
     chosen_tag: &TagKey,
@@ -494,91 +347,6 @@ fn parse_remaining_exiled_partition(
     )]))
 }
 
-/// Three-sentence collection cast with a cleanup/partition instruction.  This
-/// must outrank the two-sentence rule so cleanup references are bound to both
-/// the original exiled set and the actually selected cast subset.
-pub fn parse_exile_top_cast_collection_then_partition(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some((mut effects, exiled_tag, chosen_tag)) =
-        build_exile_top_then_cast_collection(sentences, sentence_idx)?
-    else {
-        return Ok(None);
-    };
-    let Some(partition) = parse_remaining_exiled_partition(
-        sentences[sentence_idx + 2].lowered(),
-        &exiled_tag,
-        &chosen_tag,
-    )?
-    else {
-        return Ok(None);
-    };
-    effects.extend(partition);
-    Ok(Some(effects))
-}
-
-/// Composes "exile cards at random; choose a card from among them and copy
-/// it; you may cast the copy". The copied spell permission remains bound to
-/// the chosen member of the tagged exile collection.
-pub fn parse_random_graveyard_exile_choose_copy_then_cast_copy(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let mut effects =
-        match effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered()) {
-            Ok(effects) => effects,
-            Err(_) => return Ok(None),
-        };
-    let exiled_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "exiled");
-    if !tag_first_exile_in_effects(&mut effects, &exiled_tag) {
-        return Ok(None);
-    }
-
-    let second = sentences[sentence_idx + 1].lowered();
-    if !contains_word_phrase(second, &["and", "copy", "it"]) {
-        return Ok(None);
-    }
-    let Some(shape) = control_copy_attach_shapes::parse_from_among_them_shape(second) else {
-        return Ok(None);
-    };
-    let filter_tokens = strip_leading_token_words_any(shape.filter_tokens, &["choose"]);
-    let Some(mut filter) = effect_sentences::parse_looked_card_choice_filter(filter_tokens) else {
-        return Ok(None);
-    };
-    filter.zone = Some(Zone::Exile);
-    filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: exiled_tag,
-        relation: TaggedOpbjectRelation::IsTaggedObject,
-    });
-
-    let Some(cast) = parse_may_cast_it_sentence(sentences[sentence_idx + 2].lowered()) else {
-        return Ok(None);
-    };
-    if !cast.as_copy || !cast.without_paying_mana_cost {
-        return Ok(None);
-    }
-    let chosen_tag = helper_tag_for_tokens(second, "chosen_exiled");
-    effects.push(EffectAst::ChooseTaggedObjectsInZone {
-        filter,
-        count: ChoiceCount::exactly(1),
-        player: PlayerAst::You,
-        tag: chosen_tag.clone(),
-        zone: Zone::Exile,
-    });
-    effects.push(EffectAst::May {
-        effects: vec![EffectAst::subject_verb_cast_tagged(
-            chosen_tag,
-            cast.player,
-            false,
-            true,
-            true,
-            cast.cost_reduction,
-        )],
-    });
-    Ok(Some(effects))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -620,35 +388,35 @@ mod tests {
                 "Exile the top X cards of your library. You may cast instant and sorcery spells with mana value X or less from among them without paying their mana costs. Then put all cards exiled this way that weren't cast into your graveyard.",
                 ChoiceCount::any_number(),
                 3,
-                "exile-top-cast-collection-partition",
+                "exiled-top-procedure",
                 true,
             ),
             (
                 "Exile the top six cards of your library. You may cast up to two sorcery spells with mana value 3 or less from among them without paying their mana costs. Put the exiled cards not cast this way on the bottom of your library in a random order.",
                 ChoiceCount::up_to(2),
                 3,
-                "exile-top-cast-collection-partition",
+                "exiled-top-procedure",
                 true,
             ),
             (
                 "Exile the top X cards of your library. You may cast an instant or sorcery spell with mana value X or less from among them without paying its mana cost. Then put the exiled instant and sorcery cards that weren't cast this way into your hand and the rest on the bottom of your library in a random order.",
                 ChoiceCount::up_to(1),
                 3,
-                "exile-top-cast-collection-partition",
+                "exiled-top-procedure",
                 true,
             ),
             (
                 "Target opponent exiles the top X cards of their library. You may cast any number of spells with mana value X or less from among them without paying their mana costs.",
                 ChoiceCount::any_number(),
                 2,
-                "exile-top-cast-collection-free",
+                "exiled-top-procedure",
                 true,
             ),
             (
                 "Exile the top eight cards of your library. You may cast an Aura spell from among them without paying its mana cost. Then put the rest on the bottom of your library in a random order.",
                 ChoiceCount::up_to(1),
                 3,
-                "exile-top-cast-collection-partition",
+                "exiled-top-procedure",
                 false,
             ),
         ];

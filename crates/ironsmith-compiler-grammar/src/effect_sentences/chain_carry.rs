@@ -1164,10 +1164,9 @@ fn parse_effect_chain_uncoordinated_lexed(
                 SentenceInput::from_lexed(shuffle_tokens),
             ];
             if let Some(effects) =
-                super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_look_at_top_put_matching_onto_battlefield_then_shuffle(
-                    &inline_sentences,
-                    0,
-                )?
+                super::sequence_rules::try_parse_document_program(&inline_sentences, 0)?
+                    .filter(|matched| matched.consumed_sentences == inline_sentences.len())
+                    .map(|matched| matched.effects)
             {
                 return Ok(effects);
             }
@@ -3199,3 +3198,401 @@ use chain_carry_library_programs::{
 #[path = "chain_carry/chain_carry_ability.rs"]
 mod chain_carry_ability_programs;
 use chain_carry_ability_programs::effect_duration_for_gain_followup_carry;
+
+/// "It can't be regenerated." / "They can't be regenerated." after a destroy
+/// sentence: the pronoun is the destroyed objects, so the rider sets the
+/// destroy's no-regeneration flag rather than standing as an effect of its
+/// own. A singular pronoun binds only a single-target destroy. Returns false
+/// when the sentence is not this rider or nothing destroys before it.
+pub fn bind_no_regeneration_rider(
+    effects: &mut [EffectAst],
+    sentence: &[crate::lexer::OwnedLexToken],
+) -> bool {
+    let words = crate::lexer::token_word_refs(sentence);
+    if !crate::word_primitives::last_is(&words, "regenerated")
+        || !crate::word_primitives::first_is_any(&words, &["it", "they", "those"])
+        || !crate::slice_primitives::contains_any(&words, &["cant", "can't"])
+    {
+        return false;
+    }
+    let singular = crate::word_primitives::first_is(&words, "it");
+    let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. })) = effects.last_mut()
+    else {
+        return false;
+    };
+    match action {
+        SubjectVerbActionAst::Destroy {
+            no_regeneration, ..
+        } => {
+            *no_regeneration = true;
+            true
+        }
+        SubjectVerbActionAst::DestroyAll {
+            no_regeneration, ..
+        }
+        | SubjectVerbActionAst::DestroyAllOfChosenColor {
+            no_regeneration, ..
+        } if !singular => {
+            *no_regeneration = true;
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Whether "put a +0/+1 counter on it for each 1 damage prevented this way at
+/// the beginning of the next end step" follows "if it's a creature".
+fn is_delayed_creature_counters_followup(tokens: &[OwnedLexToken]) -> bool {
+    let words = token_word_refs(tokens);
+    let expected_suffix = [
+        "put",
+        "a",
+        "+0/+1",
+        "counter",
+        "on",
+        "it",
+        "for",
+        "each",
+        "1",
+        "damage",
+        "prevented",
+        "this",
+        "way",
+        "at",
+        "the",
+        "beginning",
+        "of",
+        "the",
+        "next",
+        "end",
+        "step",
+    ];
+    let prefix_len = if crate::word_primitives::parse_any_sequence_prefix(
+        &words,
+        &[
+            &["if", "its", "a", "creature"],
+            &["if", "it's", "a", "creature"],
+        ],
+    ) {
+        4
+    } else if crate::word_primitives::parse_sequence_prefix(
+        &words,
+        &["if", "it", "is", "a", "creature"],
+    ) {
+        5
+    } else {
+        return false;
+    };
+    crate::word_primitives::parse_sequence_complete(&words[prefix_len..], &expected_suffix)
+}
+
+/// Bind a sentence that says what happens to damage the preceding prevention
+/// shield prevents: "You gain life equal to the damage prevented this way.",
+/// "Exile cards from the top of your library equal to the damage prevented
+/// this way.", "For each 1 damage prevented this way, put a +1/+1 counter on
+/// that creature.", "If damage is prevented this way, ~ deals that much damage
+/// to any target.", and the creature-only counters at the next end step. The
+/// sentence names the prevention event's amount, which only the shield knows;
+/// parsed on its own it loses that context, so it is a rider on the shield.
+/// Returns false when the last effect is not such a shield or the sentence is
+/// none of these.
+pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedLexToken]) -> bool {
+    use crate::grammar::effects::generic_sequence_shapes as sequence_grammar;
+    let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. })) = effects.last_mut()
+    else {
+        return false;
+    };
+    match action {
+        SubjectVerbActionAst::PreventNextTimeDamage {
+            follow_up_effects, ..
+        } if follow_up_effects.is_empty() => {
+            if sequence_grammar::parse_prevention_gain_life_followup_shape(sentence) {
+                follow_up_effects.push(EffectAst::subject_verb(
+                    SubjectVerbRoleAst::AffectedPlayer,
+                    PlayerAst::You,
+                    SubjectVerbActionAst::GainLife {
+                        amount: Value::EventValue(crate::effect::EventValueSpec::Amount),
+                    },
+                ));
+                return true;
+            }
+            if sequence_grammar::parse_prevention_exile_top_followup_shape(sentence) {
+                follow_up_effects.push(EffectAst::subject_verb_exile_top_of_library(
+                    PlayerAst::You,
+                    Value::EventValue(crate::effect::EventValueSpec::Amount),
+                    Vec::new(),
+                    Vec::new(),
+                ));
+                return true;
+            }
+            false
+        }
+        SubjectVerbActionAst::PreventDamage {
+            amount,
+            target,
+            duration,
+            source_of_your_choice,
+            protect_you_and_permanents_you_control,
+            follow_up_effects,
+            ..
+        } => {
+            if follow_up_effects.is_empty()
+                && sequence_grammar::parse_prevention_gain_life_followup_shape(sentence)
+            {
+                follow_up_effects.push(EffectAst::subject_verb(
+                    SubjectVerbRoleAst::AffectedPlayer,
+                    PlayerAst::You,
+                    SubjectVerbActionAst::GainLife {
+                        amount: Value::EventValue(crate::effect::EventValueSpec::Amount),
+                    },
+                ));
+                return true;
+            }
+            if sequence_grammar::parse_prevention_counter_followup_shape(sentence) {
+                let replacement = EffectAst::subject_verb_prevent_damage_to_target_put_counters(
+                    Some(amount.clone()),
+                    target.clone(),
+                    duration.clone(),
+                    crate::object::CounterType::PlusOnePlusOne,
+                );
+                *effects.last_mut().expect("checked") = replacement;
+                return true;
+            }
+            if sequence_grammar::parse_prevention_reflect_followup_shape(sentence) {
+                let follow_up = EffectAst::subject_verb_damage(
+                    Value::EventValue(crate::effect::EventValueSpec::Amount),
+                    TargetAst::AnyTarget(None),
+                );
+                let replacement = EffectAst::subject_verb_prevent_damage_with_options(
+                    amount.clone(),
+                    target.clone(),
+                    duration.clone(),
+                    *source_of_your_choice,
+                    *protect_you_and_permanents_you_control,
+                    vec![follow_up],
+                );
+                *effects.last_mut().expect("checked") = replacement;
+                return true;
+            }
+            if matches!(target, TargetAst::AnyTarget(Some(_)))
+                && is_delayed_creature_counters_followup(sentence)
+            {
+                let put = EffectAst::subject_verb_put_counters(
+                    crate::object::CounterType::PlusZeroPlusOne,
+                    Value::PendingPriorEffectMetric(
+                        ironsmith_core::PriorEffectMetricQuery::new(
+                            ironsmith_core::EffectMetricSource::Outcome,
+                            ironsmith_core::EffectMetric::DamagePrevented,
+                        )
+                        .with_action(ironsmith_core::PriorEffectAction::Prevented),
+                    ),
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::Targeted0.key(), None),
+                    None,
+                    false,
+                );
+                effects.push(EffectAst::Conditional {
+                    predicate: PredicateAst::TargetMatches(ObjectFilter::creature()),
+                    if_true: vec![EffectAst::DelayedUntilNextEndStep {
+                        player: crate::target::PlayerFilter::Any,
+                        effects: vec![put],
+                    }],
+                    if_false: Vec::new(),
+                });
+                return true;
+            }
+            false
+        }
+        SubjectVerbActionAst::PreventAllDamageToTarget {
+            target, duration, ..
+        } => {
+            if sequence_grammar::parse_prevention_counter_followup_shape(sentence) {
+                let replacement = EffectAst::subject_verb_prevent_damage_to_target_put_counters(
+                    None,
+                    target.clone(),
+                    duration.clone(),
+                    crate::object::CounterType::PlusOnePlusOne,
+                );
+                *effects.last_mut().expect("checked") = replacement;
+                return true;
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
+/// "Each other artifact doesn't untap during its controller's untap step for
+/// as long as this artifact remains tapped." after "Tap all other artifacts.":
+/// the lock is bound to the tapped set.
+pub fn bind_tap_lock(effects: &mut Vec<EffectAst>, sentence: &[OwnedLexToken]) -> bool {
+    use crate::grammar::effects::generic_sequence_shapes as sequence_grammar;
+    let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::TapAll { filter },
+        ..
+    })) = effects.last()
+    else {
+        return false;
+    };
+    if !sequence_grammar::parse_source_tapped_lock_shape(sentence) {
+        return false;
+    }
+    let Some(Some((duration, clause_tokens))) =
+        crate::grammar::primitives::probe_shape(super::parse_restriction_duration(sentence))
+    else {
+        return false;
+    };
+    if !sequence_grammar::parse_untap_clause_prefix_shape(&clause_tokens) {
+        return false;
+    }
+    let filter = filter.clone();
+    effects.push(EffectAst::subject_verb_cant(
+        crate::effect::Restriction::untap(filter),
+        duration,
+        Some(PredicateAst::SourceIsTapped),
+    ));
+    true
+}
+
+/// "Then if this enchantment isn't a creature, this enchantment becomes a 3/3
+/// Angel creature ..." after a life-gain sentence: the animation is of the
+/// source, bound after the gain.
+pub fn bind_self_animate_after_life_gain(
+    effects: &mut Vec<EffectAst>,
+    sentence: &[OwnedLexToken],
+) -> bool {
+    use super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::{
+        contains_triggered_life_gain_effect, parse_self_animate_followup_effects,
+        retarget_source_self_animate_effect,
+    };
+    if !effects.iter().any(contains_triggered_life_gain_effect) {
+        return false;
+    }
+    let Some(Some(followups)) =
+        crate::grammar::primitives::probe_shape(parse_self_animate_followup_effects(sentence))
+    else {
+        return false;
+    };
+    effects.extend(followups.into_iter().map(retarget_source_self_animate_effect));
+    true
+}
+
+/// "Destroy any of them that are Walls." after "Up to three target creatures
+/// can't block this turn.": the destroy bound to the restricted target set.
+pub fn bind_destroy_typed_subset(effects: &mut Vec<EffectAst>, sentence: &[OwnedLexToken]) -> bool {
+    use super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::{
+        counted_target_object_filter, tagged_subset_destroy_words,
+    };
+    if !tagged_subset_destroy_words(sentence) {
+        return false;
+    }
+    let len = effects.len();
+    if len < 2 {
+        return false;
+    }
+    let Some((target_effect, cant_effect)) = effects[len - 2..].split_first_mut().and_then(
+        |(first, rest)| rest.first_mut().map(|second| (first, second)),
+    ) else {
+        return false;
+    };
+    let target_filter = match &*target_effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::TargetOnly {
+                    target,
+                    explicit_declaration: false,
+                },
+            ..
+        }) => counted_target_object_filter(target).cloned(),
+        _ => None,
+    };
+    let Some(target_filter) = target_filter else {
+        return false;
+    };
+    let restriction_filter = match cant_effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Cant {
+                    restriction: crate::effect::Restriction::Block(filter),
+                    duration: crate::effect::Until::EndOfTurn,
+                    start: crate::effect::RestrictionStart::Immediate,
+                    duration_surface: crate::effect::RestrictionDurationSurface::Default,
+                    condition: None,
+                },
+            ..
+        }) => filter,
+        _ => return false,
+    };
+    let expected_it_constraint = crate::target::TaggedObjectConstraint {
+        tag: crate::tag::CompilerReferenceTag::It.key(),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    };
+    if !matches!(restriction_filter.tagged_constraints.as_slice(), [constraint] if *constraint == expected_it_constraint)
+    {
+        return false;
+    }
+    let mut restriction_base = restriction_filter.clone();
+    restriction_base.tagged_constraints.clear();
+    if restriction_base != target_filter {
+        return false;
+    }
+    let Some(are_index) = crate::slice_primitives::select_position(sentence, |token| token.is_word("are"))
+    else {
+        return false;
+    };
+    let Some(Some(mut destroy_filter)) = crate::grammar::primitives::probe_shape(
+        parse_object_filter(&sentence[are_index + 1..], false),
+    )
+    .map(Some) else {
+        return false;
+    };
+    if !destroy_filter.tagged_constraints.is_empty() {
+        return false;
+    }
+    let target_set_tag = crate::util::helper_tag_for_tokens(sentence, "restricted_target_set");
+    restriction_filter.tagged_constraints[0].tag = target_set_tag.clone();
+    destroy_filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+        tag: target_set_tag.clone(),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+    let original_target = target_effect.clone();
+    *target_effect = EffectAst::TagAffected {
+        effect: Box::new(original_target),
+        tag: target_set_tag,
+    };
+    effects.push(EffectAst::subject_verb_destroy(TargetAst::Object(
+        destroy_filter,
+        None,
+        None,
+    )));
+    true
+}
+
+/// "Then put all cards exiled this way into their owners' hands." after an
+/// exile (with any sentences between): the exiled cards, tagged on the exile,
+/// returned.
+pub fn bind_return_exiled_to_owners_hands(
+    effects: &mut Vec<EffectAst>,
+    sentence: &[OwnedLexToken],
+) -> bool {
+    use super::sequence_rules::generic_subject_verb_sequences::exiled_collections::{
+        contains_word_phrase, has_owner_hands_destination, tag_first_exile_in_effects,
+    };
+    if !contains_word_phrase(sentence, &["all", "cards", "exiled", "this", "way"])
+        || !has_owner_hands_destination(sentence)
+    {
+        return false;
+    }
+    let exiled_tag = crate::util::helper_tag_for_tokens(sentence, "exiled");
+    if !tag_first_exile_in_effects(effects, &exiled_tag) {
+        return false;
+    }
+    effects.push(EffectAst::subject_verb_move_to_zone(
+        TargetAst::Tagged(exiled_tag, None),
+        Zone::Hand,
+        false,
+        ReturnControllerAst::Preserve,
+        false,
+        None,
+    ));
+    true
+}

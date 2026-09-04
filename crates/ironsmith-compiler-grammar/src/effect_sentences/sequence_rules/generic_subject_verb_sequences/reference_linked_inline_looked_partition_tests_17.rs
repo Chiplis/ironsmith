@@ -30,7 +30,8 @@ fn parse_singleton_graveyard_pair(first: &str, second: &str) -> Option<Vec<Effec
         SentenceInput::from_lexed(&first),
         SentenceInput::from_lexed(&second),
     ];
-    parse_look_at_top_then_move_exact_one_to_graveyard(&sentences, 0)
+    crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
         .expect("singleton looked-card parser should not error")
 }
 
@@ -127,7 +128,8 @@ fn reflexive_targeted_graveyard_cast_keeps_target_x_and_replacement_scope() {
     ];
 
     let effects =
-        parse_when_result_may_cast_target_graveyard_spell_then_exile_replacement(&sentences, 0)
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
             .expect("reflexive graveyard cast parser should not error")
             .expect("reflexive graveyard cast pair should parse");
     let [
@@ -172,7 +174,8 @@ fn reflexive_targeted_graveyard_cast_keeps_target_x_and_replacement_scope() {
         SentenceInput::from_lexed(&second),
     ];
     assert!(
-        parse_when_result_may_cast_target_graveyard_spell_then_exile_replacement(&near_miss, 0)
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&near_miss, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
             .unwrap()
             .is_none()
     );
@@ -933,7 +936,8 @@ fn face_down_exile_keeps_the_graveyard_complement_and_permission_tag() {
         SentenceInput::from_lexed(&first),
         SentenceInput::from_lexed(&second),
     ];
-    let effects = parse_look_at_top_then_exile_face_down_then_play_while_exiled(&sentences, 0)
+    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
         .expect("face-down partition parser should not error")
         .expect("Thief of Sanity shape should parse");
     assert_eq!(effects.len(), 5);
@@ -1016,10 +1020,7 @@ fn complete_face_down_partition_does_not_steal_cast_permission_followup() {
             .expect("sequence registry should not error")
             .expect("look/exile/permission sequence should match");
 
-    assert_eq!(
-        matched.name,
-        "look-at-top-exile-face-down-play-while-exiled"
-    );
+    assert_eq!(matched.name, "looked-procedure");
     assert_eq!(matched.effects.len(), 5);
     let EffectAst::ChooseTaggedObjectsInZone {
         tag: selected_tag, ..

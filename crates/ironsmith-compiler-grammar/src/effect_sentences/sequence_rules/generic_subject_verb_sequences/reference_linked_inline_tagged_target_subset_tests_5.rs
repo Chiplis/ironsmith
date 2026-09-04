@@ -14,7 +14,8 @@ fn later_wall_subset_reuses_the_exact_multi_target_set() {
         .iter()
         .map(|tokens| SentenceInput::from_lexed(tokens))
         .collect::<Vec<_>>();
-    let effects = parse_multi_target_restriction_then_destroy_typed_subset(&sentences, 0)
+    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
         .expect("targeted subset parser should not error")
         .expect("targeted subset shape should match");
 

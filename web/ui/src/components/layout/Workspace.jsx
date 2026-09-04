@@ -746,6 +746,7 @@ export default function Workspace({
   middleTopbar = null,
   middleAddCardBar = null,
   zoneActionControls = null,
+  onChangePerspective = null,
 }) {
   const [selectedObjectId, setSelectedObjectId] = useState(null);
   const [focusedStackObjectId, setFocusedStackObjectId] = useState(null);
@@ -1724,6 +1725,7 @@ export default function Workspace({
             middleTopbar={middleTopbar}
             middleAddCardBar={middleAddCardBar}
             zoneActionControls={zoneActionControls}
+            onChangePerspective={onChangePerspective}
             middleInspectorDock={showMiddleInspectorDock ? (
               <RightRail
                 pinnedObjectId={pinnedInspectorObjectId}

@@ -7,108 +7,6 @@ use crate::effect::Value;
 use crate::target::PlayerFilter;
 use crate::zone::Zone;
 
-/// Preserve an optional per-opponent choice between sacrificing and
-/// discarding together with the following consequence for opponents who did
-/// neither. The two effects remain inside one opponent frame, so the result
-/// test is executable independently for each participant.
-pub fn parse_each_opponent_may_sacrifice_or_discard_then_damage_nonparticipants(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(first) = sentences.get(sentence_idx) else {
-        return Ok(None);
-    };
-    let Some(second) = sentences.get(sentence_idx + 1) else {
-        return Ok(None);
-    };
-    if !matches!(
-        crate::lexer::token_word_refs(first.lowered()).as_slice(),
-        [
-            "each",
-            "opponent",
-            "may",
-            "sacrifice",
-            "a",
-            "nonland",
-            "permanent",
-            "of",
-            "their",
-            "choice",
-            "or",
-            "discard",
-            "a",
-            "card"
-        ]
-    ) || !matches!(
-        crate::lexer::token_word_refs(second.lowered()).as_slice(),
-        [
-            "then",
-            "this",
-            "creature",
-            "deals",
-            "damage",
-            "equal",
-            "to",
-            "its",
-            "power",
-            "to",
-            "each",
-            "opponent",
-            "who",
-            "didnt" | "didn't",
-            "sacrifice",
-            "a",
-            "permanent",
-            "or",
-            "discard",
-            "a",
-            "card",
-            "this",
-            "way"
-        ]
-    ) {
-        return Ok(None);
-    }
-
-    let sacrifice_filter = ObjectFilter::nonland()
-        .in_zone(Zone::Battlefield)
-        .controlled_by(PlayerFilter::IteratedPlayer);
-    let sacrifice = EffectAst::subject_verb_sacrifice(PlayerAst::That, sacrifice_filter, 1, None);
-    let discard =
-        EffectAst::subject_verb_discard(PlayerAst::That, Value::Fixed(1), false, false, None, None);
-    let choice = EffectAst::VillainousChoice {
-        player: PlayerFilter::IteratedPlayer,
-        player_surface: None,
-        modes: vec![
-            ChooseOneModeAst {
-                description: "Sacrifice a nonland permanent".to_string(),
-                effects: vec![sacrifice],
-            },
-            ChooseOneModeAst {
-                description: "Discard a card".to_string(),
-                effects: vec![discard],
-            },
-        ],
-    };
-    let offer = EffectAst::ForEachOpponent {
-        effects: vec![EffectAst::MayByPlayer {
-            player: PlayerAst::That,
-            effects: vec![choice],
-        }],
-    };
-    let damage = EffectAst::subject_verb_damage_equal_to_power(
-        TargetAst::Source(None),
-        TargetAst::Player(PlayerFilter::IteratedPlayer, None),
-    );
-    let consequence = EffectAst::ForEachOpponentDid {
-        effects: vec![damage],
-        predicate: None,
-        result_predicate: IfResultPredicate::DidNot,
-    };
-
-    Ok(Some(vec![offer, consequence]))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,7 +19,8 @@ mod tests {
             SentenceInput::from_lexed(&first),
             SentenceInput::from_lexed(&second),
         ];
-        parse_each_opponent_may_sacrifice_or_discard_then_damage_nonparticipants(&sentences, 0)
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
             .expect("pair parser should not error")
     }
 

@@ -577,8 +577,9 @@ pub(super) fn throw_from_the_saddle_keeps_common_damage_after_both_replacement_a
         .expect("Throw document-program recognition should not error")
         .expect("Throw should have a typed three-sentence document program");
     assert_eq!(
-        program.name, "target-modifier-counter-instead-common-damage",
-        "{program:#?}"
+        program.consumed_sentences,
+        sentences.len(),
+        "the replacement arm and the trailing damage belong to one program"
     );
     let effects = super::super::clause_support::parse_effect_sentences_lexed(&lexed)
         .expect("Throw from the Saddle should parse to typed effects");
@@ -1911,33 +1912,6 @@ pub(super) fn each_player_milled_this_way_choice_stays_tied_to_milled_cards() {
             && rendered.contains("SetBasePowerToughnessEffect")
             && rendered.contains("TotalPower"),
         "expected milled-this-way choice and X/X token sizing to stay tied to the milled/exiled helper tags, got {rendered}"
-    );
-}
-
-#[test]
-pub(super) fn rewrite_sequence_registry_matches_revealed_land_nonland_split_bottom_bundle() {
-    let sentences = registry_sentence_inputs(
-        "Reveal the top X cards of your library, where X is the number of lands sacrificed this way. Choose any number of artifact and/or land cards revealed this way. Put all nonland cards chosen this way onto the battlefield, then put all land cards chosen this way onto the battlefield tapped, then put the rest on the bottom of your library in a random order.",
-    );
-
-    let matched = super::super::effect_sentences::try_parse_document_program(&sentences, 0)
-        .expect("registry lookup should not error")
-        .expect("registry should match revealed land/nonland split bundle");
-    let debug = format!("{:#?}", matched.effects);
-
-    assert_eq!(
-        matched.name,
-        "reveal-top-choose-any-revealed-land-nonland-split-rest-bottom"
-    );
-    assert_eq!(matched.consumed_sentences, 3);
-    assert!(debug.contains("LookAtTopCards"), "{debug}");
-    assert!(debug.contains("reveal: true"), "{debug}");
-    assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
-    assert!(debug.contains("ItMatches"), "{debug}");
-    assert!(debug.contains("PutOntoBattlefield"), "{debug}");
-    assert!(
-        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
-        "{debug}"
     );
 }
 

@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn append_to_outer_if_result(
+pub(crate) fn append_to_outer_if_result(
     effect: &mut EffectAst,
     followup: &mut Vec<EffectAst>,
 ) -> bool {

@@ -13,7 +13,8 @@ fn optional_cast_chooses_from_the_exact_target_opponents_revealed_hand() {
         SentenceInput::from_lexed(&first),
         SentenceInput::from_lexed(&second),
     ];
-    let effects = parse_reveal_target_opponent_hand_then_may_cast_from_those_cards(&sentences, 0)
+    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
         .expect("pair parser should not error")
         .expect("revealed-hand optional cast should match");
 

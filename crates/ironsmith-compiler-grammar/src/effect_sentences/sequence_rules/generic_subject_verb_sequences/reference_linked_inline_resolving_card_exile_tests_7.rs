@@ -13,14 +13,14 @@ fn resolving_card_exile_registers_exact_one_shot_replacement_and_linked_return()
         1,
     )
     .expect("conditional return sentence should lex");
-    let sentences = [
-        SentenceInput::from_lexed(&first),
-        SentenceInput::from_lexed(&second),
-    ];
+    let joined = first
+        .iter()
+        .chain(second.iter())
+        .cloned()
+        .collect::<Vec<_>>();
 
-    let effects = parse_resolving_card_exile_then_return_next_end_step(&sentences, 0)
-        .expect("linked replacement parser should not error")
-        .expect("linked replacement sequence should match");
+    let effects = crate::effect_sentences::parse_effect_sentences_lexed(&joined)
+        .expect("linked replacement sentences should parse");
     assert!(matches!(
         effects.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {

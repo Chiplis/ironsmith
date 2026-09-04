@@ -1248,11 +1248,29 @@ fn exact_registered_statement_sequence(tokens: &[OwnedLexToken]) -> Option<Vec<E
     if sentences.len() < 2 {
         return None;
     }
-    let matched = match crate::effect_sentences::try_parse_document_program(&sentences, 0) {
-        Ok(Some(matched)) => matched,
-        Ok(None) | Err(_) => return None,
-    };
-    (matched.consumed_sentences == sentences.len()).then_some(matched.effects)
+    // A document a program covers from its first sentence is that program. A
+    // document a program covers from a later sentence to its end is the
+    // leading sentences read one by one and then the program, as one block:
+    // the program's statements refer to what the leading sentences bound.
+    for start in 0..sentences.len() {
+        let matched = match crate::effect_sentences::try_parse_document_program(&sentences, start)
+        {
+            Ok(Some(matched)) => matched,
+            Ok(None) | Err(_) => continue,
+        };
+        if start == 0 && matched.consumed_sentences == sentences.len() {
+            return Some(matched.effects);
+        }
+        let ridden_opening = start == 0
+            && matched.name == crate::effect_sentences::RIDDEN_STATEMENT;
+        if start + matched.consumed_sentences != sentences.len() && !ridden_opening {
+            continue;
+        }
+        // The program ends the document, or a statement with its riders opens
+        // it: the sentence loop reads the whole as one block.
+        return crate::effect_sentences::parse_effect_sentences_lexed(tokens).ok();
+    }
+    None
 }
 
 fn exact_registered_statement_program_chain(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {

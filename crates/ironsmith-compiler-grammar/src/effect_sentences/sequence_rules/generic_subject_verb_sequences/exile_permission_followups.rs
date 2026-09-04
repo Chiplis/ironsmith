@@ -14,7 +14,7 @@ use crate::types::CardType;
 use crate::util::helper_tag_for_tokens;
 use crate::util::strip_leading_token_words_any;
 
-pub(super) fn rebind_permission_tag(
+pub(crate) fn rebind_permission_tag(
     mut permission: EffectAst,
     tag: crate::tag::TagKey,
 ) -> Option<EffectAst> {
@@ -93,95 +93,6 @@ pub fn parse_dynamic_exile_top_then_play_for_as_long_as_exiled(
     ]))
 }
 
-pub fn parse_exile_top_play_then_event_followup(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let first_effects =
-        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())?;
-    let [
-        exile_effect @ EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ExileTopOfLibrary { tags, .. },
-            ..
-        }),
-    ] = first_effects.as_slice()
-    else {
-        return Ok(None);
-    };
-    let Some(exiled_tag) = tags.first().cloned() else {
-        return Ok(None);
-    };
-
-    let Some(permission) = parse_cast_or_play_tagged_clause(sentences[sentence_idx + 1].lowered())?
-    else {
-        return Ok(None);
-    };
-    let Some(permission) = rebind_permission_tag(permission, exiled_tag.clone()) else {
-        return Ok(None);
-    };
-    if !matches!(
-        &permission,
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn { .. },
-            ..
-        })
-    ) {
-        return Ok(None);
-    }
-
-    let Some(shape) = parse_exile_permission_followup_shape(sentences[sentence_idx + 2].lowered())
-    else {
-        return Ok(None);
-    };
-    let followup_effects = effect_sentences::parse_effect_chain(shape.effect_tokens)?;
-    if followup_effects.is_empty() {
-        return Ok(None);
-    }
-
-    let mut effects = vec![exile_effect.clone()];
-    match shape.kind {
-        ExilePermissionFollowupKind::ReflexiveExileNonland => {
-            effects.push(EffectAst::WhenResult {
-                predicate: IfResultPredicate::AffectedObjectMatchesCardType {
-                    card_type: CardType::Land,
-                    negated: true,
-                },
-                effects: followup_effects,
-            });
-            effects.push(permission);
-        }
-        ExilePermissionFollowupKind::DelayedPlayCard => {
-            effects.push(permission);
-            let tagged = ObjectFilter::tagged(exiled_tag);
-            let trigger = TriggerSpec::Either(
-                Box::new(TriggerSpec::SpellCast {
-                    filter: Some(tagged.clone()),
-                    mana_source_filter: None,
-                    caster: PlayerFilter::You,
-                    timing: None,
-                    during_turn: None,
-                    min_spells_this_turn: None,
-                    exact_spells_this_turn: None,
-                    from_not_hand: false,
-                }),
-                Box::new(TriggerSpec::PlayerPlaysLand {
-                    player: PlayerFilter::You,
-                    filter: tagged,
-                }),
-            );
-            effects.push(EffectAst::DelayedTriggerThisTurn {
-                trigger,
-                effects: followup_effects,
-                one_shot: true,
-                until_end_of_combat: false,
-                attach_to_previous_ability: false,
-            });
-        }
-    }
-
-    Ok(Some(effects))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -194,7 +105,8 @@ mod tests {
             .iter()
             .map(|tokens| SentenceInput::from_lexed(tokens))
             .collect::<Vec<_>>();
-        parse_exile_top_play_then_event_followup(&sentences, 0)
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+            .map(|matched| matched.map(|matched| matched.effects))
             .expect("parse")
             .expect("shape")
     }

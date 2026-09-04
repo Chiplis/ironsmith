@@ -533,7 +533,8 @@ pub use reference_programs::parse_return_tagged_battlefield_shape;
 mod condition_programs;
 use condition_programs::parse_conditional_self_animate;
 pub use condition_programs::{
-    parse_conditional_self_animate_tail, parse_graveyard_cast_replacement_shape,
+    is_graveyard_cast_replacement_sentence, parse_conditional_self_animate_tail,
+    parse_graveyard_cast_permission_shape, parse_graveyard_cast_replacement_shape,
 };
 #[path = "misc/resource.rs"]
 mod resource_programs;

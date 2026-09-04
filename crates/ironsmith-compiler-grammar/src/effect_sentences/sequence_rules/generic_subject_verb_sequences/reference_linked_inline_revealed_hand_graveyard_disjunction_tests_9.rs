@@ -10,7 +10,8 @@ fn parse(second: &str) -> Option<Vec<EffectAst>> {
         .iter()
         .map(|tokens| SentenceInput::from_lexed(tokens))
         .collect::<Vec<_>>();
-    parse_reveal_opponent_hand_then_choose_from_it_or_their_graveyard(&sentences, 0).unwrap()
+    crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects)).unwrap()
 }
 
 #[test]

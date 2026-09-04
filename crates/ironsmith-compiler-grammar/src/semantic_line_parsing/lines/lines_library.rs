@@ -118,11 +118,11 @@ pub fn exact_looked_hand_optional_cast_bundle(
     if sentences.len() != 2 {
         return None;
     }
-    let effects =
-        crate::effect_sentences::parse_look_at_players_hand_then_may_cast_from_those_cards(
-            &sentences, 0,
-        )
-        .ok()??;
+    let effects = crate::grammar::primitives::probe_shape(
+        crate::effect_sentences::try_parse_document_program(&sentences, 0),
+    )?
+    .filter(|matched| matched.consumed_sentences == sentences.len())
+    .map(|matched| matched.effects)?;
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:

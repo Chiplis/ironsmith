@@ -14,7 +14,8 @@ fn global_destroy_keeps_targeted_search_owner_chooser_and_destination_separate()
         .map(|sentence| SentenceInput::from_lexed(sentence))
         .collect::<Vec<_>>();
     let effects =
-        parse_destroy_all_then_search_target_opponent_to_graveyard_then_shuffle(&sentences, 0)
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+        .map(|matched| matched.map(|matched| matched.effects))
             .expect("destroy/search parser should not error")
             .expect("destroy/search shape should match");
 

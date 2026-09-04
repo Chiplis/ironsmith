@@ -148,64 +148,6 @@ fn parse_looked_card_move_result_branch(
     Ok(effects.pop())
 }
 
-/// Keep a looked-card collection stable across an unrelated optional action:
-///
-/// "Look at ... . You may [act]. If you do, put one of those cards ... .
-/// If you don't, put one of those cards ... ."
-///
-/// A source sacrifice inside the optional action intentionally establishes
-/// the source as the newest singular `it` antecedent. Both authored plural
-/// references still name the earlier looked collection, so bind them to that
-/// producer explicitly before reference resolution walks the optional body.
-pub fn parse_look_then_may_action_if_did_or_did_not_move_looked_card(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let first_tokens = trim_commas(sentences[sentence_idx].lowered());
-    let Some((library_owner, count, false)) =
-        effect_sentences::parse_top_cards_view_sentence(&first_tokens)
-    else {
-        return Ok(None);
-    };
-    let looked_tag = helper_tag_for_tokens(&first_tokens, "looked_before_optional_action");
-
-    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
-    let Ok(optional_effects) = effect_sentences::parse_effect_sentence_lexed(&second_tokens) else {
-        return Ok(None);
-    };
-    if !matches!(
-        optional_effects.as_slice(),
-        [EffectAst::May { .. } | EffectAst::MayByPlayer { .. }]
-    ) {
-        return Ok(None);
-    }
-
-    let third_tokens = trim_commas(sentences[sentence_idx + 2].lowered());
-    let Some(did) =
-        parse_looked_card_move_result_branch(&third_tokens, IfResultPredicate::Did, &looked_tag)?
-    else {
-        return Ok(None);
-    };
-    let fourth_tokens = trim_commas(sentences[sentence_idx + 3].lowered());
-    let Some(did_not) = parse_looked_card_move_result_branch(
-        &fourth_tokens,
-        IfResultPredicate::DidNot,
-        &looked_tag,
-    )?
-    else {
-        return Ok(None);
-    };
-
-    let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
-        library_owner,
-        count,
-        looked_tag,
-    )];
-    effects.extend(optional_effects);
-    effects.extend([did, did_not]);
-    Ok(Some(effects))
-}
-
 fn independent_and_or_looked_card_filters(filter: &ObjectFilter) -> Option<Vec<ObjectFilter>> {
     if filter.card_types.len() > 1
         && filter.all_card_types.is_empty()
@@ -599,158 +541,6 @@ pub fn parse_look_reveal_one_or_instead_two_then_rest_bottom(
     }]))
 }
 
-/// A trailing reflexive "When ... this way" refers to the selected-card zone
-/// move, even when the oracle text describes the remainder before stating the
-/// reflexive ability.  Keep the runtime antecedent adjacent to the result node
-/// and leave rendering to restore the oracle sentence order.
-pub fn parse_top_cards_move_rest_then_typed_when_result(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(mut effects) =
-        super::ordered_control_flow_programs::parse_top_cards_put_any_matching_to_zone_rest_bottom(
-            sentences,
-            sentence_idx,
-        )?
-    else {
-        return Ok(None);
-    };
-    let Ok(followup) =
-        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx + 3].lowered())
-    else {
-        return Ok(None);
-    };
-    let [when_result @ EffectAst::WhenResult { .. }] = followup.as_slice() else {
-        return Ok(None);
-    };
-    let Some(remainder) = effects.pop() else {
-        return Ok(None);
-    };
-    if !matches!(
-        &remainder,
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary { .. }
-                | SubjectVerbActionAst::PutTaggedRemainderInZone { .. },
-            ..
-        })
-    ) {
-        return Ok(None);
-    }
-    effects.push(when_result.clone());
-    effects.push(remainder);
-    Ok(Some(effects))
-}
-
-/// Keeps an optional looked-card battlefield move, a grant to the moved card,
-/// and the exact looked-set complement in one linked program.  The ordinary
-/// four-sentence fallback lowers the deployment as a generic May target
-/// choice; composing through the shared looked-card producer instead gives
-/// the choice, move, grant pronoun, and remainder one stable selected tag.
-pub fn parse_top_cards_move_then_grant_rest_bottom(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let partition_sentences = [
-        SentenceInput::from_lexed(sentences[sentence_idx].lexed()),
-        SentenceInput::from_lexed(sentences[sentence_idx + 1].lexed()),
-        SentenceInput::from_lexed(sentences[sentence_idx + 3].lexed()),
-    ];
-    let Some(mut effects) =
-        super::ordered_control_flow_programs::parse_top_cards_put_any_matching_to_zone_rest_bottom(
-            &partition_sentences,
-            0,
-        )?
-    else {
-        return Ok(None);
-    };
-
-    let Ok(grant_effects) =
-        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx + 2].lowered())
-    else {
-        return Ok(None);
-    };
-    let selected_tag = match effects.as_slice() {
-        [
-            _,
-            EffectAst::ChooseTaggedObjectsInZone {
-                tag: chosen_tag, ..
-            },
-            EffectAst::ForEachTagged { tag: moved_tag, .. },
-            _,
-        ] if chosen_tag == moved_tag => chosen_tag.clone(),
-        _ => return Ok(None),
-    };
-
-    let [grant] = grant_effects.as_slice() else {
-        return Ok(None);
-    };
-    let mut grant = grant.clone();
-    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action:
-            SubjectVerbActionAst::GrantAbilitiesToTarget {
-                target,
-                duration: crate::effect::Until::Forever,
-                condition: None,
-                ..
-            },
-        ..
-    }) = &mut grant
-    else {
-        return Ok(None);
-    };
-    if !matches!(target, TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
-    {
-        return Ok(None);
-    }
-    // The grant is parsed in isolation, so its pronoun still carries the
-    // generic `it` tag. Bind it explicitly to the singleton selected from the
-    // looked-card pool before lowering; the move, grant, and complement now
-    // share one stable identity.
-    *target = TargetAst::Tagged(selected_tag, None);
-
-    let Some(remainder) = effects.pop() else {
-        return Ok(None);
-    };
-    if !matches!(
-        remainder,
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary { .. },
-            ..
-        })
-    ) {
-        return Ok(None);
-    }
-    effects.push(grant);
-    effects.push(remainder);
-    Ok(Some(effects))
-}
-
-pub fn parse_sacrifice_reveal_top_choose_any_revealed_land_nonland_split_rest_bottom(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Ok(mut sacrifice_effects) =
-        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
-    else {
-        return Ok(None);
-    };
-    if !sacrifice_effects.iter().any(effect_ast_contains_sacrifice) {
-        return Ok(None);
-    }
-
-    let Some(mut reveal_effects) =
-        super::ordered_control_flow_programs::parse_reveal_top_choose_any_revealed_land_nonland_split_rest_bottom(
-            sentences,
-            sentence_idx + 1,
-        )?
-    else {
-        return Ok(None);
-    };
-
-    sacrifice_effects.append(&mut reveal_effects);
-    Ok(Some(sacrifice_effects))
-}
-
 fn title_case_card_name(words: &[&str]) -> String {
     const LOWERCASE_WORDS: &[&str] = &[
         "a", "an", "the", "and", "or", "but", "nor", "for", "so", "yet", "of", "in", "on", "at",
@@ -876,29 +666,158 @@ mod looked_partition_tests;
 
 #[path = "branching_selection_programs/branching_selection_library.rs"]
 mod branching_selection_library_programs;
-use branching_selection_library_programs::{
-    compose_look_at_top_may_put_onto_battlefield_or_into_hand_rest_bottom,
-    parse_may_exile_filtered_looked_card, parse_selected_card_leading_if,
-};
+use branching_selection_library_programs::parse_selected_card_leading_if;
+pub(crate) use branching_selection_library_programs::compose_look_at_top_may_put_onto_battlefield_or_into_hand_rest_bottom;
+pub(crate) use branching_selection_library_programs::parse_may_exile_filtered_looked_card;
 pub use branching_selection_library_programs::{
-    parse_look_at_top_conditional_hand_counts_then_rest_bottom,
-    parse_look_at_top_exile_counted_rest_bottom_play_while_exiled,
-    parse_look_at_top_exile_one_rest_bottom_cast_else_hand,
-    parse_look_at_top_may_exile_match_rest_bottom_cast_exiled,
-    parse_look_at_top_may_put_match_onto_battlefield_then_if_not_put_into_hand_rest_bottom,
-    parse_look_at_top_may_reveal_match_bargain_battlefield_else_hand_then_shuffle,
-    parse_look_at_top_optional_battlefield_conditional_entry_counters_then_rest_bottom,
-    parse_look_at_top_optional_battlefield_then_conditional_remainder,
-    parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_override,
-    parse_look_may_reveal_then_your_turn_battlefield_else_hand_rest_bottom,
-    parse_look_reveal_match_to_hand_if_selected_matches_rest_bottom,
     parse_look_then_may_sacrifice_if_did_select_battlefield_rest_bottom,
     parse_reveal_top_optional_battlefield_then_hand_rest_graveyard,
-    parse_search_reveal_named_match_battlefield_else_hand_then_shuffle,
 };
 #[path = "branching_selection_programs/branching_selection_choice.rs"]
 mod branching_selection_choice_programs;
-use branching_selection_choice_programs::{
+pub(crate) use branching_selection_choice_programs::{
     is_if_selected_not_put_onto_battlefield_put_into_hand,
     is_may_put_selected_onto_battlefield_on_your_turn,
 };
+
+/// Keeps an optional looked-card battlefield move, a grant to the moved card,
+/// and the exact looked-set complement in one linked program.  The ordinary
+/// four-sentence fallback lowers the deployment as a generic May target
+/// choice; composing through the shared looked-card producer instead gives
+/// the choice, move, grant pronoun, and remainder one stable selected tag.
+pub fn parse_top_cards_move_then_grant_rest_bottom(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let partition_sentences = [
+        SentenceInput::from_lexed(sentences[sentence_idx].lexed()),
+        SentenceInput::from_lexed(sentences[sentence_idx + 1].lexed()),
+        SentenceInput::from_lexed(sentences[sentence_idx + 3].lexed()),
+    ];
+    let Some(mut effects) =
+        super::ordered_control_flow_programs::parse_top_cards_put_any_matching_to_zone_rest_bottom(
+            &partition_sentences,
+            0,
+        )?
+    else {
+        return Ok(None);
+    };
+
+    let Ok(grant_effects) =
+        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx + 2].lowered())
+    else {
+        return Ok(None);
+    };
+    let selected_tag = match effects.as_slice() {
+        [
+            _,
+            EffectAst::ChooseTaggedObjectsInZone {
+                tag: chosen_tag, ..
+            },
+            EffectAst::ForEachTagged { tag: moved_tag, .. },
+            _,
+        ] if chosen_tag == moved_tag => chosen_tag.clone(),
+        _ => return Ok(None),
+    };
+
+    let [grant] = grant_effects.as_slice() else {
+        return Ok(None);
+    };
+    let mut grant = grant.clone();
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::GrantAbilitiesToTarget {
+                target,
+                duration: crate::effect::Until::Forever,
+                condition: None,
+                ..
+            },
+        ..
+    }) = &mut grant
+    else {
+        return Ok(None);
+    };
+    if !matches!(target, TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
+    {
+        return Ok(None);
+    }
+    // The grant is parsed in isolation, so its pronoun still carries the
+    // generic `it` tag. Bind it explicitly to the singleton selected from the
+    // looked-card pool before lowering; the move, grant, and complement now
+    // share one stable identity.
+    *target = TargetAst::Tagged(selected_tag, None);
+
+    let Some(remainder) = effects.pop() else {
+        return Ok(None);
+    };
+    if !matches!(
+        remainder,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary { .. },
+            ..
+        })
+    ) {
+        return Ok(None);
+    }
+    effects.push(grant);
+    effects.push(remainder);
+    Ok(Some(effects))
+}
+
+/// Keep a looked-card collection stable across an unrelated optional action:
+///
+/// "Look at ... . You may [act]. If you do, put one of those cards ... .
+/// If you don't, put one of those cards ... ."
+///
+/// A source sacrifice inside the optional action intentionally establishes
+/// the source as the newest singular `it` antecedent. Both authored plural
+/// references still name the earlier looked collection, so bind them to that
+/// producer explicitly before reference resolution walks the optional body.
+pub fn parse_look_then_may_action_if_did_or_did_not_move_looked_card(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = trim_commas(sentences[sentence_idx].lowered());
+    let Some((library_owner, count, false)) =
+        effect_sentences::parse_top_cards_view_sentence(&first_tokens)
+    else {
+        return Ok(None);
+    };
+    let looked_tag = helper_tag_for_tokens(&first_tokens, "looked_before_optional_action");
+
+    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let Ok(optional_effects) = effect_sentences::parse_effect_sentence_lexed(&second_tokens) else {
+        return Ok(None);
+    };
+    if !matches!(
+        optional_effects.as_slice(),
+        [EffectAst::May { .. } | EffectAst::MayByPlayer { .. }]
+    ) {
+        return Ok(None);
+    }
+
+    let third_tokens = trim_commas(sentences[sentence_idx + 2].lowered());
+    let Some(did) =
+        parse_looked_card_move_result_branch(&third_tokens, IfResultPredicate::Did, &looked_tag)?
+    else {
+        return Ok(None);
+    };
+    let fourth_tokens = trim_commas(sentences[sentence_idx + 3].lowered());
+    let Some(did_not) = parse_looked_card_move_result_branch(
+        &fourth_tokens,
+        IfResultPredicate::DidNot,
+        &looked_tag,
+    )?
+    else {
+        return Ok(None);
+    };
+
+    let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
+        library_owner,
+        count,
+        looked_tag,
+    )];
+    effects.extend(optional_effects);
+    effects.extend([did, did_not]);
+    Ok(Some(effects))
+}

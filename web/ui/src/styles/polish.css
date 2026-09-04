@@ -2361,3 +2361,139 @@
     border-top: 0 !important;
   }
 }
+
+/* Player-row context and collapsible table utilities. */
+.table-tools-toggle {
+  display: inline-flex;
+  width: 24px;
+  height: 28px;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  color: #cdb98f;
+  background: transparent;
+  transition: color 140ms ease, background-color 140ms ease;
+}
+
+.table-tools-toggle:hover,
+.table-tools-toggle:focus-visible,
+.table-tools-toggle[aria-expanded="true"] {
+  color: #fff0c8;
+  background: rgba(var(--player-accent-rgb, 216, 191, 106), 0.12);
+  outline: none;
+}
+
+.table-tools-toggle svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 2.25;
+}
+
+.player-header-turn-summary {
+  display: flex;
+  min-width: 0;
+  max-width: min(46vw, 680px);
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  overflow: hidden;
+  padding: 0 10px;
+  border: 1px solid rgba(156, 129, 82, 0.24);
+  color: #d8c8a7;
+  background: rgba(9, 9, 8, 0.34);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.player-header-turn-summary > span:not(.player-header-summary-dot) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-header-summary-dot {
+  flex: 0 0 auto;
+  color: rgba(var(--player-accent-rgb, 216, 191, 106), 0.82);
+}
+
+.player-header-perspective {
+  display: inline-flex;
+  height: 28px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  color: #b9ad94;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.player-header-perspective-select {
+  height: 28px;
+  max-width: 112px;
+  padding: 0 24px 0 8px;
+  border: 0 !important;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.table-shared-action-slot {
+  --table-tools-rail-cutoff: 132px;
+}
+
+.table-shared-action-slot > .table-action-bar {
+  transition: margin-left 180ms ease, width 180ms ease;
+}
+
+.table-shared-action-slot[data-tools-expanded="true"] > .table-action-bar {
+  width: calc(100% - var(--table-tools-rail-cutoff)) !important;
+  margin-left: var(--table-tools-rail-cutoff);
+}
+
+.my-zone-action-rail {
+  z-index: 130 !important;
+  align-self: stretch;
+  margin-right: -8px;
+  padding: 6px 8px 10px 12px !important;
+  border-right: 1px solid rgba(156, 129, 82, 0.18);
+  background:
+    linear-gradient(180deg, rgba(32, 28, 24, 0.98), rgba(15, 14, 13, 0.94) 68%, rgba(15, 14, 13, 0.32));
+  box-shadow: 8px 0 18px rgba(0, 0, 0, 0.22);
+}
+
+[data-my-zone][data-tools-expanded="true"] {
+  z-index: 80 !important;
+  overflow: visible !important;
+}
+
+/* Secondary decision choices keep their surfaces but no longer draw a solid frame. */
+.table-shared-action-slot .action-strip-options-region.action-strip-scroll button.action-strip-pill,
+.table-shared-action-slot .action-strip-options-region .action-strip-scroll button.action-strip-pill,
+.table-shared-action-slot .action-strip-options-region .action-strip-pill,
+.table-shared-action-slot .action-strip-decision-content .decision-option-row--strip,
+.table-shared-action-slot .action-strip-decision-content .decision-option-row--strip:hover,
+.table-shared-action-slot .action-strip-decision-content .decision-option-row--strip.is-selected {
+  border: 0 !important;
+}
+
+@media (min-width: 1024px) and (max-width: 1439px) {
+  .player-header-turn-summary {
+    max-width: 34vw;
+    gap: 4px;
+    padding-inline: 7px;
+    letter-spacing: 0.045em;
+  }
+
+  .player-header-perspective-select {
+    max-width: 88px;
+  }
+}

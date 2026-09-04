@@ -64,7 +64,7 @@ fn normalize_shared_graveyard_union_target(target: &mut TargetAst) {
     }
 }
 
-fn normalize_shared_graveyard_union_exile(effect: &mut EffectAst) {
+pub(crate) fn normalize_shared_graveyard_union_exile(effect: &mut EffectAst) {
     let effect = match effect {
         EffectAst::TagAffected { effect, .. } => effect.as_mut(),
         effect => effect,
@@ -79,7 +79,7 @@ fn normalize_shared_graveyard_union_exile(effect: &mut EffectAst) {
     normalize_shared_graveyard_union_target(target);
 }
 
-fn is_exact_graveyard_exile(effect: &EffectAst) -> bool {
+pub(crate) fn is_exact_graveyard_exile(effect: &EffectAst) -> bool {
     matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -98,7 +98,7 @@ fn is_exact_graveyard_exile(effect: &EffectAst) -> bool {
     )
 }
 
-fn exact_tagged_graveyard_exile_tag(effect: &EffectAst) -> Option<TagKey> {
+pub(crate) fn exact_tagged_graveyard_exile_tag(effect: &EffectAst) -> Option<TagKey> {
     let EffectAst::TagAffected { effect, tag } = effect else {
         return None;
     };
@@ -106,11 +106,11 @@ fn exact_tagged_graveyard_exile_tag(effect: &EffectAst) -> Option<TagKey> {
     is_exact_graveyard_exile(effect).then_some(tag)
 }
 
-fn is_exact_tagged_graveyard_exile(effect: &EffectAst, expected_tag: &TagKey) -> bool {
+pub(crate) fn is_exact_tagged_graveyard_exile(effect: &EffectAst, expected_tag: &TagKey) -> bool {
     exact_tagged_graveyard_exile_tag(effect).as_ref() == Some(expected_tag)
 }
 
-fn exact_single_card_copy_tag(effect: &EffectAst) -> Option<TagKey> {
+pub(crate) fn exact_single_card_copy_tag(effect: &EffectAst) -> Option<TagKey> {
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         subject:
             SubjectVerbSubjectAst {
@@ -146,7 +146,7 @@ fn exact_single_card_copy_tag(effect: &EffectAst) -> Option<TagKey> {
     Some(tag.clone())
 }
 
-fn is_exact_single_source_copy(effect: &EffectAst) -> bool {
+pub(crate) fn is_exact_single_source_copy(effect: &EffectAst) -> bool {
     matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -179,12 +179,12 @@ fn is_exact_single_source_copy(effect: &EffectAst) -> bool {
     )
 }
 
-fn exact_terminal_card_copy_tag(effect: &EffectAst) -> Option<TagKey> {
+pub(crate) fn exact_terminal_card_copy_tag(effect: &EffectAst) -> Option<TagKey> {
     exact_single_card_copy_tag(effect)
         .filter(|tag| crate::util::is_sentence_helper_tag(tag, "exiled"))
 }
 
-fn retag_single_card_copy(effect: &mut EffectAst, tag: TagKey) -> bool {
+pub(crate) fn retag_single_card_copy(effect: &mut EffectAst, tag: TagKey) -> bool {
     if exact_single_card_copy_tag(effect).is_none() {
         return false;
     }
@@ -203,7 +203,7 @@ fn retag_single_card_copy(effect: &mut EffectAst, tag: TagKey) -> bool {
     true
 }
 
-fn take_binary_coordination(
+pub(crate) fn take_binary_coordination(
     effects: Vec<EffectAst>,
 ) -> Option<(
     EffectAst,
@@ -241,317 +241,6 @@ fn take_binary_coordination(
     Some((first, second, operator))
 }
 
-/// Composes the card-copy procedure
-///
-/// `exile <target card> from a graveyard and copy it. You may cast the copy`
-///
-/// without lowering the card copy as a stack-spell copy. `CastTagged`'s typed
-/// `as_copy` mode is the existing executable primitive for copying a card in a
-/// non-stack zone and casting that copy. The shared exile tag preserves the
-/// exact selected card and the optional cast remains a `May` action.
-fn parse_graveyard_exile_then_copy_comma_then_cast(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(first) = sentences.get(sentence_idx) else {
-        return Ok(None);
-    };
-    let Some(second) = sentences.get(sentence_idx + 1) else {
-        return Ok(None);
-    };
-    let Some(then_idx) =
-        crate::slice_primitives::select_position(second.lowered(), |token| token.is_word("then"))
-    else {
-        return Ok(None);
-    };
-    let copy_tokens = crate::util::trim_commas(&second.lowered()[..then_idx]);
-    if crate::grammar::effects::parse_copy_card_reference_shape(&copy_tokens)
-        != Some(crate::grammar::effects::CopyCardReferenceShape::It)
-    {
-        return Ok(None);
-    }
-    let cast_tokens = crate::util::trim_commas(&second.lowered()[then_idx + 1..]);
-    let Some(mut cast) = parse_may_cast_it_sentence(&cast_tokens) else {
-        return Ok(None);
-    };
-    if !cast.as_copy || !matches!(cast.player, PlayerAst::Implicit | PlayerAst::You) {
-        return Ok(None);
-    }
-
-    let Ok(mut exile_effects) = effect_sentences::parse_effect_sentence_lexed(first.lowered())
-    else {
-        return Ok(None);
-    };
-    let [exile_effect] = exile_effects.as_mut_slice() else {
-        return Ok(None);
-    };
-    normalize_shared_graveyard_union_exile(exile_effect);
-    let exiled_tag = if let Some(tag) = exact_tagged_graveyard_exile_tag(exile_effect) {
-        tag
-    } else if is_exact_graveyard_exile(exile_effect) {
-        let tag = helper_tag_for_tokens(first.lowered(), "exiled");
-        let exile = exile_effect.clone();
-        *exile_effect = EffectAst::TagAffected {
-            effect: Box::new(exile),
-            tag: tag.clone(),
-        };
-        tag
-    } else {
-        return Ok(None);
-    };
-
-    cast.tag = exiled_tag;
-    cast.copy_instruction_surface =
-        Some(ironsmith_core::effect::CopyInstructionSurface::SeparateItThen);
-    Ok(Some(vec![
-        exile_effect.clone(),
-        build_may_cast_tagged_effect(&cast),
-    ]))
-}
-
-pub fn parse_graveyard_exile_copy_then_may_cast_copy(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if let Some(effects) = parse_graveyard_exile_then_copy_comma_then_cast(sentences, sentence_idx)?
-    {
-        return Ok(Some(effects));
-    }
-    let Ok(first_effects) =
-        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
-    else {
-        return Ok(None);
-    };
-    let Some((mut exile_effect, mut copy_effect, operator)) =
-        take_binary_coordination(first_effects)
-    else {
-        return Ok(None);
-    };
-    normalize_shared_graveyard_union_exile(&mut exile_effect);
-    let (exiled_tag, copy_reference_surface) = if let Some(tag) =
-        exact_terminal_card_copy_tag(&copy_effect)
-        && is_exact_tagged_graveyard_exile(&exile_effect, &tag)
-    {
-        (
-            tag,
-            Some(ironsmith_core::effect::CopyInstructionSurface::SeparateThatCard),
-        )
-    } else if exact_single_card_copy_tag(&copy_effect).is_some_and(|tag| {
-        tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
-            || tag.as_str() == crate::tag::CompilerReferenceTag::PriorExiledCard.as_str()
-    }) && is_exact_graveyard_exile(&exile_effect)
-    {
-        let copy_reference_surface =
-            if exact_single_card_copy_tag(&copy_effect).is_some_and(|tag| {
-                tag.as_str() == crate::tag::CompilerReferenceTag::PriorExiledCard.as_str()
-            }) {
-                ironsmith_core::effect::CopyInstructionSurface::SeparateThatCard
-            } else {
-                ironsmith_core::effect::CopyInstructionSurface::SeparateIt
-            };
-        let tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "exiled");
-        exile_effect = EffectAst::TagAffected {
-            effect: Box::new(exile_effect),
-            tag: tag.clone(),
-        };
-        if !retag_single_card_copy(&mut copy_effect, tag.clone()) {
-            return Ok(None);
-        }
-        (tag, Some(copy_reference_surface))
-    } else {
-        return Ok(None);
-    };
-
-    let Some(mut cast) = parse_may_cast_it_sentence(sentences[sentence_idx + 1].lowered()) else {
-        return Ok(None);
-    };
-    if !cast.as_copy || !matches!(cast.player, PlayerAst::Implicit | PlayerAst::You) {
-        return Ok(None);
-    }
-    cast.tag = exiled_tag;
-    if operator == Some(crate::model::CoordinationOperatorAst::SentenceBoundary) {
-        cast.copy_instruction_surface = copy_reference_surface;
-    }
-
-    Ok(Some(vec![
-        exile_effect,
-        build_may_cast_tagged_effect(&cast),
-    ]))
-}
-
-/// Composes the three-sentence authored form
-/// `Exile ... . Copy it. You may cast the copy.` while retaining the sentence
-/// boundary as presentation metadata on the executable cast-copy action.
-pub fn parse_graveyard_exile_then_copy_then_may_cast_copy(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(first) = sentences.get(sentence_idx) else {
-        return Ok(None);
-    };
-    let Some(second) = sentences.get(sentence_idx + 1) else {
-        return Ok(None);
-    };
-    let Some(third) = sentences.get(sentence_idx + 2) else {
-        return Ok(None);
-    };
-
-    let Ok(mut exile_effects) = effect_sentences::parse_effect_sentence_lexed(first.lowered())
-    else {
-        return Ok(None);
-    };
-    let [exile_effect] = exile_effects.as_mut_slice() else {
-        return Ok(None);
-    };
-    normalize_shared_graveyard_union_exile(exile_effect);
-    let Ok(copy_effects) = effect_sentences::parse_effect_sentence_lexed(second.lowered()) else {
-        return Ok(None);
-    };
-    let [copy_effect] = copy_effects.as_slice() else {
-        return Ok(None);
-    };
-    let copy_reference = crate::grammar::effects::parse_copy_card_reference_shape(second.lowered());
-    let source_copy_reference =
-        is_exact_single_source_copy(copy_effect) && copy_reference.is_some();
-    let exiled_tag = if let Some(tag) = exact_tagged_graveyard_exile_tag(exile_effect) {
-        tag
-    } else if is_exact_graveyard_exile(exile_effect) {
-        if !source_copy_reference {
-            let Some(copy_reference_tag) = exact_single_card_copy_tag(copy_effect) else {
-                return Ok(None);
-            };
-            if copy_reference_tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
-                && copy_reference_tag.as_str()
-                    != crate::tag::CompilerReferenceTag::PriorExiledCard.as_str()
-            {
-                return Ok(None);
-            }
-        }
-        let tag = helper_tag_for_tokens(first.lowered(), "exiled");
-        let exile = exile_effect.clone();
-        *exile_effect = EffectAst::TagAffected {
-            effect: Box::new(exile),
-            tag: tag.clone(),
-        };
-        tag
-    } else {
-        return Ok(None);
-    };
-
-    if !source_copy_reference {
-        let Some(copy_tag) = exact_single_card_copy_tag(copy_effect) else {
-            return Ok(None);
-        };
-        if copy_tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
-            && copy_tag.as_str() != crate::tag::CompilerReferenceTag::PriorExiledCard.as_str()
-            && copy_tag != exiled_tag
-            && !crate::util::is_sentence_helper_tag(&copy_tag, "exiled")
-        {
-            return Ok(None);
-        }
-    }
-
-    let Some(mut cast) = parse_may_cast_it_sentence(third.lowered()) else {
-        return Ok(None);
-    };
-    if !cast.as_copy || !matches!(cast.player, PlayerAst::Implicit | PlayerAst::You) {
-        return Ok(None);
-    }
-    cast.tag = exiled_tag;
-    cast.copy_instruction_surface = Some(
-        if copy_reference == Some(crate::grammar::effects::CopyCardReferenceShape::ThatCard) {
-            ironsmith_core::effect::CopyInstructionSurface::SeparateThatCard
-        } else {
-            ironsmith_core::effect::CopyInstructionSurface::SeparateIt
-        },
-    );
-
-    Ok(Some(vec![
-        exile_effect.clone(),
-        build_may_cast_tagged_effect(&cast),
-    ]))
-}
-
-/// Variant with the copy instruction gated by the immediately preceding
-/// exile: `Exile ... . If you do, copy it. You may cast the copy.`
-///
-/// `CastTagged(as_copy)` remains the executable card-copy primitive. Keeping
-/// it inside `IfResult::Did` makes the cast proposal contingent on the exile
-/// while avoiding an invalid stack-spell `CopySpell` action for a card in
-/// exile.
-pub fn parse_graveyard_exile_if_copy_then_may_cast_copy(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Ok(mut first_effects) =
-        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
-    else {
-        return Ok(None);
-    };
-    for effect in &mut first_effects {
-        normalize_shared_graveyard_union_exile(effect);
-    }
-    let [exile_effect] = first_effects.as_mut_slice() else {
-        return Ok(None);
-    };
-    let exiled_tag = if let Some(tag) = exact_tagged_graveyard_exile_tag(exile_effect) {
-        tag
-    } else if is_exact_graveyard_exile(exile_effect) {
-        let tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "exiled");
-        let exile = exile_effect.clone();
-        *exile_effect = EffectAst::TagAffected {
-            effect: Box::new(exile),
-            tag: tag.clone(),
-        };
-        tag
-    } else {
-        return Ok(None);
-    };
-
-    let Ok(copy_gate) =
-        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx + 1].lowered())
-    else {
-        return Ok(None);
-    };
-    let [
-        EffectAst::IfResult {
-            predicate: crate::cards::builders::IfResultPredicate::Did,
-            effects: copy_effects,
-        },
-    ] = copy_gate.as_slice()
-    else {
-        return Ok(None);
-    };
-    let [copy_effect] = copy_effects.as_slice() else {
-        return Ok(None);
-    };
-    let Some(copy_reference_tag) = exact_single_card_copy_tag(copy_effect) else {
-        return Ok(None);
-    };
-    if copy_reference_tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
-        && copy_reference_tag != exiled_tag
-        && !crate::util::is_sentence_helper_tag(&copy_reference_tag, "exiled")
-    {
-        return Ok(None);
-    }
-
-    let Some(mut cast) = parse_may_cast_it_sentence(sentences[sentence_idx + 2].lowered()) else {
-        return Ok(None);
-    };
-    if !cast.as_copy || !matches!(cast.player, PlayerAst::Implicit | PlayerAst::You) {
-        return Ok(None);
-    }
-    cast.tag = exiled_tag;
-
-    Ok(Some(vec![
-        exile_effect.clone(),
-        EffectAst::IfResult {
-            predicate: crate::cards::builders::IfResultPredicate::Did,
-            effects: vec![build_may_cast_tagged_effect(&cast)],
-        },
-    ]))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -579,7 +268,7 @@ mod tests {
 
         for text in cases {
             let matched = registry_match(text);
-            assert_eq!(matched.name, "graveyard-exile-copy-cast-copy", "{text}");
+            assert_eq!(matched.name, "copy-cast-procedure", "{text}");
             assert_eq!(matched.consumed_sentences, 2, "{text}");
             let debug = format!("{:#?}", matched.effects);
             assert!(debug.contains("Exile"), "{text}: {debug}");
@@ -598,7 +287,7 @@ mod tests {
         let matched = registry_match(
             "Exile up to one target Assassin card or card with freerunning from your graveyard. If you do, copy it. You may cast the copy.",
         );
-        assert_eq!(matched.name, "graveyard-exile-if-copy-cast-copy");
+        assert_eq!(matched.name, "copy-cast-procedure");
         assert_eq!(matched.consumed_sentences, 3);
         let debug = format!("{:#?}", matched.effects);
         assert!(debug.contains("IfResult"), "{debug}");
@@ -612,7 +301,7 @@ mod tests {
         let matched = registry_match(
             "Exile up to one target instant or sorcery card from your graveyard. Copy it. You may cast the copy.",
         );
-        assert_eq!(matched.name, "graveyard-exile-then-copy-cast-copy");
+        assert_eq!(matched.name, "copy-cast-procedure");
         assert_eq!(matched.consumed_sentences, 3);
         let debug = format!("{:#?}", matched.effects);
         assert!(debug.contains("CastTagged"), "{debug}");
@@ -625,7 +314,7 @@ mod tests {
         let matched = registry_match(
             "Exile target instant or sorcery card from an opponent's graveyard. Copy that card. You may cast the copy without paying its mana cost.",
         );
-        assert_eq!(matched.name, "graveyard-exile-then-copy-cast-copy");
+        assert_eq!(matched.name, "copy-cast-procedure");
         assert_eq!(matched.consumed_sentences, 3);
         let debug = format!("{:#?}", matched.effects);
         assert!(debug.contains("CastTagged"), "{debug}");
@@ -637,7 +326,7 @@ mod tests {
     fn copy_it_then_cast_in_one_followup_sentence_keeps_the_typed_boundary() {
         let text = "Exile target nonland card with mana value 3 or less from your graveyard. Copy it, then you may cast the copy without paying its mana cost.";
         let matched = registry_match(text);
-        assert_eq!(matched.name, "graveyard-exile-copy-cast-copy");
+        assert_eq!(matched.name, "copy-cast-procedure");
         assert_eq!(matched.consumed_sentences, 2);
         let debug = format!("{:#?}", matched.effects);
         assert!(debug.contains("CastTagged"), "{debug}");
@@ -654,7 +343,7 @@ mod tests {
             .map(SentenceInput::from_lexed)
             .collect::<Vec<_>>();
         assert!(
-            parse_graveyard_exile_copy_then_may_cast_copy(&wrong_caster, 0)
+            super::super::super::try_parse_document_program(&wrong_caster, 0)
                 .unwrap()
                 .is_none()
         );

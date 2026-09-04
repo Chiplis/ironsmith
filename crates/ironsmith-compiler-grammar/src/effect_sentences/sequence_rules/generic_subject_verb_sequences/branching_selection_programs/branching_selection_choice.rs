@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn is_may_put_selected_onto_battlefield_on_your_turn(tokens: &[OwnedLexToken]) -> bool {
+pub(crate) fn is_may_put_selected_onto_battlefield_on_your_turn(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::lexer::token_word_refs(tokens);
     crate::word_primitives::parse_any_sequence_complete(
         &words,
@@ -48,7 +48,7 @@ pub(super) fn is_may_put_selected_onto_battlefield_on_your_turn(tokens: &[OwnedL
     )
 }
 
-pub(super) fn is_if_selected_not_put_onto_battlefield_put_into_hand(
+pub(crate) fn is_if_selected_not_put_onto_battlefield_put_into_hand(
     tokens: &[OwnedLexToken],
 ) -> bool {
     let words = crate::lexer::token_word_refs(tokens);

@@ -1,12 +1,10 @@
 import { useGame } from "@/context/GameContext";
-import { formatPhase, formatStep } from "@/lib/constants";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import ZoneViewer from "@/components/board/ZoneViewer";
 import { ComicTooltip } from "@/components/ui/comic-tooltip";
 import { UI_FONT_OPTIONS } from "@/lib/ui-fonts";
 import { getPlayerAccent } from "@/lib/player-colors";
-import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 import { useI18n } from "@/i18n/I18nContext";
 
 const selectPill = "stone-select rounded-none px-2.5 py-0.5 text-[13px] font-medium border-0 outline-none cursor-pointer uppercase tracking-wide";
@@ -16,14 +14,12 @@ export default function AddCardBar({
   compact = false,
   zoneViews = ["battlefield"],
   setZoneViews,
-  onChangePerspective,
 }) {
   const {
     state,
     semanticThreshold,
     setSemanticThreshold,
     cardsMeetingThreshold,
-    multiplayer,
     autoPassEnabled,
     setAutoPassEnabled,
     holdRule,
@@ -37,16 +33,7 @@ export default function AddCardBar({
 
   const players = state?.players || [];
   const perspective = state?.perspective ?? 0;
-  const matchLocked = multiplayer.matchStarted;
-  const activePlayer = players.find((player) => samePlayerId(player.id, state?.active_player)) || null;
-  const priorityPlayer = players.find((player) => samePlayerId(player.id, state?.priority_player)) || null;
-  const decisionPlayer = state?.decision?.player != null
-    ? players.find((player) => samePlayerId(player.id, state.decision.player)) || null
-    : null;
-  const decisionOwnerDiffersFromPriority = decisionPlayer
-    && (!priorityPlayer || !samePlayerId(decisionPlayer.id, priorityPlayer.id));
   const perspectiveAccent = getPlayerAccent(players, perspective, perspective, playerAccentOverrides);
-  const translatedPhaseSummary = `${formatPhase(state?.phase, t)}${state?.step ? ` - ${formatStep(state?.step, t)}` : ""}`;
 
   return (
     <div className={`add-card-toolbar table-toolbar table-toolbar--secondary rounded-none px-3 py-2${compact ? " add-card-toolbar--compact" : ""}`}>
@@ -115,22 +102,6 @@ export default function AddCardBar({
           />
           {t("action.autoPass")}
         </label>
-        <label className="add-card-toolbar-perspective add-card-toolbar-toggle flex items-center gap-1.5 whitespace-nowrap uppercase">
-          <span>{t("action.playingAs")}</span>
-          <select
-            className={`${selectPill} add-card-toolbar-perspective-select`}
-            value={perspective}
-            disabled={matchLocked}
-            onChange={(event) => onChangePerspective?.(Number(event.target.value))}
-            aria-label={t("action.playingAs")}
-          >
-            {players.map((player) => (
-              <option key={player.id} value={player.id}>
-                {playerDisplayName(players, player)}
-              </option>
-            ))}
-          </select>
-        </label>
         <label className="add-card-toolbar-font add-card-toolbar-toggle flex items-center gap-1.5 whitespace-nowrap uppercase">
           <span>{t("action.font")}</span>
           <input
@@ -165,31 +136,6 @@ export default function AddCardBar({
             />
           </div>
         </div>
-      </div>
-
-      <span className="add-card-toolbar-separator add-card-toolbar-phase-separator" aria-hidden="true" />
-
-      <div className="topbar-phase-caption add-card-toolbar-phase-caption add-card-toolbar-phase-caption--trailing" aria-label={t("game.currentTurnSummary")}>
-        <span>{translatedPhaseSummary}</span>
-        <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
-        <span>{t("game.turn", { turn: state?.turn_number ?? "-" })}</span>
-        {activePlayer ? (
-          <>
-            <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
-            <span>{t("game.activePlayer", { player: playerDisplayName(players, activePlayer) })}</span>
-          </>
-        ) : null}
-        {decisionOwnerDiffersFromPriority ? (
-          <>
-            <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
-            <span>{t("game.decisionPlayer", { player: playerDisplayName(players, decisionPlayer) })}</span>
-          </>
-        ) : priorityPlayer ? (
-          <>
-            <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
-            <span>{t("game.priorityPlayer", { player: playerDisplayName(players, priorityPlayer) })}</span>
-          </>
-        ) : null}
       </div>
     </div>
   );
