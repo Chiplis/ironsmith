@@ -126,6 +126,16 @@ path = "src/bin/audit_parser_module_sizes.rs"
 test = false
 
 [[bin]]
+name = "audit_first_match_ladders"
+path = "src/bin/audit_first_match_ladders.rs"
+test = true
+
+[[bin]]
+name = "audit_registry_overlaps"
+path = "src/bin/audit_registry_overlaps.rs"
+test = false
+
+[[bin]]
 name = "audit_redundant_parses"
 path = "src/bin/audit_redundant_parses.rs"
 test = false

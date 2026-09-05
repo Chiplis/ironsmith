@@ -4,6 +4,7 @@ import { useCombatArrows } from "@/context/useCombatArrows";
 import { getCardRect, centerOf } from "@/hooks/useCardPositions";
 import { buildObjectControllerById } from "@/lib/decision-object-meta";
 import { useDecisionButtonAccent } from "@/lib/decision-button-style";
+import { decisionOptionAccentVars, getPlayerAccent } from "@/lib/player-colors";
 import useDeclareAttackersButtonTransition from "@/hooks/useDeclareAttackersButtonTransition";
 import { Button } from "@/components/ui/button";
 import PeerWaitPopover, { PeerWaitButtonContent } from "@/components/decisions/PeerWaitPopover";
@@ -11,7 +12,12 @@ import useDeferredPeerWait from "@/hooks/useDeferredPeerWait";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
-const ATTACKER_COLOR = "#ff3b30";
+const ATTACKER_COLOR = "#ff6b5f";
+
+function attackerSubmitLabel(count) {
+  if (count === 0) return "Declare no attackers";
+  return `Declare ${count} attacker${count === 1 ? "" : "s"}`;
+}
 
 function focusTargetPlayer(playerId) {
   if (!Number.isFinite(Number(playerId))) return;
@@ -372,7 +378,7 @@ export default function AttackersDecision({
     }
 
     onCompactActionChange({
-      label: `Confirm Attackers (${declarations.length})`,
+      label: attackerSubmitLabel(declarations.length),
       disabled: !canAct || attackButtonTransition.locked,
       onSubmit: () =>
         dispatch(
@@ -398,6 +404,12 @@ export default function AttackersDecision({
             const decl = getDeclaration(creatureId);
             const validTargets = opt.valid_targets || [];
             const isSelected = selectedAttackerId === creatureId;
+            const creatureAccent = getPlayerAccent(
+              players,
+              objectControllerById.get(String(creatureId)) ?? state?.perspective,
+              state?.perspective,
+              playerAccentOverrides,
+            );
 
             return (
               <div
@@ -418,6 +430,7 @@ export default function AttackersDecision({
                     isSelected && "border-[rgba(165,101,82,0.85)] bg-[linear-gradient(180deg,rgba(84,45,34,0.96),rgba(43,25,20,0.98))] text-[#f0d1c4]",
                     opt.must_attack && "italic"
                   )}
+                  style={decisionOptionAccentVars(creatureAccent)}
                   disabled={!canAct}
                   onClick={() => toggleAttacker(opt)}
                 >
@@ -439,6 +452,15 @@ export default function AttackersDecision({
                       {validTargets.map((target, i) => {
                         const decodedTarget = decodeAttackTargetChoice(target);
                         const isDeclaredTarget = attackTargetsEqual(decl?.target, decodedTarget);
+                        const targetControllerId = decodedTarget.kind === "player"
+                          ? decodedTarget.player
+                          : objectControllerById.get(String(decodedTarget.object));
+                        const targetAccent = getPlayerAccent(
+                          players,
+                          targetControllerId ?? state?.perspective,
+                          state?.perspective,
+                          playerAccentOverrides,
+                        );
                         return (
                           <Button
                             key={`${creatureId}-target-${i}`}
@@ -448,6 +470,7 @@ export default function AttackersDecision({
                               "decision-option-row h-8 w-full justify-start rounded-none border-0 bg-[linear-gradient(180deg,rgba(49,42,36,0.94),rgba(21,18,17,0.98))] px-2.5 text-[13px] text-[#d8cbb0] transition-all hover:bg-[linear-gradient(180deg,rgba(82,66,45,0.98),rgba(33,25,19,0.98))] hover:text-[#fff1cb]",
                               isDeclaredTarget && "bg-[linear-gradient(180deg,rgba(95,75,50,0.98),rgba(42,32,21,0.98))] text-[#fff0cf]"
                             )}
+                            style={decisionOptionAccentVars(targetAccent)}
                             disabled={!canAct}
                             onClick={() => selectTarget(creatureId, target)}
                           >
@@ -488,7 +511,7 @@ export default function AttackersDecision({
             {peerWaiting ? (
               <PeerWaitButtonContent />
             ) : (
-              <>Confirm Attackers ({declarations.length})</>
+              <>{attackerSubmitLabel(declarations.length)}</>
             )}
           </Button>
         </PeerWaitPopover>

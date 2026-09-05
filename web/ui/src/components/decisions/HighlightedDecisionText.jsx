@@ -28,6 +28,8 @@ export default function HighlightedDecisionText({
   highlightColor = null,
   className = "",
   style = undefined,
+  onHighlightClick = null,
+  highlightAriaLabel = null,
 }) {
   const normalizedText = String(text || "");
   const segments = useMemo(
@@ -35,7 +37,7 @@ export default function HighlightedDecisionText({
     [highlightText, normalizedText]
   );
 
-  if (!highlightColor || !segments.match) {
+  if (!segments.match) {
     return (
       <span className={className} style={style}>
         <SymbolText text={normalizedText} style={{ whiteSpace: "inherit" }} />
@@ -48,7 +50,31 @@ export default function HighlightedDecisionText({
       {segments.before && (
         <SymbolText text={segments.before} style={{ whiteSpace: "inherit" }} />
       )}
-      <span style={{ color: highlightColor }}>
+      <span
+        className={onHighlightClick ? "decision-card-name-trigger" : undefined}
+        style={highlightColor ? { color: highlightColor } : undefined}
+        role={onHighlightClick ? "button" : undefined}
+        tabIndex={onHighlightClick ? 0 : undefined}
+        aria-label={onHighlightClick ? (highlightAriaLabel || `Inspect ${segments.match}`) : undefined}
+        onPointerDown={onHighlightClick ? (event) => {
+          event.stopPropagation();
+        } : undefined}
+        onPointerUp={onHighlightClick ? (event) => {
+          if (event.button !== 0) return;
+          event.stopPropagation();
+          onHighlightClick(event);
+        } : undefined}
+        onClick={onHighlightClick ? (event) => {
+          event.stopPropagation();
+          if (event.detail === 0) onHighlightClick(event);
+        } : undefined}
+        onKeyDown={onHighlightClick ? (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          event.stopPropagation();
+          onHighlightClick(event);
+        } : undefined}
+      >
         <SymbolText text={segments.match} style={{ whiteSpace: "inherit" }} />
       </span>
       {segments.after && (

@@ -2,15 +2,20 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useGame } from "@/context/GameContext";
 import { useHover } from "@/context/HoverContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
+import { useDragState } from "@/context/DragContext";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { getCardRect, centerOf } from "@/hooks/useCardPositions";
-import { getPlayerAccent } from "@/lib/player-colors";
-import { buildInspectableObjectIdSet } from "@/lib/decision-object-meta";
+import {
+  buildInspectableObjectIdSet,
+  buildObjectControllerById,
+} from "@/lib/decision-object-meta";
+import { decisionOptionAccentVars, getPlayerAccent } from "@/lib/player-colors";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import { X, ArrowRight } from "lucide-react";
 import DecisionSummary from "./DecisionSummary";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
+import { targetDropCompletesDecision } from "@/lib/hand-drag-intent";
 
 const STRIP_ITEM_BASE_CLASS = "decision-option-row decision-option-row--strip h-7 max-w-[320px] min-w-[104px] justify-start self-stretch px-2 text-[11px] font-semibold";
 const STRIP_ITEM_ACTIVE_CLASS = "is-selected";
@@ -22,6 +27,25 @@ function targetObjectId(target) {
   if (target.object != null) return String(target.object);
   if (target.id != null) return String(target.id);
   return null;
+}
+
+function targetAccent(state, objectControllerById, target, accentOverrides = null) {
+  const objectId = targetObjectId(target);
+  const controllerId = target?.kind === "player"
+    ? Number(target.player)
+    : target?.object_controller != null
+      ? Number(target.object_controller)
+      : target?.controller != null
+        ? Number(target.controller)
+        : objectId != null
+          ? objectControllerById.get(String(objectId))
+          : null;
+  return getPlayerAccent(
+    state?.players || [],
+    controllerId ?? state?.perspective,
+    state?.perspective,
+    accentOverrides,
+  );
 }
 
 function targetListKey(target) {
@@ -133,17 +157,6 @@ function resolveTargetDecisionSourceId(state, decision) {
   return decisionSourceId;
 }
 
-function resolveTargetDecisionColor(state, decision, accentOverrides = null) {
-  const matchingStackObject = findMatchingVisibleStackSource(state, decision);
-  const controllerId = matchingStackObject
-    ? normalizeNumericId(matchingStackObject?.controller)
-    : null;
-  const fallbackControllerId = normalizeNumericId(decision?.player);
-  const accent = getPlayerAccent(state?.players || [], controllerId, state?.perspective, accentOverrides);
-  if (accent?.hex) return accent.hex;
-  return getPlayerAccent(state?.players || [], fallbackControllerId, state?.perspective, accentOverrides)?.hex || "#ff3b30";
-}
-
 function isGenericObjectName(name, objectId = null) {
   if (!name) return true;
   const trimmed = String(name).trim();
@@ -185,7 +198,11 @@ function ActiveRequirementTargets({
   skipLabel,
   horizontal = false,
   showTargetButtons = true,
+  coveredPlayerId = null,
   interactionHint = null,
+  state,
+  objectControllerById = new Map(),
+  accentOverrides = null,
 }) {
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const legalTargets = req.legal_targets || [];
@@ -291,6 +308,7 @@ function ActiveRequirementTargets({
       objectId != null && inspectableObjectIds?.has(String(objectId))
         ? String(objectId)
         : null;
+    const accent = targetAccent(state, objectControllerById, target, accentOverrides);
     return (
       <Button
         key={`${listKey}:${tIdx}`}
@@ -309,6 +327,7 @@ function ActiveRequirementTargets({
               ? STRIP_ITEM_DISABLED_CLASS
               : "bg-[linear-gradient(180deg,rgba(38,33,29,0.94),rgba(18,16,15,0.98))] text-[#897b66] hover:bg-[linear-gradient(180deg,rgba(38,33,29,0.94),rgba(18,16,15,0.98))] hover:text-[#897b66]")
         )}
+        style={decisionOptionAccentVars(accent)}
         disabled={!canAct || isUnavailable}
         onPointerDown={(event) => {
           if (!canAct || isUnavailable || !registerPointerDown(event)) return;
@@ -333,6 +352,12 @@ function ActiveRequirementTargets({
       </Button>
     );
   });
+  const coveredPlayerTargetButtons = targetButtons.filter((_, index) => {
+    const target = visibleTargets[index];
+    return target?.kind === "player"
+      && coveredPlayerId != null
+      && Number(target.player) === Number(coveredPlayerId);
+  });
 
   if (horizontal) {
     return (
@@ -347,9 +372,12 @@ function ActiveRequirementTargets({
             {header}
           </div>
           {showTargetButtons ? targetButtons : (
-            <div className="decision-empty-note px-2 text-[11px] italic whitespace-nowrap">
-              {interactionHint || "Click a highlighted card or player to target it directly."}
-            </div>
+            <>
+              {coveredPlayerTargetButtons}
+              <div className="decision-empty-note px-2 text-[11px] italic whitespace-nowrap">
+                {interactionHint || "Click a highlighted card or player to target it directly."}
+              </div>
+            </>
           )}
           {!showRows && showTargetButtons && (
             <div className="decision-empty-note px-2 text-[11px] italic whitespace-nowrap">
@@ -361,6 +389,12 @@ function ActiveRequirementTargets({
               variant="ghost"
               size="sm"
               className={cn(STRIP_ITEM_BASE_CLASS, "h-7 min-w-[124px]")}
+              style={decisionOptionAccentVars(targetAccent(
+                state,
+                objectControllerById,
+                null,
+                accentOverrides,
+              ))}
               disabled={!canAct}
               onPointerDown={(event) => {
                 if (!canAct || !registerPointerDown(event)) return;
@@ -407,6 +441,12 @@ function ActiveRequirementTargets({
           variant="ghost"
           size="sm"
           className="decision-option-row decision-option-row--panel mt-1 h-6 w-full justify-start border-y border-x-0 px-2.5 text-[12px]"
+          style={decisionOptionAccentVars(targetAccent(
+            state,
+            objectControllerById,
+            null,
+            accentOverrides,
+          ))}
           disabled={!canAct}
           onPointerDown={(event) => {
             if (!canAct || !registerPointerDown(event)) return;
@@ -444,6 +484,8 @@ export default function TargetsDecision({
     endDragArrow,
   } = useCombatArrows();
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
+  const handDragState = useDragState();
+  const handCastTargetGestureActive = Boolean(handDragState?.castIntent);
   const stripLayout = layout === "strip";
   const compactStripLayout =
     stripLayout
@@ -452,6 +494,10 @@ export default function TargetsDecision({
   const { hoveredObjectId, hoverCard, clearHover } = useHover();
   const inspectableObjectIds = useMemo(
     () => buildInspectableObjectIdSet(state),
+    [state],
+  );
+  const objectControllerById = useMemo(
+    () => buildObjectControllerById(state),
     [state],
   );
   const requirements = useMemo(() => decision.requirements || [], [decision.requirements]);
@@ -464,14 +510,12 @@ export default function TargetsDecision({
   const [selectionsByReq, setSelectionsByReq] = useState(() =>
     requirements.map(() => [])
   );
+  const gestureSubmitTimerRef = useRef(null);
   const liveTargetSourceId = useMemo(
     () => resolveTargetDecisionSourceId(state, decision),
     [state, decision]
   );
-  const liveTargetColor = useMemo(
-    () => resolveTargetDecisionColor(state, decision, playerAccentOverrides),
-    [state, decision, playerAccentOverrides]
-  );
+  const liveTargetColor = "#67c7ff";
 
   const currentReq = requirements[currentReqIdx];
   const allDone = currentReqIdx >= requirements.length;
@@ -603,17 +647,47 @@ export default function TargetsDecision({
       if (!canAct) return;
       const target = event?.detail?.target;
       if (!target || (target.kind !== "player" && target.kind !== "object")) return;
+      if (gestureSubmitTimerRef.current) {
+        clearTimeout(gestureSubmitTimerRef.current);
+        gestureSubmitTimerRef.current = null;
+      }
       handleSelectTarget(target, currentReqIdx, { toggleExisting: true });
+      if (
+        event?.detail?.submitIfComplete === true
+        && targetDropCompletesDecision(decision, target)
+      ) {
+        const dispatchTarget = toDispatchTarget(target);
+        gestureSubmitTimerRef.current = setTimeout(() => {
+          gestureSubmitTimerRef.current = null;
+          dispatch(
+            { type: "select_targets", targets: [dispatchTarget] },
+            "Target selected by drag"
+          );
+        }, 180);
+      }
     };
 
     window.addEventListener("ironsmith:target-choice", onExternalTargetChoice);
     return () => {
       window.removeEventListener("ironsmith:target-choice", onExternalTargetChoice);
     };
-  }, [canAct, currentReqIdx, handleSelectTarget]);
+  }, [canAct, currentReqIdx, decision, dispatch, handleSelectTarget]);
+
+  useEffect(() => () => {
+    if (gestureSubmitTimerRef.current) {
+      clearTimeout(gestureSubmitTimerRef.current);
+      gestureSubmitTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
-    if (!canAct || requirements.length === 0 || allDone || liveTargetSourceId == null) {
+    if (
+      handCastTargetGestureActive
+      || !canAct
+      || requirements.length === 0
+      || allDone
+      || liveTargetSourceId == null
+    ) {
       endDragArrow();
       return undefined;
     }
@@ -638,6 +712,7 @@ export default function TargetsDecision({
     allDone,
     canAct,
     endDragArrow,
+    handCastTargetGestureActive,
     liveTargetColor,
     liveTargetSourceId,
     requirements.length,
@@ -821,6 +896,12 @@ export default function TargetsDecision({
                               ? cn(STRIP_ITEM_BASE_CLASS, STRIP_ITEM_ACTIVE_CLASS)
                               : "decision-selected-chip h-5 px-1.5 text-[12px]"
                           )}
+                          style={decisionOptionAccentVars(targetAccent(
+                            state,
+                            objectControllerById,
+                            sel,
+                            playerAccentOverrides,
+                          ))}
                           disabled={!canAct}
                           onPointerDown={(event) => {
                             if (!canAct || !registerPointerDown(event)) return;
@@ -859,7 +940,11 @@ export default function TargetsDecision({
                     skipLabel={isOptional ? "Skip (optional)" : <>Next requirement <ArrowRight className="size-3 inline" /></>}
                     horizontal={stripLayout && !compactStripLayout}
                     showTargetButtons={!stripLayout || compactStripLayout}
+                    coveredPlayerId={stripLayout && !compactStripLayout ? state?.perspective : null}
                     interactionHint={interactionHint}
+                    state={state}
+                    objectControllerById={objectControllerById}
+                    accentOverrides={playerAccentOverrides}
                   />
                 )}
               </div>

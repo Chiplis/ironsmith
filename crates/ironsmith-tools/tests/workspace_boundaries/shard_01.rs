@@ -1148,11 +1148,8 @@ pub(super) fn world_state_timing_predicates_use_token_shapes() {
     let predicate_relative =
         "crates/ironsmith-compiler-grammar/src/grammar/filters/predicate_phrases.rs";
     let predicate_content = read_repo_file(&root, predicate_relative);
-    let predicate_parser = function_source(
-        &predicate_content,
-        "pub(crate) fn parse_predicate",
-        "#[cfg(test)]",
-    );
+    // The predicate readings are the registry's readers, spread over the logical module.
+    let predicate_parser = predicate_content.as_str();
     let predicate_helper = function_source(
         &predicate_content,
         "fn parse_world_state_or_timing_predicate",
@@ -1179,11 +1176,8 @@ pub(super) fn empty_battlefield_predicates_use_token_shapes() {
     let predicate_relative =
         "crates/ironsmith-compiler-grammar/src/grammar/filters/predicate_phrases.rs";
     let predicate_content = read_repo_file(&root, predicate_relative);
-    let predicate_parser = function_source(
-        &predicate_content,
-        "pub(crate) fn parse_predicate",
-        "#[cfg(test)]",
-    );
+    // The predicate readings are the registry's readers, spread over the logical module.
+    let predicate_parser = predicate_content.as_str();
     let predicate_helper = function_source(
         &predicate_content,
         "fn parse_empty_battlefield_predicate",
@@ -1207,11 +1201,8 @@ pub(super) fn player_turn_event_conditions_use_shared_capture_parser() {
     let predicate_relative =
         "crates/ironsmith-compiler-grammar/src/grammar/filters/predicate_phrases.rs";
     let predicate_content = read_repo_file(&root, predicate_relative);
-    let predicate_parser = function_source(
-        &predicate_content,
-        "pub(crate) fn parse_predicate",
-        "#[cfg(test)]",
-    );
+    // The predicate readings are the registry's readers, spread over the logical module.
+    let predicate_parser = predicate_content.as_str();
     let predicate_helper = function_source(
         &predicate_content,
         "fn parse_player_turn_event_predicate",
@@ -1259,11 +1250,8 @@ pub(super) fn spell_context_conditions_use_shared_capture_parser() {
     let predicate_relative =
         "crates/ironsmith-compiler-grammar/src/grammar/filters/predicate_phrases.rs";
     let predicate_content = read_repo_file(&root, predicate_relative);
-    let predicate_parser = function_source(
-        &predicate_content,
-        "pub(crate) fn parse_predicate",
-        "#[cfg(test)]",
-    );
+    // The predicate readings are the registry's readers, spread over the logical module.
+    let predicate_parser = predicate_content.as_str();
     let predicate_helper = function_source(
         &predicate_content,
         "fn parse_spell_context_predicate",
@@ -1306,11 +1294,8 @@ pub(super) fn player_spell_cast_this_turn_conditions_use_shared_capture_parser()
     let predicate_relative =
         "crates/ironsmith-compiler-grammar/src/grammar/filters/predicate_phrases.rs";
     let predicate_content = read_repo_file(&root, predicate_relative);
-    let predicate_parser = function_source(
-        &predicate_content,
-        "pub(crate) fn parse_predicate",
-        "#[cfg(test)]",
-    );
+    // The predicate readings are the registry's readers, spread over the logical module.
+    let predicate_parser = predicate_content.as_str();
     let predicate_helper = function_source(
         &predicate_content,
         "fn parse_player_spell_cast_this_turn_predicate",
@@ -1365,11 +1350,8 @@ pub(super) fn player_life_change_this_turn_conditions_use_shared_capture_parser(
     let predicate_relative =
         "crates/ironsmith-compiler-grammar/src/grammar/filters/predicate_phrases.rs";
     let predicate_content = read_repo_file(&root, predicate_relative);
-    let predicate_parser = function_source(
-        &predicate_content,
-        "pub(crate) fn parse_predicate",
-        "#[cfg(test)]",
-    );
+    // The predicate readings are the registry's readers, spread over the logical module.
+    let predicate_parser = predicate_content.as_str();
     let predicate_helper = function_source(
         &predicate_content,
         "fn parse_player_life_change_this_turn_predicate",
@@ -1460,11 +1442,8 @@ pub(super) fn player_would_action_conditions_use_shared_capture_parser() {
     let predicate_relative =
         "crates/ironsmith-compiler-grammar/src/grammar/filters/predicate_phrases.rs";
     let predicate_content = read_repo_file(&root, predicate_relative);
-    let predicate_parser = function_source(
-        &predicate_content,
-        "pub(crate) fn parse_predicate",
-        "#[cfg(test)]",
-    );
+    // The predicate readings are the registry's readers, spread over the logical module.
+    let predicate_parser = predicate_content.as_str();
     let predicate_helper = function_source(
         &predicate_content,
         "fn parse_player_would_action_predicate",
@@ -1508,11 +1487,8 @@ pub(super) fn battlefield_change_this_turn_conditions_use_shared_capture_parser(
     let predicate_relative =
         "crates/ironsmith-compiler-grammar/src/grammar/filters/predicate_phrases.rs";
     let predicate_content = read_repo_file(&root, predicate_relative);
-    let predicate_parser = function_source(
-        &predicate_content,
-        "pub(crate) fn parse_predicate",
-        "#[cfg(test)]",
-    );
+    // The predicate readings are the registry's readers, spread over the logical module.
+    let predicate_parser = predicate_content.as_str();
     let predicate_helper = function_source(
         &predicate_content,
         "fn parse_battlefield_change_this_turn_predicate",
@@ -1559,11 +1535,8 @@ pub(super) fn object_death_this_turn_conditions_use_shared_capture_parser() {
     let predicate_relative =
         "crates/ironsmith-compiler-grammar/src/grammar/filters/predicate_phrases.rs";
     let predicate_content = read_repo_file(&root, predicate_relative);
-    let predicate_parser = function_source(
-        &predicate_content,
-        "pub(crate) fn parse_predicate",
-        "#[cfg(test)]",
-    );
+    // The predicate readings are the registry's readers, spread over the logical module.
+    let predicate_parser = predicate_content.as_str();
     let predicate_helper = function_source(
         &predicate_content,
         "fn parse_object_death_this_turn_predicate",
@@ -1607,11 +1580,8 @@ pub(super) fn combat_damage_this_turn_predicates_use_token_shapes() {
     let predicate_relative =
         "crates/ironsmith-compiler-grammar/src/grammar/filters/predicate_phrases.rs";
     let predicate_content = read_repo_file(&root, predicate_relative);
-    let predicate_parser = function_source(
-        &predicate_content,
-        "pub(crate) fn parse_predicate",
-        "#[cfg(test)]",
-    );
+    // The predicate readings are the registry's readers, spread over the logical module.
+    let predicate_parser = predicate_content.as_str();
     let predicate_helper = function_source(
         &predicate_content,
         "fn parse_combat_damage_this_turn_predicate",
@@ -1639,11 +1609,8 @@ pub(super) fn player_life_total_conditions_use_shared_capture_parser() {
     let predicate_relative =
         "crates/ironsmith-compiler-grammar/src/grammar/filters/predicate_phrases.rs";
     let predicate_content = read_repo_file(&root, predicate_relative);
-    let predicate_parser = function_source(
-        &predicate_content,
-        "pub(crate) fn parse_predicate",
-        "#[cfg(test)]",
-    );
+    // The predicate readings are the registry's readers, spread over the logical module.
+    let predicate_parser = predicate_content.as_str();
     let predicate_helper = function_source(
         &predicate_content,
         "fn parse_player_life_total_predicate",

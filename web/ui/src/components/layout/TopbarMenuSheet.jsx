@@ -6,6 +6,7 @@ import { buildPuzzleUrlFromGameState } from "@/lib/puzzles";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Slider } from "@/components/ui/slider";
 import {
   Sheet,
   SheetContent,
@@ -19,6 +20,8 @@ import AddCardSheet from "./AddCardSheet";
 import CreateCardForgeSheet from "./CreateCardForgeSheet";
 import VerifyMatchSheet from "./VerifyMatchSheet";
 import { playerDisplayName } from "@/lib/player-display";
+import { getPlayerAccent } from "@/lib/player-colors";
+import { UI_FONT_OPTIONS } from "@/lib/ui-fonts";
 import { useI18n } from "@/i18n/I18nContext";
 
 const inputClass =
@@ -26,7 +29,7 @@ const inputClass =
 const labelClass =
   "grid gap-1 text-[11px] uppercase tracking-[0.2em] text-muted-foreground";
 const sectionClass =
-  "fantasy-sheet-section grid gap-3 p-3";
+  "fantasy-sheet-section settings-sheet-section grid gap-3 py-5";
 
 function MenuSection({ eyebrow, title, description, children }) {
   return (
@@ -78,12 +81,34 @@ export default function TopbarMenuSheet({
     inspectorDebug,
     setInspectorDebug,
     setStatus,
+    semanticThreshold,
+    setSemanticThreshold,
+    cardsMeetingThreshold,
+    uiFont,
+    setUiFont,
+    playerAccentOverrides,
+    setPlayerAccentOverride,
   } = useGame();
   const { locale, locales, setLocale, t } = useI18n();
 
-  const players = state?.players || [];
+  const players = useMemo(() => state?.players || [], [state?.players]);
   const perspective = state?.perspective;
   const me = players.find((player) => player.id === perspective) || players[0];
+  const perspectiveAccent = getPlayerAccent(
+    players,
+    perspective,
+    perspective ?? 0,
+    playerAccentOverrides
+  );
+  const playerNameSlots = useMemo(() => {
+    const configuredNames = String(playerNames || "").split(",");
+    const slotCount = Math.max(players.length, configuredNames.length, 2);
+    return Array.from({ length: slotCount }, (_, index) => (
+      configuredNames[index]?.trim()
+      || players[index]?.name
+      || `Player ${index + 1}`
+    ));
+  }, [playerNames, players]);
   const lobbyBusy = multiplayer.mode !== "idle";
   const addLocked = multiplayer.mode !== "idle" && !multiplayer.matchStarted;
   const compiledLabel = useMemo(() => {
@@ -98,6 +123,11 @@ export default function TopbarMenuSheet({
     : t("settings.noLobby");
   const connectionWarnings = multiplayer.connectionWarnings || [];
   const offlinePlayers = connectionWarnings.filter((warning) => !warning.local);
+  const updatePlayerName = (index, value) => {
+    const nextNames = [...playerNameSlots];
+    nextNames[index] = value;
+    setPlayerNames(nextNames.join(","));
+  };
 
   const handleOpenLobby = () => {
     setOpen(false);
@@ -170,7 +200,7 @@ export default function TopbarMenuSheet({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="grid gap-4 p-4">
+        <div className="settings-sheet-body grid px-4 pb-4">
           {showQuickActions ? (
             <MenuSection
               eyebrow={t("settings.quick.eyebrow")}
@@ -309,20 +339,69 @@ export default function TopbarMenuSheet({
           </MenuSection>
 
           <MenuSection
+            eyebrow={t("settings.appearance.eyebrow")}
+            title={t("settings.appearance.title")}
+            description={t("settings.appearance.description")}
+          >
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+              <label className={labelClass}>
+                {t("settings.interfaceFont")}
+                <select
+                  className={inputClass}
+                  value={uiFont}
+                  onChange={(event) => setUiFont(event.target.value)}
+                >
+                  {UI_FONT_OPTIONS.map((font) => (
+                    <option key={font.name} value={font.name}>{font.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className={`${labelClass} settings-accent-control`}>
+                {t("settings.playerAccent")}
+                <input
+                  className="settings-accent-input"
+                  type="color"
+                  value={perspectiveAccent?.hex || "#b79cff"}
+                  onChange={(event) => setPlayerAccentOverride(perspective ?? 0, event.target.value)}
+                  aria-label={t("settings.playerAccent")}
+                />
+              </label>
+            </div>
+            <label className={`${labelClass} gap-2`}>
+              <span className="flex items-center justify-between gap-3">
+                <span>{t("settings.fidelityThreshold")}</span>
+                <span className="settings-fidelity-value tabular-nums">
+                  {semanticThreshold > 0 ? `${Math.round(semanticThreshold)}%` : t("fidelity.off")}
+                  {` · ${cardsMeetingThreshold}`}
+                </span>
+              </span>
+              <Slider
+                min={0}
+                max={100}
+                step={1}
+                value={[Math.round(semanticThreshold)]}
+                onValueChange={([value]) => setSemanticThreshold(value)}
+              />
+            </label>
+          </MenuSection>
+
+          <MenuSection
             eyebrow={t("settings.match.eyebrow")}
             title={t("settings.match.title")}
             description={t("settings.match.description")}
           >
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className={labelClass}>
-                {t("settings.playerNames")}
-                <input
-                  className={inputClass}
-                  value={playerNames}
-                  disabled={lobbyBusy}
-                  onChange={(event) => setPlayerNames(event.target.value)}
-                />
-              </label>
+              {playerNameSlots.map((playerName, index) => (
+                <label key={index} className={labelClass}>
+                  {`${t("settings.player")} ${index + 1}`}
+                  <input
+                    className={inputClass}
+                    value={playerName}
+                    disabled={lobbyBusy}
+                    onChange={(event) => updatePlayerName(index, event.target.value)}
+                  />
+                </label>
+              ))}
               <label className={labelClass}>
                 {t("settings.startingLife")}
                 <input
@@ -337,9 +416,9 @@ export default function TopbarMenuSheet({
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
               <Button
-                variant="secondary"
+                variant="destructive"
                 size="sm"
-                className="stone-pill"
+                className="settings-reset-button"
                 disabled={lobbyBusy}
                 onClick={onReset}
               >

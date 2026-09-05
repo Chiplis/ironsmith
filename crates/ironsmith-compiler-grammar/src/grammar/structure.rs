@@ -1022,7 +1022,7 @@ pub fn split_leading_result_prefix_lexed<'a>(
     })
 }
 
-fn split_leading_numeric_result_prefix_lexed(
+pub fn split_leading_numeric_result_prefix_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<(IfResultPredicate, &[OwnedLexToken])> {
     let first = tokens.first()?;

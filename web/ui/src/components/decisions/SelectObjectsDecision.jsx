@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import DecisionSummary from "./DecisionSummary";
 import HighlightedDecisionText from "./HighlightedDecisionText";
-import { getPlayerAccent } from "@/lib/player-colors";
+import { decisionOptionAccentVars, getPlayerAccent } from "@/lib/player-colors";
 import { buildObjectControllerById } from "@/lib/decision-object-meta";
 
 const STRIP_ITEM_BASE_CLASS = "decision-option-row decision-option-row--strip h-8 max-w-[360px] min-w-[120px] shrink-0 justify-start self-stretch px-2.5 text-[12px] font-semibold";
@@ -186,9 +186,12 @@ export default function SelectObjectsDecision({
               const controllerId = c?.object_controller != null
                 ? Number(c.object_controller)
                 : objectControllerById.get(String(c.id));
-              const accent = controllerId == null
-                ? null
-                : getPlayerAccent(state?.players || [], controllerId, state?.perspective, playerAccentOverrides);
+              const accent = getPlayerAccent(
+                state?.players || [],
+                controllerId ?? state?.perspective,
+                state?.perspective,
+                playerAccentOverrides,
+              );
               return (
                 <Button
                   key={c.id}
@@ -205,6 +208,7 @@ export default function SelectObjectsDecision({
                         ? STRIP_ITEM_DISABLED_CLASS
                         : "is-disabled")
                   )}
+                  style={decisionOptionAccentVars(accent)}
                   disabled={isDisabled}
                   onPointerDown={(event) => {
                     if (isDisabled || event.button !== 0) return;
@@ -222,7 +226,6 @@ export default function SelectObjectsDecision({
                     className="decision-option-label"
                     text={c.name}
                     highlightText={c.name}
-                    highlightColor={accent?.hex || null}
                   />
                 </Button>
               );

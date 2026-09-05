@@ -1074,476 +1074,22 @@ fn parse_for_each_object_effect_chain_shape(
     Ok(Some(vec![EffectAst::ForEachObject { filter, effects }]))
 }
 
+#[path = "chain_carry/chain_readings.rs"]
+mod chain_readings;
+
 fn parse_effect_chain_uncoordinated_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    fn immediate_tagged_permission_spec(tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
-        Ok(matches!(
-            parse_permission_clause_spec_lexed(tokens)?,
-            Some(PermissionClauseSpec::Tagged {
-                lifetime: PermissionLifetime::Immediate,
-                ..
-            })
-        ))
+    let input = chain_readings::Chain {
+        tokens,
+        read_by_cache: Default::default(),
+        claims: Default::default(),
+    };
+    match chain_readings::read_chain(&input) {
+        ParseOutcome::Match(matched) => return Ok(matched.value.value),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
-
-    if let Some(effects) = parse_sentence_each_player_may_reveal_selected_cards_in_their_hand(
-        SubjectVerbPrimitiveClause::new(tokens),
-    )? {
-        return Ok(effects);
-    }
-
-    let named_token_appositive = tokens.first().is_some_and(|token| token.is_word("create"))
-        && crate::slice_primitives::select_position(tokens, OwnedLexToken::is_comma).is_some_and(
-            |comma| {
-                !tokens[..comma].iter().any(|token| token.is_word("token"))
-                    && tokens[comma + 1..]
-                        .iter()
-                        .any(|token| token.is_word("token"))
-            },
-        );
-    if named_token_appositive {
-        return Ok(vec![super::creation_handlers::parse_create(tokens, None)?]);
-    }
-
-    if clause_may_contain_cast_or_play_permission_lexed(tokens)
-        && let Some(effect) = parse_cast_or_play_tagged_clause(tokens)?
-    {
-        // A complete tagged permission may include its own coordinated
-        // any-color mana rider. Preserve that atomic grammar before the
-        // generic leading-`may` path removes the first modal subject and
-        // leaves the rider as a verb-less `spend mana ...` clause.
-        if immediate_tagged_permission_spec(tokens)?
-            && let Some(player) = parse_leading_player_may_lexed(tokens)
-        {
-            return Ok(vec![EffectAst::MayByPlayer {
-                player,
-                effects: vec![effect],
-            }]);
-        }
-        return Ok(vec![effect]);
-    }
-
-    let comma_then_segments = split_segments_on_comma_then_lexed(vec![tokens]);
-    if let Some(effects) = parse_inline_looked_card_partition_chain(tokens) {
-        return Ok(effects);
-    }
-    // A hand/graveyard-into-library shuffle owns its complete clause even
-    // when a participant loop already stripped the subject; coordination
-    // would otherwise sever the zone list from the shuffle verb. An optional
-    // shuffle keeps its `may` scope through the may-aware routes.
-    if parse_leading_player_may_lexed(tokens).is_none()
-        && !chain_grammar::starts_with_may_tokens(tokens)
-        && super::super::grammar::effects::parse_shuffle_graveyard_shape_lexed(tokens)
-            .is_some_and(|shape| shape.has_hand_clause)
-        && let Some(effects) =
-            super::search_library::parse_shuffle_graveyard_into_library_sentence(tokens)?
-    {
-        return Ok(effects);
-    }
-    if let [mill_tokens, followup_tokens] = comma_then_segments.as_slice() {
-        let inline_sentences = [
-            SentenceInput::from_lexed(mill_tokens),
-            SentenceInput::from_lexed(followup_tokens),
-        ];
-        if let Some(effects) =
-            super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_mill_then_may_put_from_among_into_hand(
-                &inline_sentences,
-                0,
-            )?
-        {
-            return Ok(effects);
-        }
-    }
-    if let [leading_tokens, shuffle_tokens] = comma_then_segments.as_slice() {
-        let leading_segments = split_segments_on_comma_effect_head_lexed(vec![leading_tokens]);
-        if let [look_tokens, deployment_tokens] = leading_segments.as_slice() {
-            let inline_sentences = [
-                SentenceInput::from_lexed(look_tokens),
-                SentenceInput::from_lexed(deployment_tokens),
-                SentenceInput::from_lexed(shuffle_tokens),
-            ];
-            if let Some(effects) =
-                super::sequence_rules::try_parse_document_program(&inline_sentences, 0)?
-                    .filter(|matched| matched.consumed_sentences == inline_sentences.len())
-                    .map(|matched| matched.effects)
-            {
-                return Ok(effects);
-            }
-        }
-    }
-    if let Some(effects) = parse_reveal_source_exiled_permanents_sentence_lexed(tokens) {
-        return Ok(effects);
-    }
-    // Once the conservative typed splitter has proved a real `, then`
-    // boundary, route the complete chain before any prefix-tolerant
-    // specialist can claim only its final verb. The inner chain pass retains
-    // carried players, result values, tags, and authored ordering across the
-    // separately parsed arms.
-    if comma_then_segments.len() > 1 {
-        return parse_effect_chain_inner_lexed(tokens);
-    }
-
-    // An immediate "you may cast/play" instruction is an optional action,
-    // not a persistent permission. Claim it before the generic leading-may
-    // path strips `may` while probing broader cast-permission surfaces.
-    if let Some(spec) = parse_may_cast_it_sentence(tokens) {
-        return Ok(vec![build_may_cast_tagged_effect(&spec)]);
-    }
-
-    if let Some(effects) = parse_for_each_exiled_this_way_sentence(tokens)? {
-        return Ok(effects);
-    }
-
-    if let Some(effects) = parse_for_each_object_effect_chain_shape(tokens)? {
-        return Ok(effects);
-    }
-
-    if let Some(shape) = super::super::grammar::effects::sentence_predicate_shapes::
-        parse_attacking_doesnt_tap_if_source_untapped_tokens(tokens)
-    {
-        let filter = parse_object_filter(shape.affected_tokens, false)?;
-        return Ok(vec![
-            EffectAst::subject_verb_grant_abilities_all_dynamically_with_condition(
-                filter,
-                vec![crate::cards::builders::GrantedAbilityAst::KeywordAction(
-                    Box::new(crate::payload::KeywordAction::Vigilance),
-                )],
-                Until::EndOfCombat,
-                PredicateAst::SourceIsUntapped,
-            ),
-        ]);
-    }
-
-    // A phase-insertion clause has no ordinary subject/verb head ("there is
-    // an additional combat phase").  Conditional and labeled effect bodies
-    // enter through the chain parser, so route the already-typed phase shape
-    // before generic verb discovery as well as at the sentence entrypoint.
-    if let Some(shape) = parse_additional_phases_shape(tokens) {
-        return Ok(vec![EffectAst::subject_verb_additional_phases(
-            shape.phases,
-        )]);
-    }
-
-    // Preserve coordinated object operands as one tap result so a subsequent
-    // "them" refers to the entire affected set, not only the first operand.
-    if let Some(shape) = parse_tap_object_union_then_tokens(tokens) {
-        let first = parse_target_phrase(shape.first_target_tokens)?;
-        let first_filter = match first {
-            TargetAst::Source(_) => ObjectFilter::source(),
-            TargetAst::Object(filter, None, _) => filter,
-            TargetAst::Tagged(tag, _) => ObjectFilter::tagged(tag),
-            _ => {
-                return Err(CardTextError::ParseError(
-                    "coordinated tap operand must be a non-target object reference".to_string(),
-                ));
-            }
-        };
-        let all_filter = parse_object_filter(shape.all_filter_tokens, false)?;
-        let mut union = ObjectFilter::default();
-        union.any_of = vec![first_filter, all_filter];
-        let mut effects = vec![EffectAst::subject_verb_tap_all(union)];
-        effects.extend(parse_effect_chain_lexed(shape.followup_tokens)?);
-        return Ok(effects);
-    }
-
-    if let Some(effect) = parse_may_have_any_number_tagged_phase_out_lexed(tokens) {
-        return Ok(vec![effect]);
-    }
-
-    if let Some(effects) = parse_destroy_then_temporary_cant_attack_block_chain_lexed(tokens)? {
-        return Ok(effects);
-    }
-    if let Some(effects) = parse_exile_library_then_shuffle_graveyard_chain_lexed(tokens)? {
-        return Ok(effects);
-    }
-    if let Some(shape) =
-        sacrifice_discard_grammar::parse_each_player_may_discard_hand_and_draw_tokens(tokens)
-    {
-        let optional_effects = vec![
-            EffectAst::subject_verb_discard_hand(PlayerAst::That),
-            EffectAst::subject_verb(
-                crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
-                PlayerAst::That,
-                SubjectVerbActionAst::Draw {
-                    count: shape.draw_count,
-                },
-            ),
-        ];
-        return Ok(vec![EffectAst::ForEachPlayer {
-            effects: vec![EffectAst::May {
-                effects: optional_effects,
-            }],
-        }]);
-    }
-    if let Some(effects) =
-        super::dispatch_inner::parse_generic_top_cards_put_counted_into_hand_rest_graveyard_subject_verb(tokens)
-    {
-        return Ok(effects);
-    }
-
-    if let Some(result_tokens) = chain_grammar::parse_meld_them_into_tokens(tokens) {
-        let result_words = token_word_refs(result_tokens);
-        if result_words.is_empty() {
-            return Err(CardTextError::ParseError(format!(
-                "missing meld result name (clause: '{}')",
-                token_word_refs(tokens).join(" ")
-            )));
-        }
-        return Ok(vec![EffectAst::subject_verb_meld(
-            result_words.join(" "),
-            false,
-            false,
-        )]);
-    }
-
-    let leading_scope = chain_grammar::parse_leading_chain_scope_tokens(tokens);
-    let starts_with_each_opponent =
-        leading_scope == Some(chain_grammar::ChainPlayerScope::EachOpponent);
-    let starts_with_each_player =
-        leading_scope == Some(chain_grammar::ChainPlayerScope::EachPlayer);
-
-    // "Any player may pay ..." is a turn-order offer that ends when one
-    // player accepts, rather than a single optional action performed by an
-    // arbitrary player. Keep the payer and payer-relative dynamic values
-    // inside the existing sequential AnyPlayerMay scope.
-    if let Some(player) = parse_leading_player_may_lexed(tokens)
-        && matches!(player, PlayerAst::Any | PlayerAst::Opponent)
-    {
-        let stripped = remove_through_first_word(tokens);
-        let stripped = crate::util::trim_edge_punctuation_tokens(&stripped);
-        if stripped.first().is_some_and(|token| token.is_word("pay")) {
-            let payment = super::zone_handlers::parse_pay(
-                crate::util::trim_edge_punctuation_tokens(&stripped[1..]),
-                Some(crate::cards::builders::SubjectAst::Player(PlayerAst::That)),
-            )?;
-            return Ok(vec![EffectAst::AnyPlayerMay {
-                players: if player == PlayerAst::Opponent {
-                    PlayerFilter::Opponent
-                } else {
-                    PlayerFilter::Any
-                },
-                effects: vec![payment],
-            }]);
-        }
-    }
-
-    if let Some(shape) = parse_any_player_may_sacrifice_shape(tokens) {
-        let sacrifice = super::zone_handlers::parse_sacrifice(
-            shape.action_tokens,
-            Some(crate::cards::builders::SubjectAst::Player(PlayerAst::That)),
-            None,
-        )?;
-        return Ok(vec![EffectAst::AnyPlayerMay {
-            players: shape.players,
-            effects: vec![sacrifice],
-        }]);
-    }
-
-    // Claim the complete causative damage offer before the broad leading-may
-    // handler strips its participant and lowers only the inner damage. The
-    // specialist distinguishes sequential "any player/opponent" offers from
-    // a single targeted player's choice.
-    if let Some(effects) =
-        super::dispatch_inner::parse_any_player_may_have_source_deal_damage(tokens)?
-    {
-        return Ok(effects);
-    }
-
-    if let Some(trailing_if) = split_trailing_if_clause_lexed(tokens) {
-        if let Some(player) = parse_leading_player_may_lexed(trailing_if.leading_tokens) {
-            let mut stripped = remove_through_first_word(trailing_if.leading_tokens);
-            if let Some(rest) = chain_grammar::strip_leading_choose_to_tokens(&stripped) {
-                stripped = rest.to_vec();
-            }
-            if let Some(rest) = chain_grammar::strip_leading_have_tokens(&stripped) {
-                stripped = rest.to_vec();
-            }
-            let mut effects = parse_effect_chain_lexed(&stripped)?;
-            for effect in &mut effects {
-                bind_implicit_player_context(effect, player);
-            }
-            return Ok(vec![EffectAst::TrailingIf {
-                predicate: trailing_if.predicate,
-                effects: vec![EffectAst::MayByPlayer { player, effects }],
-            }]);
-        }
-
-        if chain_grammar::starts_with_may_tokens(trailing_if.leading_tokens)
-            && !starts_with_each_opponent
-            && !starts_with_each_player
-        {
-            let stripped = remove_first_word(trailing_if.leading_tokens);
-            let effects = parse_effect_chain_lexed(&stripped)?;
-            return Ok(vec![EffectAst::TrailingIf {
-                predicate: trailing_if.predicate,
-                effects: vec![EffectAst::May { effects }],
-            }]);
-        }
-    }
-
-    if let Some(player) = parse_leading_player_may_lexed(tokens) {
-        let mut stripped = remove_through_first_word(tokens);
-        if let Some(rest) = chain_grammar::strip_leading_choose_to_tokens(&stripped) {
-            stripped = rest.to_vec();
-        }
-        if let Some(rest) = chain_grammar::strip_leading_have_tokens(&stripped) {
-            stripped = rest.to_vec();
-        }
-        if let Some(mut permission) = parse_additional_land_plays_clause_lexed(&stripped)? {
-            bind_implicit_player_context(&mut permission, player);
-            return Ok(vec![permission]);
-        }
-        let stripped_words = crate::lexer::parser_token_word_refs(&stripped);
-        let has_copy_exception =
-            crate::slice_primitives::select_last_position(&stripped_words, |word| {
-                matches!(*word, "become" | "becomes")
-            })
-            .is_some_and(|become_word_idx| {
-                let view = TokenWordView::new(&stripped);
-                let body_start = view
-                    .map_word_or_end_to_token_boundary(become_word_idx + 1)
-                    .unwrap_or(stripped.len());
-                super::super::grammar::effects::become_shapes::parse_become_rest_shape(
-                    &stripped[body_start..],
-                )
-                .copy_exception
-                .is_some()
-            });
-        let mut effects = if has_copy_exception {
-            super::parse_effect_sentence_lexed(&stripped)?
-        } else {
-            parse_effect_chain_lexed(&stripped)?
-        };
-        for effect in &mut effects {
-            bind_implicit_player_context(effect, player);
-        }
-        if leading_may_is_permission_clause_lexed(&stripped)? {
-            if immediate_tagged_permission_spec(&stripped)? {
-                return Ok(vec![EffectAst::MayByPlayer { player, effects }]);
-            }
-            return Ok(effects);
-        }
-        if has_any_number_of_times_suffix(&stripped) && is_repeatable_optional_payment(&effects) {
-            return Ok(vec![EffectAst::RepeatProcess {
-                effects: vec![EffectAst::MayByPlayer { player, effects }],
-                continue_effect_index: 0,
-                continue_predicate: crate::cards::builders::IfResultPredicate::Did,
-            }]);
-        }
-        return Ok(vec![EffectAst::MayByPlayer { player, effects }]);
-    }
-
-    if chain_grammar::starts_with_may_tokens(tokens)
-        && !starts_with_each_opponent
-        && !starts_with_each_player
-    {
-        let stripped = remove_first_word(tokens);
-        if let Some(permission) = parse_additional_land_plays_clause_lexed(&stripped)? {
-            return Ok(vec![permission]);
-        }
-        let effects = parse_effect_chain_lexed(&stripped)?;
-        if leading_may_is_permission_clause_lexed(&stripped)? {
-            if immediate_tagged_permission_spec(&stripped)? {
-                return Ok(vec![EffectAst::May { effects }]);
-            }
-            return Ok(effects);
-        }
-        if has_any_number_of_times_suffix(&stripped) && is_repeatable_optional_payment(&effects) {
-            return Ok(vec![EffectAst::RepeatProcess {
-                effects: vec![EffectAst::May { effects }],
-                continue_effect_index: 0,
-                continue_predicate: crate::cards::builders::IfResultPredicate::Did,
-            }]);
-        }
-        return Ok(vec![EffectAst::May { effects }]);
-    }
-
-    // The broad consult recognizer intentionally accepts a traversal prefix.
-    // Claim the complete inline consult/disposition program first so a result-
-    // prefixed clause does not silently lose its battlefield move and library
-    // remainder after the traversal.
-    if split_leading_result_prefix_lexed(tokens).is_none()
-        && let Some(effects) =
-        super::dispatch_inner::parse_generic_consult_reveal_until_battlefield_bottom_subject_verb(
-            tokens,
-        )?
-    {
-        return Ok(effects);
-    }
-
-    // A consult traversal can continue after its stop condition in the same
-    // sentence. Preserve that complete procedure before the bare traversal
-    // fallback intentionally returns only the consult action.
-    if let Some(effects) =
-        super::consult_family::parse_consult_traversal_with_inline_followup(tokens)?
-    {
-        return Ok(effects);
-    }
-
-    // Consult traversal has a `reveal` verb, but its `until` stop rule is
-    // what gives the sentence its semantics. Claim the complete traversal
-    // before the ordinary subject/verb registry lowers only the leading
-    // reveal as a plain top-of-library effect.
-    if let Some(parts) = super::consult_family::parse_consult_traversal_sentence(tokens)? {
-        return Ok(parts.effects);
-    }
-
-    if chain_grammar::parse_tap_or_untap_all_choice_tokens(tokens) {
-        let action_tokens = remove_first_word(tokens);
-        return Ok(vec![super::zone_handlers::parse_tap(&action_tokens)?]);
-    }
-
-    // An `or` inside a grammar-proven trailing payment is cost structure,
-    // not effect coordination. Route the complete clause through the typed
-    // trailing-unless builder before the generic chain splitter sees either
-    // alternative as a sibling action.
-    if has_unless_payment_choice(tokens)? {
-        return Ok(vec![parse_effect_clause_lexed(tokens)?]);
-    }
-
-    if let Some(unless_action) = parse_or_action_clause_lexed(tokens)? {
-        return Ok(vec![unless_action]);
-    }
-
-    if clause_may_contain_cast_or_play_permission_lexed(tokens)
-        && let Some(effect) = parse_cast_or_play_tagged_clause(tokens)?
-    {
-        if immediate_tagged_permission_spec(tokens)?
-            && let Some(player) = parse_leading_player_may_lexed(tokens)
-        {
-            return Ok(vec![EffectAst::MayByPlayer {
-                player,
-                effects: vec![effect],
-            }]);
-        }
-        return Ok(vec![effect]);
-    }
-
-    // Some specialized subject/verb parsers accept a valid leading clause
-    // without requiring end-of-input. Split a genuine top-level conjunction
-    // before entering that registry, otherwise a first arm such as `copy that
-    // spell` or `deals damage` can silently consume the whole sentence and
-    // drop the following action.
-    if has_explicit_comma_then_boundary_lexed(tokens) {
-        return parse_effect_chain_inner_lexed(tokens);
-    }
-    let split_segments = split_effect_chain_on_and_lexed(tokens);
-    let executable_heads = split_segments
-        .iter()
-        .filter(|segment| super::lex_chain_helpers::segment_has_effect_head_lexed(segment))
-        .count();
-    let has_expandable_shared_verb_operand = split_segments
-        .iter()
-        .zip(split_segments.iter().skip(1))
-        .any(|(left, right)| expand_missing_verb_segment_lexed(left, right).is_some());
-    if split_leading_result_prefix_lexed(tokens).is_none()
-        && split_segments.len() > 1
-        && (executable_heads > 1 || has_expandable_shared_verb_operand)
-    {
-        return parse_effect_chain_inner_lexed(tokens);
-    }
-
     parse_effect_chain_with_subject_verb_primitives_lexed(tokens)
 }
 
@@ -3472,7 +3018,11 @@ pub fn bind_self_animate_after_life_gain(
     else {
         return false;
     };
-    effects.extend(followups.into_iter().map(retarget_source_self_animate_effect));
+    effects.extend(
+        followups
+            .into_iter()
+            .map(retarget_source_self_animate_effect),
+    );
     true
 }
 
@@ -3489,9 +3039,10 @@ pub fn bind_destroy_typed_subset(effects: &mut Vec<EffectAst>, sentence: &[Owned
     if len < 2 {
         return false;
     }
-    let Some((target_effect, cant_effect)) = effects[len - 2..].split_first_mut().and_then(
-        |(first, rest)| rest.first_mut().map(|second| (first, second)),
-    ) else {
+    let Some((target_effect, cant_effect)) = effects[len - 2..]
+        .split_first_mut()
+        .and_then(|(first, rest)| rest.first_mut().map(|second| (first, second)))
+    else {
         return false;
     };
     let target_filter = match &*target_effect {
@@ -3535,7 +3086,8 @@ pub fn bind_destroy_typed_subset(effects: &mut Vec<EffectAst>, sentence: &[Owned
     if restriction_base != target_filter {
         return false;
     }
-    let Some(are_index) = crate::slice_primitives::select_position(sentence, |token| token.is_word("are"))
+    let Some(are_index) =
+        crate::slice_primitives::select_position(sentence, |token| token.is_word("are"))
     else {
         return false;
     };
@@ -3550,10 +3102,12 @@ pub fn bind_destroy_typed_subset(effects: &mut Vec<EffectAst>, sentence: &[Owned
     }
     let target_set_tag = crate::util::helper_tag_for_tokens(sentence, "restricted_target_set");
     restriction_filter.tagged_constraints[0].tag = target_set_tag.clone();
-    destroy_filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
-        tag: target_set_tag.clone(),
-        relation: TaggedOpbjectRelation::IsTaggedObject,
-    });
+    destroy_filter
+        .tagged_constraints
+        .push(crate::target::TaggedObjectConstraint {
+            tag: target_set_tag.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
     let original_target = target_effect.clone();
     *target_effect = EffectAst::TagAffected {
         effect: Box::new(original_target),

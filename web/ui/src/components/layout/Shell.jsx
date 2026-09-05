@@ -47,7 +47,7 @@ export default function Shell() {
   );
   const [logOpen, setLogOpen] = useState(false);
   const [lobbyOpen, setLobbyOpen] = useState(false);
-  const [zoneViews, setZoneViews] = useState(["battlefield", "ante"]);
+  const [zoneViews, setZoneViews] = useState(["battlefield"]);
   const [deckLoadingMode, setDeckLoadingMode] = useState(false);
   const [puzzleSetupMode, setPuzzleSetupMode] = useState(false);
   const [initializationError, setInitializationError] = useState(null);
@@ -389,9 +389,10 @@ export default function Shell() {
       wasmPhase === "registry" ? `Compiled ${Number(wasmRegistryCount || 0).toLocaleString()} cards...` :
       "Initializing";
     return (
-      <div className="flex flex-col items-center justify-center h-screen gap-3 text-muted-foreground">
+      <div className="game-loading-screen flex h-screen flex-col items-center justify-center gap-4 text-muted-foreground">
+        <div className="game-loading-brand">Ironsmith</div>
         {wasmPhase === "init" ? (
-          <span className="text-[18px] font-bold uppercase tracking-wider">
+          <span className="game-loading-status text-[16px] font-semibold">
             {phaseLabel}
             <span className="loading-dots" aria-hidden="true">
               <span className="loading-dot loading-dot-1">.</span>
@@ -400,15 +401,15 @@ export default function Shell() {
             </span>
           </span>
         ) : (
-          <span className="text-[18px] font-bold uppercase tracking-wider">{phaseLabel}</span>
+          <span className="game-loading-status text-[16px] font-semibold">{phaseLabel}</span>
         )}
-        <div className="w-64 h-2 bg-[#1a2433] border border-game-line rounded-none overflow-hidden">
+        <div className="game-loading-track h-2 w-64 overflow-hidden border">
           <div
-            className="h-full bg-primary"
+            className="game-loading-progress h-full"
             style={{ width: `${widthPct}%` }}
           />
         </div>
-        <span className="text-[16px]">{pct}%</span>
+        <span className="game-loading-percent text-[14px] tabular-nums">{pct}%</span>
       </div>
     );
   }
@@ -437,8 +438,9 @@ export default function Shell() {
   // Worker can be ready before initial reset/demo-setup has produced first UI state.
   if (!state) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen gap-3 text-muted-foreground">
-        <span className="text-[18px] font-bold uppercase tracking-wider">
+      <div className="game-loading-screen flex h-screen flex-col items-center justify-center gap-4 text-muted-foreground">
+        <div className="game-loading-brand">Ironsmith</div>
+        <span className="game-loading-status text-[16px] font-semibold">
           Preparing Game
           <span className="loading-dots" aria-hidden="true">
             <span className="loading-dot loading-dot-1">.</span>
@@ -481,6 +483,7 @@ export default function Shell() {
       setMobileOpponentIndex={setMobileOpponentIndex}
       mobileOverlay={landscapeMobileViewport}
       middleDocked={dockToolbarsInTable}
+      onChangePerspective={handleChangePerspective}
     />
   );
   const addCardBarElement = (
@@ -530,6 +533,7 @@ export default function Shell() {
       {renderTopLevelAddCardBar ? addCardBarElement : null}
       <Workspace
         zoneViews={zoneViews}
+        setZoneViews={setZoneViews}
         deckLoadingMode={deckLoadingMode}
         puzzleSetupMode={puzzleSetupMode}
         onLoadDecks={handleLoadCustomDecks}
@@ -547,9 +551,8 @@ export default function Shell() {
         mobilePhaseStops={mobilePhaseStops}
         setMobilePhaseStops={setMobilePhaseStops}
         middleTopbar={dockToolbarsInTable ? topbarElement : null}
-        middleAddCardBar={dockToolbarsInTable ? addCardBarElement : null}
+        middleAddCardBar={null}
         zoneActionControls={zoneActionControlsElement}
-        onChangePerspective={handleChangePerspective}
       />
       <LogDrawer open={logOpen} onOpenChange={setLogOpen} />
       {lobbyOpen ? (

@@ -257,17 +257,25 @@ impl GenericChoiceComplementProgram {
     fn lower(self) -> EffectAst {
         let mut effects = Vec::new();
         if let Some(constraint) = self.aggregate_constraint {
+            // The one choice happens before anything is kept; excluding the
+            // kept would only read as "other".
             effects.push(EffectAst::ChooseObjectsWithAggregateConstraint {
-                filter: self.base_filter.clone().not_tagged(self.keep_tag.clone()),
+                filter: self.base_filter.clone(),
                 count: self.keep_count,
                 player: PlayerAst::That,
                 tag: self.keep_tag.clone(),
                 constraint,
             });
         } else {
+            // Each later slot of a party complement chooses among what earlier
+            // slots did not keep. A single slot chooses before anything is
+            // kept, so the exclusion would only read as "other".
+            let sequential_slots = self.keep_filters.len() > 1;
             for keep_filter in self.keep_filters {
                 let mut filter = merge_filters(&self.base_filter, &keep_filter);
-                filter = filter.not_tagged(self.keep_tag.clone());
+                if sequential_slots {
+                    filter = filter.not_tagged(self.keep_tag.clone());
+                }
                 effects.push(EffectAst::ChooseObjects {
                     filter,
                     count: self.keep_count,
@@ -1318,128 +1326,21 @@ fn parse_branch_scoped_collection_subject_verb(
     is_conjunctive_collection(&effect).then_some((route, vec![effect]))
 }
 
+use crate::recognition::ParseOutcome;
+#[path = "generic_subject_verb/top_level_readings.rs"]
+mod top_level_readings;
+
 pub fn parse_top_level_subject_verb_recognition(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(&'static str, Vec<EffectAst>)>, CardTextError> {
-    if let Some(effect) = parse_triggering_object_had_counters_create_tokens(tokens)? {
-        return Ok(Some((
-            "subject-verb verb=Create subject=implicit recognizer=triggering-object-counter-lki",
-            vec![effect],
-        )));
+    let input = top_level_readings::TopLevelSentence { tokens };
+    match top_level_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
-    if let Some(effects) = parse_source_exiled_counted_return_remainder_to_owners_libraries(tokens)
-    {
-        return Ok(Some((
-            "subject-verb verb=Return subject=source-exiled recognizer=counted-return-remainder",
-            effects,
-        )));
-    }
-    // Copular animation clauses such as "those permanents are 4/4 creatures
-    // in addition to their other types" are effect-backed state changes. They
-    // must reach the generic animation parser before the broad `are`/`get`
-    // subject-verb recognizers reinterpret the type and power text as a
-    // granted static ability.
-    if let Some(shape) =
-        effect_grammar::clause_dispatch_shapes::parse_copular_animation_shape(tokens)
-    {
-        let effect = super::clause_dispatch::parse_become_clause(
-            shape.subject_tokens,
-            shape.animation_tokens,
-        )?;
-        return Ok(Some((
-            "subject-verb verb=Become subject=explicit recognizer=copular-animation",
-            vec![effect],
-        )));
-    }
-    if let Some(parsed) = parse_branch_scoped_collection_subject_verb(tokens) {
-        return Ok(Some(parsed));
-    }
-    if let Some(effect) = parse_as_you_cast_from_zone_this_turn_grant(tokens)? {
-        return Ok(Some((
-            "subject-verb verb=Gain subject=cast-from-zone recognizer=as-you-cast-this-turn",
-            vec![effect],
-        )));
-    }
-    if let Some(effects) = parse_any_player_may_have_source_deal_damage(tokens)? {
-        return Ok(Some((
-            "subject-verb verb=Deal subject=source recognizer=any-player-may-have-source-damage",
-            effects,
-        )));
-    }
-    if let Some(effects) = parse_destroy_attached_object_then_source_damage_to_controller(tokens)? {
-        return Ok(Some((
-            "subject-verb verb=Destroy subject=attached recognizer=destroy-attached-source-damage",
-            effects,
-        )));
-    }
-    if let Some(effect) = parse_generic_play_exiled_cards_for_as_long_as_exiled(tokens) {
-        return Ok(Some((
-            "subject-verb verb=Play subject=implicit recognizer=exiled-cards-play-permission",
-            vec![effect],
-        )));
-    }
-    if let Some(effect) = parse_generic_mana_any_type_cast_tagged_this_way(tokens) {
-        return Ok(Some((
-            "subject-verb verb=Cast subject=implicit recognizer=tagged-any-mana-permission",
-            vec![effect],
-        )));
-    }
-    if let Some(effects) = parse_source_gets_unblockable_subject_verb(tokens)? {
-        return Ok(Some((
-            "subject-verb verb=Get subject=source recognizer=source-pump-unblockable",
-            effects,
-        )));
-    }
-    if let Some(effects) = parse_target_gets_unblockable_subject_verb(tokens)? {
-        return Ok(Some((
-            "subject-verb verb=Get subject=target recognizer=target-pump-unblockable",
-            effects,
-        )));
-    }
-    if let Some(effects) = parse_cant_blocked_then_base_pt_subject_verb(tokens)? {
-        return Ok(Some((
-            "subject-verb verb=Cant subject=target recognizer=cant-blocked-base-pt",
-            effects,
-        )));
-    }
-    if let Some(effects) = parse_source_gets_filter_gains_subject_verb(tokens)? {
-        return Ok(Some((
-            "subject-verb verb=Get subject=source recognizer=source-pump-filter-gain",
-            effects,
-        )));
-    }
-    if let Some(effects) = parse_target_player_controls_get_subject_verb(tokens)? {
-        return Ok(Some((
-            "subject-verb verb=Get subject=target-player-controls recognizer=embedded-controller-pump",
-            effects,
-        )));
-    }
-    if let Some(effects) = parse_target_gains_then_gets_subject_verb(tokens)? {
-        return Ok(Some((
-            "subject-verb verb=Gain subject=target recognizer=shared-subject-gain-get",
-            effects,
-        )));
-    }
-    if let Some(effects) = parse_attached_and_related_get_subject_verb(tokens)? {
-        return Ok(Some((
-            "subject-verb verb=Get subject=attached-and-related recognizer=shared-characteristic-pump",
-            effects,
-        )));
-    }
-    if let Some(effects) = parse_target_gets_then_gains_subject_verb(tokens)? {
-        return Ok(Some((
-            "subject-verb verb=Get subject=target recognizer=shared-subject-get-gain",
-            effects,
-        )));
-    }
-    if let Some(effects) = parse_target_has_base_pt_then_loses_subject_verb(tokens)? {
-        return Ok(Some((
-            "subject-verb verb=Have subject=target recognizer=shared-subject-base-pt-lose",
-            effects,
-        )));
-    }
-
-    let program = if let Some(effect) = parse_generic_meld_subject_verb(tokens)? {
+    let program =
+    if let Some(effect) = parse_generic_meld_subject_verb(tokens)? {
         Some(GenericTopLevelProgram::Meld { effect })
     } else if let Some(effect) = parse_generic_control_combat_choices_subject_verb(tokens)? {
         Some(GenericTopLevelProgram::ControlCombatChoices { effect })
@@ -1483,8 +1384,8 @@ pub fn parse_top_level_subject_verb_recognition(
         Some(GenericTopLevelProgram::ValueBinding { effects })
     } else {
         None
-    };
-
+    }
+    ;
     Ok(program.map(|program| {
         let route = program.route();
         (route, program.lower())
@@ -2980,6 +2881,19 @@ pub fn parse_zone_replacement_subject_verb(
         }
         .lower(),
     ))
+}
+
+/// Whether the sentence has a choice complement's shape: a party or aggregate
+/// complement, or a choice clause followed by the disposition of the rest.
+pub fn is_choice_complement_shape(tokens: &[OwnedLexToken]) -> bool {
+    if effect_grammar::parse_party_choice_complement_shape(tokens).is_some()
+        || effect_grammar::parse_aggregate_choice_complement_shape(tokens).is_some()
+    {
+        return true;
+    }
+    let clause = LexedClause::new(tokens).trimmed();
+    choice_complement_choice_clause_from_word_order(clause).is_some()
+        || CHOICE_COMPLEMENT_PATTERN.parse_full(clause).is_some()
 }
 
 pub fn parse_choice_complement_subject_verb(

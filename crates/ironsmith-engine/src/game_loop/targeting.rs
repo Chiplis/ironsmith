@@ -2550,7 +2550,7 @@ fn object_filter_references_previous_target_tag(filter: &crate::filter::ObjectFi
     })
 }
 
-pub(crate) fn extract_target_requirements_from_program_with_modes(
+pub fn extract_target_requirements_from_program_with_modes(
     game: &GameState,
     program: &crate::resolution::ResolutionProgram,
     caster: PlayerId,

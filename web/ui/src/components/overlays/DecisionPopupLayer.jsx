@@ -8,13 +8,12 @@ import DecisionRouter from "@/components/decisions/DecisionRouter";
 import DecisionSummary from "@/components/decisions/DecisionSummary";
 import PeerWaitPopover, { PeerWaitButtonContent } from "@/components/decisions/PeerWaitPopover";
 import useDeferredPeerWait from "@/hooks/useDeferredPeerWait";
-import PhaseHelpPopover from "@/components/decisions/PhaseHelpPopover";
 import { normalizeDecisionText } from "@/components/decisions/decisionText";
 import { animate, cancelMotion, snappySpring, stagger } from "@/lib/motion/anime";
 import { KeywordHelpersProvider, ManaSymbol, SymbolText } from "@/lib/mana-symbols";
-import { currentPriorityPhaseLabel, nextPriorityAdvanceLabel } from "@/lib/constants";
+import { nextPriorityAdvanceLabel } from "@/lib/constants";
 import HighlightedDecisionText from "@/components/decisions/HighlightedDecisionText";
-import { getPlayerAccent } from "@/lib/player-colors";
+import { decisionOptionAccentVars, getPlayerAccent } from "@/lib/player-colors";
 import { useDecisionButtonAccent } from "@/lib/decision-button-style";
 import useDeclareAttackersButtonTransition from "@/hooks/useDeclareAttackersButtonTransition";
 import {
@@ -48,21 +47,6 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function compactPriorityControlAdvanceLabel(label) {
-  const raw = String(label || "").trim();
-  if (!raw) return "";
-
-  const arrowPrefix = raw.match(/^(?:→|->)\s*/)?.[0] || "";
-  const body = raw.slice(arrowPrefix.length).trim();
-  const compactBody = body
-    .replace(/^Main Phase$/i, "Main")
-    .replace(/^End Combat$/i, "End Combat")
-    .replace(/^End Step$/i, "End")
-    .replace(/^Next Turn$/i, "Next");
-
-  return arrowPrefix ? `→ ${compactBody}` : compactBody;
-}
-
 function safeInlineLabel(value, fallback = "") {
   if (value == null || value === false) return fallback;
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
@@ -72,6 +56,67 @@ function safeInlineLabel(value, fallback = "") {
     return String(value.label || value.name || value.description || fallback || "");
   }
   return String(value);
+}
+
+function DecisionCardNameTrigger({ objectId, onInspect, children, className = "" }) {
+  if (objectId == null || typeof onInspect !== "function") return children;
+  return (
+    <span
+      className={cn("decision-card-name-trigger", className)}
+      data-inspector-object-id={String(objectId)}
+      role="button"
+      tabIndex={0}
+      aria-label={`Inspect ${String(children || "card")}`}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+      }}
+      onPointerUp={(event) => {
+        if (event.button !== 0) return;
+        event.stopPropagation();
+        onInspect(objectId, event.currentTarget);
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (event.detail !== 0) return;
+        onInspect(objectId, event.currentTarget);
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        event.stopPropagation();
+        onInspect(objectId, event.currentTarget);
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function conciseDecisionSummary(value) {
+  const normalized = normalizeDecisionText(value);
+  if (typeof normalized !== "string") return "";
+  const clauses = normalized.split(/\s*;\s*/).filter(Boolean);
+  const targetClause = clauses.find((clause) => /\btarget\b/i.test(clause));
+  const selectedClause = String(targetClause || clauses[0] || "");
+  const colonIndex = selectedClause.indexOf(":");
+  const effectClause = colonIndex >= 0 ? selectedClause.slice(colonIndex + 1).trim() : "";
+  const summary = effectClause && /\btarget\b/i.test(effectClause) ? effectClause : selectedClause;
+  return summary
+    .replace(/^(?:choose|select)\s+(?:the\s+)?targets?\s*:\s*/i, "")
+    .trim();
+}
+
+function decisionStageLabel(decision) {
+  switch (decision?.kind) {
+    case "targets": return "Target";
+    case "select_objects": return "Select";
+    case "select_options": return "Choose";
+    case "number": return "Number";
+    case "mana_payment": return "Payment";
+    case "attackers":
+    case "blockers": return "Combat";
+    default: return "Action";
+  }
 }
 
 function renderMobileBattlePortal(content, target = null) {
@@ -321,6 +366,7 @@ function PriorityActionPillLabel({
   isHovered = false,
   highlightText = "",
   highlightColor = null,
+  onHighlightClick = null,
 }) {
   const displayText = useMemo(() => normalizeDecisionText(text), [text]);
   const containerRef = useRef(null);
@@ -449,6 +495,7 @@ function PriorityActionPillLabel({
             text={displayText}
             highlightText={highlightText}
             highlightColor={highlightColor}
+            onHighlightClick={onHighlightClick}
           />
         </span>
       </span>
@@ -480,6 +527,7 @@ function PriorityActionPillLabel({
             text={displayText}
             highlightText={highlightText}
             highlightColor={highlightColor}
+            onHighlightClick={onHighlightClick}
           />
         </span>
         <span aria-hidden="true" className="pr-7">
@@ -510,6 +558,7 @@ function PriorityActionStrip({
   onActionClick,
   onActionHoverStart,
   onActionHoverEnd,
+  onActionCardInspect,
   accentOverrides = null,
 }) {
   const { playerAccentOverrides: contextAccentOverrides } = useGame();
@@ -755,6 +804,11 @@ function PriorityActionStrip({
             group.hoverObjectId,
             null,
             effectiveAccentOverrides
+          ) || getPlayerAccent(
+            players || [],
+            perspective,
+            perspective,
+            effectiveAccentOverrides,
           );
           const setNodeRef = (node) => {
             const existing = groupNodeRefs.current.get(group.key) || [];
@@ -774,9 +828,8 @@ function PriorityActionStrip({
           };
           const pillClassName = cn(
             "action-strip-pill inline-flex max-w-[360px] min-w-0 items-center self-stretch px-2.5 text-[12px] font-semibold transition-all",
-            linkedActive
-              ? "is-linked-active text-[#fff5de]"
-              : "text-[#d8ccb4]",
+            linkedActive && "is-linked-active",
+            "text-[#d8ccb4]",
             "is-interactive"
           );
           const pillContent = (
@@ -792,7 +845,9 @@ function PriorityActionStrip({
                 carouselResetVersion={carouselResetByGroupKey[group.key] || 0}
                 isHovered={hoveredPillKey === key}
                 highlightText={highlightName}
-                highlightColor={accent?.hex || null}
+                onHighlightClick={group.hoverObjectId != null
+                  ? (event) => onActionCardInspect?.(group.hoverObjectId, event.currentTarget)
+                  : null}
               />
             </>
           );
@@ -807,7 +862,10 @@ function PriorityActionStrip({
               tabIndex={isPrimaryCycle ? undefined : -1}
               ref={setNodeRef}
               className={pillClassName}
-              style={{ textOverflow: "clip" }}
+              style={{
+                textOverflow: "clip",
+                ...decisionOptionAccentVars(accent),
+              }}
               onPointerDown={(event) => {
                 if (event.button !== 0) return;
                 if (event.pointerType && event.pointerType !== "mouse") return;
@@ -1062,17 +1120,20 @@ function ViewedCardsStrip({
         wrap ? "flex-wrap" : "w-max"
       )}>
         {cards.length > 0 ? cards.map((card, index) => {
-          const cardAccent = card.controller == null
-            ? null
-            : getPlayerAccent(players || [], card.controller, perspective, effectiveAccentOverrides);
-          const cardAccentStyle = cardAccent
-            ? {
-              "--decision-main-accent": cardAccent.hex,
-              "--decision-main-rgb": cardAccent.rgb,
-              "--player-accent": cardAccent.hex,
-              "--player-accent-rgb": cardAccent.rgb,
-            }
-            : undefined;
+          const cardAccent = resolveObjectAccent(
+            players,
+            perspective,
+            objectControllerById,
+            card.id,
+            card.controller,
+            effectiveAccentOverrides,
+          ) || getPlayerAccent(
+            players || [],
+            perspective,
+            perspective,
+            effectiveAccentOverrides,
+          );
+          const cardAccentStyle = decisionOptionAccentVars(cardAccent);
           return (
             <button
               key={card.key || card.id || index}
@@ -1080,8 +1141,9 @@ function ViewedCardsStrip({
               className={cn(
                 "action-strip-pill action-strip-view-card inline-flex max-w-[220px] items-center px-2 py-1 text-[12px] transition-all",
                 String(hoveredObjectId) === String(card.id) || String(selectedObjectId) === String(card.id)
-                  ? "is-linked-active text-[#fff5de]"
-                  : "is-interactive text-[#decfae]"
+                  ? "is-linked-active"
+                  : "is-interactive",
+                "text-[#d8ccb4]",
               )}
               style={cardAccentStyle}
               onMouseEnter={() => {
@@ -1094,18 +1156,6 @@ function ViewedCardsStrip({
                 <HighlightedDecisionText
                   text={normalizeDecisionText(card.name)}
                   highlightText={normalizeDecisionText(card.name)}
-                  highlightColor={
-                    cardAccent?.hex
-                    || resolveObjectAccent(
-                      players,
-                      perspective,
-                      objectControllerById,
-                      card.id,
-                      card.controller,
-                      effectiveAccentOverrides
-                    )?.hex
-                    || null
-                  }
                 />
               </span>
             </button>
@@ -1606,15 +1656,18 @@ function MobileBattleDecisionLayer({
   ]);
   const showPriorityAdvanceButton = !!passAction;
   const hasCustomPassLabel = !!passAction?.label && passAction.label !== "Pass priority";
+  const resolvingStackPriority = stackSize > 0 && !hasCustomPassLabel;
   const passAdvanceLabel = showPriorityAdvanceButton
-    ? (
-      hasCustomPassLabel
-        ? ""
-        : `→ ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)}`
-    )
+    ? ""
     : (visibleActionGroups[0]?.label || "Continue");
   const passCurrentLabel = showPriorityAdvanceButton
-    ? (hasCustomPassLabel ? passAction.label : currentPriorityPhaseLabel(state?.phase, state?.step))
+    ? (
+      resolvingStackPriority
+        ? "Resolve"
+        : hasCustomPassLabel
+          ? passAction.label
+          : `Go to ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)}`
+    )
     : passAdvanceLabel;
   const objectNameById = useMemo(
     () => buildObjectNameById(state),
@@ -1664,7 +1717,7 @@ function MobileBattleDecisionLayer({
       decision?.description,
       decision?.context_text,
     ]
-      .map((value) => normalizeDecisionText(value))
+      .map((value) => conciseDecisionSummary(value))
       .filter(Boolean);
     return parts[0] || "";
   }, [decision?.context_text, decision?.description]);
@@ -1700,10 +1753,9 @@ function MobileBattleDecisionLayer({
     (group) => {
       if (!canAct || !group) return;
       setHoverLinkedObjects(group.linkedObjectIds || []);
-      if (group.hoverObjectId != null) hoverCard(group.hoverObjectId);
       dispatchHandActionHover(group.hoverObjectId);
     },
-    [canAct, hoverCard, setHoverLinkedObjects]
+    [canAct, setHoverLinkedObjects]
   );
   const handleActionHoverEnd = useCallback(() => {
     clearHoverLinkedObjects();
@@ -2234,12 +2286,16 @@ function ManaPaymentToolbarPool({ label, pool }) {
   );
 }
 
-function ManaPaymentToolbarMeta({ payment }) {
+function ManaPaymentToolbarMeta({ payment, sourceObjectId = null, onInspectObject = null }) {
   if (!payment) return null;
+  const sourceName = payment.source_name || "mana cost";
   return (
     <div className="mana-payment-toolbar-meta">
-      <div className="mana-payment-toolbar-title" title={`Pay for ${payment.source_name || "mana cost"}`}>
-        Pay for {payment.source_name || "mana cost"}
+      <div className="mana-payment-toolbar-title" title={`Pay for ${sourceName}`}>
+        <span>Pay for </span>
+        <DecisionCardNameTrigger objectId={sourceObjectId} onInspect={onInspectObject}>
+          {sourceName}
+        </DecisionCardNameTrigger>
       </div>
       <div className="mana-payment-toolbar-pools" aria-label="Mana pool payment preview">
         <ManaPaymentToolbarPool label="Pool" pool={payment.pool_before} />
@@ -2270,7 +2326,7 @@ function ActionStripMainTitleText({ children }) {
     const availableWidth = Math.max(1, container.clientWidth);
     const naturalWidth = Math.max(1, textElement.scrollWidth);
     const baseSize = 14;
-    const minSize = 8.5;
+    const minSize = 7;
     const nextSize = Math.max(minSize, Math.min(baseSize, baseSize * (availableWidth / naturalWidth)));
     textElement.style.setProperty("--action-strip-main-title-size", `${nextSize}px`);
   }, []);
@@ -2294,7 +2350,12 @@ function ActionStripMainTitleText({ children }) {
   );
 }
 
-function PriorityBar({ anchor = null, inline = false, selectedObjectId = null }) {
+function PriorityBar({
+  anchor = null,
+  inline = false,
+  replaceMiddleControls = false,
+  selectedObjectId = null,
+}) {
   const {
     state,
     dispatch,
@@ -2312,6 +2373,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     clearHover,
     setHoverLinkedObjects,
     clearHoverLinkedObjects,
+    showAnchoredCardPreview,
   } = useHover();
   const decision = state?.decision || null;
   const manaPayment = state?.mana_payment || null;
@@ -2342,24 +2404,14 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
   const canCancelDecision = canAct && !!state?.cancelable;
   const hasCustomPassLabel = !!passAction?.label && passAction.label !== "Pass priority";
   const resolvingStackPriority = stackSize > 0 && !hasCustomPassLabel;
-  const passAdvanceLabel = resolvingStackPriority
-    ? ""
-    : (hasCustomPassLabel
-        ? ""
-        : holdRule === "always"
-          ? (passAction?.label || "Pass priority")
-        : `→ ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)}`);
-  const passControlAdvanceLabel = resolvingStackPriority
-    ? ""
-    : (hasCustomPassLabel
-        ? ""
-        : compactPriorityControlAdvanceLabel(`→ ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)}`));
+  const passControlAdvanceLabel = "";
   const passCurrentLabel = resolvingStackPriority
     ? "Resolve"
-    : (hasCustomPassLabel ? passAction.label : currentPriorityPhaseLabel(state?.phase, state?.step));
-  const passHelpAdvanceLabel = resolvingStackPriority
-    ? "Resolve"
-    : (hasCustomPassLabel ? passAction.label : passAdvanceLabel);
+    : (
+      hasCustomPassLabel
+        ? passAction.label
+        : `Go to ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)}`
+    );
   const battlefieldFamilies = useMemo(
     () => buildBattlefieldFamilies(state?.players),
     [state?.players]
@@ -2410,7 +2462,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
       decision?.description,
       decision?.context_text,
     ]
-      .map((value) => normalizeDecisionText(value))
+      .map((value) => conciseDecisionSummary(value))
       .filter(Boolean);
     return parts[0] || "";
   }, [decision?.context_text, decision?.description]);
@@ -2519,10 +2571,9 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     (group) => {
       if (!canAct || !group) return;
       setHoverLinkedObjects(group.linkedObjectIds || []);
-      if (group.hoverObjectId != null) hoverCard(group.hoverObjectId);
       dispatchHandActionHover(group.hoverObjectId);
     },
-    [canAct, setHoverLinkedObjects, hoverCard]
+    [canAct, setHoverLinkedObjects]
   );
   const handleActionHoverEnd = useCallback(() => {
     if (!canAct) {
@@ -2533,6 +2584,13 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     clearHover();
     dispatchHandActionHover(null);
   }, [canAct, clearHoverLinkedObjects, clearHover]);
+  const handleActionCardInspect = useCallback((objectId, anchor) => {
+    if (objectId == null || !anchor) return;
+    clearHoverLinkedObjects();
+    clearHover();
+    dispatchHandActionHover(null);
+    showAnchoredCardPreview(objectId, anchor);
+  }, [clearHover, clearHoverLinkedObjects, showAnchoredCardPreview]);
   const handleViewedCardHoverStart = useCallback((card) => {
     if (!card?.id) return;
     clearHoverLinkedObjects();
@@ -2582,6 +2640,67 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     setAcknowledgedViewedCardsToken(viewedCardsToken);
   }, [viewedCardsToken]);
 
+  const topbarMainDecisionHost = inline
+    && !isPriorityDecision
+    && !replaceMiddleControls
+    && typeof document !== "undefined"
+    ? document.querySelector('[data-topbar-main-decision-host="true"]')
+    : null;
+  const renderExpandedPrimaryControl = (ported = false) => (
+    (peerWaiting || showViewedCardsStep || effectiveSubmitAction) ? (
+      <PeerWaitPopover peerWait={peerWait}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn(
+            "decision-neon-button decision-main-button decision-submit-button h-full self-stretch rounded-none font-bold uppercase",
+            ported
+              ? "topbar-ported-decision-button w-full min-w-0 px-2 text-[11px]"
+              : cn(
+                  manaPayment
+                    ? "mana-payment-pay-button min-w-[82px] flex-[0.75_1_0] px-2 text-[clamp(11px,0.88vw,14px)]"
+                    : "min-w-[104px] flex-[1.2_1_0] px-3 text-[clamp(11px,0.88vw,14px)]",
+                  replaceMiddleControls && "decision-main-button--middle-replacement"
+                )
+          )}
+          style={decisionButtonStyle}
+          data-local-action={localDecisionButton ? "true" : "false"}
+          aria-disabled={peerWaitLocked || (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
+          disabled={peerWaiting ? false : (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
+          title={peerWaiting ? "Waiting for peers" : (showViewedCardsStep ? "Done" : (effectiveSubmitAction?.label || "Submit"))}
+          onPointerDown={(event) => {
+            if (peerWaitLocked) return;
+            if (showViewedCardsStep) {
+              if (!canAdvanceViewedCardsStep || event.button !== 0) return;
+              event.preventDefault();
+              completeViewedCardsStep();
+              return;
+            }
+            if (!canSubmitFocused || event.button !== 0) return;
+            event.preventDefault();
+            effectiveSubmitAction.onSubmit();
+          }}
+          onClick={(event) => {
+            if (peerWaitLocked) return;
+            if (showViewedCardsStep) {
+              if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
+              completeViewedCardsStep();
+              return;
+            }
+            if (!canSubmitFocused || event.detail !== 0) return;
+            effectiveSubmitAction.onSubmit();
+          }}
+        >
+          {peerWaiting ? (
+            <PeerWaitButtonContent />
+          ) : (
+            showViewedCardsStep ? "Done" : (effectiveSubmitAction?.label || "Submit")
+          )}
+        </Button>
+      </PeerWaitPopover>
+    ) : null
+  );
+
   const updateManaTabAnchorRect = useCallback(() => {
     if (!inline || !inlineRootRef.current) {
       setManaTabAnchorRect(null);
@@ -2614,10 +2733,29 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     }
 
     let frame = 0;
+    const updateDecisionOverflowMode = () => {
+      const content = node.querySelector(".action-strip-decision-content");
+      if (!content || !replaceMiddleControls) return;
+      const optionNodes = Array.from(content.querySelectorAll(
+        ".action-strip-pill, .decision-option-row--strip, .decision-target-requirement, .decision-selected-chip"
+      ));
+      if (optionNodes.length === 0) {
+        content.removeAttribute("data-option-rows");
+        return;
+      }
+      const rowTops = new Set(
+        optionNodes.map((option) => Math.round(option.getBoundingClientRect().top / 4) * 4)
+      );
+      const nextMode = rowTops.size > 1 ? "multiple" : "single";
+      if (content.dataset.optionRows !== nextMode) {
+        content.dataset.optionRows = nextMode;
+      }
+    };
     const scheduleUpdate = () => {
       if (frame) cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         updateManaTabAnchorRect();
+        updateDecisionOverflowMode();
         frame = 0;
       });
     };
@@ -2626,43 +2764,68 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     const resizeObserver = typeof ResizeObserver !== "undefined"
       ? new ResizeObserver(scheduleUpdate)
       : null;
+    const mutationObserver = typeof MutationObserver !== "undefined"
+      ? new MutationObserver(scheduleUpdate)
+      : null;
     resizeObserver?.observe(node);
+    mutationObserver?.observe(node, { childList: true, subtree: true });
     window.addEventListener("resize", scheduleUpdate);
     window.addEventListener("scroll", scheduleUpdate, true);
 
     return () => {
       if (frame) cancelAnimationFrame(frame);
       resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
       window.removeEventListener("resize", scheduleUpdate);
       window.removeEventListener("scroll", scheduleUpdate, true);
     };
-  }, [inline, updateManaTabAnchorRect]);
+  }, [inline, replaceMiddleControls, updateManaTabAnchorRect]);
 
   if (!decision || isCombatDecision) return null;
   if (isPriorityDecision && !passAction) return null;
 
   if (inline) {
     return (
-      <div
-        ref={inlineRootRef}
-        className={cn(
-          "pointer-events-none absolute inset-0 z-[120] flex",
-          isPriorityDecision ? "items-stretch pt-0" : "items-start pt-0.5",
-          compactLandscapeViewport || isPriorityDecision ? "px-0" : "px-2"
-        )}
-      >
+      <>
+        {topbarMainDecisionHost
+          ? createPortal(
+              <div
+                className="topbar-ported-decision-action action-strip-command-region h-full w-full"
+                style={decisionButtonStyle}
+              >
+                <div
+                  className="action-strip-main-region h-full w-full"
+                  style={decisionButtonStyle}
+                  data-local-action={localDecisionButton ? "true" : "false"}
+                >
+                  {renderExpandedPrimaryControl(true)}
+                </div>
+              </div>,
+              topbarMainDecisionHost
+            )
+          : null}
+        <div
+          ref={inlineRootRef}
+          className={cn(
+            "pointer-events-none absolute inset-0 z-[120] flex",
+            isPriorityDecision ? "items-stretch pt-0" : "items-start pt-0.5",
+            compactLandscapeViewport || isPriorityDecision ? "px-0" : "px-2"
+          )}
+        >
         <ManaPaymentTab manaPayment={manaPayment} anchorRect={inline ? manaTabAnchorRect : null} />
         <div
           className={cn(
             "priority-inline-panel pointer-events-auto relative flex h-full w-full flex-col py-0",
             isPriorityDecision && "priority-inline-panel--segmented",
+            isPriorityDecision && !showViewedCardsStep && "priority-inline-panel--main-only",
             compactLandscapeViewport || isPriorityDecision ? "px-0" : "px-2"
           )}
+          data-replaces-middle-controls={replaceMiddleControls ? "true" : "false"}
         >
           {isPriorityDecision ? (
             showViewedCardsStep ? (
               <div
-                className="action-strip-layout action-strip-layout--segmented flex min-h-[46px] items-stretch gap-2"
+                className="priority-main-action-only flex min-h-[46px] items-stretch"
                 style={decisionButtonStyle}
               >
                 <div className="action-strip-command-region shrink-0 self-stretch" style={decisionButtonStyle}>
@@ -2765,34 +2928,9 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                           </div>
                         </div>
                       )}
-                      {!peerWaiting && (
-                        <PhaseHelpPopover
-                          state={state}
-                          decision={decision}
-                          advanceLabel={passHelpAdvanceLabel}
-                          className="action-strip-main-title-help absolute right-2 top-2 z-20"
-                        />
-                      )}
                     </div>
                   )}
                 </div>
-                <PriorityActionStrip
-                  groups={visibleActionGroups}
-                  canAct={canAct}
-                  players={state?.players || []}
-                  perspective={state?.perspective}
-                  decisionPlayer={decision?.player}
-                  className="action-strip-options-region self-stretch"
-                  hasPinnedSelection={selectedObjectId != null}
-                  objectNameById={objectNameById}
-                  objectControllerById={objectControllerById}
-                  hoveredObjectFamilyIds={hoveredObjectFamilyIds}
-                  selectedObjectFamilyIds={selectedObjectFamilyIds}
-                  selectedActionIndices={selectedActionIndices}
-                  onActionClick={triggerPriorityAction}
-                  onActionHoverStart={handleActionHoverStart}
-                  onActionHoverEnd={handleActionHoverEnd}
-                />
               </div>
             )
           ) : (
@@ -2800,10 +2938,15 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
               <div className="action-strip-decision-toolbar flex min-w-0 items-stretch gap-2">
                 <div className="flex min-w-0 flex-1 items-stretch gap-2">
                   {manaPayment ? (
-                    <ManaPaymentToolbarMeta payment={manaPayment} />
+                    <ManaPaymentToolbarMeta
+                      payment={manaPayment}
+                      sourceObjectId={decision?.source_id}
+                      onInspectObject={handleActionCardInspect}
+                    />
                   ) : !triggerOrderingDecision && (
                     <div className="action-strip-decision-meta flex min-w-0 flex-1 flex-col justify-center px-1">
                       <div className="flex min-w-0 items-baseline gap-2">
+                        <span className="decision-stage-chip">{decisionStageLabel(decision)}</span>
                         <div className="action-strip-decision-title text-[11px] font-bold uppercase tracking-[0.14em]">
                           {resolveDecisionTitle(decision)}
                         </div>
@@ -2815,7 +2958,12 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                       </div>
                       {!toolbarDecisionSummary && decision?.source_name && (
                         <div className="action-strip-decision-source truncate text-[11px]">
-                          {normalizeDecisionText(decision.source_name)}
+                          <DecisionCardNameTrigger
+                            objectId={decision?.source_id}
+                            onInspect={handleActionCardInspect}
+                          >
+                            {normalizeDecisionText(decision.source_name)}
+                          </DecisionCardNameTrigger>
                         </div>
                       )}
                     </div>
@@ -2828,50 +2976,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                     "flex min-w-0 shrink-0 items-stretch gap-2",
                     manaPayment ? "max-w-[360px]" : "max-w-[320px]"
                   )}>
-                    <PeerWaitPopover peerWait={peerWait}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className={cn(
-                          "decision-neon-button decision-main-button decision-submit-button h-full self-stretch rounded-none text-[clamp(11px,0.88vw,14px)] font-bold uppercase",
-                          manaPayment
-                            ? "mana-payment-pay-button min-w-[82px] flex-[0.75_1_0] px-2"
-                            : "min-w-[104px] flex-[1.2_1_0] px-3"
-                        )}
-                        style={decisionButtonStyle}
-                        data-local-action={localDecisionButton ? "true" : "false"}
-                        aria-disabled={peerWaitLocked || (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
-                        disabled={peerWaiting ? false : (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
-                        onPointerDown={(event) => {
-                          if (peerWaitLocked) return;
-                          if (showViewedCardsStep) {
-                            if (!canAdvanceViewedCardsStep || event.button !== 0) return;
-                            event.preventDefault();
-                            completeViewedCardsStep();
-                            return;
-                          }
-                          if (!canSubmitFocused || event.button !== 0) return;
-                          event.preventDefault();
-                          effectiveSubmitAction.onSubmit();
-                        }}
-                        onClick={(event) => {
-                          if (peerWaitLocked) return;
-                          if (showViewedCardsStep) {
-                            if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
-                            completeViewedCardsStep();
-                            return;
-                          }
-                          if (!canSubmitFocused || event.detail !== 0) return;
-                          effectiveSubmitAction.onSubmit();
-                        }}
-                      >
-                        {peerWaiting ? (
-                          <PeerWaitButtonContent />
-                        ) : (
-                          showViewedCardsStep ? "Done" : (effectiveSubmitAction?.label || "Submit")
-                        )}
-                      </Button>
-                    </PeerWaitPopover>
+                    {!topbarMainDecisionHost ? renderExpandedPrimaryControl(false) : null}
                     {manaPayment && secondarySubmitAction ? (
                       <Button
                         type="button"
@@ -2915,14 +3020,6 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                     </Button>
                   </div>
                 </div>
-                {!manaPayment ? (
-                  <PriorityControlStack
-                    holdEnabled={holdRule === "always"}
-                    onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
-                    showActionCount={false}
-                    className="ml-auto min-w-[104px]"
-                  />
-                ) : null}
               </div>
               <div className="action-strip-decision-content min-w-0 flex-1 overflow-hidden">
                 {showPeerWaitOpeningPreviews ? (
@@ -2995,7 +3092,8 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
             </div>
           )}
         </div>
-      </div>
+        </div>
+      </>
     );
   }
 
@@ -3097,14 +3195,6 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                         </div>
                       </div>
                     )}
-                    {!peerWaiting && (
-                      <PhaseHelpPopover
-                        state={state}
-                        decision={decision}
-                        advanceLabel={passHelpAdvanceLabel}
-                        className="action-strip-main-title-help absolute right-2 top-2 z-20"
-                      />
-                    )}
                   </div>
                 )}
               </>
@@ -3114,15 +3204,27 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
               <div className="action-strip-decision-stack flex min-w-0 w-full flex-col gap-y-1">
                 <div className="action-strip-decision-toolbar flex min-h-[46px] items-stretch gap-2">
                   {manaPayment ? (
-                    <ManaPaymentToolbarMeta payment={manaPayment} />
+                    <ManaPaymentToolbarMeta
+                      payment={manaPayment}
+                      sourceObjectId={decision?.source_id}
+                      onInspectObject={handleActionCardInspect}
+                    />
                   ) : !triggerOrderingDecision && (
                     <div className="action-strip-decision-meta flex min-w-0 flex-1 flex-col justify-center py-1.5">
-                      <div className="action-strip-decision-title truncate text-[11px] font-bold uppercase tracking-[0.14em]">
-                        {resolveDecisionTitle(decision)}
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="decision-stage-chip">{decisionStageLabel(decision)}</span>
+                        <div className="action-strip-decision-title truncate text-[11px] font-bold uppercase tracking-[0.14em]">
+                          {resolveDecisionTitle(decision)}
+                        </div>
                       </div>
                       {decision?.source_name && (
                         <div className="action-strip-decision-source mt-0.5 truncate text-[11px]">
-                          {normalizeDecisionText(decision.source_name)}
+                          <DecisionCardNameTrigger
+                            objectId={decision?.source_id}
+                            onInspect={handleActionCardInspect}
+                          >
+                            {normalizeDecisionText(decision.source_name)}
+                          </DecisionCardNameTrigger>
                         </div>
                       )}
                     </div>
@@ -3131,6 +3233,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                     "flex min-w-0 shrink-0 items-stretch gap-2",
                     manaPayment ? "max-w-[360px]" : "max-w-[320px]"
                   )}>
+                    {(peerWaiting || showViewedCardsStep || effectiveSubmitAction) ? (
                     <PeerWaitPopover peerWait={peerWait}>
                       <Button
                         variant="ghost"
@@ -3175,6 +3278,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                         )}
                       </Button>
                     </PeerWaitPopover>
+                    ) : null}
                     {manaPayment && secondarySubmitAction ? (
                       <Button
                         type="button"
@@ -3265,6 +3369,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                 onActionClick={triggerPriorityAction}
                 onActionHoverStart={handleActionHoverStart}
                 onActionHoverEnd={handleActionHoverEnd}
+                onActionCardInspect={handleActionCardInspect}
               />
               <PriorityControlStack
                 actionCount={priorityActionCount}
@@ -3470,6 +3575,7 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
 export default function DecisionPopupLayer({
   anchor = null,
   priorityInline = false,
+  replaceMiddleControls = false,
   selectedObjectId = null,
   mobileBattle = false,
   mobileBattlePortalTarget = null,
@@ -3494,11 +3600,25 @@ export default function DecisionPopupLayer({
       />
     );
   } else if (decision?.kind === "priority") {
-    content = <PriorityBar anchor={anchor} inline={priorityInline} selectedObjectId={selectedObjectId} />;
+    content = (
+      <PriorityBar
+        anchor={anchor}
+        inline={priorityInline}
+        replaceMiddleControls={replaceMiddleControls}
+        selectedObjectId={selectedObjectId}
+      />
+    );
   } else if (decision?.kind === "attackers" || decision?.kind === "blockers") {
     content = <CombatBar anchor={anchor} inline={priorityInline} decision={decision} canAct={canAct} />;
   } else {
-    content = <PriorityBar anchor={anchor} inline={priorityInline} selectedObjectId={selectedObjectId} />;
+    content = (
+      <PriorityBar
+        anchor={anchor}
+        inline={priorityInline}
+        replaceMiddleControls={replaceMiddleControls}
+        selectedObjectId={selectedObjectId}
+      />
+    );
   }
 
   return (

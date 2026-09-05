@@ -767,6 +767,7 @@ export default function GameCard({
   bumpDirection = 0,
   variant = "battlefield",
   onClick,
+  onKeyboardActivate,
   onContextMenu,
   onPointerDown,
   onPointerMove,
@@ -788,7 +789,8 @@ export default function GameCard({
   // English name stays the lookup key everywhere (art, mana parsing, DOM
   // attributes); only user-facing labels use the localized name.
   const displayName = useTranslatedCardName(name, card.oracle_id || card.oracleId || null);
-  const artVersion = variant === "hand" ? "normal" : "art_crop";
+  const usePortraitBattlefield = variant === "battlefield" && battlefieldVisualMode === "portrait";
+  const artVersion = variant === "hand" || usePortraitBattlefield ? "normal" : "art_crop";
   const artUrl = useScryfallImageUrl(name, artVersion);
   const imageLoading = variant === "hand" ? "eager" : "lazy";
   const imageFetchPriority = variant === "hand" ? "high" : "auto";
@@ -927,6 +929,7 @@ export default function GameCard({
     && (groupSize > 1 || showDebugSimilarityBadge);
   const debouncedOnClick = debounceClick(onClick);
   const debouncedOnPointerDown = debouncePointerDown(onPointerDown);
+  const keyboardInteractive = Boolean(onKeyboardActivate || onClick);
 
   // Pulse counter badges when the counter signature changes — green for
   // additions, red for removals. Applied via classList so re-renders don't
@@ -1325,6 +1328,7 @@ export default function GameCard({
         "game-card grid content-start",
         useTokenBattlefield ? "p-0.5" : "p-1.5",
         variant === "battlefield" && "field-card",
+        usePortraitBattlefield && "battlefield-portrait-card",
         useTokenBattlefield && "battlefield-token-card",
         variant === "hand" && "hand-card",
         compact && "w-[96px] min-w-[96px] min-h-[134px] p-1 text-[14px]",
@@ -1360,10 +1364,20 @@ export default function GameCard({
       )}
       data-object-id={card.id}
       data-stable-id={stableId}
+      data-member-object-ids={(Array.isArray(card.member_ids) ? card.member_ids : []).join(",")}
       data-member-stable-ids={memberStableIds.join(",")}
       data-card-name={name}
       title={suppressTooltip || variant === "battlefield" ? undefined : (groupSize > 1 ? `${displayName} (${groupSize} grouped permanents)` : displayName)}
+      role={keyboardInteractive ? "button" : undefined}
+      tabIndex={keyboardInteractive ? 0 : undefined}
+      aria-label={keyboardInteractive ? `${displayName}${isPlayable ? ", playable" : ""}` : undefined}
+      aria-pressed={keyboardInteractive && isInspected ? true : undefined}
       onClick={debouncedOnClick}
+      onKeyDown={(event) => {
+        if (!keyboardInteractive || (event.key !== "Enter" && event.key !== " ")) return;
+        event.preventDefault();
+        (onKeyboardActivate || onClick)?.(event);
+      }}
       onContextMenu={onContextMenu}
       onPointerDown={debouncedOnPointerDown}
       onPointerMove={onPointerMove}
@@ -1422,7 +1436,7 @@ export default function GameCard({
           <img
             className={cn(
               "absolute inset-0 w-full h-full z-0 pointer-events-none",
-              variant === "hand" ? "object-cover object-top" : "object-fill",
+              variant === "hand" || usePortraitBattlefield ? "object-cover object-top" : "object-fill",
               artTreatmentClass,
             )}
             src={artUrl}

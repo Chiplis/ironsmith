@@ -1722,12 +1722,6 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   border-radius: 0;
 }
 
-.hand-reveal-shell[data-open="false"] .game-card.hand-card:not(.inspected) {
-  height: 46px !important;
-  min-height: 46px !important;
-  max-height: 46px !important;
-}
-
 .hand-reveal-shell[data-open="false"] .hand-zone-surface-mobile-fan .game-card.hand-card.inspected {
   transform:
     translate3d(

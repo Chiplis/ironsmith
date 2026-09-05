@@ -4,8 +4,10 @@ import useViewportLayout from "@/hooks/useViewportLayout";
 import { formatPhase, formatStep } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import PhaseTrack from "@/components/board/PhaseTrack";
+import DecisionPopupLayer from "@/components/overlays/DecisionPopupLayer";
 import { Bug, ChevronLeft, ChevronRight, Clock3, Github, ScrollText, WifiOff } from "lucide-react";
 import TopbarMenuSheet from "./TopbarMenuSheet";
+import { DEFAULT_PLAYER_ACCENT, getPlayerAccent } from "@/lib/player-colors";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 import { useI18n } from "@/i18n/I18nContext";
 
@@ -54,10 +56,12 @@ export default function Topbar({
   setMobileOpponentIndex,
   mobileOverlay = false,
   middleDocked = false,
+  onChangePerspective,
 }) {
   const {
     inspectorDebug,
     multiplayer,
+    playerAccentOverrides,
     setInspectorDebug,
     state,
   } = useGame();
@@ -67,7 +71,19 @@ export default function Topbar({
 
   const players = state?.players || [];
   const activePlayer = players.find((player) => samePlayerId(player.id, state?.active_player)) || null;
+  const priorityPlayer = players.find((player) => samePlayerId(player.id, state?.priority_player)) || null;
+  const decisionPlayer = state?.decision?.player != null
+    ? players.find((player) => samePlayerId(player.id, state.decision.player)) || null
+    : null;
+  const decisionOwnerDiffersFromPriority = decisionPlayer
+    && (!priorityPlayer || !samePlayerId(decisionPlayer.id, priorityPlayer.id));
   const me = players.find((player) => samePlayerId(player.id, state?.perspective)) || players[0];
+  const perspectiveAccent = getPlayerAccent(
+    players,
+    me?.id,
+    state?.perspective,
+    playerAccentOverrides
+  ) || DEFAULT_PLAYER_ACCENT;
   const meIndex = players.findIndex((player) => samePlayerId(player.id, me?.id));
   const orderedPlayers = meIndex >= 0
     ? [...players.slice(meIndex), ...players.slice(0, meIndex)]
@@ -95,8 +111,6 @@ export default function Topbar({
       return nextIndex;
     });
   };
-  const phaseSummary = `${formatPhase(state?.phase)}${state?.step ? ` • ${formatStep(state?.step)}` : ""}`;
-  const compactPhaseLabel = formatStep(state?.step) || formatPhase(state?.phase) || "Phase";
   const connectionWarnings = multiplayer?.connectionWarnings || [];
   const matchClock = multiplayer?.matchClock || multiplayer?.actionTimer || null;
   const matchClockEntries = Array.isArray(matchClock?.remainingMsByPlayer)
@@ -281,9 +295,26 @@ export default function Topbar({
       data-viewport-tier={viewportTier}
     >
       <div className="topbar-side-cluster topbar-side-cluster--left min-w-0">
-        <h1 className="toolbar-brand topbar-brand m-0 whitespace-nowrap font-bold">
-          Ironsmith
-        </h1>
+        {showCenterLane ? (
+          <div
+            className="topbar-main-decision-host relative shrink-0 overflow-visible"
+            data-topbar-main-decision-host="true"
+            style={{
+              "--topbar-decision-accent": perspectiveAccent.hex,
+              "--topbar-decision-rgb": perspectiveAccent.rgb,
+            }}
+          >
+            {state?.decision?.kind === "priority" ? (
+              <div className="table-action-bar relative h-full w-full rounded-none border">
+                <DecisionPopupLayer priorityInline />
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <h1 className="toolbar-brand topbar-brand m-0 whitespace-nowrap font-bold">
+            Ironsmith
+          </h1>
+        )}
         {multiplayer?.matchStarted && offlinePlayers.length > 0 ? (
           <button
             type="button"
@@ -325,10 +356,53 @@ export default function Topbar({
             </span>
           </div>
         ) : null}
-        {showInlineControls ? utilityControls : null}
         {showCenterLane ? (
           <div className="topbar-phase-shell">
-            <PhaseTrack compact={middleDocked} />
+            <PhaseTrack compact={middleDocked} showBrand />
+            <div
+              className="topbar-phase-status"
+              aria-label={t("game.currentTurnSummary")}
+            >
+              <span>{t("game.turn", { turn: state?.turn_number ?? "-" })}</span>
+              {activePlayer ? (
+                <>
+                  <span className="topbar-phase-status-dot" aria-hidden="true">•</span>
+                  <span>{t("game.activePlayer", { player: playerDisplayName(players, activePlayer) })}</span>
+                </>
+              ) : null}
+              {decisionOwnerDiffersFromPriority ? (
+                <>
+                  <span className="topbar-phase-status-dot" aria-hidden="true">•</span>
+                  <span>{t("game.decisionPlayer", { player: playerDisplayName(players, decisionPlayer) })}</span>
+                </>
+              ) : priorityPlayer ? (
+                <>
+                  <span className="topbar-phase-status-dot" aria-hidden="true">•</span>
+                  <span>{t("game.priorityPlayer", { player: playerDisplayName(players, priorityPlayer) })}</span>
+                </>
+              ) : null}
+              {players.length > 0 ? (
+                <>
+                  <span className="topbar-phase-status-dot" aria-hidden="true">•</span>
+                  <label className="topbar-phase-perspective">
+                    <span>{t("action.playingAs")}</span>
+                    <select
+                      className="stone-select topbar-phase-perspective-select"
+                      value={state?.perspective ?? me?.id ?? 0}
+                      disabled={multiplayer.matchStarted}
+                      onChange={(event) => onChangePerspective?.(Number(event.target.value))}
+                      aria-label={t("action.playingAs")}
+                    >
+                      {players.map((player) => (
+                        <option key={player.id} value={player.id}>
+                          {playerDisplayName(players, player)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              ) : null}
+            </div>
           </div>
         ) : null}
         {showCompactPhase ? (
@@ -392,11 +466,9 @@ export default function Topbar({
         ) : null}
       </div>
 
-      {!showInlineControls ? (
-        <div className="topbar-side-cluster topbar-side-cluster--right">
-          {utilityControls}
-        </div>
-      ) : null}
+      <div className="topbar-side-cluster topbar-side-cluster--right">
+        {utilityControls}
+      </div>
     </header>
   );
 }

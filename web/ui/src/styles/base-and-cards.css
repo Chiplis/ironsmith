@@ -101,15 +101,33 @@
   --game-panel-2: #3a2916;
   --game-line: #6b4f2c;
   --game-line-2: #4a3520;
-  --player-accent: #731bde;
-  --player-accent-rgb: 115, 27, 222;
-  --panel-accent: #731bde;
-  --decision-main-accent: #731bde;
-  --decision-main-rgb: 115, 27, 222;
+  --player-accent: #b79cff;
+  --player-accent-rgb: 183, 156, 255;
+  --panel-accent: #d4a44a;
+  --decision-main-accent: #d4a44a;
+  --decision-main-rgb: 212, 164, 74;
+
+  /* Stable interaction semantics. Player identity never changes these roles. */
+  --game-action: #d4a44a;
+  --game-action-rgb: 212, 164, 74;
+  --game-target: #67c7ff;
+  --game-target-rgb: 103, 199, 255;
+  --game-selected: #7fd39a;
+  --game-selected-rgb: 127, 211, 154;
+  --game-attack: #ff6b5f;
+  --game-attack-rgb: 255, 107, 95;
+  --game-warning: #e8a23a;
+  --game-surface-0: #0f0d0a;
+  --game-surface-1: #17130e;
+  --game-surface-2: #211a12;
+  --game-surface-3: #2b2218;
+  --game-text-1: #f4ead2;
+  --game-text-2: #cfc0a0;
+  --game-text-3: #94876f;
 
   /* UI typography */
-  --ironsmith-ui-font: "Alegreya Sans SC", "Avenir Next", "Segoe UI", system-ui, sans-serif;
-  --font-heading: var(--ironsmith-ui-font);
+  --ironsmith-ui-font: "Rajdhani", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --font-heading: "Alegreya Sans SC", Georgia, serif;
   --font-body-fantasy: var(--ironsmith-ui-font);
 }
 
@@ -3436,4 +3454,3 @@
 .game-card.field-card.card-circuit-replaces-glow .card-circuit-edge {
   opacity: 0.9;
 }
-

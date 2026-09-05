@@ -252,6 +252,7 @@ pub mod search_library_support;
 pub mod static_ability_helpers;
 
 pub mod front_end_parser_support;
+pub mod overlap_ledger;
 pub mod parse_ledger;
 pub mod parser_support;
 pub mod preprocess;

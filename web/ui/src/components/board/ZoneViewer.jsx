@@ -7,7 +7,6 @@ const VIEWABLE_ZONES = [
   { id: "graveyard", label: "GY", i18nKey: "zone.graveyard" },
   { id: "exile", label: "Exile", i18nKey: "zone.exile" },
   { id: "command", label: "CZ", i18nKey: "zone.command" },
-  { id: "ante", label: "Ante", i18nKey: "zone.ante" },
 ];
 
 const TOGGLEABLE_ZONES = VIEWABLE_ZONES.filter((zone) => zone.id !== "battlefield");
@@ -19,8 +18,10 @@ function normalizeZones(zones) {
 }
 
 export default function ZoneViewer({
+  player = null,
   zoneViews = ["battlefield"],
   setZoneViews,
+  onOpenDecklist = null,
   embedded = false,
 }) {
   const { t } = useI18n();
@@ -36,6 +37,24 @@ export default function ZoneViewer({
     }
     setZoneViews([...activeZones, zoneId]);
   };
+
+  const countForZone = (zoneId) => {
+    if (!player) return null;
+    if (zoneId === "hand") return player.hand_size ?? 0;
+    if (zoneId === "graveyard") return player.graveyard_size ?? 0;
+    if (zoneId === "exile") return Array.isArray(player.exile_cards) ? player.exile_cards.length : 0;
+    if (zoneId === "command") {
+      return player.command_size ?? (Array.isArray(player.command_cards) ? player.command_cards.length : 0);
+    }
+    return null;
+  };
+  const battlefieldCount = Array.isArray(player?.battlefield)
+    ? player.battlefield.reduce((total, card) => {
+      const count = Number(card?.count);
+      return total + (Number.isFinite(count) && count > 1 ? count : 1);
+    }, 0)
+    : null;
+  const libraryCount = player ? (player.library_size ?? 0) : null;
 
   const zonesContent = (
     <div className="flex items-center gap-2 shrink-0">
@@ -62,9 +81,15 @@ export default function ZoneViewer({
           <circle cx="12.9" cy="11.1" r="0.8" fill="#fff4d5" fillOpacity="0.72" />
         </svg>
       </span>
+      {battlefieldCount != null ? (
+        <span className="zone-viewer-core-count" title="Battlefield cards">
+          BF <strong className="tabular-nums">{battlefieldCount}</strong>
+        </span>
+      ) : null}
       <div className="flex items-center gap-2 flex-wrap">
         {TOGGLEABLE_ZONES.map((zone) => {
           const checked = activeZones.includes(zone.id);
+          const count = countForZone(zone.id);
           return (
             <label
               key={zone.id}
@@ -78,10 +103,26 @@ export default function ZoneViewer({
                 onCheckedChange={() => toggleZone(zone.id)}
               />
               {t(zone.i18nKey, null, zone.label)}
+              {count != null ? <span className="zone-viewer-count tabular-nums">{count}</span> : null}
             </label>
           );
         })}
       </div>
+      {libraryCount != null ? (
+        <button
+          type="button"
+          className="zone-viewer-core-count zone-viewer-core-count--button"
+          title={typeof onOpenDecklist === "function" ? "Open decklist" : "Library cards"}
+          onClick={(event) => {
+            if (typeof onOpenDecklist !== "function") return;
+            event.preventDefault();
+            event.stopPropagation();
+            onOpenDecklist(player);
+          }}
+        >
+          Deck <strong className="tabular-nums">{libraryCount}</strong>
+        </button>
+      ) : null}
     </div>
   );
 

@@ -1682,6 +1682,17 @@ impl Effect {
         self.0.modal_effect_spec()
     }
 
+    /// Return the casting-time modal specification after evaluating wrappers
+    /// whose active branch depends on the current game state.
+    pub fn modal_spec_with_context(
+        &self,
+        game: &GameState,
+        controller: PlayerId,
+        source: ObjectId,
+    ) -> Option<crate::effects::ModalSpec> {
+        self.0.get_modal_spec_with_context(game, controller, source)
+    }
+
     /// Return true when this effect only prepares resolution context.
     pub fn is_resolution_prelude(&self) -> bool {
         self.0.is_resolution_prelude()

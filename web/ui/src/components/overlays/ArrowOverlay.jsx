@@ -306,7 +306,7 @@ export default function ArrowOverlay() {
 
   return (
     <svg
-      className="fixed inset-0 isolate w-full h-full z-[90] pointer-events-none"
+      className="action-arrow-overlay fixed inset-0 isolate h-full w-full pointer-events-none"
       style={{ overflow: "visible" }}
     >
       <defs>
@@ -355,7 +355,7 @@ export default function ArrowOverlay() {
           stroke={p.color}
           strokeWidth={2.5}
           strokeLinecap="round"
-          strokeDasharray={ARROW_DASH_ARRAY}
+          strokeDasharray={p.key.startsWith("atk-") || p.key.startsWith("blk-") ? ARROW_DASH_ARRAY : undefined}
           opacity={TARGETING_ARROW_OPACITY}
           markerEnd="url(#arrowhead-confirmed)"
         />
@@ -369,7 +369,12 @@ export default function ArrowOverlay() {
           stroke={dragPath.color}
           strokeWidth={3}
           strokeLinecap="round"
-          strokeDasharray={ARROW_DASH_ARRAY}
+          strokeDasharray={[
+            "#ff6b5f",
+            "#ff8b63",
+            "#ff3b30",
+            "#3b82f6",
+          ].includes(String(dragPath.color || "").toLowerCase()) ? ARROW_DASH_ARRAY : undefined}
           filter="url(#arrow-glow)"
           opacity={TARGETING_ARROW_OPACITY}
           markerEnd="url(#arrowhead-drag)"

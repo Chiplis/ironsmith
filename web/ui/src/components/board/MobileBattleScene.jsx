@@ -399,13 +399,14 @@ export default function MobileBattleScene({
     const onMobileCardActions = (event) => {
       const detail = event?.detail || null;
       const actions = Array.isArray(detail?.actions) ? detail.actions : [];
-      if (!detail || actions.length === 0) return;
+      if (!detail || actions.length <= 1) return;
       if (selectedObjectId != null || state?.decision?.kind !== "priority") return;
       setActionPopoverState({
         objectId: Number(detail.objectId),
         cardName: detail.cardName || "Actions",
         anchorRect: detail.anchorRect || null,
         actions,
+        collapseEquivalentActions: false,
         decisionIdentity,
       });
     };
@@ -822,6 +823,7 @@ export default function MobileBattleScene({
               height: 0,
             }}
             actions={actionPopoverState.actions}
+            collapseEquivalentActions={actionPopoverState.collapseEquivalentActions !== false}
             title={actionPopoverState.cardName}
             variant="game"
             onAction={handlePopoverAction}

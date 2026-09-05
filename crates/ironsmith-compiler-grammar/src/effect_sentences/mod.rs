@@ -80,6 +80,8 @@ mod creation_handlers;
 #[path = "delegated_partition.rs"]
 mod delegated_partition_programs;
 mod dispatch_entry;
+mod document_readings;
+mod statement_readings;
 mod dispatch_inner;
 mod divvy;
 mod fanout_family;

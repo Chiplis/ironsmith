@@ -34,6 +34,21 @@ const MODULE_SIZE_BUDGET: usize = 89;
 /// the sample keeps the gate fast and is deterministic.
 const REDUNDANT_PARSE_BUDGET: usize = 0;
 
+/// First-match ladders in production parser modules: runs of three or more
+/// `if` statements that each try a recognizer and return on its match, so the
+/// order they are written in decides the language wherever two accept the same
+/// input. Item 4 tables each ladder as a registry that collects candidates.
+const FIRST_MATCH_LADDER_BUDGET: usize = 176;
+
+/// Registries that still resolve by registration order while their overlaps
+/// are being resolved. Each flips to strict ambiguity-aware resolution when its
+/// overlaps on the corpus reach zero.
+const RANKED_REGISTRY_BUDGET: usize = 6;
+
+/// Inputs on which a ranked registry's order, not its grammar, chose the
+/// reading, over every 50th card.
+const REGISTRY_OVERLAP_BUDGET: usize = 34;
+
 fn audit_output(binary: &str, arguments: &[&str]) -> String {
     let root = workspace_root();
     let output = Command::new(binary)
@@ -114,5 +129,33 @@ pub(super) fn redundant_parse_audit_is_enforced() {
         "redundant-parse",
         reported_count(&report, "redundant parses:"),
         REDUNDANT_PARSE_BUDGET,
+    );
+}
+
+#[test]
+pub(super) fn first_match_ladder_audit_is_enforced() {
+    let report = audit_output(env!("CARGO_BIN_EXE_audit_first_match_ladders"), &[]);
+    assert_within_budget(
+        "first-match-ladder",
+        reported_count(&report, "first-match ladders:"),
+        FIRST_MATCH_LADDER_BUDGET,
+    );
+}
+
+#[test]
+pub(super) fn ranked_registry_audit_is_enforced() {
+    let report = audit_output(
+        env!("CARGO_BIN_EXE_audit_registry_overlaps"),
+        &["--every", "50"],
+    );
+    assert_within_budget(
+        "ranked-registry",
+        reported_count(&report, "ranked registries:"),
+        RANKED_REGISTRY_BUDGET,
+    );
+    assert_within_budget(
+        "registry-overlap",
+        reported_count(&report, "registry overlaps:"),
+        REGISTRY_OVERLAP_BUDGET,
     );
 }

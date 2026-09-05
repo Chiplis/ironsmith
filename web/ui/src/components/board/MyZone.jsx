@@ -90,7 +90,6 @@ function shouldShowZoneBody(player, entry, activity = null) {
 function zoneCounts(player) {
   const exileCards = Array.isArray(player.exile_cards) ? player.exile_cards : [];
   const commandCards = Array.isArray(player.command_cards) ? player.command_cards : [];
-  const anteCards = Array.isArray(player.ante_cards) ? player.ante_cards : [];
   const battlefieldCount = (player.battlefield || []).reduce((total, card) => {
     const count = Number(card.count);
     return total + (Number.isFinite(count) && count > 1 ? count : 1);
@@ -103,7 +102,6 @@ function zoneCounts(player) {
     { label: "Deck", title: "Library", zone: "library", count: player.library_size ?? 0 },
     { label: "Exl", title: "Exile", zone: "exile", count: exileCards.length },
     { label: "CZ", title: "Command Zone", zone: "command", count: player.command_size ?? commandCards.length },
-    { label: "Ante", title: "Ante", zone: "ante", count: player.ante_size ?? anteCards.length },
   ];
 }
 
@@ -155,8 +153,10 @@ function buildActivatableMap(decision, perspective) {
   return activatableMap;
 }
 
-export function ZoneCountInline({ player, onOpenDecklist = null }) {
-  const counts = zoneCounts(player);
+export function ZoneCountInline({ player, onOpenDecklist = null, includeZones = null }) {
+  const counts = zoneCounts(player).filter((entry) => (
+    !Array.isArray(includeZones) || includeZones.includes(entry.zone)
+  ));
   const libraryTopName = player?.can_view_library_top ? String(player?.library_top || "Empty") : "";
   return (
     <div className="battlefield-counts flex items-center gap-2 text-[11px] uppercase tracking-wide text-[#8ea8c8] whitespace-nowrap">
@@ -268,6 +268,8 @@ export default function MyZone({
   onOpenDecklist = null,
   onMobileCardActionMenu = null,
   onMobileCardLongPress = null,
+  tableGridRow = null,
+  battlefieldTopInset = 0,
 }) {
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const { state, playerAccentOverrides } = useGame();
@@ -554,6 +556,7 @@ export default function MyZone({
           "--player-accent-rgb": (playerAccent || DEFAULT_PLAYER_ACCENT).rgb,
         }}
         data-my-zone
+        data-player-drop-target={player.id}
       >
         {overlayZoneEntries.length > 0 ? (
           <div className="mobile-battle-inline-overlays">
@@ -596,6 +599,7 @@ export default function MyZone({
               legalTargetObjectIds={legalTargetObjectIds}
               bottomSafeInset={84}
               bottomOcclusionViewportTop={mobileHandOcclusionViewportTop}
+              enablePlacementPreview
             />
           </div>
         </div>
@@ -640,6 +644,7 @@ export default function MyZone({
     <section
       className="board-zone-bg battlefield-panel battlefield-panel--self relative z-[28] min-h-0 h-full overflow-visible grid p-0"
       style={{
+        gridRow: tableGridRow || undefined,
         gridTemplateRows: hasHeaderActionBar
           ? "auto minmax(0,1fr)"
           : (showHeader ? `${MY_ZONE_HEADER_HEIGHT}px minmax(0,1fr)` : "minmax(0,1fr)"),
@@ -649,6 +654,7 @@ export default function MyZone({
         "--player-accent-rgb": (playerAccent || DEFAULT_PLAYER_ACCENT).rgb,
       }}
       data-my-zone
+      data-player-drop-target={player.id}
       data-header-hidden={showHeader ? "false" : "true"}
       data-tools-expanded={zoneActionControls ? "true" : "false"}
     >
@@ -932,6 +938,7 @@ export default function MyZone({
                   cards={displayCards}
                   compact={entry.zone !== "battlefield"}
                   battlefieldSide="bottom"
+                  topSafeInset={entry.zone === "battlefield" ? battlefieldTopInset : 0}
                   alignStart={mergedMobileHeader && entry.zone === "battlefield"}
                   bottomSafeInset={mergedMobileHeader && entry.zone === "battlefield" ? 0 : undefined}
                   selectedObjectId={selectedObjectId}
@@ -942,6 +949,7 @@ export default function MyZone({
                   activatableMap={activatableMap}
                   legalTargetObjectIds={legalTargetObjectIds}
                   allowVerticalScroll={entry.zone === "hand"}
+                  enablePlacementPreview={entry.zone === "battlefield"}
                 />
               </div>
             </div>

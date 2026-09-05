@@ -2,11 +2,21 @@ import { useRef, useLayoutEffect, useEffect, useCallback, useMemo, useState } fr
 import { Undo2 } from "lucide-react";
 import { useHover } from "@/context/HoverContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
+import {
+  placementSlotForCard,
+  useDragActions,
+  useDragState,
+  usePendingPlacement,
+  usePlacementActions,
+  usePlacementSlots,
+} from "@/context/DragContext";
 import { useGame } from "@/context/GameContext";
 import useNewCards from "@/hooks/useNewCards";
 import { cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
 import {
   ALL_PAPER_LANES,
+  battlefieldGridSlotAtPoint,
+  battlefieldPlacementForDrag,
   PAPER_BACK_LANES,
   PAPER_FRONT_LANES,
   normalizeBattlefieldLane,
@@ -27,6 +37,9 @@ const BATTLEFIELD_LAYOUT_SETTLE_MIN_MS = 180;
 const BATTLEFIELD_LAYOUT_SETTLE_MAX_MS = 380;
 const GHOST_BASE_ANIMATION_MS = 520;
 const MAX_BATTLEFIELD_CARD_ZONE_WIDTH_RATIO = 0.155;
+const DESKTOP_PORTRAIT_CARD_ASPECT = 63 / 88;
+const DESKTOP_PORTRAIT_MAX_WIDTH_PX = 72;
+const DESKTOP_PORTRAIT_MAX_ZONE_WIDTH_RATIO = 0.1;
 const BATTLEFIELD_GRID_GAP_PX = 4;
 const COMPACT_SCROLL_COLUMN_MAX_WIDTH = 200;
 const ABSOLUTE_MIN_CARD_WIDTH = 10;
@@ -43,6 +56,8 @@ const MOBILE_BOTTOM_BACK_ROW_SCALE = 0.96;
 const MOBILE_BOTTOM_DOCK_CLEARANCE_PX = 10;
 const MOBILE_BATTLEFIELD_TOKEN_HIT_SLOP_X = 16;
 const MOBILE_BATTLEFIELD_TOKEN_HIT_SLOP_Y = 16;
+const BATTLEFIELD_MOVE_DRAG_DISTANCE_SQ = 6 * 6;
+const BATTLEFIELD_MOVE_CLICK_SUPPRESS_MS = 700;
 
 function buildPaperRowGroups(battlefieldSide, buckets, options = {}) {
   const singleRow = options.singleRow === true;
@@ -82,25 +97,25 @@ function buildPaperRowGroups(battlefieldSide, buckets, options = {}) {
         id: "front",
         lanes: PAPER_FRONT_LANES,
         rowCount: rowsForCardCount(frontCount),
-        minSlotsPerRow: EMPTY_PAPER_SLOT_COLUMNS,
+        minSlotsPerRow,
       },
       {
         id: "back",
         lanes: PAPER_BACK_LANES,
         rowCount: rowsForCardCount(backCount),
-        minSlotsPerRow: EMPTY_PAPER_SLOT_COLUMNS,
+        minSlotsPerRow,
       },
     ];
   }
 
   return shouldSplitOpponentRows
     ? [
-      { id: "front", lanes: PAPER_FRONT_LANES, rowCount: 2, minSlotsPerRow: EMPTY_PAPER_SLOT_COLUMNS },
-      { id: "back", lanes: PAPER_BACK_LANES, rowCount: 2, minSlotsPerRow: EMPTY_PAPER_SLOT_COLUMNS },
+      { id: "front", lanes: PAPER_FRONT_LANES, rowCount: 2, minSlotsPerRow },
+      { id: "back", lanes: PAPER_BACK_LANES, rowCount: 2, minSlotsPerRow },
     ]
     : [
-      { id: "front", lanes: PAPER_FRONT_LANES, rowCount: 1, minSlotsPerRow: EMPTY_PAPER_SLOT_COLUMNS },
-      { id: "back", lanes: PAPER_BACK_LANES, rowCount: 1, minSlotsPerRow: EMPTY_PAPER_SLOT_COLUMNS },
+      { id: "front", lanes: PAPER_FRONT_LANES, rowCount: 1, minSlotsPerRow },
+      { id: "back", lanes: PAPER_BACK_LANES, rowCount: 1, minSlotsPerRow },
     ];
 }
 
@@ -113,6 +128,39 @@ function splitCardsIntoRows(cards, rowCount) {
     rows[rowIndex].push(cards[index]);
   }
   return rows;
+}
+
+function applyRememberedPlacementSlots(cards, gridPositionById, placementSlots, rowCount, maxCols) {
+  if (!placementSlots?.size) return;
+  for (const card of cards) {
+    const desired = placementSlotForCard(placementSlots, card);
+    if (
+      !desired
+      || desired.row < 1
+      || desired.row > rowCount
+      || desired.column < 1
+      || desired.column > maxCols
+    ) {
+      continue;
+    }
+
+    const cardId = String(card.id);
+    const current = gridPositionById.get(cardId);
+    const occupant = cards.find((candidate) => {
+      if (String(candidate.id) === cardId) return false;
+      const position = gridPositionById.get(String(candidate.id));
+      return position?.row === desired.row && position?.column === desired.column;
+    });
+
+    if (occupant && current) {
+      gridPositionById.set(String(occupant.id), { ...current });
+    }
+    gridPositionById.set(cardId, {
+      row: desired.row,
+      column: desired.column,
+      groupId: desired.row === 1 ? "front" : "back",
+    });
+  }
 }
 
 function buildPaperBattlefieldLayout(cards, battlefieldSide, alignStart = false, options = {}) {
@@ -158,6 +206,14 @@ function buildPaperBattlefieldLayout(cards, battlefieldSide, alignStart = false,
       });
     });
   });
+
+  applyRememberedPlacementSlots(
+    cards,
+    gridPositionById,
+    options.placementSlots,
+    orderedRows.length,
+    maxCols
+  );
 
   return {
     orderedCards,
@@ -807,6 +863,7 @@ export default function BattlefieldRow({
   paperLayoutMode = "default",
   paperMinSlotsPerRow = null,
   layoutOverride = null,
+  topSafeInset = 0,
   bottomSafeInset = BOTTOM_BATTLEFIELD_SAFE_INSET,
   bottomOcclusionViewportTop = null,
   selectedObjectId,
@@ -819,6 +876,7 @@ export default function BattlefieldRow({
   legalTargetObjectIds = new Set(),
   allowVerticalScroll = false,
   forceSingleColumn = false,
+  enablePlacementPreview = false,
 }) {
   const rowRef = useRef(null);
   const previousCardsRef = useRef(cards);
@@ -832,11 +890,17 @@ export default function BattlefieldRow({
   const pendingLayoutSettlePositionsRef = useRef(null);
   const layoutHoldTimersRef = useRef(new Map());
   const { state, cancelDecision } = useGame();
+  const dragState = useDragState();
+  const { startDrag, updateDrag, endDrag } = useDragActions();
+  const pendingPlacement = usePendingPlacement();
+  const placementSlots = usePlacementSlots();
+  const { commitPlacementSlot } = usePlacementActions();
   const { hoverCard, clearHover, hoveredObjectId, hoveredLinkedObjectIds } = useHover();
   const { combatMode, combatModeRef, dragArrow, startDragArrow, updateDragArrow, endDragArrow } = useCombatArrows();
   const [ghosts, setGhosts] = useState([]);
   const [layoutHolds, setLayoutHolds] = useState([]);
   const [processedLayoutSnapshotId, setProcessedLayoutSnapshotId] = useState(null);
+  const [paperColumnCapacity, setPaperColumnCapacity] = useState(EMPTY_PAPER_SLOT_COLUMNS);
   const isPaperBattlefieldLayout = !compact;
   const isMobileBattleTopLayout = paperLayoutMode === "mobile-battle-top";
   const isMobileBattleBottomLayout = paperLayoutMode === "mobile-battle-bottom";
@@ -864,7 +928,35 @@ export default function BattlefieldRow({
     || isMobileBattleBottomLayout
     || isMobileBattleSingleRowLayout
   );
+  const useDesktopPortraitBattlefield = isPaperBattlefieldLayout && !useMobileBattlefieldToken;
   const suppressTooltip = isMobileBattleTopLayout || isMobileBattleBottomLayout || isMobileBattleSingleRowLayout;
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    if (!row || !useDesktopPortraitBattlefield || typeof window === "undefined") return undefined;
+    let frame = 0;
+    const measure = () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        const width = row.clientWidth;
+        const next = Math.max(
+          EMPTY_PAPER_SLOT_COLUMNS,
+          Math.floor((width + BATTLEFIELD_GRID_GAP_PX) / (DESKTOP_PORTRAIT_MAX_WIDTH_PX + BATTLEFIELD_GRID_GAP_PX))
+        );
+        setPaperColumnCapacity((current) => (current === next ? current : next));
+      });
+    };
+    measure();
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    observer?.observe(row);
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      observer?.disconnect();
+    };
+  }, [useDesktopPortraitBattlefield]);
+  const paperGridMinSlots = useDesktopPortraitBattlefield
+    ? Math.max(Number(paperMinSlotsPerRow) || 0, paperColumnCapacity)
+    : paperMinSlotsPerRow;
   const currentSnapshotId = state?.snapshot_id ?? null;
   const immediateLayoutHolds = useMemo(
     () => (
@@ -888,6 +980,36 @@ export default function BattlefieldRow({
     () => [...layoutHolds, ...immediateLayoutHolds],
     [immediateLayoutHolds, layoutHolds]
   );
+  const livePermanentPlacement = useMemo(
+    () => battlefieldPlacementForDrag({
+      actions: dragState?.actions,
+      card: dragState?.card,
+    }),
+    [dragState?.actions, dragState?.card]
+  );
+  const pendingPermanentPlacement = useMemo(
+    () => battlefieldPlacementForDrag({
+      actions: pendingPlacement?.actions,
+      card: pendingPlacement?.card,
+    }),
+    [pendingPlacement?.actions, pendingPlacement?.card]
+  );
+  const stagedPlacementSlot = enablePlacementPreview
+    && battlefieldSide === "bottom"
+    && pendingPermanentPlacement
+      ? pendingPlacement?.slot || null
+      : null;
+  const heldPermanentPlacement = livePermanentPlacement || pendingPermanentPlacement;
+  const isBattlefieldMoveDrag = livePermanentPlacement?.kind === "move_battlefield";
+  const pointerInsideBattlefield = useMemo(() => {
+    if (stagedPlacementSlot) return true;
+    if (!enablePlacementPreview || !heldPermanentPlacement || !rowRef.current) return false;
+    const x = Number(dragState?.currentX);
+    const y = Number(dragState?.currentY);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    const rect = rowRef.current.getBoundingClientRect();
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+  }, [dragState?.currentX, dragState?.currentY, enablePlacementPreview, heldPermanentPlacement, stagedPlacementSlot]);
   const layoutCards = useMemo(
     () => mergeBattlefieldLayoutHolds(
       cards,
@@ -907,10 +1029,11 @@ export default function BattlefieldRow({
           : paperLayoutMode === "mobile-battle-bottom"
             ? "bottom-dense"
             : "default",
-      minSlotsPerRow: paperMinSlotsPerRow,
+      minSlotsPerRow: paperGridMinSlots,
       denseLayout: usesDensePaperLayout,
+      placementSlots,
     }),
-    [alignStart, battlefieldSide, layoutCards, paperLayoutMode, paperMinSlotsPerRow, usesDensePaperLayout]
+    [alignStart, battlefieldSide, layoutCards, paperGridMinSlots, paperLayoutMode, placementSlots, usesDensePaperLayout]
   );
   const shouldFreezePaperLayout = isPaperBattlefieldLayout && activeLayoutHolds.length > 0;
   const frozenSourcePaperLayout = useMemo(
@@ -924,12 +1047,13 @@ export default function BattlefieldRow({
               : paperLayoutMode === "mobile-battle-bottom"
                 ? "bottom-dense"
                 : "default",
-          minSlotsPerRow: paperMinSlotsPerRow,
+          minSlotsPerRow: paperGridMinSlots,
           denseLayout: usesDensePaperLayout,
+          placementSlots,
         })
         : null
     ),
-    [alignStart, battlefieldSide, paperLayoutMode, paperMinSlotsPerRow, shouldFreezePaperLayout, usesDensePaperLayout]
+    [alignStart, battlefieldSide, paperGridMinSlots, paperLayoutMode, placementSlots, shouldFreezePaperLayout, usesDensePaperLayout]
   );
   const paperLayout = useMemo(
     () => (
@@ -944,6 +1068,104 @@ export default function BattlefieldRow({
     [computedPaperLayout, frozenSourcePaperLayout, layoutCards, shouldFreezePaperLayout]
   );
   const displayCards = isPaperBattlefieldLayout ? paperLayout.orderedCards : layoutCards;
+  const occupiedPaperSlots = useMemo(() => {
+    const occupied = new Set();
+    for (const card of displayCards) {
+      const position = paperLayout.gridPositionById.get(String(card?.id));
+      if (position) occupied.add(`${position.row}:${position.column}`);
+    }
+    return occupied;
+  }, [displayCards, paperLayout.gridPositionById]);
+  const resolvePlacementGridSlot = useCallback((x, y, options = {}) => {
+    if (!rowRef.current || !isPaperBattlefieldLayout) return null;
+    const row = rowRef.current;
+    const rect = row.getBoundingClientRect();
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return null;
+    const styles = window.getComputedStyle(row);
+    const cardWidth = Number.parseFloat(styles.getPropertyValue("--bf-card-width")) || 72;
+    const cardHeight = Number.parseFloat(styles.getPropertyValue("--bf-card-height")) || 101;
+    const gap = Number.parseFloat(styles.getPropertyValue("--bf-gap")) || BATTLEFIELD_GRID_GAP_PX;
+    const overlap = Number.parseFloat(styles.getPropertyValue("--bf-card-overlap")) || 0;
+    const slot = battlefieldGridSlotAtPoint({
+      x,
+      y,
+      left: rect.left,
+      top: rect.top + Math.max(0, Number(topSafeInset) || 0),
+      width: rect.width,
+      rows: paperLayout.rowCount,
+      columns: paperLayout.maxCols,
+      cardWidth,
+      cardHeight,
+      gap,
+      overlap,
+    });
+    if (!slot || (!options.allowOccupied && occupiedPaperSlots.has(`${slot.row}:${slot.column}`))) {
+      return null;
+    }
+    return slot;
+  }, [
+    isPaperBattlefieldLayout,
+    occupiedPaperSlots,
+    paperLayout.maxCols,
+    paperLayout.rowCount,
+    topSafeInset,
+  ]);
+  const placementGridSlot = useMemo(() => {
+    if (stagedPlacementSlot) {
+      const row = Number(stagedPlacementSlot.row);
+      const column = Number(stagedPlacementSlot.column);
+      if (
+        Number.isFinite(row)
+        && Number.isFinite(column)
+        && row >= 1
+        && row <= paperLayout.rowCount
+        && column >= 1
+        && column <= paperLayout.maxCols
+        && !occupiedPaperSlots.has(`${row}:${column}`)
+      ) {
+        return { row, column };
+      }
+    }
+    if (!pointerInsideBattlefield || !rowRef.current || !isPaperBattlefieldLayout) return null;
+    return resolvePlacementGridSlot(dragState?.currentX, dragState?.currentY, {
+      allowOccupied: isBattlefieldMoveDrag,
+    });
+  }, [
+    dragState?.currentX,
+    dragState?.currentY,
+    isBattlefieldMoveDrag,
+    isPaperBattlefieldLayout,
+    occupiedPaperSlots,
+    paperLayout.maxCols,
+    paperLayout.rowCount,
+    pointerInsideBattlefield,
+    resolvePlacementGridSlot,
+    stagedPlacementSlot,
+  ]);
+  const placementPreviewCard = Boolean(placementGridSlot && heldPermanentPlacement);
+  const placementGridCells = useMemo(() => {
+    if (!pointerInsideBattlefield || !isPaperBattlefieldLayout) return [];
+    const cells = [];
+    for (let row = 1; row <= paperLayout.rowCount; row += 1) {
+      for (let column = 1; column <= paperLayout.maxCols; column += 1) {
+        cells.push({
+          key: `${row}:${column}`,
+          row,
+          column,
+          occupied: occupiedPaperSlots.has(`${row}:${column}`),
+          active: placementGridSlot?.row === row && placementGridSlot?.column === column,
+        });
+      }
+    }
+    return cells;
+  }, [
+    isPaperBattlefieldLayout,
+    occupiedPaperSlots,
+    paperLayout.maxCols,
+    paperLayout.rowCount,
+    placementGridSlot,
+    pointerInsideBattlefield,
+  ]);
   const frozenVisibleCards = useMemo(
     () => (
       shouldFreezePaperLayout
@@ -996,9 +1218,17 @@ export default function BattlefieldRow({
     && state?.undo_land_stable_id != null
     ? String(state.undo_land_stable_id)
     : null;
-  const cardIds = useMemo(() => displayCards.map((c) => c.id), [displayCards]);
+  const cardIds = useMemo(
+    () => displayCards
+      .filter((card) => card?.__battlefield_placement_preview !== true)
+      .map((card) => card.id),
+    [displayCards]
+  );
   const { newIds, bumpedIds } = useNewCards(cardIds);
   const dragRef = useRef(null);
+  const battlefieldMoveDragRef = useRef(null);
+  const battlefieldMoveListenersRef = useRef(null);
+  const battlefieldMoveClickSuppressRef = useRef({ cardId: null, suppressedAt: 0 });
   const mobileCardPressRef = useRef({
     timer: null,
     cardId: null,
@@ -1074,6 +1304,15 @@ export default function BattlefieldRow({
     && (typeof onMobileCardActionMenu === "function" || typeof onMobileCardLongPress === "function")
   );
 
+  const clearBattlefieldMoveListeners = useCallback(() => {
+    const listeners = battlefieldMoveListenersRef.current;
+    if (!listeners) return;
+    document.removeEventListener("pointermove", listeners.onMove);
+    document.removeEventListener("pointerup", listeners.onUp);
+    document.removeEventListener("pointercancel", listeners.onCancel);
+    battlefieldMoveListenersRef.current = null;
+  }, []);
+
   const clearMobileCardPress = useCallback((options = {}) => {
     const { preserveSuppressCardId = false } = options;
     const current = mobileCardPressRef.current;
@@ -1092,7 +1331,8 @@ export default function BattlefieldRow({
 
   useEffect(() => () => {
     clearMobileCardPress();
-  }, [clearMobileCardPress]);
+    clearBattlefieldMoveListeners();
+  }, [clearBattlefieldMoveListeners, clearMobileCardPress]);
 
   const fitCards = useCallback(() => {
     const row = rowRef.current;
@@ -1123,7 +1363,7 @@ export default function BattlefieldRow({
         gap: BATTLEFIELD_GRID_GAP_PX,
         viewportHeight: row.clientHeight,
       });
-      if (isPaperBattlefieldLayout) {
+      if (isPaperBattlefieldLayout && !placementPreviewCard) {
         previousPaperFitStyleRef.current = readBattlefieldFitStyle(row);
         notifyBattlefieldLayoutFitted();
       }
@@ -1134,7 +1374,7 @@ export default function BattlefieldRow({
     const height = row.clientHeight;
     if (width <= 0 || height <= 0) return;
 
-    const aspect = 124 / 96;
+    const aspect = useDesktopPortraitBattlefield ? DESKTOP_PORTRAIT_CARD_ASPECT : 124 / 96;
     const gap = BATTLEFIELD_GRID_GAP_PX;
     const hasCards = displayCards.length > 0;
     const minWidth = compact ? 30 : 44;
@@ -1152,7 +1392,9 @@ export default function BattlefieldRow({
       : null;
     const effectiveHeight = Math.max(
       minHeight,
-      height - (
+      height
+      - Math.max(0, Number(topSafeInset) || 0)
+      - (
         isPaperBattlefieldLayout && battlefieldSide === "bottom" && !hasMeasuredBottomOcclusion
           ? bottomSafeInset
           : 0
@@ -1282,7 +1524,15 @@ export default function BattlefieldRow({
       : MAX_BATTLEFIELD_CARD_ZONE_WIDTH_RATIO;
     const maxCardWidth = forceSingleColumn
       ? Math.max(ABSOLUTE_MIN_CARD_WIDTH, Math.floor(width - 4))
-      : Math.max(ABSOLUTE_MIN_CARD_WIDTH, Math.floor(width * mobileBattleWidthRatio));
+      : useDesktopPortraitBattlefield
+        ? Math.max(
+          ABSOLUTE_MIN_CARD_WIDTH,
+          Math.min(
+            DESKTOP_PORTRAIT_MAX_WIDTH_PX,
+            Math.floor(width * DESKTOP_PORTRAIT_MAX_ZONE_WIDTH_RATIO)
+          )
+        )
+        : Math.max(ABSOLUTE_MIN_CARD_WIDTH, Math.floor(width * mobileBattleWidthRatio));
     const clampedCardWidth = Math.max(
       isPaperBattlefieldLayout ? ABSOLUTE_MIN_CARD_WIDTH : 22,
       Math.min(best.cardWidth, maxCardWidth)
@@ -1326,7 +1576,7 @@ export default function BattlefieldRow({
       gap,
       viewportHeight: effectiveHeight,
     });
-    if (isPaperBattlefieldLayout) {
+    if (isPaperBattlefieldLayout && !placementPreviewCard) {
       previousPaperFitStyleRef.current = readBattlefieldFitStyle(row);
       notifyBattlefieldLayoutFitted();
     }
@@ -1334,6 +1584,7 @@ export default function BattlefieldRow({
     battlefieldSide,
     bottomSafeInset,
     bottomOcclusionViewportTop,
+    topSafeInset,
     compact,
     displayCards.length,
     forceSingleColumn,
@@ -1344,9 +1595,11 @@ export default function BattlefieldRow({
     normalizedLayoutOverride,
     paperLayout.maxCols,
     paperLayout.rowCount,
+    placementPreviewCard,
     shouldFreezePaperLayout,
     syncOverflowMode,
     usesDensePaperLayout,
+    useDesktopPortraitBattlefield,
   ]);
 
   const scheduleFitCards = useCallback((force = false) => {
@@ -1502,7 +1755,7 @@ export default function BattlefieldRow({
     if (!isPaperBattlefieldLayout || typeof window === "undefined") return undefined;
     const handleBattlefieldLayoutFitted = () => {
       const row = rowRef.current;
-      if (!row || shouldFreezePaperLayout || layoutSettleMotionsRef.current.size > 0) return;
+      if (!row || placementPreviewCard || shouldFreezePaperLayout || layoutSettleMotionsRef.current.size > 0) return;
       previousPositionsRef.current = measureLiveCardPositions(row);
       previousCardsRef.current = displayCards;
       previousPaperLayoutRef.current = paperLayout;
@@ -1511,7 +1764,7 @@ export default function BattlefieldRow({
     return () => {
       window.removeEventListener("ironsmith:battlefield-layout-fitted", handleBattlefieldLayoutFitted);
     };
-  }, [displayCards, isPaperBattlefieldLayout, paperLayout, shouldFreezePaperLayout]);
+  }, [displayCards, isPaperBattlefieldLayout, paperLayout, placementPreviewCard, shouldFreezePaperLayout]);
 
   useLayoutEffect(() => {
     const wasFrozen = previousFreezePaperLayoutRef.current;
@@ -1544,7 +1797,7 @@ export default function BattlefieldRow({
   useLayoutEffect(() => {
     const row = rowRef.current;
     const snapshotId = state?.snapshot_id ?? null;
-    if (!row || snapshotId == null || lastProcessedSnapshotIdRef.current === snapshotId) {
+    if (!row || placementPreviewCard || snapshotId == null || lastProcessedSnapshotIdRef.current === snapshotId) {
       return;
     }
     if (!isPaperBattlefieldLayout) {
@@ -1623,6 +1876,7 @@ export default function BattlefieldRow({
     displayCards,
     isPaperBattlefieldLayout,
     addLayoutHolds,
+    placementPreviewCard,
     paperLayout,
     shouldFreezePaperLayout,
     state?.battlefield_transitions,
@@ -1633,7 +1887,7 @@ export default function BattlefieldRow({
   useLayoutEffect(() => {
     const row = rowRef.current;
     const snapshotId = state?.snapshot_id ?? null;
-    if (!row || !isPaperBattlefieldLayout || lastProcessedSnapshotIdRef.current !== snapshotId) {
+    if (!row || placementPreviewCard || !isPaperBattlefieldLayout || lastProcessedSnapshotIdRef.current !== snapshotId) {
       return;
     }
     if (shouldFreezePaperLayout) {
@@ -1650,6 +1904,7 @@ export default function BattlefieldRow({
     fitCards,
     isPaperBattlefieldLayout,
     paperLayout,
+    placementPreviewCard,
     shouldFreezePaperLayout,
     state?.snapshot_id,
   ]);
@@ -1743,11 +1998,132 @@ export default function BattlefieldRow({
     document.addEventListener("pointercancel", onUp);
   }, [combatModeRef, startDragArrow, updateDragArrow, endDragArrow, hoverCard, clearHover]);
 
+  const handleBattlefieldMovePointerDown = useCallback((event, card) => {
+    const canReposition = (
+      enablePlacementPreview
+      && battlefieldSide === "bottom"
+      && paperLayoutMode === "default"
+      && isPaperBattlefieldLayout
+      && state?.decision?.kind === "priority"
+    );
+    if (
+      !canReposition
+      || event.defaultPrevented
+      || event.button !== 0
+      || event.isPrimary === false
+    ) {
+      return false;
+    }
+
+    clearBattlefieldMoveListeners();
+    const pointerId = event.pointerId;
+    const sourceElement = event.currentTarget;
+    const sourceRect = sourceElement?.getBoundingClientRect?.() || null;
+    const sourceContainerRect = rowRef.current?.getBoundingClientRect?.() || null;
+    battlefieldMoveDragRef.current = {
+      card,
+      dragging: false,
+      pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+
+    const onMove = (moveEvent) => {
+      const movement = battlefieldMoveDragRef.current;
+      if (!movement || (pointerId != null && moveEvent.pointerId !== pointerId)) return;
+      const dx = moveEvent.clientX - movement.startX;
+      const dy = moveEvent.clientY - movement.startY;
+      if (!movement.dragging && ((dx * dx) + (dy * dy)) > BATTLEFIELD_MOVE_DRAG_DISTANCE_SQ) {
+        movement.dragging = true;
+        battlefieldMoveClickSuppressRef.current = {
+          cardId: String(card.id),
+          suppressedAt: performance.now(),
+        };
+        clearHover();
+        onInspect?.(null);
+        startDrag(
+          card.id,
+          card.name,
+          [{ kind: "move_battlefield", object_id: card.id }],
+          "creature",
+          moveEvent.clientX,
+          moveEvent.clientY,
+          sourceRect,
+          {
+            ...card,
+            card_types: Array.isArray(card.card_types) ? [...card.card_types] : [],
+            member_ids: Array.isArray(card.member_ids) ? [...card.member_ids] : [],
+            member_stable_ids: Array.isArray(card.member_stable_ids) ? [...card.member_stable_ids] : [],
+          },
+          sourceContainerRect,
+        );
+      }
+      if (!movement.dragging) return;
+      if (moveEvent.cancelable) moveEvent.preventDefault();
+      updateDrag(moveEvent.clientX, moveEvent.clientY);
+    };
+
+    const finishDrag = (finishEvent, canceled = false) => {
+      const movement = battlefieldMoveDragRef.current;
+      if (!movement || (pointerId != null && finishEvent.pointerId !== pointerId)) return;
+      battlefieldMoveDragRef.current = null;
+      clearBattlefieldMoveListeners();
+      if (!movement.dragging) return;
+
+      battlefieldMoveClickSuppressRef.current = {
+        cardId: String(card.id),
+        suppressedAt: performance.now(),
+      };
+      if (!canceled) {
+        const slot = resolvePlacementGridSlot(finishEvent.clientX, finishEvent.clientY, {
+          allowOccupied: true,
+        });
+        if (slot) commitPlacementSlot(card, slot);
+      }
+      endDrag();
+      clearHover();
+      if (finishEvent.cancelable) finishEvent.preventDefault();
+    };
+
+    const onUp = (upEvent) => finishDrag(upEvent, false);
+    const onCancel = (cancelEvent) => finishDrag(cancelEvent, true);
+    battlefieldMoveListenersRef.current = { onMove, onUp, onCancel };
+    document.addEventListener("pointermove", onMove, { passive: false });
+    document.addEventListener("pointerup", onUp, { passive: false });
+    document.addEventListener("pointercancel", onCancel, { passive: false });
+    return true;
+  }, [
+    battlefieldSide,
+    clearBattlefieldMoveListeners,
+    clearHover,
+    commitPlacementSlot,
+    enablePlacementPreview,
+    endDrag,
+    isPaperBattlefieldLayout,
+    onInspect,
+    paperLayoutMode,
+    resolvePlacementGridSlot,
+    startDrag,
+    state?.decision?.kind,
+    updateDrag,
+  ]);
+
   const handleCardSelectionClick = useCallback((event, card) => {
     const press = mobileCardPressRef.current;
     if (press.suppressCardId === String(card.id)) {
       const fresh = (performance.now() - press.suppressedAt) < MOBILE_LONG_PRESS_SUPPRESS_WINDOW_MS;
       clearMobileCardPress();
+      if (fresh) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+    }
+
+    const moveSuppression = battlefieldMoveClickSuppressRef.current;
+    if (moveSuppression.cardId === String(card.id)) {
+      const fresh = (performance.now() - moveSuppression.suppressedAt) < BATTLEFIELD_MOVE_CLICK_SUPPRESS_MS;
+      battlefieldMoveClickSuppressRef.current = { cardId: null, suppressedAt: 0 };
       if (fresh) {
         event.preventDefault();
         event.stopPropagation();
@@ -1825,6 +2201,18 @@ export default function BattlefieldRow({
     legalTargetObjectIds,
   ]);
 
+  const handleCardKeyboardActivate = useCallback((event, card) => {
+    const cm = combatModeRef.current;
+    const cardId = Number(card?.id);
+    if (cm?.candidates?.has?.(cardId) && typeof cm.onClick === "function") {
+      event.preventDefault();
+      event.stopPropagation();
+      cm.onClick(cardId);
+      return;
+    }
+    handleCardSelectionClick(event, card);
+  }, [combatModeRef, handleCardSelectionClick]);
+
   const handleRowClickFallback = useCallback((event) => {
     if (!isMobileBattleSingleRowLayout) return;
     if (event.defaultPrevented) return;
@@ -1882,6 +2270,8 @@ export default function BattlefieldRow({
 
     onCardPointerDown?.(event, card);
 
+    if (handleBattlefieldMovePointerDown(event, card)) return;
+
     if (!mobileObjectGesturesEnabled || typeof onMobileCardLongPress !== "function") return;
     if (event.defaultPrevented || event.button > 0 || event.isPrimary === false) return;
 
@@ -1910,6 +2300,7 @@ export default function BattlefieldRow({
     };
   }, [
     clearMobileCardPress,
+    handleBattlefieldMovePointerDown,
     handleCombatPointerDown,
     mobileObjectGesturesEnabled,
     onCardPointerDown,
@@ -1935,19 +2326,48 @@ export default function BattlefieldRow({
       ref={rowRef}
       className={`battlefield-row ${displayCards.length === 0 ? "battlefield-row-empty" : ""} ${alignStart ? "battlefield-row--align-start" : ""} ${isMobileBattleBottomLayout ? "battlefield-row--mobile-bottom-inline-fit" : ""} ${shouldFreezePaperLayout ? "battlefield-row--layout-freeze" : ""} ${usesDensePaperLayout ? "battlefield-row--dense" : ""} relative grid gap-1.5 content-start justify-center min-h-0 h-full`}
       data-bf-side={battlefieldSide}
+      data-placement-active={pointerInsideBattlefield ? "true" : "false"}
+      data-battlefield-drop-grid={enablePlacementPreview ? "true" : undefined}
+      data-battlefield-grid-columns={isPaperBattlefieldLayout ? paperLayout.maxCols : undefined}
+      data-battlefield-grid-rows={isPaperBattlefieldLayout ? paperLayout.rowCount : undefined}
+      data-battlefield-column-capacity={isPaperBattlefieldLayout ? paperColumnCapacity : undefined}
       onClick={handleRowClickFallback}
       style={{
+        "--bf-top-safe-inset": `${Math.max(0, Number(topSafeInset) || 0)}px`,
         "--bf-gap": `${BATTLEFIELD_GRID_GAP_PX}px`,
         gap: `${BATTLEFIELD_GRID_GAP_PX}px`,
-        gridTemplateColumns: `repeat(var(--bf-cols, 1), minmax(0, calc(var(--bf-card-width, 124px) - var(--bf-card-overlap, 0px))))`,
+        gridTemplateColumns: `repeat(var(--bf-cols, 1), minmax(0, calc(var(--bf-card-width, 72px) - var(--bf-card-overlap, 0px))))`,
         gridTemplateRows: isPaperBattlefieldLayout
-          ? `repeat(var(--bf-rows, 1), var(--bf-card-height, 96px))`
+          ? `repeat(var(--bf-rows, 1), var(--bf-card-height, 101px))`
           : undefined,
-        gridAutoRows: isPaperBattlefieldLayout ? undefined : "var(--bf-card-height, 96px)",
+        gridAutoRows: isPaperBattlefieldLayout ? undefined : "var(--bf-card-height, 101px)",
         scrollbarGutter: allowVerticalScroll ? "stable" : "auto",
       }}
     >
+      {placementGridCells.map((cell) => (
+        <div
+          key={`placement-slot-${cell.key}`}
+          className={`battlefield-grid-drop-slot${cell.active ? " is-active" : ""}${cell.occupied ? " is-occupied" : ""}`}
+          data-battlefield-drop-slot="true"
+          data-row={cell.row}
+          data-column={cell.column}
+          data-active={cell.active ? "true" : "false"}
+          data-occupied={cell.occupied ? "true" : "false"}
+          aria-hidden="true"
+          style={{
+            gridRow: String(cell.row),
+            gridColumn: String(cell.column),
+            width: "var(--bf-card-width, 72px)",
+            minWidth: "var(--bf-card-width, 72px)",
+            height: "var(--bf-card-height, 101px)",
+            minHeight: "var(--bf-card-height, 101px)",
+          }}
+        />
+      ))}
       {displayCards.map((card, i) => {
+        const paperGridPosition = isPaperBattlefieldLayout
+          ? paperLayout.gridPositionById.get(String(card.id))
+          : null;
         const isLayoutHold = card?.__battlefield_layout_hold === true;
         const cardActions = collectActivatableActionsForCard(card, activatableMap);
         const isActivatable = !isLayoutHold && cardActions.length > 0;
@@ -1957,6 +2377,8 @@ export default function BattlefieldRow({
             cardObjectIds.push(Number(memberId));
           }
         }
+        const isBattlefieldMoveSource = isBattlefieldMoveDrag
+          && cardObjectIds.some((id) => String(id) === String(dragState?.objectId));
         const isLegalTarget = !isLayoutHold && cardObjectIds.some((id) => legalTargetObjectIds.has(id));
         const hasLinkedPriorityAction = !isLayoutHold && cardObjectIds.some((id) => priorityActionObjectIds.has(String(id)));
         const isTriggeredSource = (
@@ -2039,9 +2461,6 @@ export default function BattlefieldRow({
             : isCombatHoverTarget
               ? "attack-selected"
               : (isCombatCandidate ? combatGlowKind : (isTriggeredSource ? "ability" : abilityGlow));
-        const paperGridPosition = isPaperBattlefieldLayout
-          ? paperLayout.gridPositionById.get(String(card.id))
-          : null;
         const showsUndoOverlay = canShowBattlefieldUndo
           && !isLayoutHold
           && undoTargetStableId != null
@@ -2062,6 +2481,7 @@ export default function BattlefieldRow({
               isPaperBattlefieldLayout && paperGridPosition?.groupId
                 ? `battlefield-row-card--paper-group-${paperGridPosition.groupId}`
                 : "",
+              isBattlefieldMoveSource ? "battlefield-row-card--drag-source" : "",
             ].filter(Boolean).join(" ")}
             isInspected={selectedObjectId != null && cardObjectIds.some((id) => String(id) === String(selectedObjectId))}
             isPlayable={isInteractable}
@@ -2070,9 +2490,10 @@ export default function BattlefieldRow({
             isNew={isNew}
             isBumped={isBumped}
             bumpDirection={bumpDir}
-            battlefieldVisualMode={useMobileBattlefieldToken ? "mobile-token" : "classic"}
+            battlefieldVisualMode={useMobileBattlefieldToken ? "mobile-token" : "portrait"}
             suppressTooltip={suppressTooltip}
             onClick={isLayoutHold ? undefined : ((event) => handleCardSelectionClick(event, card))}
+            onKeyboardActivate={isLayoutHold ? undefined : ((event) => handleCardKeyboardActivate(event, card))}
             onPointerDown={isLayoutHold ? undefined : ((event) => handleCardPointerPressStart(event, card, isCombatCandidate))}
             onPointerMove={isLayoutHold ? undefined : handleCardPointerPressMove}
             onPointerUp={isLayoutHold ? undefined : handleCardPointerPressEnd}
@@ -2110,7 +2531,13 @@ export default function BattlefieldRow({
               minHeight: "var(--bf-card-height, 96px)",
               visibility: isLayoutHold || shouldFreezePaperLayout ? "hidden" : undefined,
               pointerEvents: isLayoutHold || shouldFreezePaperLayout ? "none" : undefined,
-              cursor: isCombatCandidate || isCombatTargetCard ? "pointer" : undefined,
+              cursor: isBattlefieldMoveSource
+                ? "grabbing"
+                : isCombatCandidate || isCombatTargetCard
+                  ? "pointer"
+                  : enablePlacementPreview && paperLayoutMode === "default"
+                    ? "grab"
+                    : undefined,
             }}
           />
         );

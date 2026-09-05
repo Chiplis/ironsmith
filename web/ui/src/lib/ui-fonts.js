@@ -1,4 +1,4 @@
-export const DEFAULT_UI_FONT = "Alegreya Sans SC";
+export const DEFAULT_UI_FONT = "Rajdhani";
 
 const BASE_FALLBACK = '"Avenir Next", "Segoe UI", system-ui, sans-serif';
 

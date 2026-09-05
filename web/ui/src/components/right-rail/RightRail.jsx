@@ -8,10 +8,10 @@ import { playerAccentVars } from "@/lib/player-colors";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
 import { cn } from "@/lib/utils";
 
-const INSPECTOR_OVERLAY_WIDTH = "40vw";
-const INSPECTOR_INLINE_MAX_WIDTH_PX = 2400;
+const INSPECTOR_OVERLAY_WIDTH = "min(360px, 32vw)";
+const INSPECTOR_INLINE_MAX_WIDTH_PX = 840;
 const INLINE_EXPANDED_MIN_WIDTH = 220;
-const INLINE_EXPANDED_MAX_WIDTH_PX = 2400;
+const INLINE_EXPANDED_MAX_WIDTH_PX = 840;
 const INLINE_EXPANDED_MIN_HAND_WIDTH = 168;
 const DEFAULT_INSPECTOR_BOTTOM_OFFSET = 8;
 const INLINE_EXPANDED_DEFAULT_HEIGHT = 248;
@@ -28,13 +28,13 @@ const LARGE_DESKTOP_QUERY = "(min-width: 1800px)";
 function getViewportTierInspectorOverrides() {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return {};
   if (window.matchMedia(TABLET_COMPACT_QUERY).matches) {
-    return { minWidth: 180, widthFraction: 0.4, expandedMaxWidth: 2400, minHandWidth: 120 };
+    return { minWidth: 180, widthFraction: 0.34, expandedMaxWidth: 420, minHandWidth: 120 };
   }
   if (window.matchMedia(SMALL_DESKTOP_QUERY).matches) {
-    return { minWidth: 200, widthFraction: 0.4, expandedMaxWidth: 2400, minHandWidth: 140 };
+    return { minWidth: 240, widthFraction: 0.3, expandedMaxWidth: 840, minHandWidth: 140 };
   }
   if (window.matchMedia(LARGE_DESKTOP_QUERY).matches) {
-    return { minWidth: 260, widthFraction: 0.4, expandedMaxWidth: 2400, minHandWidth: 180 };
+    return { minWidth: 300, widthFraction: 0.26, expandedMaxWidth: 840, minHandWidth: 180 };
   }
   return {};
 }
@@ -53,7 +53,7 @@ function viewportInspectorTargetWidthPx() {
   }
   const overrides = getViewportTierInspectorOverrides();
   const minW = overrides.minWidth ?? 220;
-  const fraction = overrides.widthFraction ?? 0.4;
+  const fraction = overrides.widthFraction ?? 0.3;
   return Math.max(minW, Math.floor(window.innerWidth * fraction));
 }
 
@@ -289,6 +289,7 @@ export default function RightRail({
   inlineFillWidth = false,
   inlineFillHeight = false,
   allowTopInlinePlacement = false,
+  allowHoverFallback = true,
   inspectorVariant = "normal",
 }) {
   const { state } = useGame();
@@ -370,7 +371,9 @@ export default function RightRail({
       ? String(hoveredObjectId)
       : null
   );
-  const relevantHoveredObjectId = directHoveredInspectorObjectId ?? linkedInspectorObjectId;
+  const relevantHoveredObjectId = allowHoverFallback
+    ? (directHoveredInspectorObjectId ?? linkedInspectorObjectId)
+    : null;
   const selectedObjectId = resolveInspectorObjectId({
     selectedObjectId: relevantSelectedObjectId,
     pinnedObjectId: relevantPinnedObjectId,
@@ -392,7 +395,7 @@ export default function RightRail({
     &&
     !focusedDecision
     && !hasInspectorSelectionLock
-    && hoveredObjectId == null
+    && relevantHoveredObjectId == null
     &&
     validSelectedObjectId != null
     && resolvingCastObjectId != null
@@ -431,11 +434,14 @@ export default function RightRail({
   }, [viewportSizeTick]);
   const expandedInlineWidth = useMemo(() => {
     const measuredMaxWidth = Math.round(maxExpandedInlineWidth || INSPECTOR_INLINE_MAX_WIDTH_PX);
+    if (inlineFillWidth) {
+      return Math.max(INLINE_EXPANDED_MIN_WIDTH, measuredMaxWidth);
+    }
     return Math.max(
       INLINE_EXPANDED_MIN_WIDTH,
       Math.min(baseInlineWidthPx, measuredMaxWidth)
     );
-  }, [baseInlineWidthPx, maxExpandedInlineWidth]);
+  }, [baseInlineWidthPx, inlineFillWidth, maxExpandedInlineWidth]);
 
   useLayoutEffect(() => {
     const railEl = railRef.current;

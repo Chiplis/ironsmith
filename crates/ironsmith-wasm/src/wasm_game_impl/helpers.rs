@@ -12,6 +12,8 @@ pub(super) fn build_action_view(
     action: &LegalAction,
 ) -> ActionView {
     let (kind, object_id, ability_index, from_zone, mut to_zone) = action_drag_metadata(action);
+    let (drag_requires_targets, drag_requires_modes) =
+        action_drag_decision_metadata(game, perspective, action);
     if let LegalAction::UsePregameAction {
         card_id,
         ability_index,
@@ -38,6 +40,8 @@ pub(super) fn build_action_view(
         ability_index,
         from_zone: source_visible.then_some(from_zone).flatten(),
         to_zone: source_visible.then_some(to_zone).flatten(),
+        drag_requires_targets: source_visible && drag_requires_targets,
+        drag_requires_modes: source_visible && drag_requires_modes,
         action_ref: priority_action_ref(action),
     }
 }
@@ -70,8 +74,41 @@ pub(super) fn build_untap_land_action_view(
         ability_index: None,
         from_zone: Some(zone_name(Zone::Battlefield)),
         to_zone: Some(zone_name(Zone::Battlefield)),
+        drag_requires_targets: false,
+        drag_requires_modes: false,
         action_ref: PriorityActionRef::UntapLand { stable_id },
     })
+}
+
+fn action_drag_decision_metadata(
+    game: &GameState,
+    perspective: PlayerId,
+    action: &LegalAction,
+) -> (bool, bool) {
+    let LegalAction::CastSpell { spell_id, .. } = action else {
+        return (false, false);
+    };
+    let Some(spell) = game.object(*spell_id) else {
+        return (false, false);
+    };
+    let Some(program) = spell.spell_effect.as_ref() else {
+        return (false, false);
+    };
+    let caster = game.turn.priority_player.unwrap_or(perspective);
+    let has_modes = program.all_effects().into_iter().any(|effect| {
+        effect
+            .modal_spec_with_context(game, caster, *spell_id)
+            .is_some()
+    });
+    let requires_targets = !ironsmith::extract_target_requirements_from_program_with_modes(
+        game,
+        program,
+        caster,
+        Some(*spell_id),
+        None,
+    )
+    .is_empty();
+    (requires_targets, has_modes)
 }
 
 pub(super) fn action_drag_metadata(

@@ -2153,6 +2153,8 @@ struct ActionView {
     ability_index: Option<usize>,
     from_zone: Option<String>,
     to_zone: Option<String>,
+    drag_requires_targets: bool,
+    drag_requires_modes: bool,
     action_ref: PriorityActionRef,
 }
 

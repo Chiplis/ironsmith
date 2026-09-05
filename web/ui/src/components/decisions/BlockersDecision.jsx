@@ -2,14 +2,21 @@ import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
 import { getCardRect, centerOf } from "@/hooks/useCardPositions";
+import { buildObjectControllerById } from "@/lib/decision-object-meta";
 import { useDecisionButtonAccent } from "@/lib/decision-button-style";
+import { decisionOptionAccentVars, getPlayerAccent } from "@/lib/player-colors";
 import { Button } from "@/components/ui/button";
 import PeerWaitPopover, { PeerWaitButtonContent } from "@/components/decisions/PeerWaitPopover";
 import useDeferredPeerWait from "@/hooks/useDeferredPeerWait";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
-const BLOCKER_COLOR = "#3b82f6";
+const BLOCKER_COLOR = "#ff8b63";
+
+function blockerSubmitLabel(count) {
+  if (count === 0) return "Declare no blockers";
+  return `Declare ${count} blocker${count === 1 ? "" : "s"}`;
+}
 
 /**
  * The engine emits attacker-centric blocker options:
@@ -58,6 +65,8 @@ export default function BlockersDecision({
     setCombatMode,
   } = useCombatArrows();
   const attackerOptions = useMemo(() => decision.blocker_options || [], [decision.blocker_options]);
+  const players = state?.players || [];
+  const objectControllerById = useMemo(() => buildObjectControllerById(state), [state]);
   const blockerOptions = useMemo(
     () => pivotToBlockerCentric(attackerOptions),
     [attackerOptions]
@@ -258,7 +267,7 @@ export default function BlockersDecision({
     }
 
     onCompactActionChange({
-      label: `Confirm Blockers (${declarations.length})`,
+      label: blockerSubmitLabel(declarations.length),
       disabled: !canAct,
       onSubmit: () =>
         dispatch(
@@ -293,6 +302,12 @@ export default function BlockersDecision({
             const currentDecls = getBlockerDeclarations(blockerId);
             const validAttackers = opt.valid_attackers || [];
             const isSelected = selectedBlockerId === blockerId;
+            const blockerAccent = getPlayerAccent(
+              players,
+              objectControllerById.get(String(blockerId)) ?? state?.perspective,
+              state?.perspective,
+              playerAccentOverrides,
+            );
 
             return (
               <div
@@ -312,6 +327,7 @@ export default function BlockersDecision({
                     currentDecls.length > 0 && "border-[rgba(201,171,114,0.84)] bg-[linear-gradient(180deg,rgba(86,67,40,0.96),rgba(39,30,20,0.98))] text-[#f0e2bf]",
                     isSelected && "border-[rgba(165,101,82,0.85)] bg-[linear-gradient(180deg,rgba(84,45,34,0.96),rgba(43,25,20,0.98))] text-[#f0d1c4]"
                   )}
+                  style={decisionOptionAccentVars(blockerAccent)}
                   disabled={!canAct}
                   onClick={() => toggleBlockerSelection(opt)}
                 >
@@ -333,6 +349,12 @@ export default function BlockersDecision({
                         const attackerId = Number(attacker.attacker);
                         const attackerName = attacker.name;
                         const blocking = isBlockingAttacker(blockerId, attackerId);
+                        const attackerAccent = getPlayerAccent(
+                          players,
+                          objectControllerById.get(String(attackerId)) ?? state?.perspective,
+                          state?.perspective,
+                          playerAccentOverrides,
+                        );
                         return (
                           <Button
                             key={attackerId}
@@ -342,6 +364,7 @@ export default function BlockersDecision({
                               "decision-option-row h-8 w-full justify-start rounded-none border-0 bg-[linear-gradient(180deg,rgba(49,42,36,0.94),rgba(21,18,17,0.98))] px-2.5 text-[13px] text-[#d8cbb0] transition-all hover:bg-[linear-gradient(180deg,rgba(82,66,45,0.98),rgba(33,25,19,0.98))] hover:text-[#fff1cb]",
                               blocking && "bg-[linear-gradient(180deg,rgba(95,75,50,0.98),rgba(42,32,21,0.98))] text-[#fff0cf]"
                             )}
+                            style={decisionOptionAccentVars(attackerAccent)}
                             disabled={!canAct}
                             onClick={() => toggleBlocker(blockerId, attackerId)}
                           >
@@ -381,7 +404,7 @@ export default function BlockersDecision({
             {peerWaiting ? (
               <PeerWaitButtonContent />
             ) : (
-              <>Confirm Blockers ({declarations.length})</>
+              <>{blockerSubmitLabel(declarations.length)}</>
             )}
           </Button>
         </PeerWaitPopover>

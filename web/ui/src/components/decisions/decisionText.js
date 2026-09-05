@@ -1,5 +1,18 @@
 export function normalizeDecisionText(text) {
-  return text;
+  if (typeof text !== "string") return text;
+
+  const normalized = text
+    .replace(/\ba another\b/gi, "another")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (/^Cast without paying mana cost:\s*Free$/i.test(normalized)) {
+    return "Cast for free";
+  }
+  if (/^Normal:\s*/i.test(normalized)) {
+    return normalized.replace(/^Normal:\s*/i, "Pay mana cost · ");
+  }
+  return normalized;
 }
 
 export function translateKnownDecisionText(text, t) {

@@ -169,6 +169,54 @@ pub fn resolve_registry_candidates<T>(
     ))
 }
 
+/// The registries that still resolve by rank: every viable rule runs, and when
+/// more than one non-equivalent rule matches the first registered wins while
+/// the overlap is recorded. Each name leaves this list when its overlaps on
+/// the corpus reach zero and it resolves through
+/// [`resolve_registry_candidates`] instead. The count is a ratchet.
+pub const RANKED_REGISTRIES: &[&str] = &["sentence-composition-registry", "chain-reading-registry", "chain-composition-registry", "effect-bundle-registry", "predicate-registry", "clause-reading-registry"];
+
+/// Resolve like [`resolve_registry_candidates`], except that several
+/// non-equivalent matches keep the first registered and record the overlap in
+/// the overlap ledger instead of raising an ambiguity. Only a registry named in
+/// [`RANKED_REGISTRIES`] may resolve this way.
+pub fn resolve_ranked_candidates<T>(
+    registry: RuleId,
+    mut candidates: Vec<RegistryCandidate<T>>,
+    diagnostics: Vec<ParseDiagnostic>,
+    text: impl FnOnce() -> String,
+) -> ParseOutcome<RuleMatch<T>> {
+    debug_assert!(
+        RANKED_REGISTRIES.contains(&registry.as_str()),
+        "{registry} resolves by rank but is not a declared ranked registry"
+    );
+    if candidates.len() > 1 {
+        let equivalence = candidates[0].metadata.equivalence;
+        let explicitly_equivalent = equivalence.is_some()
+            && candidates
+                .iter()
+                .all(|candidate| candidate.metadata.equivalence == equivalence);
+        if !explicitly_equivalent {
+            let rules = candidates
+                .iter()
+                .map(|candidate| candidate.metadata.id)
+                .collect::<Vec<_>>();
+            crate::overlap_ledger::note(registry, &rules, text);
+            crate::parse_trace::event(format!(
+                "ranked registry {registry}: {} kept over {}",
+                rules[0],
+                rules[1..]
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        candidates.truncate(1);
+    }
+    resolve_registry_candidates(registry, candidates, diagnostics)
+}
+
 pub fn furthest_committed_diagnostic(diagnostics: Vec<ParseDiagnostic>) -> Option<ParseDiagnostic> {
     diagnostics.into_iter().max_by_key(|diagnostic| {
         diagnostic

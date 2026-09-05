@@ -3,12 +3,34 @@ import { createContext, useContext, useState, useCallback, useMemo } from "react
 
 const HoverStateContext = createContext(undefined);
 const HoverLinkedObjectsContext = createContext(undefined);
+const AnchoredCardPreviewContext = createContext(undefined);
 const HoverActionsContext = createContext(undefined);
+
+function normalizeAnchorRect(anchor) {
+  const rect = typeof anchor?.getBoundingClientRect === "function"
+    ? anchor.getBoundingClientRect()
+    : anchor;
+  if (!rect) return null;
+  const left = Number(rect.left);
+  const top = Number(rect.top);
+  const right = Number(rect.right);
+  const bottom = Number(rect.bottom);
+  if (![left, top, right, bottom].every(Number.isFinite)) return null;
+  return {
+    left,
+    top,
+    right,
+    bottom,
+    width: Number.isFinite(Number(rect.width)) ? Number(rect.width) : Math.max(0, right - left),
+    height: Number.isFinite(Number(rect.height)) ? Number(rect.height) : Math.max(0, bottom - top),
+  };
+}
 
 export function HoverProvider({ children }) {
   const [hoveredObjectId, setHoveredObjectId] = useState(null);
   const [hoveredLinkedObjectIds, setHoveredLinkedObjectIds] = useState(() => new Set());
   const [previewLinkedObjectIds, setPreviewLinkedObjectIds] = useState(() => new Set());
+  const [anchoredCardPreview, setAnchoredCardPreview] = useState(null);
 
   const hoverCard = useCallback((objectId) => {
     setHoveredObjectId(objectId != null ? String(objectId) : null);
@@ -41,6 +63,19 @@ export function HoverProvider({ children }) {
     setPreviewLinkedObjectIds(new Set());
   }, []);
 
+  const showAnchoredCardPreview = useCallback((objectId, anchor) => {
+    const anchorRect = normalizeAnchorRect(anchor);
+    if (objectId == null || !anchorRect) return;
+    setAnchoredCardPreview({
+      objectId: String(objectId),
+      anchorRect,
+    });
+  }, []);
+
+  const clearAnchoredCardPreview = useCallback(() => {
+    setAnchoredCardPreview(null);
+  }, []);
+
   const clearHover = useCallback(() => {
     setHoveredObjectId(null);
     setHoveredLinkedObjectIds(new Set());
@@ -54,6 +89,8 @@ export function HoverProvider({ children }) {
       clearHoverLinkedObjects,
       setPreviewLinkedObjects,
       clearPreviewLinkedObjects,
+      showAnchoredCardPreview,
+      clearAnchoredCardPreview,
     }),
     [
       hoverCard,
@@ -62,6 +99,8 @@ export function HoverProvider({ children }) {
       clearHoverLinkedObjects,
       setPreviewLinkedObjects,
       clearPreviewLinkedObjects,
+      showAnchoredCardPreview,
+      clearAnchoredCardPreview,
     ]
   );
 
@@ -73,9 +112,11 @@ export function HoverProvider({ children }) {
   return (
     <HoverStateContext.Provider value={hoveredObjectId}>
       <HoverLinkedObjectsContext.Provider value={linkedObjectIds}>
-        <HoverActionsContext.Provider value={actions}>
-          {children}
-        </HoverActionsContext.Provider>
+        <AnchoredCardPreviewContext.Provider value={anchoredCardPreview}>
+          <HoverActionsContext.Provider value={actions}>
+            {children}
+          </HoverActionsContext.Provider>
+        </AnchoredCardPreviewContext.Provider>
       </HoverLinkedObjectsContext.Provider>
     </HoverStateContext.Provider>
   );
@@ -87,6 +128,14 @@ export function useHoveredObjectId() {
     throw new Error("useHoveredObjectId must be inside HoverProvider");
   }
   return hoveredObjectId;
+}
+
+export function useAnchoredCardPreview() {
+  const preview = useContext(AnchoredCardPreviewContext);
+  if (preview === undefined) {
+    throw new Error("useAnchoredCardPreview must be inside HoverProvider");
+  }
+  return preview;
 }
 
 export function useHoverActions() {
@@ -108,6 +157,8 @@ export function useHover() {
     clearHoverLinkedObjects,
     setPreviewLinkedObjects,
     clearPreviewLinkedObjects,
+    showAnchoredCardPreview,
+    clearAnchoredCardPreview,
   } = useHoverActions();
   return {
     hoveredObjectId,
@@ -118,5 +169,7 @@ export function useHover() {
     clearHoverLinkedObjects,
     setPreviewLinkedObjects,
     clearPreviewLinkedObjects,
+    showAnchoredCardPreview,
+    clearAnchoredCardPreview,
   };
 }

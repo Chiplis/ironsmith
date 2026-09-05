@@ -211,8 +211,8 @@ function HiddenHandRows({ count }) {
   return (
     <div className="zone-hidden-card-list" aria-label={`${hiddenCount} hidden cards`}>
       {Array.from({ length: hiddenCount }).map((_, index) => (
-        <div key={index} className="zone-hidden-card-row">
-          <span>Hidden</span>
+        <div key={index} className="zone-hidden-card-row" aria-hidden="true">
+          <span className="zone-hidden-card-sigil">I</span>
         </div>
       ))}
     </div>
@@ -509,6 +509,29 @@ function OpponentSlot({
     event.stopPropagation();
     dispatchPlayerTargetChoice();
   }, [dispatchPlayerTargetChoice, shouldHandleClick]);
+  const playerHeaderInteractive = (
+    (isPlayerLegalTarget && canPickTargetFromBoard)
+    || zoneIsAttackHoverTarget
+  );
+  const handlePlayerHeaderKeyDown = useCallback((event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    if (isPlayerLegalTarget && canPickTargetFromBoard) {
+      event.preventDefault();
+      dispatchPlayerTargetChoice();
+      return;
+    }
+    const cm = combatModeRef.current;
+    if (!zoneIsAttackHoverTarget || !cm?.onTargetAreaClick || cm.selectedAttacker == null) return;
+    event.preventDefault();
+    cm.onTargetAreaClick(playerIdx, null);
+  }, [
+    canPickTargetFromBoard,
+    combatModeRef,
+    dispatchPlayerTargetChoice,
+    isPlayerLegalTarget,
+    playerIdx,
+    zoneIsAttackHoverTarget,
+  ]);
 
   return (
     <div
@@ -526,6 +549,7 @@ function OpponentSlot({
         "--player-accent-rgb": (playerAccent || DEFAULT_PLAYER_ACCENT).rgb,
       }}
       data-opponent-zone={playerIdx}
+      data-player-drop-target={playerIdx}
       onClickCapture={handleClickCapture}
     >
       <div>
@@ -554,6 +578,12 @@ function OpponentSlot({
               )}
               data-player-target={player.index ?? player.id}
               data-player-target-name={player.index ?? player.id}
+              role={playerHeaderInteractive ? "button" : undefined}
+              tabIndex={playerHeaderInteractive ? 0 : undefined}
+              aria-label={playerHeaderInteractive
+                ? `${zoneIsAttackHoverTarget ? "Attack" : "Target"} ${playerDisplayName(state?.players || [], player)}`
+                : undefined}
+              onKeyDown={handlePlayerHeaderKeyDown}
               onPointerDown={handlePlayerTargetPointerDown}
               onClick={handlePlayerTargetClick}
               style={{

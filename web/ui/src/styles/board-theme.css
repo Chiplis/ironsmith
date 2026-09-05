@@ -637,8 +637,8 @@ body {
 
 /* ---- Final Theme Cleanup ---- */
 :root {
-  --ironsmith-ui-font: "Alegreya Sans SC", "Avenir Next", "Segoe UI", system-ui, sans-serif;
-  --font-heading: var(--ironsmith-ui-font);
+  --ironsmith-ui-font: "Rajdhani", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --font-heading: "Alegreya Sans SC", Georgia, serif;
   --font-body-fantasy: var(--ironsmith-ui-font);
 }
 
@@ -1368,6 +1368,40 @@ textarea,
 
 .inspector-oracle-scroll {
   scrollbar-color: rgba(168, 143, 96, 0.42) rgba(16, 14, 12, 0.9);
+}
+
+.inspector-oracle-scroll:focus-visible {
+  outline: 1px solid rgba(222, 191, 125, 0.5);
+  outline-offset: -2px;
+}
+
+.inspector-oracle-overflow-cue {
+  position: absolute;
+  z-index: 40;
+  right: 0;
+  height: 18px;
+  pointer-events: none;
+}
+
+.inspector-oracle-overflow-cue--top {
+  top: 0;
+  background: linear-gradient(180deg, rgba(12, 12, 12, 0.94), rgba(12, 12, 12, 0));
+}
+
+.inspector-oracle-overflow-cue--bottom {
+  bottom: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  color: rgba(239, 218, 173, 0.86);
+  background: linear-gradient(0deg, rgba(12, 12, 12, 0.96), rgba(12, 12, 12, 0));
+}
+
+.inspector-oracle-overflow-cue--bottom svg {
+  width: 13px;
+  height: 13px;
+  margin-bottom: 1px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
 }
 
 .inspector-oracle-line,

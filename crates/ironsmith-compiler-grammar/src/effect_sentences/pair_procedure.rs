@@ -29,14 +29,21 @@ use crate::util::{helper_tag_for_tokens, trim_commas};
 use crate::zone::Zone;
 use crate::grammar::effects::{self as effect_grammar, generic_sequence_shapes as sequence_grammar};
 
+use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId};
+use crate::registry::{
+    HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_registry_candidates,
+};
 use super::sequence_rules::generic_subject_verb_sequences::{
     ordered_control_flow_programs, reference_linked_programs,
 };
 
+#[path = "pair_procedure/kinds.rs"]
+mod kinds;
 #[path = "pair_procedure/shapes.rs"]
 mod shapes;
 use shapes::*;
 
+#[derive(PartialEq)]
 enum Pair {
     /// The copy for each target, awaiting "Each copy targets a different one".
     CopyForEachTarget(EffectAst),
@@ -112,18 +119,434 @@ fn choose_creature_type_sentence(sentence: &SentenceInput) -> bool {
 }
 
 /// Open a procedure at a sentence the next sentence completes.
-/// A shape's reading, with its error set aside for the caller to raise only
-/// when nothing else recognizes the document.
-fn deferring<T>(
-    parsed: Result<Option<T>, CardTextError>,
-    deferred: &mut Option<CardTextError>,
-) -> Option<T> {
-    match parsed {
-        Ok(value) => value,
-        Err(error) => {
-            deferred.get_or_insert(error);
-            None
-        }
+/// A statement read together with the sentences completing it: the head word
+/// that opens it, how many sentences it reads, and the reading.
+struct Shape {
+    id: RuleId,
+    head: HeadDiscriminator,
+    consumed: usize,
+    read: fn(&[SentenceInput], usize) -> ParseOutcome<Pair>,
+}
+
+/// The pair shapes, in the order their programs were ranked. Every shape whose
+/// head accepts the sentence is read; the longest complete reading is the
+/// document's, as the registry kept the rule consuming the longest program,
+/// and equal readings are one; two readings that disagree are an ambiguity.
+const PAIR_SHAPES: &[Shape] = &[
+    Shape {
+        id: RuleId::new("participant-loot"),
+        head: HeadDiscriminator::words(&["you"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, reference_linked_programs::parse_controller_defending_loot_then_greatest_mana_value_followup(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("participant-secret-choice"),
+        head: HeadDiscriminator::words(&["you"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, reference_linked_programs::parse_participant_secret_object_choice_then_reveal_and_sacrifice(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("reciprocal-creature-control"),
+        head: HeadDiscriminator::words(&["you", "untap"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, reference_linked_programs::parse_reciprocal_creature_control_sequence(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("same-controller-sacrifice-return"),
+        head: HeadDiscriminator::words(&["choose"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| {
+            if !((super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["controlled", "by", "the", "same", "player"]) || super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["controlled", "by", "same", "player"]))) {
+                return ParseOutcome::NoMatch;
+            }
+            statements(sentences, sentence_idx, reference_linked_programs::parse_choose_same_controller_targets_then_sacrifice_one_return_other(sentences, sentence_idx))
+        },
+    },
+    Shape {
+        id: RuleId::new("same-controller-sacrifice"),
+        head: HeadDiscriminator::words(&["choose"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| {
+            if !((super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["controlled", "by", "the", "same", "player"]) || super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["controlled", "by", "same", "player"]))) {
+                return ParseOutcome::NoMatch;
+            }
+            statements(sentences, sentence_idx, reference_linked_programs::parse_choose_same_controller_targets_then_sacrifice_one(sentences, sentence_idx))
+        },
+    },
+    Shape {
+        id: RuleId::new("choose-do-same-return"),
+        head: HeadDiscriminator::words(&["choose"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| {
+            if !((super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["do", "same"]) || super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["do", "the", "same"]))) {
+                return ParseOutcome::NoMatch;
+            }
+            statements(sentences, sentence_idx, reference_linked_programs::parse_choose_then_do_same_for_filter_then_return_to_battlefield(sentences, sentence_idx))
+        },
+    },
+    Shape {
+        id: RuleId::new("chosen-name-reveal"),
+        head: HeadDiscriminator::words(&["choose"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| {
+            if !(super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["card", "name"])) {
+                return ParseOutcome::NoMatch;
+            }
+            statements(sentences, sentence_idx, ordered_control_flow_programs::parse_choose_name_reveal_top_matching_hand_rest_graveyard(sentences, sentence_idx))
+        },
+    },
+    Shape {
+        id: RuleId::new("chosen-kind-consult"),
+        head: HeadDiscriminator::words(&["choose"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| {
+            if !(super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["land", "or", "nonland"])) {
+                return ParseOutcome::NoMatch;
+            }
+            statements(sentences, sentence_idx, ordered_control_flow_programs::parse_choose_land_or_nonland_then_consult_to_hand_bottom(sentences, sentence_idx))
+        },
+    },
+    Shape {
+        id: RuleId::new("directional-adjacent-control"),
+        head: HeadDiscriminator::words(&["starting"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, reference_linked_programs::parse_directional_adjacent_player_control(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("tagged-copy-retarget"),
+        head: HeadDiscriminator::words(&["if", "for"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| {
+            if !(super::sequence_rules::sentence_head_word_is(sentences, sentence_idx + 1, "the")) {
+                return ParseOutcome::NoMatch;
+            }
+            statements(sentences, sentence_idx, reference_linked_programs::parse_for_each_tagged_copy_then_copy_targets_it(sentences, sentence_idx))
+        },
+    },
+    Shape {
+        id: RuleId::new("draw-reveal-mana-value"),
+        head: HeadDiscriminator::words(&["draw"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, reference_linked_programs::parse_draw_reveal_then_triggering_creature_mana_value_result(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("mill-land-result-cast"),
+        head: HeadDiscriminator::words(&["each"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, ordered_control_flow_programs::parse_each_player_mill_then_land_result_then_cast_one_milled_spell(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("target-modifier-counter-instead-common-damage"),
+        head: HeadDiscriminator::words(&["target"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_target_modifier_counter_instead_then_common_damage(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("counter-spell-artifact-creature-battlefield-replacement"),
+        head: HeadDiscriminator::words(&["counter"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_counter_spell_then_artifact_or_creature_enters_under_your_control(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("revealed-and-or-choice-destination-override"),
+        head: HeadDiscriminator::words(&["reveal"]),
+        consumed: 4,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_reveal_top_choose_and_or_hand_rest_bottom_with_destination_override(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("looked-battlefield-grant-rest-bottom"),
+        head: HeadDiscriminator::words(&["look", "reveal"]),
+        consumed: 4,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_top_cards_move_then_grant_rest_bottom(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("look-reveal-one-or-instead-two-rest-bottom"),
+        head: HeadDiscriminator::words(&["look"]),
+        consumed: 4,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_look_reveal_one_or_instead_two_then_rest_bottom(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("look-may-sacrifice-if-did-select-battlefield-rest-bottom"),
+        head: HeadDiscriminator::words(&["look"]),
+        consumed: 4,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_look_then_may_sacrifice_if_did_select_battlefield_rest_bottom(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("look-may-action-result-branches-move-looked-card"),
+        head: HeadDiscriminator::words(&["look"]),
+        consumed: 4,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_look_then_may_action_if_did_or_did_not_move_looked_card(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("reveal-top-optional-battlefield-then-hand-rest-graveyard"),
+        head: HeadDiscriminator::words(&["reveal"]),
+        consumed: 4,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_reveal_top_optional_battlefield_then_hand_rest_graveyard(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("destroy-historical-blocker-reanimation"),
+        head: HeadDiscriminator::words(&["destroy"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, ordered_control_flow_programs::parse_destroy_historically_blocked_then_reanimate_from_historical_controller(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("destroy-for-each-destroyed-consult-exile-put-shuffle"),
+        head: HeadDiscriminator::words(&["destroy"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::parse_destroy_for_each_destroyed_consult_exile_put_shuffle(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("look-at-top-may-put-with-counter-rest-bottom"),
+        head: HeadDiscriminator::words(&["look"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_look_at_top_may_put_with_counter_then_rest_bottom(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("look-at-top-partition-face-down-filtered-permission"),
+        head: HeadDiscriminator::words(&["look"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_look_at_top_partition_face_down_then_filtered_permission(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("look-at-top-exile-match-and-rest-bottom-cast-exiled"),
+        head: HeadDiscriminator::words(&["look"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_look_at_top_exile_match_and_rest_bottom_then_cast_exiled(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("search-player-names-card-conditional-put-then-shuffle"),
+        head: HeadDiscriminator::words(&["search"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_search_then_player_names_card_conditional_put_then_shuffle(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("top-cards-one-hand-then-matching-to-zone-rest-graveyard"),
+        head: HeadDiscriminator::words(&["look", "reveal"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_top_cards_one_hand_then_matching_to_zone_rest_graveyard(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("reveal-top-one-hand-gain-mana-value-rest-graveyard"),
+        head: HeadDiscriminator::words(&["reveal"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_reveal_top_one_hand_gain_mana_value_rest_graveyard(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("top-cards-choose-for-each-filter-one-battlefield-others-hand-rest-graveyard"),
+        head: HeadDiscriminator::words(&["look", "reveal"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_top_cards_choose_for_each_filter_one_battlefield_others_hand_rest_graveyard(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("top-cards-for-each-card-type-put-matching-into-hand-rest-bottom"),
+        head: HeadDiscriminator::words(&["reveal"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_top_cards_for_each_card_type_put_matching_into_hand_rest_bottom(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("top-cards-for-each-card-type-among-spells-put-matching-into-hand-rest-bottom"),
+        head: HeadDiscriminator::words(&["reveal"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_top_cards_for_each_card_type_among_spells_put_matching_into_hand_rest_bottom(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("iterative-library-procedure-sequence"),
+        head: HeadDiscriminator::words(&["exile"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| {
+            if !(super::sequence_rules::sentence_head_word_is(sentences, sentence_idx + 2, "repeat")) {
+                return ParseOutcome::NoMatch;
+            }
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::parse_iterative_library_procedure_sequence(sentences, sentence_idx))
+        },
+    },
+    Shape {
+        id: RuleId::new("exile-face-down-pile-then-cloak-tapped"),
+        head: HeadDiscriminator::words(&["if", "target", "you", "that", "they", "exile", "look", "reveal"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_exile_face_down_pile_then_cloak(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("each-player-shuffle-reveal-put-revealed-types-rest-bottom"),
+        head: HeadDiscriminator::words(&["each"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("filtered-future-exile-then-return-next-end-step"),
+        head: HeadDiscriminator::words(&["if"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_filtered_future_exile_then_return_next_end_step(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("delayed-dies-exile-top-power-choose-play"),
+        head: HeadDiscriminator::words(&["when"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| {
+            if !(super::sequence_rules::sentence_head_is(sentences, sentence_idx, ("when", Some("that")))) {
+                return ParseOutcome::NoMatch;
+            }
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_delayed_dies_exile_top_power_choose_play(sentences, sentence_idx))
+        },
+    },
+    Shape {
+        id: RuleId::new("choose-card-type-then-reveal-and-put"),
+        head: HeadDiscriminator::words(&["choose"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| {
+            if !(super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["card", "type"])) {
+                return ParseOutcome::NoMatch;
+            }
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(sentences, sentence_idx))
+        },
+    },
+    Shape {
+        id: RuleId::new("copy-for-each-target"),
+        head: HeadDiscriminator::Any,
+        consumed: 2,
+        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_copy_for_each_target(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("consult-grant-play"),
+        head: HeadDiscriminator::words(&["target", "exile", "you", "that", "they"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| statements(sentences, sentence_idx, reference_linked_programs::parse_exile_until_match_grant_play_this_turn(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("flashback-grant"),
+        head: HeadDiscriminator::words(&["target"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_flashback_grant(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("chosen-creature-type"),
+        head: HeadDiscriminator::Any,
+        consumed: 2,
+        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_chosen_creature_type(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("delayed-upkeep-payment"),
+        head: HeadDiscriminator::Any,
+        consumed: 2,
+        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_delayed_upkeep_payment(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("choose-then-rest"),
+        head: HeadDiscriminator::words(&["choose", "each"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_choose_then_rest(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("target-chooses-cant-block"),
+        head: HeadDiscriminator::words(&["target"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_target_chooses_cant_block(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("copy-next-spell-retarget"),
+        head: HeadDiscriminator::words(&["copy"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_copy_next_spell_retarget(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("destroy-then-search-shuffle"),
+        head: HeadDiscriminator::words(&["destroy"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_destroy_then_search_shuffle(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("search-two-disposition"),
+        head: HeadDiscriminator::words(&["search"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_search_two_disposition(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("tempting-offer-copy"),
+        head: HeadDiscriminator::words(&["choose", "tempting"]),
+        consumed: 4,
+        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_tempting_offer_copy(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("history-counter-source"),
+        head: HeadDiscriminator::words(&["put"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_history_counter_source(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("history-counter-enchanted"),
+        head: HeadDiscriminator::words(&["put"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_history_counter_enchanted(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("choose-phase-then-skip"),
+        head: HeadDiscriminator::words(&["that", "the"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_choose_phase_then_skip(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("each-player-pay-life-tokens"),
+        head: HeadDiscriminator::words(&["starting"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_each_player_pay_life_tokens(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("starting-each-player-optional-repeat"),
+        head: HeadDiscriminator::words(&["starting"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_starting_each_player_optional_repeat(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("target-opponent-copy-retarget"),
+        head: HeadDiscriminator::words(&["up"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_target_opponent_copy_retarget(sentences, sentence_idx)),
+    },
+    Shape {
+        id: RuleId::new("opponents-sacrifice-or-discard-damage"),
+        head: HeadDiscriminator::words(&["each"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_opponents_sacrifice_or_discard_damage(sentences, sentence_idx)),
+    },
+];
+
+/// A reading's outcome: the shape's error is a committed diagnostic on the
+/// opening sentence.
+fn reading(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+    read: Result<Option<Pair>, CardTextError>,
+) -> ParseOutcome<Pair> {
+    let span = sentences
+        .get(sentence_idx)
+        .and_then(|sentence| crate::util::span_from_tokens(sentence.lowered()));
+    match read {
+        Ok(Some(pair)) => ParseOutcome::matched(pair, span),
+        Ok(None) => ParseOutcome::NoMatch,
+        Err(error) => ParseOutcome::Error(ParseDiagnostic::from_card_text_error(
+            RuleId::new("pair-shape"),
+            span,
+            error,
+        )),
+    }
+}
+
+/// The outcome of a shape parser that reads the statements themselves.
+fn statements(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+    read: Result<Option<Vec<EffectAst>>, CardTextError>,
+) -> ParseOutcome<Pair> {
+    reading(sentences, sentence_idx, read.map(|effects| effects.map(Pair::FixedShape)))
+}
+
+/// How many completing sentences a pair still awaits once opened.
+fn remaining(pair: &Pair, consumed: usize) -> usize {
+    match pair {
+        Pair::FixedShape(_) => consumed - 1,
+        Pair::SearchTwoDisposition(_) | Pair::EachPlayerPayLifeTokens(_) => 2,
+        Pair::TemptingOfferCopy(_) => 3,
+        _ => 1,
     }
 }
 
@@ -131,406 +554,52 @@ pub(super) fn open(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<PairGroup>, CardTextError> {
-    let Some(sentence) = sentences.get(sentence_idx) else {
+    if sentences.len() < sentence_idx + 2 {
         return Ok(None);
-    };
-    let Some(next) = sentences.get(sentence_idx + 1) else {
-        return Ok(None);
-    };
-    let group = |pair| {
-        let remaining = match &pair {
-            Pair::SearchTwoDisposition(_) | Pair::EachPlayerPayLifeTokens(_) => 2,
-            Pair::TemptingOfferCopy(_) => 3,
-            _ => 1,
-        };
-        Ok(Some(PairGroup {
-            pair,
-            remaining,
-            feature: "pair",
-            completed: false,
-            first_sentence: sentence_idx,
-            consumed: 1,
-        }))
-    };
-    // Statements read together with the sentences that complete them, in the
-    // order their programs were ranked.
-    let head = |words: &[&str]| super::sequence_rules::sentence_head_word_in(sentences, sentence_idx, words);
-    let next_head = |word: &str| super::sequence_rules::sentence_head_word_is(sentences, sentence_idx + 1, word);
-    let fixed = |effects: Vec<EffectAst>, consumed: usize, feature: &'static str| {
-        Ok(Some(PairGroup {
-            pair: Pair::FixedShape(effects),
-            remaining: consumed - 1,
-            feature,
-            completed: false,
-            first_sentence: sentence_idx,
-            consumed: 1,
-        }))
-    };
-    let has = |consumed: usize| sentences.len() >= sentence_idx + consumed;
-    // A shape that errs is not this document unless nothing recognizes it:
-    // its error waits behind any shape or procedure that does, as a rule's
-    // committed error waited behind any rule that matched.
-    let mut deferred: Option<CardTextError> = None;
-    if has(2) && head(&["you"])
-        && let Some(effects) = deferring(reference_linked_programs::parse_controller_defending_loot_then_greatest_mana_value_followup(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 2, "participant-loot");
     }
-    if has(2) && head(&["you"])
-        && let Some(effects) = deferring(reference_linked_programs::parse_participant_secret_object_choice_then_reveal_and_sacrifice(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 2, "participant-secret-choice");
-    }
-    if has(3) && head(&["you", "untap"])
-        && let Some(effects) = deferring(reference_linked_programs::parse_reciprocal_creature_control_sequence(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 3, "reciprocal-creature-control");
-    }
-    if has(3) && head(&["choose"])
-        && (super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["controlled", "by", "the", "same", "player"]) || super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["controlled", "by", "same", "player"]))
-        && let Some(effects) = deferring(reference_linked_programs::parse_choose_same_controller_targets_then_sacrifice_one_return_other(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 3, "same-controller-sacrifice-return");
-    }
-    if has(2) && head(&["choose"])
-        && (super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["controlled", "by", "the", "same", "player"]) || super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["controlled", "by", "same", "player"]))
-        && let Some(effects) = deferring(reference_linked_programs::parse_choose_same_controller_targets_then_sacrifice_one(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 2, "same-controller-sacrifice");
-    }
-    if has(2) && head(&["choose"])
-        && (super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["do", "same"]) || super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["do", "the", "same"]))
-        && let Some(effects) = deferring(reference_linked_programs::parse_choose_then_do_same_for_filter_then_return_to_battlefield(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 2, "choose-do-same-return");
-    }
-    if has(3) && head(&["choose"])
-        && super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["card", "name"])
-        && let Some(effects) = deferring(ordered_control_flow_programs::parse_choose_name_reveal_top_matching_hand_rest_graveyard(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 3, "chosen-name-reveal");
-    }
-    if has(3) && head(&["choose"])
-        && super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["land", "or", "nonland"])
-        && let Some(effects) = deferring(ordered_control_flow_programs::parse_choose_land_or_nonland_then_consult_to_hand_bottom(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 3, "chosen-kind-consult");
-    }
-    if has(2) && head(&["starting"])
-        && let Some(effects) = deferring(reference_linked_programs::parse_directional_adjacent_player_control(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 2, "directional-adjacent-control");
-    }
-    if has(2) && head(&["if", "for"]) && next_head("the")
-        && let Some(effects) = deferring(reference_linked_programs::parse_for_each_tagged_copy_then_copy_targets_it(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 2, "tagged-copy-retarget");
-    }
-    if has(2) && head(&["draw"])
-        && let Some(effects) = deferring(reference_linked_programs::parse_draw_reveal_then_triggering_creature_mana_value_result(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 2, "draw-reveal-mana-value");
-    }
-    if has(3) && head(&["each"])
-        && let Some(effects) = deferring(ordered_control_flow_programs::parse_each_player_mill_then_land_result_then_cast_one_milled_spell(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 3, "mill-land-result-cast");
-    }
-    if has(3) && head(&["target"])
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_target_modifier_counter_instead_then_common_damage(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 3, "target-modifier-counter-instead-common-damage");
-    }
-    if has(2) && head(&["counter"])
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_counter_spell_then_artifact_or_creature_enters_under_your_control(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 2, "counter-spell-artifact-creature-battlefield-replacement");
-    }
-    if has(4) && head(&["reveal"])
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_reveal_top_choose_and_or_hand_rest_bottom_with_destination_override(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 4, "revealed-and-or-choice-destination-override");
-    }
-    if has(4) && head(&["look", "reveal"])
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_top_cards_move_then_grant_rest_bottom(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 4, "looked-battlefield-grant-rest-bottom");
-    }
-    if has(4) && head(&["look"])
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_look_reveal_one_or_instead_two_then_rest_bottom(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 4, "look-reveal-one-or-instead-two-rest-bottom");
-    }
-    if has(4) && head(&["look"])
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_look_then_may_sacrifice_if_did_select_battlefield_rest_bottom(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 4, "look-may-sacrifice-if-did-select-battlefield-rest-bottom");
-    }
-    if has(4) && head(&["look"])
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_look_then_may_action_if_did_or_did_not_move_looked_card(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 4, "look-may-action-result-branches-move-looked-card");
-    }
-    if has(4) && head(&["reveal"])
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_reveal_top_optional_battlefield_then_hand_rest_graveyard(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 4, "reveal-top-optional-battlefield-then-hand-rest-graveyard");
-    }
-    if has(3) && head(&["destroy"])
-        && let Some(effects) = deferring(ordered_control_flow_programs::parse_destroy_historically_blocked_then_reanimate_from_historical_controller(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 3, "destroy-historical-blocker-reanimation");
-    }
-    if has(3) && head(&["destroy"])
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::parse_destroy_for_each_destroyed_consult_exile_put_shuffle(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 3, "destroy-for-each-destroyed-consult-exile-put-shuffle");
-    }
-    if has(3) && head(&["look"])
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_look_at_top_may_put_with_counter_then_rest_bottom(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 3, "look-at-top-may-put-with-counter-rest-bottom");
-    }
-    if has(3) && head(&["look"])
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_look_at_top_partition_face_down_then_filtered_permission(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 3, "look-at-top-partition-face-down-filtered-permission");
-    }
-    if has(3) && head(&["look"])
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_look_at_top_exile_match_and_rest_bottom_then_cast_exiled(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 3, "look-at-top-exile-match-and-rest-bottom-cast-exiled");
-    }
-    if has(3) && head(&["search"])
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_search_then_player_names_card_conditional_put_then_shuffle(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 3, "search-player-names-card-conditional-put-then-shuffle");
-    }
-    if has(3) && head(&["look", "reveal"])
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_top_cards_one_hand_then_matching_to_zone_rest_graveyard(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 3, "top-cards-one-hand-then-matching-to-zone-rest-graveyard");
-    }
-    if has(3) && head(&["reveal"])
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_reveal_top_one_hand_gain_mana_value_rest_graveyard(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 3, "reveal-top-one-hand-gain-mana-value-rest-graveyard");
-    }
-    if has(3) && head(&["look", "reveal"])
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_top_cards_choose_for_each_filter_one_battlefield_others_hand_rest_graveyard(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 3, "top-cards-choose-for-each-filter-one-battlefield-others-hand-rest-graveyard");
-    }
-    if has(3) && head(&["reveal"])
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_top_cards_for_each_card_type_put_matching_into_hand_rest_bottom(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 3, "top-cards-for-each-card-type-put-matching-into-hand-rest-bottom");
-    }
-    if has(3) && head(&["reveal"])
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_top_cards_for_each_card_type_among_spells_put_matching_into_hand_rest_bottom(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 3, "top-cards-for-each-card-type-among-spells-put-matching-into-hand-rest-bottom");
-    }
-    if has(3) && head(&["exile"]) && super::sequence_rules::sentence_head_word_is(sentences, sentence_idx + 2, "repeat")
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::parse_iterative_library_procedure_sequence(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 3, "iterative-library-procedure-sequence");
-    }
-    if has(2) && head(&["if", "target", "you", "that", "they", "exile", "look", "reveal"])
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_exile_face_down_pile_then_cloak(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 2, "exile-face-down-pile-then-cloak-tapped");
-    }
-    if has(2) && head(&["each"])
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 2, "each-player-shuffle-reveal-put-revealed-types-rest-bottom");
-    }
-    if has(2) && head(&["if"])
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_filtered_future_exile_then_return_next_end_step(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 2, "filtered-future-exile-then-return-next-end-step");
-    }
-    if has(2) && head(&["when"]) && super::sequence_rules::sentence_head_is(sentences, sentence_idx, ("when", Some("that")))
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_delayed_dies_exile_top_power_choose_play(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 2, "delayed-dies-exile-top-power-choose-play");
-    }
-    if has(2) && head(&["choose"]) && super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["card", "type"])
-        && let Some(effects) = deferring(super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 2, "choose-card-type-then-reveal-and-put");
-    }
-    if is_each_copy_targets_different(next)
-        && let Some(effect) =
-            deferring(parse_copy_for_each_target_sentence(sentences, sentence_idx, sentence.lowered()), &mut deferred)
-    {
-        return group(Pair::CopyForEachTarget(effect));
-    }
-    if has(2) && head(&["target", "exile", "you", "that", "they"])
-        && let Some(effects) = deferring(reference_linked_programs::parse_exile_until_match_grant_play_this_turn(sentences, sentence_idx), &mut deferred)
-    {
-        return fixed(effects, 2, "consult-grant-play");
-    }
-    // The grant names its target ("Target instant or sorcery card in your
-    // graveyard gains flashback"); "Each instant and sorcery card ..." is a
-    // different statement this does not read.
-    if crate::lexer::token_word_refs(sentence.lowered()).first() == Some(&"target")
-        && let Some(shape) =
-            sequence_grammar::parse_flashback_grant_shape(sentence.lowered(), next.lowered())
-    {
-        let target = super::parse_target_phrase(shape.target_tokens)?;
-        return group(Pair::FlashbackGrant(EffectAst::subject_verb_grant_to_target(
-            target,
-            crate::model::CompilerGrantableCore::flashback_from_cards_mana_cost(),
-            crate::grant::GrantDuration::UntilEndOfTurn,
-        )));
-    }
-    if choose_creature_type_sentence(sentence)
-        && let Some(effects) =
-            deferring(crate::activation_and_restrictions::parse_choose_creature_type_then_become_type(
-                sentence.lowered(),
-                next.lowered(),
-            ), &mut deferred)
-    {
-        return group(Pair::ChosenCreatureType(effects));
-    }
-    if let Some(shape) =
-        sequence_grammar::parse_delayed_upkeep_payment_shape(sentence.lowered(), next.lowered())
-    {
-        return group(Pair::DelayedUpkeepPayment(EffectAst::DelayedUntilNextUpkeep {
-            player: crate::cards::builders::PlayerAst::You,
-            effects: vec![EffectAst::UnlessPays {
-                effects: vec![EffectAst::subject_verb_lose_game(
-                    crate::cards::builders::PlayerAst::You,
-                )],
-                player: crate::cards::builders::PlayerAst::You,
-                cost: ironsmith_core::TotalCost::mana(shape.mana),
-                before_delayed_step: false,
-            }],
-        }));
-    }
-    let first_word = crate::lexer::token_word_refs(sentence.lowered())
-        .first()
-        .copied();
-    if matches!(first_word, Some("choose" | "each"))
-        && let Some(action) = effect_grammar::parse_rest_action_shape(next.lowered())
-        && let Some(first_effects) = crate::grammar::primitives::probe_shape(
-            super::parse_effect_sentence_lexed(sentence.lowered()),
-        )
-        && let [first] = first_effects.as_slice()
-        && let Some(effects) =
-            super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::append_rest_action_after_choice(
-                first.clone(),
-                action,
-            )
-    {
-        return group(Pair::ChooseThenRest(effects));
-    }
-    if first_word == Some("target")
-        && let Some(effects) =
-            deferring(crate::activation_and_restrictions::parse_target_player_chooses_then_other_cant_block(
-                sentence.lowered(),
-                next.lowered(),
-            ), &mut deferred)
-    {
-        return group(Pair::TargetChoosesCantBlock(effects));
-    }
-    if first_word == Some("copy")
-        && crate::word_primitives::parse_sequence_complete(
-            &crate::lexer::token_word_refs(sentence.lowered()),
-            &[
-                "copy", "the", "next", "spell", "you", "cast", "this", "turn", "when", "you", "cast",
-                "it",
-            ],
-        )
-        && crate::word_primitives::parse_sequence_complete(
-            &crate::lexer::token_word_refs(next.lowered()),
-            &["you", "may", "choose", "new", "targets", "for", "the", "copy"],
-        )
-    {
-        return group(Pair::CopyNextSpellRetarget(EffectAst::DelayedTriggerThisTurn {
-            trigger: crate::cards::builders::TriggerSpec::SpellCast {
-                filter: None,
-                mana_source_filter: None,
-                caster: crate::target::PlayerFilter::You,
-                timing: None,
-                during_turn: None,
-                min_spells_this_turn: None,
-                exact_spells_this_turn: None,
-                from_not_hand: false,
-            },
-            effects: vec![EffectAst::subject_verb_copy_spell(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None),
-                crate::effect::Value::Fixed(1),
-                PlayerAst::You,
-                true,
-                false,
-                Vec::new(),
-            )],
-            one_shot: true,
-            until_end_of_combat: false,
-            attach_to_previous_ability: false,
-        }));
-    }
-    if first_word == Some("destroy")
-        && let Some(effects) = deferring(destroy_all_then_search_shuffle(sentence, next), &mut deferred)
-    {
-        return group(Pair::DestroyThenSearchShuffle(effects));
-    }
-    if first_word == Some("search")
-        && let Some(third) = sentences.get(sentence_idx + 2)
-        && let Some(effects) = deferring(search_two_disposition_then_shuffle(sentence, next, third), &mut deferred)
-    {
-        return group(Pair::SearchTwoDisposition(effects));
-    }
-    if matches!(first_word, Some("choose" | "tempting"))
-        && let [third, fourth, ..] = sentences.get(sentence_idx + 2..).unwrap_or(&[])
-        && effect_grammar::is_tempting_offer_copy_sequence(
-            sentence.lowered(),
-            next.lowered(),
-            third.lowered(),
-            fourth.lowered(),
-        )
-    {
-        return group(Pair::TemptingOfferCopy(tempting_offer_copy_effects()));
-    }
-    if first_word == Some("put") {
-        if let Some(effects) = deferring(history_counter_source(sentence, next), &mut deferred) {
-            return group(Pair::HistoryCounterOtherwise(effects));
+    let head = super::sequence_rules::sentence_head_word(sentences, sentence_idx).unwrap_or("");
+    let mut candidates = Vec::new();
+    let mut diagnostics = Vec::new();
+    for shape in PAIR_SHAPES {
+        if !shape.head.accepts(head) || sentences.len() < sentence_idx + shape.consumed {
+            continue;
         }
-        if let Some(effects) = deferring(history_counter_enchanted(sentence, next), &mut deferred) {
-            return group(Pair::HistoryCounterOtherwise(effects));
+        match (shape.read)(sentences, sentence_idx).within(shape.id) {
+            ParseOutcome::Match(matched) => candidates.push(RegistryCandidate::new(
+                RegistryRuleMetadata::distinct(shape.id, shape.head),
+                (matched.value, shape.consumed),
+                matched.span,
+            )),
+            ParseOutcome::NoMatch => {}
+            ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
         }
     }
-    if matches!(first_word, Some("that" | "the"))
-        && let Some(effects) = deferring(choose_phase_then_skip(sentence, next), &mut deferred)
-    {
-        return group(Pair::ChoosePhaseThenSkip(effects));
-    }
-    if first_word == Some("starting") {
-        if let Some(third) = sentences.get(sentence_idx + 2)
-            && let Some(effects) = deferring(each_player_pay_life_tokens(sentence, next, third), &mut deferred)
-        {
-            return group(Pair::EachPlayerPayLifeTokens(effects));
-        }
-        if let Some(effects) = deferring(starting_each_player_optional_repeat(sentence, next), &mut deferred) {
-            return group(Pair::StartingEachPlayerRepeat(effects));
+    let longest = candidates
+        .iter()
+        .map(|candidate| candidate.value.1)
+        .max()
+        .unwrap_or(0);
+    candidates.retain(|candidate| candidate.value.1 == longest);
+    let mut distinct: Vec<RegistryCandidate<(Pair, usize)>> = Vec::new();
+    for candidate in candidates {
+        if !distinct.iter().any(|kept| kept.value == candidate.value) {
+            distinct.push(candidate);
         }
     }
-    if first_word == Some("up")
-        && let Some(effects) = deferring(target_opponent_copy_retarget(sentence, next), &mut deferred)
-    {
-        return group(Pair::TargetOpponentCopyRetarget(effects));
-    }
-    if first_word == Some("each")
-        && let Some(effects) = deferring(opponents_sacrifice_or_discard_damage(sentence, next), &mut deferred)
-    {
-        return group(Pair::OpponentsSacrificeOrDiscardDamage(effects));
-    }
-    match deferred {
-        Some(error) => Err(error),
-        None => Ok(None),
+    match resolve_registry_candidates(RuleId::new("pair-shape-registry"), distinct, diagnostics) {
+        ParseOutcome::Match(matched) => {
+            let (pair, consumed) = matched.value.value;
+            Ok(Some(PairGroup {
+                remaining: remaining(&pair, consumed),
+                feature: matched.value.rule.as_str(),
+                pair,
+                completed: false,
+                first_sentence: sentence_idx,
+                consumed: 1,
+            }))
+        }
+        ParseOutcome::NoMatch => Ok(None),
+        ParseOutcome::Error(diagnostic) => Err(diagnostic.into_card_text_error()),
     }
 }
 

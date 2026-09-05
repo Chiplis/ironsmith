@@ -108,6 +108,35 @@ function SourceConstraintButtons({ sourceId, required, excluded, preserved, onCh
   );
 }
 
+function PaymentCardName({ objectId, onInspect, children, className = "" }) {
+  if (objectId == null || typeof onInspect !== "function") {
+    return <span className={className}>{children}</span>;
+  }
+  return (
+    <button
+      type="button"
+      className={cn("decision-card-name-trigger", className)}
+      data-inspector-object-id={String(objectId)}
+      aria-label={`Inspect ${String(children || "card")}`}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+      }}
+      onPointerUp={(event) => {
+        if (event.button !== 0) return;
+        event.stopPropagation();
+        onInspect(objectId, event.currentTarget);
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (event.detail !== 0) return;
+        onInspect(objectId, event.currentTarget);
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function ManaPaymentDecision({
   decision,
   canAct,
@@ -117,10 +146,9 @@ export default function ManaPaymentDecision({
 }) {
   const { state, dispatch, dispatchInBackground } = useGame();
   const {
-    hoverCard,
-    clearHover,
     setPreviewLinkedObjects,
     clearPreviewLinkedObjects,
+    showAnchoredCardPreview,
   } = useHover();
   const payment = state?.mana_payment || null;
   const stripLayout = layout === "strip";
@@ -254,7 +282,7 @@ export default function ManaPaymentDecision({
     disabled: !canAct || !payment,
     onSubmit: confirm,
     secondaryAction: {
-      label: "Plan",
+      label: adjusting ? "Use these sources" : "Change sources",
       disabled: !canAct || !payment,
       active: adjusting,
       onSubmit: adjusting ? replan : () => setAdjusting(true),
@@ -297,13 +325,17 @@ export default function ManaPaymentDecision({
                     excluded.has(id) && "is-excluded",
                     required.has(id) && "is-required",
                   )}
-                  onMouseEnter={() => hoverCard(id)}
-                  onMouseLeave={clearHover}
                 >
                   <span className="mana-plan-source-index">{source.planned ? index + 1 : "·"}</span>
                   <span className="mana-plan-strip-source-copy">
                     <span className="mana-plan-strip-source-name-row">
-                      <span className="mana-plan-strip-source-name">{source.source_name}</span>
+                      <PaymentCardName
+                        objectId={id}
+                        onInspect={showAnchoredCardPreview}
+                        className="mana-plan-strip-source-name"
+                      >
+                        {source.source_name}
+                      </PaymentCardName>
                       {produced.length ? (
                         <span className="mana-plan-strip-produced">
                           {produced.map(({ symbol, amount }) => (
@@ -378,7 +410,11 @@ export default function ManaPaymentDecision({
       <div className="mana-plan-heading">
         <div>
           <div className="mana-plan-eyebrow">Mana payment</div>
-          <h3 className="mana-plan-title">{payment.source_name || decision.subject}</h3>
+          <h3 className="mana-plan-title">
+            <PaymentCardName objectId={decision?.source_id} onInspect={showAnchoredCardPreview}>
+              {payment.source_name || decision.subject}
+            </PaymentCardName>
+          </h3>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-1">
           {(payment.pips || []).map((pip, index) => (
@@ -422,12 +458,16 @@ export default function ManaPaymentDecision({
                   excluded.has(id) && "is-excluded",
                   required.has(id) && "is-required",
                 )}
-                onMouseEnter={() => hoverCard(id)}
-                onMouseLeave={clearHover}
               >
                 <span className="mana-plan-source-index">{source.planned ? index + 1 : "·"}</span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold">{source.source_name}</span>
+                  <PaymentCardName
+                    objectId={id}
+                    onInspect={showAnchoredCardPreview}
+                    className="block max-w-full truncate text-sm font-semibold"
+                  >
+                    {source.source_name}
+                  </PaymentCardName>
                   <span className="flex items-center gap-1 text-[11px] opacity-70">
                     {sourceActionLabel(source)}
                     {!source.undo_safe ? " · cannot safely undo" : ""}

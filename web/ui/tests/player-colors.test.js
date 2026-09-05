@@ -8,10 +8,10 @@ const players = [
   { id: 2, name: "Chandra" },
 ];
 
-test("maps the perspective player to royal orange", () => {
-  assert.equal(getPlayerAccent(players, 0, 0).hex, "#f28c28");
-  assert.equal(getPlayerAccent(players, 1, 1).hex, "#f28c28");
-  assert.equal(getPlayerAccent(players, 2, 2).hex, "#f28c28");
+test("maps the perspective player to the identity accent", () => {
+  assert.equal(getPlayerAccent(players, 0, 0).hex, "#b79cff");
+  assert.equal(getPlayerAccent(players, 1, 1).hex, "#b79cff");
+  assert.equal(getPlayerAccent(players, 2, 2).hex, "#b79cff");
 });
 
 test("keeps other players colored relative to perspective order", () => {

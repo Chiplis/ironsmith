@@ -25,6 +25,7 @@ export default function ActionPopover({
   title = null,
   subtitle = null,
   variant = "light",
+  collapseEquivalentActions = true,
 }) {
   const ref = useRef(null);
   const openedAtRef = useRef(0);
@@ -99,8 +100,17 @@ export default function ActionPopover({
   const rowHeight = variant === "game" ? 38 : 34;
   const headerHeight = (title || subtitle) ? (subtitle ? 58 : 40) : 0;
   const actionGroups = useMemo(
-    () => buildPriorityActionGroups(actions),
-    [actions]
+    () => (
+      collapseEquivalentActions
+        ? buildPriorityActionGroups(actions)
+        : (actions || []).map((action, actionIndex) => ({
+          key: `action-${action?.index ?? actionIndex}-${action?.kind || "unknown"}`,
+          label: action?.label || "Action",
+          firstAction: action,
+          hoverObjectId: action?.object_id ?? null,
+        }))
+    ),
+    [actions, collapseEquivalentActions]
   );
   const popoverHeight = (actionGroups.length * rowHeight) + headerHeight + 16;
   const anchorCenterX = anchorRect.left + anchorRect.width / 2;
@@ -119,7 +129,7 @@ export default function ActionPopover({
   const isOpen = phase === "open";
 
   // Tail color matches last row when hovered
-  const lastIdx = actions.length - 1;
+  const lastIdx = actionGroups.length - 1;
   const tailColor = hoveredIdx === lastIdx ? palette.tailHover : palette.tail;
   const tailSize = 11;
   const yOrigin = placeAbove ? "100%" : "0%";
@@ -128,6 +138,8 @@ export default function ActionPopover({
     <div
       ref={ref}
       className="fixed z-[152]"
+      data-action-popover="true"
+      data-action-count={actionGroups.length}
       style={{
         left: `${left}px`,
         top: `${top}px`,

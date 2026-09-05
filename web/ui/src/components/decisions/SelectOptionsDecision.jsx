@@ -18,7 +18,7 @@ import {
 import { normalizeDecisionText } from "./decisionText";
 import DecisionSummary from "./DecisionSummary";
 import HighlightedDecisionText from "./HighlightedDecisionText";
-import { getPlayerAccent } from "@/lib/player-colors";
+import { decisionOptionAccentVars, getPlayerAccent } from "@/lib/player-colors";
 import {
   buildInspectableObjectIdSet,
   buildObjectControllerById,
@@ -225,27 +225,30 @@ function buildPaymentOptionGroups(options, players) {
 
 function optionAccent(state, objectControllerById, opt, accentOverrides = null) {
   const objectId = opt?.object_id;
-  if (objectId == null) return null;
   const controllerId =
-    opt?.object_controller != null
+    objectId != null && opt?.object_controller != null
       ? Number(opt.object_controller)
-      : objectControllerById.get(String(objectId));
-  if (
-    controllerId == null ||
-    Number(controllerId) === Number(state?.perspective)
-  ) {
-    return null;
-  }
-  return getPlayerAccent(state?.players || [], controllerId, state?.perspective, accentOverrides);
+      : objectId != null
+        ? objectControllerById.get(String(objectId))
+        : null;
+  return getPlayerAccent(
+    state?.players || [],
+    controllerId ?? state?.perspective,
+    state?.perspective,
+    accentOverrides,
+  );
 }
 
-function optionLabelContent(state, objectNameById, objectControllerById, opt, accentOverrides = null) {
+function optionLabelContent(
+  objectNameById,
+  opt,
+  onInspectObject = null,
+) {
   const normalizedText = normalizeDecisionText(opt.description);
   const objectName =
     opt?.object_id != null
       ? objectNameById.get(String(opt.object_id)) || ""
       : "";
-  const accent = optionAccent(state, objectControllerById, opt, accentOverrides);
   const relatedObjectIds = Array.isArray(opt?.related_object_ids)
     ? opt.related_object_ids
     : null;
@@ -265,7 +268,9 @@ function optionLabelContent(state, objectNameById, objectControllerById, opt, ac
       className="decision-option-label"
       text={normalizedText}
       highlightText={objectName}
-      highlightColor={accent?.hex || null}
+      onHighlightClick={objectName && opt?.object_id != null && onInspectObject
+        ? (event) => onInspectObject(opt.object_id, event.currentTarget)
+        : null}
     />
   );
 
@@ -279,19 +284,6 @@ function optionLabelContent(state, objectNameById, objectControllerById, opt, ac
       </span>
     </span>
   );
-}
-
-function optionHoverObjectId(decision, opt, selectedObjectId = null) {
-  if (opt?.object_id != null) return String(opt.object_id);
-  if (Array.isArray(opt?.related_object_ids)) {
-    const relatedObjectId = opt.related_object_ids.find((id) => id != null);
-    if (relatedObjectId != null) return String(relatedObjectId);
-  }
-  if (selectedObjectId != null) return null;
-  if (isColorChoiceDecision(decision) && decision?.source_id != null) {
-    return String(decision.source_id);
-  }
-  return null;
 }
 
 function inspectableHoverObjectId(inspectableObjectIds, objectId) {
@@ -393,6 +385,7 @@ function OptionButton({
   onMouseLeave,
   horizontal = false,
   className = "",
+  accent = null,
 }) {
   const disabled = !canAct || opt.legal === false;
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
@@ -413,6 +406,7 @@ function OptionButton({
         disabled && (horizontal ? STRIP_ITEM_DISABLED_CLASS : "is-disabled"),
         className,
       )}
+      style={decisionOptionAccentVars(accent)}
       disabled={disabled}
       onPointerDown={(e) => {
         if (disabled || !registerPointerDown(e)) return;
@@ -585,8 +579,12 @@ function SingleSelectDecision({
   toolbarSearchTarget = null,
 }) {
   const { dispatch, state, playerAccentOverrides } = useGame();
-  const { hoveredObjectId, hoverCard, clearHover } = useHover();
-  const { attachScrollableRef, hoverSuppressed } =
+  const {
+    hoveredObjectId,
+    clearHover,
+    showAnchoredCardPreview,
+  } = useHover();
+  const { attachScrollableRef } =
     useHoverSuppressedWhileScrolling({
       onScrollStart: clearHover,
     });
@@ -917,11 +915,6 @@ function SingleSelectDecision({
             {visibleOptions.map((opt) => {
               const objId =
                 opt.object_id != null ? String(opt.object_id) : null;
-              const hoverObjectId = optionHoverObjectId(
-                decision,
-                opt,
-                selectedObjectId,
-              );
               return (
                 <OptionButton
                   key={opt.index}
@@ -929,11 +922,9 @@ function SingleSelectDecision({
                   content={
                     <span className="flex min-w-0 w-full items-center gap-2">
                       {optionLabelContent(
-                        state,
                         objectNameById,
-                        objectControllerById,
                         opt,
-                        playerAccentOverrides,
+                        showAnchoredCardPreview,
                       )}
                       {opt.group_count > 1 && (
                         <span
@@ -951,6 +942,12 @@ function SingleSelectDecision({
                   }
                   horizontal={stripLayout && !compactStripLayout}
                   className={mobileOverlayLayout ? "decision-option-row--mobile-overlay" : ""}
+                  accent={optionAccent(
+                    state,
+                    objectControllerById,
+                    opt,
+                    playerAccentOverrides,
+                  )}
                   onClick={() => {
                     const selectedOption = opt.grouped_options?.find(
                       (candidate) => candidate.legal !== false,
@@ -960,11 +957,6 @@ function SingleSelectDecision({
                       selectedOption.description,
                     );
                   }}
-                  onMouseEnter={() => {
-                    if (hoverSuppressed || !hoverObjectId) return;
-                    hoverCard(hoverObjectId);
-                  }}
-                  onMouseLeave={() => hoverObjectId && clearHover()}
                 />
               );
             })}
@@ -1000,8 +992,12 @@ function MultiSelectDecision({
   layout = "panel",
 }) {
   const { dispatch, state, playerAccentOverrides } = useGame();
-  const { hoveredObjectId, hoverCard, clearHover } = useHover();
-  const { attachScrollableRef, hoverSuppressed } =
+  const {
+    hoveredObjectId,
+    clearHover,
+    showAnchoredCardPreview,
+  } = useHover();
+  const { attachScrollableRef } =
     useHoverSuppressedWhileScrolling({
       onScrollStart: clearHover,
     });
@@ -1167,11 +1163,6 @@ function MultiSelectDecision({
             {visibleOptions.map((opt) => {
               const objId =
                 opt.object_id != null ? String(opt.object_id) : null;
-              const hoverObjectId = optionHoverObjectId(
-                decision,
-                opt,
-                selectedObjectId,
-              );
               const isHighlighted =
                 objId != null && String(activeObjectId) === objId;
               const isSelected = selected.has(opt.index);
@@ -1180,23 +1171,22 @@ function MultiSelectDecision({
                   key={opt.index}
                   opt={opt}
                   content={optionLabelContent(
-                    state,
                     objectNameById,
-                    objectControllerById,
                     opt,
-                    playerAccentOverrides,
+                    showAnchoredCardPreview,
                   )}
                   canAct={canAct}
                   isHighlighted={isHighlighted}
                   isSelected={isSelected}
                   horizontal={stripLayout}
                   className={mobileOverlayLayout ? "decision-option-row--mobile-overlay" : ""}
+                  accent={optionAccent(
+                    state,
+                    objectControllerById,
+                    opt,
+                    playerAccentOverrides,
+                  )}
                   onClick={() => opt.legal !== false && toggle(opt.index)}
-                  onMouseEnter={() => {
-                    if (hoverSuppressed || !hoverObjectId) return;
-                    hoverCard(hoverObjectId);
-                  }}
-                  onMouseLeave={() => hoverObjectId && clearHover()}
                 />
               );
             })}
@@ -1251,12 +1241,22 @@ function OrderingDecision({
   hideDescription = false,
   layout = "panel",
 }) {
-  const { dispatch, state, triggerOrderingState, moveTriggerOrderingItem } = useGame();
+  const {
+    dispatch,
+    state,
+    triggerOrderingState,
+    moveTriggerOrderingItem,
+    playerAccentOverrides,
+  } = useGame();
   const { hoverCard, clearHover } = useHover();
   const stripLayout = layout === "strip";
   const options = decision.options || [];
   const inspectableObjectIds = useMemo(
     () => buildInspectableObjectIdSet(state),
+    [state],
+  );
+  const objectControllerById = useMemo(
+    () => buildObjectControllerById(state),
     [state],
   );
   const trivialOrdering = options.length <= 1;
@@ -1356,6 +1356,12 @@ function OrderingDecision({
                 ? "decision-option-row decision-option-row--strip min-w-[220px] max-w-[360px] self-stretch"
                 : "decision-option-row decision-option-row--panel",
             )}
+            style={decisionOptionAccentVars(optionAccent(
+              state,
+              objectControllerById,
+              opt,
+              playerAccentOverrides,
+            ))}
             onMouseEnter={() => hoverObjectId && hoverCard(hoverObjectId)}
             onMouseLeave={() => hoverObjectId && clearHover()}
           >
@@ -1476,13 +1482,17 @@ function DistributeDecision({
   hideDescription = false,
   layout = "panel",
 }) {
-  const { dispatch, setStatus, state } = useGame();
+  const { dispatch, setStatus, state, playerAccentOverrides } = useGame();
   const { hoverCard, clearHover } = useHover();
   const stripLayout = layout === "strip";
   const options = decision.options || [];
   const total = Number(decision.max || 0);
   const inspectableObjectIds = useMemo(
     () => buildInspectableObjectIdSet(state),
+    [state],
+  );
+  const objectControllerById = useMemo(
+    () => buildObjectControllerById(state),
     [state],
   );
   const [counts, setCounts] = useState(() =>
@@ -1544,6 +1554,12 @@ function DistributeDecision({
                 ? "decision-option-row decision-option-row--strip min-w-[220px] max-w-[360px] self-stretch"
                 : "decision-option-row decision-option-row--panel",
             )}
+            style={decisionOptionAccentVars(optionAccent(
+              state,
+              objectControllerById,
+              opt,
+              playerAccentOverrides,
+            ))}
             onMouseEnter={() => hoverObjectId && hoverCard(hoverObjectId)}
             onMouseLeave={() => hoverObjectId && clearHover()}
           >
@@ -1636,13 +1652,17 @@ function CountersDecision({
   hideDescription = false,
   layout = "panel",
 }) {
-  const { dispatch, state } = useGame();
+  const { dispatch, state, playerAccentOverrides } = useGame();
   const { hoverCard, clearHover } = useHover();
   const stripLayout = layout === "strip";
   const options = decision.options || [];
   const maxTotal = Number(decision.max || 0);
   const inspectableObjectIds = useMemo(
     () => buildInspectableObjectIdSet(state),
+    [state],
+  );
+  const objectControllerById = useMemo(
+    () => buildObjectControllerById(state),
     [state],
   );
   const [counts, setCounts] = useState(() =>
@@ -1700,6 +1720,12 @@ function CountersDecision({
                 ? "decision-option-row decision-option-row--strip min-w-[220px] max-w-[360px] self-stretch"
                 : "decision-option-row decision-option-row--panel",
             )}
+            style={decisionOptionAccentVars(optionAccent(
+              state,
+              objectControllerById,
+              opt,
+              playerAccentOverrides,
+            ))}
             onMouseEnter={() => hoverObjectId && hoverCard(hoverObjectId)}
             onMouseLeave={() => hoverObjectId && clearHover()}
           >
@@ -1792,7 +1818,7 @@ function RepeatableDecision({
   hideDescription = false,
   layout = "panel",
 }) {
-  const { dispatch, state } = useGame();
+  const { dispatch, state, playerAccentOverrides } = useGame();
   const { hoverCard, clearHover } = useHover();
   const stripLayout = layout === "strip";
   const options = useMemo(() => decision.options || [], [decision.options]);
@@ -1800,6 +1826,10 @@ function RepeatableDecision({
   const min = decision.min || 0;
   const inspectableObjectIds = useMemo(
     () => buildInspectableObjectIdSet(state),
+    [state],
+  );
+  const objectControllerById = useMemo(
+    () => buildObjectControllerById(state),
     [state],
   );
   const [counts, setCounts] = useState(() =>
@@ -1857,6 +1887,12 @@ function RepeatableDecision({
                 ? "decision-option-row decision-option-row--strip min-w-[220px] max-w-[360px] self-stretch"
                 : "decision-option-row decision-option-row--panel",
             )}
+            style={decisionOptionAccentVars(optionAccent(
+              state,
+              objectControllerById,
+              opt,
+              playerAccentOverrides,
+            ))}
             onMouseEnter={() => hoverObjectId && hoverCard(hoverObjectId)}
             onMouseLeave={() => hoverObjectId && clearHover()}
           >

@@ -1,7 +1,7 @@
 import { Fragment, useRef, useMemo, useEffect, useLayoutEffect, useCallback, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { useHover } from "@/context/HoverContext";
-import { useDragActions } from "@/context/DragContext";
+import { useDragActions, useDragState } from "@/context/DragContext";
 import useNewCards from "@/hooks/useNewCards";
 import useManabrewHandScale, {
   MANABREW_HAND_CARD_BASE,
@@ -11,6 +11,7 @@ import GameCard from "@/components/cards/GameCard";
 import { stagger } from "@/lib/motion/anime";
 import useLayoutReflow from "@/lib/motion/useLayoutReflow";
 import { samePlayerId } from "@/lib/player-display";
+import { handCardSourcePoint, plainRect } from "@/lib/hand-drag-intent";
 
 const HAND_ROULETTE_THRESHOLD = 10;
 const HAND_ROULETTE_VISIBLE_CARDS = 7;
@@ -344,8 +345,9 @@ export default function HandZone({
   layout = "fan",
 }) {
   const { state, multiplayer } = useGame();
-  const { hoveredObjectId, hoveredLinkedObjectIds } = useHover();
+  const { hoveredObjectId, hoveredLinkedObjectIds, hoverCard, clearHover } = useHover();
   const { startDrag, updateDrag, endDrag } = useDragActions();
+  const dragState = useDragState();
   const handScale = useManabrewHandScale();
   const dragThresholdRef = useRef(null);
   const activePointerIdRef = useRef(null);
@@ -355,6 +357,7 @@ export default function HandZone({
   const handListRef = useRef(null);
   const handScrollRef = useRef(null);
   const centerCycleRef = useRef(null);
+  const collapsedCardRectsRef = useRef(new Map());
   const rouletteCycleSpanRef = useRef(0);
   const rouletteRecenteringRef = useRef(false);
   const mobileSelectedPreviewRafRef = useRef(null);
@@ -677,9 +680,11 @@ export default function HandZone({
     () => computeManabrewHandDimensions(handScale),
     [handScale]
   );
-  const activeFanObjectId = activeMenuHoveredHandObjectId
-    || selectedObjectIdKey
-    || hoveredHandObjectId;
+  const activeFanObjectId = dragState || isMobileFan
+    ? null
+    : activeMenuHoveredHandObjectId
+      || selectedObjectIdKey
+      || hoveredHandObjectId;
   const activeFanIndex = useMemo(() => {
     if (!activeFanObjectId) return null;
     const handIndex = handCards.findIndex((card) => String(card.id) === activeFanObjectId);
@@ -736,9 +741,25 @@ export default function HandZone({
     leaveTo: { opacity: 0, x: -20, scale: 0.94 },
   });
 
+  useLayoutEffect(() => {
+    // Preserve each card's settled position in the collapsed fan. Pointerdown
+    // happens after the fan has opened, so measuring there would anchor the
+    // cast arrow to the enlarged/raised card instead of its resting slot.
+    if (isExpanded || dragState) return;
+    const measurementRoot = isRoulette ? centerCycleRef.current : handListRef.current;
+    if (!measurementRoot) return;
+    const nextRects = new Map();
+    for (const item of measurementRoot.querySelectorAll(".hand-layout-item[data-hand-object-id]")) {
+      const cardElement = item.querySelector(":scope > .game-card.hand-card");
+      const rect = plainRect(cardElement?.getBoundingClientRect?.());
+      if (rect) nextRects.set(String(item.dataset.handObjectId), rect);
+    }
+    if (nextRects.size > 0) collapsedCardRectsRef.current = nextRects;
+  }, [dragState, handLayoutSignature, isExpanded, isRoulette]);
+
   const handleCardClick = (_e, card) => {
     const candidateObjectIds = [Number(card?.id)].filter((id) => Number.isFinite(id));
-    onInspect?.(card.id, { candidateObjectIds });
+    onInspect?.(card.id, { candidateObjectIds, source: "hand" });
   };
 
   const releaseDragScrollLock = useCallback(() => {
@@ -779,14 +800,6 @@ export default function HandZone({
       releaseDragScrollLock();
     };
   }, [releaseDragScrollLock]);
-
-  useEffect(() => {
-    const wasExpanded = previousExpandedRef.current;
-    previousExpandedRef.current = isExpanded;
-    if (wasExpanded && !isExpanded && hoveredHandObjectId != null) {
-      setHoveredHandObjectId(null);
-    }
-  }, [hoveredHandObjectId, isExpanded]);
 
   useLayoutEffect(() => {
     const handList = handListRef.current;
@@ -839,8 +852,10 @@ export default function HandZone({
       clearTimeout(hoverClearTimerRef.current);
       hoverClearTimerRef.current = null;
     }
-    setHoveredHandObjectId(String(objectId));
-  }, []);
+    const normalizedObjectId = String(objectId);
+    setHoveredHandObjectId(normalizedObjectId);
+    hoverCard(normalizedObjectId);
+  }, [hoverCard]);
 
   const handleHoverLeave = useCallback(() => {
     if (hoverClearTimerRef.current) {
@@ -849,9 +864,18 @@ export default function HandZone({
     // Small delay smooths hover-out when moving across dense hand cards.
     hoverClearTimerRef.current = setTimeout(() => {
       setHoveredHandObjectId(null);
+      clearHover();
       hoverClearTimerRef.current = null;
     }, 110);
-  }, []);
+  }, [clearHover]);
+
+  useEffect(() => {
+    const wasExpanded = previousExpandedRef.current;
+    previousExpandedRef.current = isExpanded;
+    if (wasExpanded && !isExpanded && hoveredHandObjectId != null) {
+      handleHoverLeave();
+    }
+  }, [handleHoverLeave, hoveredHandObjectId, isExpanded]);
 
   const resolveHandHoverObjectId = useCallback((clientX, clientY) => {
     const handList = handListRef.current;
@@ -1016,7 +1040,26 @@ export default function HandZone({
     const sx = e.clientX;
     const sy = e.clientY;
     const sourceRect = e.currentTarget?.closest?.(".game-card")?.getBoundingClientRect?.() || null;
-    dragThresholdRef.current = { sx, sy, card, plays, glowKind, sourceRect, dragging: false };
+    const collapsedSourceRect = collapsedCardRectsRef.current.get(String(card.id)) || plainRect(sourceRect);
+    // Keep the outer hand bounds as a fallback for layouts without a cached
+    // collapsed card slot (for example, a newly revealed mobile card).
+    const sourceContainer = (
+      e.currentTarget?.closest?.(".hand-reveal-shell")
+      || e.currentTarget?.closest?.(".mobile-hand-rail-zone")
+      || e.currentTarget?.closest?.(".hand-zone-surface")
+    );
+    const sourceContainerRect = sourceContainer?.getBoundingClientRect?.() || null;
+    dragThresholdRef.current = {
+      sx,
+      sy,
+      card,
+      plays,
+      glowKind,
+      sourceRect: plainRect(sourceRect),
+      sourceContainerRect: plainRect(sourceContainerRect),
+      hiddenSourcePoint: handCardSourcePoint(collapsedSourceRect),
+      dragging: false,
+    };
 
     const onMove = (me) => {
       if (activePointerIdRef.current != null && me.pointerId !== activePointerIdRef.current) {
@@ -1042,7 +1085,29 @@ export default function HandZone({
           handScrollRef.current.style.touchAction = "none";
           handScrollRef.current.style.overscrollBehavior = "none";
         }
-        startDrag(card.id, card.name, plays, glowKind, me.clientX, me.clientY, dt.sourceRect || null);
+        startDrag(
+          card.id,
+          card.name,
+          plays,
+          glowKind,
+          me.clientX,
+          me.clientY,
+          dt.sourceRect || null,
+          {
+            ...card,
+            id: card.id,
+            name: card.name,
+            card_types: Array.isArray(card.card_types) ? [...card.card_types] : [],
+            member_ids: Array.isArray(card.member_ids) ? [...card.member_ids] : [],
+            member_stable_ids: Array.isArray(card.member_stable_ids) ? [...card.member_stable_ids] : [],
+            type_line: card.type_line || null,
+            mana_cost: card.mana_cost || null,
+            oracle_text: card.oracle_text || null,
+            effect_text: card.effect_text || null,
+          },
+          dt.sourceContainerRect || null,
+          dt.hiddenSourcePoint || null,
+        );
       }
       if (dt.dragging) {
         if (me.cancelable) {
@@ -1116,7 +1181,7 @@ export default function HandZone({
           : isActionLinkedHover ? "action-link" : baseGlowKind;
         const cardObjectId = String(card.id);
         const isHovered = hoveredHandObjectId === cardObjectId;
-        const isInspected = (
+        const isInspected = !isMobileFan && (
           (selectedObjectIdKey != null && cardObjectId === selectedObjectIdKey)
           || isMenuActionPreview
         );
@@ -1142,10 +1207,11 @@ export default function HandZone({
             isHovered={isHovered}
             isInspected={isInspected}
             onClick={isPlayable ? undefined : (event) => handleCardClick(event, card)}
+            onKeyboardActivate={(event) => handleCardClick(event, card)}
             onPointerDown={isPlayable ? (event) => handlePointerDown(event, card, plays, glowKind) : undefined}
             onMouseEnter={() => handleHoverEnter(card.id)}
             onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
-            className={`mobile-hand-rail-card${isPlayable ? " mobile-hand-rail-card--draggable" : ""} !w-full !max-w-none !min-w-0 !basis-auto !flex-none self-stretch p-1`}
+            className={`mobile-hand-rail-card${isPlayable ? " mobile-hand-rail-card--draggable" : ""}${String(dragState?.objectId) === cardObjectId ? " hand-card--drag-source" : ""} !w-full !max-w-none !min-w-0 !basis-auto !flex-none self-stretch p-1`}
             style={{
               width: "100%",
               minWidth: "0px",
@@ -1176,7 +1242,7 @@ export default function HandZone({
         : isActionLinkedHover ? "action-link" : baseGlowKind;
       const extraObjectId = String(extra.id);
       const isHovered = hoveredHandObjectId === extraObjectId;
-      const isInspected = (
+      const isInspected = !isMobileFan && (
         (selectedObjectIdKey != null && extraObjectId === selectedObjectIdKey)
         || isMenuActionPreview
       );
@@ -1191,13 +1257,12 @@ export default function HandZone({
           suppressTooltip={isMobileFan}
           isHovered={isHovered}
           isInspected={isInspected}
-          onClick={plays.length === 0
-            ? (event) => handleCardClick(event, card)
-            : plays.length <= 1 ? undefined : (event) => handleCardClick(event, card)}
+          onClick={isPlayable ? undefined : (event) => handleCardClick(event, card)}
+          onKeyboardActivate={(event) => handleCardClick(event, card)}
           onPointerDown={plays.length > 0 ? (event) => handlePointerDown(event, card, plays, baseGlowKind || "extra") : undefined}
           onMouseEnter={() => handleHoverEnter(extra.id)}
           onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
-          className={`mobile-hand-rail-card mobile-hand-rail-card--extra${plays.length > 0 ? " mobile-hand-rail-card--draggable" : ""} !w-full !max-w-none !min-w-0 !basis-auto !flex-none self-stretch p-1`}
+          className={`mobile-hand-rail-card mobile-hand-rail-card--extra${plays.length > 0 ? " mobile-hand-rail-card--draggable" : ""}${String(dragState?.objectId) === extraObjectId ? " hand-card--drag-source" : ""} !w-full !max-w-none !min-w-0 !basis-auto !flex-none self-stretch p-1`}
           style={{
             width: "100%",
             minWidth: "0px",
@@ -1240,7 +1305,7 @@ export default function HandZone({
           : isActionLinkedHover ? "action-link" : baseGlowKind;
         const cardObjectId = String(card.id);
         const isHovered = hoveredHandObjectId === cardObjectId;
-        const isInspected = (
+        const isInspected = !isMobileFan && (
           (selectedObjectIdKey != null && cardObjectId === selectedObjectIdKey)
           || isMenuActionPreview
         );
@@ -1279,10 +1344,14 @@ export default function HandZone({
               isHovered={isHovered}
               isInspected={isInspected}
               onClick={isPlayable ? undefined : (e) => handleCardClick(e, card)}
+              onKeyboardActivate={(event) => handleCardClick(event, card)}
               onPointerDown={isPlayable ? (e) => handlePointerDown(e, card, plays, glowKind) : undefined}
               onMouseEnter={() => handleHoverEnter(card.id)}
               onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
-              className={isMobileFan && isPlayable ? "hand-card--mobile-draggable" : undefined}
+              className={[
+                isMobileFan && isPlayable ? "hand-card--mobile-draggable" : null,
+                String(dragState?.objectId) === cardObjectId ? "hand-card--drag-source" : null,
+              ].filter(Boolean).join(" ") || undefined}
               style={cardStyle}
             />
           </div>
@@ -1308,7 +1377,7 @@ export default function HandZone({
         : isActionLinkedHover ? "action-link" : baseGlowKind;
       const extraObjectId = String(extra.id);
       const isHovered = hoveredHandObjectId === extraObjectId;
-      const isInspected = (
+      const isInspected = !isMobileFan && (
         (selectedObjectIdKey != null && extraObjectId === selectedObjectIdKey)
         || isMenuActionPreview
       );
@@ -1337,13 +1406,15 @@ export default function HandZone({
             suppressTooltip={isMobileFan}
             isHovered={isHovered}
             isInspected={isInspected}
-            onClick={plays.length === 0
-              ? (e) => handleCardClick(e, card)
-              : plays.length <= 1 ? undefined : (e) => handleCardClick(e, card)}
+            onClick={isPlayable ? undefined : (e) => handleCardClick(e, card)}
+            onKeyboardActivate={(event) => handleCardClick(event, card)}
             onPointerDown={plays.length > 0 ? (e) => handlePointerDown(e, card, plays, baseGlowKind || "extra") : undefined}
             onMouseEnter={() => handleHoverEnter(extra.id)}
             onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
-            className={isMobileFan && isPlayable ? "hand-card--mobile-draggable" : undefined}
+            className={[
+              isMobileFan && isPlayable ? "hand-card--mobile-draggable" : null,
+              String(dragState?.objectId) === extraObjectId ? "hand-card--drag-source" : null,
+            ].filter(Boolean).join(" ") || undefined}
             style={cardStyle}
           />
         </div>
@@ -1373,7 +1444,10 @@ export default function HandZone({
       return (
         <section
           className={`hand-zone-surface min-w-0 bg-transparent px-2 py-1 h-full min-h-0 overflow-visible ${isRoulette ? "hand-zone-surface-roulette" : "max-w-full"} ${isMobileFan ? "hand-zone-surface-mobile-fan" : ""}`}
-          style={{ width: surfaceWidth, maxWidth: isRoulette ? surfaceWidth : "100%" }}
+          style={{
+            width: surfaceWidth,
+            maxWidth: isRoulette ? surfaceWidth : "100%",
+          }}
         >
         <div className={`hand-zone-viewport min-h-0 h-full w-full min-w-0 overflow-visible ${isRoulette ? "hand-zone-viewport-roulette" : ""} ${isMobileFan ? "hand-zone-viewport-mobile-fan" : ""}`}>
           <div

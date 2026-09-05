@@ -1,4 +1,4 @@
-export const DEFAULT_PLAYER_ACCENT = { hex: "#731bde", rgb: "115, 27, 222" };
+export const DEFAULT_PLAYER_ACCENT = { hex: "#b79cff", rgb: "183, 156, 255" };
 
 const PLAYER_ACCENT_PALETTE = [
   DEFAULT_PLAYER_ACCENT,
@@ -68,5 +68,13 @@ export function playerAccentVars(accent) {
   return {
     "--player-accent": accent.hex,
     "--player-accent-rgb": accent.rgb,
+  };
+}
+
+export function decisionOptionAccentVars(accent) {
+  if (!accent) return undefined;
+  return {
+    "--decision-option-accent": accent.hex,
+    "--decision-option-accent-rgb": accent.rgb,
   };
 }

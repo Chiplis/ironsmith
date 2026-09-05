@@ -1,22 +1,21 @@
 import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
-import { useDragActions } from "@/context/DragContext";
+import { useDragActions, useDragState, usePlacementActions } from "@/context/DragContext";
 import { useHoverActions } from "@/context/HoverContext";
 import useViewportLayout from "@/hooks/useViewportLayout";
-import useManabrewHandScale, {
-  MANABREW_HAND_CARD_BASE,
-} from "@/hooks/useManabrewHandScale";
+import useManabrewHandScale from "@/hooks/useManabrewHandScale";
 import TableCore from "@/components/board/TableCore";
 import HandZone from "@/components/board/HandZone";
 import RematchSideboardingView from "@/components/board/RematchSideboardingView";
 import RightRail from "@/components/right-rail/RightRail";
+import FloatingCardPreview from "@/components/right-rail/FloatingCardPreview";
 import DragOverlay from "@/components/overlays/DragOverlay";
+import ActionPopover from "@/components/overlays/ActionPopover";
 import CastParticles from "@/components/overlays/CastParticles";
 import ArrowOverlay from "@/components/overlays/ArrowOverlay";
 import ZoneMoveEffects from "@/components/overlays/ZoneMoveEffects";
 import GameEffectAnimations from "@/components/overlays/GameEffectAnimations";
-import { animate, cancelMotion, uiSpring } from "@/lib/motion/anime";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { resolveGameAnimations } from "@/lib/game-animations";
 import { getPlayerAccent } from "@/lib/player-colors";
@@ -29,13 +28,20 @@ import {
 } from "@/lib/stack-targets";
 import { samePlayerId } from "@/lib/player-display";
 import { sameActionRef } from "@/lib/sync-commands";
+import {
+  dropTargetCandidateFromElements,
+  legalTargetForDropCandidates,
+  plainRect,
+  pointIsOutsideRect,
+  rectBoundaryPointToward,
+  shouldBeginTargetCastIntent,
+  targetDropCompletesDecision,
+} from "@/lib/hand-drag-intent";
 
-const HAND_PEEK_HEIGHT_DEFAULT = 46;
+const HAND_PEEK_HEIGHT_DEFAULT = 72;
 const TOP_LEFT_INSPECTOR_INSET = 6;
 const TOP_LEFT_INSPECTOR_ZONE_GAP = 6;
 const TOP_LEFT_INSPECTOR_MIN_HEIGHT = 96;
-const HAND_LANE_HOVER_FUZZ = 6;
-const HAND_LANE_BOTTOM_EXIT_FUZZ = 96;
 const TRANSITION_TRACKED_ZONE_IDS = ["battlefield", "hand", "graveyard", "exile", "command", "ante"];
 const SINGLE_ACTION_AUTO_DROP_MIN_DISTANCE_SQ = 18 * 18;
 const INSPECTOR_SHADER_REVEAL_CONSUME_MS = 2500;
@@ -103,16 +109,6 @@ function rectContainsPoint(rect, x, y, fuzz = 0) {
   );
 }
 
-function handLaneHoverRectContainsPoint(rect, x, y) {
-  if (!rect) return false;
-  return (
-    x >= (rect.left - HAND_LANE_HOVER_FUZZ)
-    && x <= (rect.right + HAND_LANE_HOVER_FUZZ)
-    && y >= (rect.top - HAND_LANE_HOVER_FUZZ)
-    && y <= (rect.bottom + HAND_LANE_BOTTOM_EXIT_FUZZ)
-  );
-}
-
 function rectIntersectsRect(a, b, fuzz = 0) {
   if (!a || !b) return false;
   return !(
@@ -137,6 +133,26 @@ function getMobileDragPreviewRect(dragState) {
     top: y - 84,
     bottom: y + 56,
   };
+}
+
+function activeBattlefieldPlacementSlot() {
+  if (typeof document === "undefined") return null;
+  const slot = document.querySelector(
+    '[data-battlefield-drop-grid="true"] [data-battlefield-drop-slot][data-active="true"]'
+  );
+  if (!slot) return null;
+  const row = Number(slot.getAttribute("data-row"));
+  const column = Number(slot.getAttribute("data-column"));
+  if (!Number.isFinite(row) || !Number.isFinite(column)) return null;
+  return { row, column, anchorRect: plainRect(slot.getBoundingClientRect()) };
+}
+
+function dropTargetCandidateAtPoint(x, y) {
+  if (typeof document === "undefined") return null;
+  const elements = typeof document.elementsFromPoint === "function"
+    ? document.elementsFromPoint(x, y)
+    : [document.elementFromPoint(x, y)].filter(Boolean);
+  return dropTargetCandidateFromElements(elements);
 }
 
 function getTrackedZoneCards(player, zone) {
@@ -729,6 +745,7 @@ function buildViewedCardsTransitionPreviews(state, existingPreviews = []) {
 
 export default function Workspace({
   zoneViews,
+  setZoneViews,
   deckLoadingMode,
   puzzleSetupMode = false,
   onLoadDecks,
@@ -746,13 +763,13 @@ export default function Workspace({
   middleTopbar = null,
   middleAddCardBar = null,
   zoneActionControls = null,
-  onChangePerspective = null,
 }) {
   const [selectedObjectId, setSelectedObjectId] = useState(null);
   const [focusedStackObjectId, setFocusedStackObjectId] = useState(null);
   const [pinnedInspectorObjectId, setPinnedInspectorObjectId] = useState(null);
   const [suppressFallbackInspector, setSuppressFallbackInspector] = useState(false);
-  const [handLaneHovered, setHandLaneHovered] = useState(false);
+  const [handActionMenu, setHandActionMenu] = useState(null);
+  const [pendingCastTargetDrop, setPendingCastTargetDrop] = useState(null);
   const [zoneActivityByPlayer, setZoneActivityByPlayer] = useState({});
   const [transientInspectorPreviews, setTransientInspectorPreviews] = useState([]);
   const [transientInspectorPreviewIndex, setTransientInspectorPreviewIndex] = useState(0);
@@ -764,9 +781,7 @@ export default function Workspace({
   const processedRuntimeZoneTransitionIdsRef = useRef(new Set());
   const transitionInspectorRestoreRef = useRef(null);
   const transitionInspectorRevealTimerRef = useRef(null);
-  const handRevealShellRef = useRef(null);
-  const handRevealMotionRef = useRef(null);
-  const handHoverCloseTimerRef = useRef(null);
+  const castIntentDispatchKeyRef = useRef(null);
   const {
     game,
     state,
@@ -780,12 +795,17 @@ export default function Workspace({
     playerAccentOverrides,
   } = useGame();
   const { updateStackArrows, clearStackArrows } = useCombatArrows();
-  const { endDrag } = useDragActions();
-  const { clearHover, hoverCard } = useHoverActions();
+  const { endDrag, markCastIntent } = useDragActions();
+  const dragState = useDragState();
+  const {
+    clearPendingPlacement,
+    commitPlacementSlot,
+    stagePlacement,
+  } = usePlacementActions();
+  const { clearAnchoredCardPreview, clearHover, hoverCard } = useHoverActions();
   const { nonDesktopViewport, tabletCompactViewport } = useViewportLayout();
   const handScale = useManabrewHandScale();
   const HAND_PEEK_HEIGHT = Math.round(HAND_PEEK_HEIGHT_DEFAULT * handScale);
-  const HAND_REVEAL_HEIGHT = Math.round(MANABREW_HAND_CARD_BASE.containerH * handScale);
   const HAND_COLLAPSED_SHELL_HEIGHT = HAND_PEEK_HEIGHT;
   const showTopDock = !nonDesktopViewport && !tabletCompactViewport;
   const showRematchSideboarding = multiplayer?.rematch?.phase === "sideboarding";
@@ -793,8 +813,14 @@ export default function Workspace({
   const players = useMemo(() => state?.players || [], [state?.players]);
   const perspective = state?.perspective;
   const me = players.find((p) => p.id === perspective) || players[0];
+  const handPreviewExcludedObjectIds = useMemo(
+    () => (me?.hand_cards || []).flatMap((card) => [
+      card?.id,
+      ...(Array.isArray(card?.member_ids) ? card.member_ids : []),
+    ]).filter((id) => id != null),
+    [me?.hand_cards]
+  );
   const selectedObjectIsValid = objectExistsInState(state, selectedObjectId);
-  const handLaneOpen = !nonDesktopViewport && handLaneHovered;
   const decision = state?.decision || null;
   const combatDeclarationActive = decision?.kind === "attackers" || decision?.kind === "blockers";
   const legalTargetObjectIds = useMemo(() => {
@@ -1162,28 +1188,7 @@ export default function Workspace({
       clearTimeout(transitionInspectorRevealTimerRef.current);
       transitionInspectorRevealTimerRef.current = null;
     }
-    if (handHoverCloseTimerRef.current) {
-      clearTimeout(handHoverCloseTimerRef.current);
-      handHoverCloseTimerRef.current = null;
-    }
   }, []);
-
-  useLayoutEffect(() => {
-    const shellEl = handRevealShellRef.current;
-    if (!shellEl) return undefined;
-
-    cancelMotion(handRevealMotionRef.current);
-    handRevealMotionRef.current = animate(shellEl, {
-      height: handLaneOpen ? HAND_REVEAL_HEIGHT : HAND_COLLAPSED_SHELL_HEIGHT,
-      duration: 420,
-      ease: uiSpring({ duration: 420, bounce: 0.16 }),
-    });
-
-    return () => {
-      cancelMotion(handRevealMotionRef.current);
-      handRevealMotionRef.current = null;
-    };
-  }, [HAND_COLLAPSED_SHELL_HEIGHT, HAND_REVEAL_HEIGHT, handLaneOpen]);
 
   useLayoutEffect(() => {
     const root = workspaceRef.current;
@@ -1274,6 +1279,21 @@ export default function Workspace({
           return;
         }
       }
+      if (
+        options?.source === "hand"
+        && objectId != null
+        && selectedObjectId != null
+        && String(selectedObjectId) === String(objectId)
+      ) {
+        clearTransientInspectorPreviews();
+        clearAnchoredCardPreview();
+        clearHover();
+        setSelectedObjectId(null);
+        setPinnedInspectorObjectId(null);
+        setFocusedStackObjectId(null);
+        setSuppressFallbackInspector(true);
+        return;
+      }
       const stackEntry = options?.source === "stack" ? options?.stackEntry : null;
       if (
         stackEntry
@@ -1298,12 +1318,15 @@ export default function Workspace({
         }
       }
       clearTransientInspectorPreviews();
+      clearAnchoredCardPreview();
       if (stackEntry) {
         const stackObjectId = stackEntry.id != null ? String(stackEntry.id) : null;
         const inspectorObjectId = stackInspectObjectId(stackEntry);
         clearHover();
         setSelectedObjectId(inspectorObjectId != null ? String(inspectorObjectId) : null);
-        setPinnedInspectorObjectId(null);
+        // Anchor beside the clicked stack tile while the inspector resolves
+        // inspect_object_id to the originating spell or ability card.
+        setPinnedInspectorObjectId(stackObjectId);
         setSuppressFallbackInspector(false);
         setFocusedStackObjectId(stackObjectId);
         return;
@@ -1317,6 +1340,7 @@ export default function Workspace({
     [
       combatDeclarationActive,
       clearHover,
+      clearAnchoredCardPreview,
       decision,
       game,
       hoverCard,
@@ -1324,6 +1348,7 @@ export default function Workspace({
       multiplayer.matchStarted,
       refresh,
       runWasmInteraction,
+      selectedObjectId,
       setStatus,
       state?.perspective,
       clearTransientInspectorPreviews,
@@ -1360,82 +1385,201 @@ export default function Workspace({
     [setStatus]
   );
 
-  const handleHandLaneEnter = useCallback(() => {
-    if (handHoverCloseTimerRef.current) {
-      clearTimeout(handHoverCloseTimerRef.current);
-      handHoverCloseTimerRef.current = null;
-    }
-    setHandLaneHovered((currentHovered) => (currentHovered ? currentHovered : true));
-  }, []);
+  const triggerPriorityCardAction = useCallback((requestedAction, card = null, placementSlot = null) => {
+    const currentDecision = state?.decision || null;
+    if (currentDecision?.kind !== "priority") return false;
+    const liveAction = (currentDecision.actions || []).find((action) => (
+      Number(action?.index) === Number(requestedAction?.index)
+      || sameActionRef(requestedAction?.action_ref, action?.action_ref)
+    ));
+    if (!liveAction) return false;
 
-  const handleHandLaneLeave = useCallback((event) => {
-    const shellEl = handRevealShellRef.current;
     if (
-      handLaneOpen
-      && shellEl
-      && Number.isFinite(event?.clientX)
-      && Number.isFinite(event?.clientY)
-      && handLaneHoverRectContainsPoint(shellEl.getBoundingClientRect(), event.clientX, event.clientY)
+      placementSlot
+      && card
+      && (liveAction.kind === "cast_spell" || liveAction.kind === "play_land")
     ) {
-      if (handHoverCloseTimerRef.current) {
-        clearTimeout(handHoverCloseTimerRef.current);
-        handHoverCloseTimerRef.current = null;
-      }
-      return;
+      commitPlacementSlot(card, placementSlot);
     }
 
-    if (handHoverCloseTimerRef.current) {
-      clearTimeout(handHoverCloseTimerRef.current);
+    if (liveAction.kind === "untap_land") {
+      cancelDecision();
+    } else {
+      dispatch(
+        { type: "priority_action", action_index: liveAction.index, action_ref: liveAction.action_ref },
+        liveAction.label
+      );
     }
-    handHoverCloseTimerRef.current = setTimeout(() => {
-      setHandLaneHovered(false);
-      handHoverCloseTimerRef.current = null;
-    }, 90);
-  }, [handLaneOpen]);
-
-  const collapseHandLane = useCallback(() => {
-    if (handHoverCloseTimerRef.current) {
-      clearTimeout(handHoverCloseTimerRef.current);
-      handHoverCloseTimerRef.current = null;
-    }
-    setHandLaneHovered((currentHovered) => (currentHovered ? false : currentHovered));
-  }, []);
+    clearPendingPlacement();
+    return true;
+  }, [cancelDecision, clearPendingPlacement, commitPlacementSlot, dispatch, state?.decision]);
 
   useEffect(() => {
-    const onPointerMove = (event) => {
-      const shellEl = handRevealShellRef.current;
-      if (!shellEl) return;
+    if (!dragState) {
+      castIntentDispatchKeyRef.current = null;
+      return undefined;
+    }
 
-      const target = event.target;
-      const insideHandLaneTarget = target instanceof Element
-        && target.closest(".hand-reveal-shell");
-      const insideExpandedShell = handLaneOpen && handLaneHoverRectContainsPoint(
-        shellEl.getBoundingClientRect(),
-        event.clientX,
-        event.clientY
+    const beginIntentIfOutsideHand = () => {
+      if (dragState.castIntent || !shouldBeginTargetCastIntent(dragState.actions)) return;
+      if (!pointIsOutsideRect(
+        dragState.sourceContainerRect,
+        dragState.currentX,
+        dragState.currentY,
+      )) return;
+
+      const action = dragState.actions[0];
+      const dispatchKey = `${dragState.objectId}:${dragState.startX}:${dragState.startY}`;
+      if (castIntentDispatchKeyRef.current === dispatchKey) return;
+      castIntentDispatchKeyRef.current = dispatchKey;
+      const sourcePoint = dragState.hiddenSourcePoint || rectBoundaryPointToward(
+        dragState.sourceContainerRect || dragState.sourceRect,
+        dragState.startX,
+        dragState.startY,
+        dragState.currentX,
+        dragState.currentY,
       );
+      markCastIntent(sourcePoint);
+      // A unique cast can enter the engine's targeting decision immediately.
+      // When several payment/cast paths exist, keep this as a provisional
+      // target gesture until the player chooses one at the release point.
+      if (dragState.actions.length === 1) {
+        triggerPriorityCardAction(action, dragState.card, null);
+      }
+    };
 
-      if (insideHandLaneTarget || insideExpandedShell) {
-        handleHandLaneEnter();
+    const frameId = requestAnimationFrame(beginIntentIfOutsideHand);
+    document.addEventListener("pointermove", beginIntentIfOutsideHand, { passive: true });
+    return () => {
+      cancelAnimationFrame(frameId);
+      document.removeEventListener("pointermove", beginIntentIfOutsideHand);
+    };
+  }, [
+    dragState,
+    markCastIntent,
+    triggerPriorityCardAction,
+  ]);
+
+  const requestHandCardAction = useCallback(({
+    objectId,
+    cardName,
+    card,
+    actions,
+    anchorRect,
+    placementSlot = null,
+  }) => {
+    const currentDecision = state?.decision || null;
+    if (currentDecision?.kind !== "priority") return false;
+    const liveActions = (currentDecision.actions || []).filter((live) =>
+      (actions || []).some((held) => (
+        Number(held?.index) === Number(live?.index)
+        || sameActionRef(held?.action_ref, live?.action_ref)
+      ))
+    );
+    if (liveActions.length === 0) return false;
+    if (liveActions.length === 1) {
+      return triggerPriorityCardAction(liveActions[0], card, placementSlot);
+    }
+    if (placementSlot && card) {
+      stagePlacement(card, liveActions, placementSlot);
+    } else {
+      clearPendingPlacement();
+    }
+    setHandActionMenu({
+      objectId,
+      cardName,
+      card,
+      actions: liveActions,
+      anchorRect: placementSlot?.anchorRect || anchorRect,
+      placementSlot,
+    });
+    return true;
+  }, [clearPendingPlacement, stagePlacement, state?.decision, triggerPriorityCardAction]);
+
+  useEffect(() => {
+    if (!pendingCastTargetDrop) return;
+    if (decision == null) return;
+    if (decision.kind === "priority") {
+      if (!pendingCastTargetDrop.sawIntermediateDecision) return;
+      const clearFrameId = requestAnimationFrame(() => {
+        setPendingCastTargetDrop(null);
+      });
+      return () => cancelAnimationFrame(clearFrameId);
+    }
+    const frameId = requestAnimationFrame(() => {
+      // Payment and additional-cost decisions can sit between declaring the
+      // cast and choosing targets. Keep the remembered release target through
+      // those steps, but note that returning to priority means the cast was
+      // cancelled and the gesture should be discarded.
+      if (decision.kind !== "targets") {
+        setPendingCastTargetDrop((current) => (
+          current && !current.sawIntermediateDecision
+            ? { ...current, sawIntermediateDecision: true }
+            : current
+        ));
+        return;
+      }
+      if (!samePlayerId(decision.player, state?.perspective)) {
+        setPendingCastTargetDrop(null);
         return;
       }
 
-      if (handLaneOpen) {
-        handleHandLaneLeave();
-      }
-    };
+      const currentCandidate = dropTargetCandidateAtPoint(
+        pendingCastTargetDrop.x,
+        pendingCastTargetDrop.y,
+      );
+      const target = legalTargetForDropCandidates(decision, [
+        pendingCastTargetDrop.candidate,
+        currentCandidate,
+      ]);
+      setPendingCastTargetDrop(null);
+      if (!target) return;
 
-    document.addEventListener("pointermove", onPointerMove, { passive: true });
-    return () => {
-      document.removeEventListener("pointermove", onPointerMove);
-    };
-  }, [handLaneOpen, handleHandLaneEnter, handleHandLaneLeave]);
+      window.dispatchEvent(new CustomEvent("ironsmith:target-choice", {
+        detail: {
+          target,
+          submitIfComplete: targetDropCompletesDecision(decision, target),
+          fromHandDrag: true,
+        },
+      }));
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, [decision, pendingCastTargetDrop, state?.perspective]);
 
   // Handle drag drop — if user drops on the battlefield area, dispatch the action
   useEffect(() => {
     const onPointerUp = (e) => {
+      const placementSlot = activeBattlefieldPlacementSlot();
       const ds = endDrag();
       if (!ds || !ds.actions || ds.actions.length === 0) return;
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      if (ds.castIntent) {
+        const pendingTargetDrop = {
+          candidate: dropTargetCandidateAtPoint(e.clientX, e.clientY),
+          x: e.clientX,
+          y: e.clientY,
+          sourceObjectId: ds.objectId,
+        };
+        setPendingCastTargetDrop(pendingTargetDrop);
+        clearHover();
+        if (ds.actions.length > 1) {
+          requestHandCardAction({
+            objectId: ds.objectId,
+            cardName: ds.cardName,
+            card: ds.card,
+            actions: ds.actions,
+            anchorRect: {
+              left: e.clientX,
+              top: e.clientY,
+              right: e.clientX,
+              bottom: e.clientY,
+              width: 0,
+              height: 0,
+            },
+          });
+        }
+        return;
+      }
       const currentDecision = state?.decision || null;
       if (currentDecision?.kind !== "priority") {
         return;
@@ -1445,7 +1589,6 @@ export default function Workspace({
       // mobile the whole scene carries [data-drop-zone], so only the explicit
       // mobile drop targets count there — otherwise a small drag that starts
       // and ends inside the hand fan would play the card.
-      const el = document.elementFromPoint(e.clientX, e.clientY);
       const isOverTable = !nonDesktopViewport && !!el?.closest("[data-drop-zone]");
 
       let isOverMobileSelfZoneDropTarget = false;
@@ -1465,8 +1608,6 @@ export default function Workspace({
 
       if (!isOverTable && !isOverMobileSelfZoneDropTarget) return;
 
-      collapseHandLane();
-
       const currentActionIndices = new Set(
         (currentDecision.actions || []).map((action) => Number(action?.index))
       );
@@ -1482,30 +1623,23 @@ export default function Workspace({
           return;
         }
         window.__castParticles?.(e.clientX, e.clientY, ds.glowKind || "spell");
-        if (onlyAction.kind === "untap_land") {
-          cancelDecision();
-        } else {
-          dispatch(
-            { type: "priority_action", action_index: onlyAction.index, action_ref: onlyAction.action_ref },
-            onlyAction.label
-          );
-        }
-        if (!combatDeclarationActive && ds.objectId != null && !nonDesktopViewport) {
-          setSelectedObjectId(ds.objectId);
-          setPinnedInspectorObjectId(null);
-          setSuppressFallbackInspector(false);
-        }
+        triggerPriorityCardAction(onlyAction, ds.card, placementSlot);
         return;
       }
 
-      // Multiple possible actions. On mobile, surface them as an anchored
-      // popover at the drop point; on desktop, pin the inspector to this card
-      // while actions remain available in the action strip.
+      // Multiple possible actions use the same small action-only picker as a
+      // hand click. The card itself remains the readable full-card surface.
       if (nonDesktopViewport) {
         const liveActions = (currentDecision.actions || []).filter((live) =>
           ds.actions.some((held) => sameActionRef(held?.action_ref, live?.action_ref))
         );
         if (liveActions.length === 0) {
+          return;
+        }
+        if (liveActions.length === 1) {
+          window.__castParticles?.(e.clientX, e.clientY, ds.glowKind || "spell");
+          triggerPriorityCardAction(liveActions[0], ds.card, placementSlot);
+          clearHover();
           return;
         }
         window.dispatchEvent(new CustomEvent("ironsmith:mobile-card-actions", {
@@ -1526,26 +1660,32 @@ export default function Workspace({
         clearHover();
         return;
       }
-      const hasCurrentAction = ds.actions.some((action) =>
-        currentActionIndices.has(Number(action?.index))
-      );
-      if (!hasCurrentAction) {
-        return;
-      }
-      if (!combatDeclarationActive) {
-        setSelectedObjectId(ds.objectId != null ? ds.objectId : null);
-        setPinnedInspectorObjectId(null);
-        setSuppressFallbackInspector(false);
-      }
+      requestHandCardAction({
+        objectId: ds.objectId,
+        cardName: ds.cardName,
+        card: ds.card,
+        actions: ds.actions,
+        anchorRect: {
+          left: e.clientX,
+          top: e.clientY,
+          right: e.clientX,
+          bottom: e.clientY,
+          width: 0,
+          height: 0,
+        },
+        placementSlot,
+      });
       clearHover();
     };
 
     const onPointerCancel = () => {
       endDrag();
+      setPendingCastTargetDrop(null);
     };
 
     const onWindowBlur = () => {
       endDrag();
+      setPendingCastTargetDrop(null);
     };
 
     document.addEventListener("pointerup", onPointerUp);
@@ -1558,13 +1698,11 @@ export default function Workspace({
     };
   }, [
     clearHover,
-    collapseHandLane,
-    combatDeclarationActive,
-    cancelDecision,
-    dispatch,
     endDrag,
     nonDesktopViewport,
+    requestHandCardAction,
     state?.decision,
+    triggerPriorityCardAction,
   ]);
 
   useEffect(() => {
@@ -1595,6 +1733,7 @@ export default function Workspace({
       setSelectedObjectId(null);
       setPinnedInspectorObjectId(null);
       setSuppressFallbackInspector(true);
+      clearAnchoredCardPreview();
       clearHover();
     };
 
@@ -1604,11 +1743,20 @@ export default function Workspace({
     };
   }, [
     clearHover,
+    clearAnchoredCardPreview,
     decision,
     hasTransientInspectorPreview,
     restoreInspectorBeforeTransitionPreview,
     state?.perspective,
   ]);
+
+  const closeFloatingCardPreview = useCallback(() => {
+    setSelectedObjectId(null);
+    setPinnedInspectorObjectId(null);
+    setSuppressFallbackInspector(true);
+    clearAnchoredCardPreview();
+    clearHover();
+  }, [clearAnchoredCardPreview, clearHover]);
 
   return (
     <section
@@ -1617,6 +1765,38 @@ export default function Workspace({
       data-workspace-shell
     >
       <DragOverlay />
+      {handActionMenu?.anchorRect && (
+        <ActionPopover
+          anchorRect={handActionMenu.anchorRect}
+          actions={handActionMenu.actions}
+          collapseEquivalentActions={false}
+          onAction={(action) => {
+            triggerPriorityCardAction(
+              action,
+              handActionMenu.card,
+              handActionMenu.placementSlot
+            );
+            setHandActionMenu(null);
+          }}
+          onClose={() => {
+            setHandActionMenu(null);
+            clearPendingPlacement();
+            setPendingCastTargetDrop(null);
+          }}
+          variant="game"
+        />
+      )}
+      {!nonDesktopViewport && !showRematchSideboarding && (
+        <FloatingCardPreview
+          disabled={deckLoadingMode || puzzleSetupMode}
+          pinnedObjectId={pinnedInspectorObjectId}
+          onRequestClose={closeFloatingCardPreview}
+          excludedObjectIds={[
+            focusedStackObjectId,
+            ...handPreviewExcludedObjectIds,
+          ]}
+        />
+      )}
       <CastParticles />
       <ZoneMoveEffects />
       <GameEffectAnimations suspended={deckLoadingMode || puzzleSetupMode} />
@@ -1696,7 +1876,7 @@ export default function Workspace({
           })}
         </div>
       )}
-      <div className="min-h-0 h-full overflow-visible">
+      <div className="workspace-table-stage min-h-0 h-full overflow-visible">
         {showRematchSideboarding ? (
           <RematchSideboardingView />
         ) : (
@@ -1706,6 +1886,8 @@ export default function Workspace({
             focusedStackObjectId={focusedStackObjectId}
             onFocusStackObject={handleFocusStackObject}
             zoneViews={effectiveZoneViews}
+            zoneViewerViews={zoneViews}
+            setZoneViews={setZoneViews}
             zoneActivityByPlayer={zoneActivityByPlayer}
             deckLoadingMode={deckLoadingMode}
             puzzleSetupMode={puzzleSetupMode}
@@ -1725,26 +1907,7 @@ export default function Workspace({
             middleTopbar={middleTopbar}
             middleAddCardBar={middleAddCardBar}
             zoneActionControls={zoneActionControls}
-            onChangePerspective={onChangePerspective}
-            middleInspectorDock={showMiddleInspectorDock ? (
-              <RightRail
-                pinnedObjectId={pinnedInspectorObjectId}
-                selectedObjectId={selectedObjectId}
-                transientInspectorPreview={activeTransientInspectorPreview}
-                transientInspectorPreviewIndex={transientInspectorPreviewIndex}
-                transientInspectorPreviewCount={transientInspectorPreviews.length}
-                onShowPreviousTransientInspectorPreview={showPreviousTransientInspectorPreview}
-                onShowNextTransientInspectorPreview={showNextTransientInspectorPreview}
-                suppressFallback={suppressFallbackInspector}
-                inline
-                inlineDockPlacement="top"
-                inlineExpandedAnchor="top"
-                expandInlineToZoneViewer
-                inlineFillWidth
-                inlineFillHeight
-                allowTopInlinePlacement
-              />
-            ) : null}
+            middleInspectorDock={null}
           />
         )}
       </div>
@@ -1752,7 +1915,7 @@ export default function Workspace({
         <div
           className="pointer-events-none fixed left-[6px] top-[6px] z-[70] flex items-start justify-start overflow-visible"
           style={{
-            width: "40vw",
+            width: "min(360px, 32vw)",
             height: `${topLeftInspectorHeight}px`,
           }}
           data-inspector-dock="top"
@@ -1773,6 +1936,7 @@ export default function Workspace({
               inlineExpandedAnchor="top"
               inlineFillWidth
               allowTopInlinePlacement
+              allowHoverFallback={false}
             />
           </div>
         </div>
@@ -1789,19 +1953,11 @@ export default function Workspace({
             data-hand-dock-lane
           >
             <div
-              ref={handRevealShellRef}
               className="hand-reveal-shell absolute left-1/2 bottom-0"
-              data-open={handLaneOpen ? "true" : "false"}
-              aria-expanded={handLaneOpen}
+              data-open="false"
+              aria-expanded="false"
               style={{
-                height: `${handLaneOpen ? HAND_REVEAL_HEIGHT : HAND_COLLAPSED_SHELL_HEIGHT}px`,
-              }}
-              onMouseEnter={handleHandLaneEnter}
-              onMouseLeave={handleHandLaneLeave}
-              onFocusCapture={handleHandLaneEnter}
-              onBlurCapture={(event) => {
-                if (event.currentTarget.contains(event.relatedTarget)) return;
-                handleHandLaneLeave();
+                height: `${HAND_COLLAPSED_SHELL_HEIGHT}px`,
               }}
             >
               <div
@@ -1812,7 +1968,7 @@ export default function Workspace({
                   player={me}
                   selectedObjectId={selectedObjectId}
                   onInspect={handleInspectObject}
-                  isExpanded={handLaneOpen}
+                  isExpanded={false}
                   layout="mobile-fan"
                 />
               </div>
@@ -1831,6 +1987,7 @@ export default function Workspace({
                 suppressFallback={suppressFallbackInspector}
                 inline
                 allowTopInlinePlacement={showTopLeftInspectorDock}
+                allowHoverFallback={false}
               />
             ) : null}
             {!showMiddleInspectorDock && inspectorDebug && (
@@ -1845,6 +2002,7 @@ export default function Workspace({
                 suppressFallback={suppressFallbackInspector}
                 inline
                 allowTopInlinePlacement={showTopLeftInspectorDock}
+                allowHoverFallback={false}
                 inspectorVariant="debug"
               />
             )}

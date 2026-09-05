@@ -2,17 +2,17 @@ import { useCallback, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import useViewportLayout from "@/hooks/useViewportLayout";
 import OpponentZone from "./OpponentZone";
-import MyZone, { ZoneCountInline } from "./MyZone";
+import MyZone from "./MyZone";
 import DeckLoadingView from "./DeckLoadingView";
 import OpenDecklistModal from "./OpenDecklistModal";
 import PuzzleSetupView from "./PuzzleSetupView";
 import DecisionPopupLayer from "@/components/overlays/DecisionPopupLayer";
 import MobileBattleScene from "./MobileBattleScene";
 import PlanarZone from "./PlanarZone";
+import ZoneViewer from "./ZoneViewer";
 import ManaPool from "@/components/left-rail/ManaPool";
 import StackTimelineRail from "@/components/right-rail/StackTimelineRail";
 import { DEFAULT_PLAYER_ACCENT, getPlayerAccent } from "@/lib/player-colors";
-import { formatPhase, formatStep } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
@@ -39,6 +39,7 @@ export default function TableCore({
   focusedStackObjectId = null,
   onFocusStackObject = null,
   zoneViews,
+  zoneViewerViews = zoneViews,
   zoneActivityByPlayer = {},
   deckLoadingMode,
   puzzleSetupMode = false,
@@ -58,7 +59,7 @@ export default function TableCore({
   middleTopbar = null,
   middleAddCardBar = null,
   zoneActionControls = null,
-  onChangePerspective = null,
+  setZoneViews = null,
   middleInspectorDock = null,
 }) {
   const { state, playerAccentOverrides, multiplayer } = useGame();
@@ -84,13 +85,6 @@ export default function TableCore({
   const opponents = me ? ordered.filter((p) => p.id !== me.id) : [];
   const playerAccent = me ? getPlayerAccent(players, me?.id, perspective, playerAccentOverrides) : null;
   const decision = state?.decision || null;
-  const activePlayer = players.find((player) => samePlayerId(player.id, state?.active_player)) || null;
-  const priorityPlayer = players.find((player) => samePlayerId(player.id, state?.priority_player)) || null;
-  const decisionPlayer = decision?.player != null
-    ? players.find((player) => samePlayerId(player.id, decision.player)) || null
-    : null;
-  const decisionOwnerDiffersFromPriority = decisionPlayer
-    && (!priorityPlayer || !samePlayerId(decisionPlayer.id, priorityPlayer.id));
   const activeZoneActionControls = tableToolsExpanded ? zoneActionControls : null;
   const expandedActionBar = Boolean(
     decision
@@ -109,6 +103,9 @@ export default function TableCore({
   const actionBarHeight = expandedActionBar
     ? (portraitCompactViewport || landscapeMobileViewport || tabletCompactViewport ? compactDecisionBarHeight : desktopDecisionBarHeight)
     : (portraitCompactViewport || landscapeMobileViewport || tabletCompactViewport ? compactPriorityBarHeight : desktopPriorityBarHeight);
+  const sharedMiddleBattlefieldInset = portraitCompactViewport || landscapeMobileViewport || tabletCompactViewport
+    ? compactPriorityBarHeight
+    : desktopPriorityBarHeight;
   const mergeActionBarIntoMyZone = nonDesktopViewport || tabletCompactViewport;
   const dockStackRailInBoard = !mergeActionBarIntoMyZone && Boolean(zoneActionControls);
   const sharedMiddleControls = !mergeActionBarIntoMyZone && Boolean(middleTopbar || middleAddCardBar);
@@ -180,10 +177,14 @@ export default function TableCore({
   }
   const actionBarElement = (
     <div
-      className="table-action-bar relative h-full w-full rounded-none border border-[#2b3f57]/65 bg-[linear-gradient(90deg,rgba(7,15,23,0.92),rgba(14,28,44,0.86),rgba(7,15,23,0.92))] shadow-[inset_0_1px_0_rgba(170,208,245,0.12),0_8px_18px_rgba(0,0,0,0.32)]"
+      className="table-action-bar relative h-full w-full rounded-none border"
       data-expanded={expandedActionBar ? "true" : "false"}
     >
-      <DecisionPopupLayer priorityInline selectedObjectId={selectedObjectId} />
+      <DecisionPopupLayer
+        priorityInline
+        replaceMiddleControls={expandedActionBar && sharedMiddleControls}
+        selectedObjectId={selectedObjectId}
+      />
     </div>
   );
   const middleToolbarElement = middleTopbar || middleAddCardBar ? (
@@ -208,6 +209,17 @@ export default function TableCore({
           )}
           onPointerDown={handlePlayerTargetPointerDown}
           onClick={handlePlayerTargetClick}
+          role={isPlayerLegalTarget && canPickTargetFromBoard ? "button" : undefined}
+          tabIndex={isPlayerLegalTarget && canPickTargetFromBoard ? 0 : undefined}
+          aria-label={isPlayerLegalTarget && canPickTargetFromBoard
+            ? `Target ${playerDisplayName(state?.players || [], me)}`
+            : undefined}
+          onKeyDown={(event) => {
+            if (!isPlayerLegalTarget || !canPickTargetFromBoard) return;
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            dispatchPlayerTargetChoice();
+          }}
           style={{ cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined }}
         >
           {me.life}
@@ -252,56 +264,17 @@ export default function TableCore({
           compact
           className="player-name-mana battlefield-header-mana"
         />
-        <div
-          className="player-header-turn-summary"
-          aria-label={t("game.currentTurnSummary")}
-        >
-          <span>{formatPhase(state?.phase, t)}</span>
-          {state?.step ? (
-            <>
-              <span className="player-header-summary-dot" aria-hidden="true">•</span>
-              <span>{formatStep(state.step, t)}</span>
-            </>
-          ) : null}
-          <span className="player-header-summary-dot" aria-hidden="true">•</span>
-          <span>{t("game.turn", { turn: state?.turn_number ?? "-" })}</span>
-          {activePlayer ? (
-            <>
-              <span className="player-header-summary-dot" aria-hidden="true">•</span>
-              <span>{t("game.activePlayer", { player: playerDisplayName(players, activePlayer) })}</span>
-            </>
-          ) : null}
-          {decisionOwnerDiffersFromPriority ? (
-            <>
-              <span className="player-header-summary-dot" aria-hidden="true">•</span>
-              <span>{t("game.decisionPlayer", { player: playerDisplayName(players, decisionPlayer) })}</span>
-            </>
-          ) : priorityPlayer ? (
-            <>
-              <span className="player-header-summary-dot" aria-hidden="true">•</span>
-              <span>{t("game.priorityPlayer", { player: playerDisplayName(players, priorityPlayer) })}</span>
-            </>
-          ) : null}
-        </div>
-        <label className="player-header-perspective">
-          <span>{t("action.playingAs")}</span>
-          <select
-            className="stone-select player-header-perspective-select"
-            value={perspective ?? 0}
-            disabled={multiplayer.matchStarted}
-            onChange={(event) => onChangePerspective?.(Number(event.target.value))}
-            aria-label={t("action.playingAs")}
-          >
-            {players.map((player) => (
-              <option key={player.id} value={player.id}>
-                {playerDisplayName(players, player)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="battlefield-header-zone-counts ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
-          <ZoneCountInline player={me} onOpenDecklist={handleOpenDecklist} />
-        </div>
+        {zoneViewerViews && setZoneViews ? (
+          <div className="player-header-zone-visibility" aria-label="Visible table zones">
+            <ZoneViewer
+              player={me}
+              zoneViews={zoneViewerViews}
+              setZoneViews={setZoneViews}
+              onOpenDecklist={handleOpenDecklist}
+              embedded
+            />
+          </div>
+        ) : null}
       </div>
       {!dockStackRailInBoard ? (
         <StackTimelineRail
@@ -316,29 +289,44 @@ export default function TableCore({
     <div
       className={cn(
         "table-shared-control-band relative min-h-0 overflow-visible",
-        middleInspectorDock ? "z-[70]" : "z-20"
+        expandedActionBar ? "z-[90]" : (middleInspectorDock ? "z-[70]" : "z-20")
       )}
-      style={playerAccentStyle(playerAccent)}
+      data-inspector-open={middleInspectorDock && selectedObjectId != null ? "true" : "false"}
+      data-expanded-decision={expandedActionBar ? "true" : "false"}
+      style={{
+        ...playerAccentStyle(playerAccent),
+        "--middle-inspector-width": "clamp(460px, calc(100vw - 600px), 840px)",
+      }}
     >
-      <div className="table-shared-control-stack relative z-[1] grid min-h-0 gap-0 overflow-visible">
+      <div
+        className="table-shared-control-stack relative z-[1] grid min-h-0 gap-0 overflow-visible"
+        aria-hidden={expandedActionBar ? "true" : undefined}
+        inert={expandedActionBar ? true : undefined}
+      >
         <div className="table-shared-toolbar-slot relative overflow-visible">
           {middleToolbarElement}
         </div>
         <div className="table-shared-player-slot relative overflow-visible">
           {middlePlayerHeaderElement}
         </div>
+      </div>
+      {expandedActionBar ? (
         <div
-          className="table-shared-action-slot relative overflow-visible"
+          className="table-shared-action-slot table-decision-overlay-slot absolute inset-0 z-[115] overflow-visible"
           data-tools-expanded={activeZoneActionControls ? "true" : "false"}
-          style={{ height: `${actionBarHeight}px` }}
         >
           {actionBarElement}
         </div>
-      </div>
+      ) : null}
       {middleInspectorDock ? (
         <div
           className="table-shared-inspector-dock pointer-events-none absolute right-2 z-[110] flex items-start justify-end overflow-visible"
-          style={{ top: 0, bottom: `${actionBarHeight}px`, width: "40vw" }}
+          style={{
+            top: "2px",
+            right: "20px",
+            bottom: "0px",
+            width: "var(--middle-inspector-width)",
+          }}
           data-inspector-dock="middle"
         >
           {middleInspectorDock}
@@ -383,13 +371,14 @@ export default function TableCore({
       className="table-gradient table-shell relative rounded-none grid gap-0 p-0 min-h-0 h-full overflow-visible"
       data-drop-zone
       data-tablet-compact={tabletCompactViewport ? "true" : "false"}
+      data-decision-strip-removed={sharedMiddleElement ? "true" : "false"}
       style={{
         gridTemplateRows: mergeActionBarIntoMyZone
           ? (tabletCompactViewport
             ? "minmax(0,0.9fr) minmax(0,1.1fr)"
             : "minmax(0,1fr) minmax(0,1fr)")
           : sharedMiddleElement
-            ? "minmax(0,1.09fr) auto minmax(0,1fr)"
+            ? `minmax(0,1.09fr) auto ${sharedMiddleBattlefieldInset}px minmax(0,1fr)`
             : "minmax(0,1fr) minmax(0,1fr)",
       }}
     >
@@ -423,10 +412,12 @@ export default function TableCore({
         headerActionBar={!mergeActionBarIntoMyZone && !sharedMiddleElement ? actionBarElement : null}
         embeddedActionBar={mergeActionBarIntoMyZone ? actionBarElement : null}
         zoneActionControls={!mergeActionBarIntoMyZone ? activeZoneActionControls : null}
-        zoneActionRailOffset={!mergeActionBarIntoMyZone && activeZoneActionControls ? actionBarHeight : 0}
+        zoneActionRailOffset={!mergeActionBarIntoMyZone && !sharedMiddleElement && activeZoneActionControls ? actionBarHeight : 0}
         dockStackRail={dockStackRailInBoard}
         hideHeader={Boolean(sharedMiddleElement)}
         hideMobileHandRail={tabletCompactViewport}
+        tableGridRow={sharedMiddleElement ? "3 / span 2" : null}
+        battlefieldTopInset={sharedMiddleElement ? sharedMiddleBattlefieldInset : 0}
       />
       <OpenDecklistModal
         decklist={openDecklist}

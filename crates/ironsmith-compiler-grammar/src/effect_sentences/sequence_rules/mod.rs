@@ -16,7 +16,7 @@ fn sentence_head(sentences: &[SentenceInput], sentence_idx: usize) -> Option<(&s
     lexed_head_words(sentences[sentence_idx].lowered())
 }
 
-fn sentence_head_word(sentences: &[SentenceInput], sentence_idx: usize) -> Option<&str> {
+pub(crate) fn sentence_head_word(sentences: &[SentenceInput], sentence_idx: usize) -> Option<&str> {
     sentence_head(sentences, sentence_idx).map(|(head, _)| head)
 }
 
